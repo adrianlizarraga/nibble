@@ -2,8 +2,8 @@
 #define NIBBLE_LEXER_H
 #include <stdint.h>
 
-#include "str.h"
-
+#define LEXER_MAX_NUM_ERRORS 4
+#define LEXER_MAX_ERROR_LEN 128
 
 typedef enum TokenType TokenType;
 typedef enum TokenIntBase TokenIntBase;
@@ -13,13 +13,13 @@ typedef struct TokenFloat TokenFloat;
 typedef struct TokenStr TokenStr;
 typedef struct TokenName TokenName;
 typedef struct Token Token;
-typedef struct ScanToken ScanToken;
 typedef struct Lexer Lexer;
 
 enum TokenType {
+    TKN_UNKNOWN,
     TKN_EOF,
     TKN_LPAREN,
-    TKN_RPARAN,
+    TKN_RPAREN,
     TKN_LBRACE,
     TKN_RBRACE,
     TKN_LBRACKET,
@@ -31,8 +31,7 @@ enum TokenType {
     TKN_AT,
  
     TKN_STR,
-    TKN_NAME,
-    TKN_KEYWORD,
+    TKN_WORD,
     TKN_INT,
     TKN_CHAR,
     TKN_FLOAT,
@@ -76,6 +75,9 @@ struct TokenStr {
 struct Token {
     TokenType type;
 
+    uint32_t line;
+    uint32_t column;
+
     union {
 	TokenChar char_;
 	TokenInt int_;
@@ -85,23 +87,15 @@ struct Token {
     };
 };
 
-struct ScanToken {
-    Token token;
-
-    size_t index;
-    size_t len;
-
-    size_t line;
-    size_t column;
-};
-
-
-
 struct Lexer {
-    ScanToken token;
+    const char* at;
+    uint32_t line;
+    uint32_t column;
 
-    String cursor;
+    // TODO: Make this an error stream
+    char errors[LEXER_MAX_NUM_ERRORS][LEXER_MAX_ERROR_LEN];
+    unsigned int num_errors;
 };
 
-int next_token(Lexer* lexer);
+Token next_token(Lexer* lexer); // Returns the number of errors for now. (0 on success)
 #endif
