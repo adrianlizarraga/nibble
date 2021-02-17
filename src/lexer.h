@@ -98,5 +98,5 @@ struct Lexer {
     unsigned int num_errors;
 };
 
-Token next_token(Lexer* lexer); // Returns the number of errors for now. (0 on success)
+Token next_token(Lexer* lexer);
 #endif
