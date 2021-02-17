@@ -40,6 +40,17 @@ void test_lexer()
     test_token(&lexer, TKN_PLUS, 1, 4);
     test_token(&lexer, TKN_MINUS, 1, 5);
     test_token(&lexer, TKN_EOF, 1, 6);
+
+    // Test error when have unclosed c-style comments
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "/* An unclosed comment";
+    test_token(&lexer, TKN_EOF, 0, strlen(lexer.at));
+    assert(lexer.num_errors == 1);
+
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "/* An unclosed comment\n";
+    test_token(&lexer, TKN_EOF, 1, 0);
+    assert(lexer.num_errors == 1);
 }
 
 int main(void)

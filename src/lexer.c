@@ -55,7 +55,7 @@ static void skip_c_comment(Lexer* lexer)
     }
 
     if (level > 0) {
-	lexer_error(lexer, "[ERROR] Missing closing '*/' for c-style comment.\n");
+	lexer_error(lexer, "[ERROR] Missing closing '*/' for c-style comment.");
     }
 }
 
@@ -125,7 +125,7 @@ Token next_token(Lexer* lexer)
 	    lexer->at++;
 	} break;
 	default: {
-	    lexer_error(lexer, "[INTERNAL ERROR] Unexpected token character: %c\n", *lexer->at);
+	    lexer_error(lexer, "[INTERNAL ERROR] Unexpected token character: %c", *lexer->at);
 	    lexer->at++;
 	    repeat = true;
 	} break;
