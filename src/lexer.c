@@ -7,7 +7,16 @@ static bool is_whitespace(char c)
     return (c == ' ') || (c == '\t') || (c == '\n') || (c == '\r') || (c == '\v');
 }
 
-void skip_c_comment(Lexer* lexer)
+static void process_newline(Lexer* lexer)
+{
+    assert(lexer->at[0] == '\n');
+    lexer->line += 1;
+    lexer->column = 0;
+    lexer->at += 1;
+    lexer->token_start = lexer->at;
+}
+
+static void skip_c_comment(Lexer* lexer)
 {
     if ((lexer->at[0] == '/') && (lexer->at[1] == '*')) {
 	lexer->at += 2;
@@ -17,6 +26,9 @@ void skip_c_comment(Lexer* lexer)
 	    // Nested c-style comment
 	    if ((lexer->at[0] == '/') && (lexer->at[1] == '*')) {
 	        skip_c_comment(lexer);
+	    }
+	    else if (lexer->at[0] == '\n') {
+		process_newline(lexer);
 	    }
 	    else {
 		lexer->at++;
@@ -37,7 +49,7 @@ Token next_token(Lexer* lexer)
     bool parsing = true;
 
     while (parsing) {
-	const char* start = lexer->at;
+        lexer->token_start = lexer->at;
 
 	token.line = lexer->line;
 	token.column = lexer->column;
@@ -46,11 +58,7 @@ Token next_token(Lexer* lexer)
 	case ' ': case '\t': case '\n': case '\r': case '\v': {
 	    while (is_whitespace(*lexer->at)) {
 		if (*lexer->at == '\n') {
-		    lexer->line += 1;
-		    lexer->column = 0;
-		    lexer->at += 1;
-
-		    start = lexer->at;
+		    process_newline(lexer);
 		}
 		else {
 		    lexer->at++;
@@ -116,7 +124,7 @@ Token next_token(Lexer* lexer)
 	} break;
 	}
 
-	lexer->column += lexer->at - start;
+	lexer->column += lexer->at - lexer->token_start;
     }
 
     return token;

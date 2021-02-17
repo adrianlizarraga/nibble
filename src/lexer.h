@@ -89,6 +89,7 @@ struct Token {
 
 struct Lexer {
     const char* at;
+    const char* token_start; // NOTE: used to compute number of columns spanned by the next token.
     uint32_t line;
     uint32_t column;
 
