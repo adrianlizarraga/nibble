@@ -64,9 +64,10 @@ Token next_token(Lexer* lexer)
     assert(lexer && lexer->at);
 
     Token token = {};
-    bool parsing = true;
+    bool repeat = false;
 
-    while (parsing) {
+    do {
+	repeat = false;
         lexer->token_start = lexer->at;
 
 	token.line = lexer->line;
@@ -83,7 +84,7 @@ Token next_token(Lexer* lexer)
 		}
 	    }
 
-	    parsing = true;
+	    repeat = true;
 	} break;
 	case '/': {
 	    if (lexer->at[1] == '/') {
@@ -91,59 +92,47 @@ Token next_token(Lexer* lexer)
 		    lexer->at++;
 		}
 
-		parsing = true;
+	        repeat = true;
 	    }
 	    else if (lexer->at[1] == '*') {
 		skip_c_comment(lexer);
 
-		parsing = true;
+	        repeat = true;
 	    }
 	    else {
 		token.type = TKN_DIV;
 		lexer->at++;
-
-		parsing = false;
 	    }
 	} break;
 	case '(': {
 	    token.type = TKN_LPAREN;
 	    lexer->at++;
-
-	    parsing = false;
 	} break;
 	case ')': {
 	    token.type = TKN_RPAREN;
 	    lexer->at++;
-
-	    parsing = false;
 	} break;
 	case '+': {
 	    token.type = TKN_PLUS;
 	    lexer->at++;
-
-	    parsing = false;
 	} break;
 	case '-': {
 	    token.type = TKN_MINUS;
 	    lexer->at++;
-
-	    parsing = false;
 	} break;
 	case '\0': {
 	    token.type = TKN_EOF;
 	    lexer->at++;
-
-	    parsing = false;
 	} break;
 	default: {
-	    fprintf(stderr, "Unexpected first char %c\n", *lexer->at);
-	    assert(!"Invalid lexing default case");
-	    parsing = false;
+	    lexer_error(lexer, "[INTERNAL ERROR] Unexpected token character: %c\n", *lexer->at);
+	    lexer->at++;
+	    repeat = true;
 	} break;
 	}
 
 	lexer->column += lexer->at - lexer->token_start;
-    }
+    } while (repeat);
 
     return token;
 }
