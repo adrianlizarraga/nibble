@@ -11,11 +11,13 @@ static bool is_whitespace(char c)
 
 static void lexer_error(Lexer* lexer, const char* format, ...)
 {
-    va_list vargs;
+    if (lexer->num_errors < LEXER_MAX_NUM_ERRORS) {
+	va_list vargs;
 
-    va_start(vargs, format);
-    vsnprintf(lexer->errors[lexer->num_errors++], LEXER_MAX_ERROR_LEN, format, vargs);
-    va_end(vargs);
+	va_start(vargs, format);
+	vsnprintf(lexer->errors[lexer->num_errors++], LEXER_MAX_ERROR_LEN, format, vargs);
+	va_end(vargs);
+    }
 }
 
 static void process_newline(Lexer* lexer)
