@@ -18,11 +18,19 @@ static bool is_number(char c)
 static void lexer_error(Lexer* lexer, const char* format, ...)
 {
     if (lexer->num_errors < LEXER_MAX_NUM_ERRORS) {
-	va_list vargs;
+        char* buf = lexer->errors[lexer->num_errors];
+	size_t len = LEXER_MAX_ERROR_LEN;
+	int n = snprintf(buf, len, "%s:%u:%u: error: ", "<filename>", lexer->line + 1, lexer->column + 1);
 
+	buf += n;
+	len -= n;
+
+	va_list vargs;
 	va_start(vargs, format);
-	vsnprintf(lexer->errors[lexer->num_errors++], LEXER_MAX_ERROR_LEN, format, vargs);
+	vsnprintf(buf, len, format, vargs);
 	va_end(vargs);
+
+	lexer->num_errors++;
     }
 }
 
@@ -63,7 +71,7 @@ static void skip_c_comment(Lexer* lexer)
     }
 
     if (level > 0) {
-	lexer_error(lexer, "[ERROR] Missing closing '*/' for c-style comment.");
+	lexer_error(lexer, "Missing closing '*/' for c-style comment.");
     }
 }
 
@@ -79,7 +87,7 @@ void scan_uint(Lexer* lexer, Token* token)
 	unsigned int digit = *lexer->at - '0'; // TODO: Lookup table for other bases
 
 	if (digit >= base) {
-	    lexer_error(lexer, "[ERROR] Integer literal digit (%c) is outside of base (%u) range", *lexer->at, base);
+	    lexer_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", *lexer->at, base);
 	    val = 0;
 	    while (is_number(*lexer->at)) {
 		lexer->at++;
@@ -89,7 +97,7 @@ void scan_uint(Lexer* lexer, Token* token)
 
 	// Detect overflow if 10*val + digt > MAX
 	if (val > (ULLONG_MAX - digit) / 10) {
-	    lexer_error(lexer, "[ERROR] Integer literal is too large for its type");
+	    lexer_error(lexer, "Integer literal is too large for its type");
 	    val = 0;
 	    while (is_number(*lexer->at)) {
 		lexer->at++;
