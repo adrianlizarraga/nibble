@@ -113,7 +113,7 @@ Token next_token(Lexer* lexer)
 {
     assert(lexer && lexer->at);
 
-    Token token = {};
+    Token token = {0};
     bool repeat = false;
 
     do {

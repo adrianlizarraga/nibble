@@ -18,7 +18,7 @@ void test_token(Lexer* lexer, TokenType type, uint32_t line, uint32_t column)
 
 void test_lexer()
 {
-    Lexer lexer = {};
+    Lexer lexer = {0};
 
     // Test basic 1 character tokens, newlines, and c++ comments.
     lexer.at = "(++--)  \n  //++--\n()";

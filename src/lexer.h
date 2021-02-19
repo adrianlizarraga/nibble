@@ -5,8 +5,6 @@
 #define LEXER_MAX_NUM_ERRORS 4
 #define LEXER_MAX_ERROR_LEN 128
 
-typedef enum TokenType TokenType;
-typedef enum TokenIntBase TokenIntBase;
 typedef struct TokenInt TokenInt;
 typedef struct TokenChar TokenChar;
 typedef struct TokenFloat TokenFloat;
@@ -15,7 +13,7 @@ typedef struct TokenName TokenName;
 typedef struct Token Token;
 typedef struct Lexer Lexer;
 
-enum TokenType {
+typedef enum TokenType {
     TKN_UNKNOWN,
     TKN_EOF,
     TKN_LPAREN,
@@ -42,14 +40,14 @@ enum TokenType {
     TKN_DIV,
     TKN_GTEQ,
     TKN_LTEQ,
-};
+} TokenType;
 
-enum TokenIntBase {
+typedef enum TokenIntBase {
     TKN_INT_DEC,
     TKN_INT_HEX,
     TKN_INT_OCT,
     TKN_INT_BIN,
-};
+} TokenIntBase;
 
 struct TokenInt {
     uint64_t value;
