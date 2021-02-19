@@ -51,6 +51,13 @@ void test_lexer()
     lexer.at = "/* An unclosed comment\n";
     test_token(&lexer, TKN_EOF, 1, 0);
     assert(lexer.num_errors == 1);
+
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "123\n";
+    Token token = next_token(&lexer);
+    assert(token.type == TKN_INT);
+    assert(token.int_.value == 123);
+
 }
 
 int main(void)
