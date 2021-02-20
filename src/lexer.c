@@ -75,46 +75,94 @@ static void skip_c_comment(Lexer* lexer)
     }
 }
 
-void scan_uint(Lexer* lexer, Token* token)
+// Converts a numeric character to an integer value. Values are biased by +1
+// so that a result of 0 is known to be invalid.
+static const unsigned int char_to_biased_digit[256] = {
+    ['0'] = 1,
+    ['1'] = 2,
+    ['2'] = 3,
+    ['3'] = 4,
+    ['4'] = 5,
+    ['5'] = 6,
+    ['6'] = 7,
+    ['7'] = 8,
+    ['8'] = 9,
+    ['9'] = 10,
+    ['a'] = 11,
+    ['b'] = 12,
+    ['c'] = 13,
+    ['d'] = 14,
+    ['e'] = 15,
+    ['f'] = 16,
+    ['A'] = 11,
+    ['B'] = 12,
+    ['C'] = 13,
+    ['D'] = 14,
+    ['E'] = 15,
+    ['F'] = 16,
+};
+
+TokenInt scan_uint(Lexer* lexer)
 {
     assert(is_number(lexer->at[0]));
+    // TODO: Support length suffixes e.g., U, UL, ULL, L, LL
 
-    // TODO: Support other bases: hex, oct, binary
-    unsigned int base = 10;
-    unsigned long long int val = 0;
+    TokenInt token = {.value = 0, .base = 10};
 
-    while (is_number(*lexer->at)) {
-	unsigned int digit = *lexer->at - '0'; // TODO: Lookup table for other bases
+    if (lexer->at[0] == '0') {
+	lexer->at++;
+	if ((lexer->at[0] == 'x') || (lexer->at[0] == 'X')) {
+	    lexer->at++;
+	    token.base = 16;
+	}
+	else if ((lexer->at[0] == 'b') || (lexer->at[0] == 'B')) {
+	    lexer->at++;
+	    token.base = 2;
+	}
+	else {
+	    token.base = 8;
+	}
+    }
 
-	if (digit >= base) {
-	    lexer_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", *lexer->at, base);
-	    val = 0;
-	    while (is_number(*lexer->at)) {
+    unsigned int biased = char_to_biased_digit[(int)lexer->at[0]];
+
+    if (biased == 0) {
+	lexer_error(lexer, "Invalid integer literal character '%c' after base specifier",
+	            *lexer->at);
+	return token;
+    }
+
+
+    do {
+	unsigned int digit = biased - 1;
+
+	if (digit >= token.base) {
+	    lexer_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", *lexer->at, token.base);
+	    token.value = 0;
+	    while (char_to_biased_digit[(int)lexer->at[0]]) {
 		lexer->at++;
 	    }
 	    break;
 	}
 
 	// Detect overflow if 10*val + digt > MAX
-	if (val > (ULLONG_MAX - digit) / 10) {
+	if (token.value > (UINT64_MAX - digit) / token.base) {
 	    lexer_error(lexer, "Integer literal is too large for its type");
-	    val = 0;
-	    while (is_number(*lexer->at)) {
+	    token.value = 0;
+	    while (char_to_biased_digit[(int)lexer->at[0]]) {
 		lexer->at++;
 	    }
 	    break;
 	}
 
-	val *= base;
-	val += digit;
+	token.value *= token.base;
+	token.value += digit;
 
+	lexer->at++;
+	biased = char_to_biased_digit[(int)lexer->at[0]];
+    } while (biased != 0);
 
-        lexer->at++;
-    }
-
-    token->type = TKN_INT;
-    token->int_.base = base;
-    token->int_.value = val;
+    return token;
 }
 
 Token next_token(Lexer* lexer)
@@ -183,7 +231,8 @@ Token next_token(Lexer* lexer)
 	    lexer->at++;
 	} break;
 	case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
-	    scan_uint(lexer, &token);
+	    token.type = TKN_INT;
+	    token.int_ = scan_uint(lexer);
 	} break;
 	default: {
 	    lexer_error(lexer, "[INTERNAL ERROR] Unexpected token character: %c", *lexer->at);

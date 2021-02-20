@@ -42,16 +42,9 @@ typedef enum TokenType {
     TKN_LTEQ,
 } TokenType;
 
-typedef enum TokenIntBase {
-    TKN_INT_DEC,
-    TKN_INT_HEX,
-    TKN_INT_OCT,
-    TKN_INT_BIN,
-} TokenIntBase;
-
 struct TokenInt {
     uint64_t value;
-    TokenIntBase base;    
+    uint32_t base;    
 };
 
 struct TokenFloat {

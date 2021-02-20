@@ -69,10 +69,55 @@ void test_lexer()
     assert(lexer.num_errors == 1);
 
     memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "123\n";
+    lexer.at = "123 333\n0xFF 0b0111 011";
     token = next_token(&lexer);
     assert(token.type == TKN_INT);
     assert(token.int_.value == 123);
+
+    token = next_token(&lexer);
+    assert(token.type == TKN_INT);
+    assert(token.int_.base == 10);
+    assert(token.int_.value == 333);
+
+    token = next_token(&lexer);
+    assert(token.type == TKN_INT);
+    assert(token.int_.base == 16);
+    assert(token.int_.value == 0xFF);
+
+    token = next_token(&lexer);
+    assert(token.type == TKN_INT);
+    assert(token.int_.base == 2);
+    assert(token.int_.value == 7);
+
+    token = next_token(&lexer);
+    assert(token.type == TKN_INT);
+    assert(token.int_.base == 8);
+    assert(token.int_.value == 9);
+
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "0Z";
+    token = next_token(&lexer);
+    assert(lexer.num_errors == 1);
+
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "0b3";
+    token = next_token(&lexer);
+    assert(lexer.num_errors == 1);
+
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "09";
+    token = next_token(&lexer);
+    assert(lexer.num_errors == 1);
+
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "1A";
+    token = next_token(&lexer);
+    assert(lexer.num_errors == 1);
+
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "9999999999999999999999";
+    token = next_token(&lexer);
+    assert(lexer.num_errors == 1);
 
 }
 
