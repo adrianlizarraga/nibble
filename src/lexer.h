@@ -2,8 +2,13 @@
 #define NIBBLE_LEXER_H
 #include <stdint.h>
 
-#define LEXER_MAX_NUM_ERRORS 4
+#define LEXER_MAX_NUM_ERRORS 10
 #define LEXER_MAX_ERROR_LEN 128
+
+#define INT_HEX_BASE 16U
+#define INT_DEC_BASE 10U
+#define INT_OCT_BASE 8U
+#define INT_BIN_BASE 2U
 
 typedef struct TokenInt TokenInt;
 typedef struct TokenChar TokenChar;
@@ -26,7 +31,6 @@ typedef enum TokenType {
     TKN_COLON,
     TKN_COMMA,
     TKN_DOT,
-    TKN_AT,
  
     TKN_STR,
     TKN_WORD,
@@ -52,7 +56,7 @@ struct TokenFloat {
 };
 
 struct TokenChar {
-    uint32_t value;
+    int32_t value;
 };
 
 struct TokenName {

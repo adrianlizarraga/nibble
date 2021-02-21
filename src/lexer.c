@@ -12,9 +12,24 @@ static bool is_whitespace(char c)
     return (c == ' ') || (c == '\t') || (c == '\n') || (c == '\r') || (c == '\v');
 }
 
+static bool is_escaped_space(char c)
+{
+    return (c == '\t') || (c == '\n') || (c == '\r') || (c == '\v');
+}
+
 static bool is_digit(char c)
 {
     return (c >= '0') && (c <= '9');
+}
+
+static bool is_letter(char c)
+{
+    return ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z'));
+}
+
+static bool is_alphanum(char c)
+{
+    return is_digit(c) || is_letter(c);
 }
 
 static void lexer_error(Lexer* lexer, const char* format, ...)
@@ -43,6 +58,13 @@ static void process_newline(Lexer* lexer)
     lexer->column = 0;
     lexer->at += 1;
     lexer->token_start = lexer->at;
+}
+
+static void skip_word_end(Lexer* lexer)
+{
+    while (lexer->at[0] && is_alphanum(lexer->at[0])) {
+	lexer->at++;
+    }
 }
 
 static void skip_c_comment(Lexer* lexer)
@@ -77,6 +99,13 @@ static void skip_c_comment(Lexer* lexer)
     }
 }
 
+static void skip_char(Lexer* lexer, char c)
+{
+    if (lexer->at[0] == c) {
+	lexer->at++;
+    }
+}
+
 // Converts a numeric character to an integer value. Values are biased by +1
 // so that a result of 0 is known to be invalid.
 static const unsigned int char_to_biased_digit[256] = {
@@ -108,20 +137,20 @@ TokenInt scan_uint(Lexer* lexer)
 {
     // TODO: Support length suffixes e.g., U, UL, ULL, L, LL
 
-    TokenInt token = {.value = 0, .base = 10};
+    TokenInt token = {.value = 0, .base = INT_DEC_BASE};
 
     if (lexer->at[0] == '0') {
 	lexer->at++;
 	if ((lexer->at[0] == 'x') || (lexer->at[0] == 'X')) {
 	    lexer->at++;
-	    token.base = 16;
+	    token.base = INT_HEX_BASE;
 	}
 	else if ((lexer->at[0] == 'b') || (lexer->at[0] == 'B')) {
 	    lexer->at++;
-	    token.base = 2;
+	    token.base = INT_BIN_BASE;
 	}
 	else {
-	    token.base = 8;
+	    token.base = INT_OCT_BASE;
 	}
     }
 
@@ -130,9 +159,12 @@ TokenInt scan_uint(Lexer* lexer)
     if (biased == 0) {
 	lexer_error(lexer, "Invalid integer literal character '%c' after base specifier",
 	            *lexer->at);
+	skip_word_end(lexer);
 	return token;
     }
 
+
+    const char* start = lexer->at;
 
     do {
 	unsigned int digit = biased - 1;
@@ -140,19 +172,15 @@ TokenInt scan_uint(Lexer* lexer)
 	if (digit >= token.base) {
 	    lexer_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", *lexer->at, token.base);
 	    token.value = 0;
-	    while (char_to_biased_digit[(unsigned char)lexer->at[0]]) {
-		lexer->at++;
-	    }
+	    skip_word_end(lexer);
 	    break;
 	}
 
 	// Detect overflow if 10*val + digt > MAX
 	if (token.value > (UINT64_MAX - digit) / token.base) {
-	    lexer_error(lexer, "Integer literal is too large for its type");
+	    lexer_error(lexer, "Integer literal %.*s is too large for its type", (size_t)(lexer->at - start), start);
 	    token.value = 0;
-	    while (char_to_biased_digit[(unsigned char)lexer->at[0]]) {
-		lexer->at++;
-	    }
+	    skip_word_end(lexer);
 	    break;
 	}
 
@@ -195,6 +223,7 @@ TokenFloat scan_float(Lexer* lexer)
 
 	if (!is_digit(lexer->at[0])) {
 	    lexer_error(lexer, "Unexpected character '%c' after floating point literal's exponent", lexer->at[0]);
+	    skip_word_end(lexer);
 	    return token;
 	}
 
@@ -216,6 +245,128 @@ TokenFloat scan_float(Lexer* lexer)
     }
 
     token.value = value;
+    return token;
+}
+
+static const char escaped_to_char[256] = {
+    ['0'] = '\0',
+    ['a'] = '\a',
+    ['b'] = '\b',
+    ['e'] = '\e',
+    ['f'] = '\f',
+    ['n'] = '\n',
+    ['r'] = '\r',
+    ['t'] = '\t',
+    ['v'] = '\v',
+    ['\\'] = '\\',
+    ['\''] = '\'',
+    ['"'] = '"',
+    ['?'] = '?',
+};
+
+TokenChar scan_char(Lexer* lexer)
+{
+    assert(lexer->at[0] == '\'');
+    TokenChar token = {0};
+
+    // Check: empty char, invalid characters (cr, lf, tab)
+
+    lexer->at++;
+
+    // Check for empty character literal.
+    if (lexer->at[0] == '\'') {
+	lexer_error(lexer, "Character literal cannot be empty");
+	lexer->at++;
+	return token;
+    }
+
+    // Check for invalid characters (e.g., newline).
+    if (is_escaped_space(lexer->at[0])) {
+	lexer_error(lexer, "Invalid character literal with value 0x%X", lexer->at[0]);
+
+	if (lexer->at[0] == '\n') {
+	    process_newline(lexer);
+	}
+	else {
+	    skip_word_end(lexer);
+	}
+
+	skip_char(lexer, '\'');
+
+	return token;
+    }
+
+    // Scan escaped sequence
+    if (lexer->at[0] == '\\') {
+	lexer->at++;
+
+	if ((lexer->at[0] == 'x') || (lexer->at[0] == 'X')) {
+	    lexer->at++;
+
+	    // Scan the first of two hex digits.
+	    unsigned int biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
+	    unsigned int digit = biased - 1;
+
+	    if (!biased || (digit >= INT_HEX_BASE)) {
+		lexer_error(lexer, "Invalid hex character digit '0x%X'", lexer->at[0]);
+		skip_word_end(lexer);
+		skip_char(lexer, '\'');
+		return token;
+	    }
+
+	    token.value = digit;
+	    lexer->at++;
+
+	    // Scan the second (optional) digit.
+	    biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
+
+	    if (biased) {
+	        digit = biased - 1;
+
+		if (digit >= INT_HEX_BASE) {
+		    lexer_error(lexer, "Invalid hex character digit '0x%X' is larger than 0x%X", lexer->at[0], INT_HEX_BASE - 1);
+		    skip_word_end(lexer);
+		    skip_char(lexer, '\'');
+		    return token;
+		}
+
+		token.value *= INT_HEX_BASE;
+		token.value += digit;
+
+		lexer->at++;
+	    }
+	}
+	else { // One character escape chars
+	    int32_t val = escaped_to_char[(unsigned char)lexer->at[0]];
+
+	    if (!val && (lexer->at[0] != '0')) {
+		lexer_error(lexer, "Invalid escaped character '\\%c'", lexer->at[0]);
+		skip_word_end(lexer);
+		skip_char(lexer, '\'');
+		return token;
+	    }
+
+	    token.value = val;
+	    lexer->at++;
+	}
+    }
+    // Regular non-escaped char
+    else {
+	token.value = lexer->at[0];
+	lexer->at++;
+    }
+
+    // Check for a closing quote
+    if (lexer->at[0] != '\'') {
+	lexer_error(lexer, "Missing closing character quote (found '%c' instead)", lexer->at[0]);
+
+	skip_word_end(lexer);
+	skip_char(lexer, '\'');
+    }
+    else {
+	lexer->at++;
+    }
+
     return token;
 }
 
@@ -272,6 +423,34 @@ Token next_token(Lexer* lexer)
 	    token.type = TKN_RPAREN;
 	    lexer->at++;
 	} break;
+	case '[': {
+	    token.type = TKN_LBRACE;
+	    lexer->at++;
+	} break;
+	case ']': {
+	    token.type = TKN_RBRACE;
+	    lexer->at++;
+	} break;
+	case '{': {
+	    token.type = TKN_LBRACKET;
+	    lexer->at++;
+	} break;
+	case '}': {
+	    token.type = TKN_RBRACKET;
+	    lexer->at++;
+	} break;
+	case ';': {
+	    token.type = TKN_SEMICOLON;
+	    lexer->at++;
+	} break;
+	case ':': {
+	    token.type = TKN_COLON;
+	    lexer->at++;
+	} break;
+	case ',': {
+	    token.type = TKN_COMMA;
+	    lexer->at++;
+	} break;
 	case '+': {
 	    token.type = TKN_PLUS;
 	    lexer->at++;
@@ -306,6 +485,10 @@ Token next_token(Lexer* lexer)
 		token.type = TKN_INT;
 		token.int_ = scan_uint(lexer);
 	    }
+	} break;
+	case '\'': {
+	    token.type = TKN_CHAR;
+	    token.char_ = scan_char(lexer);
 	} break;
 	case '\0': {
 	    token.type = TKN_EOF;
