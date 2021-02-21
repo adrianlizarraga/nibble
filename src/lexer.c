@@ -29,7 +29,7 @@ static bool is_letter(char c)
 
 static bool is_alphanum(char c)
 {
-    return is_digit(c) || is_letter(c);
+    return is_digit(c) || is_letter(c) || (c == '_');
 }
 
 static void lexer_error(Lexer* lexer, const char* format, ...)
@@ -268,8 +268,6 @@ TokenChar scan_char(Lexer* lexer)
 {
     assert(lexer->at[0] == '\'');
     TokenChar token = {0};
-
-    // Check: empty char, invalid characters (cr, lf, tab)
 
     lexer->at++;
 

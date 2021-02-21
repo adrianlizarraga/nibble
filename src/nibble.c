@@ -186,7 +186,7 @@ void test_lexer()
 
     token = next_token(&lexer);
     assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\f');    
+    assert(token.char_.value == '\f');
 
     token = next_token(&lexer);
     assert(token.type == TKN_CHAR);
