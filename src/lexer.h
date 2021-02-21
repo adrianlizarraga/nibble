@@ -44,7 +44,7 @@ typedef enum TokenType {
 
 struct TokenInt {
     uint64_t value;
-    uint32_t base;    
+    uint32_t base;
 };
 
 struct TokenFloat {

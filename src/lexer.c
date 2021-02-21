@@ -1,7 +1,9 @@
 #include "lexer.h"
 #include <assert.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <limits.h>
 
 
@@ -10,7 +12,7 @@ static bool is_whitespace(char c)
     return (c == ' ') || (c == '\t') || (c == '\n') || (c == '\r') || (c == '\v');
 }
 
-static bool is_number(char c)
+static bool is_digit(char c)
 {
     return (c >= '0') && (c <= '9');
 }
@@ -104,7 +106,6 @@ static const unsigned int char_to_biased_digit[256] = {
 
 TokenInt scan_uint(Lexer* lexer)
 {
-    assert(is_number(lexer->at[0]));
     // TODO: Support length suffixes e.g., U, UL, ULL, L, LL
 
     TokenInt token = {.value = 0, .base = 10};
@@ -124,7 +125,7 @@ TokenInt scan_uint(Lexer* lexer)
 	}
     }
 
-    unsigned int biased = char_to_biased_digit[(int)lexer->at[0]];
+    unsigned int biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
 
     if (biased == 0) {
 	lexer_error(lexer, "Invalid integer literal character '%c' after base specifier",
@@ -139,7 +140,7 @@ TokenInt scan_uint(Lexer* lexer)
 	if (digit >= token.base) {
 	    lexer_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", *lexer->at, token.base);
 	    token.value = 0;
-	    while (char_to_biased_digit[(int)lexer->at[0]]) {
+	    while (char_to_biased_digit[(unsigned char)lexer->at[0]]) {
 		lexer->at++;
 	    }
 	    break;
@@ -149,7 +150,7 @@ TokenInt scan_uint(Lexer* lexer)
 	if (token.value > (UINT64_MAX - digit) / token.base) {
 	    lexer_error(lexer, "Integer literal is too large for its type");
 	    token.value = 0;
-	    while (char_to_biased_digit[(int)lexer->at[0]]) {
+	    while (char_to_biased_digit[(unsigned char)lexer->at[0]]) {
 		lexer->at++;
 	    }
 	    break;
@@ -159,9 +160,62 @@ TokenInt scan_uint(Lexer* lexer)
 	token.value += digit;
 
 	lexer->at++;
-	biased = char_to_biased_digit[(int)lexer->at[0]];
+	biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
     } while (biased != 0);
 
+    return token;
+}
+
+TokenFloat scan_float(Lexer* lexer)
+{
+    assert(is_digit(*lexer->at) || (*lexer->at == '.'));
+    TokenFloat token = {0};
+    const char* start = lexer->at;
+
+    // \d*\.?\d*(e[+-]?\d*)?
+
+    while (is_digit(lexer->at[0])) {
+	lexer->at++;
+    }
+
+    if (lexer->at[0] == '.') {
+	lexer->at++;
+    }
+
+    while (is_digit(lexer->at[0])) {
+	lexer->at++;
+    }
+
+    if ((lexer->at[0] == 'e') || (lexer->at[0] == 'E')) {
+	lexer->at++;
+
+	if ((lexer->at[0] == '-') || (lexer->at[0] == '+')) {
+	    lexer->at++;
+	}
+
+	if (!is_digit(lexer->at[0])) {
+	    lexer_error(lexer, "Unexpected character '%c' after floating point literal's exponent", lexer->at[0]);
+	    return token;
+	}
+
+	while (is_digit(lexer->at[0])) {
+	    lexer->at++;
+	}
+    }
+
+    // If we reached this point, use libc's strtod to get the floating point value.
+    // TODO: Make a custom atof implementation (not trivial!).
+    char* end = NULL;
+    double value = strtod(start, &end);
+
+    assert(end == lexer->at);
+
+    if (value == HUGE_VAL) {
+	lexer_error(lexer, "Floating point literal is too large");
+	return token;
+    }
+
+    token.value = value;
     return token;
 }
 
@@ -226,13 +280,36 @@ Token next_token(Lexer* lexer)
 	    token.type = TKN_MINUS;
 	    lexer->at++;
 	} break;
-	case '\0': {
-	    token.type = TKN_EOF;
+	case '.': {
+	    if (is_digit(lexer->at[1])) {
+		token.type = TKN_FLOAT;
+		token.float_ = scan_float(lexer);
+	    }
+	    else {
+		token.type = TKN_DOT;
+	    }
+
 	    lexer->at++;
 	} break;
 	case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
-	    token.type = TKN_INT;
-	    token.int_ = scan_uint(lexer);
+	    // Need to determine if this is an integer or a floating point value.
+	    const char* at = lexer->at;
+	    while (is_digit(*at)) {
+	        at++;
+	    }
+
+	    if ((*at == '.') || (*at == 'e') || (*at == 'E')) {
+	        token.type = TKN_FLOAT;
+		token.float_ = scan_float(lexer);
+	    }
+	    else {
+		token.type = TKN_INT;
+		token.int_ = scan_uint(lexer);
+	    }
+	} break;
+	case '\0': {
+	    token.type = TKN_EOF;
+	    lexer->at++;
 	} break;
 	default: {
 	    lexer_error(lexer, "[INTERNAL ERROR] Unexpected token character: %c", *lexer->at);

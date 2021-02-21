@@ -119,6 +119,29 @@ void test_lexer()
     token = next_token(&lexer);
     assert(lexer.num_errors == 1);
 
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "1.23 .23 1.33E2";
+    token = next_token(&lexer);
+    assert(token.type == TKN_FLOAT);
+    assert(token.float_.value == 1.23);
+
+    token = next_token(&lexer);
+    assert(token.type == TKN_FLOAT);
+    assert(token.float_.value == .23);
+
+    token = next_token(&lexer);
+    assert(token.type == TKN_FLOAT);
+    assert(token.float_.value == 1.33E2);
+
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "1.33ea";
+    token = next_token(&lexer);
+    assert(lexer.num_errors == 1);
+
+    memset(&lexer, 0, sizeof(Lexer));
+    lexer.at = "1.33e1000000000";
+    token = next_token(&lexer);
+    assert(lexer.num_errors == 1);
 }
 
 int main(void)
