@@ -133,7 +133,7 @@ static const unsigned int char_to_biased_digit[256] = {
     ['F'] = 16,
 };
 
-TokenInt scan_uint(Lexer* lexer)
+static TokenInt scan_uint(Lexer* lexer)
 {
     // TODO: Support length suffixes e.g., U, UL, ULL, L, LL
 
@@ -194,7 +194,7 @@ TokenInt scan_uint(Lexer* lexer)
     return token;
 }
 
-TokenFloat scan_float(Lexer* lexer)
+static TokenFloat scan_float(Lexer* lexer)
 {
     assert(is_digit(*lexer->at) || (*lexer->at == '.'));
     TokenFloat token = {0};
@@ -264,7 +264,7 @@ static const char escaped_to_char[256] = {
     ['?'] = '?',
 };
 
-TokenChar scan_char(Lexer* lexer)
+static TokenChar scan_char(Lexer* lexer)
 {
     assert(lexer->at[0] == '\'');
     TokenChar token = {0};
@@ -322,7 +322,8 @@ TokenChar scan_char(Lexer* lexer)
 	        digit = biased - 1;
 
 		if (digit >= INT_HEX_BASE) {
-		    lexer_error(lexer, "Invalid hex character digit '0x%X' is larger than 0x%X", lexer->at[0], INT_HEX_BASE - 1);
+		    lexer_error(lexer, "Invalid hex character digit '0x%X' is larger than 0x%X",
+				lexer->at[0], INT_HEX_BASE - 1);
 		    skip_word_end(lexer);
 		    skip_char(lexer, '\'');
 		    return token;
@@ -357,7 +358,6 @@ TokenChar scan_char(Lexer* lexer)
     // Check for a closing quote
     if (lexer->at[0] != '\'') {
 	lexer_error(lexer, "Missing closing character quote (found '%c' instead)", lexer->at[0]);
-
 	skip_word_end(lexer);
 	skip_char(lexer, '\'');
     }
