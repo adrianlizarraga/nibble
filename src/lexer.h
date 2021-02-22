@@ -93,4 +93,11 @@ typedef struct Lexer {
 bool next_token(Lexer* lexer);
 bool is_token(Lexer* lexer, TokenType type);
 bool match_token(Lexer* lexer, TokenType type);
+
+// IDEA:
+// - Everything is a token, including errors (TKN_UNKNOWN), newlines, and comments.
+// - Parser will take care of throwing away unnecessary tokens.
+// - No need for Lexer state struct (or can be simpler)
+// - int next_token(Token* token, const char* str); // Returns number of characters consumed? Or is that in the token itself?
+// - Token next_token(const char* str); // Token itself has characters consumed (via start & end pointers)?
 #endif
