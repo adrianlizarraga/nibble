@@ -1,5 +1,6 @@
 #ifndef NIBBLE_LEXER_H
 #define NIBBLE_LEXER_H
+#include <stdbool.h>
 #include <stdint.h>
 
 #define LEXER_MAX_NUM_ERRORS 10
@@ -9,14 +10,6 @@
 #define INT_DEC_BASE 10U
 #define INT_OCT_BASE 8U
 #define INT_BIN_BASE 2U
-
-typedef struct TokenInt TokenInt;
-typedef struct TokenChar TokenChar;
-typedef struct TokenFloat TokenFloat;
-typedef struct TokenStr TokenStr;
-typedef struct TokenName TokenName;
-typedef struct Token Token;
-typedef struct Lexer Lexer;
 
 typedef enum TokenType {
     TKN_UNKNOWN,
@@ -46,32 +39,35 @@ typedef enum TokenType {
     TKN_LTEQ,
 } TokenType;
 
-struct TokenInt {
+typedef struct TokenInt {
     uint64_t value;
     uint32_t base;
-};
+} TokenInt;
 
-struct TokenFloat {
+typedef struct TokenFloat {
     double value;
-};
+} TokenFloat;
 
-struct TokenChar {
+typedef struct TokenChar {
     int32_t value;
-};
+} TokenChar;
 
-struct TokenName {
+typedef struct TokenName {
     const char* value;
-};
+} TokenName;
 
-struct TokenStr {
+typedef struct TokenStr {
     const char* value;
-};
+} TokenStr;
 
-struct Token {
-    TokenType type;
-
+typedef struct FilePos {
     uint32_t line;
     uint32_t column;
+} FilePos;
+
+typedef struct Token {
+    TokenType type;
+    FilePos pos;
 
     union {
 	TokenChar char_;
@@ -80,18 +76,21 @@ struct Token {
 	TokenName name_;
 	TokenStr str_;
     };
-};
+} Token;
 
-struct Lexer {
+typedef struct Lexer {
     const char* at;
-    const char* token_start; // NOTE: used to compute number of columns spanned by the next token.
+    Token token;
+
+    const char* line_start;
     uint32_t line;
-    uint32_t column;
 
     // TODO: Make this an error stream
     char errors[LEXER_MAX_NUM_ERRORS][LEXER_MAX_ERROR_LEN];
     unsigned int num_errors;
-};
+} Lexer;
 
-Token next_token(Lexer* lexer);
+bool next_token(Lexer* lexer);
+bool is_token(Lexer* lexer, TokenType type);
+bool match_token(Lexer* lexer, TokenType type);
 #endif

@@ -5,255 +5,246 @@
 #include "lexer.c"
 
 
-#define TKN_TEST_POS(tk, tp, l, c) do { assert(tk.type == tp); assert(tk.line == l); assert(tk.column == c); } while(0)
+#define TKN_TEST_POS(tk, tp, l, c) do { assert((tk.type == tp)); assert((tk.pos.line == l)); assert((tk.pos.column == c)); } while(0)
+#define TKN_TEST_INT(tk, b, v) do { assert((tk.type == TKN_INT)); assert((tk.int_.base = b)); assert((tk.int_.value == v)); } while(0)
+#define TKN_TEST_FLOAT(tk, v) do { assert((tk.type == TKN_FLOAT)); assert((tk.float_.value == v)); } while(0)
+#define TKN_TEST_CHAR(tk, v) do { assert((tk.type == TKN_CHAR)); assert((tk.char_.value == v)); } while(0)
 
 void test_lexer()
 {
     Lexer lexer = {0};
-    Token token = {0};
 
     // Test basic 1 character tokens, newlines, and c++ comments.
     lexer.at = "(+[]-)  \n  //++--\n{;:,./}";
+    lexer.line_start = lexer.at;
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_LPAREN, 0, 0);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_LPAREN, 0, 0);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_PLUS, 0, 1);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_PLUS, 0, 1);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_LBRACE, 0, 2);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_LBRACE, 0, 2);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_RBRACE, 0, 3);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_RBRACE, 0, 3);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_MINUS, 0, 4);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_MINUS, 0, 4);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_RPAREN, 0, 5);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_RPAREN, 0, 5);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_LBRACKET, 2, 0);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_LBRACKET, 2, 0);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_SEMICOLON, 2, 1);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_SEMICOLON, 2, 1);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_COLON, 2, 2);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_COLON, 2, 2);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_COMMA, 2, 3);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_COMMA, 2, 3);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_DOT, 2, 4);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_DOT, 2, 4);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_DIV, 2, 5);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_DIV, 2, 5);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_RBRACKET, 2, 6);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_RBRACKET, 2, 6);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_EOF, 2, 7);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_EOF, 2, 7);
 
     // Test nested c-style comments
     memset(&lexer, 0, sizeof(Lexer));
     lexer.at = "/**** 1 /* 2 */ \n***/+-";
+    lexer.line_start = lexer.at;
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_PLUS, 1, 4);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_PLUS, 1, 4);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_MINUS, 1, 5);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_MINUS, 1, 5);
 
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_EOF, 1, 6);
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_EOF, 1, 6);
 
     // Test error when have unclosed c-style comments
     memset(&lexer, 0, sizeof(Lexer));
     lexer.at = "/* An unclosed comment";
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_EOF, 0, 22);
+    lexer.line_start = lexer.at;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_EOF, 0, 22);
     assert(lexer.num_errors == 1);
 
     memset(&lexer, 0, sizeof(Lexer));
     lexer.at = "/* An unclosed comment\n";
-    token = next_token(&lexer);
-    TKN_TEST_POS(token, TKN_EOF, 1, 0);
+    lexer.line_start = lexer.at;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_EOF, 1, 0);
     assert(lexer.num_errors == 1);
 
     // Test integer literals
     memset(&lexer, 0, sizeof(Lexer));
     lexer.at = "123 333\n0xFF 0b0111 011";
-    token = next_token(&lexer);
-    assert(token.type == TKN_INT);
-    assert(token.int_.value == 123);
+    lexer.line_start = lexer.at;
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_INT);
-    assert(token.int_.base == 10);
-    assert(token.int_.value == 333);
+    next_token(&lexer);
+    TKN_TEST_INT(lexer.token, 10, 123);
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_INT);
-    assert(token.int_.base == 16);
-    assert(token.int_.value == 0xFF);
+    next_token(&lexer);
+    TKN_TEST_INT(lexer.token, 10, 333);
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_INT);
-    assert(token.int_.base == 2);
-    assert(token.int_.value == 7);
+    next_token(&lexer);
+    TKN_TEST_INT(lexer.token, 16, 0xFF);
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_INT);
-    assert(token.int_.base == 8);
-    assert(token.int_.value == 9);
+    next_token(&lexer);
+    TKN_TEST_INT(lexer.token, 2, 7);
+
+    next_token(&lexer);
+    TKN_TEST_INT(lexer.token, 8, 9);
+
+    next_token(&lexer);
+    assert(lexer.token.type == TKN_EOF);
 
     memset(&lexer, 0, sizeof(Lexer));
     lexer.at = "0Z 0b3 09 1A\n999999999999999999999999";
-    token = next_token(&lexer);
+    lexer.line_start = lexer.at;
+
+    next_token(&lexer);
     assert(lexer.num_errors == 1);
 
-    token = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.num_errors == 2);
 
-    token = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.num_errors == 3);
 
-    token = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.num_errors == 4);
 
-    token = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.num_errors == 5);
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_EOF);
+    next_token(&lexer);
+    assert(lexer.token.type == TKN_EOF);
 
     // Test floating point literals
     memset(&lexer, 0, sizeof(Lexer));
     lexer.at = "1.23 .23 1.33E2";
-    token = next_token(&lexer);
-    assert(token.type == TKN_FLOAT);
-    assert(token.float_.value == 1.23);
+    lexer.line_start = lexer.at;
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_FLOAT);
-    assert(token.float_.value == .23);
+    next_token(&lexer);
+    TKN_TEST_FLOAT(lexer.token, 1.23);
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_FLOAT);
-    assert(token.float_.value == 1.33E2);
+    next_token(&lexer);
+    TKN_TEST_FLOAT(lexer.token, .23);
+
+    next_token(&lexer);
+    TKN_TEST_FLOAT(lexer.token, 1.33E2);
 
     memset(&lexer, 0, sizeof(Lexer));
     lexer.at = "1.33ea 1.33e100000000000";
-    token = next_token(&lexer);
+    lexer.line_start = lexer.at;
+
+    next_token(&lexer);
     assert(lexer.num_errors == 1);
 
-    token = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.num_errors == 2);
 
     // Test character literals
     memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "'a' '1' ' ' '\\0' '\\a' '\\b' '\\e' '\\f' '\\n' '\\r' '\\t' '\\v' '\\\\' '\\'' '\\\"' '\\?'";
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == 'a');
+    lexer.at = "'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' '\\\\' '\\'' '\\\"' '\\?'";
+    lexer.line_start = lexer.at;
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '1');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, 'a');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == ' ');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '1');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\0');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, ' ');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\a');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\0');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\b');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\a');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\e');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\b');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\f');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\f');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\n');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\n');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\r');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\r');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\t');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\t');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\v');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\v');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\\');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\\');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\'');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\'');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '"');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '"');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '?');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '?');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_EOF);
+    next_token(&lexer);
+    assert(lexer.token.type == TKN_EOF);
     assert(lexer.num_errors == 0);
 
     memset(&lexer, 0, sizeof(Lexer));
     lexer.at = "'\\x12'  '\\x3'";
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\x12');
+    lexer.line_start = lexer.at;
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\x3');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\x12');
+
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\x3');
 
     memset(&lexer, 0, sizeof(Lexer));
     lexer.at = "'' 'a '\n' '\\z' '\\0'";
-    token = next_token(&lexer);
+    lexer.line_start = lexer.at;
+
+    next_token(&lexer);
     assert(lexer.num_errors == 1);
 
-    token = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.num_errors == 2);
 
-    token = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.num_errors == 3);
 
-    token = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.num_errors == 4);
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_CHAR);
-    assert(token.char_.value == '\0');
+    next_token(&lexer);
+    TKN_TEST_CHAR(lexer.token, '\0');
 
-    token = next_token(&lexer);
-    assert(token.type == TKN_EOF);
+    next_token(&lexer);
+    assert(lexer.token.type == TKN_EOF);
 }
 
 int main(void)

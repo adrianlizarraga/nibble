@@ -37,7 +37,8 @@ static void lexer_error(Lexer* lexer, const char* format, ...)
     if (lexer->num_errors < LEXER_MAX_NUM_ERRORS) {
         char* buf = lexer->errors[lexer->num_errors];
 	size_t len = LEXER_MAX_ERROR_LEN;
-	int n = snprintf(buf, len, "%s:%u:%u: error: ", "<filename>", lexer->line + 1, lexer->column + 1);
+	int n = snprintf(buf, len, "%s:%u:%u: error: ", "<filename>",
+			 lexer->line + 1, (uint32_t) (lexer->at - lexer->line_start + 1));
 
 	buf += n;
 	len -= n;
@@ -55,9 +56,8 @@ static void process_newline(Lexer* lexer)
 {
     assert(lexer->at[0] == '\n');
     lexer->line += 1;
-    lexer->column = 0;
     lexer->at += 1;
-    lexer->token_start = lexer->at;
+    lexer->line_start = lexer->at;
 }
 
 static void skip_word_end(Lexer* lexer)
@@ -252,7 +252,6 @@ static const char escaped_to_char[256] = {
     ['0'] = '\0',
     ['a'] = '\a',
     ['b'] = '\b',
-    ['e'] = '\e',
     ['f'] = '\f',
     ['n'] = '\n',
     ['r'] = '\r',
@@ -368,19 +367,16 @@ static TokenChar scan_char(Lexer* lexer)
     return token;
 }
 
-Token next_token(Lexer* lexer)
+bool next_token(Lexer* lexer)
 {
-    assert(lexer && lexer->at);
-
-    Token token = {0};
     bool repeat = false;
+
+    lexer->token.type = TKN_UNKNOWN;
 
     do {
 	repeat = false;
-        lexer->token_start = lexer->at;
-
-	token.line = lexer->line;
-	token.column = lexer->column;
+	lexer->token.pos.line = lexer->line;
+	lexer->token.pos.column = lexer->at - lexer->line_start;
 
 	switch (*lexer->at) {
 	case ' ': case '\t': case '\n': case '\r': case '\v': {
@@ -405,65 +401,64 @@ Token next_token(Lexer* lexer)
 	    }
 	    else if (lexer->at[1] == '*') {
 		skip_c_comment(lexer);
-
 	        repeat = true;
 	    }
 	    else {
-		token.type = TKN_DIV;
+		lexer->token.type = TKN_DIV;
 		lexer->at++;
 	    }
 	} break;
 	case '(': {
-	    token.type = TKN_LPAREN;
+	    lexer->token.type = TKN_LPAREN;
 	    lexer->at++;
 	} break;
 	case ')': {
-	    token.type = TKN_RPAREN;
+	    lexer->token.type = TKN_RPAREN;
 	    lexer->at++;
 	} break;
 	case '[': {
-	    token.type = TKN_LBRACE;
+	    lexer->token.type = TKN_LBRACE;
 	    lexer->at++;
 	} break;
 	case ']': {
-	    token.type = TKN_RBRACE;
+	    lexer->token.type = TKN_RBRACE;
 	    lexer->at++;
 	} break;
 	case '{': {
-	    token.type = TKN_LBRACKET;
+	    lexer->token.type = TKN_LBRACKET;
 	    lexer->at++;
 	} break;
 	case '}': {
-	    token.type = TKN_RBRACKET;
+	    lexer->token.type = TKN_RBRACKET;
 	    lexer->at++;
 	} break;
 	case ';': {
-	    token.type = TKN_SEMICOLON;
+	    lexer->token.type = TKN_SEMICOLON;
 	    lexer->at++;
 	} break;
 	case ':': {
-	    token.type = TKN_COLON;
+	    lexer->token.type = TKN_COLON;
 	    lexer->at++;
 	} break;
 	case ',': {
-	    token.type = TKN_COMMA;
+	    lexer->token.type = TKN_COMMA;
 	    lexer->at++;
 	} break;
 	case '+': {
-	    token.type = TKN_PLUS;
+	    lexer->token.type = TKN_PLUS;
 	    lexer->at++;
 	} break;
 	case '-': {
-	    token.type = TKN_MINUS;
+	    lexer->token.type = TKN_MINUS;
 	    lexer->at++;
 	} break;
 	case '.': {
 	    if (is_digit(lexer->at[1])) {
-		token.type = TKN_FLOAT;
-		token.float_ = scan_float(lexer);
+		lexer->token.type = TKN_FLOAT;
+		lexer->token.float_ = scan_float(lexer);
 	    }
 	    else {
-		token.type = TKN_DOT;
+		lexer->token.type = TKN_DOT;
 	    }
 
 	    lexer->at++;
@@ -476,20 +471,20 @@ Token next_token(Lexer* lexer)
 	    }
 
 	    if ((*at == '.') || (*at == 'e') || (*at == 'E')) {
-	        token.type = TKN_FLOAT;
-		token.float_ = scan_float(lexer);
+	        lexer->token.type = TKN_FLOAT;
+		lexer->token.float_ = scan_float(lexer);
 	    }
 	    else {
-		token.type = TKN_INT;
-		token.int_ = scan_uint(lexer);
+		lexer->token.type = TKN_INT;
+		lexer->token.int_ = scan_uint(lexer);
 	    }
 	} break;
 	case '\'': {
-	    token.type = TKN_CHAR;
-	    token.char_ = scan_char(lexer);
+	    lexer->token.type = TKN_CHAR;
+	    lexer->token.char_ = scan_char(lexer);
 	} break;
 	case '\0': {
-	    token.type = TKN_EOF;
+	    lexer->token.type = TKN_EOF;
 	    lexer->at++;
 	} break;
 	default: {
@@ -498,10 +493,26 @@ Token next_token(Lexer* lexer)
 	    repeat = true;
 	} break;
 	}
-
-	lexer->column += lexer->at - lexer->token_start;
     } while (repeat);
 
-    return token;
+    return lexer->token.type;
 }
+
+bool is_token(Lexer* lexer, TokenType type)
+{
+    return (lexer->token.type == type);
+}
+
+bool match_token(Lexer* lexer, TokenType type)
+{
+    bool matches = (lexer->token.type == type);
+
+    if (matches) {
+	next_token(lexer);
+    }
+
+    return matches;
+}
+
+
 
