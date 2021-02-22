@@ -15,8 +15,7 @@ void test_lexer()
     Lexer lexer = {0};
 
     // Test basic 1 character tokens, newlines, and c++ comments.
-    lexer.at = "(+[]-)  \n  //++--\n{;:,./}";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "(+[]-)  \n  //++--\n{;:,./}");
 
     next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_LPAREN, 0, 0);
@@ -61,9 +60,7 @@ void test_lexer()
     TKN_TEST_POS(lexer.token, TKN_EOF, 2, 7);
 
     // Test nested c-style comments
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "/**** 1 /* 2 */ \n***/+-";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "/**** 1 /* 2 */ \n***/+-");
 
     next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_PLUS, 1, 4);
@@ -75,26 +72,20 @@ void test_lexer()
     TKN_TEST_POS(lexer.token, TKN_EOF, 1, 6);
 
     // Test error when have unclosed c-style comments
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "/* An unclosed comment";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "/* An unclosed comment");
 
     next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_EOF, 0, 22);
     assert(lexer.num_errors == 1);
 
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "/* An unclosed comment\n";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "/* An unclosed comment\n");
 
     next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_EOF, 1, 0);
     assert(lexer.num_errors == 1);
 
     // Test integer literals
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "123 333\n0xFF 0b0111 011";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "123 333\n0xFF 0b0111 011");
 
     next_token(&lexer);
     TKN_TEST_INT(lexer.token, 10, 123);
@@ -114,9 +105,7 @@ void test_lexer()
     next_token(&lexer);
     assert(lexer.token.type == TKN_EOF);
 
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "0Z 0b3 09 1A\n999999999999999999999999";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "0Z 0b3 09 1A\n999999999999999999999999");
 
     next_token(&lexer);
     assert(lexer.num_errors == 1);
@@ -137,9 +126,7 @@ void test_lexer()
     assert(lexer.token.type == TKN_EOF);
 
     // Test floating point literals
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "1.23 .23 1.33E2";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "1.23 .23 1.33E2");
 
     next_token(&lexer);
     TKN_TEST_FLOAT(lexer.token, 1.23);
@@ -150,9 +137,7 @@ void test_lexer()
     next_token(&lexer);
     TKN_TEST_FLOAT(lexer.token, 1.33E2);
 
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "1.33ea 1.33e100000000000";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "1.33ea 1.33e100000000000");
 
     next_token(&lexer);
     assert(lexer.num_errors == 1);
@@ -161,9 +146,7 @@ void test_lexer()
     assert(lexer.num_errors == 2);
 
     // Test character literals
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' '\\\\' '\\'' '\\\"' '\\?'";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' '\\\\' '\\'' '\\\"' '\\?'");
 
     next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, 'a');
@@ -214,9 +197,7 @@ void test_lexer()
     assert(lexer.token.type == TKN_EOF);
     assert(lexer.num_errors == 0);
 
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "'\\x12'  '\\x3'";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "'\\x12'  '\\x3'");
 
     next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\x12');
@@ -224,9 +205,7 @@ void test_lexer()
     next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\x3');
 
-    memset(&lexer, 0, sizeof(Lexer));
-    lexer.at = "'' 'a '\n' '\\z' '\\0'";
-    lexer.line_start = lexer.at;
+    init_lexer(&lexer, "'' 'a '\n' '\\z' '\\0'");
 
     next_token(&lexer);
     assert(lexer.num_errors == 1);

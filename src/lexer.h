@@ -80,21 +80,22 @@ typedef struct Token {
 
 typedef struct Lexer {
     const char* at;
-    Token token;
-
-    const char* line_start;
+    const char* line_at;
     uint32_t line;
+    Token token;
 
     // TODO: Make this an error stream
     char errors[LEXER_MAX_NUM_ERRORS][LEXER_MAX_ERROR_LEN];
     unsigned int num_errors;
 } Lexer;
 
+void init_lexer(Lexer* lexer, const char* str);
+
 bool next_token(Lexer* lexer);
 bool is_token(Lexer* lexer, TokenType type);
 bool match_token(Lexer* lexer, TokenType type);
 
-// IDEA:
+// IDEAS:
 // - Everything is a token, including errors (TKN_UNKNOWN), newlines, and comments.
 // - Parser will take care of throwing away unnecessary tokens.
 // - No need for Lexer state struct (or can be simpler)

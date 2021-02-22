@@ -38,7 +38,7 @@ static void lexer_error(Lexer* lexer, const char* format, ...)
         char* buf = lexer->errors[lexer->num_errors];
 	size_t len = LEXER_MAX_ERROR_LEN;
 	int n = snprintf(buf, len, "%s:%u:%u: error: ", "<filename>",
-			 lexer->line + 1, (uint32_t) (lexer->at - lexer->line_start + 1));
+			 lexer->line + 1, (uint32_t) (lexer->at - lexer->line_at + 1));
 
 	buf += n;
 	len -= n;
@@ -57,7 +57,7 @@ static void process_newline(Lexer* lexer)
     assert(lexer->at[0] == '\n');
     lexer->line += 1;
     lexer->at += 1;
-    lexer->line_start = lexer->at;
+    lexer->line_at = lexer->at;
 }
 
 static void skip_word_end(Lexer* lexer)
@@ -367,6 +367,13 @@ static TokenChar scan_char(Lexer* lexer)
     return token;
 }
 
+void init_lexer(Lexer* lexer, const char* str)
+{
+    memset(lexer, 0, sizeof(Lexer));
+    lexer->at = str;
+    lexer->line_at = str;
+}
+
 bool next_token(Lexer* lexer)
 {
     bool repeat = false;
@@ -376,7 +383,7 @@ bool next_token(Lexer* lexer)
     do {
 	repeat = false;
 	lexer->token.pos.line = lexer->line;
-	lexer->token.pos.column = lexer->at - lexer->line_start;
+	lexer->token.pos.column = lexer->at - lexer->line_at;
 
 	switch (*lexer->at) {
 	case ' ': case '\t': case '\n': case '\r': case '\v': {
