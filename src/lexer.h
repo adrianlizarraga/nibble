@@ -3,16 +3,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define LEXER_MAX_NUM_ERRORS 10
 #define LEXER_MAX_ERROR_LEN 128
 
-#define INT_HEX_BASE 16U
-#define INT_DEC_BASE 10U
-#define INT_OCT_BASE 8U
-#define INT_BIN_BASE 2U
-
 typedef enum TokenType {
-    TKN_UNKNOWN,
+    TKN_INVALID = 0,
     TKN_EOF,
     TKN_LPAREN,
     TKN_RPAREN,
@@ -53,21 +47,20 @@ typedef struct TokenChar {
 } TokenChar;
 
 typedef struct TokenName {
-    const char *value;
+    const char* value;
 } TokenName;
 
 typedef struct TokenStr {
-    const char *value;
+    const char* value;
 } TokenStr;
 
-typedef struct TokenPos {
-    uint32_t start;
-    uint32_t end;
-} TokenPos;
+typedef uint32_t ProgPos;
 
 typedef struct Token {
     TokenType type;
-    TokenPos pos;
+
+    ProgPos start;
+    ProgPos end;
 
     union {
         TokenChar char_;
@@ -79,20 +72,17 @@ typedef struct Token {
 } Token;
 
 typedef struct Lexer {
-    const char *str;
-    const char *at;
+    const char* str;
+    const char* at;
     Token token;
 
-    uint32_t init_pos;
+    ProgPos start_pos;
 
-    // TODO: Make this an error stream
-    char errors[LEXER_MAX_NUM_ERRORS][LEXER_MAX_ERROR_LEN];
-    unsigned int num_errors;
+    char error[LEXER_MAX_ERROR_LEN];
 } Lexer;
 
-void init_lexer(Lexer *lexer, const char *str, uint32_t init_pos);
+int next_token(Lexer* lexer);
 
-bool next_token(Lexer *lexer);
-bool is_token(Lexer *lexer, TokenType type);
-bool match_token(Lexer *lexer, TokenType type);
+bool match_token(Lexer* lexer, TokenType type);
+bool is_token(Lexer* lexer, TokenType type);
 #endif
