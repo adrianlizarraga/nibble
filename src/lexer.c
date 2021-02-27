@@ -126,19 +126,19 @@ static int scan_int(Lexer* lexer)
     Token* token = &lexer->token;
 
     token->type = TKN_INT;
-    token->int_.base = INT_DEC_BASE;
-    token->int_.value = 0;
+    token->tint.base = INT_DEC_BASE;
+    token->tint.value = 0;
 
     if (lexer->at[0] == '0') {
         lexer->at++;
         if ((lexer->at[0] == 'x') || (lexer->at[0] == 'X')) {
             lexer->at++;
-            token->int_.base = INT_HEX_BASE;
+            token->tint.base = INT_HEX_BASE;
         } else if ((lexer->at[0] == 'b') || (lexer->at[0] == 'B')) {
             lexer->at++;
-            token->int_.base = INT_BIN_BASE;
+            token->tint.base = INT_BIN_BASE;
         } else {
-            token->int_.base = INT_OCT_BASE;
+            token->tint.base = INT_OCT_BASE;
         }
     }
 
@@ -155,24 +155,24 @@ static int scan_int(Lexer* lexer)
     do {
         unsigned int digit = biased - 1;
 
-        if (digit >= token->int_.base) {
+        if (digit >= token->tint.base) {
             lexer_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0],
-                        token->int_.base);
-            token->int_.value = 0;
+                        token->tint.base);
+            token->tint.value = 0;
             skip_word_end(lexer);
             return 1;
         }
 
         // Detect overflow if 10*val + digt > MAX
-        if (token->int_.value > (UINT64_MAX - digit) / token->int_.base) {
+        if (token->tint.value > (UINT64_MAX - digit) / token->tint.base) {
             lexer_error(lexer, "Integer literal %.*s is too large for its type", (size_t)(lexer->at - start), start);
-            token->int_.value = 0;
+            token->tint.value = 0;
             skip_word_end(lexer);
             return 1;
         }
 
-        token->int_.value *= token->int_.base;
-        token->int_.value += digit;
+        token->tint.value *= token->tint.base;
+        token->tint.value += digit;
 
         lexer->at++;
         biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
@@ -187,7 +187,7 @@ static int scan_float(Lexer* lexer)
     Token* token = &lexer->token;
 
     token->type = TKN_FLOAT;
-    token->float_.value = 0.0;
+    token->tfloat.value = 0.0;
 
     const char* start = lexer->at;
 
@@ -234,7 +234,7 @@ static int scan_float(Lexer* lexer)
         return 1;
     }
 
-    token->float_.value = value;
+    token->tfloat.value = value;
 
     return 0;
 }
@@ -245,7 +245,7 @@ static int scan_char(Lexer* lexer)
     Token* token = &lexer->token;
 
     token->type = TKN_CHAR;
-    token->char_.value = 0;
+    token->tchar.value = 0;
 
     lexer->at++;
 
@@ -290,7 +290,7 @@ static int scan_char(Lexer* lexer)
                 return 1;
             }
 
-            token->char_.value = digit;
+            token->tchar.value = digit;
             lexer->at++;
 
             // Scan the second (optional) digit.
@@ -307,8 +307,8 @@ static int scan_char(Lexer* lexer)
                     return 1;
                 }
 
-                token->char_.value *= INT_HEX_BASE;
-                token->char_.value += digit;
+                token->tchar.value *= INT_HEX_BASE;
+                token->tchar.value += digit;
 
                 lexer->at++;
             }
@@ -322,13 +322,13 @@ static int scan_char(Lexer* lexer)
                 return 1;
             }
 
-            token->char_.value = val;
+            token->tchar.value = val;
             lexer->at++;
         }
     }
     // Regular non-escaped char
     else {
-        token->char_.value = lexer->at[0];
+        token->tchar.value = lexer->at[0];
         lexer->at++;
     }
 

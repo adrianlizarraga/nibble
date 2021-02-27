@@ -13,18 +13,18 @@
 #define TKN_TEST_INT(tk, b, v)                                                                                         \
     do {                                                                                                               \
         assert((tk.type == TKN_INT));                                                                                  \
-        assert((tk.int_.base = b));                                                                                    \
-        assert((tk.int_.value == v));                                                                                  \
+        assert((tk.tint.base = b));                                                                                    \
+        assert((tk.tint.value == v));                                                                                  \
     } while (0)
 #define TKN_TEST_FLOAT(tk, v)                                                                                          \
     do {                                                                                                               \
         assert((tk.type == TKN_FLOAT));                                                                                \
-        assert((tk.float_.value == v));                                                                                \
+        assert((tk.tfloat.value == v));                                                                                \
     } while (0)
 #define TKN_TEST_CHAR(tk, v)                                                                                           \
     do {                                                                                                               \
         assert((tk.type == TKN_CHAR));                                                                                 \
-        assert((tk.char_.value == v));                                                                                 \
+        assert((tk.tchar.value == v));                                                                                 \
     } while (0)
 
 void test_lexer()

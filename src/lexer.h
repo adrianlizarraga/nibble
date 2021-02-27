@@ -63,11 +63,11 @@ typedef struct Token {
     ProgPos end;
 
     union {
-        TokenChar char_;
-        TokenInt int_;
-        TokenFloat float_;
-        TokenName name_;
-        TokenStr str_;
+        TokenChar tchar;
+        TokenInt tint;
+        TokenFloat tfloat;
+        TokenName tname;
+        TokenStr tstr;
     };
 } Token;
 
