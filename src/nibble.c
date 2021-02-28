@@ -27,7 +27,7 @@
         assert((tk.tchar.value == v));                                                                                 \
     } while (0)
 
-void test_lexer()
+void test_lexer(void)
 {
     Lexer lexer = {0};
     int ret = 0;
