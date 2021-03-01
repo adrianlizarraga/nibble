@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#define LEXER_MAX_ERROR_LEN 128
 #define INT_HEX_BASE 16U
 #define INT_DEC_BASE 10U
 #define INT_OCT_BASE 8U
@@ -63,27 +64,33 @@ static void skip_char(Lexer* lexer, char c)
     }
 }
 
-static void lexer_error(Lexer* lexer, const char* format, ...)
+static ProgPos lexer_at_pos(Lexer* lexer)
 {
-    char* buf = lexer->error;
-    size_t len = LEXER_MAX_ERROR_LEN;
-    int n = snprintf(buf, len, "%u: error: ", lexer->token.start);
-
-    buf += n;
-    len -= n;
-
-    va_list vargs;
-    va_start(vargs, format);
-    vsnprintf(buf, len, format, vargs);
-    va_end(vargs);
+    return (ProgPos)(lexer->at - lexer->str) + lexer->start;
 }
 
-static void process_newline(Lexer* lexer)
+static void lexer_on_error(Lexer* lexer, const char* format, ...)
 {
-    // TODO: Implement this!
+    if (lexer->client.on_error) {
+        char buf[LEXER_MAX_ERROR_LEN];
+        va_list vargs;
+
+        va_start(vargs, format);
+        vsnprintf(buf, LEXER_MAX_ERROR_LEN, format, vargs);
+        va_end(vargs);
+
+        lexer->client.on_error(lexer->client.data, lexer_at_pos(lexer), buf);
+    }
 }
 
-static int skip_c_comment(Lexer* lexer)
+static void lexer_on_line(Lexer* lexer)
+{
+    if (lexer->client.on_line) {
+        lexer->client.on_line(lexer->client.data, lexer_at_pos(lexer));
+    }
+}
+
+static void skip_c_comment(Lexer* lexer)
 {
     assert(lexer->at[0] == '/');
     assert(lexer->at[1] == '*');
@@ -103,7 +110,7 @@ static int skip_c_comment(Lexer* lexer)
             lexer->at += 2;
         } else {
             if (lexer->at[0] == '\n') {
-                process_newline(lexer);
+                lexer_on_line(lexer);
             }
 
             lexer->at++;
@@ -111,14 +118,14 @@ static int skip_c_comment(Lexer* lexer)
     }
 
     if (level > 0) {
-        lexer_error(lexer, "Missing closing '*/' for c-style comment.");
-        return 1;
+        lexer_on_error(lexer, "Missing closing '*/' for c-style comment.");
+        return;
     }
 
-    return 0;
+    return;
 }
 
-static int scan_int(Lexer* lexer)
+static void scan_int(Lexer* lexer)
 {
     // TODO: Support length suffixes e.g., U, UL, ULL, L, LL
     assert((lexer->at[0] >= '0') && (lexer->at[0] <= '9'));
@@ -145,9 +152,9 @@ static int scan_int(Lexer* lexer)
     unsigned int biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
 
     if (biased == 0) {
-        lexer_error(lexer, "Invalid integer literal character '%c' after base specifier", lexer->at[0]);
+        lexer_on_error(lexer, "Invalid integer literal character '%c' after base specifier", lexer->at[0]);
         skip_word_end(lexer);
-        return 1;
+        return;
     }
 
     const char* start = lexer->at;
@@ -156,19 +163,20 @@ static int scan_int(Lexer* lexer)
         unsigned int digit = biased - 1;
 
         if (digit >= token->tint.base) {
-            lexer_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0],
-                        token->tint.base);
+            lexer_on_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0],
+                           token->tint.base);
             token->tint.value = 0;
             skip_word_end(lexer);
-            return 1;
+            return;
         }
 
         // Detect overflow if 10*val + digt > MAX
         if (token->tint.value > (UINT64_MAX - digit) / token->tint.base) {
-            lexer_error(lexer, "Integer literal %.*s is too large for its type", (size_t)(lexer->at - start), start);
+            lexer_on_error(lexer, "Integer literal %.*s is too large for its type", 
+                           (size_t)(lexer->at - start), start);
             token->tint.value = 0;
             skip_word_end(lexer);
-            return 1;
+            return;
         }
 
         token->tint.value *= token->tint.base;
@@ -178,10 +186,10 @@ static int scan_int(Lexer* lexer)
         biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
     } while (biased != 0);
 
-    return 0;
+    return;
 }
 
-static int scan_float(Lexer* lexer)
+static void scan_float(Lexer* lexer)
 {
     assert(((lexer->at[0] >= '0') && (lexer->at[0] <= '9')) || (lexer->at[0] == '.'));
     Token* token = &lexer->token;
@@ -212,9 +220,10 @@ static int scan_float(Lexer* lexer)
         }
 
         if (!is_digit(lexer->at[0])) {
-            lexer_error(lexer, "Unexpected character '%c' after floating point literal's exponent", lexer->at[0]);
+            lexer_on_error(lexer, "Unexpected character '%c' after floating point literal's exponent",
+                           lexer->at[0]);
             skip_word_end(lexer);
-            return 1;
+            return;
         }
 
         while (is_digit(lexer->at[0])) {
@@ -230,16 +239,16 @@ static int scan_float(Lexer* lexer)
     assert(end == lexer->at);
 
     if (value == HUGE_VAL) {
-        lexer_error(lexer, "Floating point literal is too large");
-        return 1;
+        lexer_on_error(lexer, "Floating point literal is too large");
+        return;
     }
 
     token->tfloat.value = value;
 
-    return 0;
+    return;
 }
 
-static int scan_char(Lexer* lexer)
+static void scan_char(Lexer* lexer)
 {
     assert(lexer->at[0] == '\'');
     Token* token = &lexer->token;
@@ -251,17 +260,17 @@ static int scan_char(Lexer* lexer)
 
     // Check for empty character literal.
     if (lexer->at[0] == '\'') {
-        lexer_error(lexer, "Character literal cannot be empty");
+        lexer_on_error(lexer, "Character literal cannot be empty");
         lexer->at++;
-        return 1;
+        return;
     }
 
     // Check for invalid characters (e.g., newline).
     if (is_escaped_space(lexer->at[0])) {
-        lexer_error(lexer, "Invalid character literal with value 0x%X", lexer->at[0]);
+        lexer_on_error(lexer, "Invalid character literal with value 0x%X", lexer->at[0]);
 
         if (lexer->at[0] == '\n') {
-            process_newline(lexer);
+            lexer_on_line(lexer);
             lexer->at++;
         } else {
             skip_word_end(lexer);
@@ -269,7 +278,7 @@ static int scan_char(Lexer* lexer)
 
         skip_char(lexer, '\'');
 
-        return 1;
+        return;
     }
 
     // Scan escaped sequence
@@ -284,10 +293,10 @@ static int scan_char(Lexer* lexer)
             unsigned int digit = biased - 1;
 
             if (!biased || (digit >= INT_HEX_BASE)) {
-                lexer_error(lexer, "Invalid hex character digit '0x%X'", lexer->at[0]);
+                lexer_on_error(lexer, "Invalid hex character digit '0x%X'", lexer->at[0]);
                 skip_word_end(lexer);
                 skip_char(lexer, '\'');
-                return 1;
+                return;
             }
 
             token->tchar.value = digit;
@@ -300,11 +309,11 @@ static int scan_char(Lexer* lexer)
                 digit = biased - 1;
 
                 if (digit >= INT_HEX_BASE) {
-                    lexer_error(lexer, "Invalid hex character digit '0x%X' is larger than 0x%X", lexer->at[0],
+                    lexer_on_error(lexer, "Invalid hex character digit '0x%X' is larger than 0x%X", lexer->at[0],
                                 INT_HEX_BASE - 1);
                     skip_word_end(lexer);
                     skip_char(lexer, '\'');
-                    return 1;
+                    return;
                 }
 
                 token->tchar.value *= INT_HEX_BASE;
@@ -316,10 +325,10 @@ static int scan_char(Lexer* lexer)
             int32_t val = escaped_to_char[(unsigned char)lexer->at[0]];
 
             if (!val && (lexer->at[0] != '0')) {
-                lexer_error(lexer, "Invalid escaped character '\\%c'", lexer->at[0]);
+                lexer_on_error(lexer, "Invalid escaped character '\\%c'", lexer->at[0]);
                 skip_word_end(lexer);
                 skip_char(lexer, '\'');
-                return 1;
+                return;
             }
 
             token->tchar.value = val;
@@ -334,42 +343,41 @@ static int scan_char(Lexer* lexer)
 
     // Check for a closing quote
     if (lexer->at[0] != '\'') {
-        lexer_error(lexer, "Missing closing character quote (found '%c' instead)", lexer->at[0]);
+        lexer_on_error(lexer, "Missing closing character quote (found '%c' instead)", lexer->at[0]);
         skip_word_end(lexer);
         skip_char(lexer, '\'');
-        return 1;
+        return;
     }
 
     lexer->at++;
 
-    return 0;
+    return;
 }
 
-void init_lexer(Lexer* lexer, const char* str, uint32_t start_pos)
+void init_lexer(Lexer* lexer, const char* str, uint32_t start)
 {
     memset(lexer, 0, sizeof(Lexer));
     lexer->str = str;
     lexer->at = str;
-    lexer->start_pos = start_pos;
+    lexer->start = start;
 }
 
-int next_token(Lexer* lexer)
+bool next_token(Lexer* lexer)
 {
     Token* token = &lexer->token;
     memset(token, 0, sizeof(Token));
 
-    int errors = 0;
     bool repeat = false;
 
     do {
         repeat = false;
-        token->start = (lexer->at - lexer->str) + lexer->start_pos;
+        token->start = lexer_at_pos(lexer);
 
         switch (lexer->at[0]) {
         case ' ': case '\t': case '\n': case '\r': case '\v': {
             while (is_whitespace(lexer->at[0])) {
                 if (lexer->at[0] == '\n') {
-                    process_newline(lexer);
+                    lexer_on_line(lexer);
                 }
 
                 lexer->at++;
@@ -385,7 +393,7 @@ int next_token(Lexer* lexer)
 
                 repeat = true;
             } else if (lexer->at[1] == '*') {
-                errors += skip_c_comment(lexer);
+                skip_c_comment(lexer);
                 repeat = true;
             } else {
                 token->type = TKN_DIV;
@@ -438,7 +446,7 @@ int next_token(Lexer* lexer)
         } break;
         case '.': {
             if (is_digit(lexer->at[1])) {
-                errors += scan_float(lexer);
+                scan_float(lexer);
             } else {
                 token->type = TKN_DOT;
                 lexer->at++;
@@ -453,29 +461,29 @@ int next_token(Lexer* lexer)
             }
 
             if ((*p == '.') || (*p == 'e') || (*p == 'E')) {
-                errors += scan_float(lexer);
+                scan_float(lexer);
             } else {
-                errors += scan_int(lexer);
+                scan_int(lexer);
             }
         } break;
         case '\'': {
-            errors += scan_char(lexer);
+            scan_char(lexer);
         } break;
         case '\0': {
             token->type = TKN_EOF;
             lexer->at++;
         } break;
         default: {
-            lexer_error(lexer, "[INTERNAL ERROR] Unexpected token character: %c", lexer->at[0]);
+            lexer_on_error(lexer, "Unexpected token character: %c", lexer->at[0]);
             lexer->at++;
             repeat = true;
         } break;
         }
 
-        token->end = (lexer->at - lexer->str) + lexer->start_pos;
+        token->end = lexer_at_pos(lexer);
     } while (repeat);
 
-    return errors;
+    return token->type != TKN_EOF;
 }
 
 bool is_token(Lexer* lexer, TokenType type)

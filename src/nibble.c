@@ -2,7 +2,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "allocator.c"
 #include "lexer.c"
+
+typedef struct TestProgContext {
+    int num_errors;
+} TestProgContext;
+
+static TestProgContext g_ctx;
+
+static void test_on_error(void* data, ProgPos pos, const char* msg)
+{
+    if (data) {
+        TestProgContext* c = data;
+
+        c->num_errors += 1;
+    }
+}
 
 #define TKN_TEST_POS(tk, tp, a, b)                                                                                     \
     do {                                                                                                               \
@@ -27,230 +43,336 @@
         assert((tk.tchar.value == v));                                                                                 \
     } while (0)
 
-void test_lexer(void)
+static void test_init_lexer(Lexer* lexer, const char* str, ProgPos start)
+{
+
+    init_lexer(lexer, str, start);
+    memset(&g_ctx, 0, sizeof(TestProgContext));
+    lexer->client.data = &g_ctx;
+    lexer->client.on_error = test_on_error;
+}
+
+static void test_lexer(void)
 {
     Lexer lexer = {0};
-    int ret = 0;
 
     // Test basic 1 character tokens, newlines, and c++ comments.
     unsigned int i = 10;
-    init_lexer(&lexer, "(+[]-)  \n  //++--\n{;:,./}", i);
+    test_init_lexer(&lexer, "(+[]-)  \n  //++--\n{;:,./}", i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_LPAREN, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_PLUS, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_LBRACE, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_RBRACE, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_MINUS, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_RPAREN, i, ++i);
 
     i += 12;
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_LBRACKET, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_SEMICOLON, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_COLON, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_COMMA, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_DOT, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_DIV, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_RBRACKET, i, ++i);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_EOF, i, ++i);
 
     // Test nested c-style comments
-    init_lexer(&lexer, "/**** 1 /* 2 */ \n***/+-", 0);
+    test_init_lexer(&lexer, "/**** 1 /* 2 */ \n***/+-", 0);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_PLUS, 21, 22);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_MINUS, 22, 23);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_EOF, 23, 24);
 
     // Test error when have unclosed c-style comments
-    init_lexer(&lexer, "/* An unclosed comment", 0);
+    test_init_lexer(&lexer, "/* An unclosed comment", 0);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_EOF, 22, 23);
-    assert(ret >= 1);
+    assert(g_ctx.num_errors == 1);
 
-    init_lexer(&lexer, "/* An unclosed comment\n", 0);
+    test_init_lexer(&lexer, "/* An unclosed comment\n", 0);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_EOF, strlen(lexer.str), strlen(lexer.str) + 1);
-    assert(ret >= 1);
+    assert(g_ctx.num_errors == 1);
 
     // Test integer literals
-    init_lexer(&lexer, "123 333\n0xFF 0b0111 011", 0);
+    test_init_lexer(&lexer, "123 333\n0xFF 0b0111 011", 0);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_INT(lexer.token, 10, 123);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_INT(lexer.token, 10, 333);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_INT(lexer.token, 16, 0xFF);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_INT(lexer.token, 2, 7);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_INT(lexer.token, 8, 9);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.token.type == TKN_EOF);
 
-    init_lexer(&lexer, "0Z 0b3 09 1A\n999999999999999999999999", 0);
+    test_init_lexer(&lexer, "0Z 0b3 09 1A\n999999999999999999999999", 0);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 1);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 2);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 3);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 4);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 5);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.token.type == TKN_EOF);
 
     // Test floating point literals
-    init_lexer(&lexer, "1.23 .23 1.33E2", 0);
+    test_init_lexer(&lexer, "1.23 .23 1.33E2", 0);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_FLOAT(lexer.token, 1.23);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_FLOAT(lexer.token, .23);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_FLOAT(lexer.token, 1.33E2);
 
-    init_lexer(&lexer, "1.33ea 1.33e100000000000", 0);
+    test_init_lexer(&lexer, "1.33ea 1.33e100000000000", 0);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 1);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 2);
 
     // Test character literals
-    init_lexer(&lexer,
+    test_init_lexer(&lexer,
                "'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' "
                "'\\\\' '\\'' '\\\"' '\\?'",
                0);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, 'a');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '1');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, ' ');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\0');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\a');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\b');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\f');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\n');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\r');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\t');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\v');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\\');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\'');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '"');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '?');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.token.type == TKN_EOF);
-    assert(ret == 0);
+    assert(g_ctx.num_errors == 0);
 
-    init_lexer(&lexer, "'\\x12'  '\\x3'", 0);
+    test_init_lexer(&lexer, "'\\x12'  '\\x3'", 0);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\x12');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\x3');
 
-    init_lexer(&lexer, "'' 'a '\n' '\\z' '\\0'", 0);
+    test_init_lexer(&lexer, "'' 'a '\n' '\\z' '\\0'", 0);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 1);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 2);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 3);
 
-    ret = next_token(&lexer);
-    assert(ret >= 1);
+    next_token(&lexer);
+    assert(g_ctx.num_errors == 4);
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, '\0');
 
-    ret = next_token(&lexer);
+    next_token(&lexer);
     assert(lexer.token.type == TKN_EOF);
+}
+
+void test_mem_arena(void)
+{
+    MemArena arena = {0};
+
+    mem_arena_init(&arena, 512);
+    assert(arena.size == 512);
+    assert(arena.index == 0);
+
+    void* m = mem_arena_allocate(&arena, 256, DEFAULT_ALIGN, true);
+    assert(m);
+    assert(arena.index >= 256);
+
+    unsigned char* old_buffer = arena.buffer;
+    m = mem_arena_allocate(&arena, 1024, DEFAULT_ALIGN, false);
+    assert(m);
+    assert(old_buffer != arena.buffer);
+    assert(arena.index >= 1024);
+
+    mem_arena_free(&arena);
+    assert(!arena.buffer);
+    assert(!arena.index);
+    assert(!arena.size);
+
+    mem_arena_init(&arena, 512);
+    assert(arena.size == 512);
+    assert(arena.index == 0);
+
+    old_buffer = arena.buffer;
+    m = mem_arena_allocate(&arena, 1024, DEFAULT_ALIGN, false);
+    assert(m);
+    assert(old_buffer != arena.buffer);
+    assert(arena.index >= 1024);
+
+    mem_arena_clear(&arena);
+    assert(arena.buffer);
+    assert(arena.index == 0);
+    assert(arena.size > 0);
+
+    mem_arena_free(&arena);
+    assert(!arena.buffer);
+    assert(!arena.index);
+    assert(!arena.size);
+
+    // Test arena state restoration.
+    mem_arena_init(&arena, 512);
+    assert(arena.size == 512);
+
+    m = mem_arena_allocate(&arena, 16, DEFAULT_ALIGN, false);
+    assert(m);
+    assert(arena.index >= 16);
+    assert(arena.index <= 64);
+    
+    MemArenaState state = mem_arena_snapshot(&arena);
+    {
+        m = mem_arena_allocate(&arena, 64, DEFAULT_ALIGN, false);
+        assert(m);
+        assert(arena.index >= 64 + 16);
+    }
+    mem_arena_restore(state);
+
+    assert(arena.index >= 16);
+    assert(arena.index <= 64);
+
+    mem_arena_free(&arena);
+    assert(!arena.buffer);
+    assert(!arena.index);
+    assert(!arena.size);
+
+    // Test arena state restoration.
+    mem_arena_init(&arena, 512);
+    assert(arena.size == 512);
+
+    m = mem_arena_allocate(&arena, 16, DEFAULT_ALIGN, false);
+    assert(m);
+    assert(arena.index >= 16);
+    assert(arena.index <= 64);
+    
+    old_buffer = arena.buffer;
+    state = mem_arena_snapshot(&arena);
+    {
+        m = mem_arena_allocate(&arena, 2048, DEFAULT_ALIGN, false);
+        assert(m);
+        assert(old_buffer != arena.buffer);
+        assert(arena.index >= 2048);
+    }
+    mem_arena_restore(state);
+
+    assert(old_buffer == arena.buffer);
+    assert(arena.index >= 16);
+    assert(arena.index <= 64);
+
+    mem_arena_free(&arena);
+    assert(!arena.buffer);
+    assert(!arena.index);
+    assert(!arena.size);
 }
 
 int main(void)
 {
     printf("Nibble!\n");
     test_lexer();
+    test_mem_arena();
 }

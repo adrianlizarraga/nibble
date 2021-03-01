@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define LEXER_MAX_ERROR_LEN 128
+#include "allocator.h"
 
 typedef enum TokenType {
     TKN_INVALID = 0,
@@ -71,18 +71,33 @@ typedef struct Token {
     };
 } Token;
 
+typedef void OnLexErrFunc(void* data, ProgPos pos, const char* msg);
+typedef void OnLexLineFunc(void* data, ProgPos pos);
+typedef const char* OnLexIdenFunc(void* data, ProgPos pos, const char* str, size_t len);
+typedef const char* OnLexStrFunc(void* data, ProgPos pos, const char* str, size_t len);
+
+typedef struct LexerClient {
+    void* data;
+
+    OnLexErrFunc*  on_error;
+    OnLexLineFunc* on_line;
+    OnLexIdenFunc* on_iden;
+    OnLexStrFunc*  on_str;
+} LexerClient;
+
 typedef struct Lexer {
     const char* str;
     const char* at;
     Token token;
+    ProgPos start;
 
-    ProgPos start_pos;
+    LexerClient client;
 
-    char error[LEXER_MAX_ERROR_LEN];
+    MemArena arena;
 } Lexer;
 
-int next_token(Lexer* lexer);
-
+void init_lexer(Lexer* lexer, const char* str, uint32_t start);
+bool next_token(Lexer* lexer);
 bool match_token(Lexer* lexer, TokenType type);
 bool is_token(Lexer* lexer, TokenType type);
 #endif
