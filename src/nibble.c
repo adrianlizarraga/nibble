@@ -13,6 +13,9 @@ static TestProgContext g_ctx;
 
 static void test_on_error(void* data, ProgPos pos, const char* msg)
 {
+    (void)pos;
+    (void)msg;
+
     if (data) {
         TestProgContext* c = data;
 
@@ -277,97 +280,91 @@ void test_mem_arena(void)
 {
     MemArena arena = {0};
 
-    mem_arena_init(&arena, 512);
-    assert(arena.size == 512);
-    assert(arena.index == 0);
+    arena = mem_arena(NULL, 512);
 
-    void* m = mem_arena_allocate(&arena, 256, DEFAULT_ALIGN, true);
+    void* m = mem_allocate(&arena, 256, DEFAULT_ALIGN, true);
     assert(m);
-    assert(arena.index >= 256);
+    assert((arena.at - arena.buffer) >= 256);
 
     unsigned char* old_buffer = arena.buffer;
-    m = mem_arena_allocate(&arena, 1024, DEFAULT_ALIGN, false);
+    m = mem_allocate(&arena, 1024, DEFAULT_ALIGN, false);
     assert(m);
     assert(old_buffer != arena.buffer);
-    assert(arena.index >= 1024);
+    assert((arena.at - arena.buffer) >= 1024);
 
-    mem_arena_free(&arena);
+    mem_arena_destroy(&arena);
     assert(!arena.buffer);
-    assert(!arena.index);
-    assert(!arena.size);
+    assert(!arena.at);
+    assert(!arena.end);
 
-    mem_arena_init(&arena, 512);
-    assert(arena.size == 512);
-    assert(arena.index == 0);
+    arena = mem_arena(NULL, 512);
 
     old_buffer = arena.buffer;
-    m = mem_arena_allocate(&arena, 1024, DEFAULT_ALIGN, false);
+    m = mem_allocate(&arena, 1024, DEFAULT_ALIGN, false);
     assert(m);
     assert(old_buffer != arena.buffer);
-    assert(arena.index >= 1024);
+    assert((arena.end - arena.buffer) >= 1024);
 
-    mem_arena_clear(&arena);
+    mem_arena_reset(&arena);
     assert(arena.buffer);
-    assert(arena.index == 0);
-    assert(arena.size > 0);
+    assert(arena.at == arena.buffer);
+    assert(arena.end > arena.buffer);
 
-    mem_arena_free(&arena);
+    mem_arena_destroy(&arena);
     assert(!arena.buffer);
-    assert(!arena.index);
-    assert(!arena.size);
+    assert(!arena.at);
+    assert(!arena.end);
 
     // Test arena state restoration.
-    mem_arena_init(&arena, 512);
-    assert(arena.size == 512);
+    arena = mem_arena(NULL, 512);
 
-    m = mem_arena_allocate(&arena, 16, DEFAULT_ALIGN, false);
+    m = mem_allocate(&arena, 16, DEFAULT_ALIGN, false);
     assert(m);
-    assert(arena.index >= 16);
-    assert(arena.index <= 64);
+    assert((arena.at - arena.buffer) >= 16);
+    assert((arena.at - arena.buffer) <= 64);
     
     MemArenaState state = mem_arena_snapshot(&arena);
     {
-        m = mem_arena_allocate(&arena, 64, DEFAULT_ALIGN, false);
+        m = mem_allocate(&arena, 64, DEFAULT_ALIGN, false);
         assert(m);
-        assert(arena.index >= 64 + 16);
+        assert((arena.at - arena.buffer) >= 64 + 16);
     }
     mem_arena_restore(state);
 
-    assert(arena.index >= 16);
-    assert(arena.index <= 64);
+    assert((arena.at - arena.buffer) >= 16);
+    assert((arena.at - arena.buffer) <= 64);
 
-    mem_arena_free(&arena);
+    mem_arena_destroy(&arena);
     assert(!arena.buffer);
-    assert(!arena.index);
-    assert(!arena.size);
+    assert(!arena.at);
+    assert(!arena.end);
 
     // Test arena state restoration.
-    mem_arena_init(&arena, 512);
-    assert(arena.size == 512);
+    arena = mem_arena(NULL, 512);
 
-    m = mem_arena_allocate(&arena, 16, DEFAULT_ALIGN, false);
+    m = mem_allocate(&arena, 16, DEFAULT_ALIGN, false);
     assert(m);
-    assert(arena.index >= 16);
-    assert(arena.index <= 64);
+    assert((arena.at - arena.buffer) >= 16);
+    assert((arena.at - arena.buffer) <= 64);
     
     old_buffer = arena.buffer;
     state = mem_arena_snapshot(&arena);
     {
-        m = mem_arena_allocate(&arena, 2048, DEFAULT_ALIGN, false);
+        m = mem_allocate(&arena, 2048, DEFAULT_ALIGN, false);
         assert(m);
         assert(old_buffer != arena.buffer);
-        assert(arena.index >= 2048);
+        assert((arena.at - arena.buffer) >= 2048);
     }
     mem_arena_restore(state);
 
     assert(old_buffer == arena.buffer);
-    assert(arena.index >= 16);
-    assert(arena.index <= 64);
+    assert((arena.at - arena.buffer) >= 16);
+    assert((arena.at - arena.buffer) <= 64);
 
-    mem_arena_free(&arena);
+    mem_arena_destroy(&arena);
     assert(!arena.buffer);
-    assert(!arena.index);
-    assert(!arena.size);
+    assert(!arena.at);
+    assert(!arena.end);
 }
 
 int main(void)
