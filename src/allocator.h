@@ -25,7 +25,7 @@ typedef struct Allocator {
 
 void* mem_allocate(void* allocator, size_t size, size_t align, bool clear);
 void* mem_reallocate(void* allocator, void* ptr, size_t old_size, size_t size, size_t align);
-
+void mem_free(void* allocator, void* ptr);
 
 typedef struct MemArena {
     Allocator base;

@@ -28,17 +28,58 @@ typedef struct ArrayHdr {
      _array_hdr(a)->len++)
 #define array_remove(a, i) \
     (!(a) ? 0 : (memmove(&(a)[i], &(a)[(i) + 1], sizeof(*(a)) * (_array_hdr(a)->len - 1 - (i))), _array_hdr(a)->len--))
-#define array_remove_unordered(a, i) (!(a) ? 0 : (a[i] = a[_array_hdr(a)->len - 1], _array_hdr(a)->len--))
+#define array_remove_swap(a, i) (!(a) ? 0 : (a[i] = a[_array_hdr(a)->len - 1], _array_hdr(a)->len--))
 
 #define array_reserve(a, c) ((a) = _array_reserve((a), (c), sizeof(*(a)), DEFAULT_ALIGN, NULL))
-#define array_clear(a, c) (!(a) ? 0 : (_array_hdr(a)->len = 0))
+#define array_clear(a) (!(a) ? 0 : (_array_hdr(a)->len = 0))
 #define array_free(a) (((a) ? _array_free(a) : (void)0), (a) = NULL)
 
 #define array_create(alloc, cap) _array_reserve(NULL, (cap), sizeof(*(a)), DEFAULT_ALIGN, alloc)
 
-void* _array_reserve(void* array, size_t reserve, size_t elem_size, size_t align, Allocator* allocator)
+void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, void* allocator)
 {
-    // TODO: FInish this
-    return NULL;
+    size_t cap = array_cap(array);
+    if (cap && cap >= len) {
+        return array;
+    }
+    
+    size_t new_cap = cap * 2;
+
+    if (new_cap < len) {
+        new_cap = len;
+    }
+
+    if (new_cap < ARRAY_MIN_CAP) {
+        new_cap = ARRAY_MIN_CAP;
+    }
+
+    size_t alloc_size = sizeof(ArrayHdr) + (elem_size * new_cap);
+    ArrayHdr* hdr = array ? _array_hdr(array) : 0;
+    ArrayHdr* new_hdr = NULL;
+
+    if (hdr) {
+        size_t old_size = sizeof(ArrayHdr) + (elem_size * cap);
+
+        new_hdr = mem_reallocate(hdr->allocator, hdr, old_size, alloc_size, align);
+    }
+    else {
+        new_hdr = mem_allocate(allocator, alloc_size, align, false);
+        new_hdr->allocator = allocator;
+        new_hdr->len = 0;
+    }
+
+    new_hdr->cap = new_cap;
+
+    return new_hdr->data;
 }
+
+void _array_free(void* array)
+{
+    ArrayHdr* hdr = _array_hdr(array);
+
+    if (hdr) {
+        mem_free(hdr->allocator, hdr);
+    }
+}
+
 #endif

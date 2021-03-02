@@ -28,6 +28,15 @@ void* mem_reallocate(void* allocator, void* ptr, size_t old_size, size_t size, s
     return realloc(ptr, size);
 }
 
+void mem_free(void* allocator, void* ptr)
+{
+    if (allocator) {
+        ((Allocator*)allocator)->free(allocator, ptr);
+    }
+
+    free(ptr);
+}
+
 typedef struct MemArenaBlockFooter {
     unsigned char* pbuffer;
     unsigned char* pend;
