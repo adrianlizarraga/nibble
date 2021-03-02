@@ -1,9 +1,9 @@
 #ifndef NIBBLE_ALLOCATOR_H
 #define NIBBLE_ALLOCATOR_H
 #include <stdalign.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdbool.h>
 
 #define DEFAULT_ALIGN alignof(max_align_t)
 
@@ -17,10 +17,9 @@ typedef struct Allocator {
     MemFreeFunc* free;
 } Allocator;
 
-#define new_type(allocator, type, clear) \
-    (type*)mem_allocate((allocator), sizeof(type), alignof(type), (clear))
+#define new_type(allocator, type, clear) (type*)mem_allocate((allocator), sizeof(type), alignof(type), (clear))
 
-#define new_array(allocator, elem_type, len, clear) \
+#define new_array(allocator, elem_type, len, clear)                                                                    \
     (elem_type*)mem_allocate((allocator), sizeof(elem_type) * (len), alignof(elem_type), (clear))
 
 void* mem_allocate(void* allocator, size_t size, size_t align, bool clear);
@@ -48,6 +47,5 @@ void mem_arena_destroy(MemArena* arena);
 
 MemArenaState mem_arena_snapshot(MemArena* arena);
 void mem_arena_restore(MemArenaState state);
-
 
 #endif

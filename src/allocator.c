@@ -59,7 +59,8 @@ static void* mem_arena_alloc_block(MemArena* arena, size_t size, size_t align)
         block_align = align;
     }
 
-    unsigned char* block = mem_allocate(arena->allocator, (block_size + sizeof(MemArenaBlockFooter)), block_align, false);
+    unsigned char* block =
+        mem_allocate(arena->allocator, (block_size + sizeof(MemArenaBlockFooter)), block_align, false);
     if (!block) {
         return NULL;
     }
@@ -84,7 +85,7 @@ static void* mem_arena_allocate(void* allocator, size_t size, size_t align, bool
     assert(align > 0);
     assert((align & (align - 1)) == 0);
 
-    MemArena* arena = (MemArena*) allocator;
+    MemArena* arena = (MemArena*)allocator;
 
     void* memory = NULL;
 
@@ -96,8 +97,8 @@ static void* mem_arena_allocate(void* allocator, size_t size, size_t align, bool
         return mem_arena_alloc_block(arena, size, align);
     }
 
-    memory = (void*) aligned_at;
-    arena->at = (unsigned char*) new_at;
+    memory = (void*)aligned_at;
+    arena->at = (unsigned char*)new_at;
 
     if (clear) {
         memset(memory, 0, size);
@@ -110,7 +111,7 @@ static void* mem_arena_reallocate(void* allocator, void* ptr, size_t old_size, s
 {
     // TODO: If this allocation is at the top of the arena stack, allocation is not necessary!
     void* memory = mem_arena_allocate(allocator, size, align, false);
-    
+
     if (memory && ptr) {
         memcpy(memory, ptr, old_size);
     }
@@ -131,7 +132,7 @@ MemArena mem_arena(Allocator* allocator, size_t block_size)
     MemArena arena = {0};
     arena.allocator = allocator;
     arena.block_size = block_size;
-    arena.base.allocate = mem_arena_allocate; 
+    arena.base.allocate = mem_arena_allocate;
     arena.base.reallocate = mem_arena_reallocate;
     arena.base.free = mem_arena_free;
 
@@ -143,8 +144,8 @@ void mem_arena_reset(MemArena* arena)
     assert(arena->buffer);
 
     // Free all blocks, except for the last (original), which is "cleared".
-    MemArenaBlockFooter* footer = (MemArenaBlockFooter*) arena->end;
-    
+    MemArenaBlockFooter* footer = (MemArenaBlockFooter*)arena->end;
+
     while (footer->pbuffer) {
         unsigned char* pbuffer = footer->pbuffer;
         unsigned char* pend = footer->pend;
@@ -153,7 +154,7 @@ void mem_arena_reset(MemArena* arena)
 
         arena->buffer = pbuffer;
         arena->end = pend;
-        footer = (MemArenaBlockFooter*) arena->end;
+        footer = (MemArenaBlockFooter*)arena->end;
     }
 
     arena->at = arena->buffer;
@@ -186,7 +187,7 @@ MemArenaState mem_arena_snapshot(MemArena* arena)
     state.arena = arena;
     state.buffer = arena->buffer;
     state.at = arena->at;
-    
+
     return state;
 }
 
@@ -212,4 +213,3 @@ void mem_arena_restore(MemArenaState state)
     arena->end = end;
     arena->at = state.at;
 }
-

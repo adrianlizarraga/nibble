@@ -3,8 +3,8 @@
 #include <string.h>
 
 #include "allocator.c"
-#include "lexer.c"
 #include "array.h"
+#include "lexer.c"
 
 typedef struct TestProgContext {
     int num_errors;
@@ -195,9 +195,9 @@ static void test_lexer(void)
 
     // Test character literals
     test_init_lexer(&lexer,
-               "'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' "
-               "'\\\\' '\\'' '\\\"' '\\?'",
-               0);
+                    "'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' "
+                    "'\\\\' '\\'' '\\\"' '\\?'",
+                    0);
 
     next_token(&lexer);
     TKN_TEST_CHAR(lexer.token, 'a');
@@ -323,7 +323,7 @@ void test_mem_arena(void)
     assert(m);
     assert((arena.at - arena.buffer) >= 16);
     assert((arena.at - arena.buffer) <= 64);
-    
+
     MemArenaState state = mem_arena_snapshot(&arena);
     {
         m = mem_allocate(&arena, 64, DEFAULT_ALIGN, false);
@@ -347,7 +347,7 @@ void test_mem_arena(void)
     assert(m);
     assert((arena.at - arena.buffer) >= 16);
     assert((arena.at - arena.buffer) <= 64);
-    
+
     old_buffer = arena.buffer;
     state = mem_arena_snapshot(&arena);
     {
@@ -447,7 +447,7 @@ void test_array(void)
 
     // Test array remove.
     {
-        int *a = array_create(&arena, 10);
+        int* a = array_create(&arena, 10);
         for (int i = 0; i < 8; i++) {
             array_push(a, i);
         }
@@ -460,8 +460,7 @@ void test_array(void)
         for (int i = 0; i < 7; i++) {
             if (i < rindex) {
                 assert(a[i] == i);
-            }
-            else {
+            } else {
                 assert(a[i] == i + 1);
             }
         }
