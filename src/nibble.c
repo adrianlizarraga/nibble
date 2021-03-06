@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "allocator.c"
-#include "array.h"
+#include "array.c"
 #include "lexer.c"
 
 typedef struct TestProgContext {
