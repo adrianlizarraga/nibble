@@ -5,9 +5,8 @@
 
 #define HASH_MAP_MIN_CAP 16
 #define HASH_MAP_NULL_KEY 0
-#define HASH_MAP_FIRST_VALID_KEY 1
 
-// Pelle Evensen's "Moremur" 64-bit mixer based on Murmur3
+// Pelle Evensen's "Moremur" 64-bit mixer based on Murmur3 mixer
 uint64_t hash_uint64(uint64_t h)
 {
     h ^= h >> 27;
@@ -44,7 +43,7 @@ static bool hash_map_expand(HashMap* map, size_t cap)
 
     for (size_t i = 0; i < old_cap; ++i) {
         HashMapEntry* entry = old_entries + i;
-        
+
         if (entry->key > 0) {
             hash_map_put(map, entry->key, entry->value);
         }
@@ -55,7 +54,7 @@ static bool hash_map_expand(HashMap* map, size_t cap)
     return true;
 }
 
-HashMap hash_map(size_t cap_log2, Allocator* allocator)
+HashMap hash_map(unsigned int cap_log2, Allocator* allocator)
 {
     HashMap map = {0};
     map.allocator = allocator;
@@ -65,38 +64,82 @@ HashMap hash_map(size_t cap_log2, Allocator* allocator)
     return map;
 }
 
-void hash_map_put(HashMap* map, uint64_t key, uint64_t value)
+void hash_map_destroy(HashMap* map)
+{
+    mem_free(map->allocator, map->entries);
+    memset(&map, 0, sizeof(HashMap));
+}
+
+uint64_t* hash_map_put(HashMap* map, uint64_t key, uint64_t value)
 {
     if (key == HASH_MAP_NULL_KEY) {
-        map->null_key.key = 1;
-        map->null_key.value = value;
-        return;
+        HashMapEntry* null_key = &map->null_key;
+
+        null_key->key = 1;
+        null_key->value = value;
+        return &null_key->value;
     }
 
-    // (len + 1) >= 0.7 * cap
+    // Expand at 70%
     if (10 * (map->len + 1) >= 7 * map->cap) {
         if (!hash_map_expand(map, map->cap * 2)) {
-            return;
+            return NULL;
         }
     }
 
+    assert(map->len < map->cap);
+
+    HashMapEntry* entries = map->entries;
     uint64_t i = hash_uint64(key);
 
     for (;;) {
         i &= map->mask;
 
-        if (map->entries[i].key == 0) {
-            map->entries[i].key = key;
-            map->entries[i].value = value;
+        HashMapEntry* entry = entries + i;
+
+        if (entry->key == HASH_MAP_NULL_KEY) {
+            entry->key = key;
+            entry->value = value;
             map->len += 1;
-            break;
-        }
-        else if (map->entries[i].key == key) {
-            map->entries[i].value = value;
-            break;
+            return &entry->value;
+        } else if (entry->key == key) {
+            entry->value = value;
+            return &entry->value;
         }
 
         i += 1;
     }
+
+    return NULL;
 }
 
+uint64_t* hash_map_get(HashMap* map, uint64_t key)
+{
+    if (key == HASH_MAP_NULL_KEY) {
+        HashMapEntry* null_key = &map->null_key;
+
+        return null_key->key ? &null_key->value : NULL;
+    }
+
+    HashMapEntry* entries = map->entries;
+    uint64_t i = hash_uint64(key) & map->mask;
+
+    if (entries[i].key == key) {
+        return &entries[i].value;
+    }
+
+    if (entries[i].key == HASH_MAP_NULL_KEY) {
+        return NULL;
+    }
+
+    do {
+        i = (i + 1) & map->mask;
+
+        if (entries[i].key == key) {
+            return &entries[i].value;
+        }
+
+    } while (entries[i].key);
+
+    return NULL;
+}

@@ -1,9 +1,11 @@
+//#define NDEBUG 1
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "allocator.c"
 #include "array.c"
+#include "hash_map.c"
 #include "lexer.c"
 
 typedef struct TestProgContext {
@@ -483,10 +485,34 @@ void test_array(void)
     mem_arena_destroy(&arena);
 }
 
+void test_hash_map(void)
+{
+    HashMap map = hash_map(24, NULL);
+
+    for (uint64_t i = 1; i <= (1 << 23); ++i) {
+        uint64_t* r = hash_map_put(&map, i, i);
+
+        assert(r);
+        assert(*r == i);
+    }
+
+    for (uint64_t i = 1; i <= (1 << 23); ++i) {
+        uint64_t* r = hash_map_get(&map, i);
+
+        assert(r);
+        assert(*r == i);
+    }
+
+    printf("cap = %lu, len = %lu\n", map.cap, map.len);
+
+    hash_map_destroy(&map);
+}
+
 int main(void)
 {
     printf("Nibble!\n");
     test_lexer();
     test_mem_arena();
     test_array();
+    test_hash_map();
 }
