@@ -28,12 +28,12 @@ static bool hash_map_expand(HashMap* map, size_t cap)
         return true;
     }
 
-    HashMapEntry* old_entries = map->entries;
     HashMapEntry* entries = new_array(map->allocator, HashMapEntry, cap, true);
     if (!entries) {
         return false;
     }
 
+    HashMapEntry* old_entries = map->entries;
     size_t old_cap = map->cap;
 
     map->entries = entries;
@@ -138,7 +138,6 @@ uint64_t* hash_map_get(HashMap* map, uint64_t key)
         if (entries[i].key == key) {
             return &entries[i].value;
         }
-
     } while (entries[i].key);
 
     return NULL;
