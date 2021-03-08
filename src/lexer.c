@@ -7,10 +7,6 @@
 #include <stdlib.h>
 
 #define LEXER_MAX_ERROR_LEN 128
-#define INT_HEX_BASE 16U
-#define INT_DEC_BASE 10U
-#define INT_OCT_BASE 8U
-#define INT_BIN_BASE 2U
 
 // Converts a numeric character to an integer value. Values are biased by +1
 // so that a result of 0 is known to be invalid.
@@ -133,19 +129,23 @@ static void scan_int(Lexer* lexer)
     Token* token = &lexer->token;
 
     token->type = TKN_INT;
-    token->tint.base = INT_DEC_BASE;
+    token->tint.rep = TKN_INT_DEC;
     token->tint.value = 0;
+    uint32_t base = 10;
 
     if (lexer->at[0] == '0') {
         lexer->at++;
         if ((lexer->at[0] == 'x') || (lexer->at[0] == 'X')) {
             lexer->at++;
-            token->tint.base = INT_HEX_BASE;
+            token->tint.rep = TKN_INT_HEX;
+            base = 16;
         } else if ((lexer->at[0] == 'b') || (lexer->at[0] == 'B')) {
             lexer->at++;
-            token->tint.base = INT_BIN_BASE;
+            token->tint.rep = TKN_INT_BIN;
+            base = 2;
         } else {
-            token->tint.base = INT_OCT_BASE;
+            token->tint.rep = TKN_INT_OCT;
+            base = 8;
         }
     }
 
@@ -162,24 +162,22 @@ static void scan_int(Lexer* lexer)
     do {
         unsigned int digit = biased - 1;
 
-        if (digit >= token->tint.base) {
-            lexer_on_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0],
-                           token->tint.base);
+        if (digit >= base) {
+            lexer_on_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0], base);
             token->tint.value = 0;
             skip_word_end(lexer);
             return;
         }
 
         // Detect overflow if 10*val + digt > MAX
-        if (token->tint.value > (UINT64_MAX - digit) / token->tint.base) {
-            lexer_on_error(lexer, "Integer literal %.*s is too large for its type", 
-                           (size_t)(lexer->at - start), start);
+        if (token->tint.value > (UINT64_MAX - digit) / base) {
+            lexer_on_error(lexer, "Integer literal %.*s is too large for its type", (size_t)(lexer->at - start), start);
             token->tint.value = 0;
             skip_word_end(lexer);
             return;
         }
 
-        token->tint.value *= token->tint.base;
+        token->tint.value *= base;
         token->tint.value += digit;
 
         lexer->at++;
@@ -220,8 +218,7 @@ static void scan_float(Lexer* lexer)
         }
 
         if (!is_digit(lexer->at[0])) {
-            lexer_on_error(lexer, "Unexpected character '%c' after floating point literal's exponent",
-                           lexer->at[0]);
+            lexer_on_error(lexer, "Unexpected character '%c' after floating point literal's exponent", lexer->at[0]);
             skip_word_end(lexer);
             return;
         }
@@ -253,8 +250,9 @@ static void scan_char(Lexer* lexer)
     assert(lexer->at[0] == '\'');
     Token* token = &lexer->token;
 
-    token->type = TKN_CHAR;
-    token->tchar.value = 0;
+    token->type = TKN_INT;
+    token->tint.rep = TKN_INT_CHAR;
+    token->tint.value = 0;
 
     lexer->at++;
 
@@ -292,14 +290,14 @@ static void scan_char(Lexer* lexer)
             unsigned int biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
             unsigned int digit = biased - 1;
 
-            if (!biased || (digit >= INT_HEX_BASE)) {
+            if (!biased || (digit >= 16)) {
                 lexer_on_error(lexer, "Invalid hex character digit '0x%X'", lexer->at[0]);
                 skip_word_end(lexer);
                 skip_char(lexer, '\'');
                 return;
             }
 
-            token->tchar.value = digit;
+            token->tint.value = digit;
             lexer->at++;
 
             // Scan the second (optional) digit.
@@ -308,16 +306,16 @@ static void scan_char(Lexer* lexer)
             if (biased) {
                 digit = biased - 1;
 
-                if (digit >= INT_HEX_BASE) {
+                if (digit >= 16) {
                     lexer_on_error(lexer, "Invalid hex character digit '0x%X' is larger than 0x%X", lexer->at[0],
-                                INT_HEX_BASE - 1);
+                                   16 - 1);
                     skip_word_end(lexer);
                     skip_char(lexer, '\'');
                     return;
                 }
 
-                token->tchar.value *= INT_HEX_BASE;
-                token->tchar.value += digit;
+                token->tint.value *= 16;
+                token->tint.value += digit;
 
                 lexer->at++;
             }
@@ -331,13 +329,13 @@ static void scan_char(Lexer* lexer)
                 return;
             }
 
-            token->tchar.value = val;
+            token->tint.value = val;
             lexer->at++;
         }
     }
     // Regular non-escaped char
     else {
-        token->tchar.value = lexer->at[0];
+        token->tint.value = lexer->at[0];
         lexer->at++;
     }
 

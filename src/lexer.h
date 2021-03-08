@@ -22,7 +22,6 @@ typedef enum TokenType {
     TKN_STR,
     TKN_WORD,
     TKN_INT,
-    TKN_CHAR,
     TKN_FLOAT,
 
     TKN_PLUS,
@@ -33,18 +32,22 @@ typedef enum TokenType {
     TKN_LTEQ,
 } TokenType;
 
+typedef enum TokenIntRep {
+    TKN_INT_BIN,
+    TKN_INT_OCT,
+    TKN_INT_DEC,
+    TKN_INT_HEX,
+    TKN_INT_CHAR,
+} TokenIntRep;
+
 typedef struct TokenInt {
     uint64_t value;
-    uint32_t base;
+    TokenIntRep rep;
 } TokenInt;
 
 typedef struct TokenFloat {
     double value;
 } TokenFloat;
-
-typedef struct TokenChar {
-    int32_t value;
-} TokenChar;
 
 typedef struct TokenName {
     const char* value;
@@ -63,7 +66,6 @@ typedef struct Token {
     ProgPos end;
 
     union {
-        TokenChar tchar;
         TokenInt tint;
         TokenFloat tfloat;
         TokenName tname;
@@ -79,10 +81,10 @@ typedef const char* OnLexStrFunc(void* data, ProgPos pos, const char* str, size_
 typedef struct LexerClient {
     void* data;
 
-    OnLexErrFunc*  on_error;
+    OnLexErrFunc* on_error;
     OnLexLineFunc* on_line;
     OnLexIdenFunc* on_iden;
-    OnLexStrFunc*  on_str;
+    OnLexStrFunc* on_str;
 } LexerClient;
 
 typedef struct Lexer {

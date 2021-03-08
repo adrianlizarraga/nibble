@@ -35,7 +35,7 @@ static void test_on_error(void* data, ProgPos pos, const char* msg)
 #define TKN_TEST_INT(tk, b, v)                                                                                         \
     do {                                                                                                               \
         assert((tk.type == TKN_INT));                                                                                  \
-        assert((tk.tint.base = b));                                                                                    \
+        assert((tk.tint.rep == b));                                                                                    \
         assert((tk.tint.value == v));                                                                                  \
     } while (0)
 #define TKN_TEST_FLOAT(tk, v)                                                                                          \
@@ -45,8 +45,9 @@ static void test_on_error(void* data, ProgPos pos, const char* msg)
     } while (0)
 #define TKN_TEST_CHAR(tk, v)                                                                                           \
     do {                                                                                                               \
-        assert((tk.type == TKN_CHAR));                                                                                 \
-        assert((tk.tchar.value == v));                                                                                 \
+        assert((tk.type == TKN_INT));                                                                                  \
+        assert((tk.tint.rep == TKN_INT_CHAR));                                                                         \
+        assert((tk.tint.value == v));                                                                                  \
     } while (0)
 
 static void test_init_lexer(Lexer* lexer, const char* str, ProgPos start)
@@ -138,19 +139,19 @@ static void test_lexer(void)
     test_init_lexer(&lexer, "123 333\n0xFF 0b0111 011", 0);
 
     next_token(&lexer);
-    TKN_TEST_INT(lexer.token, 10, 123);
+    TKN_TEST_INT(lexer.token, TKN_INT_DEC, 123);
 
     next_token(&lexer);
-    TKN_TEST_INT(lexer.token, 10, 333);
+    TKN_TEST_INT(lexer.token, TKN_INT_DEC, 333);
 
     next_token(&lexer);
-    TKN_TEST_INT(lexer.token, 16, 0xFF);
+    TKN_TEST_INT(lexer.token, TKN_INT_HEX, 0xFF);
 
     next_token(&lexer);
-    TKN_TEST_INT(lexer.token, 2, 7);
+    TKN_TEST_INT(lexer.token, TKN_INT_BIN, 7);
 
     next_token(&lexer);
-    TKN_TEST_INT(lexer.token, 8, 9);
+    TKN_TEST_INT(lexer.token, TKN_INT_OCT, 9);
 
     next_token(&lexer);
     assert(lexer.token.type == TKN_EOF);
