@@ -346,10 +346,242 @@ static void test_lexer(void)
     free_lexer(&lexer);
 }
 
+void test_allocator(void)
+{
+    Allocator allocator = {0};
+
+    allocator = allocator_create(512);
+
+    void* m = mem_allocate(&allocator, 256, DEFAULT_ALIGN, true);
+    assert(m);
+    assert((allocator.at - allocator.buffer) >= 256);
+
+    unsigned char* old_buffer = allocator.buffer;
+    m = mem_allocate(&allocator, 1024, DEFAULT_ALIGN, false);
+    assert(m);
+    assert(old_buffer != allocator.buffer);
+    assert((allocator.at - allocator.buffer) >= 1024);
+
+    allocator_destroy(&allocator);
+    assert(!allocator.buffer);
+    assert(!allocator.at);
+    assert(!allocator.end);
+
+    allocator = allocator_create(512);
+
+    old_buffer = allocator.buffer;
+    m = mem_allocate(&allocator, 1024, DEFAULT_ALIGN, false);
+    assert(m);
+    assert(old_buffer != allocator.buffer);
+    assert((allocator.end - allocator.buffer) >= 1024);
+
+    allocator_reset(&allocator);
+    assert(allocator.buffer);
+    assert(allocator.at == allocator.buffer);
+    assert(allocator.end > allocator.buffer);
+
+    allocator_destroy(&allocator);
+    assert(!allocator.buffer);
+    assert(!allocator.at);
+    assert(!allocator.end);
+
+    // Test allocator state restoration.
+    allocator = allocator_create(512);
+
+    m = mem_allocate(&allocator, 16, DEFAULT_ALIGN, false);
+    assert(m);
+    assert((allocator.at - allocator.buffer) >= 16);
+    assert((allocator.at - allocator.buffer) <= 64);
+
+    AllocatorState state = allocator_get_state(&allocator);
+    {
+        m = mem_allocate(&allocator, 64, DEFAULT_ALIGN, false);
+        assert(m);
+        assert((allocator.at - allocator.buffer) >= 64 + 16);
+    }
+    allocator_restore_state(state);
+
+    assert((allocator.at - allocator.buffer) >= 16);
+    assert((allocator.at - allocator.buffer) <= 64);
+
+    allocator_destroy(&allocator);
+    assert(!allocator.buffer);
+    assert(!allocator.at);
+    assert(!allocator.end);
+
+    // Test allocator state restoration.
+    allocator = allocator_create(512);
+
+    m = mem_allocate(&allocator, 16, DEFAULT_ALIGN, false);
+    assert(m);
+    assert((allocator.at - allocator.buffer) >= 16);
+    assert((allocator.at - allocator.buffer) <= 64);
+
+    old_buffer = allocator.buffer;
+    state = allocator_get_state(&allocator);
+    {
+        m = mem_allocate(&allocator, 2048, DEFAULT_ALIGN, false);
+        assert(m);
+        assert(old_buffer != allocator.buffer);
+        assert((allocator.at - allocator.buffer) >= 2048);
+    }
+    allocator_restore_state(state);
+
+    assert(old_buffer == allocator.buffer);
+    assert((allocator.at - allocator.buffer) >= 16);
+    assert((allocator.at - allocator.buffer) <= 64);
+
+    allocator_destroy(&allocator);
+    assert(!allocator.buffer);
+    assert(!allocator.at);
+    assert(!allocator.end);
+}
+
+void test_array(void)
+{
+    Allocator allocator = allocator_create(1024);
+
+    // Test array create and len/cap tracking.
+    {
+        int* a = array_create(&allocator, int, 128);
+        assert(array_len(a) == 0);
+        assert(array_cap(a) == 128);
+
+        for (int i = 0; i < 20; i++) {
+            array_push(a, i);
+            assert(array_back(a) == i);
+            assert(array_len(a) == (size_t)i + 1);
+            assert(array_cap(a) == 128);
+        }
+    }
+
+    // Test array reallocation.
+    {
+        int* a = array_create(&allocator, int, 16);
+        int* old_a = a;
+
+        for (int i = 0; i < 256; i++) {
+            array_push(a, i);
+            assert(array_back(a) == i);
+            assert(array_len(a) == (size_t)i + 1);
+            assert(array_cap(a) >= array_len(a));
+        }
+        assert(old_a != a);
+        assert(array_cap(a) == array_len(a));
+
+        array_push(a, 257);
+        assert(array_cap(a) > array_len(a));
+    }
+
+    // Test array clearing
+    {
+        int* a = array_create(&allocator, int, 16);
+        array_push(a, 10);
+        assert(array_len(a) > 0);
+
+        array_clear(a);
+        assert(array_len(a) == 0);
+        assert(array_cap(a) > 0);
+    }
+
+    // Test insertion
+    {
+        int* a = array_create(&allocator, int, 8);
+        for (int i = 0; i < 4; i++) {
+            array_push(a, i);
+        }
+        assert(array_len(a) == 4);
+
+        array_insert(a, 1, 100);
+        assert(array_len(a) == 5);
+        assert(a[0] == 0);
+        assert(a[1] == 100);
+        assert(a[2] == 1);
+        assert(a[3] == 2);
+        assert(a[4] == 3);
+    }
+
+    // Test array pop
+    {
+        int* a = array_create(&allocator, int, 8);
+
+        array_push(a, 333);
+
+        size_t old_len = array_len(a);
+        int geo = array_pop(a);
+
+        assert(array_len(a) == old_len - 1);
+        assert(geo == 333);
+    }
+
+    // Test array remove.
+    {
+        int* a = array_create(&allocator, int, 10);
+        for (int i = 0; i < 8; i++) {
+            array_push(a, i);
+        }
+        assert(array_len(a) == 8);
+
+        int rindex = 3;
+        array_remove(a, rindex);
+        assert(array_len(a) == 7);
+
+        for (int i = 0; i < 7; i++) {
+            if (i < rindex) {
+                assert(a[i] == i);
+            } else {
+                assert(a[i] == i + 1);
+            }
+        }
+    }
+
+    // Test array remove (swap last).
+    {
+        int* a = array_create(&allocator, int, 10);
+        for (int i = 0; i < 8; i++) {
+            array_push(a, i);
+        }
+        assert(array_len(a) == 8);
+
+        int rindex = 3;
+        array_remove_swap(a, rindex);
+        assert(array_len(a) == 7);
+        assert(a[rindex] == 7);
+    }
+
+    allocator_destroy(&allocator);
+}
+
+void test_hash_map(void)
+{
+    HashMap map = hash_map(24, NULL);
+
+    for (uint64_t i = 1; i <= (1 << 23); ++i) {
+        uint64_t* r = hash_map_put(&map, i, i);
+
+        assert(r);
+        assert(*r == i);
+    }
+
+    for (uint64_t i = 1; i <= (1 << 23); ++i) {
+        uint64_t* r = hash_map_get(&map, i);
+
+        assert(r);
+        assert(*r == i);
+    }
+
+    printf("cap = %lu, len = %lu\n", map.cap, map.len);
+
+    hash_map_destroy(&map);
+}
+
 int main(void)
 {
     g_ctx.allocator = allocator_create(4096);
-    printf("Nibble!\n");
+    printf("Nibble tests!\n");
     test_lexer();
+    test_allocator();
+    test_array();
+    test_hash_map();
     allocator_destroy(&g_ctx.allocator);
 }
