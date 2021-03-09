@@ -418,6 +418,11 @@ void init_lexer(Lexer* lexer, const char* str, uint32_t start)
     lexer->start = start;
 }
 
+void free_lexer(Lexer* lexer)
+{
+    allocator_destroy(&lexer->allocator);
+}
+
 bool next_token(Lexer* lexer)
 {
     Token* token = &lexer->token;

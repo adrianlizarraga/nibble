@@ -71,6 +71,7 @@ static const char* test_on_str(void* data, ProgPos pos, const char* str, size_t 
 
 static void test_init_lexer(Lexer* lexer, const char* str, ProgPos start)
 {
+    free_lexer(lexer);
     init_lexer(lexer, str, start);
     lexer->client.data = &g_ctx;
     lexer->client.on_error = test_on_error;
@@ -307,6 +308,7 @@ static void test_lexer(void)
         printf("str lit: \"%s\"\n", lexer.token.tstr.value);
         printf("allocator - size: %lu\n", lexer.allocator.at - lexer.allocator.buffer);
     }
+    free_lexer(&lexer);
 }
 
 void test_allocator(void)

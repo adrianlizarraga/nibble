@@ -98,6 +98,7 @@ typedef struct Lexer {
 } Lexer;
 
 void init_lexer(Lexer* lexer, const char* str, uint32_t start);
+void free_lexer(Lexer* lexer);
 
 bool next_token(Lexer* lexer);
 bool match_token(Lexer* lexer, TokenKind kind);
