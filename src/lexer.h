@@ -5,7 +5,7 @@
 
 #include "allocator.h"
 
-typedef enum TokenType {
+typedef enum TokenKind {
     TKN_INVALID = 0,
     TKN_EOF,
     TKN_LPAREN,
@@ -30,7 +30,7 @@ typedef enum TokenType {
     TKN_DIV,
     TKN_GTEQ,
     TKN_LTEQ,
-} TokenType;
+} TokenKind;
 
 typedef enum TokenIntRep {
     TKN_INT_BIN,
@@ -60,7 +60,7 @@ typedef struct TokenStr {
 typedef uint32_t ProgPos;
 
 typedef struct Token {
-    TokenType type;
+    TokenKind kind;
 
     ProgPos start;
     ProgPos end;
@@ -94,12 +94,12 @@ typedef struct Lexer {
     ProgPos start;
 
     LexerClient client;
-
-    MemArena arena;
+    Allocator allocator;
 } Lexer;
 
 void init_lexer(Lexer* lexer, const char* str, uint32_t start);
+
 bool next_token(Lexer* lexer);
-bool match_token(Lexer* lexer, TokenType type);
-bool is_token(Lexer* lexer, TokenType type);
+bool match_token(Lexer* lexer, TokenKind kind);
+bool is_token(Lexer* lexer, TokenKind kind);
 #endif

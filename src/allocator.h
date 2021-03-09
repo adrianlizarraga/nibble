@@ -7,45 +7,33 @@
 
 #define DEFAULT_ALIGN alignof(max_align_t)
 
-typedef void* MemAllocFunc(void* allocator, size_t size, size_t align, bool clear);
-typedef void* MemReallocFunc(void* allocator, void* ptr, size_t old_size, size_t size, size_t align);
-typedef void MemFreeFunc(void* allocator, void* ptr);
-
 typedef struct Allocator {
-    MemAllocFunc* allocate;
-    MemReallocFunc* reallocate;
-    MemFreeFunc* free;
+    size_t block_size;
+    unsigned char* buffer;
+    unsigned char* end;
+    unsigned char* at;
 } Allocator;
+
+typedef struct AllocatorState {
+    Allocator* allocator;
+    unsigned char* buffer;
+    unsigned char* at;
+} AllocatorState;
 
 #define new_type(allocator, type, clear) (type*)mem_allocate((allocator), sizeof(type), alignof(type), (clear))
 
 #define new_array(allocator, elem_type, len, clear)                                                                    \
     (elem_type*)mem_allocate((allocator), sizeof(elem_type) * (len), alignof(elem_type), (clear))
 
-void* mem_allocate(void* allocator, size_t size, size_t align, bool clear);
-void* mem_reallocate(void* allocator, void* ptr, size_t old_size, size_t size, size_t align);
-void mem_free(void* allocator, void* ptr);
+Allocator allocator_create(size_t block_size);
+void allocator_reset(Allocator* allocator);
+void allocator_destroy(Allocator* allocator);
 
-typedef struct MemArena {
-    Allocator base;
-    Allocator* allocator;
-    size_t block_size;
-    unsigned char* buffer;
-    unsigned char* end;
-    unsigned char* at;
-} MemArena;
+void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear);
+void* mem_reallocate(Allocator* allocator, void* ptr, size_t old_size, size_t size, size_t align);
+void mem_free(Allocator* allocator, void* ptr);
 
-typedef struct MemArenaState {
-    MemArena* arena;
-    unsigned char* buffer;
-    unsigned char* at;
-} MemArenaState;
-
-MemArena mem_arena(Allocator* allocator, size_t block_size);
-void mem_arena_reset(MemArena* arena);
-void mem_arena_destroy(MemArena* arena);
-
-MemArenaState mem_arena_snapshot(MemArena* arena);
-void mem_arena_restore(MemArenaState state);
+AllocatorState allocator_get_state(Allocator* allocator);
+void allocator_restore_state(AllocatorState state);
 
 #endif

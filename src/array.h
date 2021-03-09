@@ -32,8 +32,8 @@ typedef struct ArrayHdr {
 #define array_clear(a) (!(a) ? 0 : (_array_hdr(a)->len = 0))
 #define array_free(a) (((a) ? _array_free(a) : (void)0), (a) = NULL)
 
-#define array_create(alloc, cap) _array_reserve(NULL, (cap), sizeof(*(a)), DEFAULT_ALIGN, alloc)
+#define array_create(alloc, type, cap) _array_reserve(NULL, (cap), sizeof(type), DEFAULT_ALIGN, alloc)
 
-void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, void* allocator);
+void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, Allocator* allocator);
 void _array_free(void* array);
 #endif

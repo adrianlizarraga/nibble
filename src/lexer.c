@@ -1,4 +1,5 @@
 #include "lexer.h"
+#include "array.h"
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
@@ -7,6 +8,7 @@
 #include <stdlib.h>
 
 #define LEXER_MAX_ERROR_LEN 128
+#define LEXER_ARENA_BLOCK_SIZE 512
 
 // Converts a numeric character to an integer value. Values are biased by +1
 // so that a result of 0 is known to be invalid.
@@ -24,11 +26,6 @@ static const char escaped_to_char[256] = {
 static bool is_whitespace(char c)
 {
     return (c == ' ') || (c == '\t') || (c == '\r') || (c == '\n') || (c == '\v');
-}
-
-static bool is_escaped_space(char c)
-{
-    return (c == '\t') || (c == '\n') || (c == '\r') || (c == '\v');
 }
 
 static bool is_digit(char c)
@@ -86,6 +83,14 @@ static void lexer_on_line(Lexer* lexer)
     }
 }
 
+static const char* lexer_on_str(Lexer* lexer, const char* str, size_t len)
+{
+    LexerClient* client = &lexer->client;
+    OnLexStrFunc* on_str = client->on_str;
+
+    return on_str ? on_str(client->data, lexer_at_pos(lexer), str, len) : NULL;
+}
+
 static void skip_c_comment(Lexer* lexer)
 {
     assert(lexer->at[0] == '/');
@@ -128,7 +133,7 @@ static void scan_int(Lexer* lexer)
 
     Token* token = &lexer->token;
 
-    token->type = TKN_INT;
+    token->kind = TKN_INT;
     token->tint.rep = TKN_INT_DEC;
     token->tint.value = 0;
     uint32_t base = 10;
@@ -192,7 +197,7 @@ static void scan_float(Lexer* lexer)
     assert(((lexer->at[0] >= '0') && (lexer->at[0] <= '9')) || (lexer->at[0] == '.'));
     Token* token = &lexer->token;
 
-    token->type = TKN_FLOAT;
+    token->kind = TKN_FLOAT;
     token->tfloat.value = 0.0;
 
     const char* start = lexer->at;
@@ -245,12 +250,108 @@ static void scan_float(Lexer* lexer)
     return;
 }
 
+static int scan_hex_escape(Lexer* lexer)
+{
+    // Scan the first of two hex digits.
+    unsigned int biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
+    unsigned int digit = biased - 1;
+
+    if (!biased || (digit >= 16)) {
+        lexer_on_error(lexer, "Invalid hex character digit '0x%X'", lexer->at[0]);
+        return -1;
+    }
+
+    int value = digit;
+    lexer->at++;
+
+    // Scan the second (optional) digit.
+    biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
+
+    if (biased) {
+        digit = biased - 1;
+
+        if (digit >= 16) {
+            lexer_on_error(lexer, "Invalid hex character digit '0x%X' is larger than 0x%X", lexer->at[0], 15);
+            return -1;
+        }
+
+        value *= 16;
+        value += digit;
+
+        lexer->at++;
+    }
+
+    return value;
+}
+
+static void scan_string(Lexer* lexer)
+{
+    assert(lexer->at[0] == '"');
+    Token* token = &lexer->token;
+    token->kind = TKN_STR;
+ 
+    lexer->at++;
+
+    Allocator* arena = &lexer->allocator;
+    AllocatorState state = allocator_get_state(arena);
+    char* tmp = array_create(arena, char, 128); 
+
+    while (lexer->at[0] && (lexer->at[0] != '"') && (lexer->at[0] != '\n')) {
+        char c = lexer->at[0];
+
+        if (c == '\\') {
+            lexer->at++;
+
+            c = lexer->at[0];
+            if ((c == 'x') || (c == 'X')) {
+                lexer->at++;
+
+                int hex_val = scan_hex_escape(lexer);
+                if (hex_val < 0) {
+                    skip_word_end(lexer);
+                    c = '?'; // TODO: What do other languages do?
+                } else {
+                    c = (char)hex_val;
+                }
+            } else { // One character escapes
+                c = escaped_to_char[(unsigned char)lexer->at[0]];
+
+                if (!c && (lexer->at[0] != '0')) {
+                    lexer_on_error(lexer, "Invalid escaped character '\\%c'", lexer->at[0]);
+                }
+
+                lexer->at++;
+            }
+        } else {
+            lexer->at++;
+        }
+
+        array_push(tmp, c);
+    }
+
+    if (lexer->at[0] == '"') {
+        lexer->at++;
+    } else if (lexer->at[0] == '\n') {
+        lexer_on_error(lexer, "String literal cannot span multiple lines");
+        lexer_on_line(lexer);
+        lexer->at++;
+        skip_char(lexer, '"');
+    } else {
+        lexer_on_error(lexer, "Encountered end-of-file while parsing string literal");
+    }
+
+    array_push(tmp, '\0');
+    token->tstr.value = lexer_on_str(lexer, tmp, array_len(tmp) - 1);
+
+    allocator_restore_state(state);
+}
+
 static void scan_char(Lexer* lexer)
 {
     assert(lexer->at[0] == '\'');
     Token* token = &lexer->token;
 
-    token->type = TKN_INT;
+    token->kind = TKN_INT;
     token->tint.rep = TKN_INT_CHAR;
     token->tint.value = 0;
 
@@ -263,17 +364,10 @@ static void scan_char(Lexer* lexer)
         return;
     }
 
-    // Check for invalid characters (e.g., newline).
-    if (is_escaped_space(lexer->at[0])) {
-        lexer_on_error(lexer, "Invalid character literal with value 0x%X", lexer->at[0]);
-
-        if (lexer->at[0] == '\n') {
-            lexer_on_line(lexer);
-            lexer->at++;
-        } else {
-            skip_word_end(lexer);
-        }
-
+    if (lexer->at[0] == '\n') {
+        lexer_on_error(lexer, "Character literal cannot contain a newline character");
+        lexer_on_line(lexer);
+        lexer->at++;
         skip_char(lexer, '\'');
 
         return;
@@ -286,55 +380,20 @@ static void scan_char(Lexer* lexer)
         if ((lexer->at[0] == 'x') || (lexer->at[0] == 'X')) {
             lexer->at++;
 
-            // Scan the first of two hex digits.
-            unsigned int biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
-            unsigned int digit = biased - 1;
+            int hex_val = scan_hex_escape(lexer);
 
-            if (!biased || (digit >= 16)) {
-                lexer_on_error(lexer, "Invalid hex character digit '0x%X'", lexer->at[0]);
-                skip_word_end(lexer);
-                skip_char(lexer, '\'');
-                return;
-            }
-
-            token->tint.value = digit;
-            lexer->at++;
-
-            // Scan the second (optional) digit.
-            biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
-
-            if (biased) {
-                digit = biased - 1;
-
-                if (digit >= 16) {
-                    lexer_on_error(lexer, "Invalid hex character digit '0x%X' is larger than 0x%X", lexer->at[0],
-                                   16 - 1);
-                    skip_word_end(lexer);
-                    skip_char(lexer, '\'');
-                    return;
-                }
-
-                token->tint.value *= 16;
-                token->tint.value += digit;
-
-                lexer->at++;
-            }
+            token->tint.value = hex_val >= 0 ? hex_val : 0;
         } else { // One character escape chars
             int32_t val = escaped_to_char[(unsigned char)lexer->at[0]];
 
             if (!val && (lexer->at[0] != '0')) {
                 lexer_on_error(lexer, "Invalid escaped character '\\%c'", lexer->at[0]);
-                skip_word_end(lexer);
-                skip_char(lexer, '\'');
-                return;
             }
 
             token->tint.value = val;
             lexer->at++;
         }
-    }
-    // Regular non-escaped char
-    else {
+    } else { // Regular non-escaped char
         token->tint.value = lexer->at[0];
         lexer->at++;
     }
@@ -344,10 +403,9 @@ static void scan_char(Lexer* lexer)
         lexer_on_error(lexer, "Missing closing character quote (found '%c' instead)", lexer->at[0]);
         skip_word_end(lexer);
         skip_char(lexer, '\'');
-        return;
+    } else {
+        lexer->at++;
     }
-
-    lexer->at++;
 
     return;
 }
@@ -394,59 +452,59 @@ bool next_token(Lexer* lexer)
                 skip_c_comment(lexer);
                 repeat = true;
             } else {
-                token->type = TKN_DIV;
+                token->kind = TKN_DIV;
                 lexer->at++;
             }
         } break;
         case '(': {
-            token->type = TKN_LPAREN;
+            token->kind = TKN_LPAREN;
             lexer->at++;
         } break;
         case ')': {
-            token->type = TKN_RPAREN;
+            token->kind = TKN_RPAREN;
             lexer->at++;
         } break;
         case '[': {
-            token->type = TKN_LBRACE;
+            token->kind = TKN_LBRACE;
             lexer->at++;
         } break;
         case ']': {
-            token->type = TKN_RBRACE;
+            token->kind = TKN_RBRACE;
             lexer->at++;
         } break;
         case '{': {
-            token->type = TKN_LBRACKET;
+            token->kind = TKN_LBRACKET;
             lexer->at++;
         } break;
         case '}': {
-            token->type = TKN_RBRACKET;
+            token->kind = TKN_RBRACKET;
             lexer->at++;
         } break;
         case ';': {
-            token->type = TKN_SEMICOLON;
+            token->kind = TKN_SEMICOLON;
             lexer->at++;
         } break;
         case ':': {
-            token->type = TKN_COLON;
+            token->kind = TKN_COLON;
             lexer->at++;
         } break;
         case ',': {
-            token->type = TKN_COMMA;
+            token->kind = TKN_COMMA;
             lexer->at++;
         } break;
         case '+': {
-            token->type = TKN_PLUS;
+            token->kind = TKN_PLUS;
             lexer->at++;
         } break;
         case '-': {
-            token->type = TKN_MINUS;
+            token->kind = TKN_MINUS;
             lexer->at++;
         } break;
         case '.': {
             if (is_digit(lexer->at[1])) {
                 scan_float(lexer);
             } else {
-                token->type = TKN_DOT;
+                token->kind = TKN_DOT;
                 lexer->at++;
             }
         } break;
@@ -467,8 +525,11 @@ bool next_token(Lexer* lexer)
         case '\'': {
             scan_char(lexer);
         } break;
+        case '"': {
+            scan_string(lexer);
+        } break;
         case '\0': {
-            token->type = TKN_EOF;
+            token->kind = TKN_EOF;
             lexer->at++;
         } break;
         default: {
@@ -481,17 +542,17 @@ bool next_token(Lexer* lexer)
         token->end = lexer_at_pos(lexer);
     } while (repeat);
 
-    return token->type != TKN_EOF;
+    return token->kind != TKN_EOF;
 }
 
-bool is_token(Lexer* lexer, TokenType type)
+bool is_token(Lexer* lexer, TokenKind kind)
 {
-    return (lexer->token.type == type);
+    return (lexer->token.kind == kind);
 }
 
-bool match_token(Lexer* lexer, TokenType type)
+bool match_token(Lexer* lexer, TokenKind kind)
 {
-    bool matches = (lexer->token.type == type);
+    bool matches = (lexer->token.kind == kind);
 
     if (matches) {
         next_token(lexer);

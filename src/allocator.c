@@ -4,101 +4,68 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MEM_ARENA_MIN_BLOCK_ALIGN DEFAULT_ALIGN
-
-void* mem_allocate(void* allocator, size_t size, size_t align, bool clear)
-{
-    if (allocator) {
-        return ((Allocator*)allocator)->allocate(allocator, size, align, clear);
-    }
-
-    if (clear) {
-        return calloc(1, size);
-    }
-
-    return malloc(size);
-}
-
-void* mem_reallocate(void* allocator, void* ptr, size_t old_size, size_t size, size_t align)
-{
-    if (allocator) {
-        return ((Allocator*)allocator)->reallocate(allocator, ptr, old_size, size, align);
-    }
-
-    return realloc(ptr, size);
-}
-
-void mem_free(void* allocator, void* ptr)
-{
-    if (allocator) {
-        ((Allocator*)allocator)->free(allocator, ptr);
-    }
-
-    free(ptr);
-}
-
-typedef struct MemArenaBlockFooter {
+typedef struct MemBlockFooter {
     unsigned char* pbuffer;
     unsigned char* pend;
-} MemArenaBlockFooter;
+} MemBlockFooter;
 
-static void* mem_arena_alloc_block(MemArena* arena, size_t size, size_t align)
+static bool alloc_mem_block(Allocator* allocator, size_t size)
 {
-    // Adds a new block of memory to the arena.
+    // Adds a new block of memory to the allocator.
     // The new block will contain a pointer to the old block in its footer (for cleanup).
     // The block size doubles every time.
 
-    size_t block_size = arena->block_size;
+    size_t block_size = allocator->block_size;
     if (block_size < size) {
         block_size = size;
     }
     block_size *= 2;
 
-    size_t block_align = MEM_ARENA_MIN_BLOCK_ALIGN;
-    if (block_align < align) {
-        block_align = align;
-    }
-
-    unsigned char* block =
-        mem_allocate(arena->allocator, (block_size + sizeof(MemArenaBlockFooter)), block_align, false);
+    unsigned char* block = malloc(block_size + sizeof(MemBlockFooter));
     if (!block) {
-        return NULL;
+        return false;
     }
 
-    unsigned char* pbuffer = arena->buffer;
-    unsigned char* pend = arena->end;
+    unsigned char* pbuffer = allocator->buffer;
+    unsigned char* pend = allocator->end;
 
-    arena->buffer = block;
-    arena->end = block + block_size;
-    arena->at = block + size;
-    arena->block_size = block_size;
+    allocator->buffer = block;
+    allocator->end = block + block_size;
+    allocator->at = block + size;
+    allocator->block_size = block_size;
 
-    MemArenaBlockFooter* footer = (MemArenaBlockFooter*)arena->end;
+    MemBlockFooter* footer = (MemBlockFooter*)allocator->end;
     footer->pbuffer = pbuffer;
     footer->pend = pend;
 
-    return (void*)block;
+    return true;
 }
 
-static void* mem_arena_allocate(void* allocator, size_t size, size_t align, bool clear)
+void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
 {
     assert(align > 0);
     assert((align & (align - 1)) == 0);
-
-    MemArena* arena = (MemArena*)allocator;
+    if (!allocator) {
+        return clear ? calloc(1, size) : malloc(size);
+    }
 
     void* memory = NULL;
 
-    uintptr_t aligned_at = (((uintptr_t)arena->at) + align - 1) & ~(align - 1);
+    uintptr_t aligned_at = (((uintptr_t)allocator->at) + align - 1) & ~(align - 1);
     uintptr_t new_at = aligned_at + size;
 
     // Allocate a new memory block if need more memory.
-    if (new_at > (uintptr_t)arena->end) {
-        return mem_arena_alloc_block(arena, size, align);
+    if (new_at > (uintptr_t)allocator->end) {
+        if (!alloc_mem_block(allocator, size)) {
+            return NULL;
+        }
+
+        aligned_at = (((uintptr_t)allocator->at) + align - 1) & ~(align - 1);
+        new_at = aligned_at + size;
     }
 
     memory = (void*)aligned_at;
-    arena->at = (unsigned char*)new_at;
+    allocator->at = (unsigned char*)new_at;
 
     if (clear) {
         memset(memory, 0, size);
@@ -107,10 +74,14 @@ static void* mem_arena_allocate(void* allocator, size_t size, size_t align, bool
     return memory;
 }
 
-static void* mem_arena_reallocate(void* allocator, void* ptr, size_t old_size, size_t size, size_t align)
+void* mem_reallocate(Allocator* allocator, void* ptr, size_t old_size, size_t size, size_t align)
 {
+    if (!allocator) {
+        return realloc(ptr, size);
+    }
+
     // TODO: If this allocation is at the top of the arena stack, allocation is not necessary!
-    void* memory = mem_arena_allocate(allocator, size, align, false);
+    void* memory = mem_allocate(allocator, size, align, false);
 
     if (memory && ptr) {
         memcpy(memory, ptr, old_size);
@@ -119,56 +90,57 @@ static void* mem_arena_reallocate(void* allocator, void* ptr, size_t old_size, s
     return memory;
 }
 
-static void mem_arena_free(void* allocator, void* ptr)
+void mem_free(Allocator* allocator, void* ptr)
 {
-    (void)allocator;
-    (void)ptr;
-
+    if (!allocator) {
+        free(ptr);
+    }
     // Do nothing.
+    // TODO: If ptr is the last previous allocation, can undo it.
 }
 
-MemArena mem_arena(Allocator* allocator, size_t block_size)
+Allocator allocator_create(size_t block_size)
 {
-    MemArena arena = {0};
-    arena.allocator = allocator;
-    arena.block_size = block_size;
-    arena.base.allocate = mem_arena_allocate;
-    arena.base.reallocate = mem_arena_reallocate;
-    arena.base.free = mem_arena_free;
+    Allocator allocator = {0};
+    allocator.block_size = block_size;
 
-    return arena;
+    return allocator;
 }
 
-void mem_arena_reset(MemArena* arena)
+void allocator_reset(Allocator* allocator)
 {
-    assert(arena->buffer);
+    if (!allocator->buffer) {
+        return;
+    }
 
     // Free all blocks, except for the last (original), which is "cleared".
-    MemArenaBlockFooter* footer = (MemArenaBlockFooter*)arena->end;
+    MemBlockFooter* footer = (MemBlockFooter*)allocator->end;
 
     while (footer->pbuffer) {
         unsigned char* pbuffer = footer->pbuffer;
         unsigned char* pend = footer->pend;
 
-        free(arena->buffer);
+        free(allocator->buffer);
 
-        arena->buffer = pbuffer;
-        arena->end = pend;
-        footer = (MemArenaBlockFooter*)arena->end;
+        allocator->buffer = pbuffer;
+        allocator->end = pend;
+        footer = (MemBlockFooter*)allocator->end;
     }
 
-    arena->at = arena->buffer;
+    allocator->at = allocator->buffer;
 }
 
-void mem_arena_destroy(MemArena* arena)
+void allocator_destroy(Allocator* allocator)
 {
-    assert(arena->buffer);
+    if (!allocator->buffer) {
+        return;
+    }
 
-    unsigned char* buffer = arena->buffer;
-    unsigned char* end = arena->end;
+    unsigned char* buffer = allocator->buffer;
+    unsigned char* end = allocator->end;
 
     while (buffer) {
-        MemArenaBlockFooter footer = *(MemArenaBlockFooter*)(end);
+        MemBlockFooter footer = *(MemBlockFooter*)(end);
 
         free(buffer);
 
@@ -176,30 +148,30 @@ void mem_arena_destroy(MemArena* arena)
         end = footer.pend;
     }
 
-    arena->buffer = NULL;
-    arena->at = NULL;
-    arena->end = NULL;
+    allocator->buffer = NULL;
+    allocator->at = NULL;
+    allocator->end = NULL;
 }
 
-MemArenaState mem_arena_snapshot(MemArena* arena)
+AllocatorState allocator_get_state(Allocator* allocator)
 {
-    MemArenaState state = {0};
-    state.arena = arena;
-    state.buffer = arena->buffer;
-    state.at = arena->at;
+    AllocatorState state = {0};
+    state.allocator = allocator;
+    state.buffer = allocator->buffer;
+    state.at = allocator->at;
 
     return state;
 }
 
-void mem_arena_restore(MemArenaState state)
+void allocator_restore_state(AllocatorState state)
 {
-    MemArena* arena = state.arena;
+    Allocator* allocator = state.allocator;
     unsigned char* dest_buffer = state.buffer;
-    unsigned char* buffer = arena->buffer;
-    unsigned char* end = arena->end;
+    unsigned char* buffer = allocator->buffer;
+    unsigned char* end = allocator->end;
 
     while (buffer != dest_buffer) {
-        MemArenaBlockFooter footer = *(MemArenaBlockFooter*)(end);
+        MemBlockFooter footer = *(MemBlockFooter*)(end);
 
         free(buffer);
 
@@ -209,7 +181,7 @@ void mem_arena_restore(MemArenaState state)
 
     assert(buffer == dest_buffer);
 
-    arena->buffer = buffer;
-    arena->end = end;
-    arena->at = state.at;
+    allocator->buffer = buffer;
+    allocator->end = end;
+    allocator->at = state.at;
 }

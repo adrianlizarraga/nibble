@@ -10,53 +10,73 @@
 
 typedef struct TestProgContext {
     int num_errors;
+    Allocator allocator;
 } TestProgContext;
 
 static TestProgContext g_ctx;
 
 static void test_on_error(void* data, ProgPos pos, const char* msg)
 {
-    (void)pos;
-    (void)msg;
-
     if (data) {
         TestProgContext* c = data;
 
         c->num_errors += 1;
+        printf("[ERROR]:%u: %s\n", pos, msg);
     }
+}
+
+static const char* test_on_str(void* data, ProgPos pos, const char* str, size_t len)
+{
+    (void)pos;
+
+    if (data) {
+        TestProgContext* c = data;
+
+        char* dup = new_array(&c->allocator, char, len + 1, false);
+
+        for (size_t i = 0; i < len; ++i) {
+            dup[i] = str[i];
+        }
+        dup[len] = '\0';
+
+        return dup;
+    }
+
+    return NULL;
 }
 
 #define TKN_TEST_POS(tk, tp, a, b)                                                                                     \
     do {                                                                                                               \
-        assert((tk.type == tp));                                                                                       \
+        assert((tk.kind == tp));                                                                                       \
         assert((tk.start == a));                                                                                       \
         assert((tk.end == b));                                                                                         \
     } while (0)
 #define TKN_TEST_INT(tk, b, v)                                                                                         \
     do {                                                                                                               \
-        assert((tk.type == TKN_INT));                                                                                  \
+        assert((tk.kind == TKN_INT));                                                                                  \
         assert((tk.tint.rep == b));                                                                                    \
         assert((tk.tint.value == v));                                                                                  \
     } while (0)
 #define TKN_TEST_FLOAT(tk, v)                                                                                          \
     do {                                                                                                               \
-        assert((tk.type == TKN_FLOAT));                                                                                \
+        assert((tk.kind == TKN_FLOAT));                                                                                \
         assert((tk.tfloat.value == v));                                                                                \
     } while (0)
 #define TKN_TEST_CHAR(tk, v)                                                                                           \
     do {                                                                                                               \
-        assert((tk.type == TKN_INT));                                                                                  \
+        assert((tk.kind == TKN_INT));                                                                                  \
         assert((tk.tint.rep == TKN_INT_CHAR));                                                                         \
         assert((tk.tint.value == v));                                                                                  \
     } while (0)
 
 static void test_init_lexer(Lexer* lexer, const char* str, ProgPos start)
 {
-
     init_lexer(lexer, str, start);
-    memset(&g_ctx, 0, sizeof(TestProgContext));
     lexer->client.data = &g_ctx;
     lexer->client.on_error = test_on_error;
+    lexer->client.on_str = test_on_str;
+
+    g_ctx.num_errors = 0;
 }
 
 static void test_lexer(void)
@@ -154,7 +174,7 @@ static void test_lexer(void)
     TKN_TEST_INT(lexer.token, TKN_INT_OCT, 9);
 
     next_token(&lexer);
-    assert(lexer.token.type == TKN_EOF);
+    assert(lexer.token.kind == TKN_EOF);
 
     test_init_lexer(&lexer, "0Z 0b3 09 1A\n999999999999999999999999", 0);
 
@@ -174,7 +194,7 @@ static void test_lexer(void)
     assert(g_ctx.num_errors == 5);
 
     next_token(&lexer);
-    assert(lexer.token.type == TKN_EOF);
+    assert(lexer.token.kind == TKN_EOF);
 
     // Test floating point literals
     test_init_lexer(&lexer, "1.23 .23 1.33E2", 0);
@@ -248,7 +268,7 @@ static void test_lexer(void)
     TKN_TEST_CHAR(lexer.token, '?');
 
     next_token(&lexer);
-    assert(lexer.token.type == TKN_EOF);
+    assert(lexer.token.kind == TKN_EOF);
     assert(g_ctx.num_errors == 0);
 
     test_init_lexer(&lexer, "'\\x12'  '\\x3'", 0);
@@ -277,107 +297,116 @@ static void test_lexer(void)
     TKN_TEST_CHAR(lexer.token, '\0');
 
     next_token(&lexer);
-    assert(lexer.token.type == TKN_EOF);
+    assert(lexer.token.kind == TKN_EOF);
+
+    // Test string literals
+    {
+        test_init_lexer(&lexer, "\"hello world\"", 0);
+
+        next_token(&lexer);
+        printf("str lit: \"%s\"\n", lexer.token.tstr.value);
+        printf("allocator - size: %lu\n", lexer.allocator.at - lexer.allocator.buffer);
+    }
 }
 
-void test_mem_arena(void)
+void test_allocator(void)
 {
-    MemArena arena = {0};
+    Allocator allocator = {0};
 
-    arena = mem_arena(NULL, 512);
+    allocator = allocator_create(512);
 
-    void* m = mem_allocate(&arena, 256, DEFAULT_ALIGN, true);
+    void* m = mem_allocate(&allocator, 256, DEFAULT_ALIGN, true);
     assert(m);
-    assert((arena.at - arena.buffer) >= 256);
+    assert((allocator.at - allocator.buffer) >= 256);
 
-    unsigned char* old_buffer = arena.buffer;
-    m = mem_allocate(&arena, 1024, DEFAULT_ALIGN, false);
+    unsigned char* old_buffer = allocator.buffer;
+    m = mem_allocate(&allocator, 1024, DEFAULT_ALIGN, false);
     assert(m);
-    assert(old_buffer != arena.buffer);
-    assert((arena.at - arena.buffer) >= 1024);
+    assert(old_buffer != allocator.buffer);
+    assert((allocator.at - allocator.buffer) >= 1024);
 
-    mem_arena_destroy(&arena);
-    assert(!arena.buffer);
-    assert(!arena.at);
-    assert(!arena.end);
+    allocator_destroy(&allocator);
+    assert(!allocator.buffer);
+    assert(!allocator.at);
+    assert(!allocator.end);
 
-    arena = mem_arena(NULL, 512);
+    allocator = allocator_create(512);
 
-    old_buffer = arena.buffer;
-    m = mem_allocate(&arena, 1024, DEFAULT_ALIGN, false);
+    old_buffer = allocator.buffer;
+    m = mem_allocate(&allocator, 1024, DEFAULT_ALIGN, false);
     assert(m);
-    assert(old_buffer != arena.buffer);
-    assert((arena.end - arena.buffer) >= 1024);
+    assert(old_buffer != allocator.buffer);
+    assert((allocator.end - allocator.buffer) >= 1024);
 
-    mem_arena_reset(&arena);
-    assert(arena.buffer);
-    assert(arena.at == arena.buffer);
-    assert(arena.end > arena.buffer);
+    allocator_reset(&allocator);
+    assert(allocator.buffer);
+    assert(allocator.at == allocator.buffer);
+    assert(allocator.end > allocator.buffer);
 
-    mem_arena_destroy(&arena);
-    assert(!arena.buffer);
-    assert(!arena.at);
-    assert(!arena.end);
+    allocator_destroy(&allocator);
+    assert(!allocator.buffer);
+    assert(!allocator.at);
+    assert(!allocator.end);
 
-    // Test arena state restoration.
-    arena = mem_arena(NULL, 512);
+    // Test allocator state restoration.
+    allocator = allocator_create(512);
 
-    m = mem_allocate(&arena, 16, DEFAULT_ALIGN, false);
+    m = mem_allocate(&allocator, 16, DEFAULT_ALIGN, false);
     assert(m);
-    assert((arena.at - arena.buffer) >= 16);
-    assert((arena.at - arena.buffer) <= 64);
+    assert((allocator.at - allocator.buffer) >= 16);
+    assert((allocator.at - allocator.buffer) <= 64);
 
-    MemArenaState state = mem_arena_snapshot(&arena);
+    AllocatorState state = allocator_get_state(&allocator);
     {
-        m = mem_allocate(&arena, 64, DEFAULT_ALIGN, false);
+        m = mem_allocate(&allocator, 64, DEFAULT_ALIGN, false);
         assert(m);
-        assert((arena.at - arena.buffer) >= 64 + 16);
+        assert((allocator.at - allocator.buffer) >= 64 + 16);
     }
-    mem_arena_restore(state);
+    allocator_restore_state(state);
 
-    assert((arena.at - arena.buffer) >= 16);
-    assert((arena.at - arena.buffer) <= 64);
+    assert((allocator.at - allocator.buffer) >= 16);
+    assert((allocator.at - allocator.buffer) <= 64);
 
-    mem_arena_destroy(&arena);
-    assert(!arena.buffer);
-    assert(!arena.at);
-    assert(!arena.end);
+    allocator_destroy(&allocator);
+    assert(!allocator.buffer);
+    assert(!allocator.at);
+    assert(!allocator.end);
 
-    // Test arena state restoration.
-    arena = mem_arena(NULL, 512);
+    // Test allocator state restoration.
+    allocator = allocator_create(512);
 
-    m = mem_allocate(&arena, 16, DEFAULT_ALIGN, false);
+    m = mem_allocate(&allocator, 16, DEFAULT_ALIGN, false);
     assert(m);
-    assert((arena.at - arena.buffer) >= 16);
-    assert((arena.at - arena.buffer) <= 64);
+    assert((allocator.at - allocator.buffer) >= 16);
+    assert((allocator.at - allocator.buffer) <= 64);
 
-    old_buffer = arena.buffer;
-    state = mem_arena_snapshot(&arena);
+    old_buffer = allocator.buffer;
+    state = allocator_get_state(&allocator);
     {
-        m = mem_allocate(&arena, 2048, DEFAULT_ALIGN, false);
+        m = mem_allocate(&allocator, 2048, DEFAULT_ALIGN, false);
         assert(m);
-        assert(old_buffer != arena.buffer);
-        assert((arena.at - arena.buffer) >= 2048);
+        assert(old_buffer != allocator.buffer);
+        assert((allocator.at - allocator.buffer) >= 2048);
     }
-    mem_arena_restore(state);
+    allocator_restore_state(state);
 
-    assert(old_buffer == arena.buffer);
-    assert((arena.at - arena.buffer) >= 16);
-    assert((arena.at - arena.buffer) <= 64);
+    assert(old_buffer == allocator.buffer);
+    assert((allocator.at - allocator.buffer) >= 16);
+    assert((allocator.at - allocator.buffer) <= 64);
 
-    mem_arena_destroy(&arena);
-    assert(!arena.buffer);
-    assert(!arena.at);
-    assert(!arena.end);
+    allocator_destroy(&allocator);
+    assert(!allocator.buffer);
+    assert(!allocator.at);
+    assert(!allocator.end);
 }
 
 void test_array(void)
 {
-    MemArena arena = mem_arena(NULL, 1024);
+    Allocator allocator = allocator_create(1024);
 
     // Test array create and len/cap tracking.
     {
-        int* a = array_create(&arena, 128);
+        int* a = array_create(&allocator, int, 128);
         assert(array_len(a) == 0);
         assert(array_cap(a) == 128);
 
@@ -391,7 +420,7 @@ void test_array(void)
 
     // Test array reallocation.
     {
-        int* a = array_create(&arena, 16);
+        int* a = array_create(&allocator, int, 16);
         int* old_a = a;
 
         for (int i = 0; i < 256; i++) {
@@ -409,7 +438,7 @@ void test_array(void)
 
     // Test array clearing
     {
-        int* a = array_create(&arena, 16);
+        int* a = array_create(&allocator, int, 16);
         array_push(a, 10);
         assert(array_len(a) > 0);
 
@@ -420,7 +449,7 @@ void test_array(void)
 
     // Test insertion
     {
-        int* a = array_create(&arena, 8);
+        int* a = array_create(&allocator, int, 8);
         for (int i = 0; i < 4; i++) {
             array_push(a, i);
         }
@@ -437,7 +466,7 @@ void test_array(void)
 
     // Test array pop
     {
-        int* a = array_create(&arena, 8);
+        int* a = array_create(&allocator, int, 8);
 
         array_push(a, 333);
 
@@ -450,7 +479,7 @@ void test_array(void)
 
     // Test array remove.
     {
-        int* a = array_create(&arena, 10);
+        int* a = array_create(&allocator, int, 10);
         for (int i = 0; i < 8; i++) {
             array_push(a, i);
         }
@@ -471,7 +500,7 @@ void test_array(void)
 
     // Test array remove (swap last).
     {
-        int* a = array_create(&arena, 10);
+        int* a = array_create(&allocator, int, 10);
         for (int i = 0; i < 8; i++) {
             array_push(a, i);
         }
@@ -483,7 +512,7 @@ void test_array(void)
         assert(a[rindex] == 7);
     }
 
-    mem_arena_destroy(&arena);
+    allocator_destroy(&allocator);
 }
 
 void test_hash_map(void)
@@ -511,9 +540,11 @@ void test_hash_map(void)
 
 int main(void)
 {
+    g_ctx.allocator = allocator_create(4096);
     printf("Nibble!\n");
     test_lexer();
-    test_mem_arena();
+    test_allocator();
     test_array();
     test_hash_map();
+    allocator_destroy(&g_ctx.allocator);
 }

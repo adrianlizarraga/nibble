@@ -1,6 +1,6 @@
 #include "array.h"
 
-void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, void* allocator)
+void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, Allocator* allocator)
 {
     size_t cap = array_cap(array);
     if (cap && cap >= len) {
