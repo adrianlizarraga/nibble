@@ -68,6 +68,11 @@ static const char* test_on_str(void* data, ProgPos pos, const char* str, size_t 
         assert((tk.tint.rep == TKN_INT_CHAR));                                                                         \
         assert((tk.tint.value == v));                                                                                  \
     } while (0)
+#define TKN_TEST_STR(tk, v)                                                                                            \
+    do {                                                                                                               \
+        assert((tk.kind == TKN_STR));                                                                                  \
+        assert(strcmp(tk.tstr.value, v) == 0);                                                                         \
+    } while (0)
 
 static void test_init_lexer(Lexer* lexer, const char* str, ProgPos start)
 {
@@ -300,13 +305,43 @@ static void test_lexer(void)
     next_token(&lexer);
     assert(lexer.token.kind == TKN_EOF);
 
-    // Test string literals
+    // Test basic string literals
     {
-        test_init_lexer(&lexer, "\"hello world\"", 0);
+        const char* str = "\"hello world\" \"a\\nb\" \n \"\\x50 a \\x51\" \"\" \"\\\"nested\\\"\"";
+        test_init_lexer(&lexer, str, 0);
 
         next_token(&lexer);
-        printf("str lit: \"%s\"\n", lexer.token.tstr.value);
-        printf("allocator - size: %lu\n", lexer.allocator.at - lexer.allocator.buffer);
+        TKN_TEST_STR(lexer.token, "hello world");
+
+        next_token(&lexer);
+        TKN_TEST_STR(lexer.token, "a\nb");
+
+        next_token(&lexer);
+        TKN_TEST_STR(lexer.token, "\x50 a \x51");
+
+        next_token(&lexer);
+        TKN_TEST_STR(lexer.token, "");
+
+        next_token(&lexer);
+        TKN_TEST_STR(lexer.token, "\"nested\"");
+    }
+
+    // Test errors when scanning string literals
+    {
+        const char* str = "\"\n\" \"\\xTF\" \"\\W\" \"unclosed";
+        test_init_lexer(&lexer, str, 0);
+
+        next_token(&lexer);
+        assert(g_ctx.num_errors == 1);
+
+        next_token(&lexer);
+        assert(g_ctx.num_errors == 2);
+
+        next_token(&lexer);
+        assert(g_ctx.num_errors == 3);
+
+        next_token(&lexer);
+        assert(g_ctx.num_errors == 4);
     }
     free_lexer(&lexer);
 }
@@ -545,8 +580,8 @@ int main(void)
     g_ctx.allocator = allocator_create(4096);
     printf("Nibble!\n");
     test_lexer();
-    test_allocator();
-    test_array();
-    test_hash_map();
+    // test_allocator();
+    // test_array();
+    // test_hash_map();
     allocator_destroy(&g_ctx.allocator);
 }

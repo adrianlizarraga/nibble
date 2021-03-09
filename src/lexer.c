@@ -257,7 +257,7 @@ static int scan_hex_escape(Lexer* lexer)
     unsigned int digit = biased - 1;
 
     if (!biased || (digit >= 16)) {
-        lexer_on_error(lexer, "Invalid hex character digit '0x%X'", lexer->at[0]);
+        lexer_on_error(lexer, "Invalid hex character digit '%c'", lexer->at[0]);
         return -1;
     }
 
@@ -265,6 +265,8 @@ static int scan_hex_escape(Lexer* lexer)
     lexer->at++;
 
     // Scan the second (optional) digit.
+    // TODO: Should the second digit be required? Maybe it should. If not, then should at least have 
+    // whitespace separating the next character.
     biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
 
     if (biased) {
