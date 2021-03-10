@@ -20,7 +20,7 @@ typedef enum TokenKind {
     TKN_DOT,
 
     TKN_STR,
-    TKN_WORD,
+    TKN_IDENTIFIER,
     TKN_INT,
     TKN_FLOAT,
 
@@ -49,9 +49,9 @@ typedef struct TokenFloat {
     double value;
 } TokenFloat;
 
-typedef struct TokenName {
+typedef struct TokenIdentifier {
     const char* value;
-} TokenName;
+} TokenIdentifier;
 
 typedef struct TokenStr {
     const char* value;
@@ -68,7 +68,7 @@ typedef struct Token {
     union {
         TokenInt tint;
         TokenFloat tfloat;
-        TokenName tname;
+        TokenIdentifier tidentifier;
         TokenStr tstr;
     };
 } Token;
@@ -83,7 +83,7 @@ typedef struct LexerClient {
 
     OnLexErrFunc* on_error;
     OnLexLineFunc* on_line;
-    OnLexIdenFunc* on_iden;
+    OnLexIdenFunc* on_identifier;
     OnLexStrFunc* on_str;
 } LexerClient;
 

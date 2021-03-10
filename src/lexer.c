@@ -23,25 +23,32 @@ static const char escaped_to_char[256] = {
     ['t'] = '\t', ['v'] = '\v', ['\\'] = '\\', ['\''] = '\'', ['"'] = '"',  ['?'] = '?',
 };
 
-static bool is_whitespace(char c)
-{
-    return (c == ' ') || (c == '\t') || (c == '\r') || (c == '\n') || (c == '\v');
-}
+// Generated with tools/char_props_printer.c
+static const unsigned char char_props[256] = {
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x1, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x6, 0x6, 0x6, 0x6, 0x6, 0x6, 0x6, 0x6, 0x6, 0x6, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4,
+    0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x0, 0x0, 0x0, 0x0, 0x4, 0x0, 0x4, 0x4, 0x4,
+    0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4,
+    0x4, 0x4, 0x4, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+};
 
-static bool is_digit(char c)
-{
-    return (c >= '0') && (c <= '9');
-}
+enum CharPropFlags {
+    CHAR_IS_WHITESPACE = 1 << 0,
+    CHAR_IS_DEC_DIGIT = 1 << 1,
+    CHAR_IS_ALPHANUM = 1 << 2,
+};
 
-static bool is_letter(char c)
-{
-    return ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z'));
-}
-
-static bool is_alphanum(char c)
-{
-    return is_digit(c) || is_letter(c) || (c == '_');
-}
+#define is_whitespace(c) (char_props[(unsigned char)(c)] & CHAR_IS_WHITESPACE)
+#define is_dec_digit(c) (char_props[(unsigned char)(c)] & CHAR_IS_DEC_DIGIT)
+#define is_alphanum(c) (char_props[(unsigned char)(c)] & CHAR_IS_ALPHANUM)
 
 static void skip_word_end(Lexer* lexer)
 {
@@ -89,6 +96,14 @@ static const char* lexer_on_str(Lexer* lexer, const char* str, size_t len)
     OnLexStrFunc* on_str = client->on_str;
 
     return on_str ? on_str(client->data, lexer_at_pos(lexer), str, len) : NULL;
+}
+
+static const char* lexer_on_identifier(Lexer* lexer, const char* str, size_t len)
+{
+    LexerClient* client = &lexer->client;
+    OnLexStrFunc* on_iden = client->on_identifier;
+
+    return on_iden ? on_iden(client->data, lexer_at_pos(lexer), str, len) : NULL;
 }
 
 static void skip_c_comment(Lexer* lexer)
@@ -203,7 +218,7 @@ static void scan_float(Lexer* lexer)
     const char* start = lexer->at;
 
     // \d*\.?\d*(e[+-]?\d*)?
-    while (is_digit(lexer->at[0])) {
+    while (is_dec_digit(lexer->at[0])) {
         lexer->at++;
     }
 
@@ -211,7 +226,7 @@ static void scan_float(Lexer* lexer)
         lexer->at++;
     }
 
-    while (is_digit(lexer->at[0])) {
+    while (is_dec_digit(lexer->at[0])) {
         lexer->at++;
     }
 
@@ -222,13 +237,13 @@ static void scan_float(Lexer* lexer)
             lexer->at++;
         }
 
-        if (!is_digit(lexer->at[0])) {
+        if (!is_dec_digit(lexer->at[0])) {
             lexer_on_error(lexer, "Unexpected character '%c' after floating point literal's exponent", lexer->at[0]);
             skip_word_end(lexer);
             return;
         }
 
-        while (is_digit(lexer->at[0])) {
+        while (is_dec_digit(lexer->at[0])) {
             lexer->at++;
         }
     }
@@ -346,6 +361,21 @@ static void scan_string(Lexer* lexer)
     token->tstr.value = lexer_on_str(lexer, tmp, array_len(tmp) - 1);
 
     allocator_restore_state(state);
+}
+
+static void scan_identifier(Lexer* lexer)
+{
+    assert(is_alphanum(lexer->at[0]));
+    Token* token = &lexer->token;
+    token->kind = TKN_IDENTIFIER;
+
+    const char* start = lexer->at;
+
+    do {
+        lexer->at++;
+    } while(is_alphanum(lexer->at[0]));
+
+    token->tidentifier.value = lexer_on_identifier(lexer, start, lexer->at - start);
 }
 
 static void scan_char(Lexer* lexer)
@@ -508,7 +538,7 @@ bool next_token(Lexer* lexer)
             lexer->at++;
         } break;
         case '.': {
-            if (is_digit(lexer->at[1])) {
+            if (is_dec_digit(lexer->at[1])) {
                 scan_float(lexer);
             } else {
                 token->kind = TKN_DOT;
@@ -519,7 +549,7 @@ bool next_token(Lexer* lexer)
             // First, determine if this is an integer or a floating point value.
             const char* p = lexer->at;
 
-            while (is_digit(*p)) {
+            while (is_dec_digit(*p)) {
                 p++;
             }
 
@@ -534,6 +564,14 @@ bool next_token(Lexer* lexer)
         } break;
         case '"': {
             scan_string(lexer);
+        } break;
+        case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j': case 'k':
+        case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u': case 'v':
+        case 'w': case 'x': case 'y': case 'z':
+        case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J': case 'K':
+        case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V':
+        case 'W': case 'X': case 'Y': case 'Z': case '_': {
+            scan_identifier(lexer);
         } break;
         case '\0': {
             token->kind = TKN_EOF;

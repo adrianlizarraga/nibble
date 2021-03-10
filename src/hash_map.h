@@ -27,5 +27,6 @@ uint64_t* hash_map_put(HashMap* map, uint64_t key, uint64_t value);
 uint64_t* hash_map_get(HashMap* map, uint64_t key);
 
 uint64_t hash_uint64(uint64_t h);
+uint64_t hash_bytes(const void* buf, size_t len);
 
 #endif

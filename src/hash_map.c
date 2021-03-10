@@ -18,6 +18,20 @@ uint64_t hash_uint64(uint64_t h)
     return h;
 }
 
+// FNV-1a hash
+uint64_t hash_bytes(const void* buf, size_t len)
+{
+    const char* b = (const char*) buf;
+    uint64_t hash = 0xcbf29ce484222325;
+
+    for (size_t i = 0; i < len; ++i) {
+        hash = hash ^ b[i];
+        hash = hash * 0x00000100000001b3;
+    }
+
+    return hash;
+}
+
 static bool hash_map_expand(HashMap* map, size_t cap)
 {
     if (cap < HASH_MAP_MIN_CAP) {
