@@ -410,10 +410,31 @@ static void test_lexer(void)
     free_lexer(&lexer);
 }
 
+void test_interning(void)
+{
+    Allocator arena = allocator_create(4096);
+    HashMap strmap = hash_map(8, NULL);
+
+    const char* a = "hello";
+    const char* b = "hello!";
+    const char* a_in = str_intern(&arena, &strmap, a, strlen(a));
+    const char* b_in = str_intern(&arena, &strmap, b, strlen(b));
+
+    assert(a != a_in);
+    assert(b != b_in);
+    assert(a_in == str_intern(&arena, &strmap, a, strlen(a)));
+    assert(b_in == str_intern(&arena, &strmap, b, strlen(b)));
+    assert(strmap.len == 2);
+    assert(a_in != b_in);
+
+    hash_map_destroy(&strmap);
+}
+
 int main(void)
 {
     g_ctx.allocator = allocator_create(4096);
     printf("Nibble!\n");
     test_lexer();
+    test_interning();
     allocator_destroy(&g_ctx.allocator);
 }

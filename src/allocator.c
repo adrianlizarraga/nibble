@@ -179,8 +179,6 @@ void allocator_restore_state(AllocatorState state)
         end = footer.pend;
     }
 
-    assert(buffer == dest_buffer);
-
     allocator->buffer = buffer;
     allocator->end = end;
     allocator->at = state.at;

@@ -81,7 +81,7 @@ HashMap hash_map(unsigned int cap_log2, Allocator* allocator)
 void hash_map_destroy(HashMap* map)
 {
     mem_free(map->allocator, map->entries);
-    memset(&map, 0, sizeof(HashMap));
+    memset(map, 0, sizeof(HashMap));
 }
 
 uint64_t* hash_map_put(HashMap* map, uint64_t key, uint64_t value)
@@ -136,7 +136,8 @@ uint64_t* hash_map_get(HashMap* map, uint64_t key)
     }
 
     HashMapEntry* entries = map->entries;
-    uint64_t i = hash_uint64(key) & map->mask;
+    uint64_t h = hash_uint64(key);
+    uint64_t i = h & map->mask;
 
     if (entries[i].key == key) {
         return &entries[i].value;
@@ -155,4 +156,39 @@ uint64_t* hash_map_get(HashMap* map, uint64_t key)
     } while (entries[i].key);
 
     return NULL;
+}
+
+const char* str_intern(Allocator* allocator, HashMap* strmap, const char* str, size_t len)
+{
+    uint64_t key = hash_bytes(str, len);
+    uint64_t* pval = hash_map_get(strmap, key);
+    InternedStr* intern = pval ? (void*)*pval : NULL;
+
+    // Collisions will only occur if identical hash values are produced. Collisions due to
+    // contention for hash map slots will not occur (open addressing).
+    //
+    // Walk the linked list in case of collision.
+    for (InternedStr* it = intern; it; it = it->next) {
+        if ((it->len == len) && (strcmp(it->str, str) == 0)) {
+            return it->str;
+        }
+    }
+
+    // If we got here, need to add this string to the intern table.
+    InternedStr* new_intern = mem_allocate(allocator, offsetof(InternedStr, str) + len + 1, DEFAULT_ALIGN, false);
+    if (new_intern) {
+        new_intern->next = intern; // Record collision. If a collision did _NOT_ occur, this will be null.
+        new_intern->len = len;
+
+        memcpy(new_intern->str, str, len);
+        new_intern->str[len] = '\0';
+
+        hash_map_put(strmap, key, (uintptr_t)new_intern);
+    } else {
+        // TODO: Handle in a better way.
+        fprintf(stderr, "[INTERNAL ERROR]: Out of memory.\n%s:%d\n", __FILE__, __LINE__);
+        exit(1);
+    }
+
+    return new_intern->str;
 }
