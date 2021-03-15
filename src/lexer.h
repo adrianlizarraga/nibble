@@ -28,8 +28,31 @@ typedef enum TokenKind {
     TKN_MINUS,
     TKN_ASTERISK,
     TKN_DIV,
+    TKN_MOD,
+    TKN_RSHIFT,
+    TKN_LSHIFT,
+    TKN_AND,
+    TKN_OR,
+    TKN_XOR,
+    TKN_LOGIC_AND,
+    TKN_LOGIC_OR,
+
+    TKN_EQ,
+    TKN_GT,
     TKN_GTEQ,
+    TKN_LT,
     TKN_LTEQ,
+
+    TKN_ASSIGN,
+    TKN_ADD_ASSIGN,
+    TKN_SUB_ASSIGN,
+    TKN_MUL_ASSIGN,
+    TKN_DIV_ASSIGN,
+    TKN_AND_ASSIGN,
+    TKN_OR_ASSIGN,
+    TKN_XOR_ASSIGN,
+    TKN_MOD_ASSIGN,
+
 } TokenKind;
 
 typedef enum TokenIntRep {
@@ -97,9 +120,12 @@ typedef struct Lexer {
     Allocator allocator;
 } Lexer;
 
-void init_lexer(Lexer* lexer, const char* str, uint32_t start);
+Lexer lexer_from_str(const char* str, uint32_t start);
+void lexer_set_client(Lexer* lexer, void* data, OnLexErrFunc* on_error, OnLexLineFunc* on_line, 
+                      OnLexIdenFunc* on_ident, OnLexStrFunc* on_str);
 void free_lexer(Lexer* lexer);
 
+int print_token(Token* token, char* buf, size_t size);
 bool next_token(Lexer* lexer);
 bool match_token(Lexer* lexer, TokenKind kind);
 bool is_token(Lexer* lexer, TokenKind kind);

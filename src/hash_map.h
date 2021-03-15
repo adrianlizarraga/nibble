@@ -10,6 +10,12 @@ typedef struct HashMapEntry {
     uint64_t value;
 } HashMapEntry;
 
+// Simple pointer/uint to pointer/uint hash table.
+// - Power-of-two size
+// - Open addressing
+// - Linear probing
+// - Expands by 2x at ~60% load
+// - Key value of zero denotes an empty slot
 typedef struct HashMap {
     HashMapEntry* entries;
     size_t cap;
@@ -28,12 +34,6 @@ uint64_t* hash_map_get(HashMap* map, uint64_t key);
 
 uint64_t hash_uint64(uint64_t h);
 uint64_t hash_bytes(const void* buf, size_t len);
-
-typedef struct InternedStr {
-    size_t len;
-    struct InternedStr* next;
-    char str[];
-} InternedStr;
 
 const char* str_intern(Allocator* allocator, HashMap* strmap, const char* str, size_t len);
 

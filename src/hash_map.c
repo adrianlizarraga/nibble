@@ -19,14 +19,18 @@ uint64_t hash_uint64(uint64_t h)
 }
 
 // FNV-1a hash
+// TODO: Replace with a better hash function ;)
 uint64_t hash_bytes(const void* buf, size_t len)
 {
+    const uint64_t FNV_PRIME = 0x00000100000001b3ULL;
+    const uint64_t FNV_INIT = 0xcbf29ce484222325ULL;
+
     const char* b = (const char*) buf;
-    uint64_t hash = 0xcbf29ce484222325;
+    uint64_t hash = FNV_INIT;
 
     for (size_t i = 0; i < len; ++i) {
         hash = hash ^ b[i];
-        hash = hash * 0x00000100000001b3;
+        hash = hash * FNV_PRIME;
     }
 
     return hash;
@@ -94,8 +98,8 @@ uint64_t* hash_map_put(HashMap* map, uint64_t key, uint64_t value)
         return &null_key->value;
     }
 
-    // Expand at 70%
-    if (10 * (map->len + 1) >= 7 * map->cap) {
+    // Expand at 60%
+    if (10 * (map->len + 1) >= 6 * map->cap) {
         if (!hash_map_expand(map, map->cap * 2)) {
             return NULL;
         }
@@ -157,6 +161,12 @@ uint64_t* hash_map_get(HashMap* map, uint64_t key)
 
     return NULL;
 }
+
+typedef struct InternedStr {
+    size_t len;
+    struct InternedStr* next;
+    char str[];
+} InternedStr;
 
 const char* str_intern(Allocator* allocator, HashMap* strmap, const char* str, size_t len)
 {

@@ -45,6 +45,26 @@ static const char* test_on_str(void* data, ProgPos pos, const char* str, size_t 
     return NULL;
 }
 
+static const char* test_on_identifier(void* data, ProgPos pos, const char* str, size_t len)
+{
+    (void)pos;
+
+    if (data) {
+        TestProgContext* c = data;
+
+        char* dup = new_array(&c->allocator, char, len + 1, false);
+
+        for (size_t i = 0; i < len; ++i) {
+            dup[i] = str[i];
+        }
+        dup[len] = '\0';
+
+        return dup;
+    }
+
+    return NULL;
+}
+
 #define TKN_TEST_POS(tk, tp, a, b)                                                                                     \
     do {                                                                                                               \
         assert((tk.kind == tp));                                                                                       \
@@ -73,14 +93,19 @@ static const char* test_on_str(void* data, ProgPos pos, const char* str, size_t 
         assert((tk.kind == TKN_STR));                                                                                  \
         assert(strcmp(tk.tstr.value, v) == 0);                                                                         \
     } while (0)
-
+#define TKN_TEST_IDEN(tk, v)                                                                                           \
+    do {                                                                                                               \
+        assert((tk.kind == TKN_IDENTIFIER));                                                                           \
+        assert(strcmp(tk.tidentifier.value, v) == 0);                                                                  \
+    } while (0)
 static void test_init_lexer(Lexer* lexer, const char* str, ProgPos start)
 {
     free_lexer(lexer);
-    init_lexer(lexer, str, start);
+    *lexer = lexer_from_str(str, start);
     lexer->client.data = &g_ctx;
     lexer->client.on_error = test_on_error;
     lexer->client.on_str = test_on_str;
+    lexer->client.on_identifier = test_on_identifier;
 
     g_ctx.num_errors = 0;
 }
@@ -89,9 +114,9 @@ static void test_lexer(void)
 {
     Lexer lexer = {0};
 
-    // Test basic 1 character tokens, newlines, and c++ comments.
+    // Test basic tokens, newlines, and c++ comments.
     unsigned int i = 10;
-    test_init_lexer(&lexer, "(+[]-)  \n  //++--\n{;:,./}", i);
+    test_init_lexer(&lexer, "(+[]-*%&|^<>) && || >> << == >= <= = += -= *= /= &= |= ^= %= \n  //++--\n{;:,./}", i);
 
     next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_LPAREN, i, ++i);
@@ -109,9 +134,95 @@ static void test_lexer(void)
     TKN_TEST_POS(lexer.token, TKN_MINUS, i, ++i);
 
     next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_ASTERISK, i, ++i);
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_MOD, i, ++i);
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_AND, i, ++i);
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_OR, i, ++i);
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_XOR, i, ++i);
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_LT, i, ++i);
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_GT, i, ++i);
+
+    next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_RPAREN, i, ++i);
 
-    i += 12;
+    i++;
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_LOGIC_AND, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_LOGIC_OR, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_RSHIFT, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_LSHIFT, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_EQ, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_GTEQ, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_LTEQ, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_ASSIGN, i, i + 1);
+    i += 2;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_ADD_ASSIGN, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_SUB_ASSIGN, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_MUL_ASSIGN, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_DIV_ASSIGN, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_AND_ASSIGN, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_OR_ASSIGN, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_XOR_ASSIGN, i, i + 2);
+    i += 3;
+
+    next_token(&lexer);
+    TKN_TEST_POS(lexer.token, TKN_MOD_ASSIGN, i, i + 2);
+    i += 3;
+
+    i += 10;
     next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_LBRACKET, i, ++i);
 
@@ -162,7 +273,7 @@ static void test_lexer(void)
     assert(g_ctx.num_errors == 1);
 
     // Test integer literals
-    test_init_lexer(&lexer, "123 333\n0xFF 0b0111 011", 0);
+    test_init_lexer(&lexer, "123 333\n0xFF 0b0111 011 0", 0);
 
     next_token(&lexer);
     TKN_TEST_INT(lexer.token, TKN_INT_DEC, 123);
@@ -178,6 +289,9 @@ static void test_lexer(void)
 
     next_token(&lexer);
     TKN_TEST_INT(lexer.token, TKN_INT_OCT, 9);
+
+    next_token(&lexer);
+    TKN_TEST_INT(lexer.token, TKN_INT_DEC, 0);
 
     next_token(&lexer);
     assert(lexer.token.kind == TKN_EOF);
@@ -342,6 +456,45 @@ static void test_lexer(void)
 
         next_token(&lexer);
         assert(g_ctx.num_errors == 4);
+    }
+
+    // Test basic identifiers
+    {
+        const char* str = "var x1a x11 _abc abc_ _ab_c_ i";
+        test_init_lexer(&lexer, str, 0);
+
+        next_token(&lexer);
+        TKN_TEST_IDEN(lexer.token, "var");
+
+        next_token(&lexer);
+        TKN_TEST_IDEN(lexer.token, "x1a");
+
+        next_token(&lexer);
+        TKN_TEST_IDEN(lexer.token, "x11");
+
+        next_token(&lexer);
+        TKN_TEST_IDEN(lexer.token, "_abc");
+
+        next_token(&lexer);
+        TKN_TEST_IDEN(lexer.token, "abc_");
+
+        next_token(&lexer);
+        TKN_TEST_IDEN(lexer.token, "_ab_c_");
+
+        next_token(&lexer);
+        TKN_TEST_IDEN(lexer.token, "i");
+    }
+
+    // Test invalid identifier combinations.
+    {
+        const char* str = "1var";
+        test_init_lexer(&lexer, str, 0);
+
+        next_token(&lexer);
+        assert(g_ctx.num_errors == 1);
+
+        next_token(&lexer);
+        assert(lexer.token.kind == TKN_EOF);
     }
     free_lexer(&lexer);
 }
@@ -575,6 +728,27 @@ void test_hash_map(void)
     hash_map_destroy(&map);
 }
 
+void test_interning(void)
+{
+    Allocator arena = allocator_create(4096);
+    HashMap strmap = hash_map(8, NULL);
+
+    const char* a = "hello";
+    const char* b = "hello!";
+    const char* a_in = str_intern(&arena, &strmap, a, strlen(a));
+    const char* b_in = str_intern(&arena, &strmap, b, strlen(b));
+
+    assert(a != a_in);
+    assert(b != b_in);
+    assert(a_in == str_intern(&arena, &strmap, a, strlen(a)));
+    assert(b_in == str_intern(&arena, &strmap, b, strlen(b)));
+    assert(strmap.len == 2);
+    assert(a_in != b_in);
+
+    hash_map_destroy(&strmap);
+    allocator_destroy(&arena);
+}
+
 int main(void)
 {
     g_ctx.allocator = allocator_create(4096);
@@ -583,5 +757,6 @@ int main(void)
     test_allocator();
     test_array();
     test_hash_map();
+    test_interning();
     allocator_destroy(&g_ctx.allocator);
 }
