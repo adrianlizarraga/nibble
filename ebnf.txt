@@ -31,45 +31,49 @@ arg_item = (IDENTIFIER '=') ? expr
 init_list = init_item (',' init_item)*
 init_item = (IDENTIFIER '=')? expr
 
-decl = 'var' var_decl ';'
-     | 'const' const_decl ';'
-     | 'enum' enum_decl ';'
-     | 'union' aggregate_decl ';'
-     | 'struct' aggregate_decl ';'
-     | 'func' func_decl ';'
-     | 'typedef' typedef_decl ';'
+decl = var_decl ';'
+     | const_decl ';'
+     | enum_decl
+     | union_decl
+     | struct_decl
+     | func_decl
+     | typedef_decl ';'
 
-var_decl  = IDENTIFIER ':' type? ('=' expr)?
+var_decl  = 'var' IDENTIFIER ':' type? ('=' expr)?
 
-const_decl  = IDENTIFIER ':' type? '=' expr
+const_decl  = 'const' IDENTIFIER ':' type? '=' expr
 
-enum_decl  = IDENTIFIER '{' enum_items? '}'
+enum_decl  = 'enum' IDENTIFIER '{' enum_items? '}'
 enum_items = enum_item (',' enum_item)* ','?
 enum_item  = IDENTIFIER ('=' expr)?
 
-aggregate_decl  = IDENTIFIER '{' aggregate_item* '}'
-aggregate_item  = identifier_list ':' type ';'
+union_decl  = 'union' aggregate_decl_body
+struct_decl = 'struct' aggregate_decl_body
+
+aggregate_decl_body  = IDENTIFIER '{' aggregate_item* '}'
+aggregate_decl_item  = identifier_list ':' type ';'
 identifier_list = IDENTIFIER (',' IDENTIFIER)*
 
-func_decl  = IDENTIFIER '(' param_list ')' (':' type)? statement_block
+func_decl  = 'func' IDENTIFIER '(' param_list ')' (':' type)? stmt_block
 param_list = param_item (',' param_item)*
 param_item = IDENTIFIER ':' type 
 
-typedef_decl = IDENTIFIER '=' type
+typedef_decl = 'typedef' IDENTIFIER '=' type
 
 
-statement = 'if' '(' expr ')' statement_block ('elif' '(' expr ')' statement_block)* ('else' statement_block)?
-          | 'while' '(' expr ')' statement_block
-          | 'do' statement_block 'while' '(' expr ')' ';'
-          | 'for' '(' ('var' var_decl | expr_statement)? ';' expr? ';' expr_statement? ')' statement_block
-          | 'switch' '(' expr ')' '{' case_item* '}' 
-          | 'return' expr? ';'
-          | 'break' ';' // TODO: Break levels
-          | 'continue' ';'
-          | expr_statement ';'
-          | statement_block
+stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
+     | 'while' '(' expr ')' stmt_block
+     | 'do' stmt_block 'while' '(' expr ')' ';'
+     | 'for' '(' (var_decl | expr_stmt)? ';' expr? ';' expr_stmt? ')' stmt_block
+     | 'switch' '(' expr ')' '{' case_item* '}' 
+     | 'return' expr? ';'
+     | 'break' ';' // TODO: Break levels
+     | 'continue' ';'
+     | expr_stmt ';'
+     | decl
+     | stmt_block
 
-expr_statement = expr (ASSIGN_OP expr)?     // ASSIGN_OP = ['=' '+=' '-=' '*=' '/=' '^=' '%=']
-statement_block = '{' statement* '}'
-case_item = 'case' expr ':' statement*      // TODO: Consider implicit 'break' and explicit 'fallthrough'
+expr_stmt = expr (ASSIGN_OP expr)?     // ASSIGN_OP = ['=' '+=' '-=' '*=' '/=' '^=' '%=']
+stmt_block = '{' stmt* '}'
+case_item = 'case' expr ':' stmt*      // TODO: Consider implicit 'break' and explicit 'fallthrough'
 
