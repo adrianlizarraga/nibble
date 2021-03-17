@@ -1,13 +1,75 @@
+type      = base_type ('*' | '[' expr? ']')*
+base_type = IDENTIFIER
+          | 'func' '(' param_type_list ')' (':' type)?
+          | '(' type ')'
+
+typespec = '(' ':' type ')'
+param_type_list = param_type_item (',' param_type_item)*
+param_type_item = (IDENTIFIER ':')? type
 
 
 expr = ternary_expr
 ternary_expr = or_expr ('?' ternary_expr ':' ternary_expr)?
-or_expr      = and_expr (OR_OP and_expr)*                   // 
-and_expr     = eq_expr (AND_OP eq_expr)*
-eq_expr      = cmp_expr (EQ_OP cmp_expr)*
-cmp_expr     = 
+or_expr      = and_expr (OR_OP and_expr)*                   // OR_OP = '||'
+and_expr     = cmp_expr (AND_OP cmp_expr)*                  // AND_OP = '&&'
+cmp_expr     = add_expr (EQ_OP add_expr)*                   // CMP_OP = ['==' '!=' '>' '>=' '<' '<=']
+add_expr     = mul_expr (ADD_OP mul_expr)*                  // ADD_OP = [+-|^] 
+mul_expr     = unary_expr (MUL_OP unary_expr)*              // MUL_OP = [*/%&] | '<<' | '>>'
+unary_expr   = UNARY_OP unary_expr                          // UNARY_OP = [&*-+~!]
+             | call_expr
+call_expr    = base_expr ('.' IDENTIFIER | '[ expr ']' | '(' arg_list* ')')*
+base_expr    = INT
+             | FLOAT
+             | STRING
+             | IDENTIFIER
+             | CAST '(' type ',' expr ')'
+             | typespec? '{' init_list '}'
+             | '(' expr ')'
+
+arg_list = arg_item (',' arg_item)*
+arg_item = (IDENTIFIER '=') ? expr
+init_list = init_item (',' init_item)*
+init_item = (IDENTIFIER '=')? expr
+
+decl = 'var' var_decl ';'
+     | 'const' const_decl ';'
+     | 'enum' enum_decl ';'
+     | 'union' aggregate_decl ';'
+     | 'struct' aggregate_decl ';'
+     | 'func' func_decl ';'
+     | 'typedef' typedef_decl ';'
+
+var_decl  = IDENTIFIER ':' type? ('=' expr)?
+
+const_decl  = IDENTIFIER ':' type? '=' expr
+
+enum_decl  = IDENTIFIER '{' enum_items? '}'
+enum_items = enum_item (',' enum_item)* ','?
+enum_item  = IDENTIFIER ('=' expr)?
+
+aggregate_decl  = IDENTIFIER '{' aggregate_item* '}'
+aggregate_item  = identifier_list ':' type ';'
+identifier_list = IDENTIFIER (',' IDENTIFIER)*
+
+func_decl  = IDENTIFIER '(' param_list ')' (':' type)? statement_block
+param_list = param_item (',' param_item)*
+param_item = IDENTIFIER ':' type 
+
+typedef_decl = IDENTIFIER '=' type
 
 
+statement = 'if' '(' expr ')' statement_block ('elif' '(' expr ')' statement_block)* ('else' statement_block)?
+          | 'while' '(' expr ')' statement_block
+          | 'do' statement_block 'while' '(' expr ')' ';'
+          | 'for' '(' ('var' var_decl | expr_statement)? ';' expr? ';' expr_statement? ')' statement_block
+          | 'switch' '(' expr ')' '{' case_item* '}' 
+          | 'return' expr? ';'
+          | 'break' ';' // TODO: Break levels
+          | 'continue' ';'
+          | expr_statement ';'
+          | statement_block
 
-
+expr_statement = expr (ASSIGN_OP expr)?     // ASSIGN_OP = ['=' '+=' '-=' '*=' '/=' '^=' '%=']
+statement_block = '{' statement* '}'
+case_item = 'case' expr ':' statement*      // TODO: Consider implicit 'break' and explicit 'fallthrough'
 
