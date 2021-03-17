@@ -63,16 +63,18 @@ typedef_decl = 'typedef' IDENTIFIER '=' type_spec
 stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
      | 'while' '(' expr ')' stmt_block
      | 'do' stmt_block 'while' '(' expr ')' ';'
-     | 'for' '(' (var_decl | expr_stmt)? ';' expr? ';' expr_stmt? ')' stmt_block
+     | 'for' '(' (var_decl | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
      | 'switch' '(' expr ')' '{' case_item* '}' 
      | 'return' expr? ';'
-     | 'break' ';' // TODO: Break levels
-     | 'continue' ';'
-     | expr_stmt ';'
+     | 'break' IDENTIFIER? ';' 
+     | 'continue' IDENTIFIER? ';'
+     | expr ';'
+     | expr_assign ';'
      | decl
      | stmt_block
 
-expr_stmt = expr (ASSIGN_OP expr)?     // ASSIGN_OP = ['=' '+=' '-=' '*=' '/=' '^=' '%=']
+expr_assign = expr ASSIGN_OP expr      // ASSIGN_OP = ['=' '+=' '-=' '*=' '/=' '^=' '%=']
 stmt_block = '{' stmt* '}'
-case_item = 'case' expr ':' stmt*      // TODO: Consider implicit 'break' and explicit 'fallthrough'
+case_item = (case_item_range | 'default') ':' stmt*      // TODO: Consider implicit 'break' and explicit 'fallthrough'
+case_item_range = 'case' expr ('...' expr)?
 
