@@ -1,12 +1,10 @@
-type      = base_type ('*' | '[' expr? ']')*
-base_type = IDENTIFIER
-          | 'func' '(' param_type_list ')' (':' type)?
-          | '(' type ')'
+type_spec      = base_type_spec ('*' | '[' expr? ']')*
+base_type_spec = IDENTIFIER
+               | 'func' '(' param_type_spec_list ')' (':' type_spec)?
+               | '(' type_spec ')'
 
-typespec = '(' ':' type ')'
-param_type_list = param_type_item (',' param_type_item)*
-param_type_item = (IDENTIFIER ':')? type
-
+param_type_spec_list = type_spec (',' type_spec)*
+type_spec_spec = '(' ':' type_spec ')'
 
 expr = ternary_expr
 ternary_expr = or_expr ('?' ternary_expr ':' ternary_expr)?
@@ -22,8 +20,9 @@ base_expr    = INT
              | FLOAT
              | STRING
              | IDENTIFIER
-             | CAST '(' type ',' expr ')'
-             | typespec? '{' init_list '}'
+             | CAST '(' type_spec ',' expr ')'
+             | SIZEOF '(' (type_spec_spec | expr) ')'
+             | type_spec_spec? '{' init_list '}'
              | '(' expr ')'
 
 arg_list = arg_item (',' arg_item)*
@@ -39,9 +38,9 @@ decl = var_decl ';'
      | func_decl
      | typedef_decl ';'
 
-var_decl  = 'var' IDENTIFIER ':' type? ('=' expr)?
+var_decl  = 'var' IDENTIFIER ':' type_spec? ('=' expr)?
 
-const_decl  = 'const' IDENTIFIER ':' type? '=' expr
+const_decl  = 'const' IDENTIFIER ':' type_spec? '=' expr
 
 enum_decl  = 'enum' IDENTIFIER '{' enum_items? '}'
 enum_items = enum_item (',' enum_item)* ','?
@@ -51,14 +50,14 @@ union_decl  = 'union' aggregate_decl_body
 struct_decl = 'struct' aggregate_decl_body
 
 aggregate_decl_body  = IDENTIFIER '{' aggregate_item* '}'
-aggregate_decl_item  = identifier_list ':' type ';'
+aggregate_decl_item  = identifier_list ':' type_spec ';'
 identifier_list = IDENTIFIER (',' IDENTIFIER)*
 
-func_decl  = 'func' IDENTIFIER '(' param_list ')' (':' type)? stmt_block
+func_decl  = 'func' IDENTIFIER '(' param_list ')' (':' type_spec)? stmt_block
 param_list = param_item (',' param_item)*
-param_item = IDENTIFIER ':' type 
+param_item = IDENTIFIER ':' type_spec 
 
-typedef_decl = 'typedef' IDENTIFIER '=' type
+typedef_decl = 'typedef' IDENTIFIER '=' type_spec
 
 
 stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
