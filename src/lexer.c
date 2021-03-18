@@ -476,10 +476,10 @@ static const char* token_kind_names[] = {
     [TKN_EOF] = "<eof>",
     [TKN_LPAREN] = "(",
     [TKN_RPAREN] = ")",
-    [TKN_LBRACE] = "[",
-    [TKN_RBRACE] = "]",
-    [TKN_LBRACKET] = "{",
-    [TKN_RBRACKET] = "}",
+    [TKN_LBRACE] = "{",
+    [TKN_RBRACE] = "}",
+    [TKN_LBRACKET] = "[",
+    [TKN_RBRACKET] = "]",
     [TKN_SEMICOLON] = ";",
     [TKN_COLON] = ":",
     [TKN_COMMA] = ",",
@@ -595,19 +595,19 @@ bool next_token(Lexer* lexer)
         } break;
         case '[': {
             lexer->at++;
-            token->kind = TKN_LBRACE;
+            token->kind = TKN_LBRACKET;
         } break;
         case ']': {
             lexer->at++;
-            token->kind = TKN_RBRACE;
+            token->kind = TKN_RBRACKET;
         } break;
         case '{': {
             lexer->at++;
-            token->kind = TKN_LBRACKET;
+            token->kind = TKN_LBRACE;
         } break;
         case '}': {
             lexer->at++;
-            token->kind = TKN_RBRACKET;
+            token->kind = TKN_RBRACE;
         } break;
         case ';': {
             lexer->at++;

@@ -182,6 +182,121 @@ struct Expr {
     };
 };
 
+/////////////////////////////
+//        Statements
+/////////////////////////////
+typedef struct StmtBlock {
+    size_t num_stmts;
+    Stmt** stmts;
+} StmtBlock;
+
+typedef struct StmtCondBlock {
+    Expr* cond;
+    StmtBlock block;
+} StmtCondBlock;
+
+typedef struct StmtIf {
+    StmtCondBlock if_;
+
+    size_t num_elifs;
+    StmtCondBlock* elifs;
+
+    StmtBlock else_;
+} StmtIf;
+
+typedef struct StmtFor {
+    Stmt* init;
+    Expr* cond;
+    Stmt* next;
+    StmtBlock block;
+} StmtFor;
+
+typedef struct StmtSwitchCase {
+    Expr* start; // NOTE: Both start and end are null for default case.
+    Expr* end;
+
+    size_t num_stmts;
+    Stmt** stmts;
+} StmtSwitchCase;
+
+typedef struct StmtSwitch {
+    Expr* expr;
+    size_t num_cases;
+    StmtSwitchCase* cases;
+} StmtSwitch;
+
+typedef struct StmtReturn {
+    Expr* expr;
+} StmtReturn;
+
+typedef struct StmtBreak {
+    const char* label;
+} StmtBreak;
+
+typedef struct StmtContinue {
+    const char* label;
+} StmtContinue;
+
+typedef struct StmtLabel {
+    const char* label;
+} StmtLabel;
+
+typedef struct StmtGoto {
+    const char* label;
+} StmtGoto;
+
+typedef struct StmtExpr {
+    Expr* expr;
+} StmtExpr;
+
+typedef struct StmtExprAssign {
+    Expr* left;
+    TokenKind op;
+    Expr* right;
+} StmtExprAssign;
+
+typedef struct StmtDecl {
+    Decl* decl;
+} StmtDecl;
+
+typedef enum StmtKind {
+    STMT_IF,
+    STMT_WHILE,
+    STMT_DO_WHILE,
+    STMT_FOR,
+    STMT_SWITCH,
+    STMT_RETURN,
+    STMT_BREAK,
+    STMT_CONTINUE,
+    STMT_GOTO,
+    STMT_LABEL,
+    STMT_EXPR,
+    STMT_EXPR_ASSIGN,
+    STMT_DECL,
+    STMT_BLOCK,
+} StmtKind;
+
+struct Stmt {
+    StmtKind kind;
+
+    union {
+        StmtIf sif;
+        StmtCondBlock swhile;
+        StmtCondBlock sdo_while;
+        StmtFor sfor;
+        StmtSwitch sswitch;
+        StmtReturn sreturn;
+        StmtBreak sbreak;
+        StmtContinue scontinue;
+        StmtLabel slabel;
+        StmtGoto sgoto;
+        StmtExpr sexpr;
+        StmtExprAssign sassign;
+        StmtDecl sdecl;
+        StmtBlock sblock;
+    };
+};
+
 ///////////////////////////////
 //       Declarations 
 //////////////////////////////
@@ -240,7 +355,7 @@ typedef struct DeclFunc {
     size_t num_params;
     DeclFuncParam* params;
     TypeSpec* ret;
-    //StmtBlock stmt_block;
+    StmtBlock block;
 } DeclFunc;
 
 typedef struct DeclTypedef {
@@ -272,114 +387,4 @@ struct Decl {
     };
 };
 
-/////////////////////////////
-//        Statements
-/////////////////////////////
-typedef struct StmtBlock {
-    size_t num_stmts;
-    Stmt** stmts;
-} StmtBlock;
-
-typedef struct StmtCondBlock {
-    Expr* cond;
-    StmtBlock block;
-} StmtCondBlock;
-
-typedef struct StmtIf {
-    StmtCondBlock if_;
-
-    size_t num_elifs;
-    StmtCondBlock* elifs;
-
-    StmtBlock else_;
-} StmtIf;
-
-typedef struct StmtFor {
-    Stmt* init;
-    Expr* cond;
-    Stmt* next;
-    StmtBlock block;
-} StmtFor;
-
-typedef struct StmtSwitchCase {
-    Expr* start;
-    Expr* end;
-
-    bool is_default;
-
-    size_t num_stmts;
-    Stmt** stmts;
-} StmtSwitchCase;
-
-typedef struct StmtSwitch {
-    Expr* expr;
-    size_t num_cases;
-    StmtSwitchCase* cases;
-} StmtSwitch;
-
-typedef struct StmtReturn {
-    Expr* expr;
-} StmtReturn;
-
-typedef struct StmtBreak {
-    const char* label;
-} StmtBreak;
-
-typedef struct StmtContinue {
-    const char* label;
-} StmtContinue;
-
-typedef struct StmtLabel {
-    const char* label;
-} StmtLabel;
-
-typedef struct StmtExpr {
-    Expr* expr;
-} StmtExpr;
-
-typedef struct StmtExprAssign {
-    Expr* left;
-    TokenKind op;
-    Expr* right;
-} StmtExprAssign;
-
-typedef struct StmtDecl {
-    Decl* decl;
-} StmtDecl;
-
-typedef enum StmtKind {
-    STMT_IF,
-    STMT_WHILE,
-    STMT_DO_WHILE,
-    STMT_FOR,
-    STMT_SWITCH,
-    STMT_RETURN,
-    STMT_BREAK,
-    STMT_CONTINUE,
-    STMT_LABEL,
-    STMT_EXPR,
-    STMT_EXPR_ASSIGN,
-    STMT_DECL,
-    STMT_BLOCK,
-} StmtKind;
-
-struct Stmt {
-    StmtKind kind;
-
-    union {
-        StmtIf sif;
-        StmtCondBlock swhile;
-        StmtCondBlock sdo_while;
-        StmtFor sfor;
-        StmtSwitch sswitch;
-        StmtReturn sreturn;
-        StmtBreak sbreak;
-        StmtContinue scontinue;
-        StmtLabel slabel;
-        StmtExpr sexpr;
-        StmtExprAssign sassign;
-        StmtDecl sdecl;
-        StmtBlock sblock;
-    };
-};
 #endif

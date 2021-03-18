@@ -68,6 +68,8 @@ stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' st
      | 'return' expr? ';'
      | 'break' IDENTIFIER? ';' 
      | 'continue' IDENTIFIER? ';'
+     | 'goto' IDENTIFIER ';'
+     | IDENTIFIER ':'
      | expr ';'
      | expr_assign ';'
      | decl

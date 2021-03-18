@@ -125,10 +125,10 @@ static void test_lexer(void)
     TKN_TEST_POS(lexer.token, TKN_PLUS, i, ++i);
 
     next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LBRACE, i, ++i);
+    TKN_TEST_POS(lexer.token, TKN_LBRACKET, i, ++i);
 
     next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_RBRACE, i, ++i);
+    TKN_TEST_POS(lexer.token, TKN_RBRACKET, i, ++i);
 
     next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_MINUS, i, ++i);
@@ -224,7 +224,7 @@ static void test_lexer(void)
 
     i += 10;
     next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LBRACKET, i, ++i);
+    TKN_TEST_POS(lexer.token, TKN_LBRACE, i, ++i);
 
     next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_SEMICOLON, i, ++i);
@@ -242,7 +242,7 @@ static void test_lexer(void)
     TKN_TEST_POS(lexer.token, TKN_DIV, i, ++i);
 
     next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_RBRACKET, i, ++i);
+    TKN_TEST_POS(lexer.token, TKN_RBRACE, i, ++i);
 
     next_token(&lexer);
     TKN_TEST_POS(lexer.token, TKN_EOF, i, ++i);
