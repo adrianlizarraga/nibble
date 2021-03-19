@@ -82,6 +82,11 @@ typedef struct TokenStr {
 
 typedef uint32_t ProgPos;
 
+typedef struct ProgRange {
+    ProgPos start;
+    ProgPos end;
+} ProgRange;
+
 typedef struct Token {
     TokenKind kind;
 

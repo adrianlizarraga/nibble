@@ -20,7 +20,7 @@ base_expr    = INT
              | FLOAT
              | STRING
              | IDENTIFIER
-             | CAST '(' type_spec ',' expr ')'
+             | type_spec_spec? unary_expr
              | SIZEOF '(' (type_spec_spec | expr) ')'
              | type_spec_spec? '{' init_list '}'
              | '(' expr ')'

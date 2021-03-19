@@ -74,6 +74,15 @@ void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
     return memory;
 }
 
+void* mem_dup(Allocator* allocator, void* src, size_t size, size_t align)
+{
+    void* memory = mem_allocate(allocator, size, align, false);
+
+    memcpy(memory, src, size);
+
+    return memory;
+}
+
 void* mem_reallocate(Allocator* allocator, void* ptr, size_t old_size, size_t size, size_t align)
 {
     if (!allocator) {

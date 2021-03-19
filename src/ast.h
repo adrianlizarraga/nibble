@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "allocator.h"
+
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
 typedef struct Decl Decl;
@@ -40,6 +42,7 @@ typedef enum TypeSpecKind {
 
 struct TypeSpec {
     TypeSpecKind kind;
+    ProgRange range;
 
     union {
         TypeSpecIdentifier tsidentifier;
@@ -49,6 +52,8 @@ struct TypeSpec {
     };
 };
 
+TypeSpec* typespec_create(Allocator* allocator, TypeSpecKind kind, ProgRange range);
+TypeSpec* typespec_identifier(Allocator* allocator, const char* name, ProgRange range);
 ///////////////////////////////
 //       Expressions 
 //////////////////////////////
