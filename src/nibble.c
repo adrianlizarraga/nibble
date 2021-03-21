@@ -7,7 +7,7 @@
 #include "array.c"
 #include "hash_map.c"
 #include "lexer.c"
-#include "ast.h"
+#include "ast.c"
 
 typedef struct NibbleCtx {
     int num_errors;
