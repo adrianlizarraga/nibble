@@ -3,7 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "nibble.h"
 #include "allocator.h"
+#include "stream.h"
 
 typedef enum TokenKind {
     TKN_INVALID = 0,
@@ -80,12 +82,6 @@ typedef struct TokenStr {
     const char* value;
 } TokenStr;
 
-typedef uint32_t ProgPos;
-
-typedef struct ProgRange {
-    ProgPos start;
-    ProgPos end;
-} ProgRange;
 
 typedef struct Token {
     TokenKind kind;
@@ -104,10 +100,11 @@ typedef struct Lexer {
     const char* at;
     ProgPos start;
     Allocator allocator;
+    ByteStream* errors;
 } Lexer;
 
-Lexer lexer_from_str(const char* str, uint32_t start);
-void free_lexer(Lexer* lexer);
+Lexer lexer_create(const char* str, uint32_t start, ByteStream* errors);
+void lexer_destroy(Lexer* lexer);
 
 int print_token(Token* token, char* buf, size_t size);
 Token scan_token(Lexer* lexer);

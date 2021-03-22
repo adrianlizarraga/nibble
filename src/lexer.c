@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#define LEXER_MAX_ERROR_LEN 128
 #define LEXER_ARENA_BLOCK_SIZE 512
 
 // Converts a numeric character to an integer value. Values are biased by +1
@@ -71,39 +70,34 @@ static ProgPos lexer_at_pos(Lexer* lexer)
 
 static void lexer_on_error(Lexer* lexer, const char* format, ...)
 {
-    if (lexer->client.on_error) {
-        char buf[LEXER_MAX_ERROR_LEN];
+    if (lexer->errors) {
+        char buf[MAX_ERROR_LEN];
+        size_t size = 0;
         va_list vargs;
 
         va_start(vargs, format);
-        vsnprintf(buf, LEXER_MAX_ERROR_LEN, format, vargs);
+        size = vsnprintf(buf, MAX_ERROR_LEN, format, vargs) + 1;
         va_end(vargs);
 
-        lexer->client.on_error(lexer->client.data, lexer_at_pos(lexer), buf);
+        add_byte_stream_chunk(lexer->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
     }
 }
 
 static void lexer_on_line(Lexer* lexer)
 {
-    if (lexer->client.on_line) {
-        lexer->client.on_line(lexer->client.data, lexer_at_pos(lexer));
-    }
+    (void)lexer;
 }
 
 static const char* lexer_on_str(Lexer* lexer, const char* str, size_t len)
 {
-    LexerClient* client = &lexer->client;
-    OnLexStrFunc* on_str = client->on_str;
-
-    return on_str ? on_str(client->data, lexer_at_pos(lexer), str, len) : NULL;
+    (void)lexer;
+    return intern_str_lit(str, len);
 }
 
 static const char* lexer_on_ident(Lexer* lexer, const char* str, size_t len)
 {
-    LexerClient* client = &lexer->client;
-    OnLexStrFunc* on_iden = client->on_identifier;
-
-    return on_iden ? on_iden(client->data, lexer_at_pos(lexer), str, len) : NULL;
+    (void)lexer;
+    return intern_ident(str, len);
 }
 
 static void skip_c_comment(Lexer* lexer)
@@ -437,27 +431,18 @@ static TokenInt scan_char(Lexer* lexer)
     return tint;
 }
 
-Lexer lexer_from_str(const char* str, uint32_t start)
+Lexer lexer_create(const char* str, uint32_t start, ByteStream* errors)
 {
     Lexer lexer = {0};
     lexer.str = str;
     lexer.at = str;
     lexer.start = start;
+    lexer.errors = errors;
 
     return lexer;
 }
 
-void lexer_set_client(Lexer* lexer, void* data, OnLexErrFunc* on_error, OnLexLineFunc* on_line, 
-                      OnLexIdenFunc* on_ident, OnLexStrFunc* on_str)
-{
-    lexer->client.data = data;
-    lexer->client.on_error = on_error;
-    lexer->client.on_line = on_line;
-    lexer->client.on_ident = on_ident;
-    lexer->client.on_str = on_str;
-}
-
-void free_lexer(Lexer* lexer)
+void lexer_destroy(Lexer* lexer)
 {
     allocator_destroy(&lexer->allocator);
 }
@@ -477,7 +462,7 @@ static const char* token_kind_names[] = {
     [TKN_DOT] = ".",
 
     [TKN_STR] = "<str>",
-    [TKN_IDENTIFIER] = "<identifier>",
+    [TKN_IDENT] = "<identifier>",
     [TKN_INT] = "<int>",
     [TKN_FLOAT] = "<float>",
 
@@ -525,8 +510,8 @@ int print_token(Token* token, char* buf, size_t size)
     case TKN_STR: {
         return snprintf(buf, size, "%s: \"%s\"", prefix, token->tstr.value);
     } break;
-    case TKN_IDENTIFIER: {
-        return snprintf(buf, size, "%s: %s", prefix, token->tidentifier.value);
+    case TKN_IDENT: {
+        return snprintf(buf, size, "%s: %s", prefix, token->tident.value);
     } break;
     default:
         return snprintf(buf, size, "%s", prefix);
