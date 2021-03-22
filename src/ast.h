@@ -4,6 +4,23 @@
 #include <stddef.h>
 
 #include "allocator.h"
+#include "lexer.h"
+
+typedef struct Parser {
+    Allocator* allocator;
+    ByteStream* errors;
+    ProgPos start;
+    Lexer lexer;
+    Token token;
+} Parser;
+
+Parser parser_create(Allocator* allocator, const char* str, ProgPos pos, ByteStream* errors);
+void parser_destroy(Parser* parser);
+
+bool next_token(Parser* parser);
+bool is_token(Parser* parser, TokenKind kind);
+bool match_token(Parser* parser, TokenKind kind);
+bool expect_token(Parser* parser, TokenKind kind);
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -13,9 +30,9 @@ typedef struct Stmt Stmt;
 ///////////////////////////////
 //       Type Specifiers 
 //////////////////////////////
-typedef struct TypeSpecIdentifier {
+typedef struct TypeSpecIdent {
     const char* name;
-} TypeSpecIdentifier;
+} TypeSpecIdent;
 
 typedef struct TypeSpecFunc {
     size_t num_params;
@@ -34,7 +51,7 @@ typedef struct TypeSpecArray {
 
 typedef enum TypeSpecKind {
     TYPE_SPEC_NONE,
-    TYPE_SPEC_IDENTIFIER,
+    TYPE_SPEC_IDENT,
     TYPE_SPEC_FUNC,
     TYPE_SPEC_PTR,
     TYPE_SPEC_ARRAY,
@@ -45,15 +62,15 @@ struct TypeSpec {
     ProgRange range;
 
     union {
-        TypeSpecIdentifier tsidentifier;
-        TypeSpecFunc tsfunc;
-        TypeSpecPtr tsptr;
-        TypeSpecArray tsarray;
+        TypeSpecIdent ident;
+        TypeSpecFunc func;
+        TypeSpecPtr ptr;
+        TypeSpecArray array;
     };
 };
 
 TypeSpec* typespec_create(Allocator* allocator, TypeSpecKind kind, ProgRange range);
-TypeSpec* typespec_identifier(Allocator* allocator, const char* name, ProgRange range);
+TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range);
 ///////////////////////////////
 //       Expressions 
 //////////////////////////////

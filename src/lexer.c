@@ -7,7 +7,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#define LEXER_MAX_ERROR_LEN 128
 #define LEXER_ARENA_BLOCK_SIZE 512
 
 // Converts a numeric character to an integer value. Values are biased by +1
@@ -71,39 +70,34 @@ static ProgPos lexer_at_pos(Lexer* lexer)
 
 static void lexer_on_error(Lexer* lexer, const char* format, ...)
 {
-    if (lexer->client.on_error) {
-        char buf[LEXER_MAX_ERROR_LEN];
+    if (lexer->errors) {
+        char buf[MAX_ERROR_LEN];
+        size_t size = 0;
         va_list vargs;
 
         va_start(vargs, format);
-        vsnprintf(buf, LEXER_MAX_ERROR_LEN, format, vargs);
+        size = vsnprintf(buf, MAX_ERROR_LEN, format, vargs) + 1;
         va_end(vargs);
 
-        lexer->client.on_error(lexer->client.data, lexer_at_pos(lexer), buf);
+        add_byte_stream_chunk(lexer->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
     }
 }
 
 static void lexer_on_line(Lexer* lexer)
 {
-    if (lexer->client.on_line) {
-        lexer->client.on_line(lexer->client.data, lexer_at_pos(lexer));
-    }
+    (void)lexer;
 }
 
 static const char* lexer_on_str(Lexer* lexer, const char* str, size_t len)
 {
-    LexerClient* client = &lexer->client;
-    OnLexStrFunc* on_str = client->on_str;
-
-    return on_str ? on_str(client->data, lexer_at_pos(lexer), str, len) : NULL;
+    (void)lexer;
+    return intern_str_lit(str, len);
 }
 
-static const char* lexer_on_identifier(Lexer* lexer, const char* str, size_t len)
+static const char* lexer_on_ident(Lexer* lexer, const char* str, size_t len)
 {
-    LexerClient* client = &lexer->client;
-    OnLexStrFunc* on_iden = client->on_identifier;
-
-    return on_iden ? on_iden(client->data, lexer_at_pos(lexer), str, len) : NULL;
+    (void)lexer;
+    return intern_ident(str, len);
 }
 
 static void skip_c_comment(Lexer* lexer)
@@ -141,16 +135,12 @@ static void skip_c_comment(Lexer* lexer)
     return;
 }
 
-static void scan_int(Lexer* lexer)
+static TokenInt scan_int(Lexer* lexer)
 {
     // TODO: Support length suffixes e.g., U, UL, ULL, L, LL
     assert((lexer->at[0] >= '0') && (lexer->at[0] <= '9'));
 
-    Token* token = &lexer->token;
-
-    token->kind = TKN_INT;
-    token->tint.rep = TKN_INT_DEC;
-    token->tint.value = 0;
+    TokenInt tint = {.rep = TKN_INT_DEC, .value = 0};
     uint32_t base = 10;
     const char* start = lexer->at;
 
@@ -158,14 +148,14 @@ static void scan_int(Lexer* lexer)
         lexer->at++;
         if ((lexer->at[0] == 'x') || (lexer->at[0] == 'X')) {
             lexer->at++;
-            token->tint.rep = TKN_INT_HEX;
+            tint.rep = TKN_INT_HEX;
             base = 16;
         } else if ((lexer->at[0] == 'b') || (lexer->at[0] == 'B')) {
             lexer->at++;
-            token->tint.rep = TKN_INT_BIN;
+            tint.rep = TKN_INT_BIN;
             base = 2;
         } else if (is_dec_digit(lexer->at[0])) {
-            token->tint.rep = TKN_INT_OCT;
+            tint.rep = TKN_INT_OCT;
             base = 8;
         }
     }
@@ -175,7 +165,7 @@ static void scan_int(Lexer* lexer)
     if ((biased == 0) && (base != 10)) {
         lexer_on_error(lexer, "Invalid integer literal character '%c' after base specifier", lexer->at[0]);
         skip_word_end(lexer);
-        return;
+        return tint;
     }
 
     while (biased != 0) {
@@ -183,21 +173,21 @@ static void scan_int(Lexer* lexer)
 
         if (digit >= base) {
             lexer_on_error(lexer, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0], base);
-            token->tint.value = 0;
+            tint.value = 0;
             skip_word_end(lexer);
-            return;
+            return tint;
         }
 
         // Detect overflow if 10*val + digt > MAX
-        if (token->tint.value > (UINT64_MAX - digit) / base) {
+        if (tint.value > (UINT64_MAX - digit) / base) {
             lexer_on_error(lexer, "Integer literal %.*s is too large for its type", (size_t)(lexer->at - start), start);
-            token->tint.value = 0;
+            tint.value = 0;
             skip_word_end(lexer);
-            return;
+            return tint;
         }
 
-        token->tint.value *= base;
-        token->tint.value += digit;
+        tint.value *= base;
+        tint.value += digit;
 
         lexer->at++;
         biased = char_to_biased_digit[(unsigned char)lexer->at[0]];
@@ -208,17 +198,14 @@ static void scan_int(Lexer* lexer)
         skip_word_end(lexer);
     }
 
-    return;
+    return tint;
 }
 
-static void scan_float(Lexer* lexer)
+static TokenFloat scan_float(Lexer* lexer)
 {
     assert(((lexer->at[0] >= '0') && (lexer->at[0] <= '9')) || (lexer->at[0] == '.'));
-    Token* token = &lexer->token;
 
-    token->kind = TKN_FLOAT;
-    token->tfloat.value = 0.0;
-
+    TokenFloat tfloat = {.value = 0.0};
     const char* start = lexer->at;
 
     // \d*\.?\d*(e[+-]?\d*)?
@@ -244,7 +231,7 @@ static void scan_float(Lexer* lexer)
         if (!is_dec_digit(lexer->at[0])) {
             lexer_on_error(lexer, "Unexpected character '%c' after floating point literal's exponent", lexer->at[0]);
             skip_word_end(lexer);
-            return;
+            return tfloat;
         }
 
         while (is_dec_digit(lexer->at[0])) {
@@ -261,12 +248,12 @@ static void scan_float(Lexer* lexer)
 
     if (value == HUGE_VAL) {
         lexer_on_error(lexer, "Floating point literal is too large");
-        return;
+        return tfloat;
     }
 
-    token->tfloat.value = value;
+    tfloat.value = value;
 
-    return;
+    return tfloat;
 }
 
 static int scan_hex_escape(Lexer* lexer)
@@ -305,11 +292,10 @@ static int scan_hex_escape(Lexer* lexer)
     return value;
 }
 
-static void scan_string(Lexer* lexer)
+static TokenStr scan_string(Lexer* lexer)
 {
     assert(lexer->at[0] == '"');
-    Token* token = &lexer->token;
-    token->kind = TKN_STR;
+    TokenStr tstr = {0};
  
     lexer->at++;
 
@@ -362,16 +348,17 @@ static void scan_string(Lexer* lexer)
     }
 
     array_push(tmp, '\0');
-    token->tstr.value = lexer_on_str(lexer, tmp, array_len(tmp) - 1);
+    tstr.value = lexer_on_str(lexer, tmp, array_len(tmp) - 1);
 
     allocator_restore_state(state);
+
+    return tstr;
 }
 
-static void scan_identifier(Lexer* lexer)
+static TokenIdent scan_ident(Lexer* lexer)
 {
     assert(is_alphanum(lexer->at[0]));
-    Token* token = &lexer->token;
-    token->kind = TKN_IDENTIFIER;
+    TokenIdent tident = {0};
 
     const char* start = lexer->at;
 
@@ -379,17 +366,15 @@ static void scan_identifier(Lexer* lexer)
         lexer->at++;
     } while(is_alphanum(lexer->at[0]));
 
-    token->tidentifier.value = lexer_on_identifier(lexer, start, lexer->at - start);
+    tident.value = lexer_on_ident(lexer, start, lexer->at - start);
+
+    return tident;
 }
 
-static void scan_char(Lexer* lexer)
+static TokenInt scan_char(Lexer* lexer)
 {
     assert(lexer->at[0] == '\'');
-    Token* token = &lexer->token;
-
-    token->kind = TKN_INT;
-    token->tint.rep = TKN_INT_CHAR;
-    token->tint.value = 0;
+    TokenInt tint = {.rep = TKN_INT_CHAR, .value = 0};
 
     lexer->at++;
 
@@ -397,7 +382,7 @@ static void scan_char(Lexer* lexer)
     if (lexer->at[0] == '\'') {
         lexer_on_error(lexer, "Character literal cannot be empty");
         lexer->at++;
-        return;
+        return tint;
     }
 
     if (lexer->at[0] == '\n') {
@@ -406,7 +391,7 @@ static void scan_char(Lexer* lexer)
         lexer->at++;
         skip_char(lexer, '\'');
 
-        return;
+        return tint;
     }
 
     // Scan escaped sequence
@@ -418,7 +403,7 @@ static void scan_char(Lexer* lexer)
 
             int hex_val = scan_hex_escape(lexer);
 
-            token->tint.value = hex_val >= 0 ? hex_val : 0;
+            tint.value = hex_val >= 0 ? hex_val : 0;
         } else { // One character escape chars
             int32_t val = escaped_to_char[(unsigned char)lexer->at[0]];
 
@@ -426,11 +411,11 @@ static void scan_char(Lexer* lexer)
                 lexer_on_error(lexer, "Invalid escaped character '\\%c'", lexer->at[0]);
             }
 
-            token->tint.value = val;
+            tint.value = val;
             lexer->at++;
         }
     } else { // Regular non-escaped char
-        token->tint.value = lexer->at[0];
+        tint.value = lexer->at[0];
         lexer->at++;
     }
 
@@ -443,30 +428,21 @@ static void scan_char(Lexer* lexer)
         lexer->at++;
     }
 
-    return;
+    return tint;
 }
 
-Lexer lexer_from_str(const char* str, uint32_t start)
+Lexer lexer_create(const char* str, uint32_t start, ByteStream* errors)
 {
     Lexer lexer = {0};
     lexer.str = str;
     lexer.at = str;
     lexer.start = start;
+    lexer.errors = errors;
 
     return lexer;
 }
 
-void lexer_set_client(Lexer* lexer, void* data, OnLexErrFunc* on_error, OnLexLineFunc* on_line, 
-                      OnLexIdenFunc* on_ident, OnLexStrFunc* on_str)
-{
-    lexer->client.data = data;
-    lexer->client.on_error = on_error;
-    lexer->client.on_line = on_line;
-    lexer->client.on_identifier = on_ident;
-    lexer->client.on_str = on_str;
-}
-
-void free_lexer(Lexer* lexer)
+void lexer_destroy(Lexer* lexer)
 {
     allocator_destroy(&lexer->allocator);
 }
@@ -486,7 +462,7 @@ static const char* token_kind_names[] = {
     [TKN_DOT] = ".",
 
     [TKN_STR] = "<str>",
-    [TKN_IDENTIFIER] = "<identifier>",
+    [TKN_IDENT] = "<identifier>",
     [TKN_INT] = "<int>",
     [TKN_FLOAT] = "<float>",
 
@@ -534,24 +510,24 @@ int print_token(Token* token, char* buf, size_t size)
     case TKN_STR: {
         return snprintf(buf, size, "%s: \"%s\"", prefix, token->tstr.value);
     } break;
-    case TKN_IDENTIFIER: {
-        return snprintf(buf, size, "%s: %s", prefix, token->tidentifier.value);
+    case TKN_IDENT: {
+        return snprintf(buf, size, "%s: %s", prefix, token->tident.value);
     } break;
     default:
         return snprintf(buf, size, "%s", prefix);
     }
 }
 
-bool next_token(Lexer* lexer)
+Token scan_token(Lexer* lexer)
 {
-    Token* token = &lexer->token;
-    memset(token, 0, sizeof(Token));
+    Token token = {0};
 
+    // TODO: Use a goto instead of do-while loop.
     bool repeat = false;
 
     do {
         repeat = false;
-        token->start = lexer_at_pos(lexer);
+        token.range.start = lexer_at_pos(lexer);
 
         switch (lexer->at[0]) {
         case ' ': case '\t': case '\n': case '\r': case '\v': {
@@ -577,157 +553,158 @@ bool next_token(Lexer* lexer)
                 repeat = true;
             } else {
                 lexer->at++;
-                token->kind = TKN_DIV;
+                token.kind = TKN_DIV;
 
                 if (lexer->at[0] == '=') {
                     lexer->at++;
-                    token->kind = TKN_DIV_ASSIGN;
+                    token.kind = TKN_DIV_ASSIGN;
                 }
             }
         } break;
         case '(': {
             lexer->at++;
-            token->kind = TKN_LPAREN;
+            token.kind = TKN_LPAREN;
         } break;
         case ')': {
             lexer->at++;
-            token->kind = TKN_RPAREN;
+            token.kind = TKN_RPAREN;
         } break;
         case '[': {
             lexer->at++;
-            token->kind = TKN_LBRACKET;
+            token.kind = TKN_LBRACKET;
         } break;
         case ']': {
             lexer->at++;
-            token->kind = TKN_RBRACKET;
+            token.kind = TKN_RBRACKET;
         } break;
         case '{': {
             lexer->at++;
-            token->kind = TKN_LBRACE;
+            token.kind = TKN_LBRACE;
         } break;
         case '}': {
             lexer->at++;
-            token->kind = TKN_RBRACE;
+            token.kind = TKN_RBRACE;
         } break;
         case ';': {
             lexer->at++;
-            token->kind = TKN_SEMICOLON;
+            token.kind = TKN_SEMICOLON;
         } break;
         case ':': {
             lexer->at++;
-            token->kind = TKN_COLON;
+            token.kind = TKN_COLON;
         } break;
         case ',': {
             lexer->at++;
-            token->kind = TKN_COMMA;
+            token.kind = TKN_COMMA;
         } break;
         case '+': {
             lexer->at++;
-            token->kind = TKN_PLUS;
+            token.kind = TKN_PLUS;
 
             if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_ADD_ASSIGN;
+                token.kind = TKN_ADD_ASSIGN;
             }
         } break;
         case '-': {
             lexer->at++;
-            token->kind = TKN_MINUS;
+            token.kind = TKN_MINUS;
 
             if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_SUB_ASSIGN;
+                token.kind = TKN_SUB_ASSIGN;
             }
         } break;
         case '*': {
             lexer->at++;
-            token->kind = TKN_ASTERISK;
+            token.kind = TKN_ASTERISK;
 
             if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_MUL_ASSIGN;
+                token.kind = TKN_MUL_ASSIGN;
             }
         } break;
         case '%': {
             lexer->at++;
-            token->kind = TKN_MOD;
+            token.kind = TKN_MOD;
 
             if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_MOD_ASSIGN;
+                token.kind = TKN_MOD_ASSIGN;
             }
         } break;
         case '>': {
             lexer->at++;
-            token->kind = TKN_GT;
+            token.kind = TKN_GT;
 
             if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_GTEQ;
+                token.kind = TKN_GTEQ;
             } else if (lexer->at[0] == '>') {
                 lexer->at++;
-                token->kind = TKN_RSHIFT;
+                token.kind = TKN_RSHIFT;
             }
         } break;
         case '<': {
             lexer->at++;
-            token->kind = TKN_LT;
+            token.kind = TKN_LT;
 
             if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_LTEQ;
+                token.kind = TKN_LTEQ;
             } else if (lexer->at[0] == '<') {
                 lexer->at++;
-                token->kind = TKN_LSHIFT;
+                token.kind = TKN_LSHIFT;
             }
         } break;
         case '&': {
             lexer->at++;
-            token->kind = TKN_AND;
+            token.kind = TKN_AND;
 
             if (lexer->at[0] == '&') {
                 lexer->at++;
-                token->kind = TKN_LOGIC_AND;
+                token.kind = TKN_LOGIC_AND;
             } else if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_AND_ASSIGN;
+                token.kind = TKN_AND_ASSIGN;
             }
         } break;
         case '|': {
             lexer->at++;
-            token->kind = TKN_OR;
+            token.kind = TKN_OR;
 
             if (lexer->at[0] == '|') {
                 lexer->at++;
-                token->kind = TKN_LOGIC_OR;
+                token.kind = TKN_LOGIC_OR;
             } else if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_OR_ASSIGN;
+                token.kind = TKN_OR_ASSIGN;
             }
         } break;
         case '^': {
             lexer->at++;
-            token->kind = TKN_XOR;
+            token.kind = TKN_XOR;
 
             if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_XOR_ASSIGN;
+                token.kind = TKN_XOR_ASSIGN;
             }
         } break;
         case '=': {
             lexer->at++;
-            token->kind = TKN_ASSIGN;
+            token.kind = TKN_ASSIGN;
 
             if (lexer->at[0] == '=') {
                 lexer->at++;
-                token->kind = TKN_EQ;
+                token.kind = TKN_EQ;
             }
         } break;
         case '.': {
             if (is_dec_digit(lexer->at[1])) {
-                scan_float(lexer);
+                token.kind = TKN_FLOAT;
+                token.tfloat = scan_float(lexer);
             } else {
-                token->kind = TKN_DOT;
+                token.kind = TKN_DOT;
                 lexer->at++;
             }
         } break;
@@ -740,16 +717,20 @@ bool next_token(Lexer* lexer)
             }
 
             if ((*p == '.') || (*p == 'e') || (*p == 'E')) {
-                scan_float(lexer);
+                token.kind = TKN_FLOAT;
+                token.tfloat = scan_float(lexer);
             } else {
-                scan_int(lexer);
+                token.kind = TKN_INT;
+                token.tint = scan_int(lexer);
             }
         } break;
         case '\'': {
-            scan_char(lexer);
+            token.kind = TKN_INT;
+            token.tint = scan_char(lexer);
         } break;
         case '"': {
-            scan_string(lexer);
+            token.kind = TKN_STR;
+            token.tstr = scan_string(lexer);
         } break;
         case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j': case 'k':
         case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u': case 'v':
@@ -757,10 +738,11 @@ bool next_token(Lexer* lexer)
         case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J': case 'K':
         case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V':
         case 'W': case 'X': case 'Y': case 'Z': case '_': {
-            scan_identifier(lexer);
+            token.kind = TKN_IDENT;
+            token.tident = scan_ident(lexer);
         } break;
         case '\0': {
-            token->kind = TKN_EOF;
+            token.kind = TKN_EOF;
             lexer->at++;
         } break;
         default: {
@@ -770,24 +752,9 @@ bool next_token(Lexer* lexer)
         } break;
         }
 
-        token->end = lexer_at_pos(lexer);
+        token.range.end = lexer_at_pos(lexer);
     } while (repeat);
 
-    return token->kind != TKN_EOF;
+    return token;
 }
 
-bool is_token(Lexer* lexer, TokenKind kind)
-{
-    return (lexer->token.kind == kind);
-}
-
-bool match_token(Lexer* lexer, TokenKind kind)
-{
-    bool matches = (lexer->token.kind == kind);
-
-    if (matches) {
-        next_token(lexer);
-    }
-
-    return matches;
-}

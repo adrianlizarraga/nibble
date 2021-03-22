@@ -3,7 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "nibble.h"
 #include "allocator.h"
+#include "stream.h"
 
 typedef enum TokenKind {
     TKN_INVALID = 0,
@@ -20,7 +22,7 @@ typedef enum TokenKind {
     TKN_DOT,
 
     TKN_STR,
-    TKN_IDENTIFIER,
+    TKN_IDENT,
     TKN_INT,
     TKN_FLOAT,
 
@@ -72,66 +74,38 @@ typedef struct TokenFloat {
     double value;
 } TokenFloat;
 
-typedef struct TokenIdentifier {
+typedef struct TokenIdent {
     const char* value;
-} TokenIdentifier;
+} TokenIdent;
 
 typedef struct TokenStr {
     const char* value;
 } TokenStr;
 
-typedef uint32_t ProgPos;
-
-typedef struct ProgRange {
-    ProgPos start;
-    ProgPos end;
-} ProgRange;
 
 typedef struct Token {
     TokenKind kind;
-
-    ProgPos start;
-    ProgPos end;
+    ProgRange range;
 
     union {
         TokenInt tint;
         TokenFloat tfloat;
-        TokenIdentifier tidentifier;
+        TokenIdent tident;
         TokenStr tstr;
     };
 } Token;
 
-typedef void OnLexErrFunc(void* data, ProgPos pos, const char* msg);
-typedef void OnLexLineFunc(void* data, ProgPos pos);
-typedef const char* OnLexIdenFunc(void* data, ProgPos pos, const char* str, size_t len);
-typedef const char* OnLexStrFunc(void* data, ProgPos pos, const char* str, size_t len);
-
-typedef struct LexerClient {
-    void* data;
-
-    OnLexErrFunc* on_error;
-    OnLexLineFunc* on_line;
-    OnLexIdenFunc* on_identifier;
-    OnLexStrFunc* on_str;
-} LexerClient;
-
 typedef struct Lexer {
     const char* str;
     const char* at;
-    Token token;
     ProgPos start;
-
-    LexerClient client;
     Allocator allocator;
+    ByteStream* errors;
 } Lexer;
 
-Lexer lexer_from_str(const char* str, uint32_t start);
-void lexer_set_client(Lexer* lexer, void* data, OnLexErrFunc* on_error, OnLexLineFunc* on_line, 
-                      OnLexIdenFunc* on_ident, OnLexStrFunc* on_str);
-void free_lexer(Lexer* lexer);
+Lexer lexer_create(const char* str, uint32_t start, ByteStream* errors);
+void lexer_destroy(Lexer* lexer);
 
 int print_token(Token* token, char* buf, size_t size);
-bool next_token(Lexer* lexer);
-bool match_token(Lexer* lexer, TokenKind kind);
-bool is_token(Lexer* lexer, TokenKind kind);
+Token scan_token(Lexer* lexer);
 #endif
