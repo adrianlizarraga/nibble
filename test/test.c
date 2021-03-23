@@ -6,6 +6,7 @@
 #include "nibble.h"
 #include "allocator.c"
 #include "array.c"
+#include "llist.h"
 #include "hash_map.c"
 #include "stream.c"
 #include "lexer.c"
@@ -820,6 +821,56 @@ void test_interning(void)
     allocator_destroy(&arena);
 }
 
+typedef struct TestNode {
+    int num;
+    DLLNode node;
+} TestNode;
+
+void test_dllist(void)
+{
+    // Test adding new values to the head of the list.
+    {
+        DLLNode head = dll_head_create(head);    
+
+        TestNode node1 = {.num = 1};
+        TestNode node2 = {.num = 2};
+        TestNode node3 = {.num = 3};
+
+        dll_add(&node1.node, &head);
+        dll_add(&node2.node, &head);
+        dll_add(&node3.node, &head);
+
+        int i = 0;
+        for (DLLNode* n = head.next; n != &head; n = n->next) {
+            TestNode* entry = dll_entry(n, TestNode, node);
+            assert(entry->num == 3 - i);
+
+            i += 1;
+        }
+    }
+
+    // Test adding new values to the tail of the list.
+    {
+        DLLNode head = dll_head_create(head);    
+
+        TestNode node1 = {.num = 1};
+        TestNode node2 = {.num = 2};
+        TestNode node3 = {.num = 3};
+
+        dll_add(&node1.node, head.prev);
+        dll_add(&node2.node, head.prev);
+        dll_add(&node3.node, head.prev);
+
+        int i = 0;
+        for (DLLNode* n = head.next; n != &head; n = n->next) {
+            TestNode* entry = dll_entry(n, TestNode, node);
+            assert(entry->num == i + 1);
+
+            i += 1;
+        }
+    }
+}
+
 int main(void)
 {
     g_ctx.allocator = allocator_create(4096);
@@ -830,6 +881,7 @@ int main(void)
     test_array();
     test_hash_map();
     test_interning();
+    test_dllist();
 
     allocator_destroy(&g_ctx.allocator);
 }
