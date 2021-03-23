@@ -11,6 +11,7 @@
 #include "stream.c"
 #include "lexer.c"
 #include "ast.c"
+#include "parser.c"
 
 #define MAX_ERRORS 20
 
@@ -92,7 +93,7 @@ int main(void)
 {
     nibble_init();
 
-    CompiledModule* module = compile_module("int main() { int a = 0xx; if (a == 1) print(\"hi\"); }", 0);
+    CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a == 1) print(\"hi\"); }", 0);
 
     free_compiled_module(module);
     nibble_cleanup();

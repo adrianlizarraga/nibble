@@ -3,73 +3,60 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "nibble.h"
 #include "allocator.c"
 #include "array.c"
 #include "hash_map.c"
+#include "stream.c"
 #include "lexer.c"
 
-typedef struct TestProgContext {
-    int num_errors;
+typedef struct NibbleCtx {
     Allocator allocator;
-} TestProgContext;
+} NibbleCtx;
 
-static TestProgContext g_ctx;
+static NibbleCtx g_ctx;
 
-static void test_on_error(void* data, ProgPos pos, const char* msg)
+static void print_errors(ByteStream* errors)
 {
-    if (data) {
-        TestProgContext* c = data;
+    if (errors) {
+        ByteStreamChunk* chunk = errors->first;
 
-        c->num_errors += 1;
-        printf("[ERROR]:%u: %s\n", pos, msg);
+        while (chunk) {
+            printf("[ERROR]: %s\n", chunk->buf);
+            chunk = chunk->next;
+        }
     }
 }
 
-static const char* test_on_str(void* data, ProgPos pos, const char* str, size_t len)
+const char* intern_str_lit(const char* str, size_t len)
 {
-    (void)pos;
+    char* dup = new_array(&g_ctx.allocator, char, len + 1, false);
 
-    if (data) {
-        TestProgContext* c = data;
-
-        char* dup = new_array(&c->allocator, char, len + 1, false);
-
-        for (size_t i = 0; i < len; ++i) {
-            dup[i] = str[i];
-        }
-        dup[len] = '\0';
-
-        return dup;
+    for (size_t i = 0; i < len; ++i) {
+        dup[i] = str[i];
     }
+    dup[len] = '\0';
 
-    return NULL;
+    return dup;
 }
 
-static const char* test_on_identifier(void* data, ProgPos pos, const char* str, size_t len)
+const char* intern_ident(const char* str, size_t len)
 {
-    (void)pos;
+    char* dup = new_array(&g_ctx.allocator, char, len + 1, false);
 
-    if (data) {
-        TestProgContext* c = data;
-
-        char* dup = new_array(&c->allocator, char, len + 1, false);
-
-        for (size_t i = 0; i < len; ++i) {
-            dup[i] = str[i];
-        }
-        dup[len] = '\0';
-
-        return dup;
+    for (size_t i = 0; i < len; ++i) {
+        dup[i] = str[i];
     }
+    dup[len] = '\0';
 
-    return NULL;
+    return dup;
 }
 
 #define TKN_TEST_POS(tk, tp, a, b)                                                                                     \
     do {                                                                                                               \
         assert((tk.kind == tp));                                                                                       \
-        assert((tk.start == a));                                                                                       \
-        assert((tk.end == b));                                                                                         \
+        assert((tk.range.start == a));                                                                                       \
+        assert((tk.range.end == b));                                                                                         \
     } while (0)
 #define TKN_TEST_INT(tk, b, v)                                                                                         \
     do {                                                                                                               \
@@ -95,408 +82,492 @@ static const char* test_on_identifier(void* data, ProgPos pos, const char* str, 
     } while (0)
 #define TKN_TEST_IDEN(tk, v)                                                                                           \
     do {                                                                                                               \
-        assert((tk.kind == TKN_IDENTIFIER));                                                                           \
-        assert(strcmp(tk.tidentifier.value, v) == 0);                                                                  \
+        assert((tk.kind == TKN_IDENT));                                                                           \
+        assert(strcmp(tk.tident.value, v) == 0);                                                                  \
     } while (0)
-static void test_init_lexer(Lexer* lexer, const char* str, ProgPos start)
-{
-    free_lexer(lexer);
-    *lexer = lexer_from_str(str, start);
-    lexer->client.data = &g_ctx;
-    lexer->client.on_error = test_on_error;
-    lexer->client.on_str = test_on_str;
-    lexer->client.on_identifier = test_on_identifier;
-
-    g_ctx.num_errors = 0;
-}
 
 static void test_lexer(void)
 {
-    Lexer lexer = {0};
-
     // Test basic tokens, newlines, and c++ comments.
-    unsigned int i = 10;
-    test_init_lexer(&lexer, "(+[]-*%&|^<>) && || >> << == >= <= = += -= *= /= &= |= ^= %= \n  //++--\n{;:,./}", i);
+    {
+        unsigned int i = 10;
+        Token token = {0};
+        Lexer lexer = lexer_create("(+[]-*%&|^<>) && || >> << == >= <= = += -= *= /= &= |= ^= %= \n  //++--\n{;:,./}", i, NULL);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LPAREN, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_LPAREN, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_PLUS, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_PLUS, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LBRACKET, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_LBRACKET, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_RBRACKET, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_RBRACKET, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_MINUS, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_MINUS, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_ASTERISK, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_ASTERISK, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_MOD, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_MOD, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_AND, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_AND, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_OR, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_OR, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_XOR, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_XOR, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LT, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_LT, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_GT, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_GT, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_RPAREN, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_RPAREN, i, ++i);
 
-    i++;
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LOGIC_AND, i, i + 2);
-    i += 3;
+        i++;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_LOGIC_AND, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LOGIC_OR, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_LOGIC_OR, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_RSHIFT, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_RSHIFT, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LSHIFT, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_LSHIFT, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_EQ, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_EQ, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_GTEQ, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_GTEQ, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LTEQ, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_LTEQ, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_ASSIGN, i, i + 1);
-    i += 2;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_ASSIGN, i, i + 1);
+        i += 2;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_ADD_ASSIGN, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_ADD_ASSIGN, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_SUB_ASSIGN, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_SUB_ASSIGN, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_MUL_ASSIGN, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_MUL_ASSIGN, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_DIV_ASSIGN, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_DIV_ASSIGN, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_AND_ASSIGN, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_AND_ASSIGN, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_OR_ASSIGN, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_OR_ASSIGN, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_XOR_ASSIGN, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_XOR_ASSIGN, i, i + 2);
+        i += 3;
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_MOD_ASSIGN, i, i + 2);
-    i += 3;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_MOD_ASSIGN, i, i + 2);
+        i += 3;
 
-    i += 10;
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_LBRACE, i, ++i);
+        i += 10;
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_LBRACE, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_SEMICOLON, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_SEMICOLON, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_COLON, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_COLON, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_COMMA, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_COMMA, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_DOT, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_DOT, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_DIV, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_DIV, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_RBRACE, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_RBRACE, i, ++i);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_EOF, i, ++i);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_EOF, i, ++i);
+
+        lexer_destroy(&lexer);
+    }
 
     // Test nested c-style comments
-    test_init_lexer(&lexer, "/**** 1 /* 2 */ \n***/+-", 0);
+    {
+        Lexer lexer = lexer_create("/**** 1 /* 2 */ \n***/+-", 0, NULL);
+        Token token = {0};
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_PLUS, 21, 22);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_PLUS, 21, 22);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_MINUS, 22, 23);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_MINUS, 22, 23);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_EOF, 23, 24);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_EOF, 23, 24);
+
+        lexer_destroy(&lexer);
+    }
 
     // Test error when have unclosed c-style comments
-    test_init_lexer(&lexer, "/* An unclosed comment", 0);
+    {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        Lexer lexer = lexer_create("/* An unclosed comment", 0, &errors);
+        Token token = {0};
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_EOF, 22, 23);
-    assert(g_ctx.num_errors == 1);
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_EOF, 22, 23);
+        assert(errors.num_chunks == 1);
 
-    test_init_lexer(&lexer, "/* An unclosed comment\n", 0);
+        print_errors(&errors);
 
-    next_token(&lexer);
-    TKN_TEST_POS(lexer.token, TKN_EOF, strlen(lexer.str), strlen(lexer.str) + 1);
-    assert(g_ctx.num_errors == 1);
+        lexer_destroy(&lexer);
+    }
+
+    {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        Lexer lexer = lexer_create("/* An unclosed comment\n", 0, &errors);
+        Token token = {0};
+
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_EOF, strlen(lexer.str), strlen(lexer.str) + 1);
+        assert(errors.num_chunks == 1);
+
+        print_errors(&errors);
+        lexer_destroy(&lexer);
+    }
 
     // Test integer literals
-    test_init_lexer(&lexer, "123 333\n0xFF 0b0111 011 0", 0);
+    {
+        Lexer lexer = lexer_create("123 333\n0xFF 0b0111 011 0", 0, NULL);
+        Token token = {0};
 
-    next_token(&lexer);
-    TKN_TEST_INT(lexer.token, TKN_INT_DEC, 123);
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 123);
 
-    next_token(&lexer);
-    TKN_TEST_INT(lexer.token, TKN_INT_DEC, 333);
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 333);
 
-    next_token(&lexer);
-    TKN_TEST_INT(lexer.token, TKN_INT_HEX, 0xFF);
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_HEX, 0xFF);
 
-    next_token(&lexer);
-    TKN_TEST_INT(lexer.token, TKN_INT_BIN, 7);
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_BIN, 7);
 
-    next_token(&lexer);
-    TKN_TEST_INT(lexer.token, TKN_INT_OCT, 9);
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_OCT, 9);
 
-    next_token(&lexer);
-    TKN_TEST_INT(lexer.token, TKN_INT_DEC, 0);
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 0);
 
-    next_token(&lexer);
-    assert(lexer.token.kind == TKN_EOF);
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
 
-    test_init_lexer(&lexer, "0Z 0b3 09 1A\n999999999999999999999999", 0);
+        lexer_destroy(&lexer);
+    }
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 1);
+    // Test integer literal lexing errors
+    {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        Lexer lexer = lexer_create("0Z 0b3 09 1A\n999999999999999999999999", 0, &errors);
+        Token token = {0};
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 2);
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 1);
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 3);
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 2);
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 4);
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 3);
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 5);
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 4);
 
-    next_token(&lexer);
-    assert(lexer.token.kind == TKN_EOF);
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 5);
+
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
+
+        print_errors(&errors);
+        lexer_destroy(&lexer);
+    }
 
     // Test floating point literals
-    test_init_lexer(&lexer, "1.23 .23 1.33E2", 0);
+    {
+        Lexer lexer = lexer_create("1.23 .23 1.33E2", 0, NULL);
+        Token token = {0};
 
-    next_token(&lexer);
-    TKN_TEST_FLOAT(lexer.token, 1.23);
+        token = scan_token(&lexer);
+        TKN_TEST_FLOAT(token, 1.23);
 
-    next_token(&lexer);
-    TKN_TEST_FLOAT(lexer.token, .23);
+        token = scan_token(&lexer);
+        TKN_TEST_FLOAT(token, .23);
 
-    next_token(&lexer);
-    TKN_TEST_FLOAT(lexer.token, 1.33E2);
+        token = scan_token(&lexer);
+        TKN_TEST_FLOAT(token, 1.33E2);
 
-    test_init_lexer(&lexer, "1.33ea 1.33e100000000000", 0);
+        lexer_destroy(&lexer);
+    }
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 1);
+    {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        Lexer lexer = lexer_create("1.33ea 1.33e100000000000", 0, &errors);
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 2);
+        scan_token(&lexer);
+        assert(errors.num_chunks == 1);
+
+        scan_token(&lexer);
+        assert(errors.num_chunks == 2);
+
+        print_errors(&errors);
+        lexer_destroy(&lexer);
+    }
 
     // Test character literals
-    test_init_lexer(&lexer,
-                    "'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' "
-                    "'\\\\' '\\'' '\\\"' '\\?'",
-                    0);
+    {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        Lexer lexer = lexer_create("'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' "
+                        "'\\\\' '\\'' '\\\"' '\\?'",
+                        0, &errors);
+        Token token = {0};
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, 'a');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, 'a');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '1');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '1');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, ' ');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, ' ');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\0');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\0');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\a');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\a');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\b');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\b');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\f');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\f');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\n');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\n');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\r');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\r');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\t');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\t');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\v');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\v');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\\');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\\');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\'');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\'');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '"');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '"');
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '?');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '?');
 
-    next_token(&lexer);
-    assert(lexer.token.kind == TKN_EOF);
-    assert(g_ctx.num_errors == 0);
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
+        assert(errors.num_chunks == 0);
 
-    test_init_lexer(&lexer, "'\\x12'  '\\x3'", 0);
+        lexer_destroy(&lexer);
+    }
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\x12');
+    // Test escaped hex chars
+    {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        Lexer lexer = lexer_create("'\\x12'  '\\x3'", 0, &errors);
+        Token token = {0};
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\x3');
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\x12');
 
-    test_init_lexer(&lexer, "'' 'a '\n' '\\z' '\\0'", 0);
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\x3');
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 1);
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
+        assert(errors.num_chunks == 0);
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 2);
+        lexer_destroy(&lexer);
+    }
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 3);
+    // Test errors when lexing escaped hex chars
+    {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        Lexer lexer = lexer_create("'' 'a '\n' '\\z' '\\0'", 0, &errors);
+        Token token = {0};
 
-    next_token(&lexer);
-    assert(g_ctx.num_errors == 4);
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 1);
 
-    next_token(&lexer);
-    TKN_TEST_CHAR(lexer.token, '\0');
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 2);
 
-    next_token(&lexer);
-    assert(lexer.token.kind == TKN_EOF);
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 3);
+
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 4);
+
+        token = scan_token(&lexer);
+        TKN_TEST_CHAR(token, '\0');
+
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
+
+        print_errors(&errors);
+        lexer_destroy(&lexer);
+    }
 
     // Test basic string literals
     {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
         const char* str = "\"hello world\" \"a\\nb\" \n \"\\x50 a \\x51\" \"\" \"\\\"nested\\\"\"";
-        test_init_lexer(&lexer, str, 0);
+        Lexer lexer = lexer_create(str, 0, &errors);
+        Token token = {0};
 
-        next_token(&lexer);
-        TKN_TEST_STR(lexer.token, "hello world");
+        token = scan_token(&lexer);
+        TKN_TEST_STR(token, "hello world");
 
-        next_token(&lexer);
-        TKN_TEST_STR(lexer.token, "a\nb");
+        token = scan_token(&lexer);
+        TKN_TEST_STR(token, "a\nb");
 
-        next_token(&lexer);
-        TKN_TEST_STR(lexer.token, "\x50 a \x51");
+        token = scan_token(&lexer);
+        TKN_TEST_STR(token, "\x50 a \x51");
 
-        next_token(&lexer);
-        TKN_TEST_STR(lexer.token, "");
+        token = scan_token(&lexer);
+        TKN_TEST_STR(token, "");
 
-        next_token(&lexer);
-        TKN_TEST_STR(lexer.token, "\"nested\"");
+        token = scan_token(&lexer);
+        TKN_TEST_STR(token, "\"nested\"");
+
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
+        assert(errors.num_chunks == 0);
+
+        lexer_destroy(&lexer);
     }
 
     // Test errors when scanning string literals
     {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
         const char* str = "\"\n\" \"\\xTF\" \"\\W\" \"unclosed";
-        test_init_lexer(&lexer, str, 0);
+        Lexer lexer = lexer_create(str, 0, &errors);
 
-        next_token(&lexer);
-        assert(g_ctx.num_errors == 1);
+        scan_token(&lexer);
+        assert(errors.num_chunks == 1);
 
-        next_token(&lexer);
-        assert(g_ctx.num_errors == 2);
+        scan_token(&lexer);
+        assert(errors.num_chunks == 2);
 
-        next_token(&lexer);
-        assert(g_ctx.num_errors == 3);
+        scan_token(&lexer);
+        assert(errors.num_chunks == 3);
 
-        next_token(&lexer);
-        assert(g_ctx.num_errors == 4);
+        scan_token(&lexer);
+        assert(errors.num_chunks == 4);
+
+        print_errors(&errors);
+        lexer_destroy(&lexer);
     }
 
     // Test basic identifiers
     {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
         const char* str = "var x1a x11 _abc abc_ _ab_c_ i";
-        test_init_lexer(&lexer, str, 0);
+        Lexer lexer = lexer_create(str, 0, &errors);
+        Token token = {0};
 
-        next_token(&lexer);
-        TKN_TEST_IDEN(lexer.token, "var");
+        token = scan_token(&lexer);
+        TKN_TEST_IDEN(token, "var");
 
-        next_token(&lexer);
-        TKN_TEST_IDEN(lexer.token, "x1a");
+        token = scan_token(&lexer);
+        TKN_TEST_IDEN(token, "x1a");
 
-        next_token(&lexer);
-        TKN_TEST_IDEN(lexer.token, "x11");
+        token = scan_token(&lexer);
+        TKN_TEST_IDEN(token, "x11");
 
-        next_token(&lexer);
-        TKN_TEST_IDEN(lexer.token, "_abc");
+        token = scan_token(&lexer);
+        TKN_TEST_IDEN(token, "_abc");
 
-        next_token(&lexer);
-        TKN_TEST_IDEN(lexer.token, "abc_");
+        token = scan_token(&lexer);
+        TKN_TEST_IDEN(token, "abc_");
 
-        next_token(&lexer);
-        TKN_TEST_IDEN(lexer.token, "_ab_c_");
+        token = scan_token(&lexer);
+        TKN_TEST_IDEN(token, "_ab_c_");
 
-        next_token(&lexer);
-        TKN_TEST_IDEN(lexer.token, "i");
+        token = scan_token(&lexer);
+        TKN_TEST_IDEN(token, "i");
+
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
+        assert(errors.num_chunks == 0);
+
+        lexer_destroy(&lexer);
     }
 
     // Test invalid identifier combinations.
     {
+        ByteStream errors = byte_stream_create(&g_ctx.allocator);
         const char* str = "1var";
-        test_init_lexer(&lexer, str, 0);
+        Lexer lexer = lexer_create(str, 0, &errors);
+        Token token = {0};
 
-        next_token(&lexer);
-        assert(g_ctx.num_errors == 1);
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 1);
 
-        next_token(&lexer);
-        assert(lexer.token.kind == TKN_EOF);
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
+
+        print_errors(&errors);
+        lexer_destroy(&lexer);
     }
-    free_lexer(&lexer);
 }
 
 void test_allocator(void)
@@ -707,16 +778,16 @@ void test_array(void)
 
 void test_hash_map(void)
 {
-    HashMap map = hash_map(24, NULL);
+    HashMap map = hash_map(21, NULL);
 
-    for (uint64_t i = 1; i <= (1 << 23); ++i) {
+    for (uint64_t i = 1; i <= (1 << 20); ++i) {
         uint64_t* r = hash_map_put(&map, i, i);
 
         assert(r);
         assert(*r == i);
     }
 
-    for (uint64_t i = 1; i <= (1 << 23); ++i) {
+    for (uint64_t i = 1; i <= (1 << 20); ++i) {
         uint64_t* r = hash_map_get(&map, i);
 
         assert(r);
@@ -752,11 +823,13 @@ void test_interning(void)
 int main(void)
 {
     g_ctx.allocator = allocator_create(4096);
+
     printf("Nibble tests!\n");
     test_lexer();
     test_allocator();
     test_array();
     test_hash_map();
     test_interning();
+
     allocator_destroy(&g_ctx.allocator);
 }

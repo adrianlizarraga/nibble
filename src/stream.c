@@ -26,11 +26,13 @@ void byte_stream_destroy(ByteStream* stream)
 void add_byte_stream_chunk(ByteStream* stream, const char* buf, size_t size)
 {
     if (stream) {
-        ByteStreamChunk* chunk = mem_allocate(stream->allocator, offsetof(ByteStreamChunk, buf) + size, DEFAULT_ALIGN, false);  
+        size_t chunk_size = offsetof(ByteStreamChunk, buf) + size;
+        ByteStreamChunk* chunk = mem_allocate(stream->allocator, chunk_size, DEFAULT_ALIGN, false);  
         
         if (chunk) {
             memcpy(chunk->buf, buf, size);
             chunk->size = size;
+            chunk->next = NULL;
 
             if (!stream->first) {
                 stream->last = stream->first = chunk;

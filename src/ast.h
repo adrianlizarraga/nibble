@@ -3,24 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "nibble.h"
 #include "allocator.h"
-#include "lexer.h"
-
-typedef struct Parser {
-    Allocator* allocator;
-    ByteStream* errors;
-    ProgPos start;
-    Lexer lexer;
-    Token token;
-} Parser;
-
-Parser parser_create(Allocator* allocator, const char* str, ProgPos pos, ByteStream* errors);
-void parser_destroy(Parser* parser);
-
-bool next_token(Parser* parser);
-bool is_token(Parser* parser, TokenKind kind);
-bool match_token(Parser* parser, TokenKind kind);
-bool expect_token(Parser* parser, TokenKind kind);
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -69,8 +53,11 @@ struct TypeSpec {
     };
 };
 
-TypeSpec* typespec_create(Allocator* allocator, TypeSpecKind kind, ProgRange range);
+TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange range);
 TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range);
+TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
+TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
+
 ///////////////////////////////
 //       Expressions 
 //////////////////////////////

@@ -8,6 +8,7 @@
 #define DEFAULT_ALIGN alignof(max_align_t)
 
 typedef struct Allocator {
+    size_t id;
     size_t block_size;
     unsigned char* buffer;
     unsigned char* end;

@@ -79,7 +79,9 @@ static void lexer_on_error(Lexer* lexer, const char* format, ...)
         size = vsnprintf(buf, MAX_ERROR_LEN, format, vargs) + 1;
         va_end(vargs);
 
-        add_byte_stream_chunk(lexer->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
+        size = size > sizeof(buf) ? sizeof(buf) : size;
+
+        add_byte_stream_chunk(lexer->errors, buf, size);
     }
 }
 
@@ -300,7 +302,6 @@ static TokenStr scan_string(Lexer* lexer)
     lexer->at++;
 
     Allocator* arena = &lexer->allocator;
-    AllocatorState state = allocator_get_state(arena);
     char* tmp = array_create(arena, char, 128); 
 
     while (lexer->at[0] && (lexer->at[0] != '"') && (lexer->at[0] != '\n')) {
@@ -350,7 +351,7 @@ static TokenStr scan_string(Lexer* lexer)
     array_push(tmp, '\0');
     tstr.value = lexer_on_str(lexer, tmp, array_len(tmp) - 1);
 
-    allocator_restore_state(state);
+    allocator_reset(arena);
 
     return tstr;
 }
@@ -438,6 +439,7 @@ Lexer lexer_create(const char* str, uint32_t start, ByteStream* errors)
     lexer.at = str;
     lexer.start = start;
     lexer.errors = errors;
+    lexer.allocator = allocator_create(LEXER_ARENA_BLOCK_SIZE);
 
     return lexer;
 }
@@ -522,238 +524,233 @@ Token scan_token(Lexer* lexer)
 {
     Token token = {0};
 
-    // TODO: Use a goto instead of do-while loop.
-    bool repeat = false;
+top:
+    token.range.start = lexer_at_pos(lexer);
 
-    do {
-        repeat = false;
-        token.range.start = lexer_at_pos(lexer);
-
-        switch (lexer->at[0]) {
-        case ' ': case '\t': case '\n': case '\r': case '\v': {
-            while (is_whitespace(lexer->at[0])) {
-                if (lexer->at[0] == '\n') {
-                    lexer_on_line(lexer);
-                }
-
-                lexer->at++;
+    switch (lexer->at[0]) {
+    case ' ': case '\t': case '\n': case '\r': case '\v': {
+        while (is_whitespace(lexer->at[0])) {
+            if (lexer->at[0] == '\n') {
+                lexer_on_line(lexer);
             }
 
-            repeat = true;
-        } break;
-        case '/': {
-            if (lexer->at[1] == '/') {
-                while (lexer->at[0] && (lexer->at[0] != '\n') && (lexer->at[0] != '\r')) {
-                    lexer->at++;
-                }
-
-                repeat = true;
-            } else if (lexer->at[1] == '*') {
-                skip_c_comment(lexer);
-                repeat = true;
-            } else {
-                lexer->at++;
-                token.kind = TKN_DIV;
-
-                if (lexer->at[0] == '=') {
-                    lexer->at++;
-                    token.kind = TKN_DIV_ASSIGN;
-                }
-            }
-        } break;
-        case '(': {
             lexer->at++;
-            token.kind = TKN_LPAREN;
-        } break;
-        case ')': {
-            lexer->at++;
-            token.kind = TKN_RPAREN;
-        } break;
-        case '[': {
-            lexer->at++;
-            token.kind = TKN_LBRACKET;
-        } break;
-        case ']': {
-            lexer->at++;
-            token.kind = TKN_RBRACKET;
-        } break;
-        case '{': {
-            lexer->at++;
-            token.kind = TKN_LBRACE;
-        } break;
-        case '}': {
-            lexer->at++;
-            token.kind = TKN_RBRACE;
-        } break;
-        case ';': {
-            lexer->at++;
-            token.kind = TKN_SEMICOLON;
-        } break;
-        case ':': {
-            lexer->at++;
-            token.kind = TKN_COLON;
-        } break;
-        case ',': {
-            lexer->at++;
-            token.kind = TKN_COMMA;
-        } break;
-        case '+': {
-            lexer->at++;
-            token.kind = TKN_PLUS;
-
-            if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_ADD_ASSIGN;
-            }
-        } break;
-        case '-': {
-            lexer->at++;
-            token.kind = TKN_MINUS;
-
-            if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_SUB_ASSIGN;
-            }
-        } break;
-        case '*': {
-            lexer->at++;
-            token.kind = TKN_ASTERISK;
-
-            if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_MUL_ASSIGN;
-            }
-        } break;
-        case '%': {
-            lexer->at++;
-            token.kind = TKN_MOD;
-
-            if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_MOD_ASSIGN;
-            }
-        } break;
-        case '>': {
-            lexer->at++;
-            token.kind = TKN_GT;
-
-            if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_GTEQ;
-            } else if (lexer->at[0] == '>') {
-                lexer->at++;
-                token.kind = TKN_RSHIFT;
-            }
-        } break;
-        case '<': {
-            lexer->at++;
-            token.kind = TKN_LT;
-
-            if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_LTEQ;
-            } else if (lexer->at[0] == '<') {
-                lexer->at++;
-                token.kind = TKN_LSHIFT;
-            }
-        } break;
-        case '&': {
-            lexer->at++;
-            token.kind = TKN_AND;
-
-            if (lexer->at[0] == '&') {
-                lexer->at++;
-                token.kind = TKN_LOGIC_AND;
-            } else if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_AND_ASSIGN;
-            }
-        } break;
-        case '|': {
-            lexer->at++;
-            token.kind = TKN_OR;
-
-            if (lexer->at[0] == '|') {
-                lexer->at++;
-                token.kind = TKN_LOGIC_OR;
-            } else if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_OR_ASSIGN;
-            }
-        } break;
-        case '^': {
-            lexer->at++;
-            token.kind = TKN_XOR;
-
-            if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_XOR_ASSIGN;
-            }
-        } break;
-        case '=': {
-            lexer->at++;
-            token.kind = TKN_ASSIGN;
-
-            if (lexer->at[0] == '=') {
-                lexer->at++;
-                token.kind = TKN_EQ;
-            }
-        } break;
-        case '.': {
-            if (is_dec_digit(lexer->at[1])) {
-                token.kind = TKN_FLOAT;
-                token.tfloat = scan_float(lexer);
-            } else {
-                token.kind = TKN_DOT;
-                lexer->at++;
-            }
-        } break;
-        case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
-            // First, determine if this is an integer or a floating point value.
-            const char* p = lexer->at;
-
-            while (is_dec_digit(*p)) {
-                p++;
-            }
-
-            if ((*p == '.') || (*p == 'e') || (*p == 'E')) {
-                token.kind = TKN_FLOAT;
-                token.tfloat = scan_float(lexer);
-            } else {
-                token.kind = TKN_INT;
-                token.tint = scan_int(lexer);
-            }
-        } break;
-        case '\'': {
-            token.kind = TKN_INT;
-            token.tint = scan_char(lexer);
-        } break;
-        case '"': {
-            token.kind = TKN_STR;
-            token.tstr = scan_string(lexer);
-        } break;
-        case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j': case 'k':
-        case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u': case 'v':
-        case 'w': case 'x': case 'y': case 'z':
-        case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J': case 'K':
-        case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V':
-        case 'W': case 'X': case 'Y': case 'Z': case '_': {
-            token.kind = TKN_IDENT;
-            token.tident = scan_ident(lexer);
-        } break;
-        case '\0': {
-            token.kind = TKN_EOF;
-            lexer->at++;
-        } break;
-        default: {
-            lexer_on_error(lexer, "Unexpected token character: %c", lexer->at[0]);
-            lexer->at++;
-            repeat = true;
-        } break;
         }
 
-        token.range.end = lexer_at_pos(lexer);
-    } while (repeat);
+        goto top;
+    } break;
+    case '/': {
+        if (lexer->at[1] == '/') {
+            while (lexer->at[0] && (lexer->at[0] != '\n') && (lexer->at[0] != '\r')) {
+                lexer->at++;
+            }
+
+            goto top;
+        } else if (lexer->at[1] == '*') {
+            skip_c_comment(lexer);
+            goto top;
+        } else {
+            lexer->at++;
+            token.kind = TKN_DIV;
+
+            if (lexer->at[0] == '=') {
+                lexer->at++;
+                token.kind = TKN_DIV_ASSIGN;
+            }
+        }
+    } break;
+    case '(': {
+        lexer->at++;
+        token.kind = TKN_LPAREN;
+    } break;
+    case ')': {
+        lexer->at++;
+        token.kind = TKN_RPAREN;
+    } break;
+    case '[': {
+        lexer->at++;
+        token.kind = TKN_LBRACKET;
+    } break;
+    case ']': {
+        lexer->at++;
+        token.kind = TKN_RBRACKET;
+    } break;
+    case '{': {
+        lexer->at++;
+        token.kind = TKN_LBRACE;
+    } break;
+    case '}': {
+        lexer->at++;
+        token.kind = TKN_RBRACE;
+    } break;
+    case ';': {
+        lexer->at++;
+        token.kind = TKN_SEMICOLON;
+    } break;
+    case ':': {
+        lexer->at++;
+        token.kind = TKN_COLON;
+    } break;
+    case ',': {
+        lexer->at++;
+        token.kind = TKN_COMMA;
+    } break;
+    case '+': {
+        lexer->at++;
+        token.kind = TKN_PLUS;
+
+        if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_ADD_ASSIGN;
+        }
+    } break;
+    case '-': {
+        lexer->at++;
+        token.kind = TKN_MINUS;
+
+        if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_SUB_ASSIGN;
+        }
+    } break;
+    case '*': {
+        lexer->at++;
+        token.kind = TKN_ASTERISK;
+
+        if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_MUL_ASSIGN;
+        }
+    } break;
+    case '%': {
+        lexer->at++;
+        token.kind = TKN_MOD;
+
+        if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_MOD_ASSIGN;
+        }
+    } break;
+    case '>': {
+        lexer->at++;
+        token.kind = TKN_GT;
+
+        if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_GTEQ;
+        } else if (lexer->at[0] == '>') {
+            lexer->at++;
+            token.kind = TKN_RSHIFT;
+        }
+    } break;
+    case '<': {
+        lexer->at++;
+        token.kind = TKN_LT;
+
+        if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_LTEQ;
+        } else if (lexer->at[0] == '<') {
+            lexer->at++;
+            token.kind = TKN_LSHIFT;
+        }
+    } break;
+    case '&': {
+        lexer->at++;
+        token.kind = TKN_AND;
+
+        if (lexer->at[0] == '&') {
+            lexer->at++;
+            token.kind = TKN_LOGIC_AND;
+        } else if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_AND_ASSIGN;
+        }
+    } break;
+    case '|': {
+        lexer->at++;
+        token.kind = TKN_OR;
+
+        if (lexer->at[0] == '|') {
+            lexer->at++;
+            token.kind = TKN_LOGIC_OR;
+        } else if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_OR_ASSIGN;
+        }
+    } break;
+    case '^': {
+        lexer->at++;
+        token.kind = TKN_XOR;
+
+        if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_XOR_ASSIGN;
+        }
+    } break;
+    case '=': {
+        lexer->at++;
+        token.kind = TKN_ASSIGN;
+
+        if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_EQ;
+        }
+    } break;
+    case '.': {
+        if (is_dec_digit(lexer->at[1])) {
+            token.kind = TKN_FLOAT;
+            token.tfloat = scan_float(lexer);
+        } else {
+            token.kind = TKN_DOT;
+            lexer->at++;
+        }
+    } break;
+    case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': {
+        // First, determine if this is an integer or a floating point value.
+        const char* p = lexer->at;
+
+        while (is_dec_digit(*p)) {
+            p++;
+        }
+
+        if ((*p == '.') || (*p == 'e') || (*p == 'E')) {
+            token.kind = TKN_FLOAT;
+            token.tfloat = scan_float(lexer);
+        } else {
+            token.kind = TKN_INT;
+            token.tint = scan_int(lexer);
+        }
+    } break;
+    case '\'': {
+        token.kind = TKN_INT;
+        token.tint = scan_char(lexer);
+    } break;
+    case '"': {
+        token.kind = TKN_STR;
+        token.tstr = scan_string(lexer);
+    } break;
+    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j': case 'k':
+    case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u': case 'v':
+    case 'w': case 'x': case 'y': case 'z':
+    case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J': case 'K':
+    case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V':
+    case 'W': case 'X': case 'Y': case 'Z': case '_': {
+        token.kind = TKN_IDENT;
+        token.tident = scan_ident(lexer);
+    } break;
+    case '\0': {
+        token.kind = TKN_EOF;
+        lexer->at++;
+    } break;
+    default: {
+        lexer_on_error(lexer, "Unexpected token character: %c", lexer->at[0]);
+        lexer->at++;
+        goto top;
+    } break;
+    }
+
+    token.range.end = lexer_at_pos(lexer);
 
     return token;
 }

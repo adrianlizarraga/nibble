@@ -110,7 +110,9 @@ void mem_free(Allocator* allocator, void* ptr)
 
 Allocator allocator_create(size_t block_size)
 {
+    static size_t id = 0;
     Allocator allocator = {0};
+    allocator.id = id++;
     allocator.block_size = block_size;
 
     return allocator;
