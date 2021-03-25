@@ -5,31 +5,35 @@ base_type_spec = IDENTIFIER
 
 param_type_spec_list = param_type_spec (',' param_type_spec)*
 param_type_spec = (IDENTIFIER :)? type_spec 
-type_spec_spec = '(' ':' type_spec ')'
+typespec_spec = '(' ':' type_spec ')'
 
-expr = ternary_expr
-ternary_expr = or_expr ('?' ternary_expr ':' ternary_expr)?
-or_expr      = and_expr (OR_OP and_expr)*                   // OR_OP = '||'
-and_expr     = cmp_expr (AND_OP cmp_expr)*                  // AND_OP = '&&'
-cmp_expr     = add_expr (CMP_OP add_expr)*                  // CMP_OP = ['==' '!=' '>' '>=' '<' '<=']
-add_expr     = mul_expr (ADD_OP mul_expr)*                  // ADD_OP = [+-|^] 
-mul_expr     = unary_expr (MUL_OP unary_expr)*              // MUL_OP = [*/%&] | '<<' | '>>'
-unary_expr   = UNARY_OP unary_expr                          // UNARY_OP = [&*-+~!]
-             | call_expr
-call_expr    = base_expr ('.' IDENTIFIER | '[ expr ']' | '(' arg_list* ')')*
-base_expr    = INT
-             | FLOAT
-             | STRING
-             | IDENTIFIER
-             | type_spec_spec? unary_expr
-             | type_spec_spec? '{' init_list '}'
-             | SIZEOF '(' (type_spec_spec | expr) ')'
+expr = expr_ternary
+expr_ternary = expr_or ('?' expr_ternary ':' expr_ternary)?
+expr_or      = expr_and (OR_OP expr_and)*                   // OR_OP = '||'
+expr_and     = expr_cmp (AND_OP expr_cmp)*                  // AND_OP = '&&'
+expr_cmp     = expr_add (CMP_OP expr_add)*                  // CMP_OP = ['==' '!=' '>' '>=' '<' '<=']
+expr_add     = expr_mul (ADD_OP expr_mul)*                  // ADD_OP = [+-|^] 
+expr_mul     = expr_unary (MUL_OP expr_unary)*              // MUL_OP = [*/%&] | '<<' | '>>'
+expr_unary   = UNARY_OP expr_unary                          // UNARY_OP = [&*-+~!]
+             | expr_deref
+expr_deref   = expr_base ('.' TKN_IDENT | '[ expr ']' | '(' expr_call_arg_list* ')')*
+expr_base    = TKN_INT
+             | TKN_FLOAT
+             | TKN_STR
+             | TKN_IDENT
+             | expr_cast
+             | expr_compound_init
+             | expr_sizeof
              | '(' expr ')'
 
-arg_list = arg_item (',' arg_item)*
-arg_item = (IDENTIFIER '=') ? expr
-init_list = init_item (',' init_item)*
-init_item = (IDENTIFIER '=')? expr
+expr_call_arg_list = expr_call_arg (',' expr_call_arg)*
+expr_call_arg = (TKN_IDENT '=') ? expr
+expr_cast = typespec_spec? expr_unary
+expr_compound_init = typespec_spec? '{' expr_init_list '}'
+expr_init_list = expr_init_item (',' expr_init_item)*
+expr_init_item = (TKN_IDENT '=')? expr
+               | ('[' (TKN_INT | TKN_IDENT) ']' '=')? expr
+expr_sizeof = KW_SIZEOF '(' (':' type_spec | expr) ')'
 
 decl = var_decl ';'
      | const_decl ';'

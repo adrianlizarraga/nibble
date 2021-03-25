@@ -219,6 +219,20 @@ TypeSpec* parse_typespec(Parser* parser)
 //    Parse expressions
 //////////////////////////////
 
+static Expr* parse_expr_unary(Parser* parser);
+
+// expr_base = TKN_INT
+//           | TKN_FLOAT
+//           | TKN_STR
+//           | TKN_IDENT
+//           | expr_cast
+//           | expr_compound_init
+//           | expr_sizeof
+//           | '(' expr ')'
+//
+// typespec_spec = '(' ':' typespec ')'
+// expr_cast = typespec_spec? expr_unary
+// expr_sizeof = KW_SIZEOF '(' ((':' typespec) | expr) ')'
 static Expr* parse_expr_base(Parser* parser)
 {
     Expr* expr = NULL;
@@ -229,9 +243,53 @@ static Expr* parse_expr_base(Parser* parser)
     } else if (match_token_next(parser, TKN_FLOAT)) {
         Token* token = &parser->ptoken;
         expr = expr_float(parser->allocator, token->tfloat.value, token->range);
-    } else {
-        // TODO: Finish other base expressions.
-        assert(0);
+    } else if (match_token_next(parser, TKN_STR)) {
+        Token* token = &parser->ptoken;
+        expr = expr_str(parser->allocator, token->tstr.value, token->range);
+    } else if (match_token_next(parser, TKN_IDENT)) {
+        Token* token = &parser->ptoken;
+        expr = expr_ident(parser->allocator, token->tident.value, token->range);
+    } else if (match_token_next(parser, TKN_LPAREN)) {
+        ProgRange range = { .start = parser->ptoken.range.start };
+
+        if (match_token_next(parser, TKN_COLON)) {
+            TypeSpec* type = parse_typespec(parser);
+            expect_token_next(parser, TKN_RPAREN);
+
+            if (is_token(parser, TKN_LBRACE)) {
+                // TODO: parse compound initializer expression.
+                assert(0);
+            } else {
+                Expr* unary = parse_expr_unary(parser);
+
+                range.end = unary->range.end;
+                expr = expr_cast(parser->allocator, type, unary, range);
+            }
+        } else {
+            expr = parse_expr(parser);
+            expect_token_next(parser, TKN_RPAREN);
+        }
+    } else if (match_keyword_next(parser, KW_SIZEOF)) {
+        ProgRange range = { .start = parser->ptoken.range.start };
+
+        expect_token_next(parser, TKN_LPAREN);
+
+        if (match_token_next(parser, TKN_COLON)) {
+            TypeSpec* type = parse_typespec(parser);
+            expect_token_next(parser, TKN_RPAREN);
+
+            range.end = parser->ptoken.range.end;
+            expr = expr_sizeof_type(parser->allocator, type, range);
+        } else {
+            Expr* arg = parse_expr(parser);
+            expect_token_next(parser, TKN_RPAREN);
+
+            range.end = parser->ptoken.range.end;
+            expr = expr_sizeof_expr(parser->allocator, arg, range);
+        }
+    }
+    else {
+        parser_on_error(parser, "Unexpected token in expression"); // TODO: Better info
     }
 
     return expr;

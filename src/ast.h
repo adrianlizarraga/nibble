@@ -211,6 +211,11 @@ Expr* expr_call(Allocator* allocator, Expr* func, size_t num_args, DLList* args,
 ExprCallArg* expr_call_arg(Allocator* allocator, Expr* expr, const char* name);
 Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range);
 Expr* expr_float(Allocator* allocator, double value, ProgRange range);
+Expr* expr_str(Allocator* allocator, const char* value, ProgRange range);
+Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range);
+Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* unary, ProgRange range);
+Expr* expr_sizeof_type(Allocator* allocator, TypeSpec* type, ProgRange range);
+Expr* expr_sizeof_expr(Allocator* allocator, Expr* arg, ProgRange range);
 
 /////////////////////////////
 //        Statements

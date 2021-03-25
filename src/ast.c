@@ -146,3 +146,46 @@ Expr* expr_float(Allocator* allocator, double value, ProgRange range)
 
     return expr;
 }
+
+Expr* expr_str(Allocator* allocator, const char* value, ProgRange range)
+{
+    Expr* expr = expr_alloc(allocator, EXPR_STR, range);
+    expr->estr.value = value;
+
+    return expr;
+}
+
+Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range)
+{
+    Expr* expr = expr_alloc(allocator, EXPR_IDENT, range);
+    expr->eident.name = name;
+
+    return expr;
+}
+
+Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* unary, ProgRange range)
+{
+    Expr* expr = expr_alloc(allocator, EXPR_CAST, range);
+    expr->ecast.type = type;
+    expr->ecast.expr = unary;
+
+    return expr;
+}
+
+Expr* expr_sizeof_type(Allocator* allocator, TypeSpec* type, ProgRange range)
+{
+    Expr* expr = expr_alloc(allocator, EXPR_SIZEOF, range);
+    expr->esizeof.kind = EXPR_SIZEOF_ARG_TYPE;
+    expr->esizeof.type = type;
+
+    return expr;
+}
+
+Expr* expr_sizeof_expr(Allocator* allocator, Expr* arg, ProgRange range)
+{
+    Expr* expr = expr_alloc(allocator, EXPR_SIZEOF, range);
+    expr->esizeof.kind = EXPR_SIZEOF_ARG_EXPR;
+    expr->esizeof.expr = arg;
+
+    return expr;
+}
