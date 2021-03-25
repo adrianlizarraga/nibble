@@ -1,11 +1,12 @@
 #ifndef NIBBLE_AST_H
 #define NIBBLE_AST_H
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "nibble.h"
 #include "allocator.h"
 #include "llist.h"
+#include "lexer.h"
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -13,12 +14,13 @@ typedef struct Decl Decl;
 typedef struct Stmt Stmt;
 
 ///////////////////////////////
-//       Type Specifiers 
+//       Type Specifiers
 //////////////////////////////
-typedef struct TypeSpecList {
+typedef struct TypeSpecParam {
     TypeSpec* type;
+    const char* name;
     DLList list;
-} TypeSpecList;
+} TypeSpecParam;
 
 typedef struct TypeSpecIdent {
     const char* name;
@@ -63,10 +65,11 @@ TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange rang
 TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range);
 TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
+TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type, const char* name);
 TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range);
 
 ///////////////////////////////
-//       Expressions 
+//       Expressions
 //////////////////////////////
 typedef struct ExprTernary {
     Expr* cond;
@@ -88,7 +91,7 @@ typedef struct ExprUnary {
 typedef struct ExprCall {
     Expr* func;
     size_t num_args;
-    Expr** args;     // TODO: Named arguments
+    Expr** args; // TODO: Named arguments
 } ExprCall;
 
 typedef struct ExprIndex {
@@ -144,7 +147,7 @@ typedef struct ExprCompoundLitInit {
     ExprCompoundLitInitKind kind;
     Expr* init;
     union {
-        const char* name;    
+        const char* name;
         Expr* index;
     };
 } ExprCompoundLitInit;
@@ -314,7 +317,7 @@ struct Stmt {
 };
 
 ///////////////////////////////
-//       Declarations 
+//       Declarations
 //////////////////////////////
 typedef struct DeclVar {
     TypeSpec* type;

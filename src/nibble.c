@@ -32,26 +32,16 @@ static NibbleCtx nibble;
 const char* keywords[KW_COUNT];
 
 static StringView keyword_names[KW_COUNT] = {
-    [KW_VAR] = string_view_lit("var"),
-    [KW_CONST] = string_view_lit("const"),
-    [KW_ENUM] = string_view_lit("enum"),
-    [KW_UNION] = string_view_lit("union"),
-    [KW_STRUCT] = string_view_lit("struct"),
-    [KW_FUNC] = string_view_lit("func"),
-    [KW_TYPEDEF] = string_view_lit("typedef"),
-    [KW_SIZEOF] = string_view_lit("sizeof"),
-    [KW_TYPEOF] = string_view_lit("typeof"),
-    [KW_GOTO] = string_view_lit("goto"),
-    [KW_BREAK] = string_view_lit("break"),
-    [KW_CONTINUE] = string_view_lit("continue"),
-    [KW_RETURN] = string_view_lit("return"),
-    [KW_IF] = string_view_lit("if"),
-    [KW_ELSE] = string_view_lit("else"),
-    [KW_WHILE] = string_view_lit("while"),
-    [KW_DO] = string_view_lit("do"),
-    [KW_FOR] = string_view_lit("for"),
-    [KW_SWITCH] = string_view_lit("switch"),
-    [KW_CASE] = string_view_lit("case"),
+    [KW_VAR] = string_view_lit("var"),         [KW_CONST] = string_view_lit("const"),
+    [KW_ENUM] = string_view_lit("enum"),       [KW_UNION] = string_view_lit("union"),
+    [KW_STRUCT] = string_view_lit("struct"),   [KW_FUNC] = string_view_lit("func"),
+    [KW_TYPEDEF] = string_view_lit("typedef"), [KW_SIZEOF] = string_view_lit("sizeof"),
+    [KW_TYPEOF] = string_view_lit("typeof"),   [KW_GOTO] = string_view_lit("goto"),
+    [KW_BREAK] = string_view_lit("break"),     [KW_CONTINUE] = string_view_lit("continue"),
+    [KW_RETURN] = string_view_lit("return"),   [KW_IF] = string_view_lit("if"),
+    [KW_ELSE] = string_view_lit("else"),       [KW_WHILE] = string_view_lit("while"),
+    [KW_DO] = string_view_lit("do"),           [KW_FOR] = string_view_lit("for"),
+    [KW_SWITCH] = string_view_lit("switch"),   [KW_CASE] = string_view_lit("case"),
     [KW_DEFAULT] = string_view_lit("default"),
 };
 
@@ -92,7 +82,7 @@ static bool nibble_init(void)
         kws_mem += size;
     }
     assert(nibble.ident_map.len == KW_COUNT);
-    
+
     return true;
 }
 
@@ -116,7 +106,7 @@ const char* intern_ident(const char* str, size_t len)
 static CompiledModule* compile_module(const char* str, ProgPos pos)
 {
     Allocator bootstrap = allocator_create(4096);
-    CompiledModule* module = new_type(&bootstrap, CompiledModule, true); 
+    CompiledModule* module = new_type(&bootstrap, CompiledModule, true);
     module->allocator = bootstrap;
     module->errors = byte_stream_create(&module->allocator);
 
@@ -125,7 +115,7 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
     char tkn_buf[64];
     while (next_token(&parser)) {
         print_token(&parser.token, tkn_buf, sizeof(tkn_buf));
-        printf("%s\n", tkn_buf); 
+        printf("%s\n", tkn_buf);
     }
 
     printf("Num errors: %lu\n", module->errors.num_chunks);

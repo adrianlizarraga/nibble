@@ -1,9 +1,10 @@
 type_spec      = base_type_spec ('*' | '[' expr? ']')*
 base_type_spec = IDENTIFIER
-               | 'func' '(' param_type_spec_list ')' (':' type_spec)?
+               | 'func' '(' param_type_spec_list? ')' (':' type_spec)?
                | '(' type_spec ')'
 
-param_type_spec_list = type_spec (',' type_spec)*
+param_type_spec_list = param_type_spec (',' param_type_spec)*
+param_type_spec = (IDENTIFIER :)? type_spec 
 type_spec_spec = '(' ':' type_spec ')'
 
 expr = ternary_expr

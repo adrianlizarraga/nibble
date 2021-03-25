@@ -2,7 +2,7 @@
 
 TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange range)
 {
-    TypeSpec* type = mem_allocate(allocator, sizeof(TypeSpec), DEFAULT_ALIGN, true); 
+    TypeSpec* type = mem_allocate(allocator, sizeof(TypeSpec), DEFAULT_ALIGN, true);
     type->kind = kind;
     type->range = range;
 
@@ -11,7 +11,7 @@ TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange rang
 
 TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range)
 {
-    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_IDENT, range); 
+    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_IDENT, range);
     type->ident.name = name;
 
     return type;
@@ -45,3 +45,11 @@ TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params,
     return type;
 }
 
+TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type, const char* name)
+{
+    TypeSpecParam* param = mem_allocate(allocator, sizeof(TypeSpecParam), DEFAULT_ALIGN, true);
+    param->type = type;
+    param->name = name;
+
+    return param;
+}
