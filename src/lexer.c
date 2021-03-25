@@ -480,8 +480,13 @@ static const char* token_kind_names[] = {
     [TKN_XOR] = "^",
     [TKN_LOGIC_AND] = "&&",
     [TKN_LOGIC_OR] = "||",
+    [TKN_NOT] = "!",
+    [TKN_NEG] = "~",
+
+    [TKN_QUESTION] = "?",
 
     [TKN_EQ] = "==",
+    [TKN_NOTEQ] = "!=",
     [TKN_GT] = ">",
     [TKN_GTEQ] = ">=",
     [TKN_LT] = "<",
@@ -631,6 +636,15 @@ top:
             token.kind = TKN_MOD_ASSIGN;
         }
     } break;
+    case '!': {
+        lexer->at++;
+        token.kind = TKN_NOT;
+
+        if (lexer->at[0] == '=') {
+            lexer->at++;
+            token.kind = TKN_NOTEQ;
+        }
+    } break;
     case '>': {
         lexer->at++;
         token.kind = TKN_GT;
@@ -687,6 +701,14 @@ top:
             lexer->at++;
             token.kind = TKN_XOR_ASSIGN;
         }
+    } break;
+    case '~': {
+        lexer->at++;
+        token.kind = TKN_NEG;
+    } break;
+    case '?': {
+        lexer->at++;
+        token.kind = TKN_QUESTION;
     } break;
     case '=': {
         lexer->at++;

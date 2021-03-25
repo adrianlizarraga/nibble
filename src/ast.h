@@ -88,10 +88,16 @@ typedef struct ExprUnary {
     Expr* expr;
 } ExprUnary;
 
+typedef struct ExprCallArg {
+    Expr* expr;
+    const char* name;
+    DLList list;
+} ExprCallArg;
+
 typedef struct ExprCall {
     Expr* func;
     size_t num_args;
-    Expr** args; // TODO: Named arguments
+    DLList args;
 } ExprCall;
 
 typedef struct ExprIndex {
@@ -116,9 +122,9 @@ typedef struct ExprStr {
     const char* value;
 } ExprStr;
 
-typedef struct ExprIdentifier {
+typedef struct ExprIdent {
     const char* name;
-} ExprIdentifier;
+} ExprIdent;
 
 typedef struct ExprCast {
     TypeSpec* type;
@@ -158,10 +164,6 @@ typedef struct ExprCompoundLit {
     ExprCompoundLitInit* initzers;
 } ExprCompoundLit;
 
-typedef struct ExprParent {
-    Expr* expr;
-} ExprParent;
-
 typedef enum ExprKind {
     EXPR_NONE,
     EXPR_TERNARY,
@@ -173,15 +175,15 @@ typedef enum ExprKind {
     EXPR_INT,
     EXPR_FLOAT,
     EXPR_STR,
-    EXPR_IDENTIFIER,
+    EXPR_IDENT,
     EXPR_CAST,
     EXPR_SIZEOF,
     EXPR_COMPOUND,
-    EXPR_PARENT,
 } ExprKind;
 
 struct Expr {
     ExprKind kind;
+    ProgRange range;
 
     union {
         ExprTernary eternary;
@@ -193,13 +195,22 @@ struct Expr {
         ExprInt eint;
         ExprFloat efloat;
         ExprStr estr;
-        ExprIdentifier eidentifier;
+        ExprIdent eident;
         ExprCast ecast;
         ExprSizeof esizeof;
         ExprCompoundLit ecompound;
-        ExprParent eparent;
     };
 };
+
+Expr* expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else_expr);
+Expr* expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right);
+Expr* expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange range);
+Expr* expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range);
+Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
+Expr* expr_call(Allocator* allocator, Expr* func, size_t num_args, DLList* args, ProgRange range);
+ExprCallArg* expr_call_arg(Allocator* allocator, Expr* expr, const char* name);
+Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range);
+Expr* expr_float(Allocator* allocator, double value, ProgRange range);
 
 /////////////////////////////
 //        Statements

@@ -26,24 +26,30 @@ typedef enum TokenKind {
     TKN_INT,
     TKN_FLOAT,
 
-    TKN_PLUS,
-    TKN_MINUS,
     TKN_ASTERISK,
     TKN_DIV,
     TKN_MOD,
     TKN_RSHIFT,
     TKN_LSHIFT,
     TKN_AND,
-    TKN_OR,
-    TKN_XOR,
     TKN_LOGIC_AND,
     TKN_LOGIC_OR,
+    TKN_NOT,
+    TKN_NEG,
+
+    TKN_QUESTION,
 
     TKN_EQ,
+    TKN_NOTEQ,
     TKN_GT,
     TKN_GTEQ,
     TKN_LT,
     TKN_LTEQ,
+
+    TKN_PLUS,
+    TKN_MINUS,
+    TKN_OR,
+    TKN_XOR,
 
     TKN_ASSIGN,
     TKN_ADD_ASSIGN,
@@ -55,6 +61,7 @@ typedef enum TokenKind {
     TKN_XOR_ASSIGN,
     TKN_MOD_ASSIGN,
 
+    TKN_KIND_COUNT,
 } TokenKind;
 
 typedef enum TokenIntRep {

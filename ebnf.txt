@@ -11,7 +11,7 @@ expr = ternary_expr
 ternary_expr = or_expr ('?' ternary_expr ':' ternary_expr)?
 or_expr      = and_expr (OR_OP and_expr)*                   // OR_OP = '||'
 and_expr     = cmp_expr (AND_OP cmp_expr)*                  // AND_OP = '&&'
-cmp_expr     = add_expr (EQ_OP add_expr)*                   // CMP_OP = ['==' '!=' '>' '>=' '<' '<=']
+cmp_expr     = add_expr (CMP_OP add_expr)*                  // CMP_OP = ['==' '!=' '>' '>=' '<' '<=']
 add_expr     = mul_expr (ADD_OP mul_expr)*                  // ADD_OP = [+-|^] 
 mul_expr     = unary_expr (MUL_OP unary_expr)*              // MUL_OP = [*/%&] | '<<' | '>>'
 unary_expr   = UNARY_OP unary_expr                          // UNARY_OP = [&*-+~!]
@@ -22,8 +22,8 @@ base_expr    = INT
              | STRING
              | IDENTIFIER
              | type_spec_spec? unary_expr
-             | SIZEOF '(' (type_spec_spec | expr) ')'
              | type_spec_spec? '{' init_list '}'
+             | SIZEOF '(' (type_spec_spec | expr) ')'
              | '(' expr ')'
 
 arg_list = arg_item (',' arg_item)*
