@@ -34,4 +34,14 @@ TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRa
     return type;
 }
 
+TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range)
+{
+    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_FUNC, range);
+    type->func.num_params = num_params;
+    type->func.ret = ret;
+
+    dllist_replace(params, &type->func.params);
+
+    return type;
+}
 

@@ -823,26 +823,26 @@ void test_interning(void)
 
 typedef struct TestNode {
     int num;
-    DLLNode node;
+    DLList node;
 } TestNode;
 
 void test_dllist(void)
 {
     // Test adding new values to the head of the list.
     {
-        DLLNode head = dll_head_create(head);    
+        DLList head = dllist_head_create(head);    
 
         TestNode node1 = {.num = 1};
         TestNode node2 = {.num = 2};
         TestNode node3 = {.num = 3};
 
-        dll_add(&node1.node, &head);
-        dll_add(&node2.node, &head);
-        dll_add(&node3.node, &head);
+        dllist_add(&head, &node1.node);
+        dllist_add(&head, &node2.node);
+        dllist_add(&head, &node3.node);
 
         int i = 0;
-        for (DLLNode* n = head.next; n != &head; n = n->next) {
-            TestNode* entry = dll_entry(n, TestNode, node);
+        for (DLList* n = head.next; n != &head; n = n->next) {
+            TestNode* entry = dllist_entry(n, TestNode, node);
             assert(entry->num == 3 - i);
 
             i += 1;
@@ -851,19 +851,19 @@ void test_dllist(void)
 
     // Test adding new values to the tail of the list.
     {
-        DLLNode head = dll_head_create(head);    
+        DLList head = dllist_head_create(head);    
 
         TestNode node1 = {.num = 1};
         TestNode node2 = {.num = 2};
         TestNode node3 = {.num = 3};
 
-        dll_add(&node1.node, head.prev);
-        dll_add(&node2.node, head.prev);
-        dll_add(&node3.node, head.prev);
+        dllist_add(head.prev, &node1.node);
+        dllist_add(head.prev, &node2.node);
+        dllist_add(head.prev, &node3.node);
 
         int i = 0;
-        for (DLLNode* n = head.next; n != &head; n = n->next) {
-            TestNode* entry = dll_entry(n, TestNode, node);
+        for (DLList* n = head.next; n != &head; n = n->next) {
+            TestNode* entry = dllist_entry(n, TestNode, node);
             assert(entry->num == i + 1);
 
             i += 1;

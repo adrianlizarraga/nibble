@@ -35,6 +35,12 @@ uint64_t* hash_map_get(HashMap* map, uint64_t key);
 uint64_t hash_uint64(uint64_t h);
 uint64_t hash_bytes(const void* buf, size_t len);
 
+typedef struct InternedStr {
+    size_t len;
+    struct InternedStr* next;
+    char str[];
+} InternedStr;
+
 const char* str_intern(Allocator* allocator, HashMap* strmap, const char* str, size_t len);
 
 #endif

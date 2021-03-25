@@ -162,12 +162,6 @@ uint64_t* hash_map_get(HashMap* map, uint64_t key)
     return NULL;
 }
 
-typedef struct InternedStr {
-    size_t len;
-    struct InternedStr* next;
-    char str[];
-} InternedStr;
-
 const char* str_intern(Allocator* allocator, HashMap* strmap, const char* str, size_t len)
 {
     uint64_t key = hash_bytes(str, len);

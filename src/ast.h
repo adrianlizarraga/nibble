@@ -5,6 +5,7 @@
 
 #include "nibble.h"
 #include "allocator.h"
+#include "llist.h"
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -14,13 +15,18 @@ typedef struct Stmt Stmt;
 ///////////////////////////////
 //       Type Specifiers 
 //////////////////////////////
+typedef struct TypeSpecList {
+    TypeSpec* type;
+    DLList list;
+} TypeSpecList;
+
 typedef struct TypeSpecIdent {
     const char* name;
 } TypeSpecIdent;
 
 typedef struct TypeSpecFunc {
     size_t num_params;
-    TypeSpec** params;
+    DLList params;
     TypeSpec* ret;
 } TypeSpecFunc;
 
@@ -57,6 +63,7 @@ TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange rang
 TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range);
 TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
+TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range);
 
 ///////////////////////////////
 //       Expressions 

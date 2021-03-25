@@ -35,6 +35,7 @@ void parser_destroy(Parser* parser)
 
 bool next_token(Parser* parser)
 {
+    parser->ptoken = parser->token;
     parser->token = scan_token(&parser->lexer);
 
     return parser->token.kind != TKN_EOF;
@@ -45,7 +46,19 @@ bool is_token(Parser* parser, TokenKind kind)
     return (parser->token.kind == kind);
 }
 
-bool match_token(Parser* parser, TokenKind kind)
+bool match_keyword_next(Parser* parser, Keyword kw)
+{
+    bool matches = (parser->token.kind == TKN_IDENT) &&
+                   (parser->token.tident.value == keywords[kw]);
+
+    if (matches) {
+        next_token(parser);
+    }
+
+    return matches;
+}
+
+bool match_token_next(Parser* parser, TokenKind kind)
 {
     bool matches = (parser->token.kind == kind);
 
@@ -56,7 +69,7 @@ bool match_token(Parser* parser, TokenKind kind)
     return matches;
 }
 
-bool expect_token(Parser* parser, TokenKind kind)
+bool expect_token_next(Parser* parser, TokenKind kind)
 {
     bool matches = (parser->token.kind == kind);
 
@@ -72,34 +85,30 @@ bool expect_token(Parser* parser, TokenKind kind)
 
 Expr* parse_expr(Parser* parser);
 
-TypeSpec* parse_base_typespec(Parser* parser)
+TypeSpec* parse_typespec_base(Parser* parser)
 {
     TypeSpec* type = NULL;
 
-#if 0
-    if (is_token(parser, TKN_IDENT)) {
-        type = typespec_ident(parser->allocator, parser->token.tident.value, parser->token.range); 
-    } else if (is_token_ident(parser, func_kw)) {
-
-    } else if (is_token(parser, TKN_LPAREN)) {
+    if (match_token_next(parser, TKN_IDENT)) {
+        type = typespec_ident(parser->allocator, parser->ptoken.tident.value, parser->ptoken.range); 
+    } else if (match_keyword_next(parser, KW_FUNC)) {
+        type = parse_typespec_func(parser);
+    } else if (match_token_next(parser, TKN_LPAREN)) {
 
     } else {
         parser_on_error(parser, "Invalid typespec token\n");
     }
-#endif
 
     return type;
 }
 
 TypeSpec* parse_typespec(Parser* parser)
 {
-    TypeSpec* type = parse_base_typespec(parser); 
+    TypeSpec* type = parse_typespec_base(parser); 
 
     while (is_token(parser, TKN_ASTERISK) || is_token(parser, TKN_LBRACKET)) {
-        if (is_token(parser, TKN_ASTERISK)) {
-            type = typespec_ptr(parser->allocator, type, parser->token.range);
-
-            next_token(parser);
+        if (match_token_next(parser, TKN_ASTERISK)) {
+            type = typespec_ptr(parser->allocator, type, parser->ptoken.range);
         } else {
             assert(is_token(parser, TKN_LBRACKET));
             ProgPos start = parser->token.range.start;
@@ -112,7 +121,7 @@ TypeSpec* parse_typespec(Parser* parser)
             }
 
             ProgPos end = parser->token.range.end;
-            expect_token(parser, TKN_RBRACKET);
+            expect_token_next(parser, TKN_RBRACKET);
 
             ProgRange range = {.start = start, .end = end};
             type = typespec_array(parser->allocator, type, len, range);

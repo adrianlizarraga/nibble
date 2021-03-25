@@ -1,4 +1,5 @@
 //#define NDEBUG 1
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,14 +29,74 @@ typedef struct CompiledModule {
 
 static NibbleCtx nibble;
 
-void nibble_init(void)
+const char* keywords[KW_COUNT];
+
+static StringView keyword_names[KW_COUNT] = {
+    [KW_VAR] = string_view_lit("var"),
+    [KW_CONST] = string_view_lit("const"),
+    [KW_ENUM] = string_view_lit("enum"),
+    [KW_UNION] = string_view_lit("union"),
+    [KW_STRUCT] = string_view_lit("struct"),
+    [KW_FUNC] = string_view_lit("func"),
+    [KW_TYPEDEF] = string_view_lit("typedef"),
+    [KW_SIZEOF] = string_view_lit("sizeof"),
+    [KW_TYPEOF] = string_view_lit("typeof"),
+    [KW_GOTO] = string_view_lit("goto"),
+    [KW_BREAK] = string_view_lit("break"),
+    [KW_CONTINUE] = string_view_lit("continue"),
+    [KW_RETURN] = string_view_lit("return"),
+    [KW_IF] = string_view_lit("if"),
+    [KW_ELSE] = string_view_lit("else"),
+    [KW_WHILE] = string_view_lit("while"),
+    [KW_DO] = string_view_lit("do"),
+    [KW_FOR] = string_view_lit("for"),
+    [KW_SWITCH] = string_view_lit("switch"),
+    [KW_CASE] = string_view_lit("case"),
+    [KW_DEFAULT] = string_view_lit("default"),
+};
+
+static bool nibble_init(void)
 {
     nibble.allocator = allocator_create(4096);
     nibble.str_lit_map = hash_map(9, NULL);
     nibble.ident_map = hash_map(9, NULL);
+
+    // Compute the total amount of memory needed to store all interned keywords.
+    // Why? Program needs all keywords to reside in a contigous block of memory to facilitate
+    // determining whether a string is a keyword using simple pointer comparisons.
+    size_t kws_size = 0;
+    for (int i = 0; i < KW_COUNT; ++i) {
+        kws_size += offsetof(InternedStr, str) + keyword_names[i].len + 1;
+    }
+
+    char* kws_mem = mem_allocate(&nibble.allocator, kws_size, DEFAULT_ALIGN, false);
+    if (!kws_mem) {
+        return false;
+    }
+
+    for (int i = 0; i < KW_COUNT; ++i) {
+        const char* str = keyword_names[i].str;
+        size_t len = keyword_names[i].len;
+        size_t size = offsetof(InternedStr, str) + len + 1;
+        InternedStr* kw = (void*)kws_mem;
+
+        kw->next = NULL;
+        kw->len = len;
+
+        memcpy(kw->str, str, len);
+        kw->str[len] = '\0';
+
+        hash_map_put(&nibble.ident_map, hash_bytes(str, len), (uintptr_t)kw);
+        keywords[i] = kw->str;
+
+        kws_mem += size;
+    }
+    assert(nibble.ident_map.len == KW_COUNT);
+    
+    return true;
 }
 
-void nibble_cleanup(void)
+static void nibble_cleanup(void)
 {
     hash_map_destroy(&nibble.str_lit_map);
     hash_map_destroy(&nibble.ident_map);
@@ -91,7 +152,10 @@ static void free_compiled_module(CompiledModule* module)
 
 int main(void)
 {
-    nibble_init();
+    if (!nibble_init()) {
+        fprintf(stderr, "Failed to initialize\n");
+        exit(1);
+    }
 
     CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a == 1) print(\"hi\"); }", 0);
 
