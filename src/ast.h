@@ -145,8 +145,9 @@ typedef struct ExprSizeof {
 } ExprSizeof;
 
 typedef enum ExprCompoundLitInitKind {
-    EXPR_COMPOUND_LIT_INIT_NAMED,
-    EXPR_COMPOUND_LIT_INIT_INDEXED,
+    EXPR_COMPOUND_LIT_INIT_POS,
+    EXPR_COMPOUND_LIT_INIT_NAME,
+    EXPR_COMPOUND_LIT_INIT_INDEX,
 } ExprCompoundLitInitKind;
 
 typedef struct ExprCompoundLitInit {
