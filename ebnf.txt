@@ -22,14 +22,14 @@ expr_base    = TKN_INT
              | TKN_STR
              | TKN_IDENT
              | expr_cast
-             | expr_compound_init
+             | expr_compound_lit
              | expr_sizeof
              | '(' expr ')'
 
 expr_call_arg_list = expr_call_arg (',' expr_call_arg)*
 expr_call_arg = (TKN_IDENT '=') ? expr
 expr_cast = typespec_spec? expr_unary
-expr_compound_init = typespec_spec? '{' expr_init_list '}'
+expr_compound_lit = typespec_spec? '{' expr_init_list '}'
 expr_init_list = expr_init_item (',' expr_init_item)*
 expr_init_item = (TKN_IDENT '=')? expr
                | ('[' (TKN_INT | TKN_IDENT) ']' '=')? expr

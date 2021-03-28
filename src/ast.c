@@ -189,3 +189,46 @@ Expr* expr_sizeof_expr(Allocator* allocator, Expr* arg, ProgRange range)
 
     return expr;
 }
+
+ExprInitializer* expr_pos_initializer(Allocator* allocator, Expr* init, ProgRange range)
+{
+    ExprInitializer* expr = mem_allocate(allocator, sizeof(ExprInitializer), DEFAULT_ALIGN, true);
+    expr->kind = EXPR_INITIALIZER_POS;
+    expr->range = range;
+    expr->init = init;
+
+    return expr;
+}
+
+ExprInitializer* expr_name_initializer(Allocator* allocator, const char* name, Expr* init, ProgRange range)
+{
+    ExprInitializer* expr = mem_allocate(allocator, sizeof(ExprInitializer), DEFAULT_ALIGN, true);
+    expr->kind = EXPR_INITIALIZER_NAME;
+    expr->range = range;
+    expr->init = init;
+    expr->name = name;
+
+    return expr;
+}
+
+ExprInitializer* expr_index_initializer(Allocator* allocator, Expr* index, Expr* init, ProgRange range)
+{
+    ExprInitializer* expr = mem_allocate(allocator, sizeof(ExprInitializer), DEFAULT_ALIGN, true);
+    expr->kind = EXPR_INITIALIZER_INDEX;
+    expr->range = range;
+    expr->init = init;
+    expr->index = index;
+
+    return expr;
+}
+
+Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, DLList* initzers, ProgRange range)
+{
+    Expr* expr = expr_alloc(allocator, EXPR_COMPOUND_LIT, range);
+    expr->ecompound.type = type;
+    expr->ecompound.num_initzers = num_initzers;
+
+    dllist_replace(initzers, &expr->ecompound.initzers);
+
+    return expr;
+}

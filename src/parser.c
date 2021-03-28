@@ -221,6 +221,84 @@ TypeSpec* parse_typespec(Parser* parser)
 
 static Expr* parse_expr_unary(Parser* parser);
 
+static ExprInitializer* parse_expr_initializer(Parser* parser)
+{
+    ProgRange range = {.start = parser->token.range.start};
+
+    if (match_token_next(parser, TKN_LBRACKET)) {
+        Expr* index = parse_expr(parser);
+
+        expect_token_next(parser, TKN_RBRACKET);
+        expect_token_next(parser, TKN_ASSIGN);
+
+        Expr* init = parse_expr(parser);
+
+        range.end = init->range.end;
+
+        return expr_index_initializer(parser->allocator, index, init, range);
+    }
+
+    Expr* expr = parse_expr(parser);
+
+    if (match_token_next(parser, TKN_ASSIGN)) {
+        const char* name = ""; // TODO: Some non-null default?
+
+        // TODO: No need to allocate full expr for name. Consider resetting arena allocation state.
+        if (expr->kind != EXPR_IDENT) {
+            parser_on_error(parser, "Invalid name for initializer. Expected a name, got TODO"); // TODO: Better error
+        } else {
+            name = expr->eident.name;
+        }
+
+        Expr* init = parse_expr(parser);
+
+        range.end = init->range.end;
+
+        return expr_name_initializer(parser->allocator, name, init, range);
+    }
+
+    range.end = expr->range.end;
+
+    return expr_pos_initializer(parser->allocator, expr, range);
+}
+
+// expr_compound_lit = typespec_spec? '{' expr_init_list '}'
+// expr_init_list = expr_init_item (',' expr_init_item)*
+// expr_init_item = (TKN_IDENT '=')? expr
+//               | ('[' (TKN_INT | TKN_IDENT) ']' '=')? expr
+static Expr* parse_expr_compound_lit(Parser* parser, TypeSpec* type)
+{
+    ProgRange range = {0};
+
+    if (type) {
+        range.start = type->range.start;
+    } else {
+        range.start = parser->token.range.start;
+    }
+
+    expect_token_next(parser, TKN_LBRACE);
+
+    size_t num_initzers = 0;
+    DLList initzers = dllist_head_create(initzers);
+
+    while (!is_token(parser, TKN_RBRACE)) {
+        ExprInitializer* initzer = parse_expr_initializer(parser);
+
+        num_initzers += 1;
+        dllist_add(initzers.prev, &initzer->list);
+
+        if (!match_token_next(parser, TKN_COMMA)) {
+            break;
+        }
+    }
+
+    expect_token_next(parser, TKN_RBRACE);
+
+    range.end = parser->ptoken.range.end;
+
+    return expr_compound_lit(parser->allocator, type, num_initzers, &initzers, range);
+}
+
 // expr_base = TKN_INT
 //           | TKN_FLOAT
 //           | TKN_STR
@@ -250,15 +328,14 @@ static Expr* parse_expr_base(Parser* parser)
         Token* token = &parser->ptoken;
         expr = expr_ident(parser->allocator, token->tident.value, token->range);
     } else if (match_token_next(parser, TKN_LPAREN)) {
-        ProgRange range = { .start = parser->ptoken.range.start };
+        ProgRange range = {.start = parser->ptoken.range.start};
 
         if (match_token_next(parser, TKN_COLON)) {
             TypeSpec* type = parse_typespec(parser);
             expect_token_next(parser, TKN_RPAREN);
 
             if (is_token(parser, TKN_LBRACE)) {
-                // TODO: parse compound initializer expression.
-                assert(0);
+                expr = parse_expr_compound_lit(parser, type);
             } else {
                 Expr* unary = parse_expr_unary(parser);
 
@@ -270,7 +347,7 @@ static Expr* parse_expr_base(Parser* parser)
             expect_token_next(parser, TKN_RPAREN);
         }
     } else if (match_keyword_next(parser, KW_SIZEOF)) {
-        ProgRange range = { .start = parser->ptoken.range.start };
+        ProgRange range = {.start = parser->ptoken.range.start};
 
         expect_token_next(parser, TKN_LPAREN);
 
@@ -287,8 +364,7 @@ static Expr* parse_expr_base(Parser* parser)
             range.end = parser->ptoken.range.end;
             expr = expr_sizeof_expr(parser->allocator, arg, range);
         }
-    }
-    else {
+    } else {
         parser_on_error(parser, "Unexpected token in expression"); // TODO: Better info
     }
 
@@ -305,7 +381,7 @@ static ExprCallArg* parse_expr_call_arg(Parser* parser)
         if (expr->kind != EXPR_IDENT) {
             parser_on_error(parser, "Function argument's name must be an alphanumeric identifier");
         } else {
-            name = expr->eident.name;
+            name = expr->eident.name; // TODO: No need to parse as expression here.
         }
 
         expr = parse_expr(parser);

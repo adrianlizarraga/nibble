@@ -144,25 +144,28 @@ typedef struct ExprSizeof {
     };
 } ExprSizeof;
 
-typedef enum ExprCompoundLitInitKind {
-    EXPR_COMPOUND_LIT_INIT_POS,
-    EXPR_COMPOUND_LIT_INIT_NAME,
-    EXPR_COMPOUND_LIT_INIT_INDEX,
-} ExprCompoundLitInitKind;
+typedef enum ExprInitializerKind {
+    EXPR_INITIALIZER_POS,
+    EXPR_INITIALIZER_NAME,
+    EXPR_INITIALIZER_INDEX,
+} ExprInitializerKind;
 
-typedef struct ExprCompoundLitInit {
-    ExprCompoundLitInitKind kind;
+typedef struct ExprInitializer {
+    ExprInitializerKind kind;
+    ProgRange range;
     Expr* init;
     union {
         const char* name;
         Expr* index;
     };
-} ExprCompoundLitInit;
+
+    DLList list;
+} ExprInitializer;
 
 typedef struct ExprCompoundLit {
     TypeSpec* type;
     size_t num_initzers;
-    ExprCompoundLitInit* initzers;
+    DLList initzers;
 } ExprCompoundLit;
 
 typedef enum ExprKind {
@@ -179,7 +182,7 @@ typedef enum ExprKind {
     EXPR_IDENT,
     EXPR_CAST,
     EXPR_SIZEOF,
-    EXPR_COMPOUND,
+    EXPR_COMPOUND_LIT,
 } ExprKind;
 
 struct Expr {
@@ -217,6 +220,10 @@ Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range);
 Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* unary, ProgRange range);
 Expr* expr_sizeof_type(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* expr_sizeof_expr(Allocator* allocator, Expr* arg, ProgRange range);
+ExprInitializer* expr_pos_initializer(Allocator* allocator, Expr* init, ProgRange range);
+ExprInitializer* expr_name_initializer(Allocator* allocator, const char* name, Expr* init, ProgRange range);
+ExprInitializer* expr_index_initializer(Allocator* allocator, Expr* index, Expr* init, ProgRange range);
+Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, DLList* initzers, ProgRange range);
 
 /////////////////////////////
 //        Statements
