@@ -1,4 +1,25 @@
 #include "array.h"
+#include "stdarg.h"
+
+size_t print_to_array(char** dst, const char* format, ...)
+{
+    size_t n = 0;
+    va_list vargs;
+
+    va_start(vargs, format);
+    n = vsnprintf(*dst, array_len(*dst), format, vargs);
+    va_end(vargs);
+
+    if (n >= array_len(*dst)) {
+        array_set_len(*dst, n + 1);
+
+        va_start(vargs, format);
+        n = vsnprintf(*dst, array_len(*dst), format, vargs);
+        va_end(vargs);
+    }
+
+    return n;
+}
 
 void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, Allocator* allocator)
 {

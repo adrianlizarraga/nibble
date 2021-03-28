@@ -449,7 +449,7 @@ void lexer_destroy(Lexer* lexer)
     allocator_destroy(&lexer->allocator);
 }
 
-static const char* token_kind_names[] = {
+const char* token_kind_names[] = {
     [TKN_INVALID] = "<invalid>",
     [TKN_EOF] = "<eof>",
     [TKN_LPAREN] = "(",

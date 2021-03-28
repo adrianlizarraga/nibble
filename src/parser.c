@@ -324,9 +324,6 @@ static Expr* parse_expr_base(Parser* parser)
     } else if (match_token_next(parser, TKN_STR)) {
         Token* token = &parser->ptoken;
         expr = expr_str(parser->allocator, token->tstr.value, token->range);
-    } else if (match_token_next(parser, TKN_IDENT)) {
-        Token* token = &parser->ptoken;
-        expr = expr_ident(parser->allocator, token->tident.value, token->range);
     } else if (match_token_next(parser, TKN_LPAREN)) {
         ProgRange range = {.start = parser->ptoken.range.start};
 
@@ -364,8 +361,12 @@ static Expr* parse_expr_base(Parser* parser)
             range.end = parser->ptoken.range.end;
             expr = expr_sizeof_expr(parser->allocator, arg, range);
         }
+    } else if (match_token_next(parser, TKN_IDENT)) {
+        Token* token = &parser->ptoken;
+        expr = expr_ident(parser->allocator, token->tident.value, token->range);
     } else {
-        parser_on_error(parser, "Unexpected token in expression"); // TODO: Better info
+        parser_on_error(parser, "Unexpected token in expression: %s", 
+                        token_kind_names[parser->token.kind]); // TODO: Better info
     }
 
     return expr;

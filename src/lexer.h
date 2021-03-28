@@ -110,6 +110,8 @@ typedef struct Lexer {
     ByteStream* errors;
 } Lexer;
 
+extern const char* token_kind_names[];
+
 Lexer lexer_create(const char* str, uint32_t start, ByteStream* errors);
 void lexer_destroy(Lexer* lexer);
 

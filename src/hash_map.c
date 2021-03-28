@@ -173,7 +173,7 @@ const char* str_intern(Allocator* allocator, HashMap* strmap, const char* str, s
     //
     // Walk the linked list in case of collision.
     for (InternedStr* it = intern; it; it = it->next) {
-        if ((it->len == len) && (strcmp(it->str, str) == 0)) {
+        if ((it->len == len) && (strncmp(it->str, str, len) == 0)) {
             return it->str;
         }
     }

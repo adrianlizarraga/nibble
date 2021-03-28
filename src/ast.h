@@ -68,6 +68,7 @@ TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRa
 TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type, const char* name);
 TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range);
 
+void print_typespec(TypeSpec* type);
 ///////////////////////////////
 //       Expressions
 //////////////////////////////
@@ -225,6 +226,7 @@ ExprInitializer* expr_name_initializer(Allocator* allocator, const char* name, E
 ExprInitializer* expr_index_initializer(Allocator* allocator, Expr* index, Expr* init, ProgRange range);
 Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, DLList* initzers, ProgRange range);
 
+void print_expr(Expr* expr);
 /////////////////////////////
 //        Statements
 /////////////////////////////

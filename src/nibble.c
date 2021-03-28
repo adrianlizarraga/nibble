@@ -112,11 +112,19 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
 
     Parser parser = parser_create(&module->allocator, str, pos, &module->errors);
 
+#if 0
     char tkn_buf[64];
     while (next_token(&parser)) {
         print_token(&parser.token, tkn_buf, sizeof(tkn_buf));
         printf("%s\n", tkn_buf);
     }
+#else
+    next_token(&parser);
+    Expr* expr = parse_expr(&parser);
+
+    print_expr(expr);
+    printf("\n");
+#endif
 
     printf("Num errors: %lu\n", module->errors.num_chunks);
     if (module->errors.num_chunks > 0) {
@@ -147,7 +155,13 @@ int main(void)
         exit(1);
     }
 
-    CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a != 1) print(\"hi\"); }", 0);
+    // CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a != 1) print(\"hi\"); }", 0);
+    // CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
+    // CompiledModule* module = compile_module("\"abc\"[0]", 0);
+    // CompiledModule* module = compile_module("(:int)-x*2", 0);
+    // CompiledModule* module = compile_module("sizeof(1)", 0);
+    // CompiledModule* module = compile_module("sizeof(:int)", 0);
+    CompiledModule* module = compile_module("3 + f(1+3, a*3, -4.3, x ? a : b)", 0);
 
     free_compiled_module(module);
     nibble_cleanup();
