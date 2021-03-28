@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#define LEXER_ARENA_BLOCK_SIZE 512
+#define LEXER_ARENA_BLOCK_SIZE 256
 
 // Converts a numeric character to an integer value. Values are biased by +1
 // so that a result of 0 is known to be invalid.

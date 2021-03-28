@@ -26,7 +26,7 @@ typedef struct AllocatorState {
 #define new_array(allocator, elem_type, len, clear)                                                                    \
     (elem_type*)mem_allocate((allocator), sizeof(elem_type) * (len), alignof(elem_type), (clear))
 
-Allocator allocator_create(size_t block_size);
+Allocator allocator_create(size_t init_size);
 void allocator_reset(Allocator* allocator);
 void allocator_destroy(Allocator* allocator);
 

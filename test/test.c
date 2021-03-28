@@ -576,16 +576,18 @@ void test_allocator(void)
     Allocator allocator = {0};
 
     allocator = allocator_create(512);
+    assert((allocator.end - allocator.buffer) == 512);
 
-    void* m = mem_allocate(&allocator, 256, DEFAULT_ALIGN, true);
+    void* m = mem_allocate(&allocator, 256, 1, true);
     assert(m);
-    assert((allocator.at - allocator.buffer) >= 256);
+    assert((allocator.at - allocator.buffer) == 256);
 
     unsigned char* old_buffer = allocator.buffer;
-    m = mem_allocate(&allocator, 1024, DEFAULT_ALIGN, false);
+    m = mem_allocate(&allocator, 1024, 1, false);
     assert(m);
     assert(old_buffer != allocator.buffer);
-    assert((allocator.at - allocator.buffer) >= 1024);
+    assert((allocator.at - allocator.buffer) == 1024);
+    assert((allocator.end - allocator.buffer) == ((1024 + 1) * 2));
 
     allocator_destroy(&allocator);
     assert(!allocator.buffer);
@@ -597,6 +599,7 @@ void test_allocator(void)
     old_buffer = allocator.buffer;
     m = mem_allocate(&allocator, 1024, DEFAULT_ALIGN, false);
     assert(m);
+    assert(((uintptr_t)m & (DEFAULT_ALIGN - 1)) == 0);
     assert(old_buffer != allocator.buffer);
     assert((allocator.end - allocator.buffer) >= 1024);
 
@@ -613,21 +616,19 @@ void test_allocator(void)
     // Test allocator state restoration.
     allocator = allocator_create(512);
 
-    m = mem_allocate(&allocator, 16, DEFAULT_ALIGN, false);
+    m = mem_allocate(&allocator, 16, 1, false);
     assert(m);
-    assert((allocator.at - allocator.buffer) >= 16);
-    assert((allocator.at - allocator.buffer) <= 64);
+    assert((allocator.at - allocator.buffer) == 16);
 
     AllocatorState state = allocator_get_state(&allocator);
     {
-        m = mem_allocate(&allocator, 64, DEFAULT_ALIGN, false);
+        m = mem_allocate(&allocator, 64, 1, false);
         assert(m);
-        assert((allocator.at - allocator.buffer) >= 64 + 16);
+        assert((allocator.at - allocator.buffer) == 64 + 16);
     }
     allocator_restore_state(state);
 
-    assert((allocator.at - allocator.buffer) >= 16);
-    assert((allocator.at - allocator.buffer) <= 64);
+    assert((allocator.at - allocator.buffer) == 16);
 
     allocator_destroy(&allocator);
     assert(!allocator.buffer);
@@ -637,24 +638,22 @@ void test_allocator(void)
     // Test allocator state restoration.
     allocator = allocator_create(512);
 
-    m = mem_allocate(&allocator, 16, DEFAULT_ALIGN, false);
+    m = mem_allocate(&allocator, 16, 1, false);
     assert(m);
-    assert((allocator.at - allocator.buffer) >= 16);
-    assert((allocator.at - allocator.buffer) <= 64);
+    assert((allocator.at - allocator.buffer) == 16);
 
     old_buffer = allocator.buffer;
     state = allocator_get_state(&allocator);
     {
-        m = mem_allocate(&allocator, 2048, DEFAULT_ALIGN, false);
+        m = mem_allocate(&allocator, 2048, 1, false);
         assert(m);
         assert(old_buffer != allocator.buffer);
-        assert((allocator.at - allocator.buffer) >= 2048);
+        assert((allocator.at - allocator.buffer) == 2048);
     }
     allocator_restore_state(state);
 
     assert(old_buffer == allocator.buffer);
-    assert((allocator.at - allocator.buffer) >= 16);
-    assert((allocator.at - allocator.buffer) <= 64);
+    assert((allocator.at - allocator.buffer) == 16);
 
     allocator_destroy(&allocator);
     assert(!allocator.buffer);

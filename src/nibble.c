@@ -48,8 +48,8 @@ static StringView keyword_names[KW_COUNT] = {
 static bool nibble_init(void)
 {
     nibble.allocator = allocator_create(4096);
-    nibble.str_lit_map = hash_map(9, NULL);
-    nibble.ident_map = hash_map(9, NULL);
+    nibble.str_lit_map = hash_map(6, NULL);
+    nibble.ident_map = hash_map(6, NULL);
 
     // Compute the total amount of memory needed to store all interned keywords.
     // Why? Program needs all keywords to reside in a contigous block of memory to facilitate
@@ -105,7 +105,7 @@ const char* intern_ident(const char* str, size_t len)
 
 static CompiledModule* compile_module(const char* str, ProgPos pos)
 {
-    Allocator bootstrap = allocator_create(4096);
+    Allocator bootstrap = allocator_create(1024);
     CompiledModule* module = new_type(&bootstrap, CompiledModule, true);
     module->allocator = bootstrap;
     module->errors = byte_stream_create(&module->allocator);
@@ -126,8 +126,8 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
     printf("\n");
 #endif
 
-    printf("Num errors: %lu\n", module->errors.num_chunks);
     if (module->errors.num_chunks > 0) {
+        printf("Num errors: %lu\n", module->errors.num_chunks);
         ByteStreamChunk* chunk = module->errors.first;
 
         while (chunk) {
@@ -155,13 +155,17 @@ int main(void)
         exit(1);
     }
 
-    // CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a != 1) print(\"hi\"); }", 0);
-    // CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
-    // CompiledModule* module = compile_module("\"abc\"[0]", 0);
-    // CompiledModule* module = compile_module("(:int)-x*2", 0);
-    // CompiledModule* module = compile_module("sizeof(1)", 0);
-    // CompiledModule* module = compile_module("sizeof(:int)", 0);
-    CompiledModule* module = compile_module("3 + f(1+3, a*3, -4.3, x ? a : b)", 0);
+    //CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a != 1) print(\"hi\"); }", 0);
+    CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
+    //CompiledModule* module = compile_module("\"abc\"[0]", 0);
+    //CompiledModule* module = compile_module("(:int)-x*2", 0);
+    //CompiledModule* module = compile_module("sizeof(1)", 0);
+    //CompiledModule* module = compile_module("sizeof(:int)", 0);
+    //CompiledModule* module = compile_module("3 + f(1+3, a*3, -4.3, x ? a : b)", 0);
+    //CompiledModule* module = compile_module("a[1 * 3", 0);
+    //CompiledModule* module = compile_module("(:Vector2){x = 1, y = 2}", 0);
+    //CompiledModule* module = compile_module("(:int[]){[0] = 1, [1] = 2}", 0);
+    //CompiledModule* module = compile_module("1", 0);
 
     free_compiled_module(module);
     nibble_cleanup();

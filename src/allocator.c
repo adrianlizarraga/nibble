@@ -9,17 +9,10 @@ typedef struct MemBlockFooter {
     unsigned char* pend;
 } MemBlockFooter;
 
-static bool alloc_mem_block(Allocator* allocator, size_t size)
+static bool alloc_mem_block(Allocator* allocator, size_t block_size)
 {
     // Adds a new block of memory to the allocator.
     // The new block will contain a pointer to the old block in its footer (for cleanup).
-    // The block size doubles every time.
-
-    size_t block_size = allocator->block_size;
-    if (block_size < size) {
-        block_size = size;
-    }
-    block_size *= 2;
 
     unsigned char* block = malloc(block_size + sizeof(MemBlockFooter));
     if (!block) {
@@ -30,8 +23,8 @@ static bool alloc_mem_block(Allocator* allocator, size_t size)
     unsigned char* pend = allocator->end;
 
     allocator->buffer = block;
+    allocator->at = block;
     allocator->end = block + block_size;
-    allocator->at = block + size;
     allocator->block_size = block_size;
 
     MemBlockFooter* footer = (MemBlockFooter*)allocator->end;
@@ -56,7 +49,15 @@ void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
 
     // Allocate a new memory block if need more memory.
     if (new_at > (uintptr_t)allocator->end) {
-        if (!alloc_mem_block(allocator, size)) {
+        size_t block_size = allocator->block_size;
+        size_t worst_size = size + align;
+
+        if (block_size < worst_size) {
+            block_size = worst_size;
+        }
+        block_size *= 2;
+
+        if (!alloc_mem_block(allocator, block_size)) {
             return NULL;
         }
 
@@ -108,12 +109,13 @@ void mem_free(Allocator* allocator, void* ptr)
     // TODO: If ptr is the last previous allocation, can undo it.
 }
 
-Allocator allocator_create(size_t block_size)
+Allocator allocator_create(size_t init_size)
 {
     static size_t id = 0;
     Allocator allocator = {0};
     allocator.id = id++;
-    allocator.block_size = block_size;
+
+    alloc_mem_block(&allocator, init_size);
 
     return allocator;
 }

@@ -234,26 +234,8 @@ Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzer
     return expr;
 }
 
-void print_typespec(TypeSpec* type) {}
-
-static void print_expr_call_args(Expr* expr)
-{
-    size_t num_args = expr->ecall.num_args;
-
-    if (num_args) {
-        printf(" ");
-
-        DLList* head = &expr->ecall.args;
-
-        for (DLList* it = head->next; it != head; it = it->next) {
-            ExprCallArg* arg = dllist_entry(it, ExprCallArg, list);
-            print_expr(arg->expr);
-
-            if (it->next != head) {
-                printf(" ");
-            }
-        }
-    }
+void print_typespec(TypeSpec* type) {
+    (void)type;
 }
 
 void print_expr(Expr* expr)
@@ -286,7 +268,21 @@ void print_expr(Expr* expr)
     case EXPR_CALL: {
         printf("(call ");
         print_expr(expr->ecall.func);
-        print_expr_call_args(expr);
+
+        if (expr->ecall.num_args) {
+            printf(" ");
+
+            DLList* head = &expr->ecall.args;
+
+            for (DLList* it = head->next; it != head; it = it->next) {
+                ExprCallArg* arg = dllist_entry(it, ExprCallArg, list);
+                print_expr(arg->expr);
+
+                if (it->next != head) {
+                    printf(" ");
+                }
+            }
+        }
         printf(")");
     } break;
     case EXPR_INDEX: {
@@ -332,6 +328,37 @@ void print_expr(Expr* expr)
         }
     } break;
     case EXPR_COMPOUND_LIT: {
+        printf("(compound ");
+        if (expr->ecompound.type) {
+            print_typespec(expr->ecompound.type);
+            printf(" ");
+        }
+
+        printf("{");
+        if (expr->ecompound.num_initzers) {
+            DLList* head = &expr->ecompound.initzers;
+
+            for (DLList* it = head->next; it != head; it = it->next) {
+                ExprInitializer* init = dllist_entry(it, ExprInitializer, list);
+
+                if (init->kind == EXPR_INITIALIZER_NAME) {
+                    printf("%s = ", init->name);
+                } else if (init->kind == EXPR_INITIALIZER_INDEX) {
+                    printf("[");
+                    print_expr(init->index);
+                    printf("] = ");
+                }
+
+                print_expr(init->init);
+
+                if (it->next != head) {
+                    printf(" ");
+                }
+            }
+        }
+        printf("}");
+
+        printf(")");
     } break;
     default: {
         assert(0);
