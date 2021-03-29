@@ -4,7 +4,10 @@
 #include <string.h>
 
 #include "nibble.h"
+
 #include "allocator.c"
+#include "cstring.c"
+#include "print.c"
 #include "array.c"
 #include "llist.h"
 #include "hash_map.c"
@@ -23,7 +26,7 @@ static void print_errors(ByteStream* errors)
         ByteStreamChunk* chunk = errors->first;
 
         while (chunk) {
-            printf("[ERROR]: %s\n", chunk->buf);
+            print_out("[ERROR]: %s\n", chunk->buf);
             chunk = chunk->next;
         }
     }
@@ -794,7 +797,7 @@ void test_hash_map(void)
         assert(*r == i);
     }
 
-    printf("cap = %lu, len = %lu\n", map.cap, map.len);
+    print_out("cap = %lu, len = %lu\n", map.cap, map.len);
 
     hash_map_destroy(&map);
 }
@@ -874,7 +877,7 @@ int main(void)
 {
     g_ctx.allocator = allocator_create(4096);
 
-    printf("Nibble tests!\n");
+    print_out("Nibble tests!\n");
     test_lexer();
     test_allocator();
     test_array();

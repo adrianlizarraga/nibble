@@ -5,6 +5,8 @@
 
 #define MAX_ERROR_LEN 256
 
+#define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
+
 typedef uint32_t ProgPos;
 
 typedef struct ProgRange {

@@ -1,5 +1,6 @@
-#include "array.h"
 #include "ast.h"
+#include "array.h"
+#include "cstring.h"
 
 TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange range)
 {
@@ -235,7 +236,23 @@ Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzer
 }
 
 void print_typespec(TypeSpec* type) {
-    (void)type;
+    switch (type->kind) {
+    case TYPE_SPEC_NONE: {
+        assert(0);
+    } break;
+    case TYPE_SPEC_IDENT: {
+
+    } break;
+    case TYPE_SPEC_FUNC: {
+    } break;
+    case TYPE_SPEC_PTR: {
+    } break;
+    case TYPE_SPEC_ARRAY: {
+    } break;
+    default: {
+        assert(0);
+    } break;
+    }
 }
 
 void print_expr(Expr* expr)
@@ -245,32 +262,32 @@ void print_expr(Expr* expr)
         assert(0);
     } break;
     case EXPR_TERNARY: {
-        printf("(? ");
+        print_out("(? ");
         print_expr(expr->eternary.cond);
-        printf(" ");
+        print_out(" ");
         print_expr(expr->eternary.then_expr);
-        printf(" ");
+        print_out(" ");
         print_expr(expr->eternary.else_expr);
-        printf(")");
+        print_out(")");
     } break;
     case EXPR_BINARY: {
-        printf("(%s ", token_kind_names[expr->ebinary.op]);
+        print_out("(%s ", token_kind_names[expr->ebinary.op]);
         print_expr(expr->ebinary.left);
-        printf(" ");
+        print_out(" ");
         print_expr(expr->ebinary.right);
-        printf(")");
+        print_out(")");
     } break;
     case EXPR_UNARY: {
-        printf("(%s ", token_kind_names[expr->eunary.op]);
+        print_out("(%s ", token_kind_names[expr->eunary.op]);
         print_expr(expr->eunary.expr);
-        printf(")");
+        print_out(")");
     } break;
     case EXPR_CALL: {
-        printf("(call ");
+        print_out("(call ");
         print_expr(expr->ecall.func);
 
         if (expr->ecall.num_args) {
-            printf(" ");
+            print_out(" ");
 
             DLList* head = &expr->ecall.args;
 
@@ -279,62 +296,62 @@ void print_expr(Expr* expr)
                 print_expr(arg->expr);
 
                 if (it->next != head) {
-                    printf(" ");
+                    print_out(" ");
                 }
             }
         }
-        printf(")");
+        print_out(")");
     } break;
     case EXPR_INDEX: {
-        printf("(arr_index ");
+        print_out("(arr_index ");
         print_expr(expr->eindex.array);
-        printf(" ");
+        print_out(" ");
         print_expr(expr->eindex.index);
-        printf(")");
+        print_out(")");
     } break;
     case EXPR_FIELD: {
-        printf("(obj_field ");
+        print_out("(obj_field ");
         print_expr(expr->efield.object);
-        printf(" .%s)", expr->efield.field);
+        print_out(" .%s)", expr->efield.field);
     } break;
     case EXPR_INT: {
-        printf("%lu", expr->eint.value);
+        print_out("%lu", expr->eint.value);
     } break;
     case EXPR_FLOAT: {
-        printf("%lf", expr->efloat.value);
+        print_out("%lf", expr->efloat.value);
     } break;
     case EXPR_STR: {
-        printf("\"%s\"", expr->estr.value);
+        print_out("\"%s\"", expr->estr.value);
     } break;
     case EXPR_IDENT: {
-        printf("%s", expr->eident.name);
+        print_out("%s", expr->eident.name);
     } break;
     case EXPR_CAST: {
-        printf("(cast ");
+        print_out("(cast ");
         print_typespec(expr->ecast.type);
-        printf(" ");
+        print_out(" ");
         print_expr(expr->ecast.expr);
-        printf(")");
+        print_out(")");
     } break;
     case EXPR_SIZEOF: {
         if (expr->esizeof.kind == EXPR_SIZEOF_ARG_TYPE) {
-            printf("(sizeof_type ");
+            print_out("(sizeof_type ");
             print_typespec(expr->esizeof.type);
-            printf(")");
+            print_out(")");
         } else {
-            printf("(sizeof_expr ");
+            print_out("(sizeof_expr ");
             print_expr(expr->esizeof.expr);
-            printf(")");
+            print_out(")");
         }
     } break;
     case EXPR_COMPOUND_LIT: {
-        printf("(compound ");
+        print_out("(compound ");
         if (expr->ecompound.type) {
             print_typespec(expr->ecompound.type);
-            printf(" ");
+            print_out(" ");
         }
 
-        printf("{");
+        print_out("{");
         if (expr->ecompound.num_initzers) {
             DLList* head = &expr->ecompound.initzers;
 
@@ -342,23 +359,23 @@ void print_expr(Expr* expr)
                 ExprInitializer* init = dllist_entry(it, ExprInitializer, list);
 
                 if (init->kind == EXPR_INITIALIZER_NAME) {
-                    printf("%s = ", init->name);
+                    print_out("%s = ", init->name);
                 } else if (init->kind == EXPR_INITIALIZER_INDEX) {
-                    printf("[");
+                    print_out("[");
                     print_expr(init->index);
-                    printf("] = ");
+                    print_out("] = ");
                 }
 
                 print_expr(init->init);
 
                 if (it->next != head) {
-                    printf(" ");
+                    print_out(" ");
                 }
             }
         }
-        printf("}");
+        print_out("}");
 
-        printf(")");
+        print_out(")");
     } break;
     default: {
         assert(0);

@@ -7,6 +7,8 @@
 #include "nibble.h"
 
 #include "allocator.c"
+#include "cstring.c"
+#include "print.c"
 #include "array.c"
 #include "hash_map.c"
 #include "stream.c"
@@ -116,22 +118,22 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
     char tkn_buf[64];
     while (next_token(&parser)) {
         print_token(&parser.token, tkn_buf, sizeof(tkn_buf));
-        printf("%s\n", tkn_buf);
+        print_out("%s\n", tkn_buf);
     }
 #else
     next_token(&parser);
     Expr* expr = parse_expr(&parser);
 
     print_expr(expr);
-    printf("\n");
+    print_out("\n");
 #endif
 
     if (module->errors.num_chunks > 0) {
-        printf("Num errors: %lu\n", module->errors.num_chunks);
+        print_out("Num errors: %lu\n", module->errors.num_chunks);
         ByteStreamChunk* chunk = module->errors.first;
 
         while (chunk) {
-            printf("%s\n", chunk->buf);
+            print_out("%s\n", chunk->buf);
             chunk = chunk->next;
         }
     }
@@ -151,7 +153,7 @@ static void free_compiled_module(CompiledModule* module)
 int main(void)
 {
     if (!nibble_init()) {
-        fprintf(stderr, "Failed to initialize\n");
+        print_err("Failed to initialize\n");
         exit(1);
     }
 

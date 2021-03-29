@@ -1,22 +1,23 @@
 #include "array.h"
 #include "stdarg.h"
 
-size_t print_to_array(char** dst, const char* format, ...)
+static bool putc_array(void* data, char character)
+{
+    char** dst = data;
+
+    array_push(*dst, character);
+
+    return true;
+}
+
+size_t print_array(char** dst, const char* format, ...)
 {
     size_t n = 0;
     va_list vargs;
 
     va_start(vargs, format);
-    n = vsnprintf(*dst, array_len(*dst), format, vargs);
+    n = print_vlist(putc_array, dst, format, vargs);
     va_end(vargs);
-
-    if (n >= array_len(*dst)) {
-        array_set_len(*dst, n + 1);
-
-        va_start(vargs, format);
-        n = vsnprintf(*dst, array_len(*dst), format, vargs);
-        va_end(vargs);
-    }
 
     return n;
 }
