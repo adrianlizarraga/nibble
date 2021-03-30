@@ -45,6 +45,7 @@ static StringView keyword_names[KW_COUNT] = {
     [KW_DO] = string_view_lit("do"),           [KW_FOR] = string_view_lit("for"),
     [KW_SWITCH] = string_view_lit("switch"),   [KW_CASE] = string_view_lit("case"),
     [KW_DEFAULT] = string_view_lit("default"),
+    [KW_CAST] = string_view_lit("cast"),
 };
 
 static bool nibble_init(void)

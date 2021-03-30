@@ -309,7 +309,7 @@ static Expr* parse_expr_compound_lit(Parser* parser, TypeSpec* type)
 //           | '(' expr ')'
 //
 // typespec_spec = '(' ':' typespec ')'
-// expr_cast = typespec_spec? expr_unary
+// expr_cast = KW_CAST '(' typespec ')' expr_unary
 // expr_sizeof = KW_SIZEOF '(' ((':' typespec) | expr) ')'
 static Expr* parse_expr_base(Parser* parser)
 {

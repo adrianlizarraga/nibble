@@ -42,6 +42,7 @@ typedef enum Keyword {
     KW_SWITCH,
     KW_CASE,
     KW_DEFAULT,
+    KW_CAST,
 
     KW_COUNT,
 } Keyword;
