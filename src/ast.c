@@ -1,5 +1,5 @@
-#include "ast.h"
 #include "array.h"
+#include "ast.h"
 #include "cstring.h"
 
 TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange range)
@@ -235,150 +235,194 @@ Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzer
     return expr;
 }
 
-void print_typespec(TypeSpec* type) {
-    switch (type->kind) {
-    case TYPE_SPEC_NONE: {
-        assert(0);
-    } break;
-    case TYPE_SPEC_IDENT: {
+char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
+{
+    char* dstr = NULL;
 
-    } break;
-    case TYPE_SPEC_FUNC: {
-    } break;
-    case TYPE_SPEC_PTR: {
-    } break;
-    case TYPE_SPEC_ARRAY: {
-    } break;
-    default: {
-        assert(0);
-    } break;
+    if (type) {
+        switch (type->kind) {
+        case TYPE_SPEC_NONE: {
+            assert(0);
+        } break;
+        case TYPE_SPEC_IDENT: {
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(:ident %s)", type->ident.name);
+        } break;
+        case TYPE_SPEC_FUNC: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(:func =>%s", ftprint_typespec(allocator, type->func.ret));
+
+            if (type->func.num_params) {
+                ftprint_char_array(&dstr, false, " ");
+
+                DLList* head = &type->func.params;
+
+                for (DLList* it = head->next; it != head; it = it->next) {
+                    TypeSpecParam* param = dllist_entry(it, TypeSpecParam, list);
+
+                    if (param->name) {
+                        ftprint_char_array(&dstr, false, "%s=%s", param->name,
+                                           ftprint_typespec(allocator, param->type));
+                    } else {
+                        ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->type));
+                    }
+
+                    if (it->next != head) {
+                        ftprint_char_array(&dstr, false, " ");
+                    }
+                }
+            }
+
+            ftprint_char_array(&dstr, false, ")");
+        } break;
+        case TYPE_SPEC_PTR: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(:ptr %s)", ftprint_typespec(allocator, type->ptr.base));
+        } break;
+        case TYPE_SPEC_ARRAY: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(:arr %s [%s])", ftprint_typespec(allocator, type->array.base),
+                               ftprint_expr(allocator, type->array.len));
+        } break;
+        default: {
+            ftprint_err("Unknown typespec kind: %d\n", type->kind);
+            assert(0);
+        } break;
+        }
+    } else {
+        dstr = array_create(allocator, char, 1);
     }
+
+    array_push(dstr, '\0');
+
+    return dstr;
 }
 
-void print_expr(Expr* expr)
+char* ftprint_expr(Allocator* allocator, Expr* expr)
 {
-    switch (expr->kind) {
-    case EXPR_NONE: {
-        assert(0);
-    } break;
-    case EXPR_TERNARY: {
-        print_out("(? ");
-        print_expr(expr->eternary.cond);
-        print_out(" ");
-        print_expr(expr->eternary.then_expr);
-        print_out(" ");
-        print_expr(expr->eternary.else_expr);
-        print_out(")");
-    } break;
-    case EXPR_BINARY: {
-        print_out("(%s ", token_kind_names[expr->ebinary.op]);
-        print_expr(expr->ebinary.left);
-        print_out(" ");
-        print_expr(expr->ebinary.right);
-        print_out(")");
-    } break;
-    case EXPR_UNARY: {
-        print_out("(%s ", token_kind_names[expr->eunary.op]);
-        print_expr(expr->eunary.expr);
-        print_out(")");
-    } break;
-    case EXPR_CALL: {
-        print_out("(call ");
-        print_expr(expr->ecall.func);
+    char* dstr = NULL;
 
-        if (expr->ecall.num_args) {
-            print_out(" ");
+    if (expr) {
+        switch (expr->kind) {
+        case EXPR_NONE: {
+            assert(0);
+        } break;
+        case EXPR_TERNARY: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(? %s %s %s)", ftprint_expr(allocator, expr->eternary.cond),
+                               ftprint_expr(allocator, expr->eternary.then_expr),
+                               ftprint_expr(allocator, expr->eternary.else_expr));
+        } break;
+        case EXPR_BINARY: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(%s %s %s)", token_kind_names[expr->ebinary.op],
+                               ftprint_expr(allocator, expr->ebinary.left),
+                               ftprint_expr(allocator, expr->ebinary.right));
+        } break;
+        case EXPR_UNARY: {
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(%s %s)", token_kind_names[expr->eunary.op],
+                               ftprint_expr(allocator, expr->eunary.expr));
+        } break;
+        case EXPR_CALL: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(call %s ", ftprint_expr(allocator, expr->ecall.func));
 
-            DLList* head = &expr->ecall.args;
+            if (expr->ecall.num_args) {
+                DLList* head = &expr->ecall.args;
 
-            for (DLList* it = head->next; it != head; it = it->next) {
-                ExprCallArg* arg = dllist_entry(it, ExprCallArg, list);
-                print_expr(arg->expr);
+                for (DLList* it = head->next; it != head; it = it->next) {
+                    ExprCallArg* arg = dllist_entry(it, ExprCallArg, list);
 
-                if (it->next != head) {
-                    print_out(" ");
+                    ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, arg->expr));
+
+                    if (it->next != head) {
+                        ftprint_char_array(&dstr, false, " ");
+                    }
                 }
             }
-        }
-        print_out(")");
-    } break;
-    case EXPR_INDEX: {
-        print_out("(arr_index ");
-        print_expr(expr->eindex.array);
-        print_out(" ");
-        print_expr(expr->eindex.index);
-        print_out(")");
-    } break;
-    case EXPR_FIELD: {
-        print_out("(obj_field ");
-        print_expr(expr->efield.object);
-        print_out(" .%s)", expr->efield.field);
-    } break;
-    case EXPR_INT: {
-        print_out("%lu", expr->eint.value);
-    } break;
-    case EXPR_FLOAT: {
-        print_out("%lf", expr->efloat.value);
-    } break;
-    case EXPR_STR: {
-        print_out("\"%s\"", expr->estr.value);
-    } break;
-    case EXPR_IDENT: {
-        print_out("%s", expr->eident.name);
-    } break;
-    case EXPR_CAST: {
-        print_out("(cast ");
-        print_typespec(expr->ecast.type);
-        print_out(" ");
-        print_expr(expr->ecast.expr);
-        print_out(")");
-    } break;
-    case EXPR_SIZEOF: {
-        if (expr->esizeof.kind == EXPR_SIZEOF_ARG_TYPE) {
-            print_out("(sizeof_type ");
-            print_typespec(expr->esizeof.type);
-            print_out(")");
-        } else {
-            print_out("(sizeof_expr ");
-            print_expr(expr->esizeof.expr);
-            print_out(")");
-        }
-    } break;
-    case EXPR_COMPOUND_LIT: {
-        print_out("(compound ");
-        if (expr->ecompound.type) {
-            print_typespec(expr->ecompound.type);
-            print_out(" ");
-        }
+            ftprint_char_array(&dstr, false, ")");
+        } break;
+        case EXPR_INDEX: {
+            dstr = array_create(allocator, char, 8);
+            ftprint_char_array(&dstr, false, "(arr_index %s %s)", ftprint_expr(allocator, expr->eindex.array),
+                               ftprint_expr(allocator, expr->eindex.index));
+        } break;
+        case EXPR_FIELD: {
+            dstr = array_create(allocator, char, 8);
+            ftprint_char_array(&dstr, false, "(obj_field %s .%s)", ftprint_expr(allocator, expr->efield.object),
+                               expr->efield.field);
+        } break;
+        case EXPR_INT: {
+            dstr = array_create(allocator, char, 8);
+            ftprint_char_array(&dstr, false, "%lu", expr->eint.value);
+        } break;
+        case EXPR_FLOAT: {
+            dstr = array_create(allocator, char, 8);
+            ftprint_char_array(&dstr, false, "%lf", expr->efloat.value);
+        } break;
+        case EXPR_STR: {
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "\"%s\"", expr->estr.value);
+        } break;
+        case EXPR_IDENT: {
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "%s", expr->eident.name);
+        } break;
+        case EXPR_CAST: {
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, expr->ecast.type),
+                               ftprint_expr(allocator, expr->ecast.expr));
+        } break;
+        case EXPR_SIZEOF: {
+            dstr = array_create(allocator, char, 16);
 
-        print_out("{");
-        if (expr->ecompound.num_initzers) {
-            DLList* head = &expr->ecompound.initzers;
+            if (expr->esizeof.kind == EXPR_SIZEOF_ARG_TYPE) {
+                ftprint_char_array(&dstr, false, "(sizeof_type %s)", ftprint_typespec(allocator, expr->esizeof.type));
+            } else {
+                ftprint_char_array(&dstr, false, "(sizeof_expr %s)", ftprint_expr(allocator, expr->esizeof.expr));
+            }
+        } break;
+        case EXPR_COMPOUND_LIT: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(compound ");
 
-            for (DLList* it = head->next; it != head; it = it->next) {
-                ExprInitializer* init = dllist_entry(it, ExprInitializer, list);
+            if (expr->ecompound.type) {
+                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, expr->ecompound.type));
+            }
 
-                if (init->kind == EXPR_INITIALIZER_NAME) {
-                    print_out("%s = ", init->name);
-                } else if (init->kind == EXPR_INITIALIZER_INDEX) {
-                    print_out("[");
-                    print_expr(init->index);
-                    print_out("] = ");
-                }
+            ftprint_char_array(&dstr, false, "{");
+            if (expr->ecompound.num_initzers) {
+                DLList* head = &expr->ecompound.initzers;
 
-                print_expr(init->init);
+                for (DLList* it = head->next; it != head; it = it->next) {
+                    ExprInitializer* init = dllist_entry(it, ExprInitializer, list);
 
-                if (it->next != head) {
-                    print_out(" ");
+                    if (init->kind == EXPR_INITIALIZER_NAME) {
+                        ftprint_char_array(&dstr, false, "%s = ", init->name);
+                    } else if (init->kind == EXPR_INITIALIZER_INDEX) {
+                        ftprint_char_array(&dstr, false, "[%s] = ", ftprint_expr(allocator, init->index));
+                    }
+
+                    ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, init->init));
+
+                    if (it->next != head) {
+                        ftprint_char_array(&dstr, false, " ");
+                    }
                 }
             }
+            ftprint_char_array(&dstr, false, "})");
+        } break;
+        default: {
+            ftprint_err("Unknown expr kind: %d\n", expr->kind);
+            assert(0);
+        } break;
         }
-        print_out("}");
-
-        print_out(")");
-    } break;
-    default: {
-        assert(0);
-    } break;
+    } else {
+        dstr = array_create(allocator, char, 1);
     }
+
+    array_push(dstr, '\0');
+
+    return dstr;
 }

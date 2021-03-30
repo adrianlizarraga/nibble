@@ -10,13 +10,13 @@ static bool putc_array(void* data, char character)
     return true;
 }
 
-size_t print_array(char** dst, const char* format, ...)
+size_t ftprint_char_array(char** dst, bool nullterm, const char* format, ...)
 {
     size_t n = 0;
     va_list vargs;
 
     va_start(vargs, format);
-    n = print_vlist(putc_array, dst, format, vargs);
+    n = ftprintv(putc_array, dst, nullterm, format, vargs);
     va_end(vargs);
 
     return n;

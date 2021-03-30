@@ -23,11 +23,11 @@ extern const char escaped_to_char[256];
 
 typedef bool (PutCharFunc)(void* data, char character);
 
-size_t print(PutCharFunc* put_char, void* arg, const char* format, ...);
-size_t print_vlist(PutCharFunc* put_char, void* arg, const char* format, va_list args);
+size_t ftprint(PutCharFunc* put_char, void* arg, bool nullterm, const char* format, ...);
+size_t ftprintv(PutCharFunc* put_char, void* arg, bool nullterm, const char* format, va_list args);
 
-size_t print_file(FILE* fd, const char* format, ...);
-size_t print_file_vlist(FILE* fd, const char* format, va_list vargs);
-#define print_out(format, ...) print_file(stdout, (format), ## __VA_ARGS__)
-#define print_err(format, ...) print_file(stderr, (format), ## __VA_ARGS__)
+size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...);
+size_t ftprintv_file(FILE* fd, bool nullterm, const char* format, va_list vargs);
+#define ftprint_out(format, ...) ftprint_file(stdout, true, (format), ## __VA_ARGS__)
+#define ftprint_err(format, ...) ftprint_file(stderr, true, (format), ## __VA_ARGS__)
 #endif

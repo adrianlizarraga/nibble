@@ -171,10 +171,10 @@ static TypeSpec* parse_typespec_base(Parser* parser)
 {
     TypeSpec* type = NULL;
 
-    if (match_token_next(parser, TKN_IDENT)) {
-        type = typespec_ident(parser->allocator, parser->ptoken.tident.value, parser->ptoken.range);
-    } else if (match_keyword_next(parser, KW_FUNC)) {
+    if (match_keyword_next(parser, KW_FUNC)) {
         type = parse_typespec_func(parser);
+    } else if (match_token_next(parser, TKN_IDENT)) {
+        type = typespec_ident(parser->allocator, parser->ptoken.tident.value, parser->ptoken.range);
     } else if (match_token_next(parser, TKN_LPAREN)) {
         type = parse_typespec(parser);
 

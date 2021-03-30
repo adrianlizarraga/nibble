@@ -118,22 +118,25 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
     char tkn_buf[64];
     while (next_token(&parser)) {
         print_token(&parser.token, tkn_buf, sizeof(tkn_buf));
-        print_out("%s\n", tkn_buf);
+        ftprint_out("%s\n", tkn_buf);
     }
 #else
     next_token(&parser);
     Expr* expr = parse_expr(&parser);
 
-    print_expr(expr);
-    print_out("\n");
+    AllocatorState state = allocator_get_state(&module->allocator);
+    {
+        ftprint_out("%s\n", ftprint_expr(&module->allocator, expr));
+    }
+    allocator_restore_state(state);
 #endif
 
     if (module->errors.num_chunks > 0) {
-        print_out("Num errors: %lu\n", module->errors.num_chunks);
+        ftprint_out("Num errors: %lu\n", module->errors.num_chunks);
         ByteStreamChunk* chunk = module->errors.first;
 
         while (chunk) {
-            print_out("%s\n", chunk->buf);
+            ftprint_out("%s\n", chunk->buf);
             chunk = chunk->next;
         }
     }
@@ -153,20 +156,29 @@ static void free_compiled_module(CompiledModule* module)
 int main(void)
 {
     if (!nibble_init()) {
-        print_err("Failed to initialize\n");
+        ftprint_err("Failed to initialize\n");
         exit(1);
     }
 
     //CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a != 1) print(\"hi\"); }", 0);
-    CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
+    //CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
     //CompiledModule* module = compile_module("\"abc\"[0]", 0);
     //CompiledModule* module = compile_module("(:int)-x*2", 0);
     //CompiledModule* module = compile_module("sizeof(1)", 0);
+    //CompiledModule* module = compile_module("(:int)(a)", 0);
+    //CompiledModule* module = compile_module("(:int*)(a)", 0);
+    //CompiledModule* module = compile_module("(:int[2])(a)", 0);
+    //CompiledModule* module = compile_module("(:func(int):int)(a)", 0);
     //CompiledModule* module = compile_module("sizeof(:int)", 0);
+    //CompiledModule* module = compile_module("sizeof(:int*[16])", 0);
+    //CompiledModule* module = compile_module("sizeof(:(func(int):int)[16])", 0);
+    //CompiledModule* module = compile_module("sizeof(:func(int):int)", 0);
+    //CompiledModule* module = compile_module("f(1,2)", 0);
     //CompiledModule* module = compile_module("3 + f(1+3, a*3, -4.3, x ? a : b)", 0);
     //CompiledModule* module = compile_module("a[1 * 3", 0);
     //CompiledModule* module = compile_module("(:Vector2){x = 1, y = 2}", 0);
-    //CompiledModule* module = compile_module("(:int[]){[0] = 1, [1] = 2}", 0);
+    CompiledModule* module = compile_module("(:int[]){[0] = 1, [1] = 2}", 0);
+    //CompiledModule* module = compile_module("(:int[1]){[0] = 1, [1] = 2}", 0);
     //CompiledModule* module = compile_module("1", 0);
 
     free_compiled_module(module);

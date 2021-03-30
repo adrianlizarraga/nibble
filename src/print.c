@@ -68,7 +68,7 @@ static size_t ascii_to_i64(const char* str, int64_t* out_value)
     return i;
 }
 
-static void print_int_(PrintState* dest, unsigned long long value, unsigned long long base, bool negative,
+static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned long long base, bool negative,
                        uint64_t precision, uint32_t width, uint64_t flags)
 {
     char temp_buf[PRINT_MAX_NUM_DIGITS];
@@ -177,22 +177,22 @@ static void print_int_(PrintState* dest, unsigned long long value, unsigned long
     return;
 }
 
-static void print_int(PrintState* dest, long long value, long long base, uint64_t precision, uint32_t width,
+static void ftprint_int(PrintState* dest, long long value, long long base, uint64_t precision, uint32_t width,
                       int64_t flags)
 {
     bool negative = value < 0;
     unsigned long long uvalue = (unsigned long long)(negative ? 0 - value : value);
 
-    print_int_(dest, uvalue, base, negative, precision, width, flags);
+    ftprint_int_(dest, uvalue, base, negative, precision, width, flags);
 }
 
 static void print_uint(PrintState* dest, unsigned long long value, long long base, uint64_t precision, uint32_t width,
                        int64_t flags)
 {
-    print_int_(dest, value, base, false, precision, width, flags);
+    ftprint_int_(dest, value, base, false, precision, width, flags);
 }
 
-static void print_float(PrintState* dest, double value, uint64_t precision, uint32_t width, uint64_t flags)
+static void ftprint_float(PrintState* dest, double value, uint64_t precision, uint32_t width, uint64_t flags)
 {
     char temp_buf[PRINT_MAX_NUM_DIGITS];
     double powers10[] = {1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0};
@@ -379,7 +379,7 @@ static void print_float(PrintState* dest, double value, uint64_t precision, uint
     return;
 }
 
-size_t print_vlist(PutCharFunc* put_char, void* arg, const char* format, va_list args)
+size_t ftprintv(PutCharFunc* put_char, void* arg, bool nullterm, const char* format, va_list args)
 {
     PrintState state = {0};
     state.put_char = put_char;
@@ -516,23 +516,23 @@ size_t print_vlist(PutCharFunc* put_char, void* arg, const char* format, va_list
                     if (flags & FORMAT_FLAG_LONG_LONG) {
                         long long value = va_arg(args, long long);
 
-                        print_int(&state, value, base, precision, width, flags);
+                        ftprint_int(&state, value, base, precision, width, flags);
                     } else if (flags & FORMAT_FLAG_LONG) {
                         long value = va_arg(args, long);
 
-                        print_int(&state, value, base, precision, width, flags);
+                        ftprint_int(&state, value, base, precision, width, flags);
                     } else if (flags & FORMAT_FLAG_SHORT) {
                         short value = va_arg(args, int);
 
-                        print_int(&state, value, base, precision, width, flags);
+                        ftprint_int(&state, value, base, precision, width, flags);
                     } else if (flags & FORMAT_FLAG_CHAR) {
                         char value = va_arg(args, int);
 
-                        print_int(&state, value, base, precision, width, flags);
+                        ftprint_int(&state, value, base, precision, width, flags);
                     } else {
                         int value = va_arg(args, int);
 
-                        print_int(&state, value, base, precision, width, flags);
+                        ftprint_int(&state, value, base, precision, width, flags);
                     }
                 }
 
@@ -565,7 +565,7 @@ size_t print_vlist(PutCharFunc* put_char, void* arg, const char* format, va_list
                     flags |= FORMAT_FLAG_UPPERCASE;
                 }
 
-                print_float(&state, va_arg(args, double), precision, width, flags);
+                ftprint_float(&state, va_arg(args, double), precision, width, flags);
                 ++format;
             } break;
 
@@ -656,18 +656,20 @@ size_t print_vlist(PutCharFunc* put_char, void* arg, const char* format, va_list
         }
     }
 
-    put_char_wrapper(&state, 0); // Null terminator.
+    if (nullterm) {
+        put_char_wrapper(&state, '\0');
+    }
 
     return state.count;
 }
 
-size_t print(PutCharFunc* put_char, void* arg, const char* format, ...)
+size_t ftprint(PutCharFunc* put_char, void* arg, bool nullterm, const char* format, ...)
 {
     size_t n = 0;
     va_list va;
 
     va_start(va, format);
-    n = print_vlist(put_char, arg, format, va);
+    n = ftprintv(put_char, arg, nullterm, format, va);
     va_end(va);
 
     return n;
@@ -715,7 +717,7 @@ static bool output_to_file(void* data, char character)
     return ret;
 }
 
-size_t vprint_file(FILE* fd, const char* format, va_list vargs)
+size_t ftprintv_file(FILE* fd, bool nullterm, const char* format, va_list vargs)
 {
     size_t n = 0;
     char buffer[PRINT_FILE_BUF_SIZE]; // Buffer is automatically flushed to screen when full.
@@ -725,12 +727,12 @@ size_t vprint_file(FILE* fd, const char* format, va_list vargs)
     dest.size = sizeof(buffer);
     dest.fd = fd;
 
-    n = print_vlist(output_to_file, &dest, format, vargs);
+    n = ftprintv(output_to_file, &dest, nullterm, format, vargs);
 
     return n;
 }
 
-size_t print_file(FILE* fd, const char* format, ...)
+size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...)
 {
     size_t n = 0;
     va_list vargs;
@@ -742,7 +744,7 @@ size_t print_file(FILE* fd, const char* format, ...)
     dest.fd = fd;
 
     va_start(vargs, format);
-    n = print_vlist(output_to_file, &dest, format, vargs);
+    n = ftprintv(output_to_file, &dest, nullterm, format, vargs);
     va_end(vargs);
 
     return n;

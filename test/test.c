@@ -26,7 +26,7 @@ static void print_errors(ByteStream* errors)
         ByteStreamChunk* chunk = errors->first;
 
         while (chunk) {
-            print_out("[ERROR]: %s\n", chunk->buf);
+            ftprint_out("[ERROR]: %s\n", chunk->buf);
             chunk = chunk->next;
         }
     }
@@ -776,6 +776,24 @@ void test_array(void)
         assert(a[rindex] == 7);
     }
 
+    // Test array push elems
+    {
+        int b[3] = {1, 2, 3};
+        int* a = NULL;
+
+        array_push(a, 0);
+        assert(array_len(a) == 1);
+
+        array_push_elems(a, b, 3);
+        assert(array_len(a) == 4);
+        
+        for (int i = 0; i < 3; ++i) {
+            assert(a[i + 1] == b[i]);
+        }
+
+        array_free(a);
+    }
+
     allocator_destroy(&allocator);
 }
 
@@ -797,7 +815,7 @@ void test_hash_map(void)
         assert(*r == i);
     }
 
-    print_out("cap = %lu, len = %lu\n", map.cap, map.len);
+    ftprint_out("cap = %lu, len = %lu\n", map.cap, map.len);
 
     hash_map_destroy(&map);
 }
@@ -877,7 +895,7 @@ int main(void)
 {
     g_ctx.allocator = allocator_create(4096);
 
-    print_out("Nibble tests!\n");
+    ftprint_out("Nibble tests!\n");
     test_lexer();
     test_allocator();
     test_array();
