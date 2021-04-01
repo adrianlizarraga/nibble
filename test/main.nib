@@ -1,22 +1,22 @@
 
 struct T {
-    a : int;
+    a : int32;
 }
 
-g : int = 10;
+g : int32 = 10;
 
-func add_ints(a : int, b : int) => int
+func add_ints(a : int32, b : int32) => int32
 {
     return a + b;
 }
 
-func main(argc : int, argv : [] &char) => int
+func main(argc : int32, argv : [] ^char) => int32
 {
     t : T;
     t.a = 10;
 
-    b : int = 2;
-    c : int = add_ints(t.a, b);
+    b : int32 = 2;
+    c : int32 = add_ints(t.a, b);
 
     return 0;
 }
