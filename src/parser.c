@@ -56,12 +56,12 @@ static const uint8_t op_precedence[TKN_KIND_COUNT] = {
     [TKN_PLUS] = OP_PRECEDENCE_ADD | OP_PRECEDENCE_UNARY,
     [TKN_MINUS] = OP_PRECEDENCE_ADD | OP_PRECEDENCE_UNARY,
     [TKN_OR] = OP_PRECEDENCE_ADD,
-    [TKN_XOR] = OP_PRECEDENCE_ADD,
+    [TKN_CARET] = OP_PRECEDENCE_ADD | OP_PRECEDENCE_UNARY,
 
     [TKN_ASTERISK] = OP_PRECEDENCE_MUL | OP_PRECEDENCE_UNARY,
     [TKN_DIV] = OP_PRECEDENCE_MUL,
     [TKN_MOD] = OP_PRECEDENCE_MUL,
-    [TKN_AND] = OP_PRECEDENCE_MUL | OP_PRECEDENCE_UNARY,
+    [TKN_AND] = OP_PRECEDENCE_MUL,
     [TKN_LSHIFT] = OP_PRECEDENCE_MUL,
     [TKN_RSHIFT] = OP_PRECEDENCE_MUL,
 
@@ -158,7 +158,7 @@ static TypeSpec* parse_typespec_func(Parser* parser)
     expect_token_next(parser, TKN_RPAREN);
 
     TypeSpec* ret = NULL;
-    if (match_token_next(parser, TKN_COLON)) {
+    if (match_token_next(parser, TKN_ARROW)) {
         ret = parse_typespec(parser);
     }
 
@@ -187,13 +187,13 @@ static TypeSpec* parse_typespec_base(Parser* parser)
 }
 
 
-//typespec = ('&' | '[' expr? ']' | KW_CONST) typespec
+//typespec = ('^' | '[' expr? ']' | KW_CONST) typespec
 //         | typespec_base
 TypeSpec* parse_typespec(Parser* parser)
 {
     TypeSpec* type = NULL;
 
-    if (match_token_next(parser, TKN_AND)) {
+    if (match_token_next(parser, TKN_CARET)) {
         ProgRange range = { .start = parser->ptoken.range.start };
         TypeSpec* base = parse_typespec(parser);
 

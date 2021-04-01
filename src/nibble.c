@@ -162,20 +162,21 @@ int main(void)
     }
 
     //CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a != 1) print(\"hi\"); }", 0);
-    CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
+    //CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
+    CompiledModule* module = compile_module("a ^ ^b", 0);
     //CompiledModule* module = compile_module("\"abc\"[0]", 0);
     //CompiledModule* module = compile_module("(:int)-x*2", 0);
     //CompiledModule* module = compile_module("sizeof(1)", 0);
     //CompiledModule* module = compile_module("(:int)(a)", 0);
-    //CompiledModule* module = compile_module("(:&int)(a)", 0);
+    //CompiledModule* module = compile_module("(:^int)(a)", 0);
     //CompiledModule* module = compile_module("(:[2]int)(a)", 0);
-    //CompiledModule* module = compile_module("(:func(int):int)(a)", 0);
+    //CompiledModule* module = compile_module("(:func(int)=>int)(a)", 0);
     //CompiledModule* module = compile_module("sizeof(:int)", 0);
     //CompiledModule* module = compile_module("sizeof(:const int)", 0);
-    //CompiledModule* module = compile_module("sizeof(:& const char)", 0);
-    //CompiledModule* module = compile_module("sizeof(:[16] &int)", 0);
-    //CompiledModule* module = compile_module("sizeof(:[16] (func(int):int))", 0);
-    //CompiledModule* module = compile_module("sizeof(:func(int):int)", 0);
+    //CompiledModule* module = compile_module("sizeof(:^ const char)", 0);
+    //CompiledModule* module = compile_module("sizeof(:[16] ^int)", 0);
+    //CompiledModule* module = compile_module("sizeof(:[16] (func(int)=>int))", 0);
+    //CompiledModule* module = compile_module("sizeof(:func(^^int)=>^int)", 0);
     //CompiledModule* module = compile_module("f(1,2)", 0);
     //CompiledModule* module = compile_module("3 + f(1+3, a*3, -4.3, x ? a : b)", 0);
     //CompiledModule* module = compile_module("a[1 * 3", 0);

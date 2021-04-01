@@ -357,11 +357,6 @@ typedef struct DeclVar {
     Expr* expr;
 } DeclVar;
 
-typedef struct DeclConst {
-    TypeSpec* type;
-    Expr* expr;
-} DeclConst;
-
 typedef struct DeclEnumItem {
     const char* name;
     Expr* value;
@@ -417,7 +412,6 @@ typedef struct DeclTypedef {
 typedef enum DeclKind {
     DECL_NONE,
     DECL_VAR,
-    DECL_CONST,
     DECL_ENUM,
     DECL_UNION,
     DECL_STRUCT,
@@ -431,7 +425,6 @@ struct Decl {
 
     union {
         DeclVar dvar;
-        DeclConst dconst;
         DeclEnum denum;
         DeclAggregate daggregate;
         DeclFunc dfunc;

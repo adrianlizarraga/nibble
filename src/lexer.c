@@ -423,6 +423,7 @@ const char* token_kind_names[] = {
     [TKN_COLON] = ":",
     [TKN_COMMA] = ",",
     [TKN_DOT] = ".",
+    [TKN_ARROW] = "=>",
 
     [TKN_STR] = "<str>",
     [TKN_IDENT] = "<identifier>",
@@ -438,7 +439,7 @@ const char* token_kind_names[] = {
     [TKN_LSHIFT] = "<<",
     [TKN_AND] = "&",
     [TKN_OR] = "|",
-    [TKN_XOR] = "^",
+    [TKN_CARET] = "^",
     [TKN_LOGIC_AND] = "&&",
     [TKN_LOGIC_OR] = "||",
     [TKN_NOT] = "!",
@@ -656,7 +657,7 @@ top:
     } break;
     case '^': {
         lexer->at++;
-        token.kind = TKN_XOR;
+        token.kind = TKN_CARET;
 
         if (lexer->at[0] == '=') {
             lexer->at++;
@@ -678,6 +679,9 @@ top:
         if (lexer->at[0] == '=') {
             lexer->at++;
             token.kind = TKN_EQ;
+        } else if (lexer->at[0] == '>') {
+            lexer->at++;
+            token.kind = TKN_ARROW;
         }
     } break;
     case '.': {

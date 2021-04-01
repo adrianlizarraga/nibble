@@ -20,6 +20,7 @@ typedef enum TokenKind {
     TKN_COLON,
     TKN_COMMA,
     TKN_DOT,
+    TKN_ARROW,
 
     TKN_STR,
     TKN_IDENT,
@@ -49,7 +50,7 @@ typedef enum TokenKind {
     TKN_PLUS,
     TKN_MINUS,
     TKN_OR,
-    TKN_XOR,
+    TKN_CARET,
 
     TKN_ASSIGN,
     TKN_ADD_ASSIGN,

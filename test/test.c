@@ -126,7 +126,7 @@ static void test_lexer(void)
         TKN_TEST_POS(token, TKN_OR, i, ++i);
 
         token = scan_token(&lexer);
-        TKN_TEST_POS(token, TKN_XOR, i, ++i);
+        TKN_TEST_POS(token, TKN_CARET, i, ++i);
 
         token = scan_token(&lexer);
         TKN_TEST_POS(token, TKN_LT, i, ++i);

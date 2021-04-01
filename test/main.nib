@@ -1,0 +1,23 @@
+
+struct T {
+    a : int;
+}
+
+g : int = 10;
+
+func add_ints(a : int, b : int) => int
+{
+    return a + b;
+}
+
+func main(argc : int, argv : [] &char) => int
+{
+    t : T;
+    t.a = 10;
+
+    b : int = 2;
+    c : int = add_ints(t.a, b);
+
+    return 0;
+}
+

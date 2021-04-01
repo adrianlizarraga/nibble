@@ -1,7 +1,7 @@
 typespec       = typespec_ref
-typespec_ref   = ('&' | '[' expr? ']' | KW_CONST) typespec_ref
+typespec_ref   = ('^' | '[' expr? ']' | KW_CONST) typespec_ref
                | typespec_base
-typespec_base  = 'func' '(' param_type_spec_list? ')' (':' type_spec)?
+typespec_base  = 'func' '(' param_type_spec_list? ')' ('=>' type_spec)?
                | TKN_IDENT
                | '(' type_spec ')'
 
@@ -16,7 +16,7 @@ expr_and     = expr_cmp (AND_OP expr_cmp)*                  // AND_OP = '&&'
 expr_cmp     = expr_add (CMP_OP expr_add)*                  // CMP_OP = ['==' '!=' '>' '>=' '<' '<=']
 expr_add     = expr_mul (ADD_OP expr_mul)*                  // ADD_OP = [+-|^] 
 expr_mul     = expr_unary (MUL_OP expr_unary)*              // MUL_OP = [*/%&] | '<<' | '>>'
-expr_unary   = UNARY_OP expr_unary                          // UNARY_OP = [&*-+~!]
+expr_unary   = UNARY_OP expr_unary                          // UNARY_OP = [^*-+~!]
              | expr_deref
 expr_deref   = expr_base ('.' TKN_IDENT | '[ expr ']' | '(' expr_call_arg_list* ')')*
 expr_base    = TKN_INT
@@ -38,16 +38,13 @@ expr_init_item = (TKN_IDENT '=')? expr
 expr_sizeof = KW_SIZEOF '(' (':' type_spec | expr) ')'
 
 decl = var_decl ';'
-     | const_decl ';'
      | enum_decl
      | union_decl
      | struct_decl
      | func_decl
      | typedef_decl ';'
 
-var_decl  = 'var' IDENTIFIER ':' type_spec? ('=' expr)?
-
-const_decl  = 'const' IDENTIFIER ':' type_spec? '=' expr
+var_decl  = IDENTIFIER ':' type_spec? ('=' expr)?
 
 enum_decl  = 'enum' IDENTIFIER '{' enum_items? '}'
 enum_items = enum_item (',' enum_item)* ','?
