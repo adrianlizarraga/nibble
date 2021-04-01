@@ -41,12 +41,17 @@ typedef struct TypeSpecArray {
     Expr* len;
 } TypeSpecArray;
 
+typedef struct TypeSpecConst {
+    TypeSpec* base;
+} TypeSpecConst;
+
 typedef enum TypeSpecKind {
     TYPE_SPEC_NONE,
     TYPE_SPEC_IDENT,
     TYPE_SPEC_FUNC,
     TYPE_SPEC_PTR,
     TYPE_SPEC_ARRAY,
+    TYPE_SPEC_CONST,
 } TypeSpecKind;
 
 struct TypeSpec {
@@ -58,6 +63,7 @@ struct TypeSpec {
         TypeSpecFunc func;
         TypeSpecPtr ptr;
         TypeSpecArray array;
+        TypeSpecConst const_;
     };
 };
 
@@ -65,6 +71,7 @@ TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange rang
 TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range);
 TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
+TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type, const char* name);
 TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range);
 

@@ -36,6 +36,14 @@ TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRa
     return type;
 }
 
+TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range)
+{
+    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_CONST, range);
+    type->ptr.base = base;
+
+    return type;
+}
+
 TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range)
 {
     TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_FUNC, range);
@@ -279,10 +287,14 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(:ptr %s)", ftprint_typespec(allocator, type->ptr.base));
         } break;
+        case TYPE_SPEC_CONST: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(:const %s)", ftprint_typespec(allocator, type->const_.base));
+        } break;
         case TYPE_SPEC_ARRAY: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:arr %s [%s])", ftprint_typespec(allocator, type->array.base),
-                               ftprint_expr(allocator, type->array.len));
+            ftprint_char_array(&dstr, false, "(:arr %s %s)", ftprint_expr(allocator, type->array.len),
+                               ftprint_typespec(allocator, type->array.base));
         } break;
         default: {
             ftprint_err("Unknown typespec kind: %d\n", type->kind);

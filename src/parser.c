@@ -186,30 +186,41 @@ static TypeSpec* parse_typespec_base(Parser* parser)
     return type;
 }
 
+
+//typespec = ('&' | '[' expr? ']' | KW_CONST) typespec
+//         | typespec_base
 TypeSpec* parse_typespec(Parser* parser)
 {
-    TypeSpec* type = parse_typespec_base(parser);
+    TypeSpec* type = NULL;
 
-    while (is_token(parser, TKN_ASTERISK) || is_token(parser, TKN_LBRACKET)) {
-        if (match_token_next(parser, TKN_ASTERISK)) {
-            type = typespec_ptr(parser->allocator, type, parser->ptoken.range);
-        } else {
-            assert(is_token(parser, TKN_LBRACKET));
-            ProgPos start = parser->token.range.start;
+    if (match_token_next(parser, TKN_AND)) {
+        ProgRange range = { .start = parser->ptoken.range.start };
+        TypeSpec* base = parse_typespec(parser);
 
-            next_token(parser);
+        range.end = base->range.end;
+        type = typespec_ptr(parser->allocator, base, range);
+    } else if (match_token_next(parser, TKN_LBRACKET)) {
+        ProgRange range = { .start = parser->ptoken.range.start };
 
-            Expr* len = NULL;
-            if (!is_token(parser, TKN_RBRACKET)) {
-                len = parse_expr(parser);
-            }
-
-            ProgPos end = parser->token.range.end;
-            expect_token_next(parser, TKN_RBRACKET);
-
-            ProgRange range = {.start = start, .end = end};
-            type = typespec_array(parser->allocator, type, len, range);
+        Expr* len = NULL;
+        if (!is_token(parser, TKN_RBRACKET)) {
+            len = parse_expr(parser);
         }
+
+        expect_token_next(parser, TKN_RBRACKET);
+
+        TypeSpec* base = parse_typespec(parser);
+
+        range.end = base->range.end;
+        type = typespec_array(parser->allocator, base, len, range);
+    } else if (match_keyword_next(parser, KW_CONST)) {
+        ProgRange range = { .start = parser->ptoken.range.start };
+        TypeSpec* base = parse_typespec(parser);
+
+        range.end = base->range.end;
+        type = typespec_const(parser->allocator, base, range);
+    } else {
+        type = parse_typespec_base(parser);
     }
 
     return type;

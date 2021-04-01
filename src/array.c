@@ -1,11 +1,18 @@
 #include "array.h"
 #include "stdarg.h"
 
+typedef struct ArrayPrintCtx {
+    char** dst;
+    bool nullterm;
+} ArrayPrintCtx;
+
 static bool putc_array(void* data, char character)
 {
-    char** dst = data;
+    ArrayPrintCtx* ctx = data;
 
-    array_push(*dst, character);
+    if (character || ctx->nullterm) {
+        array_push(*ctx->dst, character);
+    }
 
     return true;
 }
@@ -14,9 +21,10 @@ size_t ftprint_char_array(char** dst, bool nullterm, const char* format, ...)
 {
     size_t n = 0;
     va_list vargs;
+    ArrayPrintCtx ctx = { .dst = dst, .nullterm = nullterm };
 
     va_start(vargs, format);
-    n = ftprintv(putc_array, dst, nullterm, format, vargs);
+    n = ftprintv(putc_array, &ctx, format, vargs);
     va_end(vargs);
 
     return n;

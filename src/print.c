@@ -379,7 +379,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     return;
 }
 
-size_t ftprintv(PutCharFunc* put_char, void* arg, bool nullterm, const char* format, va_list args)
+size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list args)
 {
     PrintState state = {0};
     state.put_char = put_char;
@@ -656,20 +656,18 @@ size_t ftprintv(PutCharFunc* put_char, void* arg, bool nullterm, const char* for
         }
     }
 
-    if (nullterm) {
-        put_char_wrapper(&state, '\0');
-    }
+    put_char_wrapper(&state, '\0');
 
     return state.count;
 }
 
-size_t ftprint(PutCharFunc* put_char, void* arg, bool nullterm, const char* format, ...)
+size_t ftprint(PutCharFunc* put_char, void* arg, const char* format, ...)
 {
     size_t n = 0;
     va_list va;
 
     va_start(va, format);
-    n = ftprintv(put_char, arg, nullterm, format, va);
+    n = ftprintv(put_char, arg, format, va);
     va_end(va);
 
     return n;
@@ -680,6 +678,7 @@ typedef struct FileBuffer {
     size_t size;
     size_t index;
     FILE* fd;
+    bool nullterm;
 } FileBuffer;
 
 static bool flush_file_buffer(FileBuffer* fb)
@@ -699,12 +698,17 @@ static bool output_to_file(void* data, char character)
 {
     bool ret = true;
     FileBuffer* dest = (FileBuffer*)data;
+    bool write_char = character || dest->nullterm;
 
     if (dest->index < dest->size) {
-        dest->buf[dest->index++] = character;
+        if (write_char) {
+            dest->buf[dest->index++] = character;
+        }
     } else {
         if (flush_file_buffer(dest)) {
-            dest->buf[dest->index++] = character;
+            if (write_char) {
+                dest->buf[dest->index++] = character;
+            }
         } else {
             return false;
         }
@@ -726,8 +730,9 @@ size_t ftprintv_file(FILE* fd, bool nullterm, const char* format, va_list vargs)
     dest.buf = buffer;
     dest.size = sizeof(buffer);
     dest.fd = fd;
+    dest.nullterm = nullterm;
 
-    n = ftprintv(output_to_file, &dest, nullterm, format, vargs);
+    n = ftprintv(output_to_file, &dest, format, vargs);
 
     return n;
 }
@@ -742,9 +747,10 @@ size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...)
     dest.buf = buffer;
     dest.size = sizeof(buffer);
     dest.fd = fd;
+    dest.nullterm = nullterm;
 
     va_start(vargs, format);
-    n = ftprintv(output_to_file, &dest, nullterm, format, vargs);
+    n = ftprintv(output_to_file, &dest, format, vargs);
     va_end(vargs);
 
     return n;

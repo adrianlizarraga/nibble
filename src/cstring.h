@@ -23,8 +23,8 @@ extern const char escaped_to_char[256];
 
 typedef bool (PutCharFunc)(void* data, char character);
 
-size_t ftprint(PutCharFunc* put_char, void* arg, bool nullterm, const char* format, ...);
-size_t ftprintv(PutCharFunc* put_char, void* arg, bool nullterm, const char* format, va_list args);
+size_t ftprint(PutCharFunc* put_char, void* arg, const char* format, ...);
+size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list args);
 
 size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...);
 size_t ftprintv_file(FILE* fd, bool nullterm, const char* format, va_list vargs);

@@ -1,5 +1,7 @@
-type_spec      = base_type_spec ('*' | '[' expr? ']')*
-base_type_spec = 'func' '(' param_type_spec_list? ')' (':' type_spec)?
+typespec       = typespec_ref
+typespec_ref   = ('&' | '[' expr? ']' | KW_CONST) typespec_ref
+               | typespec_base
+typespec_base  = 'func' '(' param_type_spec_list? ')' (':' type_spec)?
                | TKN_IDENT
                | '(' type_spec ')'
 
