@@ -442,6 +442,7 @@ struct Decl {
 
 Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
+Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, DLList* items, ProgRange range);
 DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value);
 #endif

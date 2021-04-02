@@ -269,6 +269,14 @@ Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* i
     return decl;
 }
 
+Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
+{
+    Decl* decl = decl_alloc(allocator, DECL_TYPEDEF, name, range);
+    decl->dtypedef.type = type;
+
+    return decl;
+}
+
 Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, DLList* items,
                 ProgRange range)
 {
@@ -521,6 +529,11 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             }
 
             ftprint_char_array(&dstr, false, ")");
+        } break;
+        case DECL_TYPEDEF: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(#typedef %s %s)", decl->name, 
+                               ftprint_typespec(allocator, decl->dtypedef.type));
         } break;
         case DECL_ENUM: {
             dstr = array_create(allocator, char, 32);
