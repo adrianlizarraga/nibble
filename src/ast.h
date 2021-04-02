@@ -139,18 +139,13 @@ typedef struct ExprCast {
     Expr* expr;
 } ExprCast;
 
-typedef enum ExprSizeofKind {
-    EXPR_SIZEOF_ARG_TYPE,
-    EXPR_SIZEOF_ARG_EXPR,
-} ExprSizeofKind;
-
 typedef struct ExprSizeof {
-    ExprSizeofKind kind;
-    union {
-        TypeSpec* type;
-        Expr* expr;
-    };
+    TypeSpec* type;
 } ExprSizeof;
+
+typedef struct ExprTypeof {
+    Expr* expr;
+} ExprTypeof;
 
 typedef enum ExprInitializerKind {
     EXPR_INITIALIZER_POS,
@@ -190,6 +185,7 @@ typedef enum ExprKind {
     EXPR_IDENT,
     EXPR_CAST,
     EXPR_SIZEOF,
+    EXPR_TYPEOF,
     EXPR_COMPOUND_LIT,
 } ExprKind;
 
@@ -210,6 +206,7 @@ struct Expr {
         ExprIdent eident;
         ExprCast ecast;
         ExprSizeof esizeof;
+        ExprTypeof etypeof;
         ExprCompoundLit ecompound;
     };
 };
@@ -225,9 +222,9 @@ Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range);
 Expr* expr_float(Allocator* allocator, double value, ProgRange range);
 Expr* expr_str(Allocator* allocator, const char* value, ProgRange range);
 Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range);
-Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* unary, ProgRange range);
-Expr* expr_sizeof_type(Allocator* allocator, TypeSpec* type, ProgRange range);
-Expr* expr_sizeof_expr(Allocator* allocator, Expr* arg, ProgRange range);
+Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range);
+Expr* expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
+Expr* expr_typeof(Allocator* allocator, Expr* arg, ProgRange range);
 ExprInitializer* expr_pos_initializer(Allocator* allocator, Expr* init, ProgRange range);
 ExprInitializer* expr_name_initializer(Allocator* allocator, const char* name, Expr* init, ProgRange range);
 ExprInitializer* expr_index_initializer(Allocator* allocator, Expr* index, Expr* init, ProgRange range);
@@ -357,6 +354,11 @@ typedef struct DeclVar {
     Expr* expr;
 } DeclVar;
 
+typedef struct DeclConst {
+    TypeSpec* type;
+    Expr* expr;
+} DeclConst;
+
 typedef struct DeclEnumItem {
     const char* name;
     Expr* value;
@@ -412,6 +414,7 @@ typedef struct DeclTypedef {
 typedef enum DeclKind {
     DECL_NONE,
     DECL_VAR,
+    DECL_CONST,
     DECL_ENUM,
     DECL_UNION,
     DECL_STRUCT,
@@ -425,6 +428,7 @@ struct Decl {
 
     union {
         DeclVar dvar;
+        DeclConst dconst;
         DeclEnum denum;
         DeclAggregate daggregate;
         DeclFunc dfunc;

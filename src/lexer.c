@@ -424,6 +424,8 @@ const char* token_kind_names[] = {
     [TKN_COMMA] = ",",
     [TKN_DOT] = ".",
     [TKN_ARROW] = "=>",
+    [TKN_CAST] = ":>",
+    [TKN_POUND] = "#",
 
     [TKN_STR] = "<str>",
     [TKN_IDENT] = "<identifier>",
@@ -431,8 +433,7 @@ const char* token_kind_names[] = {
     [TKN_FLOAT] = "<float>",
 
     [TKN_PLUS] = "+",
-    [TKN_MINUS] = "-",
-    [TKN_ASTERISK] = "*",
+    [TKN_MINUS] = "-", [TKN_ASTERISK] = "*",
     [TKN_DIV] = "/",
     [TKN_MOD] = "%",
     [TKN_RSHIFT] = ">>",
@@ -557,10 +558,19 @@ top:
     case ':': {
         lexer->at++;
         token.kind = TKN_COLON;
+
+        if (lexer->at[0] == '>') {
+            lexer->at++;
+            token.kind = TKN_CAST;
+        }
     } break;
     case ',': {
         lexer->at++;
         token.kind = TKN_COMMA;
+    } break;
+    case '#': {
+        lexer->at++;
+        token.kind = TKN_POUND;
     } break;
     case '+': {
         lexer->at++;

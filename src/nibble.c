@@ -125,6 +125,7 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
     next_token(&parser);
     Expr* expr = parse_expr(&parser);
 
+    ftprint_out("Done parsing\n");
     AllocatorState state = allocator_get_state(&module->allocator);
     {
         ftprint_out("%s\n", ftprint_expr(&module->allocator, expr));
@@ -162,27 +163,39 @@ int main(void)
     }
 
     //CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a != 1) print(\"hi\"); }", 0);
-    //CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
-    CompiledModule* module = compile_module("a ^ ^b", 0);
+    CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
+    //CompiledModule* module = compile_module("a ^ ^b", 0);
     //CompiledModule* module = compile_module("\"abc\"[0]", 0);
-    //CompiledModule* module = compile_module("(:int)-x*2", 0);
+    //CompiledModule* module = compile_module("-x:>int*2", 0);
+    //CompiledModule* module = compile_module("(-x):>int*2", 0);
     //CompiledModule* module = compile_module("sizeof(1)", 0);
-    //CompiledModule* module = compile_module("(:int)(a)", 0);
-    //CompiledModule* module = compile_module("(:^int)(a)", 0);
-    //CompiledModule* module = compile_module("(:[2]int)(a)", 0);
-    //CompiledModule* module = compile_module("(:func(int)=>int)(a)", 0);
-    //CompiledModule* module = compile_module("sizeof(:int)", 0);
-    //CompiledModule* module = compile_module("sizeof(:const int)", 0);
-    //CompiledModule* module = compile_module("sizeof(:^ const char)", 0);
-    //CompiledModule* module = compile_module("sizeof(:[16] ^int)", 0);
-    //CompiledModule* module = compile_module("sizeof(:[16] (func(int)=>int))", 0);
-    //CompiledModule* module = compile_module("sizeof(:func(^^int)=>^int)", 0);
+    //CompiledModule* module = compile_module("(a :> int) + 2", 0);
+    //CompiledModule* module = compile_module("(a:>^int)", 0);
+    //CompiledModule* module = compile_module("a:>^int", 0);
+    //CompiledModule* module = compile_module("(a :> ^^int)[0]", 0);
+    //CompiledModule* module = compile_module("a:>^^int[0]", 0);
+    //CompiledModule* module = compile_module("a:>func(int)=>int", 0);
+    //CompiledModule* module = compile_module("(a:>func(int)=>int)(10)", 0);
+    //CompiledModule* module = compile_module("a:>func(int)=>int(10)", 0);
+    //CompiledModule* module = compile_module("a:>func(int)=>int:>uint", 0);
+    //CompiledModule* module = compile_module("a:>func(int)=>int:>uint + 2", 0);
+    //
+    //CompiledModule* module = compile_module("#sizeof(int)", 0);
+    //CompiledModule* module = compile_module("#sizeof(const int)", 0);
+    //CompiledModule* module = compile_module("#sizeof(^ const char)", 0);
+    //CompiledModule* module = compile_module("#sizeof([16] ^int)", 0);
+    //CompiledModule* module = compile_module("#sizeof([16] (func(int)=>int))", 0);
+    //CompiledModule* module = compile_module("#sizeof(func(^^int)=>^int)", 0);
+    //
+    //CompiledModule* module = compile_module("#typeof(1 + 2)", 0);
+    //CompiledModule* module = compile_module("#typeof(-x:>int*2)", 0);
     //CompiledModule* module = compile_module("f(1,2)", 0);
     //CompiledModule* module = compile_module("3 + f(1+3, a*3, -4.3, x ? a : b)", 0);
     //CompiledModule* module = compile_module("a[1 * 3", 0);
-    //CompiledModule* module = compile_module("(:Vector2){x = 1, y = 2}", 0);
-    //CompiledModule* module = compile_module("(:[]int){[0] = 1, [1] = 2}", 0);
-    //CompiledModule* module = compile_module("(:[1] int){[0] = 1, [1] = 2}", 0);
+    //CompiledModule* module = compile_module("{x = 1, y = 2 :Vector2}", 0);
+    //CompiledModule* module = compile_module("{x = 1, y = 2.0:>int :Vector2}", 0);
+    //CompiledModule* module = compile_module("{[0] = 1, [1] = 2 :[]int}", 0);
+    //CompiledModule* module = compile_module("{[0] = 1, [1] = 2 :[1]int}", 0);
     //CompiledModule* module = compile_module("1", 0);
 
     free_compiled_module(module);

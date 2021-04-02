@@ -186,21 +186,20 @@ static TypeSpec* parse_typespec_base(Parser* parser)
     return type;
 }
 
-
-//typespec = ('^' | '[' expr? ']' | KW_CONST) typespec
+// typespec = ('^' | '[' expr? ']' | KW_CONST) typespec
 //         | typespec_base
 TypeSpec* parse_typespec(Parser* parser)
 {
     TypeSpec* type = NULL;
 
     if (match_token_next(parser, TKN_CARET)) {
-        ProgRange range = { .start = parser->ptoken.range.start };
+        ProgRange range = {.start = parser->ptoken.range.start};
         TypeSpec* base = parse_typespec(parser);
 
         range.end = base->range.end;
         type = typespec_ptr(parser->allocator, base, range);
     } else if (match_token_next(parser, TKN_LBRACKET)) {
-        ProgRange range = { .start = parser->ptoken.range.start };
+        ProgRange range = {.start = parser->ptoken.range.start};
 
         Expr* len = NULL;
         if (!is_token(parser, TKN_RBRACKET)) {
@@ -214,7 +213,7 @@ TypeSpec* parse_typespec(Parser* parser)
         range.end = base->range.end;
         type = typespec_array(parser->allocator, base, len, range);
     } else if (match_keyword_next(parser, KW_CONST)) {
-        ProgRange range = { .start = parser->ptoken.range.start };
+        ProgRange range = {.start = parser->ptoken.range.start};
         TypeSpec* base = parse_typespec(parser);
 
         range.end = base->range.end;
@@ -273,26 +272,19 @@ static ExprInitializer* parse_expr_initializer(Parser* parser)
     return expr_pos_initializer(parser->allocator, expr, range);
 }
 
-// expr_compound_lit = typespec_spec? '{' expr_init_list '}'
+// expr_compound_lit = '{' expr_init_list (':' typespec)? '}'
 // expr_init_list = expr_init_item (',' expr_init_item)*
 // expr_init_item = (TKN_IDENT '=')? expr
 //               | ('[' (TKN_INT | TKN_IDENT) ']' '=')? expr
-static Expr* parse_expr_compound_lit(Parser* parser, TypeSpec* type)
+static Expr* parse_expr_compound_lit(Parser* parser)
 {
-    ProgRange range = {0};
-
-    if (type) {
-        range.start = type->range.start;
-    } else {
-        range.start = parser->token.range.start;
-    }
-
     expect_token_next(parser, TKN_LBRACE);
 
+    ProgRange range = {.start = parser->ptoken.range.start};
     size_t num_initzers = 0;
     DLList initzers = dllist_head_create(initzers);
 
-    while (!is_token(parser, TKN_RBRACE)) {
+    while (!(is_token(parser, TKN_RBRACE) || is_token(parser, TKN_COLON))) {
         ExprInitializer* initzer = parse_expr_initializer(parser);
 
         num_initzers += 1;
@@ -301,6 +293,14 @@ static Expr* parse_expr_compound_lit(Parser* parser, TypeSpec* type)
         if (!match_token_next(parser, TKN_COMMA)) {
             break;
         }
+
+        // TODO: Can record the maximum index value for array initializers
+    }
+
+    TypeSpec* type = NULL;
+
+    if (match_token_next(parser, TKN_COLON)) {
+        type = parse_typespec(parser); // TODO: Can report error if using indexed initializers and not array type (etc.)
     }
 
     expect_token_next(parser, TKN_RBRACE);
@@ -314,14 +314,13 @@ static Expr* parse_expr_compound_lit(Parser* parser, TypeSpec* type)
 //           | TKN_FLOAT
 //           | TKN_STR
 //           | TKN_IDENT
-//           | expr_cast
 //           | expr_compound_init
 //           | expr_sizeof
+//           | expr_typeof
 //           | '(' expr ')'
 //
-// typespec_spec = '(' ':' typespec ')'
-// expr_cast = KW_CAST '(' typespec ')' expr_unary
-// expr_sizeof = KW_SIZEOF '(' ((':' typespec) | expr) ')'
+// expr_sizeof = '#' KW_SIZEOF '('type_spec')'
+// expr_typeof = '#' KW_TYPEOF '(' expr ')'
 static Expr* parse_expr_base(Parser* parser)
 {
     Expr* expr = NULL;
@@ -336,48 +335,37 @@ static Expr* parse_expr_base(Parser* parser)
         Token* token = &parser->ptoken;
         expr = expr_str(parser->allocator, token->tstr.value, token->range);
     } else if (match_token_next(parser, TKN_LPAREN)) {
+        expr = parse_expr(parser);
+        expect_token_next(parser, TKN_RPAREN);
+    } else if (is_token(parser, TKN_LBRACE)) {
+        expr = parse_expr_compound_lit(parser);
+    } else if (match_token_next(parser, TKN_POUND)) {
         ProgRange range = {.start = parser->ptoken.range.start};
 
-        if (match_token_next(parser, TKN_COLON)) {
-            TypeSpec* type = parse_typespec(parser);
-            expect_token_next(parser, TKN_RPAREN);
+        if (match_keyword_next(parser, KW_SIZEOF)) {
+            expect_token_next(parser, TKN_LPAREN);
 
-            if (is_token(parser, TKN_LBRACE)) {
-                expr = parse_expr_compound_lit(parser, type);
-            } else {
-                Expr* unary = parse_expr_unary(parser);
-
-                range.end = unary->range.end;
-                expr = expr_cast(parser->allocator, type, unary, range);
-            }
-        } else {
-            expr = parse_expr(parser);
-            expect_token_next(parser, TKN_RPAREN);
-        }
-    } else if (match_keyword_next(parser, KW_SIZEOF)) {
-        ProgRange range = {.start = parser->ptoken.range.start};
-
-        expect_token_next(parser, TKN_LPAREN);
-
-        if (match_token_next(parser, TKN_COLON)) {
             TypeSpec* type = parse_typespec(parser);
             expect_token_next(parser, TKN_RPAREN);
 
             range.end = parser->ptoken.range.end;
-            expr = expr_sizeof_type(parser->allocator, type, range);
-        } else {
+            expr = expr_sizeof(parser->allocator, type, range);
+        } else if (match_keyword_next(parser, KW_TYPEOF)) {
+            expect_token_next(parser, TKN_LPAREN);
+
             Expr* arg = parse_expr(parser);
             expect_token_next(parser, TKN_RPAREN);
 
             range.end = parser->ptoken.range.end;
-            expr = expr_sizeof_expr(parser->allocator, arg, range);
+            expr = expr_typeof(parser->allocator, arg, range);
+        } else {
+            parser_on_error(parser, "Unexpected token after '#': %s", token_kind_names[parser->token.kind]);
         }
     } else if (match_token_next(parser, TKN_IDENT)) {
         Token* token = &parser->ptoken;
         expr = expr_ident(parser->allocator, token->tident.value, token->range);
     } else {
-        parser_on_error(parser, "Unexpected token in expression: %s", 
-                        token_kind_names[parser->token.kind]); // TODO: Better info
+        parser_on_error(parser, "Unexpected token in expression: %s", token_kind_names[parser->token.kind]);
     }
 
     return expr;
@@ -402,59 +390,56 @@ static ExprCallArg* parse_expr_call_arg(Parser* parser)
     return expr_call_arg(parser->allocator, expr, name);
 }
 
-// expr_deref = expr_base ('.' IDENTIFIER | '[' expr ']' | '(' expr_call_arg_list* ')')*
+// expr_base_mod = expr_base ('.' IDENTIFIER | '[' expr ']' | '(' expr_call_arg_list* ')' | ':>' typespec)*
 // expr_call_arg_list = expr_call_arg (',' expr_call_arg)*
-static Expr* parse_expr_deref(Parser* parser)
+static Expr* parse_expr_base_mod(Parser* parser)
 {
     Expr* expr = parse_expr_base(parser);
 
-    while (is_token(parser, TKN_DOT) || is_token(parser, TKN_LBRACKET) || is_token(parser, TKN_LPAREN)) {
-        if (match_token_next(parser, TKN_DOT)) {
+    while (is_token(parser, TKN_DOT) || is_token(parser, TKN_LBRACKET) || is_token(parser, TKN_LPAREN) ||
+           is_token(parser, TKN_CAST)) {
+        if (match_token_next(parser, TKN_DOT)) { // Field access
             expect_token_next(parser, TKN_IDENT);
 
             const char* field = parser->ptoken.tident.value;
-            ProgRange range = {
-                .start = expr->range.start,
-                .end = parser->ptoken.range.end,
-            };
-
+            ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
             expr = expr_field(parser->allocator, expr, field, range);
-        } else if (match_token_next(parser, TKN_LBRACKET)) {
+        } else if (match_token_next(parser, TKN_LBRACKET)) { // Array index access
             Expr* index = parse_expr(parser);
+
             expect_token_next(parser, TKN_RBRACKET);
-            ProgRange range = {
-                .start = expr->range.start,
-                .end = parser->ptoken.range.end,
-            };
 
+            ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
             expr = expr_index(parser->allocator, expr, index, range);
-        } else {
-            assert(is_token(parser, TKN_LPAREN));
-            next_token(parser);
-
+        } else if (match_token_next(parser, TKN_LPAREN)) { // Function call
             size_t num_args = 0;
             DLList args = dllist_head_create(args);
+
             if (!is_token(parser, TKN_RPAREN)) {
                 ExprCallArg* arg = parse_expr_call_arg(parser);
+                num_args += 1;
 
                 dllist_add(args.prev, &arg->list);
-                num_args += 1;
 
                 while (match_token_next(parser, TKN_COMMA)) {
                     arg = parse_expr_call_arg(parser);
+                    num_args += 1;
 
                     dllist_add(args.prev, &arg->list);
-                    num_args += 1;
                 }
             }
 
             expect_token_next(parser, TKN_RPAREN);
-            ProgRange range = {
-                .start = expr->range.start,
-                .end = parser->ptoken.range.end,
-            };
 
+            ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
             expr = expr_call(parser->allocator, expr, num_args, &args, range);
+        } else { // Cast
+            assert(is_token(parser, TKN_CAST));
+            next_token(parser);
+
+            TypeSpec* type = parse_typespec(parser);
+            ProgRange range = {.start = expr->range.start, .end = type->range.end};
+            expr = expr_cast(parser->allocator, type, expr, range);
         }
     }
 
@@ -462,7 +447,7 @@ static Expr* parse_expr_deref(Parser* parser)
 }
 
 // expr_unary = OP_PRECEDENCE_UNARY expr_unary
-//            | expr_deref
+//            | expr_base_mod
 static Expr* parse_expr_unary(Parser* parser)
 {
     if (is_token_op(parser, OP_PRECEDENCE_UNARY)) {
@@ -475,7 +460,7 @@ static Expr* parse_expr_unary(Parser* parser)
         return expr_unary(parser->allocator, op, expr, range);
     }
 
-    return parse_expr_deref(parser);
+    return parse_expr_base_mod(parser);
 }
 
 // expr_mul = expr_unary (OP_PRECEDENCE_MUL expr_unary)*

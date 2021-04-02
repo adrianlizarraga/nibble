@@ -173,29 +173,27 @@ Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range)
     return expr;
 }
 
-Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* unary, ProgRange range)
+Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_CAST, range);
     expr->ecast.type = type;
-    expr->ecast.expr = unary;
+    expr->ecast.expr = arg;
 
     return expr;
 }
 
-Expr* expr_sizeof_type(Allocator* allocator, TypeSpec* type, ProgRange range)
+Expr* expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_SIZEOF, range);
-    expr->esizeof.kind = EXPR_SIZEOF_ARG_TYPE;
     expr->esizeof.type = type;
 
     return expr;
 }
 
-Expr* expr_sizeof_expr(Allocator* allocator, Expr* arg, ProgRange range)
+Expr* expr_typeof(Allocator* allocator, Expr* arg, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_SIZEOF, range);
-    expr->esizeof.kind = EXPR_SIZEOF_ARG_EXPR;
-    expr->esizeof.expr = arg;
+    Expr* expr = expr_alloc(allocator, EXPR_TYPEOF, range);
+    expr->etypeof.expr = arg;
 
     return expr;
 }
@@ -388,12 +386,11 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         } break;
         case EXPR_SIZEOF: {
             dstr = array_create(allocator, char, 16);
-
-            if (expr->esizeof.kind == EXPR_SIZEOF_ARG_TYPE) {
-                ftprint_char_array(&dstr, false, "(sizeof_type %s)", ftprint_typespec(allocator, expr->esizeof.type));
-            } else {
-                ftprint_char_array(&dstr, false, "(sizeof_expr %s)", ftprint_expr(allocator, expr->esizeof.expr));
-            }
+            ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, expr->esizeof.type));
+        } break;
+        case EXPR_TYPEOF: {
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(typeof %s)", ftprint_expr(allocator, expr->etypeof.expr));
         } break;
         case EXPR_COMPOUND_LIT: {
             dstr = array_create(allocator, char, 32);

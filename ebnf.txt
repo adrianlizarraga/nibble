@@ -6,62 +6,63 @@ typespec_base  = 'func' '(' param_type_spec_list? ')' ('=>' type_spec)?
                | '(' type_spec ')'
 
 param_type_spec_list = param_type_spec (',' param_type_spec)*
-param_type_spec = (IDENTIFIER :)? type_spec 
-typespec_spec = '(' ':' type_spec ')'
+param_type_spec = (TKN_IDENT :)? type_spec 
 
 expr = expr_ternary
-expr_ternary = expr_or ('?' expr_ternary ':' expr_ternary)?
-expr_or      = expr_and (OR_OP expr_and)*                   // OR_OP = '||'
-expr_and     = expr_cmp (AND_OP expr_cmp)*                  // AND_OP = '&&'
-expr_cmp     = expr_add (CMP_OP expr_add)*                  // CMP_OP = ['==' '!=' '>' '>=' '<' '<=']
-expr_add     = expr_mul (ADD_OP expr_mul)*                  // ADD_OP = [+-|^] 
-expr_mul     = expr_unary (MUL_OP expr_unary)*              // MUL_OP = [*/%&] | '<<' | '>>'
-expr_unary   = UNARY_OP expr_unary                          // UNARY_OP = [^*-+~!]
-             | expr_deref
-expr_deref   = expr_base ('.' TKN_IDENT | '[ expr ']' | '(' expr_call_arg_list* ')')*
-expr_base    = TKN_INT
-             | TKN_FLOAT
-             | TKN_STR
-             | TKN_IDENT
-             | expr_cast
-             | expr_compound_lit
-             | expr_sizeof
-             | '(' expr ')'
+expr_ternary  = expr_or ('?' expr_ternary ':' expr_ternary)?
+expr_or       = expr_and (OR_OP expr_and)*                   // OR_OP = '||'
+expr_and      = expr_cmp (AND_OP expr_cmp)*                  // AND_OP = '&&'
+expr_cmp      = expr_add (CMP_OP expr_add)*                  // CMP_OP = ['==' '!=' '>' '>=' '<' '<=']
+expr_add      = expr_mul (ADD_OP expr_mul)*                  // ADD_OP = [+-|^] 
+expr_mul      = expr_unary (MUL_OP expr_unary)*              // MUL_OP = [*/%&] | '<<' | '>>'
+expr_unary    = UNARY_OP expr_unary                          // UNARY_OP = [^*-+~!]
+              | expr_base_mod
+expr_base_mod = expr_base ('.' TKN_IDENT | '[ expr ']' | '(' expr_call_arg_list* ')' | ':>' typespec)*
+expr_base     = TKN_INT
+              | TKN_FLOAT
+              | TKN_STR
+              | TKN_IDENT
+              | expr_compound_lit
+              | expr_sizeof
+              | expr_typeof
+              | '(' expr ')'
 
 expr_call_arg_list = expr_call_arg (',' expr_call_arg)*
 expr_call_arg = (TKN_IDENT '=') ? expr
-expr_cast = typespec_spec? expr_unary
-expr_compound_lit = typespec_spec? '{' expr_init_list '}'
+expr_compound_lit = '{' expr_init_list (':' typespec)?'}'
 expr_init_list = expr_init_item (',' expr_init_item)*
 expr_init_item = (TKN_IDENT '=')? expr
                | ('[' (TKN_INT | TKN_IDENT) ']' '=')? expr
-expr_sizeof = KW_SIZEOF '(' (':' type_spec | expr) ')'
+expr_sizeof = '#' KW_SIZEOF '('type_spec')'
+expr_typeof = '#' KW_TYPEOF '(' expr ')'
 
 decl = var_decl ';'
+     | const_decl ';'
      | enum_decl
      | union_decl
      | struct_decl
      | func_decl
      | typedef_decl ';'
 
-var_decl  = IDENTIFIER ':' type_spec? ('=' expr)?
+var_decl   = TKN_IDENT ':' type_spec? ('=' expr)?
+const_decl = '#' KW_CONST TKN_IDENT ':' typespec?  '=' expr
 
-enum_decl  = 'enum' IDENTIFIER '{' enum_items? '}'
+enum_decl  = 'enum' TKN_IDENT '{' enum_items? '}'
 enum_items = enum_item (',' enum_item)* ','?
-enum_item  = IDENTIFIER ('=' expr)?
+enum_item  = TKN_IDENT ('=' expr)?
 
 union_decl  = 'union' aggregate_decl_body
 struct_decl = 'struct' aggregate_decl_body
 
-aggregate_decl_body  = IDENTIFIER '{' aggregate_item* '}'
+aggregate_decl_body  = TKN_IDENT '{' aggregate_item* '}'
 aggregate_decl_item  = identifier_list ':' type_spec ';'
-identifier_list = IDENTIFIER (',' IDENTIFIER)*
+identifier_list = TKN_IDENT (',' TKN_IDENT)*
 
-func_decl  = 'func' IDENTIFIER '(' param_list ')' (':' type_spec)? stmt_block
+func_decl  = 'func' TKN_IDENT '(' param_list ')' (':' type_spec)? stmt_block
 param_list = param_item (',' param_item)*
-param_item = IDENTIFIER ':' type_spec 
+param_item = TKN_IDENT ':' type_spec 
 
-typedef_decl = 'typedef' IDENTIFIER '=' type_spec
+typedef_decl = 'typedef' TKN_IDENT '=' type_spec
 
 
 stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
@@ -70,10 +71,10 @@ stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' st
      | 'for' '(' (var_decl | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
      | 'switch' '(' expr ')' '{' case_item* '}' 
      | 'return' expr? ';'
-     | 'break' IDENTIFIER? ';' 
-     | 'continue' IDENTIFIER? ';'
-     | 'goto' IDENTIFIER ';'
-     | IDENTIFIER ':'
+     | 'break' TKN_IDENT? ';' 
+     | 'continue' TKN_IDENT? ';'
+     | 'goto' TKN_IDENT ';'
+     | TKN_IDENT ':'
      | expr ';'
      | expr_assign ';'
      | decl
