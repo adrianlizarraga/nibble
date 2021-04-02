@@ -36,39 +36,39 @@ expr_init_item = (TKN_IDENT '=')? expr
 expr_sizeof = '#' KW_SIZEOF '('type_spec')'
 expr_typeof = '#' KW_TYPEOF '(' expr ')'
 
-decl = var_decl ';'
-     | const_decl ';'
-     | enum_decl
-     | union_decl
-     | struct_decl
-     | func_decl
-     | typedef_decl ';'
+decl = decl_var ';'
+     | decl_const ';'
+     | decl_enum
+     | decl_union
+     | decl_struct
+     | decl_func
+     | decl_typedef ';'
 
-var_decl   = TKN_IDENT ':' type_spec? ('=' expr)?
-const_decl = '#' KW_CONST TKN_IDENT ':' typespec?  '=' expr
+decl_var   = TKN_IDENT ':' type_spec? ('=' expr)?
+decl_const = '#' KW_CONST TKN_IDENT ':' typespec?  '=' expr
 
-enum_decl  = 'enum' TKN_IDENT '{' enum_items? '}'
+decl_enum  = 'enum' TKN_IDENT '{' enum_items? '}'
 enum_items = enum_item (',' enum_item)* ','?
 enum_item  = TKN_IDENT ('=' expr)?
 
-union_decl  = 'union' aggregate_decl_body
-struct_decl = 'struct' aggregate_decl_body
+decl_union  = 'union' decl_aggregate_body
+decl_struct = 'struct' decl_aggregate_body
 
-aggregate_decl_body  = TKN_IDENT '{' aggregate_item* '}'
-aggregate_decl_item  = identifier_list ':' type_spec ';'
+decl_aggregate_body  = TKN_IDENT '{' aggregate_item* '}'
+decl_aggregate_item  = identifier_list ':' type_spec ';'
 identifier_list = TKN_IDENT (',' TKN_IDENT)*
 
-func_decl  = 'func' TKN_IDENT '(' param_list ')' (':' type_spec)? stmt_block
+decl_func  = 'func' TKN_IDENT '(' param_list ')' (':' type_spec)? stmt_block
 param_list = param_item (',' param_item)*
 param_item = TKN_IDENT ':' type_spec 
 
-typedef_decl = 'typedef' TKN_IDENT '=' type_spec
+decl_typedef = 'typedef' TKN_IDENT '=' type_spec
 
 
 stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
      | 'while' '(' expr ')' stmt_block
      | 'do' stmt_block 'while' '(' expr ')' ';'
-     | 'for' '(' (var_decl | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
+     | 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
      | 'switch' '(' expr ')' '{' case_item* '}' 
      | 'return' expr? ';'
      | 'break' TKN_IDENT? ';' 

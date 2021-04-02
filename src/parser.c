@@ -591,6 +591,10 @@ Expr* parse_expr(Parser* parser)
 //    Parse declarations
 //////////////////////////////
 
+// decl_const = '#' KW_CONST TKN_IDENT ':' typespec?  '=' expr
+//
+// Ex 1: #const x : int = 0;
+// Ex 2: #const x := 0;
 static Decl* parse_decl_const(Parser* parser)
 {
     assert(is_token(parser, TKN_POUND));
@@ -624,11 +628,18 @@ static Decl* parse_decl_const(Parser* parser)
         // NOTE: Not sure if this is right. Might want to skip to first of newline or semicolon?
         // Alternatively, just skip semicolon if it is the next token???
         skip_after_token(parser, TKN_SEMICOLON);
+
+        // TODO: Consider returning DECL_NONE instead of NULL on error.
     }
 
-    return decl; // TODO: Consider returning DECL_NONE instead of NULL on error.
+    return decl;
 }
 
+// decl_var = TKN_IDENT ':' type_spec? ('=' expr)?
+//
+// Ex 1: x : int = 0;
+// Ex 2: x := 0;
+// Ex 3: x :int;
 static Decl* parse_decl_var(Parser* parser)
 {
     assert(is_token(parser, TKN_IDENT));
@@ -664,11 +675,20 @@ static Decl* parse_decl_var(Parser* parser)
         // NOTE: Not sure if this is right. Might want to skip to first of newline or semicolon?
         // Alternatively, just skip semicolon if it is the next token???
         skip_after_token(parser, TKN_SEMICOLON);
+
+        // TODO: Consider returning DECL_NONE instead of NULL on error.
     }
 
-    return decl; // TODO: Consider returning DECL_NONE instead of NULL on error.
+    return decl;
 }
 
+// decl = decl_var ';'
+//     | decl_const ';'
+//     | decl_enum
+//     | decl_union
+//     | decl_struct
+//     | decl_func
+//     | decl_typedef ';'
 Decl* parse_decl(Parser* parser)
 {
     Decl* decl = NULL;
