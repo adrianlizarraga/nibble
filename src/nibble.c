@@ -121,14 +121,24 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
         print_token(&parser.token, tkn_buf, sizeof(tkn_buf));
         ftprint_out("%s\n", tkn_buf);
     }
-#else
+#elif 0
     next_token(&parser);
     Expr* expr = parse_expr(&parser);
 
-    ftprint_out("Done parsing\n");
+    ftprint_out("Done parsing expr\n");
     AllocatorState state = allocator_get_state(&module->allocator);
     {
         ftprint_out("%s\n", ftprint_expr(&module->allocator, expr));
+    }
+    allocator_restore_state(state);
+#else
+    next_token(&parser);
+    Decl* decl = parse_decl(&parser);
+
+    ftprint_out("Done parsing decl\n");
+    AllocatorState state = allocator_get_state(&module->allocator);
+    {
+        ftprint_out("%s\n", ftprint_decl(&module->allocator, decl));
     }
     allocator_restore_state(state);
 #endif
@@ -162,8 +172,12 @@ int main(void)
         exit(1);
     }
 
-    //CompiledModule* module = compile_module("int main() { int a = 0; /* comment */ if (a != 1) print(\"hi\"); }", 0);
-    CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
+    CompiledModule* module = compile_module("a : int = 1 + 2;", 0);
+    //CompiledModule* module = compile_module("a := 1 + 2;", 0);
+    //CompiledModule* module = compile_module("a : int;", 0);
+    //CompiledModule* module = compile_module("a :;", 0);
+
+    //CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
     //CompiledModule* module = compile_module("a ^ ^b", 0);
     //CompiledModule* module = compile_module("\"abc\"[0]", 0);
     //CompiledModule* module = compile_module("-x:>int*2", 0);
@@ -179,14 +193,12 @@ int main(void)
     //CompiledModule* module = compile_module("a:>func(int)=>int(10)", 0);
     //CompiledModule* module = compile_module("a:>func(int)=>int:>uint", 0);
     //CompiledModule* module = compile_module("a:>func(int)=>int:>uint + 2", 0);
-    //
     //CompiledModule* module = compile_module("#sizeof(int)", 0);
     //CompiledModule* module = compile_module("#sizeof(const int)", 0);
     //CompiledModule* module = compile_module("#sizeof(^ const char)", 0);
     //CompiledModule* module = compile_module("#sizeof([16] ^int)", 0);
     //CompiledModule* module = compile_module("#sizeof([16] (func(int)=>int))", 0);
     //CompiledModule* module = compile_module("#sizeof(func(^^int)=>^int)", 0);
-    //
     //CompiledModule* module = compile_module("#typeof(1 + 2)", 0);
     //CompiledModule* module = compile_module("#typeof(-x:>int*2)", 0);
     //CompiledModule* module = compile_module("f(1,2)", 0);

@@ -563,3 +563,47 @@ Expr* parse_expr(Parser* parser)
 {
     return parse_expr_ternary(parser);
 }
+
+///////////////////////////////
+//    Parse declarations
+//////////////////////////////
+
+Decl* parse_decl(Parser* parser)
+{
+    Decl* decl = NULL;
+
+    if (match_token_next(parser, TKN_IDENT)) {
+        //
+        // Variable declaration
+        //
+
+        ProgRange range = {.start = parser->ptoken.range.start};
+        const char* name = parser->ptoken.tident.value;
+
+        expect_token_next(parser, TKN_COLON);
+
+        TypeSpec* type = NULL;
+        if (!is_token(parser, TKN_ASSIGN) && !is_token(parser, TKN_SEMICOLON)) {
+            type = parse_typespec(parser);
+        }
+
+        Expr* expr = NULL;
+        if (match_token_next(parser, TKN_ASSIGN)) {
+            expr = parse_expr(parser);
+        }
+
+        if (type || expr) {
+            expect_token_next(parser, TKN_SEMICOLON);
+
+            range.end = parser->ptoken.range.end;
+            decl = decl_var(parser->allocator, name, type, expr, range);
+        } else {
+            parser_on_error(parser, "Variable declaration must have either a type or an initial value");
+
+            // Skip semicolon if it's next.
+            match_token_next(parser, TKN_SEMICOLON);
+        }
+    }
+
+    return decl;
+}

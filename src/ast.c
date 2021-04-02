@@ -2,7 +2,7 @@
 #include "ast.h"
 #include "cstring.h"
 
-TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange range)
+static TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange range)
 {
     TypeSpec* type = mem_allocate(allocator, sizeof(TypeSpec), DEFAULT_ALIGN, true);
     type->kind = kind;
@@ -64,7 +64,7 @@ TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type, const c
     return param;
 }
 
-Expr* expr_alloc(Allocator* allocator, ExprKind kind, ProgRange range)
+static Expr* expr_alloc(Allocator* allocator, ExprKind kind, ProgRange range)
 {
     Expr* expr = mem_allocate(allocator, sizeof(Expr), DEFAULT_ALIGN, true);
     expr->kind = kind;
@@ -239,6 +239,25 @@ Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzer
     dllist_replace(initzers, &expr->ecompound.initzers);
 
     return expr;
+}
+
+static Decl* decl_alloc(Allocator* allocator, DeclKind kind, const char* name, ProgRange range)
+{
+    Decl* decl = mem_allocate(allocator, sizeof(Decl), DEFAULT_ALIGN, true);
+    decl->kind = kind;
+    decl->name = name;
+    decl->range = range;
+
+    return decl;
+}
+
+Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
+{
+    Decl* decl = decl_alloc(allocator, DECL_VAR, name, range);
+    decl->dvar.type = type;
+    decl->dvar.init = init;
+
+    return decl;
 }
 
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
@@ -424,6 +443,43 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         } break;
         default: {
             ftprint_err("Unknown expr kind: %d\n", expr->kind);
+            assert(0);
+        } break;
+        }
+    } else {
+        dstr = array_create(allocator, char, 1);
+    }
+
+    array_push(dstr, '\0');
+
+    return dstr;
+}
+
+char* ftprint_decl(Allocator* allocator, Decl* decl)
+{
+    char* dstr = NULL;
+
+    if (decl) {
+        switch (decl->kind) {
+        case DECL_NONE: {
+            assert(0);
+        } break;
+        case DECL_VAR: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(var %s", decl->name);
+
+            if (decl->dvar.type) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, decl->dvar.type));
+            }
+
+            if (decl->dvar.init) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, decl->dvar.init));
+            }
+
+            ftprint_char_array(&dstr, false, ")");
+        } break;
+        default: {
+            ftprint_err("Unknown decl kind: %d\n", decl->kind); 
             assert(0);
         } break;
         }

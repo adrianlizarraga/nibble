@@ -67,7 +67,6 @@ struct TypeSpec {
     };
 };
 
-TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange range);
 TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range);
 TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
@@ -351,27 +350,27 @@ struct Stmt {
 //////////////////////////////
 typedef struct DeclVar {
     TypeSpec* type;
-    Expr* expr;
+    Expr* init;
 } DeclVar;
 
 typedef struct DeclConst {
     TypeSpec* type;
-    Expr* expr;
+    Expr* init;
 } DeclConst;
 
 typedef struct DeclEnumItem {
     const char* name;
     Expr* value;
+    DLList list;
 } DeclEnumItem;
 
 typedef struct DeclEnum {
     size_t num_items;
-    DeclEnumItem* items;
+    DLList items;
 } DeclEnum;
 
 typedef struct DeclAggregateFieldItem {
-    size_t num_names;
-    const char* names;
+    const char* name;
     TypeSpec* type;
 } DeclAggregateFieldItem;
 
@@ -386,23 +385,26 @@ typedef struct DeclAggregateItem {
 
     union {
         DeclAggregateFieldItem field;
-        Decl* subaggregate;
+        Decl* sub;
     };
+
+    DLList list;
 } DeclAggregateItem;
 
 typedef struct DeclAggregate {
     size_t num_items;
-    DeclAggregateItem* items;
+    DLList items;
 } DeclAggregate;
 
 typedef struct DeclFuncParam {
     const char* name;
     TypeSpec* type;
+    DLList list;
 } DeclFuncParam;
 
 typedef struct DeclFunc {
     size_t num_params;
-    DeclFuncParam* params;
+    DLList params;
     TypeSpec* ret;
     StmtBlock block;
 } DeclFunc;
@@ -424,6 +426,7 @@ typedef enum DeclKind {
 
 struct Decl {
     DeclKind kind;
+    ProgRange range;
     const char* name;
 
     union {
@@ -436,4 +439,5 @@ struct Decl {
     };
 };
 
+Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 #endif
