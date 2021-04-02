@@ -260,6 +260,15 @@ Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* ini
     return decl;
 }
 
+Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
+{
+    Decl* decl = decl_alloc(allocator, DECL_CONST, name, range);
+    decl->dconst.type = type;
+    decl->dconst.init = init;
+
+    return decl;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -474,6 +483,20 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 
             if (decl->dvar.init) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, decl->dvar.init));
+            }
+
+            ftprint_char_array(&dstr, false, ")");
+        } break;
+        case DECL_CONST: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(#const %s", decl->name);
+
+            if (decl->dconst.type) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, decl->dconst.type));
+            }
+
+            if (decl->dconst.init) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, decl->dconst.init));
             }
 
             ftprint_char_array(&dstr, false, ")");

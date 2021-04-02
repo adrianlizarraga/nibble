@@ -175,7 +175,8 @@ int main(void)
     CompiledModule* module = compile_module("a : int = 1 + 2;", 0);
     //CompiledModule* module = compile_module("a := 1 + 2;", 0);
     //CompiledModule* module = compile_module("a : int;", 0);
-    //CompiledModule* module = compile_module("a :;", 0);
+    //CompiledModule* module = compile_module("#const a : int = 1 + 2;", 0);
+    //CompiledModule* module = compile_module("#const a := 1 + 2;", 0);
 
     //CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
     //CompiledModule* module = compile_module("a ^ ^b", 0);

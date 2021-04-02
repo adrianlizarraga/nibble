@@ -105,11 +105,34 @@ bool expect_token_next(Parser* parser, TokenKind kind)
     if (matches) {
         next_token(parser);
     } else {
-        parser_on_error(parser, "Expected token of kind '%s', but got token of kind '%s'", token_kind_names[kind],
+        parser_on_error(parser, "Expected token `%s`, but got token `%s`", token_kind_names[kind],
                         token_kind_names[parser->token.kind]);
     }
 
     return matches;
+}
+
+bool expect_keyword_next(Parser* parser, Keyword kw)
+{
+    bool matches = (parser->token.kind == TKN_IDENT) && (parser->token.tident.value == keywords[kw]);
+
+    if (matches) {
+        next_token(parser);
+    } else {
+        parser_on_error(parser, "Expected keyword `%s`, but got token `%s`", keywords[kw],
+                        token_kind_names[parser->token.kind]);
+    }
+
+    return matches;
+}
+
+bool skip_after_token(Parser* parser, TokenKind kind)
+{
+    while (!is_token(parser, TKN_EOF) && !is_token(parser, kind)) {
+        next_token(parser);
+    }
+
+    return match_token_next(parser, kind);
 }
 
 ///////////////////////////////
@@ -180,10 +203,10 @@ static TypeSpec* parse_typespec_base(Parser* parser)
 
         expect_token_next(parser, TKN_RPAREN);
     } else {
-        parser_on_error(parser, "Invalid typespec token\n");
+        parser_on_error(parser, "Invalid typespec token: %d", token_kind_names[parser->token.kind]);
     }
 
-    return type;
+    return type; // TODO: Consider returning TYPE_SPEC_NONE instead of NULL ptr on error.
 }
 
 // typespec = ('^' | '[' expr? ']' | KW_CONST) typespec
@@ -572,7 +595,39 @@ Decl* parse_decl(Parser* parser)
 {
     Decl* decl = NULL;
 
-    if (match_token_next(parser, TKN_IDENT)) {
+    if (match_token_next(parser, TKN_POUND)) {
+        //
+        // Constant declaration
+        //
+
+        ProgRange range = {.start = parser->ptoken.range.start};
+
+        if (match_keyword_next(parser, KW_CONST)) {
+            if (expect_token_next(parser, TKN_IDENT)) {
+                const char* name = parser->ptoken.tident.value;
+
+                if (expect_token_next(parser, TKN_COLON)) {
+                    TypeSpec* type = NULL;
+
+                    if (!is_token(parser, TKN_ASSIGN) && !is_token(parser, TKN_SEMICOLON)) {
+                        type = parse_typespec(parser);
+                    }
+
+                    if (expect_token_next(parser, TKN_ASSIGN)) {
+                        Expr* expr = parse_expr(parser);
+
+                        expect_token_next(parser, TKN_SEMICOLON);
+
+                        range.end = parser->ptoken.range.end;
+                        decl = decl_const(parser->allocator, name, type, expr, range);
+                    }
+                }
+            }
+        } else {
+            parser_on_error(parser, "Unexpected token `%s` after `#` declaration",
+                            token_kind_names[parser->token.kind]);
+        }
+    } else if (match_token_next(parser, TKN_IDENT)) {
         //
         // Variable declaration
         //
@@ -580,30 +635,36 @@ Decl* parse_decl(Parser* parser)
         ProgRange range = {.start = parser->ptoken.range.start};
         const char* name = parser->ptoken.tident.value;
 
-        expect_token_next(parser, TKN_COLON);
+        if (expect_token_next(parser, TKN_COLON)) {
+            TypeSpec* type = NULL;
+            Expr* expr = NULL;
 
-        TypeSpec* type = NULL;
-        if (!is_token(parser, TKN_ASSIGN) && !is_token(parser, TKN_SEMICOLON)) {
-            type = parse_typespec(parser);
+            if (!is_token(parser, TKN_ASSIGN) && !is_token(parser, TKN_SEMICOLON)) {
+                type = parse_typespec(parser);
+            }
+
+            if (match_token_next(parser, TKN_ASSIGN)) {
+                expr = parse_expr(parser);
+            }
+
+            if (type || expr) {
+                expect_token_next(parser, TKN_SEMICOLON);
+
+                range.end = parser->ptoken.range.end;
+                decl = decl_var(parser->allocator, name, type, expr, range);
+            } else {
+                parser_on_error(parser, "Variable declaration must have either a type or an initial value");
+            }
         }
-
-        Expr* expr = NULL;
-        if (match_token_next(parser, TKN_ASSIGN)) {
-            expr = parse_expr(parser);
-        }
-
-        if (type || expr) {
-            expect_token_next(parser, TKN_SEMICOLON);
-
-            range.end = parser->ptoken.range.end;
-            decl = decl_var(parser->allocator, name, type, expr, range);
-        } else {
-            parser_on_error(parser, "Variable declaration must have either a type or an initial value");
-
-            // Skip semicolon if it's next.
-            match_token_next(parser, TKN_SEMICOLON);
-        }
+    } else {
+        parser_on_error(parser, "Unexpected token in declaration: %s", token_kind_names[parser->token.kind]);
     }
 
-    return decl;
+    if (!decl) {
+        // NOTE: Not sure if this is right. Might want to skip to first of newline or semicolon?
+        // Alternatively, just skip semicolon if it is the next token???
+        skip_after_token(parser, TKN_SEMICOLON);
+    }
+
+    return decl; // TODO: Consider returning DECL_NONE instead of NULL on error.
 }

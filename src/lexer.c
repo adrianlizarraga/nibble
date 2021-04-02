@@ -738,7 +738,6 @@ top:
     } break;
     case '\0': {
         token.kind = TKN_EOF;
-        lexer->at++;
     } break;
     default: {
         lexer_on_error(lexer, "Unexpected token character: %c", lexer->at[0]);
