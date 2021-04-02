@@ -269,6 +269,27 @@ Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* i
     return decl;
 }
 
+Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, DLList* items,
+                ProgRange range)
+{
+    Decl* decl = decl_alloc(allocator, DECL_ENUM, name, range);
+    decl->denum.type = type;
+    decl->denum.num_items = num_items;
+
+    dllist_replace(items, &decl->denum.items);
+
+    return decl;
+}
+
+DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value)
+{
+    DeclEnumItem* item = mem_allocate(allocator, sizeof(DeclEnumItem), DEFAULT_ALIGN, true);
+    item->name = name;
+    item->value = value;
+
+    return item;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -501,8 +522,34 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 
             ftprint_char_array(&dstr, false, ")");
         } break;
+        case DECL_ENUM: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(enum ");
+
+            if (decl->denum.type) {
+                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, decl->denum.type));
+            }
+
+            if (decl->denum.num_items) {
+                DLList* head = &decl->denum.items;
+
+                for (DLList* it = head->next; it != head; it = it->next) {
+                    DeclEnumItem* item = dllist_entry(it, DeclEnumItem, list);
+
+                    ftprint_char_array(&dstr, false, "%s", item->name);
+                    if (item->value) {
+                        ftprint_char_array(&dstr, false, "=%s", ftprint_expr(allocator, item->value));
+                    }
+
+                    if (it->next != head) {
+                        ftprint_char_array(&dstr, false, " ");
+                    }
+                }
+            }
+            ftprint_char_array(&dstr, false, ")");
+        } break;
         default: {
-            ftprint_err("Unknown decl kind: %d\n", decl->kind); 
+            ftprint_err("Unknown decl kind: %d\n", decl->kind);
             assert(0);
         } break;
         }

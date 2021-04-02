@@ -172,11 +172,16 @@ int main(void)
         exit(1);
     }
 
-    CompiledModule* module = compile_module("a : int = 1 + 2;", 0);
+    //CompiledModule* module = compile_module("a : int = 1 + 2;", 0);
     //CompiledModule* module = compile_module("a := 1 + 2;", 0);
     //CompiledModule* module = compile_module("a : int;", 0);
     //CompiledModule* module = compile_module("#const a : int = 1 + 2;", 0);
     //CompiledModule* module = compile_module("#const a := 1 + 2;", 0);
+    //
+    //CompiledModule* module = compile_module("enum Kind {A}", 0);
+    //CompiledModule* module = compile_module("enum Kind {}", 0);
+    //CompiledModule* module = compile_module("enum Kind :int8 { A = 0, B, C }", 0);
+    CompiledModule* module = compile_module("enum Kind :uint32 { A = 1 << 0, B = 1 << 1, C = 1 << 2, }", 0);
 
     //CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
     //CompiledModule* module = compile_module("a ^ ^b", 0);

@@ -76,9 +76,14 @@ bool is_token_op(Parser* parser, uint8_t precedence)
     return (op_precedence[kind] & precedence);
 }
 
-bool match_keyword_next(Parser* parser, Keyword kw)
+bool is_keyword(Parser* parser, Keyword kw)
 {
-    bool matches = (parser->token.kind == TKN_IDENT) && (parser->token.tident.value == keywords[kw]);
+    return (parser->token.kind == TKN_IDENT) && (parser->token.tident.value == keywords[kw]);
+}
+
+bool match_token_next(Parser* parser, TokenKind kind)
+{
+    bool matches = (parser->token.kind == kind);
 
     if (matches) {
         next_token(parser);
@@ -87,9 +92,9 @@ bool match_keyword_next(Parser* parser, Keyword kw)
     return matches;
 }
 
-bool match_token_next(Parser* parser, TokenKind kind)
+bool match_keyword_next(Parser* parser, Keyword kw)
 {
-    bool matches = (parser->token.kind == kind);
+    bool matches = (parser->token.kind == TKN_IDENT) && (parser->token.tident.value == keywords[kw]);
 
     if (matches) {
         next_token(parser);
@@ -591,51 +596,7 @@ Expr* parse_expr(Parser* parser)
 //    Parse declarations
 //////////////////////////////
 
-// decl_const = '#' KW_CONST TKN_IDENT ':' typespec?  '=' expr
-//
-// Ex 1: #const x : int = 0;
-// Ex 2: #const x := 0;
-static Decl* parse_decl_const(Parser* parser)
-{
-    assert(is_token(parser, TKN_POUND));
-    Decl* decl = NULL;
-    ProgRange range = {.start = parser->token.range.start};
-
-    next_token(parser);
-
-    if (expect_keyword_next(parser, KW_CONST) && expect_token_next(parser, TKN_IDENT)) {
-        const char* name = parser->ptoken.tident.value;
-
-        if (expect_token_next(parser, TKN_COLON)) {
-            TypeSpec* type = NULL;
-
-            if (!is_token(parser, TKN_ASSIGN) && !is_token(parser, TKN_SEMICOLON)) {
-                type = parse_typespec(parser);
-            }
-
-            if (expect_token_next(parser, TKN_ASSIGN)) {
-                Expr* expr = parse_expr(parser);
-
-                expect_token_next(parser, TKN_SEMICOLON);
-
-                range.end = parser->ptoken.range.end;
-                decl = decl_const(parser->allocator, name, type, expr, range);
-            }
-        }
-    }
-
-    if (!decl) {
-        // NOTE: Not sure if this is right. Might want to skip to first of newline or semicolon?
-        // Alternatively, just skip semicolon if it is the next token???
-        skip_after_token(parser, TKN_SEMICOLON);
-
-        // TODO: Consider returning DECL_NONE instead of NULL on error.
-    }
-
-    return decl;
-}
-
-// decl_var = TKN_IDENT ':' type_spec? ('=' expr)?
+// decl_var = TKN_IDENT ':' type_spec? ('=' expr)? ';'
 //
 // Ex 1: x : int = 0;
 // Ex 2: x := 0;
@@ -682,19 +643,138 @@ static Decl* parse_decl_var(Parser* parser)
     return decl;
 }
 
-// decl = decl_var ';'
-//     | decl_const ';'
-//     | decl_enum
-//     | decl_union
-//     | decl_struct
-//     | decl_func
-//     | decl_typedef ';'
+// decl_enum_item  = TKN_IDENT ('=' expr)?
+static DeclEnumItem* parse_decl_enum_item(Parser* parser)
+{
+    DeclEnumItem* item = NULL;
+
+    if (expect_token_next(parser, TKN_IDENT)) {
+        const char* name = parser->ptoken.tident.value;
+        Expr* value = NULL;
+
+        if (match_token_next(parser, TKN_ASSIGN)) {
+            value = parse_expr(parser);
+        }
+
+        item = decl_enum_item(parser->allocator, name, value);
+    } else {
+        next_token(parser); // TODO: Does this belong here or in parent func?
+    }
+
+    return item;
+}
+
+// decl_enum  = 'enum' TKN_IDENT (':' typespec)? '{' decl_enum_items? '}'
+// decl_enum_items = decl_enum_item (',' decl_enum_item)* ','?
+static Decl* parse_decl_enum(Parser* parser)
+{
+    assert(is_keyword(parser, KW_ENUM));
+    Decl* decl = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+
+    next_token(parser);
+
+    if (expect_token_next(parser, TKN_IDENT)) {
+        const char* name = parser->ptoken.tident.value;
+        TypeSpec* type = NULL;
+
+        if (match_token_next(parser, TKN_COLON)) {
+            type = parse_typespec(parser);
+        }
+
+        if (expect_token_next(parser, TKN_LBRACE)) {
+            size_t num_items = 0;
+            DLList items = dllist_head_create(items);
+
+            while (!is_token(parser, TKN_RBRACE)) {
+                DeclEnumItem* item = parse_decl_enum_item(parser);
+
+                if (item) {
+                    num_items += 1;
+                    dllist_add(items.prev, &item->list);
+                }
+
+                if (!match_token_next(parser, TKN_COMMA)) {
+                    break;
+                }
+            }
+
+            if (expect_token_next(parser, TKN_RBRACE)) {
+                range.end = parser->ptoken.range.end;
+                decl = decl_enum(parser->allocator, name, type, num_items, &items, range);
+            }
+        }
+    }
+
+    if (!decl) {
+        // NOTE: Not sure if this is right.
+        skip_after_token(parser, TKN_RBRACE);
+
+        // TODO: Consider returning DECL_NONE instead of NULL on error.
+    }
+
+    return decl;
+}
+
+// decl_const = '#' KW_CONST TKN_IDENT ':' typespec?  '=' expr ';'
+//
+// Ex 1: #const x : int = 0;
+// Ex 2: #const x := 0;
+static Decl* parse_decl_const(Parser* parser)
+{
+    assert(is_token(parser, TKN_POUND));
+    Decl* decl = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+
+    next_token(parser);
+
+    if (expect_keyword_next(parser, KW_CONST) && expect_token_next(parser, TKN_IDENT)) {
+        const char* name = parser->ptoken.tident.value;
+
+        if (expect_token_next(parser, TKN_COLON)) {
+            TypeSpec* type = NULL;
+
+            if (!is_token(parser, TKN_ASSIGN) && !is_token(parser, TKN_SEMICOLON)) {
+                type = parse_typespec(parser);
+            }
+
+            if (expect_token_next(parser, TKN_ASSIGN)) {
+                Expr* expr = parse_expr(parser);
+
+                expect_token_next(parser, TKN_SEMICOLON);
+
+                range.end = parser->ptoken.range.end;
+                decl = decl_const(parser->allocator, name, type, expr, range);
+            }
+        }
+    }
+
+    if (!decl) {
+        // NOTE: Not sure if this is right. Might want to skip to first of newline or semicolon?
+        // Alternatively, just skip semicolon if it is the next token???
+        skip_after_token(parser, TKN_SEMICOLON);
+
+        // TODO: Consider returning DECL_NONE instead of NULL on error.
+    }
+
+    return decl;
+}
+
+// decl = decl_const
+//      | decl_enum
+//      | decl_union
+//      | decl_struct
+//      | decl_func
+//      | decl_typedef
+//      | decl_var
 Decl* parse_decl(Parser* parser)
 {
     Decl* decl = NULL;
 
     if (is_token(parser, TKN_POUND)) {
         decl = parse_decl_const(parser);
+    } else if (is_keyword(parser, KW_ENUM)) {
+        decl = parse_decl_enum(parser);
     } else if (is_token(parser, TKN_IDENT)) {
         decl = parse_decl_var(parser);
     } else {

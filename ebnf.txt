@@ -36,20 +36,20 @@ expr_init_item = (TKN_IDENT '=')? expr
 expr_sizeof = '#' KW_SIZEOF '('type_spec')'
 expr_typeof = '#' KW_TYPEOF '(' expr ')'
 
-decl = decl_var ';'
-     | decl_const ';'
+decl = decl_var 
+     | decl_const
      | decl_enum
      | decl_union
      | decl_struct
      | decl_func
-     | decl_typedef ';'
+     | decl_typedef
 
-decl_var   = TKN_IDENT ':' type_spec? ('=' expr)?
-decl_const = '#' KW_CONST TKN_IDENT ':' typespec?  '=' expr
+decl_var   = TKN_IDENT ':' type_spec? ('=' expr)? ';'
+decl_const = '#' KW_CONST TKN_IDENT ':' typespec?  '=' expr ';'
 
-decl_enum  = 'enum' TKN_IDENT '{' enum_items? '}'
-enum_items = enum_item (',' enum_item)* ','?
-enum_item  = TKN_IDENT ('=' expr)?
+decl_enum  = 'enum' TKN_IDENT (':' typespec)? '{' decl_enum_items? '}'
+decl_enum_items = decl_enum_item (',' decl_enum_item)* ','?
+decl_enum_item  = TKN_IDENT ('=' expr)?
 
 decl_union  = 'union' decl_aggregate_body
 decl_struct = 'struct' decl_aggregate_body
@@ -62,7 +62,7 @@ decl_func  = 'func' TKN_IDENT '(' param_list ')' (':' type_spec)? stmt_block
 param_list = param_item (',' param_item)*
 param_item = TKN_IDENT ':' type_spec 
 
-decl_typedef = 'typedef' TKN_IDENT '=' type_spec
+decl_typedef = 'typedef' TKN_IDENT '=' type_spec ';'
 
 
 stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
