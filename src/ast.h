@@ -347,6 +347,7 @@ typedef enum StmtKind {
 
 struct Stmt {
     StmtKind kind;
+    ProgRange range;
 
     union {
         StmtIf sif;
@@ -392,6 +393,7 @@ typedef struct DeclEnum {
 } DeclEnum;
 
 typedef struct DeclFuncParam {
+    ProgRange range;
     const char* name;
     TypeSpec* type;
     DLList list;

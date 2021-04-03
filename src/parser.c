@@ -211,8 +211,12 @@ static TypeSpec* parse_typespec_anon_aggregate(Parser* parser, const char* error
         bool bad_field = parse_fill_aggregate_body(parser, &body);
 
         if (!bad_field && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-            range.end = parser->ptoken.range.end;
-            type = typespec_aggregate_fn(parser->allocator, body.num_fields, &body.fields, range);
+            if (body.num_fields) {
+                range.end = parser->ptoken.range.end;
+                type = typespec_aggregate_fn(parser->allocator, body.num_fields, &body.fields, range);
+            } else {
+                parser_on_error(parser, "%s: must have at least one field", error_prefix);
+            }
         }
     }
 
@@ -894,8 +898,12 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
             bool bad_field = parse_fill_aggregate_body(parser, &body);
 
             if (!bad_field && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-                range.end = parser->ptoken.range.end;
-                decl = decl_aggregate_fn(parser->allocator, name, body.num_fields, &body.fields, range);
+                if (body.num_fields) {
+                    range.end = parser->ptoken.range.end;
+                    decl = decl_aggregate_fn(parser->allocator, name, body.num_fields, &body.fields, range);
+                } else {
+                    parser_on_error(parser, "%s: must have at least one field", error_prefix);
+                }
             }
         }
     }
@@ -973,8 +981,12 @@ static Decl* parse_decl_enum(Parser* parser)
             }
 
             if (!bad_item && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-                range.end = parser->ptoken.range.end;
-                decl = decl_enum(parser->allocator, name, type, num_items, &items, range);
+                if (num_items) {
+                    range.end = parser->ptoken.range.end;
+                    decl = decl_enum(parser->allocator, name, type, num_items, &items, range);
+                } else {
+                    parser_on_error(parser, "%s: must have at least one enumeration constant", error_prefix);
+                }
             }
         }
     }
