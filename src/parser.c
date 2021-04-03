@@ -251,7 +251,7 @@ static TypeSpec* parse_typespec_func(Parser* parser)
     if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
         size_t num_params = 0;
         DLList params = dllist_head_create(params);
-        bool failed_params = false;
+        bool bad_param = false;
 
         while (!is_token(parser, TKN_RPAREN) && !is_token(parser, TKN_EOF)) {
             TypeSpecParam* param = parse_typespec_func_param(parser);
@@ -260,7 +260,7 @@ static TypeSpec* parse_typespec_func(Parser* parser)
                 num_params += 1;
                 dllist_add(params.prev, &param->list);
             } else {
-                failed_params = true;
+                bad_param = true;
                 break;
             }
 
@@ -269,7 +269,7 @@ static TypeSpec* parse_typespec_func(Parser* parser)
             }
         }
 
-        if (!failed_params && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+        if (!bad_param && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
             TypeSpec* ret = NULL;
             bool bad_ret = false;
 
