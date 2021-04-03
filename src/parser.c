@@ -110,9 +110,12 @@ bool expect_token_next(Parser* parser, TokenKind kind, const char* error_prefix)
     if (matches) {
         next_token(parser);
     } else {
+        char tmp[32];
+
+        print_token(&parser->token, tmp, sizeof(tmp));
         parser_on_error(parser, "%s: wanted token `%s`, but got token `%s`.",
                         error_prefix ? error_prefix : "Unexpected token", token_kind_names[kind],
-                        token_kind_names[parser->token.kind]);
+                        tmp);
     }
 
     return matches;
@@ -125,9 +128,12 @@ bool expect_keyword_next(Parser* parser, Keyword kw, const char* error_prefix)
     if (matches) {
         next_token(parser);
     } else {
+        char tmp[32];
+
+        print_token(&parser->token, tmp, sizeof(tmp));
         parser_on_error(parser, "%s : wanted keyword `%s`, but got token `%s`",
                         error_prefix ? error_prefix : "Unexpected token", keywords[kw],
-                        token_kind_names[parser->token.kind]);
+                        tmp);
     }
 
     return matches;
@@ -231,7 +237,10 @@ static TypeSpec* parse_typespec_base(Parser* parser)
             type = enclosed_type;
         }
     } else {
-        parser_on_error(parser, "Unexpected token `%s` in type specification", token_kind_names[parser->token.kind]);
+        char tmp[32];
+
+        print_token(&parser->token, tmp, sizeof(tmp));
+        parser_on_error(parser, "Unexpected token `%s` in type specification", tmp);
     }
 
     return type;
@@ -457,13 +466,19 @@ static Expr* parse_expr_base(Parser* parser)
                 }
             }
         } else {
-            parser_on_error(parser, "Unexpected token `%s` after `#`", token_kind_names[parser->token.kind]);
+            char tmp[32];
+
+            print_token(&parser->token, tmp, sizeof(tmp));
+            parser_on_error(parser, "Unexpected token `%s` after `#`", tmp);
         }
     } else if (match_token_next(parser, TKN_IDENT)) {
         Token* token = &parser->ptoken;
         expr = expr_ident(parser->allocator, token->tident.value, token->range);
     } else {
-        parser_on_error(parser, "Unexpected token `%s` in expression", token_kind_names[parser->token.kind]);
+        char tmp[32];
+
+        print_token(&parser->token, tmp, sizeof(tmp));
+        parser_on_error(parser, "Unexpected token `%s` in expression", tmp);
     }
 
     return expr;
@@ -1018,7 +1033,10 @@ Decl* parse_decl(Parser* parser)
         } else if (is_keyword(parser, KW_TYPEDEF)) {
             decl = parse_decl_typedef(parser);
         } else {
-            parser_on_error(parser, "Unexpected token `%s` in `#` declaration", token_kind_names[parser->token.kind]);
+            char tmp[32];
+
+            print_token(&parser->token, tmp, sizeof(tmp));
+            parser_on_error(parser, "Unexpected token `%s` in `#` declaration", tmp);
         }
     } else if (is_keyword(parser, KW_ENUM)) {
         decl = parse_decl_enum(parser);
@@ -1029,7 +1047,10 @@ Decl* parse_decl(Parser* parser)
     } else if (is_token(parser, TKN_IDENT)) {
         decl = parse_decl_var(parser);
     } else {
-        parser_on_error(parser, "Unexpected token `%s` in declaration", token_kind_names[parser->token.kind]);
+        char tmp[32];
+
+        print_token(&parser->token, tmp, sizeof(tmp));
+        parser_on_error(parser, "Unexpected token `%s` in declaration", tmp);
 
         // NOTE: Not sure if this is right. Might want to skip to first of newline or semicolon?
         // Alternatively, just skip semicolon if it is the next token???

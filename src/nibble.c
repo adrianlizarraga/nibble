@@ -186,7 +186,7 @@ int main(void)
     //CompiledModule* module = compile_module("enum Kind :int8 { A = 0, B, C }", 0);
     //CompiledModule* module = compile_module("enum Kind :uint32 { A = 1 << 0, B = 1 << 1, C = 1 << 2, }", 0);
     //
-    //CompiledModule* module = compile_module("struct Vector2 {x: float32; y:float32;}", 0);
+    CompiledModule* module = compile_module("struct Vector2 {x: float32; y:float32;}", 0);
     //CompiledModule* module = compile_module("struct Vector2 {}", 0);
     //CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
 

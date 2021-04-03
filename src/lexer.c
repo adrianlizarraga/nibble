@@ -427,10 +427,10 @@ const char* token_kind_names[] = {
     [TKN_CAST] = ":>",
     [TKN_POUND] = "#",
 
-    [TKN_STR] = "<str>",
-    [TKN_IDENT] = "<identifier>",
-    [TKN_INT] = "<int>",
-    [TKN_FLOAT] = "<float>",
+    [TKN_STR] = "string literal",
+    [TKN_IDENT] = "identifier",
+    [TKN_INT] = "integer literal",
+    [TKN_FLOAT] = "floating-point literal",
 
     [TKN_PLUS] = "+",
     [TKN_MINUS] = "-", [TKN_ASTERISK] = "*",
@@ -468,23 +468,23 @@ const char* token_kind_names[] = {
 
 int print_token(Token* token, char* buf, size_t size)
 {
-    const char* prefix = token_kind_names[token->kind];
+    const char* kind_name = token_kind_names[token->kind];
 
     switch(token->kind) {
     case TKN_INT: {
-        return snprintf(buf, size, "%s: %lu", prefix, token->tint.value);
+        return snprintf(buf, size, "%lu", token->tint.value);
     } break;
     case TKN_FLOAT: {
-        return snprintf(buf, size, "%s: %.3f", prefix, token->tfloat.value);
+        return snprintf(buf, size, "%.3f", token->tfloat.value);
     } break;
     case TKN_STR: {
-        return snprintf(buf, size, "%s: \"%s\"", prefix, token->tstr.value);
+        return snprintf(buf, size, "\"%s\"", token->tstr.value);
     } break;
     case TKN_IDENT: {
-        return snprintf(buf, size, "%s: %s", prefix, token->tident.value);
+        return snprintf(buf, size, "%s", token->tident.value);
     } break;
     default:
-        return snprintf(buf, size, "%s", prefix);
+        return snprintf(buf, size, "%s", kind_name);
     }
 }
 
