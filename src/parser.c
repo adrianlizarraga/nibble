@@ -643,6 +643,55 @@ static Decl* parse_decl_var(Parser* parser)
     return decl;
 }
 
+static DeclAggregateItem* parse_decl_aggregate_item(Parser* parser)
+{
+    DeclAggregateItem* item = NULL;
+
+    return item;
+}
+
+static Decl* parse_decl_aggregate(Parser* parser, DeclKind kind)
+{
+    assert((is_keyword(parser, KW_STRUCT) && kind == DECL_STRUCT) ||
+           (is_keyword(parser, KW_UNION) && kind == DECL_UNION));
+    Decl* decl = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+
+    next_token(parser);
+
+    if (expect_token_next(parser, TKN_IDENT)) {
+        const char* name = parser->ptoken.tident.value;
+
+        if (expect_token_next(parser, TKN_LBRACE)) {
+            size_t num_items = 0;
+            DLList items = dllist_head_create(items);
+
+            while (!is_token(parser, TKN_RBRACE)) {
+                DeclAggregateItem* item = parse_decl_aggregate_item(parser);
+
+                if (item) {
+                    num_items += 1;
+                    dllist_add(items.prev, &item->list);
+                }
+            }
+
+            if (expect_token_next(parser, TKN_RBRACE)) {
+                range.end = parser->ptoken.range.end;
+                //decl = decl_aggregate(parser->allocator, DeclKind kind, name, num_items, &items, range);
+            }
+        }
+    }
+
+    if (!decl) {
+        // NOTE: Not sure if this is right.
+        skip_after_token(parser, TKN_RBRACE);
+
+        // TODO: Consider returning DECL_NONE instead of NULL on error.
+    }
+
+    return decl;
+}
+
 // decl_enum_item  = TKN_IDENT ('=' expr)?
 static DeclEnumItem* parse_decl_enum_item(Parser* parser)
 {
@@ -803,8 +852,8 @@ static Decl* parse_decl_const(Parser* parser)
 // decl = '#' decl_const
 //      | '#' decl_typedef
 //      | decl_enum
-//      | decl_union
 //      | decl_struct
+//      | decl_union
 //      | decl_func
 //      | decl_var
 Decl* parse_decl(Parser* parser)
@@ -821,6 +870,10 @@ Decl* parse_decl(Parser* parser)
         }
     } else if (is_keyword(parser, KW_ENUM)) {
         decl = parse_decl_enum(parser);
+    } else if (is_keyword(parser, KW_STRUCT)) {
+        decl = parse_decl_aggregate(parser, DECL_STRUCT);
+    } else if (is_keyword(parser, KW_UNION)) {
+        decl = parse_decl_aggregate(parser, DECL_UNION);
     } else if (is_token(parser, TKN_IDENT)) {
         decl = parse_decl_var(parser);
     } else {
