@@ -3,10 +3,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nibble.h"
 #include "allocator.h"
-#include "llist.h"
 #include "lexer.h"
+#include "llist.h"
+#include "nibble.h"
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -18,7 +18,6 @@ typedef struct Stmt Stmt;
 //////////////////////////////
 typedef struct TypeSpecParam {
     TypeSpec* type;
-    const char* name;
     DLList list;
 } TypeSpecParam;
 
@@ -71,7 +70,7 @@ TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range
 TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
 TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
-TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type, const char* name);
+TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type);
 TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range);
 
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type);
@@ -370,31 +369,16 @@ typedef struct DeclEnum {
     DLList items;
 } DeclEnum;
 
-typedef struct DeclAggregateFieldItem {
+typedef struct DeclAggregateField {
     const char* name;
     TypeSpec* type;
-} DeclAggregateFieldItem;
-
-typedef enum DeclAggregateItemKind {
-    DECL_AGGREGATE_ITEM_NONE,
-    DECL_AGGREGATE_ITEM_FIELD,
-    DECL_AGGREGATE_ITEM_SUBAGGREGATE,
-} DeclAggregateItemKind;
-
-typedef struct DeclAggregateItem {
-    DeclAggregateItemKind kind;
-
-    union {
-        DeclAggregateFieldItem field;
-        Decl* sub;
-    };
-
+    ProgRange range;
     DLList list;
-} DeclAggregateItem;
+} DeclAggregateField;
 
 typedef struct DeclAggregate {
-    size_t num_items;
-    DLList items;
+    size_t num_fields;
+    DLList fields;
 } DeclAggregate;
 
 typedef struct DeclFuncParam {
@@ -434,7 +418,8 @@ struct Decl {
         DeclVar dvar;
         DeclConst dconst;
         DeclEnum denum;
-        DeclAggregate daggregate;
+        DeclAggregate dstruct;
+        DeclAggregate dunion;
         DeclFunc dfunc;
         DeclTypedef dtypedef;
     };
@@ -443,6 +428,12 @@ struct Decl {
 Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
-Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, DLList* items, ProgRange range);
+Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, DLList* items,
+                ProgRange range);
 DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value);
+
+typedef Decl* DeclAggregateFunc(Allocator* alloc, const char* name, size_t num_fields, DLList* fields, ProgRange range);
+Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
+Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
+DeclAggregateField* decl_aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 #endif

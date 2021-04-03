@@ -55,11 +55,10 @@ TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params,
     return type;
 }
 
-TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type, const char* name)
+TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type)
 {
     TypeSpecParam* param = mem_allocate(allocator, sizeof(TypeSpecParam), DEFAULT_ALIGN, true);
     param->type = type;
-    param->name = name;
 
     return param;
 }
@@ -298,6 +297,36 @@ DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value
     return item;
 }
 
+Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range)
+{
+    Decl* decl = decl_alloc(allocator, DECL_STRUCT, name, range);
+    decl->dstruct.num_fields = num_fields;
+
+    dllist_replace(fields, &decl->dstruct.fields);
+
+    return decl;
+}
+
+Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range)
+{
+    Decl* decl = decl_alloc(allocator, DECL_UNION, name, range);
+    decl->dunion.num_fields = num_fields;
+
+    dllist_replace(fields, &decl->dunion.fields);
+
+    return decl;
+}
+
+DeclAggregateField* decl_aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
+{
+    DeclAggregateField* field = mem_allocate(allocator, sizeof(DeclAggregateField), DEFAULT_ALIGN, true);
+    field->name = name;
+    field->type = type;
+    field->range = range;
+
+    return field;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -323,12 +352,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
                 for (DLList* it = head->next; it != head; it = it->next) {
                     TypeSpecParam* param = dllist_entry(it, TypeSpecParam, list);
 
-                    if (param->name) {
-                        ftprint_char_array(&dstr, false, "%s=%s", param->name,
-                                           ftprint_typespec(allocator, param->type));
-                    } else {
-                        ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->type));
-                    }
+                    ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->type));
 
                     if (it->next != head) {
                         ftprint_char_array(&dstr, false, " ");
@@ -393,13 +417,19 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         } break;
         case EXPR_CALL: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(call %s ", ftprint_expr(allocator, expr->ecall.func));
+            ftprint_char_array(&dstr, false, "(call %s", ftprint_expr(allocator, expr->ecall.func));
 
             if (expr->ecall.num_args) {
+                ftprint_char_array(&dstr, false, " ");
+
                 DLList* head = &expr->ecall.args;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
                     ExprCallArg* arg = dllist_entry(it, ExprCallArg, list);
+
+                    if (arg->name) {
+                        ftprint_char_array(&dstr, false, "%s=", arg->name);
+                    }
 
                     ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, arg->expr));
 
@@ -532,7 +562,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         } break;
         case DECL_TYPEDEF: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(#typedef %s %s)", decl->name, 
+            ftprint_char_array(&dstr, false, "(#typedef %s %s)", decl->name,
                                ftprint_typespec(allocator, decl->dtypedef.type));
         } break;
         case DECL_ENUM: {
@@ -553,6 +583,29 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                     if (item->value) {
                         ftprint_char_array(&dstr, false, "=%s", ftprint_expr(allocator, item->value));
                     }
+
+                    if (it->next != head) {
+                        ftprint_char_array(&dstr, false, " ");
+                    }
+                }
+            }
+            ftprint_char_array(&dstr, false, ")");
+        } break;
+        case DECL_STRUCT:
+        case DECL_UNION: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == DECL_STRUCT ? "struct" : "union"), decl->name);
+
+            DeclAggregate* aggregate = decl->kind == DECL_STRUCT ? &decl->dstruct : &decl->dunion;
+
+            if (aggregate->num_fields) {
+                ftprint_char_array(&dstr, false, " ");
+                DLList* head = &aggregate->fields;
+
+                for (DLList* it = head->next; it != head; it = it->next) {
+                    DeclAggregateField* field = dllist_entry(it, DeclAggregateField, list);
+
+                    ftprint_char_array(&dstr, false, "(%s %s)", field->name, ftprint_typespec(allocator, field->type));
 
                     if (it->next != head) {
                         ftprint_char_array(&dstr, false, " ");

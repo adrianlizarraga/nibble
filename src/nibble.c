@@ -16,8 +16,6 @@
 #include "ast.c"
 #include "parser.c"
 
-#define MAX_ERRORS 20
-
 typedef struct NibbleCtx {
     HashMap ident_map;
     HashMap str_lit_map;
@@ -172,9 +170,11 @@ int main(void)
         exit(1);
     }
 
-    CompiledModule* module = compile_module("a : int = 1 + 2;", 0);
+    //CompiledModule* module = compile_module("a : int = 1 + 2;", 0);
     //CompiledModule* module = compile_module("a := 1 + 2;", 0);
     //CompiledModule* module = compile_module("a : int;", 0);
+    //CompiledModule* module = compile_module("a :;", 0);
+    //CompiledModule* module = compile_module("a;", 0);
     //
     //CompiledModule* module = compile_module("#const a : int = 1 + 2;", 0);
     //CompiledModule* module = compile_module("#const a := 1 + 2;", 0);
@@ -186,23 +186,26 @@ int main(void)
     //CompiledModule* module = compile_module("enum Kind :int8 { A = 0, B, C }", 0);
     //CompiledModule* module = compile_module("enum Kind :uint32 { A = 1 << 0, B = 1 << 1, C = 1 << 2, }", 0);
     //
+    //CompiledModule* module = compile_module("struct Vector2 {x: float32; y:float32;}", 0);
+    //CompiledModule* module = compile_module("struct Vector2 {}", 0);
+    //CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
 
-    //CompiledModule* module = compile_module("x > 3 ? -2*x : x - (3.14 + y.val) / z[2]", 0);
+    //CompiledModule* module = compile_module("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]", 0);
     //CompiledModule* module = compile_module("a ^ ^b", 0);
     //CompiledModule* module = compile_module("\"abc\"[0]", 0);
     //CompiledModule* module = compile_module("-x:>int*2", 0);
     //CompiledModule* module = compile_module("(-x):>int*2", 0);
-    //CompiledModule* module = compile_module("sizeof(1)", 0);
-    //CompiledModule* module = compile_module("(a :> int) + 2", 0);
+    //CompiledModule* module = compile_module("#sizeof[1)", 0);
+    //CompiledModule* module = compile_module("(a :> (int)) + 2", 0);
     //CompiledModule* module = compile_module("(a:>^int)", 0);
     //CompiledModule* module = compile_module("a:>^int", 0);
     //CompiledModule* module = compile_module("(a :> ^^int)[0]", 0);
     //CompiledModule* module = compile_module("a:>^^int[0]", 0);
-    //CompiledModule* module = compile_module("a:>func(int)=>int", 0);
+    //CompiledModule* module = compile_module("a:>func(int,)=>int", 0);
     //CompiledModule* module = compile_module("(a:>func(int)=>int)(10)", 0);
     //CompiledModule* module = compile_module("a:>func(int)=>int(10)", 0);
     //CompiledModule* module = compile_module("a:>func(int)=>int:>uint", 0);
-    //CompiledModule* module = compile_module("a:>func(int)=>int:>uint + 2", 0);
+    //CompiledModule* module = compile_module("a:>func(int, float32)=>int:>uint + 2", 0);
     //CompiledModule* module = compile_module("#sizeof(int)", 0);
     //CompiledModule* module = compile_module("#sizeof(const int)", 0);
     //CompiledModule* module = compile_module("#sizeof(^ const char)", 0);
@@ -215,7 +218,7 @@ int main(void)
     //CompiledModule* module = compile_module("3 + f(1+3, a*3, -4.3, x ? a : b)", 0);
     //CompiledModule* module = compile_module("a[1 * 3", 0);
     //CompiledModule* module = compile_module("{x = 1, y = 2 :Vector2}", 0);
-    //CompiledModule* module = compile_module("{x = 1, y = 2.0:>int :Vector2}", 0);
+    //CompiledModule* module = compile_module("{1, y = 2.0:>int :Vector2}", 0);
     //CompiledModule* module = compile_module("{[0] = 1, [1] = 2 :[]int}", 0);
     //CompiledModule* module = compile_module("{[0] = 1, [1] = 2 :[1]int}", 0);
     //CompiledModule* module = compile_module("1", 0);

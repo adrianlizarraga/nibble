@@ -32,8 +32,8 @@ bool is_token_op(Parser* parser, uint8_t precedence);
 bool is_keyword(Parser* parser, Keyword kw);
 bool match_token_next(Parser* parser, TokenKind kind);
 bool match_keyword_next(Parser* parser, Keyword kw);
-bool expect_token_next(Parser* parser, TokenKind kind);
-bool expect_keyword_next(Parser* parser, Keyword kw);
+bool expect_token_next(Parser* parser, TokenKind kind, const char* error_prefix);
+bool expect_keyword_next(Parser* parser, Keyword kw, const char* error_prefix);
 bool skip_after_token(Parser* parser, TokenKind kind);
 
 

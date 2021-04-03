@@ -1,12 +1,18 @@
 typespec       = typespec_ref
 typespec_ref   = ('^' | '[' expr? ']' | KW_CONST) typespec_ref
                | typespec_base
-typespec_base  = 'func' '(' param_type_spec_list? ')' ('=>' type_spec)?
+typespec_base  = typespec_func
+               | typespec_anon_struct
+               | typespec_anon_union
                | TKN_IDENT
                | '(' type_spec ')'
 
-param_type_spec_list = param_type_spec (',' param_type_spec)*
-param_type_spec = (TKN_IDENT :)? type_spec 
+typespec_func = 'func' '(' typespec_func_param_list? ')' ('=>' typespec)?
+typespec_func_param_list = typespec_func_param (',' typespec_func_param)*
+typespec_func_param = typespec 
+
+typespec_anon_struct = 'struct' '{' decl_aggregate_item* '}'
+typespec_anon_union = 'union' '{' decl_aggregate_item* '}'
 
 expr = expr_ternary
 expr_ternary  = expr_or ('?' expr_ternary ':' expr_ternary)?
@@ -54,9 +60,8 @@ decl_enum_item  = TKN_IDENT ('=' expr)?
 decl_union  = 'union' decl_aggregate_body
 decl_struct = 'struct' decl_aggregate_body
 
-decl_aggregate_body  = TKN_IDENT '{' aggregate_item* '}'
-decl_aggregate_item  = identifier_list ':' type_spec ';'
-identifier_list = TKN_IDENT (',' TKN_IDENT)*
+decl_aggregate_body  = TKN_IDENT '{' decl_aggregate_field* '}'
+decl_aggregate_field = TKN_IDENT ':' type_spec ';'
 
 decl_func  = 'func' TKN_IDENT '(' param_list ')' (':' type_spec)? stmt_block
 param_list = param_item (',' param_item)*
