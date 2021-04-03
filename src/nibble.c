@@ -186,8 +186,11 @@ int main(void)
     //CompiledModule* module = compile_module("enum Kind :int8 { A = 0, B, C }", 0);
     //CompiledModule* module = compile_module("enum Kind :uint32 { A = 1 << 0, B = 1 << 1, C = 1 << 2, }", 0);
     //
-    CompiledModule* module = compile_module("struct Vector2 {x: float32; y:float32;}", 0);
+    //CompiledModule* module = compile_module("struct Vector2 {x: float32; y:float32;}", 0);
     //CompiledModule* module = compile_module("struct Vector2 {}", 0);
+    //CompiledModule* module = compile_module("struct Vector2 {u:union{a:int;b:int;};}", 0);
+    //CompiledModule* module = compile_module("struct Vector2 {s:struct {a:int;b:int;};}", 0);
+    CompiledModule* module = compile_module("union Vector2 {s:struct {a:int;b:int;}; z:^int;}", 0);
     //CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
 
     //CompiledModule* module = compile_module("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]", 0);
@@ -212,6 +215,8 @@ int main(void)
     //CompiledModule* module = compile_module("#sizeof([16] ^int)", 0);
     //CompiledModule* module = compile_module("#sizeof([16] (func(int)=>int))", 0);
     //CompiledModule* module = compile_module("#sizeof(func(^^int)=>^int)", 0);
+    //CompiledModule* module = compile_module("#sizeof(struct {x:int; z:int;})", 0);
+    //CompiledModule* module = compile_module("#sizeof(union {x:int; z:int;})", 0);
     //CompiledModule* module = compile_module("#typeof(1 + 2)", 0);
     //CompiledModule* module = compile_module("#typeof(-x:>int*2)", 0);
     //CompiledModule* module = compile_module("f(1,2)", 0);

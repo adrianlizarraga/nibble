@@ -63,6 +63,26 @@ TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type)
     return param;
 }
 
+TypeSpec* typespec_anon_struct(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range)
+{
+    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_ANON_STRUCT, range);
+    type->as_struct.num_fields = num_fields;
+
+    dllist_replace(fields, &type->as_struct.fields);
+
+    return type;
+}
+
+TypeSpec* typespec_anon_union(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range)
+{
+    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_ANON_UNION, range);
+    type->as_union.num_fields = num_fields;
+
+    dllist_replace(fields, &type->as_union.fields);
+
+    return type;
+}
+
 static Expr* expr_alloc(Allocator* allocator, ExprKind kind, ProgRange range)
 {
     Expr* expr = mem_allocate(allocator, sizeof(Expr), DEFAULT_ALIGN, true);
@@ -317,9 +337,9 @@ Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLLi
     return decl;
 }
 
-DeclAggregateField* decl_aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
+AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
 {
-    DeclAggregateField* field = mem_allocate(allocator, sizeof(DeclAggregateField), DEFAULT_ALIGN, true);
+    AggregateField* field = mem_allocate(allocator, sizeof(AggregateField), DEFAULT_ALIGN, true);
     field->name = name;
     field->type = type;
     field->range = range;
@@ -360,6 +380,31 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
                 }
             }
 
+            ftprint_char_array(&dstr, false, ")");
+        } break;
+        case TYPE_SPEC_ANON_STRUCT:
+        case TYPE_SPEC_ANON_UNION: {
+            dstr = array_create(allocator, char, 32);
+            bool is_struct = type->kind == TYPE_SPEC_ANON_STRUCT;
+
+            ftprint_char_array(&dstr, false, "(:%s", (is_struct ? "struct" : "union"));
+
+            AggregateBody* aggregate = is_struct ? &type->as_struct : &type->as_union;
+
+            if (aggregate->num_fields) {
+                ftprint_char_array(&dstr, false, " ");
+                DLList* head = &aggregate->fields;
+
+                for (DLList* it = head->next; it != head; it = it->next) {
+                    AggregateField* field = dllist_entry(it, AggregateField, list);
+
+                    ftprint_char_array(&dstr, false, "(%s %s)", field->name, ftprint_typespec(allocator, field->type));
+
+                    if (it->next != head) {
+                        ftprint_char_array(&dstr, false, " ");
+                    }
+                }
+            }
             ftprint_char_array(&dstr, false, ")");
         } break;
         case TYPE_SPEC_PTR: {
@@ -596,14 +641,14 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == DECL_STRUCT ? "struct" : "union"), decl->name);
 
-            DeclAggregate* aggregate = decl->kind == DECL_STRUCT ? &decl->dstruct : &decl->dunion;
+            AggregateBody* aggregate = decl->kind == DECL_STRUCT ? &decl->dstruct : &decl->dunion;
 
             if (aggregate->num_fields) {
                 ftprint_char_array(&dstr, false, " ");
                 DLList* head = &aggregate->fields;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
-                    DeclAggregateField* field = dllist_entry(it, DeclAggregateField, list);
+                    AggregateField* field = dllist_entry(it, AggregateField, list);
 
                     ftprint_char_array(&dstr, false, "(%s %s)", field->name, ftprint_typespec(allocator, field->type));
 
