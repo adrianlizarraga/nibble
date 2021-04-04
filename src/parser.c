@@ -78,7 +78,7 @@ bool is_token_op(Parser* parser, uint8_t precedence)
 
 bool is_keyword(Parser* parser, Keyword kw)
 {
-    return (parser->token.kind == TKN_IDENT) && (parser->token.tident.value == keywords[kw]);
+    return (parser->token.kind == TKN_IDENT) && (parser->token.as_ident.value == keywords[kw]);
 }
 
 bool match_token_next(Parser* parser, TokenKind kind)
@@ -94,7 +94,7 @@ bool match_token_next(Parser* parser, TokenKind kind)
 
 bool match_keyword_next(Parser* parser, Keyword kw)
 {
-    bool matches = (parser->token.kind == TKN_IDENT) && (parser->token.tident.value == keywords[kw]);
+    bool matches = (parser->token.kind == TKN_IDENT) && (parser->token.as_ident.value == keywords[kw]);
 
     if (matches) {
         next_token(parser);
@@ -122,7 +122,7 @@ bool expect_token_next(Parser* parser, TokenKind kind, const char* error_prefix)
 
 bool expect_keyword_next(Parser* parser, Keyword kw, const char* error_prefix)
 {
-    bool matches = (parser->token.kind == TKN_IDENT) && (parser->token.tident.value == keywords[kw]);
+    bool matches = (parser->token.kind == TKN_IDENT) && (parser->token.as_ident.value == keywords[kw]);
 
     if (matches) {
         next_token(parser);
@@ -157,7 +157,7 @@ static AggregateField* parse_aggregate_field(Parser* parser)
     const char* error_prefix = "Failed to parse field";
 
     if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.tident.value;
+        const char* name = parser->ptoken.as_ident.value;
         ProgRange range = {.start = parser->ptoken.range.start};
 
         if (expect_token_next(parser, TKN_COLON, error_prefix)) {
@@ -304,7 +304,7 @@ static TypeSpec* parse_typespec_base(Parser* parser)
     } else if (is_keyword(parser, KW_UNION)) {
         type = parse_typespec_anon_aggregate(parser, "Failed to parse anonymous union", typespec_anon_union);
     } else if (match_token_next(parser, TKN_IDENT)) {
-        type = typespec_ident(parser->allocator, parser->ptoken.tident.value, parser->ptoken.range);
+        type = typespec_ident(parser->allocator, parser->ptoken.as_ident.value, parser->ptoken.range);
     } else if (match_token_next(parser, TKN_LPAREN)) {
         TypeSpec* enclosed_type = parse_typespec(parser);
 
@@ -500,13 +500,13 @@ static Expr* parse_expr_base(Parser* parser)
 
     if (match_token_next(parser, TKN_INT)) {
         Token* token = &parser->ptoken;
-        expr = expr_int(parser->allocator, token->tint.value, token->range);
+        expr = expr_int(parser->allocator, token->as_int.value, token->range);
     } else if (match_token_next(parser, TKN_FLOAT)) {
         Token* token = &parser->ptoken;
-        expr = expr_float(parser->allocator, token->tfloat.value, token->range);
+        expr = expr_float(parser->allocator, token->as_float.value, token->range);
     } else if (match_token_next(parser, TKN_STR)) {
         Token* token = &parser->ptoken;
-        expr = expr_str(parser->allocator, token->tstr.value, token->range);
+        expr = expr_str(parser->allocator, token->as_str.value, token->range);
     } else if (match_token_next(parser, TKN_LPAREN)) {
         Expr* enclosed = parse_expr(parser);
 
@@ -548,7 +548,7 @@ static Expr* parse_expr_base(Parser* parser)
         }
     } else if (match_token_next(parser, TKN_IDENT)) {
         Token* token = &parser->ptoken;
-        expr = expr_ident(parser->allocator, token->tident.value, token->range);
+        expr = expr_ident(parser->allocator, token->as_ident.value, token->range);
     } else {
         char tmp[32];
 
@@ -598,7 +598,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             //
 
             if (expect_token_next(parser, TKN_IDENT, "Failed to parse field access")) {
-                const char* field = parser->ptoken.tident.value;
+                const char* field = parser->ptoken.as_ident.value;
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
                 expr = expr_field(parser->allocator, expr, field, range);
             } else {
@@ -844,7 +844,7 @@ static Decl* parse_decl_var(Parser* parser)
     assert(is_token(parser, TKN_IDENT));
     Decl* decl = NULL;
     ProgRange range = {.start = parser->token.range.start};
-    const char* name = parser->token.tident.value;
+    const char* name = parser->token.as_ident.value;
     const char* error_prefix = "Failed to parse variable declaration";
 
     next_token(parser);
@@ -891,7 +891,7 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
     next_token(parser);
 
     if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.tident.value;
+        const char* name = parser->ptoken.as_ident.value;
 
         if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
             AggregateBody body = {0};
@@ -917,7 +917,7 @@ static DeclEnumItem* parse_decl_enum_item(Parser* parser)
     DeclEnumItem* item = NULL;
 
     if (expect_token_next(parser, TKN_IDENT, "Failed to parse enum value")) {
-        const char* name = parser->ptoken.tident.value;
+        const char* name = parser->ptoken.as_ident.value;
         Expr* value = NULL;
         bool bad_value = false;
 
@@ -950,7 +950,7 @@ static Decl* parse_decl_enum(Parser* parser)
     next_token(parser);
 
     if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.tident.value;
+        const char* name = parser->ptoken.as_ident.value;
         TypeSpec* type = NULL;
         bool bad_type = false;
 
@@ -1007,7 +1007,7 @@ static Decl* parse_decl_typedef(Parser* parser)
     next_token(parser);
 
     if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.tident.value;
+        const char* name = parser->ptoken.as_ident.value;
 
         if (expect_token_next(parser, TKN_ASSIGN, error_prefix)) {
             TypeSpec* type = parse_typespec(parser);
@@ -1036,7 +1036,7 @@ static Decl* parse_decl_const(Parser* parser)
     next_token(parser);
 
     if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.tident.value;
+        const char* name = parser->ptoken.as_ident.value;
 
         if (expect_token_next(parser, TKN_COLON, error_prefix)) {
             TypeSpec* type = NULL;

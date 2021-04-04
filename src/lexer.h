@@ -98,10 +98,10 @@ typedef struct Token {
     ProgRange range;
 
     union {
-        TokenInt tint;
-        TokenFloat tfloat;
-        TokenIdent tident;
-        TokenStr tstr;
+        TokenInt as_int;
+        TokenFloat as_float;
+        TokenIdent as_ident;
+        TokenStr as_str;
     };
 } Token;
 

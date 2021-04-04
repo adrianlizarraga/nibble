@@ -472,16 +472,16 @@ int print_token(Token* token, char* buf, size_t size)
 
     switch(token->kind) {
     case TKN_INT: {
-        return snprintf(buf, size, "%lu", token->tint.value);
+        return snprintf(buf, size, "%lu", token->as_int.value);
     } break;
     case TKN_FLOAT: {
-        return snprintf(buf, size, "%.3f", token->tfloat.value);
+        return snprintf(buf, size, "%.3f", token->as_float.value);
     } break;
     case TKN_STR: {
-        return snprintf(buf, size, "\"%s\"", token->tstr.value);
+        return snprintf(buf, size, "\"%s\"", token->as_str.value);
     } break;
     case TKN_IDENT: {
-        return snprintf(buf, size, "%s", token->tident.value);
+        return snprintf(buf, size, "%s", token->as_ident.value);
     } break;
     default:
         return snprintf(buf, size, "%s", kind_name);
@@ -697,7 +697,7 @@ top:
     case '.': {
         if (is_dec_digit(lexer->at[1])) {
             token.kind = TKN_FLOAT;
-            token.tfloat = scan_float(lexer);
+            token.as_float = scan_float(lexer);
         } else {
             token.kind = TKN_DOT;
             lexer->at++;
@@ -713,19 +713,19 @@ top:
 
         if ((*p == '.') || (*p == 'e') || (*p == 'E')) {
             token.kind = TKN_FLOAT;
-            token.tfloat = scan_float(lexer);
+            token.as_float = scan_float(lexer);
         } else {
             token.kind = TKN_INT;
-            token.tint = scan_int(lexer);
+            token.as_int = scan_int(lexer);
         }
     } break;
     case '\'': {
         token.kind = TKN_INT;
-        token.tint = scan_char(lexer);
+        token.as_int = scan_char(lexer);
     } break;
     case '"': {
         token.kind = TKN_STR;
-        token.tstr = scan_string(lexer);
+        token.as_str = scan_string(lexer);
     } break;
     case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j': case 'k':
     case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u': case 'v':
@@ -734,7 +734,7 @@ top:
     case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V':
     case 'W': case 'X': case 'Y': case 'Z': case '_': {
         token.kind = TKN_IDENT;
-        token.tident = scan_ident(lexer);
+        token.as_ident = scan_ident(lexer);
     } break;
     case '\0': {
         token.kind = TKN_EOF;
