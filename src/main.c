@@ -170,6 +170,9 @@ int main(void)
         exit(1);
     }
 
+    ftprint_out("sizeof(TypeSpec) = %lu, sizeof(Expr) = %lu, sizeof(Stmt) = %lu, sizeof(Decl) = %lu, sizeof(StmtIf) = %lu, offsetof(Stmt, as_if) = %lu\n",
+                sizeof(TypeSpec), sizeof(Expr), sizeof(Stmt), sizeof(Decl), sizeof(StmtIf), offsetof(Stmt, as_if));
+
     // CompiledModule* module = compile_module("a : int = 1 + 2;", 0);
     // CompiledModule* module = compile_module("a := 1 + 2;", 0);
     // CompiledModule* module = compile_module("a : int;", 0);

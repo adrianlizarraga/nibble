@@ -256,7 +256,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr);
 /////////////////////////////
 typedef struct StmtBlock {
     size_t num_stmts;
-    Stmt** stmts;
+    DLList stmts;
 } StmtBlock;
 
 typedef struct StmtCondBlock {
@@ -268,7 +268,7 @@ typedef struct StmtIf {
     StmtCondBlock if_;
 
     size_t num_elifs;
-    StmtCondBlock* elifs;
+    DLList elifs; // StmtCondBlocks
 
     StmtBlock else_;
 } StmtIf;
@@ -285,13 +285,14 @@ typedef struct StmtSwitchCase {
     Expr* end;
 
     size_t num_stmts;
-    Stmt** stmts;
+    DLList stmts;
+    DLList list;
 } StmtSwitchCase;
 
 typedef struct StmtSwitch {
     Expr* expr;
     size_t num_cases;
-    StmtSwitchCase* cases;
+    DLList cases;
 } StmtSwitch;
 
 typedef struct StmtReturn {
@@ -348,6 +349,7 @@ typedef enum StmtKind {
 struct Stmt {
     StmtKind kind;
     ProgRange range;
+    DLList list;
 
     union {
         StmtIf as_if;
