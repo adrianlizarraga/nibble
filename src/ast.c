@@ -95,9 +95,9 @@ Expr* expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else
 {
     ProgRange range = {.start = cond->range.start, .end = else_expr->range.end};
     Expr* expr = expr_alloc(allocator, EXPR_TERNARY, range);
-    expr->eternary.cond = cond;
-    expr->eternary.then_expr = then_expr;
-    expr->eternary.else_expr = else_expr;
+    expr->as_ternary.cond = cond;
+    expr->as_ternary.then_expr = then_expr;
+    expr->as_ternary.else_expr = else_expr;
 
     return expr;
 }
@@ -106,9 +106,9 @@ Expr* expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right)
 {
     ProgRange range = {.start = left->range.start, .end = right->range.end};
     Expr* expr = expr_alloc(allocator, EXPR_BINARY, range);
-    expr->ebinary.op = op;
-    expr->ebinary.left = left;
-    expr->ebinary.right = right;
+    expr->as_binary.op = op;
+    expr->as_binary.left = left;
+    expr->as_binary.right = right;
 
     return expr;
 }
@@ -116,8 +116,8 @@ Expr* expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right)
 Expr* expr_unary(Allocator* allocator, TokenKind op, Expr* unary_expr, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_UNARY, range);
-    expr->eunary.op = op;
-    expr->eunary.expr = unary_expr;
+    expr->as_unary.op = op;
+    expr->as_unary.expr = unary_expr;
 
     return expr;
 }
@@ -125,8 +125,8 @@ Expr* expr_unary(Allocator* allocator, TokenKind op, Expr* unary_expr, ProgRange
 Expr* expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_FIELD, range);
-    expr->efield.object = object;
-    expr->efield.field = field;
+    expr->as_field.object = object;
+    expr->as_field.field = field;
 
     return expr;
 }
@@ -134,8 +134,8 @@ Expr* expr_field(Allocator* allocator, Expr* object, const char* field, ProgRang
 Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_INDEX, range);
-    expr->eindex.array = array;
-    expr->eindex.index = index;
+    expr->as_index.array = array;
+    expr->as_index.index = index;
 
     return expr;
 }
@@ -143,10 +143,10 @@ Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range
 Expr* expr_call(Allocator* allocator, Expr* func, size_t num_args, DLList* args, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_CALL, range);
-    expr->ecall.func = func;
-    expr->ecall.num_args = num_args;
+    expr->as_call.func = func;
+    expr->as_call.num_args = num_args;
 
-    dllist_replace(args, &expr->ecall.args);
+    dllist_replace(args, &expr->as_call.args);
 
     return expr;
 }
@@ -163,7 +163,7 @@ ExprCallArg* expr_call_arg(Allocator* allocator, Expr* expr, const char* name)
 Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_INT, range);
-    expr->eint.value = value;
+    expr->as_int.value = value;
 
     return expr;
 }
@@ -171,7 +171,7 @@ Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range)
 Expr* expr_float(Allocator* allocator, double value, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_FLOAT, range);
-    expr->efloat.value = value;
+    expr->as_float.value = value;
 
     return expr;
 }
@@ -179,7 +179,7 @@ Expr* expr_float(Allocator* allocator, double value, ProgRange range)
 Expr* expr_str(Allocator* allocator, const char* value, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_STR, range);
-    expr->estr.value = value;
+    expr->as_str.value = value;
 
     return expr;
 }
@@ -187,7 +187,7 @@ Expr* expr_str(Allocator* allocator, const char* value, ProgRange range)
 Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_IDENT, range);
-    expr->eident.name = name;
+    expr->as_ident.name = name;
 
     return expr;
 }
@@ -195,8 +195,8 @@ Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range)
 Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_CAST, range);
-    expr->ecast.type = type;
-    expr->ecast.expr = arg;
+    expr->as_cast.type = type;
+    expr->as_cast.expr = arg;
 
     return expr;
 }
@@ -204,7 +204,7 @@ Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range
 Expr* expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_SIZEOF, range);
-    expr->esizeof.type = type;
+    expr->as_sizeof.type = type;
 
     return expr;
 }
@@ -212,7 +212,7 @@ Expr* expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range)
 Expr* expr_typeof(Allocator* allocator, Expr* arg, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_TYPEOF, range);
-    expr->etypeof.expr = arg;
+    expr->as_typeof.expr = arg;
 
     return expr;
 }
@@ -252,10 +252,10 @@ ExprInitializer* expr_index_initializer(Allocator* allocator, Expr* index, Expr*
 Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, DLList* initzers, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_COMPOUND_LIT, range);
-    expr->ecompound.type = type;
-    expr->ecompound.num_initzers = num_initzers;
+    expr->as_compound.type = type;
+    expr->as_compound.num_initzers = num_initzers;
 
-    dllist_replace(initzers, &expr->ecompound.initzers);
+    dllist_replace(initzers, &expr->as_compound.initzers);
 
     return expr;
 }
@@ -445,29 +445,29 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         } break;
         case EXPR_TERNARY: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(? %s %s %s)", ftprint_expr(allocator, expr->eternary.cond),
-                               ftprint_expr(allocator, expr->eternary.then_expr),
-                               ftprint_expr(allocator, expr->eternary.else_expr));
+            ftprint_char_array(&dstr, false, "(? %s %s %s)", ftprint_expr(allocator, expr->as_ternary.cond),
+                               ftprint_expr(allocator, expr->as_ternary.then_expr),
+                               ftprint_expr(allocator, expr->as_ternary.else_expr));
         } break;
         case EXPR_BINARY: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(%s %s %s)", token_kind_names[expr->ebinary.op],
-                               ftprint_expr(allocator, expr->ebinary.left),
-                               ftprint_expr(allocator, expr->ebinary.right));
+            ftprint_char_array(&dstr, false, "(%s %s %s)", token_kind_names[expr->as_binary.op],
+                               ftprint_expr(allocator, expr->as_binary.left),
+                               ftprint_expr(allocator, expr->as_binary.right));
         } break;
         case EXPR_UNARY: {
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(%s %s)", token_kind_names[expr->eunary.op],
-                               ftprint_expr(allocator, expr->eunary.expr));
+            ftprint_char_array(&dstr, false, "(%s %s)", token_kind_names[expr->as_unary.op],
+                               ftprint_expr(allocator, expr->as_unary.expr));
         } break;
         case EXPR_CALL: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(call %s", ftprint_expr(allocator, expr->ecall.func));
+            ftprint_char_array(&dstr, false, "(call %s", ftprint_expr(allocator, expr->as_call.func));
 
-            if (expr->ecall.num_args) {
+            if (expr->as_call.num_args) {
                 ftprint_char_array(&dstr, false, " ");
 
-                DLList* head = &expr->ecall.args;
+                DLList* head = &expr->as_call.args;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
                     ExprCallArg* arg = dllist_entry(it, ExprCallArg, list);
@@ -487,54 +487,54 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         } break;
         case EXPR_INDEX: {
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(arr_index %s %s)", ftprint_expr(allocator, expr->eindex.array),
-                               ftprint_expr(allocator, expr->eindex.index));
+            ftprint_char_array(&dstr, false, "(arr_index %s %s)", ftprint_expr(allocator, expr->as_index.array),
+                               ftprint_expr(allocator, expr->as_index.index));
         } break;
         case EXPR_FIELD: {
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(obj_field %s .%s)", ftprint_expr(allocator, expr->efield.object),
-                               expr->efield.field);
+            ftprint_char_array(&dstr, false, "(obj_field %s .%s)", ftprint_expr(allocator, expr->as_field.object),
+                               expr->as_field.field);
         } break;
         case EXPR_INT: {
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "%lu", expr->eint.value);
+            ftprint_char_array(&dstr, false, "%lu", expr->as_int.value);
         } break;
         case EXPR_FLOAT: {
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "%lf", expr->efloat.value);
+            ftprint_char_array(&dstr, false, "%lf", expr->as_float.value);
         } break;
         case EXPR_STR: {
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "\"%s\"", expr->estr.value);
+            ftprint_char_array(&dstr, false, "\"%s\"", expr->as_str.value);
         } break;
         case EXPR_IDENT: {
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "%s", expr->eident.name);
+            ftprint_char_array(&dstr, false, "%s", expr->as_ident.name);
         } break;
         case EXPR_CAST: {
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, expr->ecast.type),
-                               ftprint_expr(allocator, expr->ecast.expr));
+            ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, expr->as_cast.type),
+                               ftprint_expr(allocator, expr->as_cast.expr));
         } break;
         case EXPR_SIZEOF: {
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, expr->esizeof.type));
+            ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, expr->as_sizeof.type));
         } break;
         case EXPR_TYPEOF: {
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(typeof %s)", ftprint_expr(allocator, expr->etypeof.expr));
+            ftprint_char_array(&dstr, false, "(typeof %s)", ftprint_expr(allocator, expr->as_typeof.expr));
         } break;
         case EXPR_COMPOUND_LIT: {
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(compound ");
 
-            if (expr->ecompound.type) {
-                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, expr->ecompound.type));
+            if (expr->as_compound.type) {
+                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, expr->as_compound.type));
             }
 
             ftprint_char_array(&dstr, false, "{");
-            if (expr->ecompound.num_initzers) {
-                DLList* head = &expr->ecompound.initzers;
+            if (expr->as_compound.num_initzers) {
+                DLList* head = &expr->as_compound.initzers;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
                     ExprInitializer* init = dllist_entry(it, ExprInitializer, list);

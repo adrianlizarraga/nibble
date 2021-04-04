@@ -119,7 +119,7 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
         print_token(&parser.token, tkn_buf, sizeof(tkn_buf));
         ftprint_out("%s\n", tkn_buf);
     }
-#elif 0
+#elif 1
     next_token(&parser);
     Expr* expr = parse_expr(&parser);
 
@@ -193,9 +193,9 @@ int main(void)
     // CompiledModule* module = compile_module("struct Vector2 {s:struct {a:int;b:int;};}", 0);
     // CompiledModule* module = compile_module("union Vector2 {s:struct {a:int;b:int;}; z:^int;}", 0);
     // CompiledModule* module = compile_module("struct Vector2 {s:struct {};}", 0);
-    CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
+    // CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
 
-    // CompiledModule* module = compile_module("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]", 0);
+    CompiledModule* module = compile_module("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]", 0);
     // CompiledModule* module = compile_module("a ^ ^b", 0);
     // CompiledModule* module = compile_module("\"abc\"[0]", 0);
     // CompiledModule* module = compile_module("-x:>int*2", 0);

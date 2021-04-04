@@ -214,20 +214,20 @@ struct Expr {
     ProgRange range;
 
     union {
-        ExprTernary eternary;
-        ExprBinary ebinary;
-        ExprUnary eunary;
-        ExprCall ecall;
-        ExprIndex eindex;
-        ExprField efield;
-        ExprInt eint;
-        ExprFloat efloat;
-        ExprStr estr;
-        ExprIdent eident;
-        ExprCast ecast;
-        ExprSizeof esizeof;
-        ExprTypeof etypeof;
-        ExprCompoundLit ecompound;
+        ExprTernary as_ternary;
+        ExprBinary as_binary;
+        ExprUnary as_unary;
+        ExprCall as_call;
+        ExprIndex as_index;
+        ExprField as_field;
+        ExprInt as_int;
+        ExprFloat as_float;
+        ExprStr as_str;
+        ExprIdent as_ident;
+        ExprCast as_cast;
+        ExprSizeof as_sizeof;
+        ExprTypeof as_typeof;
+        ExprCompoundLit as_compound;
     };
 };
 
