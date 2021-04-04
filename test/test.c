@@ -59,35 +59,35 @@ const char* intern_ident(const char* str, size_t len)
 #define TKN_TEST_POS(tk, tp, a, b)                                                                                     \
     do {                                                                                                               \
         assert((tk.kind == tp));                                                                                       \
-        assert((tk.range.start == a));                                                                                       \
-        assert((tk.range.end == b));                                                                                         \
+        assert((tk.range.start == a));                                                                                 \
+        assert((tk.range.end == b));                                                                                   \
     } while (0)
 #define TKN_TEST_INT(tk, b, v)                                                                                         \
     do {                                                                                                               \
         assert((tk.kind == TKN_INT));                                                                                  \
-        assert((tk.tint.rep == b));                                                                                    \
-        assert((tk.tint.value == v));                                                                                  \
+        assert((tk.as_int.rep == b));                                                                                  \
+        assert((tk.as_int.value == v));                                                                                \
     } while (0)
 #define TKN_TEST_FLOAT(tk, v)                                                                                          \
     do {                                                                                                               \
         assert((tk.kind == TKN_FLOAT));                                                                                \
-        assert((tk.tfloat.value == v));                                                                                \
+        assert((tk.as_float.value == v));                                                                              \
     } while (0)
 #define TKN_TEST_CHAR(tk, v)                                                                                           \
     do {                                                                                                               \
         assert((tk.kind == TKN_INT));                                                                                  \
-        assert((tk.tint.rep == TKN_INT_CHAR));                                                                         \
-        assert((tk.tint.value == v));                                                                                  \
+        assert((tk.as_int.rep == TKN_INT_CHAR));                                                                       \
+        assert((tk.as_int.value == v));                                                                                \
     } while (0)
 #define TKN_TEST_STR(tk, v)                                                                                            \
     do {                                                                                                               \
         assert((tk.kind == TKN_STR));                                                                                  \
-        assert(strcmp(tk.tstr.value, v) == 0);                                                                         \
+        assert(strcmp(tk.as_str.value, v) == 0);                                                                       \
     } while (0)
 #define TKN_TEST_IDEN(tk, v)                                                                                           \
     do {                                                                                                               \
-        assert((tk.kind == TKN_IDENT));                                                                           \
-        assert(strcmp(tk.tident.value, v) == 0);                                                                  \
+        assert((tk.kind == TKN_IDENT));                                                                                \
+        assert(strcmp(tk.as_ident.value, v) == 0);                                                                     \
     } while (0)
 
 static void test_lexer(void)
@@ -96,7 +96,8 @@ static void test_lexer(void)
     {
         unsigned int i = 10;
         Token token = {0};
-        Lexer lexer = lexer_create("(+[]-*%&|^<>) && || >> << == >= <= = += -= *= /= &= |= ^= %= \n  //++--\n{;:,./}", i, NULL);
+        Lexer lexer = lexer_create(
+            "(+[]-*%&|^<>#) && || => :> >> << == >= <= = += -= *= /= &= |= ^= %= \n  //++--\n{;:,./}", i, NULL);
 
         token = scan_token(&lexer);
         TKN_TEST_POS(token, TKN_LPAREN, i, ++i);
@@ -135,6 +136,9 @@ static void test_lexer(void)
         TKN_TEST_POS(token, TKN_GT, i, ++i);
 
         token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_POUND, i, ++i);
+
+        token = scan_token(&lexer);
         TKN_TEST_POS(token, TKN_RPAREN, i, ++i);
 
         i++;
@@ -144,6 +148,14 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         TKN_TEST_POS(token, TKN_LOGIC_OR, i, i + 2);
+        i += 3;
+
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_ARROW, i, i + 2);
+        i += 3;
+
+        token = scan_token(&lexer);
+        TKN_TEST_POS(token, TKN_CAST, i, i + 2);
         i += 3;
 
         token = scan_token(&lexer);
@@ -225,7 +237,7 @@ static void test_lexer(void)
         TKN_TEST_POS(token, TKN_RBRACE, i, ++i);
 
         token = scan_token(&lexer);
-        TKN_TEST_POS(token, TKN_EOF, i, ++i);
+        TKN_TEST_POS(token, TKN_EOF, i, i);
 
         lexer_destroy(&lexer);
     }
@@ -242,7 +254,7 @@ static void test_lexer(void)
         TKN_TEST_POS(token, TKN_MINUS, 22, 23);
 
         token = scan_token(&lexer);
-        TKN_TEST_POS(token, TKN_EOF, 23, 24);
+        TKN_TEST_POS(token, TKN_EOF, 23, 23);
 
         lexer_destroy(&lexer);
     }
@@ -254,7 +266,7 @@ static void test_lexer(void)
         Token token = {0};
 
         token = scan_token(&lexer);
-        TKN_TEST_POS(token, TKN_EOF, 22, 23);
+        TKN_TEST_POS(token, TKN_EOF, 22, 22);
         assert(errors.num_chunks == 1);
 
         print_errors(&errors);
@@ -268,7 +280,8 @@ static void test_lexer(void)
         Token token = {0};
 
         token = scan_token(&lexer);
-        TKN_TEST_POS(token, TKN_EOF, strlen(lexer.str), strlen(lexer.str) + 1);
+        size_t len = cstr_len(lexer.str);
+        TKN_TEST_POS(token, TKN_EOF, len, len);
         assert(errors.num_chunks == 1);
 
         print_errors(&errors);
@@ -367,8 +380,8 @@ static void test_lexer(void)
     {
         ByteStream errors = byte_stream_create(&g_ctx.allocator);
         Lexer lexer = lexer_create("'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' "
-                        "'\\\\' '\\'' '\\\"' '\\?'",
-                        0, &errors);
+                                   "'\\\\' '\\'' '\\\"' '\\?'",
+                                   0, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -786,7 +799,7 @@ void test_array(void)
 
         array_push_elems(a, b, 3);
         assert(array_len(a) == 4);
-        
+
         for (int i = 0; i < 3; ++i) {
             assert(a[i + 1] == b[i]);
         }
@@ -850,7 +863,7 @@ void test_dllist(void)
 {
     // Test adding new values to the head of the list.
     {
-        DLList head = dllist_head_create(head);    
+        DLList head = dllist_head_create(head);
 
         TestNode node1 = {.num = 1};
         TestNode node2 = {.num = 2};
@@ -871,7 +884,7 @@ void test_dllist(void)
 
     // Test adding new values to the tail of the list.
     {
-        DLList head = dllist_head_create(head);    
+        DLList head = dllist_head_create(head);
 
         TestNode node1 = {.num = 1};
         TestNode node2 = {.num = 2};
