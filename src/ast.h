@@ -72,13 +72,13 @@ struct TypeSpec {
     ProgRange range;
 
     union {
-        TypeSpecIdent ident;
-        TypeSpecFunc func;
+        TypeSpecIdent as_ident;
+        TypeSpecFunc as_func;
         AggregateBody as_struct;
         AggregateBody as_union;
-        TypeSpecPtr ptr;
-        TypeSpecArray array;
-        TypeSpecConst const_;
+        TypeSpecPtr as_ptr;
+        TypeSpecArray as_array;
+        TypeSpecConst as_const;
     };
 };
 
