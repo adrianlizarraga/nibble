@@ -273,8 +273,8 @@ static Decl* decl_alloc(Allocator* allocator, DeclKind kind, const char* name, P
 Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
 {
     Decl* decl = decl_alloc(allocator, DECL_VAR, name, range);
-    decl->dvar.type = type;
-    decl->dvar.init = init;
+    decl->as_var.type = type;
+    decl->as_var.init = init;
 
     return decl;
 }
@@ -282,8 +282,8 @@ Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* ini
 Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
 {
     Decl* decl = decl_alloc(allocator, DECL_CONST, name, range);
-    decl->dconst.type = type;
-    decl->dconst.init = init;
+    decl->as_const.type = type;
+    decl->as_const.init = init;
 
     return decl;
 }
@@ -291,7 +291,7 @@ Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* i
 Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
 {
     Decl* decl = decl_alloc(allocator, DECL_TYPEDEF, name, range);
-    decl->dtypedef.type = type;
+    decl->as_typedef.type = type;
 
     return decl;
 }
@@ -300,10 +300,10 @@ Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t n
                 ProgRange range)
 {
     Decl* decl = decl_alloc(allocator, DECL_ENUM, name, range);
-    decl->denum.type = type;
-    decl->denum.num_items = num_items;
+    decl->as_enum.type = type;
+    decl->as_enum.num_items = num_items;
 
-    dllist_replace(items, &decl->denum.items);
+    dllist_replace(items, &decl->as_enum.items);
 
     return decl;
 }
@@ -320,9 +320,9 @@ DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value
 Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range)
 {
     Decl* decl = decl_alloc(allocator, DECL_STRUCT, name, range);
-    decl->dstruct.num_fields = num_fields;
+    decl->as_struct.num_fields = num_fields;
 
-    dllist_replace(fields, &decl->dstruct.fields);
+    dllist_replace(fields, &decl->as_struct.fields);
 
     return decl;
 }
@@ -330,9 +330,9 @@ Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLL
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range)
 {
     Decl* decl = decl_alloc(allocator, DECL_UNION, name, range);
-    decl->dunion.num_fields = num_fields;
+    decl->as_union.num_fields = num_fields;
 
-    dllist_replace(fields, &decl->dunion.fields);
+    dllist_replace(fields, &decl->as_union.fields);
 
     return decl;
 }
@@ -581,12 +581,12 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(var %s", decl->name);
 
-            if (decl->dvar.type) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, decl->dvar.type));
+            if (decl->as_var.type) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, decl->as_var.type));
             }
 
-            if (decl->dvar.init) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, decl->dvar.init));
+            if (decl->as_var.init) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, decl->as_var.init));
             }
 
             ftprint_char_array(&dstr, false, ")");
@@ -595,12 +595,12 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(#const %s", decl->name);
 
-            if (decl->dconst.type) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, decl->dconst.type));
+            if (decl->as_const.type) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, decl->as_const.type));
             }
 
-            if (decl->dconst.init) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, decl->dconst.init));
+            if (decl->as_const.init) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, decl->as_const.init));
             }
 
             ftprint_char_array(&dstr, false, ")");
@@ -608,18 +608,18 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case DECL_TYPEDEF: {
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(#typedef %s %s)", decl->name,
-                               ftprint_typespec(allocator, decl->dtypedef.type));
+                               ftprint_typespec(allocator, decl->as_typedef.type));
         } break;
         case DECL_ENUM: {
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(enum ");
 
-            if (decl->denum.type) {
-                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, decl->denum.type));
+            if (decl->as_enum.type) {
+                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, decl->as_enum.type));
             }
 
-            if (decl->denum.num_items) {
-                DLList* head = &decl->denum.items;
+            if (decl->as_enum.num_items) {
+                DLList* head = &decl->as_enum.items;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
                     DeclEnumItem* item = dllist_entry(it, DeclEnumItem, list);
@@ -641,7 +641,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == DECL_STRUCT ? "struct" : "union"), decl->name);
 
-            AggregateBody* aggregate = decl->kind == DECL_STRUCT ? &decl->dstruct : &decl->dunion;
+            AggregateBody* aggregate = decl->kind == DECL_STRUCT ? &decl->as_struct : &decl->as_union;
 
             if (aggregate->num_fields) {
                 ftprint_char_array(&dstr, false, " ");

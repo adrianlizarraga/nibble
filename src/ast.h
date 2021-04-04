@@ -350,20 +350,20 @@ struct Stmt {
     ProgRange range;
 
     union {
-        StmtIf sif;
-        StmtCondBlock swhile;
-        StmtCondBlock sdo_while;
-        StmtFor sfor;
-        StmtSwitch sswitch;
-        StmtReturn sreturn;
-        StmtBreak sbreak;
-        StmtContinue scontinue;
-        StmtLabel slabel;
-        StmtGoto sgoto;
-        StmtExpr sexpr;
-        StmtExprAssign sassign;
-        StmtDecl sdecl;
-        StmtBlock sblock;
+        StmtIf as_if;
+        StmtCondBlock as_while;
+        StmtCondBlock as_do_while;
+        StmtFor as_for;
+        StmtSwitch as_switch;
+        StmtReturn as_return;
+        StmtBreak as_break;
+        StmtContinue as_continue;
+        StmtLabel as_label;
+        StmtGoto as_goto;
+        StmtExpr as_expr;
+        StmtExprAssign as_assign;
+        StmtDecl as_decl;
+        StmtBlock as_block;
     };
 };
 
@@ -427,13 +427,13 @@ struct Decl {
     const char* name;
 
     union {
-        DeclVar dvar;
-        DeclConst dconst;
-        DeclEnum denum;
-        AggregateBody dstruct;
-        AggregateBody dunion;
-        DeclFunc dfunc;
-        DeclTypedef dtypedef;
+        DeclVar as_var;
+        DeclConst as_const;
+        DeclEnum as_enum;
+        AggregateBody as_struct;
+        AggregateBody as_union;
+        DeclFunc as_func;
+        DeclTypedef as_typedef;
     };
 };
 
