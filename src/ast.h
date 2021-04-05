@@ -37,11 +37,11 @@ typedef struct TypeSpecIdent {
     const char* name;
 } TypeSpecIdent;
 
-typedef struct TypeSpecFunc {
+typedef struct TypeSpecProc {
     size_t num_params;
     DLList params;
     TypeSpec* ret;
-} TypeSpecFunc;
+} TypeSpecProc;
 
 typedef struct TypeSpecPtr {
     TypeSpec* base;
@@ -59,7 +59,7 @@ typedef struct TypeSpecConst {
 typedef enum TypeSpecKind {
     TYPE_SPEC_NONE,
     TYPE_SPEC_IDENT,
-    TYPE_SPEC_FUNC,
+    TYPE_SPEC_PROC,
     TYPE_SPEC_ANON_STRUCT,
     TYPE_SPEC_ANON_UNION,
     TYPE_SPEC_PTR,
@@ -73,7 +73,7 @@ struct TypeSpec {
 
     union {
         TypeSpecIdent as_ident;
-        TypeSpecFunc as_func;
+        TypeSpecProc as_proc;
         AggregateBody as_struct;
         AggregateBody as_union;
         TypeSpecPtr as_ptr;
@@ -88,10 +88,10 @@ TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range
 TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
 TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
-TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type);
-TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range);
+TypeSpecParam* typespec_proc_param(Allocator* allocator, TypeSpec* type);
+TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range);
 
-typedef TypeSpec* TypeSpecAggregateFunc(Allocator* alloc, size_t num_fields, DLList* fields, ProgRange range);
+typedef TypeSpec* TypeSpecAggregateProc(Allocator* alloc, size_t num_fields, DLList* fields, ProgRange range);
 TypeSpec* typespec_anon_struct(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range);
 TypeSpec* typespec_anon_union(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range);
 
@@ -123,7 +123,7 @@ typedef struct ExprCallArg {
 } ExprCallArg;
 
 typedef struct ExprCall {
-    Expr* func;
+    Expr* proc;
     size_t num_args;
     DLList args;
 } ExprCall;
@@ -236,7 +236,7 @@ Expr* expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right);
 Expr* expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange range);
 Expr* expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range);
 Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
-Expr* expr_call(Allocator* allocator, Expr* func, size_t num_args, DLList* args, ProgRange range);
+Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, DLList* args, ProgRange range);
 ExprCallArg* expr_call_arg(Allocator* allocator, Expr* expr, const char* name);
 Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range);
 Expr* expr_float(Allocator* allocator, double value, ProgRange range);
@@ -394,19 +394,19 @@ typedef struct DeclEnum {
     DLList items;
 } DeclEnum;
 
-typedef struct DeclFuncParam {
+typedef struct DeclProcParam {
     ProgRange range;
     const char* name;
     TypeSpec* type;
     DLList list;
-} DeclFuncParam;
+} DeclProcParam;
 
-typedef struct DeclFunc {
+typedef struct DeclProc {
     size_t num_params;
     DLList params;
     TypeSpec* ret;
     StmtBlock block;
-} DeclFunc;
+} DeclProc;
 
 typedef struct DeclTypedef {
     TypeSpec* type;
@@ -419,7 +419,7 @@ typedef enum DeclKind {
     DECL_ENUM,
     DECL_UNION,
     DECL_STRUCT,
-    DECL_FUNC,
+    DECL_PROC,
     DECL_TYPEDEF,
 } DeclKind;
 
@@ -434,7 +434,7 @@ struct Decl {
         DeclEnum as_enum;
         AggregateBody as_struct;
         AggregateBody as_union;
-        DeclFunc as_func;
+        DeclProc as_proc;
         DeclTypedef as_typedef;
     };
 };
@@ -446,7 +446,7 @@ Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t n
                 ProgRange range);
 DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value);
 
-typedef Decl* DeclAggregateFunc(Allocator* alloc, const char* name, size_t num_fields, DLList* fields, ProgRange range);
+typedef Decl* DeclAggregateProc(Allocator* alloc, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 #endif

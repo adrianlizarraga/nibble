@@ -34,7 +34,7 @@ const char* keywords[KW_COUNT];
 static StringView keyword_names[KW_COUNT] = {
     [KW_VAR] = string_view_lit("var"),         [KW_CONST] = string_view_lit("const"),
     [KW_ENUM] = string_view_lit("enum"),       [KW_UNION] = string_view_lit("union"),
-    [KW_STRUCT] = string_view_lit("struct"),   [KW_FUNC] = string_view_lit("func"),
+    [KW_STRUCT] = string_view_lit("struct"),   [KW_PROC] = string_view_lit("proc"),
     [KW_TYPEDEF] = string_view_lit("typedef"), [KW_SIZEOF] = string_view_lit("sizeof"),
     [KW_TYPEOF] = string_view_lit("typeof"),   [KW_GOTO] = string_view_lit("goto"),
     [KW_BREAK] = string_view_lit("break"),     [KW_CONTINUE] = string_view_lit("continue"),
@@ -193,7 +193,7 @@ int main(void)
     // CompiledModule* module = compile_module("struct Vector2 {}", 0);
     // CompiledModule* module = compile_module("union Vector2 {}", 0);
     // CompiledModule* module = compile_module("struct Vector2 {u:union{a:int;b:int;};}", 0);
-    CompiledModule* module = compile_module("struct Vector2 {s:struct {a:int;b:int;};}", 0);
+    // CompiledModule* module = compile_module("struct Vector2 {s:struct {a:int;b:int;};}", 0);
     // CompiledModule* module = compile_module("union Vector2 {s:struct {a:int;b:int;}; z:^int;}", 0);
     // CompiledModule* module = compile_module("struct Vector2 {s:struct {};}", 0);
     // CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
@@ -209,17 +209,17 @@ int main(void)
     // CompiledModule* module = compile_module("a:>^int", 0);
     // CompiledModule* module = compile_module("(a :> ^^int)[0]", 0);
     // CompiledModule* module = compile_module("a:>^^int[0]", 0);
-    // CompiledModule* module = compile_module("a:>func(int,)=>int", 0);
-    // CompiledModule* module = compile_module("(a:>func(int)=>int)(10)", 0);
-    // CompiledModule* module = compile_module("a:>func(int)=>int(10)", 0);
-    // CompiledModule* module = compile_module("a:>func(int)=>int:>uint", 0);
-    // CompiledModule* module = compile_module("a:>func(int, float32)=>int:>uint + 2", 0);
+    // CompiledModule* module = compile_module("a:>proc(int,)=>int", 0);
+    // CompiledModule* module = compile_module("(a:>proc(int)=>int)(10)", 0);
+    // CompiledModule* module = compile_module("a:>proc(int)=>int(10)", 0);
+    // CompiledModule* module = compile_module("a:>proc(int)=>int:>uint", 0);
+    // CompiledModule* module = compile_module("a:>proc(int, float32)=>int:>uint + 2", 0);
     // CompiledModule* module = compile_module("#sizeof(int)", 0);
     // CompiledModule* module = compile_module("#sizeof(const int)", 0);
     // CompiledModule* module = compile_module("#sizeof(^ const char)", 0);
     // CompiledModule* module = compile_module("#sizeof([16] ^int)", 0);
-    // CompiledModule* module = compile_module("#sizeof([16] (func(int)=>int))", 0);
-    // CompiledModule* module = compile_module("#sizeof(func(^^int)=>^int)", 0);
+    // CompiledModule* module = compile_module("#sizeof([16] (proc(int)=>int))", 0);
+    // CompiledModule* module = compile_module("#sizeof(proc(^^int)=>^int)", 0);
     // CompiledModule* module = compile_module("#sizeof(struct {x:int; z:int;})", 0);
     // CompiledModule* module = compile_module("#sizeof(union {x:int; z:int;})", 0);
     // CompiledModule* module = compile_module("#typeof(1 + 2)", 0);

@@ -44,18 +44,18 @@ TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range)
     return type;
 }
 
-TypeSpec* typespec_func(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range)
+TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range)
 {
-    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_FUNC, range);
-    type->as_func.num_params = num_params;
-    type->as_func.ret = ret;
+    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_PROC, range);
+    type->as_proc.num_params = num_params;
+    type->as_proc.ret = ret;
 
-    dllist_replace(params, &type->as_func.params);
+    dllist_replace(params, &type->as_proc.params);
 
     return type;
 }
 
-TypeSpecParam* typespec_func_param(Allocator* allocator, TypeSpec* type)
+TypeSpecParam* typespec_proc_param(Allocator* allocator, TypeSpec* type)
 {
     TypeSpecParam* param = mem_allocate(allocator, sizeof(TypeSpecParam), DEFAULT_ALIGN, true);
     param->type = type;
@@ -140,10 +140,10 @@ Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range
     return expr;
 }
 
-Expr* expr_call(Allocator* allocator, Expr* func, size_t num_args, DLList* args, ProgRange range)
+Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, DLList* args, ProgRange range)
 {
     Expr* expr = expr_alloc(allocator, EXPR_CALL, range);
-    expr->as_call.func = func;
+    expr->as_call.proc = proc;
     expr->as_call.num_args = num_args;
 
     dllist_replace(args, &expr->as_call.args);
@@ -360,14 +360,14 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(:ident %s)", type->as_ident.name);
         } break;
-        case TYPE_SPEC_FUNC: {
+        case TYPE_SPEC_PROC: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:func =>%s", ftprint_typespec(allocator, type->as_func.ret));
+            ftprint_char_array(&dstr, false, "(:proc =>%s", ftprint_typespec(allocator, type->as_proc.ret));
 
-            if (type->as_func.num_params) {
+            if (type->as_proc.num_params) {
                 ftprint_char_array(&dstr, false, " ");
 
-                DLList* head = &type->as_func.params;
+                DLList* head = &type->as_proc.params;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
                     TypeSpecParam* param = dllist_entry(it, TypeSpecParam, list);
@@ -462,7 +462,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         } break;
         case EXPR_CALL: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(call %s", ftprint_expr(allocator, expr->as_call.func));
+            ftprint_char_array(&dstr, false, "(call %s", ftprint_expr(allocator, expr->as_call.proc));
 
             if (expr->as_call.num_args) {
                 ftprint_char_array(&dstr, false, " ");

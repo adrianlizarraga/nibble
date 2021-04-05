@@ -29,9 +29,8 @@ func main(argc : int32, argv : [] ^char) => int32
     return 0;
 }
 
-// new cast - DONE
-// new compound lit type - DONE
-// sizeof only type - DONE
-// #sizeof - DONE
-// add #typeof - DONE
-// new const decl
+///////////////////////////////////
+// T : type : struct { a : int32; };
+// add : proc(int32, int32)=>int32 : proc(a:int32, b:int32) { return a + b; };
+//
+// MAX_LEN : int32 : 20;

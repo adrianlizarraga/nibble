@@ -197,7 +197,7 @@ static bool parse_fill_aggregate_body(Parser* parser, AggregateBody* body)
 }
 
 static TypeSpec* parse_typespec_anon_aggregate(Parser* parser, const char* error_prefix,
-                                               TypeSpecAggregateFunc* typespec_aggregate_fn)
+                                               TypeSpecAggregateProc* typespec_aggregate_fn)
 {
     assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
 
@@ -223,28 +223,28 @@ static TypeSpec* parse_typespec_anon_aggregate(Parser* parser, const char* error
     return type;
 }
 
-// typespec_func_param = typespec
-static TypeSpecParam* parse_typespec_func_param(Parser* parser)
+// typespec_proc_param = typespec
+static TypeSpecParam* parse_typespec_proc_param(Parser* parser)
 {
     TypeSpecParam* type_param = NULL;
     TypeSpec* type = parse_typespec(parser);
 
     if (type) {
-        type_param = typespec_func_param(parser->allocator, type);
+        type_param = typespec_proc_param(parser->allocator, type);
     }
 
     return type_param;
 }
 
-// typespec_func = 'func' '(' typespec_func_param_list? ')' ('=>' typespec)?
+// typespec_proc = 'proc' '(' typespec_proc_param_list? ')' ('=>' typespec)?
 //
-// typespec_func_param_list = typespec_func_param (',' typespec_func_param)*
-static TypeSpec* parse_typespec_func(Parser* parser)
+// typespec_proc_param_list = typespec_proc_param (',' typespec_proc_param)*
+static TypeSpec* parse_typespec_proc(Parser* parser)
 {
-    assert(is_keyword(parser, KW_FUNC));
+    assert(is_keyword(parser, KW_PROC));
     TypeSpec* type = NULL;
     ProgRange range = {.start = parser->token.range.start};
-    const char* error_prefix = "Failed to parse function type specification";
+    const char* error_prefix = "Failed to parse procedure type specification";
 
     next_token(parser);
 
@@ -254,7 +254,7 @@ static TypeSpec* parse_typespec_func(Parser* parser)
         bool bad_param = false;
 
         while (!is_token(parser, TKN_RPAREN) && !is_token(parser, TKN_EOF)) {
-            TypeSpecParam* param = parse_typespec_func_param(parser);
+            TypeSpecParam* param = parse_typespec_proc_param(parser);
 
             if (param) {
                 num_params += 1;
@@ -280,7 +280,7 @@ static TypeSpec* parse_typespec_func(Parser* parser)
 
             if (!bad_ret) {
                 range.end = parser->ptoken.range.end;
-                type = typespec_func(parser->allocator, num_params, &params, ret, range);
+                type = typespec_proc(parser->allocator, num_params, &params, ret, range);
             }
         }
     }
@@ -288,7 +288,7 @@ static TypeSpec* parse_typespec_func(Parser* parser)
     return type;
 }
 
-// typespec_base  = typespec_func
+// typespec_base  = typespec_proc
 //                | typespec_anon_struct
 //                | typespec_anon_union
 //                | TKN_IDENT
@@ -297,8 +297,8 @@ static TypeSpec* parse_typespec_base(Parser* parser)
 {
     TypeSpec* type = NULL;
 
-    if (is_keyword(parser, KW_FUNC)) {
-        type = parse_typespec_func(parser);
+    if (is_keyword(parser, KW_PROC)) {
+        type = parse_typespec_proc(parser);
     } else if (is_keyword(parser, KW_STRUCT)) {
         type = parse_typespec_anon_aggregate(parser, "Failed to parse anonymous struct", typespec_anon_struct);
     } else if (is_keyword(parser, KW_UNION)) {
@@ -575,7 +575,7 @@ static ExprCallArg* parse_expr_call_arg(Parser* parser)
                 arg = expr_call_arg(parser->allocator, expr, name);
             }
         } else {
-            parser_on_error(parser, "Function argument's name must be an alphanumeric identifier");
+            parser_on_error(parser, "Procedure argument's name must be an alphanumeric identifier");
         }
     } else if (expr) {
         arg = expr_call_arg(parser->allocator, expr, NULL);
@@ -619,7 +619,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             }
         } else if (match_token_next(parser, TKN_LPAREN)) {
             //
-            // Function call.
+            // Procedure call.
             //
 
             bool bad_arg = false;
@@ -642,7 +642,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
                 }
             }
 
-            if (!bad_arg && expect_token_next(parser, TKN_RPAREN, "Failed to parse function call")) {
+            if (!bad_arg && expect_token_next(parser, TKN_RPAREN, "Failed to parse procedure call")) {
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
                 expr = expr_call(parser->allocator, expr, num_args, &args, range);
             } else {
@@ -882,7 +882,7 @@ static Decl* parse_decl_var(Parser* parser)
 
 // decl_union  = 'union' aggregate_body
 // decl_struct = 'struct' aggregate_body
-static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, DeclAggregateFunc* decl_aggregate_fn)
+static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, DeclAggregateProc* decl_aggregate_fn)
 {
     assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
     Decl* decl = NULL;
@@ -1066,7 +1066,7 @@ static Decl* parse_decl_const(Parser* parser)
 //      | decl_enum
 //      | decl_struct
 //      | decl_union
-//      | decl_func
+//      | decl_proc
 //      | decl_var
 Decl* parse_decl(Parser* parser)
 {

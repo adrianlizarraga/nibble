@@ -26,7 +26,7 @@ typedef enum Keyword {
     KW_ENUM,
     KW_UNION,
     KW_STRUCT,
-    KW_FUNC,
+    KW_PROC,
     KW_TYPEDEF,
     KW_SIZEOF,
     KW_TYPEOF,
