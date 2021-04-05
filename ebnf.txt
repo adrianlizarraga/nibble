@@ -1,15 +1,15 @@
 typespec       = typespec_ref
 typespec_ref   = ('^' | '[' expr? ']' | KW_CONST) typespec_ref
                | typespec_base
-typespec_base  = typespec_func
+typespec_base  = typespec_proc
                | typespec_anon_struct
                | typespec_anon_union
                | TKN_IDENT
                | '(' type_spec ')'
 
-typespec_func = 'func' '(' typespec_func_param_list? ')' ('=>' typespec)?
-typespec_func_param_list = typespec_func_param (',' typespec_func_param)*
-typespec_func_param = typespec 
+typespec_proc = 'proc' '(' typespec_proc_param_list? ')' ('=>' typespec)?
+typespec_proc_param_list = typespec_proc_param (',' typespec_proc_param)*
+typespec_proc_param = typespec 
 
 typespec_anon_struct = 'struct' '{' decl_aggregate_item* '}'
 typespec_anon_union = 'union' '{' decl_aggregate_item* '}'
@@ -47,7 +47,7 @@ decl = '#' decl_const
      | decl_enum
      | decl_union
      | decl_struct
-     | decl_func
+     | decl_proc
      | decl_var
 
 decl_var   = TKN_IDENT ':' type_spec? ('=' expr)? ';'
@@ -63,7 +63,7 @@ decl_struct = 'struct' decl_aggregate_body
 decl_aggregate_body  = TKN_IDENT '{' decl_aggregate_field* '}'
 decl_aggregate_field = TKN_IDENT ':' type_spec ';'
 
-decl_func  = 'func' TKN_IDENT '(' param_list ')' (':' type_spec)? stmt_block
+decl_proc  = 'proc' TKN_IDENT '(' param_list ')' (':' type_spec)? stmt_block
 param_list = param_item (',' param_item)*
 param_item = TKN_IDENT ':' type_spec 
 

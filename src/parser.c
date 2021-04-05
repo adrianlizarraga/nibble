@@ -831,6 +831,20 @@ Expr* parse_expr(Parser* parser)
 }
 
 ///////////////////////////////
+//    Parse statements
+//////////////////////////////
+
+static bool parse_fill_stmt_block(Parser* parser, StmtBlock* block)
+{
+    // TODO: Implement
+    dllist_head_init(&block->stmts);
+
+    block->num_stmts = 0;
+
+    return true;
+}
+
+///////////////////////////////
 //    Parse declarations
 //////////////////////////////
 
@@ -873,6 +887,86 @@ static Decl* parse_decl_var(Parser* parser)
                 }
             } else {
                 parser_on_error(parser, "Variable declaration must have either a type or an initial value");
+            }
+        }
+    }
+
+    return decl;
+}
+
+// param_item = TKN_IDENT ':' type_spec
+static DeclProcParam* parse_decl_proc_param(Parser* parser)
+{
+    DeclProcParam* param = NULL;
+    const char* error_prefix = "Failed to parse procedure parameter";
+
+    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+        const char* name = parser->ptoken.as_ident.value;
+        ProgRange range = {.start = parser->ptoken.range.start};
+
+        if (expect_token_next(parser, TKN_COLON, error_prefix)) {
+            TypeSpec* type = parse_typespec(parser);
+
+            if (type) {
+                range.end = type->range.end;
+                param = decl_proc_param(parser->allocator, name, type, range);
+            }
+        }
+    }
+
+    return param;
+}
+
+// decl_proc  = 'proc' TKN_IDENT '(' param_list ')' ('=>' typespec)? stmt_block
+// param_list = param_item (',' param_item)*
+static Decl* parse_decl_proc(Parser* parser)
+{
+    assert(is_keyword(parser, KW_PROC));
+    Decl* decl = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse procedure declaration";
+
+    next_token(parser);
+
+    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+        const char* name = parser->ptoken.as_ident.value;
+
+        if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+            size_t num_params = 0;
+            DLList params = dllist_head_create(params);
+            bool bad_param = false;
+
+            while (!is_token(parser, TKN_RPAREN) && !is_token(parser, TKN_EOF)) {
+                DeclProcParam* param = parse_decl_proc_param(parser);
+
+                if (param) {
+                    num_params += 1;
+                    dllist_add(params.prev, &param->list);
+                } else {
+                    bad_param = true;
+                    break;
+                }
+
+                if (!match_token_next(parser, TKN_COMMA)) {
+                    break;
+                }
+            }
+
+            if (!bad_param && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+                TypeSpec* ret = NULL;
+                bool bad_ret = false;
+
+                if (match_token_next(parser, TKN_ARROW)) {
+                    ret = parse_typespec(parser);
+                    bad_ret = !ret;
+                }
+
+                StmtBlock block = {0};
+
+                if (!bad_ret && parse_fill_stmt_block(parser, &block)) {
+                    range.end = parser->ptoken.range.end;
+                    decl = decl_proc(parser->allocator, name, num_params, &params, ret, &block, range);
+                }
             }
         }
     }
@@ -1089,6 +1183,8 @@ Decl* parse_decl(Parser* parser)
         decl = parse_decl_aggregate(parser, "Failed to parse struct declaration", decl_struct);
     } else if (is_keyword(parser, KW_UNION)) {
         decl = parse_decl_aggregate(parser, "Failed to parse union declaration", decl_union);
+    } else if (is_keyword(parser, KW_PROC)) {
+        decl = parse_decl_proc(parser);
     } else if (is_token(parser, TKN_IDENT)) {
         decl = parse_decl_var(parser);
     } else {

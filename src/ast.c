@@ -347,6 +347,29 @@ AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec
     return field;
 }
 
+Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLList* params, TypeSpec* ret,
+                StmtBlock* block, ProgRange range)
+{
+    Decl* decl = decl_alloc(allocator, DECL_PROC, name, range);
+    decl->as_proc.num_params = num_params;
+    decl->as_proc.ret = ret;
+    decl->as_proc.block.num_stmts = block->num_stmts;
+
+    dllist_replace(params, &decl->as_proc.params);
+    dllist_replace(&block->stmts, &decl->as_proc.block.stmts);
+
+    return decl;
+}
+
+DeclProcParam* decl_proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
+{
+    DeclProcParam* param = mem_allocate(allocator, sizeof(DeclProcParam), DEFAULT_ALIGN, true);
+    param->name = name;
+    param->type = type;
+    param->range = range;
+
+    return param;
+}
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -658,6 +681,27 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 }
             }
             ftprint_char_array(&dstr, false, ")");
+        } break;
+        case DECL_PROC: {
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "(proc %s (", decl->name);
+
+            DeclProc* proc = &decl->as_proc;
+
+            if (proc->num_params) {
+                DLList* head = &proc->params;
+
+                for (DLList* it = head->next; it != head; it = it->next) {
+                    DeclProcParam* param = dllist_entry(it, DeclProcParam, list);
+
+                    ftprint_char_array(&dstr, false, "(%s %s)", param->name, ftprint_typespec(allocator, param->type));
+
+                    if (it->next != head) {
+                        ftprint_char_array(&dstr, false, " ");
+                    }
+                }
+            }
+            ftprint_char_array(&dstr, false, ") =>%s)", ftprint_typespec(allocator, proc->ret));
         } break;
         default: {
             ftprint_err("Unknown decl kind: %d\n", decl->kind);

@@ -449,4 +449,7 @@ DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value
 typedef Decl* DeclAggregateProc(Allocator* alloc, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
+Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLList* params, TypeSpec* ret,
+                StmtBlock* block, ProgRange range);
+DeclProcParam* decl_proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 #endif
