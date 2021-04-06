@@ -1,8 +1,10 @@
 #include "allocator.h"
+#include "cstring.h"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
 
 typedef struct MemBlockFooter {
     unsigned char* pbuffer;
@@ -24,6 +26,7 @@ static bool alloc_mem_block(Allocator* allocator, size_t block_size)
 
     allocator->buffer = block;
     allocator->at = block;
+    allocator->pat = NULL;
     allocator->end = block + block_size;
     allocator->block_size = block_size;
 
@@ -66,6 +69,7 @@ void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
     }
 
     memory = (void*)aligned_at;
+    allocator->pat = (unsigned char*)aligned_at;
     allocator->at = (unsigned char*)new_at;
 
     if (clear) {
@@ -104,9 +108,16 @@ void mem_free(Allocator* allocator, void* ptr)
 {
     if (!allocator) {
         free(ptr);
+    } else {
+        // If ptr is the previous allocation, undo it.
+        // Otherwise, do nothing.
+        unsigned char* pat = allocator->pat;
+
+        if (pat && (uintptr_t)ptr == (uintptr_t)pat) {
+            allocator->at = pat;
+            allocator->pat = NULL;
+        }
     }
-    // Do nothing.
-    // TODO: If ptr is the last previous allocation, can undo it.
 }
 
 Allocator allocator_create(size_t init_size)
@@ -141,6 +152,7 @@ void allocator_reset(Allocator* allocator)
     }
 
     allocator->at = allocator->buffer;
+    allocator->pat = NULL;
 }
 
 void allocator_destroy(Allocator* allocator)
@@ -163,6 +175,7 @@ void allocator_destroy(Allocator* allocator)
 
     allocator->buffer = NULL;
     allocator->at = NULL;
+    allocator->pat = NULL;
     allocator->end = NULL;
 }
 
@@ -172,6 +185,7 @@ AllocatorState allocator_get_state(Allocator* allocator)
     state.allocator = allocator;
     state.buffer = allocator->buffer;
     state.at = allocator->at;
+    state.pat = allocator->pat;
 
     return state;
 }
@@ -195,4 +209,5 @@ void allocator_restore_state(AllocatorState state)
     allocator->buffer = buffer;
     allocator->end = end;
     allocator->at = state.at;
+    allocator->pat = state.pat;
 }

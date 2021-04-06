@@ -32,17 +32,29 @@ static NibbleCtx nibble;
 const char* keywords[KW_COUNT];
 
 static StringView keyword_names[KW_COUNT] = {
-    [KW_VAR] = string_view_lit("var"),         [KW_CONST] = string_view_lit("const"),
-    [KW_ENUM] = string_view_lit("enum"),       [KW_UNION] = string_view_lit("union"),
-    [KW_STRUCT] = string_view_lit("struct"),   [KW_PROC] = string_view_lit("proc"),
-    [KW_TYPEDEF] = string_view_lit("typedef"), [KW_SIZEOF] = string_view_lit("sizeof"),
-    [KW_TYPEOF] = string_view_lit("typeof"),   [KW_GOTO] = string_view_lit("goto"),
-    [KW_BREAK] = string_view_lit("break"),     [KW_CONTINUE] = string_view_lit("continue"),
-    [KW_RETURN] = string_view_lit("return"),   [KW_IF] = string_view_lit("if"),
-    [KW_ELSE] = string_view_lit("else"),       [KW_WHILE] = string_view_lit("while"),
-    [KW_DO] = string_view_lit("do"),           [KW_FOR] = string_view_lit("for"),
-    [KW_SWITCH] = string_view_lit("switch"),   [KW_CASE] = string_view_lit("case"),
-    [KW_DEFAULT] = string_view_lit("default"), [KW_CAST] = string_view_lit("cast"),
+    [KW_VAR] = string_view_lit("var"),
+    [KW_CONST] = string_view_lit("const"),
+    [KW_ENUM] = string_view_lit("enum"),
+    [KW_UNION] = string_view_lit("union"),
+    [KW_STRUCT] = string_view_lit("struct"),
+    [KW_PROC] = string_view_lit("proc"),
+    [KW_TYPEDEF] = string_view_lit("typedef"),
+    [KW_SIZEOF] = string_view_lit("sizeof"),
+    [KW_TYPEOF] = string_view_lit("typeof"),
+    [KW_LABEL] = string_view_lit("label"),
+    [KW_GOTO] = string_view_lit("goto"),
+    [KW_BREAK] = string_view_lit("break"),
+    [KW_CONTINUE] = string_view_lit("continue"),
+    [KW_RETURN] = string_view_lit("return"),
+    [KW_IF] = string_view_lit("if"),
+    [KW_ELSE] = string_view_lit("else"),
+    [KW_WHILE] = string_view_lit("while"),
+    [KW_DO] = string_view_lit("do"),
+    [KW_FOR] = string_view_lit("for"),
+    [KW_SWITCH] = string_view_lit("switch"),
+    [KW_CASE] = string_view_lit("case"),
+    [KW_DEFAULT] = string_view_lit("default"),
+    [KW_CAST] = string_view_lit("cast"),
     [KW_UNDERSCORE] = string_view_lit("_"),
 };
 
@@ -111,6 +123,7 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
     module->allocator = bootstrap;
     module->errors = byte_stream_create(&module->allocator);
 
+    // TODO: AST node allocations must use a separate arena allocator!!!
     Parser parser = parser_create(&module->allocator, str, pos, &module->errors);
 
 #if 0
@@ -171,13 +184,17 @@ int main(void)
     }
 
     /*
-    ftprint_out("sizeof(TypeSpec) = %lu, sizeof(Expr) = %lu, sizeof(Stmt) = %lu, sizeof(Decl) = %lu, sizeof(StmtIf) = %lu, offsetof(Stmt, as_if) = %lu\n",
-                sizeof(TypeSpec), sizeof(Expr), sizeof(Stmt), sizeof(Decl), sizeof(StmtIf), offsetof(Stmt, as_if));
+    ftprint_out("sizeof(TypeSpec) = %lu, sizeof(Expr) = %lu, sizeof(Stmt) = %lu, sizeof(Decl) = %lu, sizeof(StmtIf) =
+    %lu, offsetof(Stmt, as_if) = %lu\n", sizeof(TypeSpec), sizeof(Expr), sizeof(Stmt), sizeof(Decl), sizeof(StmtIf),
+    offsetof(Stmt, as_if));
     */
 
     // CompiledModule* module = compile_module("a : int = 1 + 2;", 0);
     // CompiledModule* module = compile_module("a := 1 + 2;", 0);
     // CompiledModule* module = compile_module("a : int;", 0);
+    // CompiledModule* module = compile_module("a : int = f(x=a);", 0);
+    CompiledModule* module = compile_module("a : Vector2 = {x = 10, y = 20 :Vector2};", 0);
+    //
     // CompiledModule* module = compile_module("a :;", 0);
     // CompiledModule* module = compile_module("a;", 0);
     //
@@ -200,7 +217,7 @@ int main(void)
     // CompiledModule* module = compile_module("struct Vector2 {s:struct {};}", 0);
     // CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
     //
-    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {}", 0);
 
     // CompiledModule* module = compile_module("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]", 0);
     // CompiledModule* module = compile_module("a ^ ^b", 0);

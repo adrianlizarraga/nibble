@@ -30,6 +30,7 @@ typedef enum Keyword {
     KW_TYPEDEF,
     KW_SIZEOF,
     KW_TYPEOF,
+    KW_LABEL,
     KW_GOTO,
     KW_BREAK,
     KW_CONTINUE,

@@ -13,12 +13,14 @@ typedef struct Allocator {
     unsigned char* buffer;
     unsigned char* end;
     unsigned char* at;
+    unsigned char* pat;
 } Allocator;
 
 typedef struct AllocatorState {
     Allocator* allocator;
     unsigned char* buffer;
     unsigned char* at;
+    unsigned char* pat;
 } AllocatorState;
 
 #define new_type(allocator, type, clear) (type*)mem_allocate((allocator), sizeof(type), alignof(type), (clear))

@@ -653,7 +653,7 @@ void test_allocator(void)
         assert((uintptr_t)allocator.pat == (uintptr_t)m2);
         assert((allocator.at - allocator.buffer) == 26);
 
-        // Try to free the first allocation. Should be a no-op because the last allocation is m2.
+        // Try to free the first allocation. Should be a no-op because the previous allocation is m2.
         mem_free(&allocator, m1);
         assert(saved_at == allocator.at);
         assert((uintptr_t)allocator.pat == (uintptr_t)m2);
@@ -661,12 +661,18 @@ void test_allocator(void)
         // Free the second allocation. Should succeed.
         mem_free(&allocator, m2);
         assert(allocator.pat == NULL);
-        assert((uintptr_t)allocator.at == (uintptr_t)m2);
+        assert(allocator.at == (uintptr_t)m2);
 
         // Try to free the second allocation again. Should be a no-op.
         mem_free(&allocator, m2);
         assert(allocator.pat == NULL);
-        assert((uintptr_t)allocator.at == (uintptr_t)m2);
+        assert(allocator.at == (uintptr_t)m2);
+        unsigned char* old_buffer = allocator.buffer;
+        m = mem_allocate(&allocator, 1024, 1, false);
+        assert(m);
+        assert(old_buffer != allocator.buffer);
+        assert((allocator.at - allocator.buffer) == 1024);
+        assert((allocator.end - allocator.buffer) == ((1024 + 1) * 2));
 
         allocator_destroy(&allocator);
         assert(!allocator.buffer);

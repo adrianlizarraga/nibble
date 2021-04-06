@@ -410,7 +410,8 @@ static ExprInitializer* parse_expr_initializer(Parser* parser)
 
         if (expr && match_token_next(parser, TKN_ASSIGN)) {
             if (expr->kind == EXPR_IDENT) {
-                // TODO: No need to allocate full expr for name. Consider resetting arena allocation state.
+                mem_free(parser->allocator, expr);
+
                 const char* name = expr->as_ident.name;
                 Expr* init = parse_expr(parser);
 
@@ -567,8 +568,9 @@ static ExprCallArg* parse_expr_call_arg(Parser* parser)
 
     if (expr && match_token_next(parser, TKN_ASSIGN)) {
         if (expr->kind == EXPR_IDENT) {
-            const char* name = expr->as_ident.name; // TODO: No need to parse as expression here.
+            mem_free(parser->allocator, expr);
 
+            const char* name = expr->as_ident.name;
             expr = parse_expr(parser);
 
             if (expr) {

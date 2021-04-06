@@ -79,7 +79,7 @@ stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' st
      | 'break' TKN_IDENT? ';' 
      | 'continue' TKN_IDENT? ';'
      | 'goto' TKN_IDENT ';'
-     | TKN_IDENT ':'
+     | 'label' TKN_IDENT ':'
      | expr ';'
      | expr_assign ';'
      | decl
