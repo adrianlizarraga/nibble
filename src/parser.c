@@ -1,5 +1,5 @@
-#include "parser.h"
 #include "ast.h"
+#include "parser.h"
 
 static void parser_on_error(Parser* parser, const char* format, ...)
 {
@@ -838,12 +838,54 @@ Expr* parse_expr(Parser* parser)
 
 static bool parse_fill_stmt_block(Parser* parser, StmtBlock* block)
 {
-    // TODO: Implement
-    dllist_head_init(&block->stmts);
+    bool bad_stmt = false;
 
+    dllist_head_init(&block->stmts);
     block->num_stmts = 0;
 
-    return true;
+    while (!is_token(parser, TKN_RBRACE) && !is_token(parser, TKN_EOF)) {
+        Stmt* stmt = parse_stmt(parser);
+
+        if (stmt) {
+            block->num_stmts += 1;
+            dllist_add(block->stmts.prev, &stmt->list);
+        } else {
+            bad_stmt = true;
+            break;
+        }
+    }
+
+    return !bad_stmt;
+}
+
+static Stmt* parse_stmt_block(Parser* parser)
+{
+    assert(is_token(parser, TKN_LBRACE));
+    Stmt* stmt = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+
+    next_token(parser);
+
+    StmtBlock block = {0};
+    bool ok = parse_fill_stmt_block(parser, &block);
+
+    if (ok && expect_token_next(parser, TKN_RBRACE, "Failed to parse end of statement block")) {
+        range.end = parser->ptoken.range.end;
+        stmt = stmt_block(parser->allocator, block.num_stmts, &block.stmts, range);
+    }
+
+    return stmt;
+}
+
+Stmt* parse_stmt(Parser* parser)
+{
+    Stmt* stmt = NULL;
+
+    if (is_token(parser, TKN_LBRACE)) {
+        stmt = parse_stmt_block(parser);
+    }
+
+    return stmt;
 }
 
 ///////////////////////////////
@@ -963,11 +1005,14 @@ static Decl* parse_decl_proc(Parser* parser)
                     bad_ret = !ret;
                 }
 
-                StmtBlock block = {0};
+                if (!bad_ret && expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+                    StmtBlock block = {0};
+                    bool ok = parse_fill_stmt_block(parser, &block);
 
-                if (!bad_ret && parse_fill_stmt_block(parser, &block)) {
-                    range.end = parser->ptoken.range.end;
-                    decl = decl_proc(parser->allocator, name, num_params, &params, ret, &block, range);
+                    if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+                        range.end = parser->ptoken.range.end;
+                        decl = decl_proc(parser->allocator, name, num_params, &params, ret, &block, range);
+                    }
                 }
             }
         }

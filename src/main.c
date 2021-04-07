@@ -24,6 +24,7 @@ typedef struct NibbleCtx {
 
 typedef struct CompiledModule {
     Allocator allocator;
+    Allocator ast_arena;
     ByteStream errors;
 } CompiledModule;
 
@@ -118,13 +119,13 @@ const char* intern_ident(const char* str, size_t len)
 
 static CompiledModule* compile_module(const char* str, ProgPos pos)
 {
-    Allocator bootstrap = allocator_create(1024);
+    Allocator bootstrap = allocator_create(256);
     CompiledModule* module = new_type(&bootstrap, CompiledModule, true);
     module->allocator = bootstrap;
     module->errors = byte_stream_create(&module->allocator);
+    module->ast_arena = allocator_create(1024);
 
-    // TODO: AST node allocations must use a separate arena allocator!!!
-    Parser parser = parser_create(&module->allocator, str, pos, &module->errors);
+    Parser parser = parser_create(&module->ast_arena, str, pos, &module->errors);
 
 #if 0
     char tkn_buf[64];
@@ -142,7 +143,7 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
         ftprint_out("%s\n", ftprint_expr(&module->allocator, expr));
     }
     allocator_restore_state(state);
-#else
+#elif 1
     next_token(&parser);
     Decl* decl = parse_decl(&parser);
 
@@ -150,6 +151,16 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
     AllocatorState state = allocator_get_state(&module->allocator);
     {
         ftprint_out("%s\n", ftprint_decl(&module->allocator, decl));
+    }
+    allocator_restore_state(state);
+#else
+    next_token(&parser);
+    Stmt* stmt = parse_stmt(&parser);
+
+    ftprint_out("Done parsing stmt\n");
+    AllocatorState state = allocator_get_state(&module->allocator);
+    {
+        ftprint_out("%s\n", ftprint_stmt(&module->allocator, stmt));
     }
     allocator_restore_state(state);
 #endif
@@ -173,6 +184,7 @@ static void free_compiled_module(CompiledModule* module)
 {
     Allocator bootstrap = module->allocator;
 
+    allocator_destroy(&module->ast_arena);
     allocator_destroy(&bootstrap);
 }
 
@@ -193,7 +205,7 @@ int main(void)
     // CompiledModule* module = compile_module("a := 1 + 2;", 0);
     // CompiledModule* module = compile_module("a : int;", 0);
     // CompiledModule* module = compile_module("a : int = f(x=a);", 0);
-    CompiledModule* module = compile_module("a : Vector2 = {x = 10, y = 20 :Vector2};", 0);
+    // CompiledModule* module = compile_module("a : Vector2 = {x = 10, y = 20 :Vector2};", 0);
     //
     // CompiledModule* module = compile_module("a :;", 0);
     // CompiledModule* module = compile_module("a;", 0);
@@ -217,7 +229,10 @@ int main(void)
     // CompiledModule* module = compile_module("struct Vector2 {s:struct {};}", 0);
     // CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
     //
-    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {}", 0);
+    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {}", 0);
+    //
+
+    // CompiledModule* module = compile_module("{}", 0);
 
     // CompiledModule* module = compile_module("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]", 0);
     // CompiledModule* module = compile_module("a ^ ^b", 0);

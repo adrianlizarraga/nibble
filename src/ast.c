@@ -1,6 +1,6 @@
-#include "array.h"
 #include "ast.h"
 #include "cstring.h"
+#include "array.h"
 
 static TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange range)
 {
@@ -370,6 +370,26 @@ DeclProcParam* decl_proc_param(Allocator* allocator, const char* name, TypeSpec*
 
     return param;
 }
+
+static Stmt* stmt_alloc(Allocator* allocator, StmtKind kind, ProgRange range)
+{
+    Stmt* stmt = mem_allocate(allocator, sizeof(Stmt), DEFAULT_ALIGN, true);
+    stmt->kind = kind;
+    stmt->range = range;
+
+    return stmt;
+}
+
+Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRange range)
+{
+    Stmt* stmt = stmt_alloc(allocator, STMT_BLOCK, range);
+    stmt->as_block.num_stmts = num_stmts;
+
+    dllist_replace(stmts, &stmt->as_block.stmts);
+
+    return stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -591,6 +611,60 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
     return dstr;
 }
 
+static char* ftprint_stmt_block(Allocator* allocator, StmtBlock* block)
+{
+    char* dstr = array_create(allocator, char, 32);
+
+    ftprint_char_array(&dstr, false, "(stmt-block");
+
+    if (block->num_stmts) {
+        ftprint_char_array(&dstr, false, " ");
+
+        DLList* head = &block->stmts;
+
+        for (DLList* it = head->next; it != head; it = it->next) {
+            Stmt* s = dllist_entry(it, Stmt, list);
+
+            ftprint_char_array(&dstr, false, "%s", ftprint_stmt(allocator, s));
+
+            if (it->next != head) {
+                ftprint_char_array(&dstr, false, " ");
+            }
+        }
+    }
+
+    ftprint_char_array(&dstr, false, ")");
+
+    return dstr;
+}
+
+char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
+{
+    char* dstr = NULL;
+
+    if (stmt) {
+        switch (stmt->kind) {
+        case STMT_NONE: {
+            assert(0);
+        } break;
+        case STMT_BLOCK: {
+            dstr = ftprint_stmt_block(allocator, &stmt->as_block);
+        } break;
+        default: {
+            ftprint_err("Unknown stmt kind: %d\n", stmt->kind);
+            assert(0);
+        } break;
+        }
+
+    } else {
+        dstr = array_create(allocator, char, 1);
+    }
+
+    array_push(dstr, '\0');
+
+    return dstr;
+}
+
 char* ftprint_decl(Allocator* allocator, Decl* decl)
 {
     char* dstr = NULL;
@@ -701,7 +775,8 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                     }
                 }
             }
-            ftprint_char_array(&dstr, false, ") =>%s)", ftprint_typespec(allocator, proc->ret));
+            ftprint_char_array(&dstr, false, ") =>%s %s)", ftprint_typespec(allocator, proc->ret),
+                               ftprint_stmt_block(allocator, &proc->block));
         } break;
         default: {
             ftprint_err("Unknown decl kind: %d\n", decl->kind);

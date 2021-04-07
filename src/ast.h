@@ -3,10 +3,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "allocator.h"
-#include "lexer.h"
-#include "llist.h"
 #include "nibble.h"
+#include "allocator.h"
+#include "llist.h"
+#include "lexer.h"
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -330,6 +330,7 @@ typedef struct StmtDecl {
 } StmtDecl;
 
 typedef enum StmtKind {
+    STMT_NONE,
     STMT_IF,
     STMT_WHILE,
     STMT_DO_WHILE,
@@ -369,6 +370,9 @@ struct Stmt {
     };
 };
 
+Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRange range);
+
+char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////
 //       Declarations
 //////////////////////////////
@@ -452,4 +456,6 @@ Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLLi
 Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLList* params, TypeSpec* ret,
                 StmtBlock* block, ProgRange range);
 DeclProcParam* decl_proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
+
+char* ftprint_decl(Allocator* allocator, Decl* decl);
 #endif
