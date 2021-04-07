@@ -883,6 +883,23 @@ Stmt* parse_stmt(Parser* parser)
 
     if (is_token(parser, TKN_LBRACE)) {
         stmt = parse_stmt_block(parser);
+    } else {
+        Expr* expr = parse_expr(parser);
+
+        if (expr) {
+            if (match_token_next(parser, TKN_SEMICOLON)) {
+
+            } else if (is_token_assign_op(parser)) {
+
+            } else {
+                // Maybe decl is the first to be parsed.
+            }
+        } else {
+            char tmp[32];
+
+            print_token(&parser->token, tmp, sizeof(tmp));
+            parser_on_error(parser, "Unexpected token `%s` while parsing statement", tmp);
+        }
     }
 
     return stmt;
