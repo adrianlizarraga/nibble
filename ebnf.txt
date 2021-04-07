@@ -42,16 +42,17 @@ expr_init_item = (TKN_IDENT '=')? expr
 expr_sizeof = '#' KW_SIZEOF '('type_spec')'
 expr_typeof = '#' KW_TYPEOF '(' expr ')'
 
-decl = '#' decl_const
-     | '#' decl_typedef
+decl = decl_const
+     | decl_typedef
+     | decl_var
      | decl_enum
      | decl_union
      | decl_struct
      | decl_proc
-     | decl_var
 
-decl_var   = TKN_IDENT ':' type_spec? ('=' expr)? ';'
-decl_const = '#' KW_CONST TKN_IDENT ':' typespec?  '=' expr ';'
+decl_const = KW_CONST TKN_IDENT ':' typespec?  '=' expr ';'
+decl_typedef = KW_TYPEDEF TKN_IDENT '=' type_spec ';'
+decl_var   = KW_VAR TKN_IDENT ':' type_spec? ('=' expr)? ';'
 
 decl_enum  = 'enum' TKN_IDENT (':' typespec)? '{' decl_enum_items? '}'
 decl_enum_items = decl_enum_item (',' decl_enum_item)* ','?
@@ -67,7 +68,6 @@ decl_proc  = 'proc' TKN_IDENT '(' param_list ')' (':' type_spec)? stmt_block
 param_list = param_item (',' param_item)*
 param_item = TKN_IDENT ':' type_spec 
 
-decl_typedef = 'typedef' TKN_IDENT '=' type_spec ';'
 
 
 stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?

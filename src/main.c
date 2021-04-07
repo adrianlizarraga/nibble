@@ -201,19 +201,19 @@ int main(void)
     offsetof(Stmt, as_if));
     */
 
-    // CompiledModule* module = compile_module("a : int = 1 + 2;", 0);
-    // CompiledModule* module = compile_module("a := 1 + 2;", 0);
-    // CompiledModule* module = compile_module("a : int;", 0);
-    // CompiledModule* module = compile_module("a : int = f(x=a);", 0);
-    // CompiledModule* module = compile_module("a : Vector2 = {x = 10, y = 20 :Vector2};", 0);
+    CompiledModule* module = compile_module("var a : int = 1 + 2;", 0);
+    // CompiledModule* module = compile_module("var a := 1 + 2;", 0);
+    // CompiledModule* module = compile_module("var a : int;", 0);
+    // CompiledModule* module = compile_module("var a : int = f(x=a);", 0);
+    // CompiledModule* module = compile_module("var a : Vector2 = {x = 10, y = 20 :Vector2};", 0);
     //
-    // CompiledModule* module = compile_module("a :;", 0);
-    // CompiledModule* module = compile_module("a;", 0);
+    // CompiledModule* module = compile_module("var a :;", 0);
+    // CompiledModule* module = compile_module("var a;", 0);
     //
-    // CompiledModule* module = compile_module("#const a : int = 1 + 2;", 0);
-    // CompiledModule* module = compile_module("#const a := 1 + 2;", 0);
+    // CompiledModule* module = compile_module("const a : int = 1 + 2;", 0);
+    // CompiledModule* module = compile_module("const a := 1 + 2;", 0);
     //
-    // CompiledModule* module = compile_module("#typedef i8 = int8;", 0);
+    // CompiledModule* module = compile_module("typedef i8 = int8;", 0);
     //
     // CompiledModule* module = compile_module("enum Kind {A}", 0);
     // CompiledModule* module = compile_module("enum Kind {}", 0);
@@ -229,7 +229,7 @@ int main(void)
     // CompiledModule* module = compile_module("struct Vector2 {s:struct {};}", 0);
     // CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
     //
-    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {}", 0);
     //
 
     // CompiledModule* module = compile_module("{}", 0);

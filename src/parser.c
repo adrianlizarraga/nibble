@@ -883,24 +883,7 @@ Stmt* parse_stmt(Parser* parser)
 
     if (is_token(parser, TKN_LBRACE)) {
         stmt = parse_stmt_block(parser);
-    } else {
-        Expr* expr = parse_expr(parser);
-
-        if (expr) {
-            if (match_token_next(parser, TKN_SEMICOLON)) {
-
-            } else if (is_token_assign_op(parser)) {
-
-            } else {
-                // Maybe decl is the first to be parsed.
-            }
-        } else {
-            char tmp[32];
-
-            print_token(&parser->token, tmp, sizeof(tmp));
-            parser_on_error(parser, "Unexpected token `%s` while parsing statement", tmp);
-        }
-    }
+    } 
 
     return stmt;
 }
@@ -909,45 +892,48 @@ Stmt* parse_stmt(Parser* parser)
 //    Parse declarations
 //////////////////////////////
 
-// decl_var = TKN_IDENT ':' type_spec? ('=' expr)? ';'
+// decl_var = KW_VAR TKN_IDENT ':' type_spec? ('=' expr)? ';'
 //
-// Ex 1: x : int = 0;
-// Ex 2: x := 0;
-// Ex 3: x :int;
+// Ex 1: var x : int = 0;
+// Ex 2: var x := 0;
+// Ex 3: var x :int;
 static Decl* parse_decl_var(Parser* parser)
 {
-    assert(is_token(parser, TKN_IDENT));
+    assert(is_keyword(parser, KW_VAR));
     Decl* decl = NULL;
     ProgRange range = {.start = parser->token.range.start};
-    const char* name = parser->token.as_ident.value;
-    const char* error_prefix = "Failed to parse variable declaration";
+    const char* error_prefix = "Failed to parse var declaration";
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_COLON, error_prefix)) {
-        TypeSpec* type = NULL;
-        Expr* expr = NULL;
-        bool bad_type = false;
-        bool bad_expr = false;
+    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+        const char* name = parser->ptoken.as_ident.value;
 
-        if (!is_token(parser, TKN_ASSIGN) && !is_token(parser, TKN_SEMICOLON)) {
-            type = parse_typespec(parser);
-            bad_type = !type;
-        }
+        if (expect_token_next(parser, TKN_COLON, error_prefix)) {
+            TypeSpec* type = NULL;
+            Expr* expr = NULL;
+            bool bad_type = false;
+            bool bad_expr = false;
 
-        if (match_token_next(parser, TKN_ASSIGN)) {
-            expr = parse_expr(parser);
-            bad_expr = !expr;
-        }
+            if (!is_token(parser, TKN_ASSIGN) && !is_token(parser, TKN_SEMICOLON)) {
+                type = parse_typespec(parser);
+                bad_type = !type;
+            }
 
-        if (!bad_type && !bad_expr) {
-            if (type || expr) {
-                if (expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
-                    range.end = parser->ptoken.range.end;
-                    decl = decl_var(parser->allocator, name, type, expr, range);
+            if (match_token_next(parser, TKN_ASSIGN)) {
+                expr = parse_expr(parser);
+                bad_expr = !expr;
+            }
+
+            if (!bad_type && !bad_expr) {
+                if (type || expr) {
+                    if (expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+                        range.end = parser->ptoken.range.end;
+                        decl = decl_var(parser->allocator, name, type, expr, range);
+                    }
+                } else {
+                    parser_on_error(parser, "A var declaration must have either a type or an initial value");
                 }
-            } else {
-                parser_on_error(parser, "Variable declaration must have either a type or an initial value");
             }
         }
     }
@@ -1154,13 +1140,13 @@ static Decl* parse_decl_enum(Parser* parser)
 
 // decl_typedef = KW_TYPEDEF TKN_IDENT '=' type_spec ';'
 //
-// Ex: #typedef i8 = int8;
+// Ex: typedef i8 = int8;
 static Decl* parse_decl_typedef(Parser* parser)
 {
     assert(is_keyword(parser, KW_TYPEDEF));
     Decl* decl = NULL;
-    ProgRange range = {.start = parser->ptoken.range.start};
-    const char* error_prefix = "Failed to parse #typedef declaration";
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse typedef declaration";
 
     next_token(parser);
 
@@ -1182,14 +1168,14 @@ static Decl* parse_decl_typedef(Parser* parser)
 
 // decl_const = KW_CONST TKN_IDENT ':' typespec?  '=' expr ';'
 //
-// Ex 1: #const x : int = 0;
-// Ex 2: #const x := 0;
+// Ex 1: const x : int = 0;
+// Ex 2: const x := 0;
 static Decl* parse_decl_const(Parser* parser)
 {
     assert(is_keyword(parser, KW_CONST));
     Decl* decl = NULL;
-    ProgRange range = {.start = parser->ptoken.range.start};
-    const char* error_prefix = "Failed to parse #const declaration";
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse const declaration";
 
     next_token(parser);
 
@@ -1219,28 +1205,23 @@ static Decl* parse_decl_const(Parser* parser)
     return decl;
 }
 
-// decl = '#' decl_const
-//      | '#' decl_typedef
+// decl = decl_const
+//      | decl_typedef
+//      | decl_var
 //      | decl_enum
 //      | decl_struct
 //      | decl_union
 //      | decl_proc
-//      | decl_var
 Decl* parse_decl(Parser* parser)
 {
     Decl* decl = NULL;
 
-    if (match_token_next(parser, TKN_POUND)) {
-        if (is_keyword(parser, KW_CONST)) {
-            decl = parse_decl_const(parser);
-        } else if (is_keyword(parser, KW_TYPEDEF)) {
-            decl = parse_decl_typedef(parser);
-        } else {
-            char tmp[32];
-
-            print_token(&parser->token, tmp, sizeof(tmp));
-            parser_on_error(parser, "Unexpected token `%s` in `#` declaration", tmp);
-        }
+    if (is_keyword(parser, KW_CONST)) {
+        decl = parse_decl_const(parser);
+    } else if (is_keyword(parser, KW_TYPEDEF)) {
+        decl = parse_decl_typedef(parser);
+    } else if (is_keyword(parser, KW_VAR)) {
+        decl = parse_decl_var(parser);
     } else if (is_keyword(parser, KW_ENUM)) {
         decl = parse_decl_enum(parser);
     } else if (is_keyword(parser, KW_STRUCT)) {
@@ -1249,8 +1230,6 @@ Decl* parse_decl(Parser* parser)
         decl = parse_decl_aggregate(parser, "Failed to parse union declaration", decl_union);
     } else if (is_keyword(parser, KW_PROC)) {
         decl = parse_decl_proc(parser);
-    } else if (is_token(parser, TKN_IDENT)) {
-        decl = parse_decl_var(parser);
     } else {
         char tmp[32];
 

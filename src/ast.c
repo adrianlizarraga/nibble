@@ -690,7 +690,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         } break;
         case DECL_CONST: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(#const %s", decl->name);
+            ftprint_char_array(&dstr, false, "(const %s", decl->name);
 
             if (decl->as_const.type) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, decl->as_const.type));
@@ -704,7 +704,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         } break;
         case DECL_TYPEDEF: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(#typedef %s %s)", decl->name,
+            ftprint_char_array(&dstr, false, "(typedef %s %s)", decl->name,
                                ftprint_typespec(allocator, decl->as_typedef.type));
         } break;
         case DECL_ENUM: {
