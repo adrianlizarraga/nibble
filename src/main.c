@@ -299,7 +299,11 @@ int main(void)
     // CompiledModule* module = compile_module("var a : int;", 0);
     // CompiledModule* module = compile_module("var a : int = f(x=a);", 0);
     // CompiledModule* module = compile_module("var a : Vector2 = {x = 10, y = 20 :Vector2};", 0);
-    CompiledModule* module = compile_module("var a := x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2];", 0);
+    // CompiledModule* module = compile_module("var a : int32= x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2];", 0);
+    // CompiledModule* module = compile_module("var a: proc([]int32, ^^int32)=>int32;", 0);
+    // CompiledModule* module = compile_module("var a: (^int32);", 0);
+    // CompiledModule* module = compile_module("var a: struct {a:int32;};", 0);
+    CompiledModule* module = compile_module("var a: union {a:int32; b:float32;};", 0);
     //
     // CompiledModule* module = compile_module("var a :;", 0);
     // CompiledModule* module = compile_module("var a;", 0);

@@ -295,30 +295,47 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 //                | '(' type_spec ')'
 static TypeSpec* parse_typespec_base(Parser* parser)
 {
-    TypeSpec* type = NULL;
+    Token token = parser->token;
 
-    if (is_keyword(parser, KW_PROC)) {
-        type = parse_typespec_proc(parser);
-    } else if (is_keyword(parser, KW_STRUCT)) {
-        type = parse_typespec_anon_aggregate(parser, "Failed to parse anonymous struct", typespec_anon_struct);
-    } else if (is_keyword(parser, KW_UNION)) {
-        type = parse_typespec_anon_aggregate(parser, "Failed to parse anonymous union", typespec_anon_union);
-    } else if (match_token_next(parser, TKN_IDENT)) {
-        type = typespec_ident(parser->allocator, parser->ptoken.as_ident.value, parser->ptoken.range);
-    } else if (match_token_next(parser, TKN_LPAREN)) {
+    switch (token.kind) {
+    case TKN_KW: {
+        switch (token.as_kw.kw) {
+        case KW_PROC:
+            return parse_typespec_proc(parser);
+        case KW_STRUCT:
+            return parse_typespec_anon_aggregate(parser, "Failed to parse anonymous struct", typespec_anon_struct);
+        case KW_UNION:
+            return parse_typespec_anon_aggregate(parser, "Failed to parse anonymous union", typespec_anon_union);
+        default:
+            break;
+        }
+    } break;
+    case TKN_IDENT:
+        next_token(parser);
+        return typespec_ident(parser->allocator, token.as_ident.value, token.range);
+    case TKN_LPAREN: {
+        next_token(parser);
+
+        TypeSpec* type = NULL;
         TypeSpec* enclosed_type = parse_typespec(parser);
 
         if (enclosed_type && expect_token_next(parser, TKN_RPAREN, NULL)) {
             type = enclosed_type;
         }
-    } else {
-        char tmp[32];
 
-        print_token(&parser->token, tmp, sizeof(tmp));
-        parser_on_error(parser, "Unexpected token `%s` in type specification", tmp);
+        return type;
+    } break;
+    default:
+        break;
     }
 
-    return type;
+    // If we got here, we have an unexpected token.
+    char tmp[32];
+
+    print_token(&parser->token, tmp, sizeof(tmp));
+    parser_on_error(parser, "Unexpected token `%s` in type specification", tmp);
+
+    return NULL;
 }
 
 // typespec = ('^' | '[' expr? ']' | KW_CONST) typespec
