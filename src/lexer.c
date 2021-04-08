@@ -51,18 +51,6 @@ static void lexer_on_line(Lexer* lexer)
     (void)lexer;
 }
 
-static const char* lexer_on_str(Lexer* lexer, const char* str, size_t len)
-{
-    (void)lexer;
-    return intern_str_lit(str, len);
-}
-
-static const char* lexer_on_ident(Lexer* lexer, const char* str, size_t len)
-{
-    (void)lexer;
-    return intern_ident(str, len);
-}
-
 static void skip_c_comment(Lexer* lexer)
 {
     assert(lexer->at[0] == '/');
@@ -310,27 +298,11 @@ static TokenStr scan_string(Lexer* lexer)
     }
 
     array_push(tmp, '\0');
-    tstr.value = lexer_on_str(lexer, tmp, array_len(tmp) - 1);
+    tstr.value = intern_str_lit(tmp, array_len(tmp) - 1);
 
     allocator_reset(arena);
 
     return tstr;
-}
-
-static TokenIdent scan_ident(Lexer* lexer)
-{
-    assert(is_alphanum(lexer->at[0]));
-    TokenIdent tident = {0};
-
-    const char* start = lexer->at;
-
-    do {
-        lexer->at++;
-    } while(is_alphanum(lexer->at[0]));
-
-    tident.value = lexer_on_ident(lexer, start, lexer->at - start);
-
-    return tident;
 }
 
 static TokenInt scan_char(Lexer* lexer)
@@ -429,6 +401,7 @@ const char* token_kind_names[] = {
 
     [TKN_STR] = "string literal",
     [TKN_IDENT] = "identifier",
+    [TKN_KW] = "keyword",
     [TKN_INT] = "integer literal",
     [TKN_FLOAT] = "floating-point literal",
 
@@ -482,6 +455,9 @@ int print_token(Token* token, char* buf, size_t size)
     } break;
     case TKN_IDENT: {
         return snprintf(buf, size, "%s", token->as_ident.value);
+    } break;
+    case TKN_KW: {
+        return snprintf(buf, size, "%s", token->as_kw.name);
     } break;
     default:
         return snprintf(buf, size, "%s", kind_name);
@@ -733,8 +709,24 @@ top:
     case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J': case 'K':
     case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V':
     case 'W': case 'X': case 'Y': case 'Z': case '_': {
-        token.kind = TKN_IDENT;
-        token.as_ident = scan_ident(lexer);
+        const char* start = lexer->at;
+
+        do {
+            lexer->at++;
+        } while(is_alphanum(lexer->at[0]));
+
+        bool is_kw = false;
+        Keyword kw = (Keyword)0;
+        const char* interned = intern_ident(start, lexer->at - start, &is_kw, &kw);
+
+        if (is_kw) {
+            token.kind = TKN_KW;
+            token.as_kw.kw = kw;
+            token.as_kw.name = interned;
+        } else {
+            token.kind = TKN_IDENT;
+            token.as_ident.value = interned;
+        }
     } break;
     case '\0': {
         token.kind = TKN_EOF;

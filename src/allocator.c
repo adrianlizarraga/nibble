@@ -1,10 +1,10 @@
 #include "allocator.h"
+#include "nibble.h"
 #include "cstring.h"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-
 
 typedef struct MemBlockFooter {
     unsigned char* pbuffer;
@@ -47,7 +47,7 @@ void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
 
     void* memory = NULL;
 
-    uintptr_t aligned_at = (((uintptr_t)allocator->at) + align - 1) & ~(align - 1);
+    uintptr_t aligned_at = ALIGN_UP((uintptr_t)allocator->at, align);
     uintptr_t new_at = aligned_at + size;
 
     // Allocate a new memory block if need more memory.
@@ -64,7 +64,7 @@ void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
             return NULL;
         }
 
-        aligned_at = (((uintptr_t)allocator->at) + align - 1) & ~(align - 1);
+        aligned_at = ALIGN_UP((uintptr_t)allocator->at, align);
         new_at = aligned_at + size;
     }
 

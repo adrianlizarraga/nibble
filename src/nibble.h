@@ -2,10 +2,11 @@
 #define NIBBLE_H
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #define MAX_ERROR_LEN 256
-
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
+#define ALIGN_UP(p, a) (((p) + (a) - 1) & ~((a) - 1))
 
 typedef uint32_t ProgPos;
 
@@ -51,5 +52,5 @@ typedef enum Keyword {
 
 extern const char* keywords[KW_COUNT];
 const char* intern_str_lit(const char* str, size_t len);
-const char* intern_ident(const char* str, size_t len);
+const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
 #endif

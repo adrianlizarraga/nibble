@@ -1,5 +1,5 @@
-#include "ast.h"
 #include "parser.h"
+#include "ast.h"
 
 static void parser_on_error(Parser* parser, const char* format, ...)
 {
@@ -36,7 +36,7 @@ bool next_token(Parser* parser)
     return parser->token.kind != TKN_EOF;
 }
 
-bool is_token(Parser* parser, TokenKind kind)
+bool is_token_kind(Parser* parser, TokenKind kind)
 {
     return (parser->token.kind == kind);
 }
@@ -69,7 +69,7 @@ static const uint8_t op_precedence[TKN_KIND_COUNT] = {
     [TKN_NOT] = OP_PRECEDENCE_UNARY,
 };
 
-bool is_token_op(Parser* parser, uint8_t precedence)
+bool is_token_op_kind(Parser* parser, uint8_t precedence)
 {
     TokenKind kind = parser->token.kind;
 
@@ -78,7 +78,7 @@ bool is_token_op(Parser* parser, uint8_t precedence)
 
 bool is_keyword(Parser* parser, Keyword kw)
 {
-    return (parser->token.kind == TKN_IDENT) && (parser->token.as_ident.value == keywords[kw]);
+    return (parser->token.kind == TKN_KW) && (parser->token.as_kw.kw == kw);
 }
 
 bool match_token_next(Parser* parser, TokenKind kind)
@@ -94,7 +94,7 @@ bool match_token_next(Parser* parser, TokenKind kind)
 
 bool match_keyword_next(Parser* parser, Keyword kw)
 {
-    bool matches = (parser->token.kind == TKN_IDENT) && (parser->token.as_ident.value == keywords[kw]);
+    bool matches = (parser->token.kind == TKN_KW) && (parser->token.as_kw.kw == kw);
 
     if (matches) {
         next_token(parser);
@@ -122,7 +122,7 @@ bool expect_token_next(Parser* parser, TokenKind kind, const char* error_prefix)
 
 bool expect_keyword_next(Parser* parser, Keyword kw, const char* error_prefix)
 {
-    bool matches = (parser->token.kind == TKN_IDENT) && (parser->token.as_ident.value == keywords[kw]);
+    bool matches = (parser->token.kind == TKN_KW) && (parser->token.as_kw.kw == kw);
 
     if (matches) {
         next_token(parser);
@@ -139,7 +139,7 @@ bool expect_keyword_next(Parser* parser, Keyword kw, const char* error_prefix)
 
 bool skip_after_token(Parser* parser, TokenKind kind)
 {
-    while (!is_token(parser, TKN_EOF) && !is_token(parser, kind)) {
+    while (!is_token_kind(parser, TKN_EOF) && !is_token_kind(parser, kind)) {
         next_token(parser);
     }
 
@@ -181,7 +181,7 @@ static bool parse_fill_aggregate_body(Parser* parser, AggregateBody* body)
     dllist_head_init(&body->fields);
     body->num_fields = 0;
 
-    while (!is_token(parser, TKN_RBRACE) && !is_token(parser, TKN_EOF)) {
+    while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
         AggregateField* field = parse_aggregate_field(parser);
 
         if (field) {
@@ -253,7 +253,7 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
         DLList params = dllist_head_create(params);
         bool bad_param = false;
 
-        while (!is_token(parser, TKN_RPAREN) && !is_token(parser, TKN_EOF)) {
+        while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
             TypeSpecParam* param = parse_typespec_proc_param(parser);
 
             if (param) {
@@ -349,7 +349,7 @@ TypeSpec* parse_typespec(Parser* parser)
         Expr* len = NULL;
         bool bad_len = false;
 
-        if (!is_token(parser, TKN_RBRACKET)) {
+        if (!is_token_kind(parser, TKN_RBRACKET)) {
             len = parse_expr(parser);
             bad_len = len == NULL;
         }
@@ -446,7 +446,8 @@ static Expr* parse_expr_compound_lit(Parser* parser)
         DLList initzers = dllist_head_create(initzers);
         bool bad_initzer = false;
 
-        while (!(is_token(parser, TKN_RBRACE) || is_token(parser, TKN_COLON) || is_token(parser, TKN_EOF))) {
+        while (!(is_token_kind(parser, TKN_RBRACE) || is_token_kind(parser, TKN_COLON) ||
+                 is_token_kind(parser, TKN_EOF))) {
             ExprInitializer* initzer = parse_expr_initializer(parser);
 
             if (initzer) {
@@ -484,6 +485,48 @@ static Expr* parse_expr_compound_lit(Parser* parser)
     return expr;
 }
 
+static Expr* parse_expr_sizeof(Parser* parser)
+{
+    Expr* expr = NULL;
+    const char* error_prefix = "Failed to parse sizeof expression";
+
+    if (expect_keyword_next(parser, KW_SIZEOF, error_prefix)) {
+        ProgRange range = {.start = parser->ptoken.range.start};
+
+        if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+            TypeSpec* type = parse_typespec(parser);
+
+            if (type && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+                range.end = parser->ptoken.range.end;
+                expr = expr_sizeof(parser->allocator, type, range);
+            }
+        }
+    }
+
+    return expr;
+}
+
+static Expr* parse_expr_typeof(Parser* parser)
+{
+    Expr* expr = NULL;
+    const char* error_prefix = "Failed to parse typeof expression";
+
+    if (expect_keyword_next(parser, KW_TYPEOF, error_prefix)) {
+        ProgRange range = {.start = parser->ptoken.range.start};
+
+        if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+            Expr* arg = parse_expr(parser);
+
+            if (arg && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+                range.end = parser->ptoken.range.end;
+                expr = expr_typeof(parser->allocator, arg, range);
+            }
+        }
+    }
+
+    return expr;
+}
+
 // expr_base = TKN_INT
 //           | TKN_FLOAT
 //           | TKN_STR
@@ -493,71 +536,57 @@ static Expr* parse_expr_compound_lit(Parser* parser)
 //           | expr_typeof
 //           | '(' expr ')'
 //
-// expr_sizeof = '#' KW_SIZEOF '('type_spec')'
-// expr_typeof = '#' KW_TYPEOF '(' expr ')'
+// expr_sizeof = KW_SIZEOF '('type_spec')'
+// expr_typeof = KW_TYPEOF '(' expr ')'
 static Expr* parse_expr_base(Parser* parser)
 {
-    Expr* expr = NULL;
+    Token token = parser->token;
 
-    if (match_token_next(parser, TKN_INT)) {
-        Token* token = &parser->ptoken;
-        expr = expr_int(parser->allocator, token->as_int.value, token->range);
-    } else if (match_token_next(parser, TKN_FLOAT)) {
-        Token* token = &parser->ptoken;
-        expr = expr_float(parser->allocator, token->as_float.value, token->range);
-    } else if (match_token_next(parser, TKN_STR)) {
-        Token* token = &parser->ptoken;
-        expr = expr_str(parser->allocator, token->as_str.value, token->range);
-    } else if (match_token_next(parser, TKN_LPAREN)) {
+    switch (token.kind) {
+    case TKN_INT:
+        next_token(parser);
+        return expr_int(parser->allocator, token.as_int.value, token.range);
+    case TKN_FLOAT:
+        next_token(parser);
+        return expr_float(parser->allocator, token.as_float.value, token.range);
+    case TKN_STR:
+        next_token(parser);
+        return expr_str(parser->allocator, token.as_str.value, token.range);
+    case TKN_LPAREN: {
+        next_token(parser);
+
         Expr* enclosed = parse_expr(parser);
 
         if (enclosed && expect_token_next(parser, TKN_RPAREN, NULL)) {
-            expr = enclosed;
+            return enclosed;
         }
-    } else if (is_token(parser, TKN_LBRACE)) {
-        expr = parse_expr_compound_lit(parser);
-    } else if (match_token_next(parser, TKN_POUND)) {
-        ProgRange range = {.start = parser->ptoken.range.start};
-
-        if (match_keyword_next(parser, KW_SIZEOF)) {
-            const char* error_prefix = "Failed to parse #sizeof expression";
-
-            if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
-                TypeSpec* type = parse_typespec(parser);
-
-                if (type && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
-                    range.end = parser->ptoken.range.end;
-                    expr = expr_sizeof(parser->allocator, type, range);
-                }
-            }
-        } else if (match_keyword_next(parser, KW_TYPEOF)) {
-            const char* error_prefix = "Failed to parse #typeof expression";
-
-            if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
-                Expr* arg = parse_expr(parser);
-
-                if (arg && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
-                    range.end = parser->ptoken.range.end;
-                    expr = expr_typeof(parser->allocator, arg, range);
-                }
-            }
-        } else {
-            char tmp[32];
-
-            print_token(&parser->token, tmp, sizeof(tmp));
-            parser_on_error(parser, "Unexpected token `%s` after `#`", tmp);
+    } break;
+    case TKN_LBRACE:
+        return parse_expr_compound_lit(parser);
+    case TKN_KW: {
+        switch (token.as_kw.kw) {
+        case KW_SIZEOF:
+            return parse_expr_sizeof(parser);
+        case KW_TYPEOF:
+            return parse_expr_typeof(parser);
+        default:
+            break;
         }
-    } else if (match_token_next(parser, TKN_IDENT)) {
-        Token* token = &parser->ptoken;
-        expr = expr_ident(parser->allocator, token->as_ident.value, token->range);
-    } else {
-        char tmp[32];
-
-        print_token(&parser->token, tmp, sizeof(tmp));
-        parser_on_error(parser, "Unexpected token `%s` in expression", tmp);
+    } break;
+    case TKN_IDENT:
+        next_token(parser);
+        return expr_ident(parser->allocator, token.as_ident.value, token.range);
+    default:
+        break;
     }
 
-    return expr;
+    // If we got here, we have an unexpected token.
+    char tmp[32];
+
+    print_token(&parser->token, tmp, sizeof(tmp));
+    parser_on_error(parser, "Unexpected token `%s` in expression", tmp);
+
+    return NULL;
 }
 
 // expr_call_arg = (IDENTIFIER '=')? expr
@@ -592,8 +621,8 @@ static Expr* parse_expr_base_mod(Parser* parser)
 {
     Expr* expr = parse_expr_base(parser);
 
-    while (expr && (is_token(parser, TKN_DOT) || is_token(parser, TKN_LBRACKET) || is_token(parser, TKN_LPAREN) ||
-                    is_token(parser, TKN_CAST))) {
+    while (expr && (is_token_kind(parser, TKN_DOT) || is_token_kind(parser, TKN_LBRACKET) ||
+                    is_token_kind(parser, TKN_LPAREN) || is_token_kind(parser, TKN_CAST))) {
         if (match_token_next(parser, TKN_DOT)) {
             //
             // Field access.
@@ -628,7 +657,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             size_t num_args = 0;
             DLList args = dllist_head_create(args);
 
-            while (!is_token(parser, TKN_RPAREN) && !is_token(parser, TKN_EOF)) {
+            while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
                 ExprCallArg* arg = parse_expr_call_arg(parser);
 
                 if (arg) {
@@ -655,7 +684,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             // Cast expression.
             //
 
-            assert(is_token(parser, TKN_CAST));
+            assert(is_token_kind(parser, TKN_CAST));
             next_token(parser);
 
             TypeSpec* type = parse_typespec(parser);
@@ -678,7 +707,7 @@ static Expr* parse_expr_unary(Parser* parser)
 {
     Expr* expr = NULL;
 
-    if (is_token_op(parser, OP_PRECEDENCE_UNARY)) {
+    if (is_token_op_kind(parser, OP_PRECEDENCE_UNARY)) {
         ProgRange range = {.start = parser->token.range.start};
         TokenKind op = parser->token.kind;
 
@@ -702,7 +731,7 @@ static Expr* parse_expr_mul(Parser* parser)
 {
     Expr* expr = parse_expr_unary(parser);
 
-    while (expr && is_token_op(parser, OP_PRECEDENCE_MUL)) {
+    while (expr && is_token_op_kind(parser, OP_PRECEDENCE_MUL)) {
         TokenKind op = parser->token.kind;
 
         next_token(parser);
@@ -725,7 +754,7 @@ static Expr* parse_expr_add(Parser* parser)
 {
     Expr* expr = parse_expr_mul(parser);
 
-    while (expr && is_token_op(parser, OP_PRECEDENCE_ADD)) {
+    while (expr && is_token_op_kind(parser, OP_PRECEDENCE_ADD)) {
         TokenKind op = parser->token.kind;
 
         next_token(parser);
@@ -748,7 +777,7 @@ static Expr* parse_expr_cmp(Parser* parser)
 {
     Expr* expr = parse_expr_add(parser);
 
-    while (expr && is_token_op(parser, OP_PRECEDENCE_CMP)) {
+    while (expr && is_token_op_kind(parser, OP_PRECEDENCE_CMP)) {
         TokenKind op = parser->token.kind;
 
         next_token(parser);
@@ -843,7 +872,7 @@ static bool parse_fill_stmt_block(Parser* parser, StmtBlock* block)
     dllist_head_init(&block->stmts);
     block->num_stmts = 0;
 
-    while (!is_token(parser, TKN_RBRACE) && !is_token(parser, TKN_EOF)) {
+    while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
         Stmt* stmt = parse_stmt(parser);
 
         if (stmt) {
@@ -860,7 +889,7 @@ static bool parse_fill_stmt_block(Parser* parser, StmtBlock* block)
 
 static Stmt* parse_stmt_block(Parser* parser)
 {
-    assert(is_token(parser, TKN_LBRACE));
+    assert(is_token_kind(parser, TKN_LBRACE));
     Stmt* stmt = NULL;
     ProgRange range = {.start = parser->token.range.start};
 
@@ -881,9 +910,9 @@ Stmt* parse_stmt(Parser* parser)
 {
     Stmt* stmt = NULL;
 
-    if (is_token(parser, TKN_LBRACE)) {
+    if (is_token_kind(parser, TKN_LBRACE)) {
         stmt = parse_stmt_block(parser);
-    } 
+    }
 
     return stmt;
 }
@@ -915,7 +944,7 @@ static Decl* parse_decl_var(Parser* parser)
             bool bad_type = false;
             bool bad_expr = false;
 
-            if (!is_token(parser, TKN_ASSIGN) && !is_token(parser, TKN_SEMICOLON)) {
+            if (!is_token_kind(parser, TKN_ASSIGN) && !is_token_kind(parser, TKN_SEMICOLON)) {
                 type = parse_typespec(parser);
                 bad_type = !type;
             }
@@ -983,7 +1012,7 @@ static Decl* parse_decl_proc(Parser* parser)
             DLList params = dllist_head_create(params);
             bool bad_param = false;
 
-            while (!is_token(parser, TKN_RPAREN) && !is_token(parser, TKN_EOF)) {
+            while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
                 DeclProcParam* param = parse_decl_proc_param(parser);
 
                 if (param) {
@@ -1108,7 +1137,7 @@ static Decl* parse_decl_enum(Parser* parser)
             DLList items = dllist_head_create(items);
             bool bad_item = false;
 
-            while (!is_token(parser, TKN_RBRACE) && !is_token(parser, TKN_EOF)) {
+            while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
                 DeclEnumItem* item = parse_decl_enum_item(parser);
 
                 if (item) {
@@ -1186,7 +1215,7 @@ static Decl* parse_decl_const(Parser* parser)
             TypeSpec* type = NULL;
             bool bad_type = false;
 
-            if (!is_token(parser, TKN_ASSIGN)) {
+            if (!is_token_kind(parser, TKN_ASSIGN)) {
                 type = parse_typespec(parser);
                 bad_type = type == NULL;
             }
@@ -1214,32 +1243,32 @@ static Decl* parse_decl_const(Parser* parser)
 //      | decl_proc
 Decl* parse_decl(Parser* parser)
 {
-    Decl* decl = NULL;
-
-    if (is_keyword(parser, KW_CONST)) {
-        decl = parse_decl_const(parser);
-    } else if (is_keyword(parser, KW_TYPEDEF)) {
-        decl = parse_decl_typedef(parser);
-    } else if (is_keyword(parser, KW_VAR)) {
-        decl = parse_decl_var(parser);
-    } else if (is_keyword(parser, KW_ENUM)) {
-        decl = parse_decl_enum(parser);
-    } else if (is_keyword(parser, KW_STRUCT)) {
-        decl = parse_decl_aggregate(parser, "Failed to parse struct declaration", decl_struct);
-    } else if (is_keyword(parser, KW_UNION)) {
-        decl = parse_decl_aggregate(parser, "Failed to parse union declaration", decl_union);
-    } else if (is_keyword(parser, KW_PROC)) {
-        decl = parse_decl_proc(parser);
-    } else {
-        char tmp[32];
-
-        print_token(&parser->token, tmp, sizeof(tmp));
-        parser_on_error(parser, "Unexpected token `%s` in declaration", tmp);
-
-        // NOTE: Not sure if this is right. Might want to skip to first of newline or semicolon?
-        // Alternatively, just skip semicolon if it is the next token???
-        // skip_after_token(parser, TKN_SEMICOLON);
+    if (is_token_kind(parser, TKN_KW)) {
+        switch (parser->token.as_kw.kw) {
+        case KW_CONST:
+            return parse_decl_const(parser);
+        case KW_TYPEDEF:
+            return parse_decl_typedef(parser);
+        case KW_VAR:
+            return parse_decl_var(parser);
+        case KW_ENUM:
+            return parse_decl_enum(parser);
+        case KW_STRUCT:
+            return parse_decl_aggregate(parser, "Failed to parse struct declaration", decl_struct);
+        case KW_UNION:
+            return parse_decl_aggregate(parser, "Failed to parse union declaration", decl_union);
+        case KW_PROC:
+            return parse_decl_proc(parser);
+        default:
+            break;
+        }
     }
 
-    return decl;
+    // If we got here, we have an unexpected token.
+    char tmp[32];
+
+    print_token(&parser->token, tmp, sizeof(tmp));
+    parser_on_error(parser, "Unexpected token: wanted a declaration keyword, but got `%s`", tmp);
+
+    return NULL;
 }

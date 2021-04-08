@@ -28,6 +28,20 @@ typedef struct CompiledModule {
     ByteStream errors;
 } CompiledModule;
 
+typedef struct InternedStr {
+    struct InternedStr* next;
+    size_t len;
+    char str[];
+} InternedStr;
+
+typedef struct InternedIdent {
+    struct InternedIdent* next;
+    size_t len;
+    Keyword kw;
+    bool is_kw;
+    char str[];
+} InternedIdent;
+
 static NibbleCtx nibble;
 
 const char* keywords[KW_COUNT];
@@ -70,7 +84,9 @@ static bool nibble_init(void)
     // determining whether a string is a keyword using simple pointer comparisons.
     size_t kws_size = 0;
     for (int i = 0; i < KW_COUNT; ++i) {
-        kws_size += offsetof(InternedStr, str) + keyword_names[i].len + 1;
+        size_t size = offsetof(InternedIdent, str) + keyword_names[i].len + 1; 
+
+        kws_size += ALIGN_UP(size, DEFAULT_ALIGN);
     }
 
     char* kws_mem = mem_allocate(&nibble.allocator, kws_size, DEFAULT_ALIGN, false);
@@ -78,14 +94,18 @@ static bool nibble_init(void)
         return false;
     }
 
+    char* kws_mem_ptr = kws_mem;
+
     for (int i = 0; i < KW_COUNT; ++i) {
         const char* str = keyword_names[i].str;
         size_t len = keyword_names[i].len;
-        size_t size = offsetof(InternedStr, str) + len + 1;
-        InternedStr* kw = (void*)kws_mem;
+        size_t size = offsetof(InternedIdent, str) + len + 1;
+        InternedIdent* kw = (void*)kws_mem_ptr;
 
         kw->next = NULL;
         kw->len = len;
+        kw->is_kw = true;
+        kw->kw = (Keyword)i;
 
         memcpy(kw->str, str, len);
         kw->str[len] = '\0';
@@ -93,8 +113,9 @@ static bool nibble_init(void)
         hash_map_put(&nibble.ident_map, hash_bytes(str, len), (uintptr_t)kw);
         keywords[i] = kw->str;
 
-        kws_mem += size;
+        kws_mem_ptr += ALIGN_UP(size, DEFAULT_ALIGN);
     }
+    assert((size_t)(kws_mem_ptr - kws_mem) == kws_size);
     assert(nibble.ident_map.len == KW_COUNT);
 
     return true;
@@ -109,12 +130,83 @@ static void nibble_cleanup(void)
 
 const char* intern_str_lit(const char* str, size_t len)
 {
-    return str_intern(&nibble.allocator, &nibble.str_lit_map, str, len);
+    Allocator* allocator = &nibble.allocator;
+    HashMap* strmap = &nibble.str_lit_map;
+    uint64_t key = hash_bytes(str, len);
+    uint64_t* pval = hash_map_get(strmap, key);
+    InternedStr* intern = pval ? (void*)*pval : NULL;
+
+    // Collisions will only occur if identical hash values are produced. Collisions due to
+    // contention for hash map slots will not occur (open addressing).
+    //
+    // Walk the linked list in case of collision.
+    for (InternedStr* it = intern; it; it = it->next) {
+        if ((it->len == len) && (cstr_ncmp(it->str, str, len) == 0)) {
+            return it->str;
+        }
+    }
+
+    // If we got here, need to add this string to the intern table.
+    InternedStr* new_intern = mem_allocate(allocator, offsetof(InternedStr, str) + len + 1, DEFAULT_ALIGN, false);
+    if (new_intern) {
+        new_intern->next = intern; // Record collision. If a collision did _NOT_ occur, this will be null.
+        new_intern->len = len;
+
+        memcpy(new_intern->str, str, len);
+        new_intern->str[len] = '\0';
+
+        hash_map_put(strmap, key, (uintptr_t)new_intern);
+    } else {
+        // TODO: Handle in a better way.
+        fprintf(stderr, "[INTERNAL ERROR]: Out of memory.\n%s:%d\n", __FILE__, __LINE__);
+        exit(1);
+    }
+
+    return new_intern->str;
 }
 
-const char* intern_ident(const char* str, size_t len)
+const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw)
 {
-    return str_intern(&nibble.allocator, &nibble.ident_map, str, len);
+    Allocator* allocator = &nibble.allocator;
+    HashMap* strmap = &nibble.ident_map;
+    uint64_t key = hash_bytes(str, len);
+    uint64_t* pval = hash_map_get(strmap, key);
+    InternedIdent* intern = pval ? (void*)*pval : NULL;
+
+    // Collisions will only occur if identical hash values are produced. Collisions due to
+    // contention for hash map slots will not occur (open addressing).
+    //
+    // Walk the linked list in case of collision.
+    for (InternedIdent* it = intern; it; it = it->next) {
+        if ((it->len == len) && (cstr_ncmp(it->str, str, len) == 0)) {
+            if (is_kw) { *is_kw = it->is_kw; }
+            if (kw) { *kw = it->kw; }
+            return it->str;
+        }
+    }
+
+    // If we got here, need to add this string to the intern table.
+    InternedIdent* new_intern = mem_allocate(allocator, offsetof(InternedIdent, str) + len + 1, DEFAULT_ALIGN, false);
+    if (new_intern) {
+        new_intern->next = intern; // Record collision. If a collision did _NOT_ occur, this will be null.
+        new_intern->len = len;
+        new_intern->is_kw = false;
+        new_intern->kw = (Keyword)0; // TODO: Have an invalid or none keyword type. Just clean this up in some way!
+
+        memcpy(new_intern->str, str, len);
+        new_intern->str[len] = '\0';
+
+        hash_map_put(strmap, key, (uintptr_t)new_intern);
+    } else {
+        // TODO: Handle in a better way.
+        fprintf(stderr, "[INTERNAL ERROR]: Out of memory.\n%s:%d\n", __FILE__, __LINE__);
+        exit(1);
+    }
+
+    if (is_kw) { *is_kw = new_intern->is_kw; }
+    if (kw) { *kw = new_intern->kw; }
+
+    return new_intern->str;
 }
 
 static CompiledModule* compile_module(const char* str, ProgPos pos)
@@ -201,11 +293,13 @@ int main(void)
     offsetof(Stmt, as_if));
     */
 
-    CompiledModule* module = compile_module("var a : int = 1 + 2;", 0);
+    // CompiledModule* module = compile_module("var a : int = 1 + 2;", 0);
+    // CompiledModule* module = compile_module("var a : int = sizeof(int32);", 0);
     // CompiledModule* module = compile_module("var a := 1 + 2;", 0);
     // CompiledModule* module = compile_module("var a : int;", 0);
     // CompiledModule* module = compile_module("var a : int = f(x=a);", 0);
     // CompiledModule* module = compile_module("var a : Vector2 = {x = 10, y = 20 :Vector2};", 0);
+    CompiledModule* module = compile_module("var a := x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2];", 0);
     //
     // CompiledModule* module = compile_module("var a :;", 0);
     // CompiledModule* module = compile_module("var a;", 0);
@@ -239,7 +333,7 @@ int main(void)
     // CompiledModule* module = compile_module("\"abc\"[0]", 0);
     // CompiledModule* module = compile_module("-x:>int*2", 0);
     // CompiledModule* module = compile_module("(-x):>int*2", 0);
-    // CompiledModule* module = compile_module("#sizeof[1)", 0);
+    // CompiledModule* module = compile_module("sizeof[1)", 0);
     // CompiledModule* module = compile_module("(a :> (int)) + 2", 0);
     // CompiledModule* module = compile_module("(a:>^int)", 0);
     // CompiledModule* module = compile_module("a:>^int", 0);
@@ -250,16 +344,16 @@ int main(void)
     // CompiledModule* module = compile_module("a:>proc(int)=>int(10)", 0);
     // CompiledModule* module = compile_module("a:>proc(int)=>int:>uint", 0);
     // CompiledModule* module = compile_module("a:>proc(int, float32)=>int:>uint + 2", 0);
-    // CompiledModule* module = compile_module("#sizeof(int)", 0);
-    // CompiledModule* module = compile_module("#sizeof(const int)", 0);
-    // CompiledModule* module = compile_module("#sizeof(^ const char)", 0);
-    // CompiledModule* module = compile_module("#sizeof([16] ^int)", 0);
-    // CompiledModule* module = compile_module("#sizeof([16] (proc(int)=>int))", 0);
-    // CompiledModule* module = compile_module("#sizeof(proc(^^int)=>^int)", 0);
-    // CompiledModule* module = compile_module("#sizeof(struct {x:int; z:int;})", 0);
-    // CompiledModule* module = compile_module("#sizeof(union {x:int; z:int;})", 0);
-    // CompiledModule* module = compile_module("#typeof(1 + 2)", 0);
-    // CompiledModule* module = compile_module("#typeof(-x:>int*2)", 0);
+    // CompiledModule* module = compile_module("sizeof(int)", 0);
+    // CompiledModule* module = compile_module("sizeof(const int)", 0);
+    // CompiledModule* module = compile_module("sizeof(^ const char)", 0);
+    // CompiledModule* module = compile_module("sizeof([16] ^int)", 0);
+    // CompiledModule* module = compile_module("sizeof([16] (proc(int)=>int))", 0);
+    // CompiledModule* module = compile_module("sizeof(proc(^^int)=>^int)", 0);
+    // CompiledModule* module = compile_module("sizeof(struct {x:int; z:int;})", 0);
+    // CompiledModule* module = compile_module("sizeof(union {x:int; z:int;})", 0);
+    // CompiledModule* module = compile_module("typeof(1 + 2)", 0);
+    // CompiledModule* module = compile_module("typeof(-x:>int*2)", 0);
     // CompiledModule* module = compile_module("f(1,2)", 0);
     // CompiledModule* module = compile_module("3 + f(1+3, a*3, -4.3, x ? a : b)", 0);
     // CompiledModule* module = compile_module("a[1 * 3", 0);

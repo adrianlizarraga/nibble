@@ -27,8 +27,8 @@ typedef enum OpPrecedence {
 } OpPrecedence;
 
 bool next_token(Parser* parser);
-bool is_token(Parser* parser, TokenKind kind);
-bool is_token_op(Parser* parser, uint8_t precedence);
+bool is_token_kind(Parser* parser, TokenKind kind);
+bool is_token_op_kind(Parser* parser, uint8_t precedence);
 bool is_keyword(Parser* parser, Keyword kw);
 bool match_token_next(Parser* parser, TokenKind kind);
 bool match_keyword_next(Parser* parser, Keyword kw);

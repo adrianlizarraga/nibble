@@ -26,6 +26,7 @@ typedef enum TokenKind {
 
     TKN_STR,
     TKN_IDENT,
+    TKN_KW,
     TKN_INT,
     TKN_FLOAT,
 
@@ -88,10 +89,14 @@ typedef struct TokenIdent {
     const char* value;
 } TokenIdent;
 
+typedef struct TokenKW {
+    const char* name;
+    Keyword kw;
+} TokenKW;
+
 typedef struct TokenStr {
     const char* value;
 } TokenStr;
-
 
 typedef struct Token {
     TokenKind kind;
@@ -101,6 +106,7 @@ typedef struct Token {
         TokenInt as_int;
         TokenFloat as_float;
         TokenIdent as_ident;
+        TokenKW as_kw;
         TokenStr as_str;
     };
 } Token;
