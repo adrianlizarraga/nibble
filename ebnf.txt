@@ -76,10 +76,8 @@ stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' st
      | 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
      | 'switch' '(' expr ')' '{' case_item* '}' 
      | 'return' expr? ';'
-     | 'break' TKN_IDENT? ';' 
-     | 'continue' TKN_IDENT? ';'
-     | 'goto' TKN_IDENT ';'
-     | 'label' TKN_IDENT ':'
+     | 'break' ';' 
+     | 'continue' ';'
      | decl
      | stmt_block
      | expr ';'

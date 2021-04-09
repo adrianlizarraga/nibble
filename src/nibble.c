@@ -36,6 +36,7 @@ static StringView keyword_names[KW_COUNT] = {
     [KW_RETURN] = string_view_lit("return"),
     [KW_IF] = string_view_lit("if"),
     [KW_ELSE] = string_view_lit("else"),
+    [KW_ELIF] = string_view_lit("elif"),
     [KW_WHILE] = string_view_lit("while"),
     [KW_DO] = string_view_lit("do"),
     [KW_FOR] = string_view_lit("for"),

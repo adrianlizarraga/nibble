@@ -142,11 +142,16 @@ int main(void)
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {}", 0);
     //
 
+    // CompiledModule* module = compile_module("{var a:int32 = 0;}", 0);
     // CompiledModule* module = compile_module("{var a:int32 = 0; var b:float32 = 1.0;}", 0);
     // CompiledModule* module = compile_module("{var a:int32 = 0; f(a);}", 0);
     // CompiledModule* module = compile_module("{var a:int32 = 1 << 8; a *= 2;}", 0);
     // CompiledModule* module = compile_module("{var a:int32 = 3; while(a > 0){var b:int32 = 2; f(a); a -= 1;}}", 0);
-    CompiledModule* module = compile_module("{var a:int32 = 3; do{var b:int32 = 2; f(a); a -= 1;} while(a > 0);}", 0);
+    // CompiledModule* module = compile_module("{var a:int32 = 3; do{var b:int32 = 2; f(a); a -= 1;} while(a > 0);}", 0);
+    // CompiledModule* module = compile_module("{if(a) {a = 3;}}", 0);
+    // CompiledModule* module = compile_module("{if(a) {a = 3;} else{b = 4;}}", 0);
+    // CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2) {c = 10;} else{b = 4;}}", 0);
+    CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2) {b = 10;} elif(c == 3) {c = 1;} else{b = 4;}}", 0);
 
     // CompiledModule* module = compile_module("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]", 0);
     // CompiledModule* module = compile_module("a ^ ^b", 0);

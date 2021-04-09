@@ -438,6 +438,36 @@ Stmt* stmt_do_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRang
     return stmt;
 }
 
+Stmt* stmt_if(Allocator* allocator, StmtCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, StmtBlock* else_blk, 
+              ProgRange range)
+{
+    Stmt* stmt = stmt_alloc(allocator, STMT_IF, range);
+    StmtIf* as_if = &stmt->as_if;
+
+    as_if->if_blk.cond = if_blk->cond;
+    as_if->if_blk.block.num_stmts = if_blk->block.num_stmts;
+    dllist_replace(&if_blk->block.stmts, &as_if->if_blk.block.stmts);
+
+    as_if->num_elif_blks = num_elif_blks;
+    dllist_replace(elif_blks, &as_if->elif_blks);
+
+    as_if->else_blk.num_stmts = else_blk->num_stmts;
+    dllist_replace(&else_blk->stmts, &as_if->else_blk.stmts);
+
+    return stmt;
+}
+
+StmtElifBlock* stmt_elif_block(Allocator* allocator, Expr* cond, StmtBlock* block)
+{
+    StmtElifBlock* stmt = mem_allocate(allocator, sizeof(StmtElifBlock), DEFAULT_ALIGN, true);
+    stmt->cond = cond;
+    stmt->block.num_stmts = block->num_stmts;
+
+    dllist_replace(&block->stmts, &stmt->block.stmts);
+
+    return stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -728,6 +758,38 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
             ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, w->cond),
                                ftprint_stmt_block(allocator, &w->block));
+        } break;
+        case STMT_IF: {
+            dstr = array_create(allocator, char, 64);
+            StmtIf* as_if = &stmt->as_if;
+
+            ftprint_char_array(&dstr, false, "(if %s %s",
+                               ftprint_expr(allocator, as_if->if_blk.cond),
+                               ftprint_stmt_block(allocator, &as_if->if_blk.block));
+
+            if (as_if->num_elif_blks) {
+                ftprint_char_array(&dstr, false, " ");
+
+                DLList* head = &as_if->elif_blks;
+
+                for (DLList* it = head->next; it != head; it = it->next) {
+                    StmtElifBlock* elif = dllist_entry(it, StmtElifBlock, list);
+
+                    ftprint_char_array(&dstr, false, "(elif %s %s)", 
+                                       ftprint_expr(allocator, elif->cond),
+                                       ftprint_stmt_block(allocator, &elif->block));
+
+                    if (it->next != head) {
+                        ftprint_char_array(&dstr, false, " ");
+                    }
+                }
+            }
+
+            if (as_if->else_blk.num_stmts) {
+                ftprint_char_array(&dstr, false, " (else %s)", ftprint_stmt_block(allocator, &as_if->else_blk));
+            }
+
+            ftprint_char_array(&dstr, false, ")");
         } break;
         default: {
             ftprint_err("Unknown stmt kind: %d\n", stmt->kind);

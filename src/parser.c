@@ -933,6 +933,91 @@ static Stmt* parse_stmt_block(Parser* parser)
     return stmt;
 }
 
+static bool parse_fill_stmt_cond_block(Parser* parser, StmtCondBlock* cblock, const char* error_prefix)
+{
+    if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        cblock->cond = parse_expr(parser);
+
+        if (cblock->cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
+            expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+            bool ok = parse_fill_stmt_block(parser, &cblock->block);
+
+            if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+static StmtElifBlock* parse_stmt_elif_block(Parser* parser)
+{
+    assert(is_keyword(parser, KW_ELIF));
+    StmtElifBlock* elif_blk = NULL;
+    const char* error_prefix = "Failed to parse elif statement";
+
+    next_token(parser);
+
+    StmtCondBlock cblock = {0};
+    bool ok = parse_fill_stmt_cond_block(parser, &cblock, error_prefix);
+
+    if (ok) {
+        elif_blk = stmt_elif_block(parser->allocator, cblock.cond, &cblock.block);
+    }
+
+    return elif_blk;
+}
+
+// stmt_if = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
+static Stmt* parse_stmt_if(Parser* parser)
+{
+    assert(is_keyword(parser, KW_IF));
+    Stmt* stmt = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+    const char* err_pre = "Failed to parse if statement";
+
+    next_token(parser);
+
+    StmtCondBlock if_blk = {0};
+    bool ok_if = parse_fill_stmt_cond_block(parser, &if_blk, err_pre);
+
+    if (ok_if) {
+        size_t num_elif_blks = 0;
+        DLList elif_blks = dllist_head_create(elif_blks);
+        bool bad_elif = false;
+
+        while (is_keyword(parser, KW_ELIF)) {
+            StmtElifBlock * elif = parse_stmt_elif_block(parser);
+
+            if (elif) {
+                num_elif_blks += 1;
+                dllist_add(elif_blks.prev, &elif->list);
+            } else {
+                bad_elif = true;
+                break;
+            }
+        }
+
+        if (!bad_elif) {
+            bool bad_else = false;
+            StmtBlock else_blk = {0};
+
+            dllist_head_init(&else_blk.stmts);
+
+            if (match_keyword_next(parser, KW_ELSE) && expect_token_next(parser, TKN_LBRACE, err_pre)) {
+                bool ok_else_fill = parse_fill_stmt_block(parser, &else_blk); 
+                bad_else = !(ok_else_fill && expect_token_next(parser, TKN_RBRACE, err_pre));
+            }
+
+            if (!bad_else) {
+                stmt = stmt_if(parser->allocator, &if_blk, num_elif_blks, &elif_blks, &else_blk, range); 
+            }
+        }
+    }
+
+    return stmt;
+}
+
 // stmt_while = 'while' '(' expr ')' stmt_block
 static Stmt* parse_stmt_while(Parser* parser)
 {
@@ -1055,7 +1140,7 @@ Stmt* parse_stmt(Parser* parser)
     case TKN_KW: {
         switch (token.as_kw.kw) {
         case KW_IF:
-            break;
+            return parse_stmt_if(parser);
         case KW_WHILE:
             return parse_stmt_while(parser);
         case KW_DO:

@@ -264,13 +264,20 @@ typedef struct StmtCondBlock {
     StmtBlock block;
 } StmtCondBlock;
 
+typedef struct StmtElifBlock {
+    Expr* cond;
+    StmtBlock block;
+    DLList list;
+} StmtElifBlock;
+
+// TODO: This is 10 * 8 = 80 bytes. Make smaller?
 typedef struct StmtIf {
-    StmtCondBlock if_;
+    StmtCondBlock if_blk;
 
-    size_t num_elifs;
-    DLList elifs; // StmtCondBlocks
+    size_t num_elif_blks;
+    DLList elif_blks;
 
-    StmtBlock else_;
+    StmtBlock else_blk;
 } StmtIf;
 
 typedef struct StmtFor {
@@ -299,22 +306,6 @@ typedef struct StmtReturn {
     Expr* expr;
 } StmtReturn;
 
-typedef struct StmtBreak {
-    const char* label;
-} StmtBreak;
-
-typedef struct StmtContinue {
-    const char* label;
-} StmtContinue;
-
-typedef struct StmtLabel {
-    const char* label;
-} StmtLabel;
-
-typedef struct StmtGoto {
-    const char* label;
-} StmtGoto;
-
 typedef struct StmtExpr {
     Expr* expr;
 } StmtExpr;
@@ -339,8 +330,6 @@ typedef enum StmtKind {
     STMT_RETURN,
     STMT_BREAK,
     STMT_CONTINUE,
-    STMT_GOTO,
-    STMT_LABEL,
     STMT_EXPR,
     STMT_EXPR_ASSIGN,
     STMT_DECL,
@@ -359,10 +348,6 @@ struct Stmt {
         StmtFor as_for;
         StmtSwitch as_switch;
         StmtReturn as_return;
-        StmtBreak as_break;
-        StmtContinue as_continue;
-        StmtLabel as_label;
-        StmtGoto as_goto;
         StmtExpr as_expr;
         StmtExprAssign as_expr_assign;
         StmtDecl as_decl;
@@ -376,6 +361,9 @@ Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range); 
 Stmt* stmt_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range);
 Stmt* stmt_do_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range);
+Stmt* stmt_if(Allocator* allocator, StmtCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, StmtBlock* else_blk, 
+              ProgRange range);
+StmtElifBlock* stmt_elif_block(Allocator* allocator, Expr* cond, StmtBlock* block);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////

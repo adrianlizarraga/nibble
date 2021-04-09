@@ -38,6 +38,7 @@ typedef enum Keyword {
     KW_RETURN,
     KW_IF,
     KW_ELSE,
+    KW_ELIF,
     KW_WHILE,
     KW_DO,
     KW_FOR,
