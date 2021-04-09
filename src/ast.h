@@ -375,6 +375,7 @@ Stmt* stmt_decl(Allocator* allocator, Decl* decl);
 Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range); 
 Stmt* stmt_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range);
+Stmt* stmt_do_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////

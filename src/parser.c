@@ -961,6 +961,36 @@ static Stmt* parse_stmt_while(Parser* parser)
     return stmt;
 }
 
+// stmt_do_while = 'do' stmt_block 'while' '(' expr ')' ';'
+static Stmt* parse_stmt_do_while(Parser* parser)
+{
+    assert(is_keyword(parser, KW_DO));
+    Stmt* stmt = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse do-while-loop statement";
+
+    next_token(parser);
+
+    if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+        StmtBlock block = {0};
+        bool ok = parse_fill_stmt_block(parser, &block);
+
+        if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix) &&
+            expect_keyword_next(parser, KW_WHILE, error_prefix) &&
+            expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+            Expr* cond = parse_expr(parser);
+
+            if (cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
+                expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+                range.end = parser->ptoken.range.end;
+                stmt = stmt_do_while(parser->allocator, cond, &block, range);
+            }
+        }
+    }
+
+    return stmt;
+}
+
 static Stmt* parse_stmt_decl(Parser* parser)
 {
     Stmt* stmt = NULL;
@@ -1002,8 +1032,8 @@ static Stmt* parse_stmt_expr(Parser* parser)
 }
 
 // stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
-//      | 'while' '(' expr ')' stmt_block
-//      | 'do' stmt_block 'while' '(' expr ')' ';'
+//      | stmt_while
+//      | stmt_do_while
 //      | 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
 //      | 'switch' '(' expr ')' '{' case_item* '}'
 //      | 'return' expr? ';'
@@ -1029,7 +1059,7 @@ Stmt* parse_stmt(Parser* parser)
         case KW_WHILE:
             return parse_stmt_while(parser);
         case KW_DO:
-            break;
+            return parse_stmt_do_while(parser);
         case KW_FOR:
             break;
         case KW_SWITCH:

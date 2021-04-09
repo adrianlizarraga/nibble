@@ -427,6 +427,17 @@ Stmt* stmt_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange r
     return stmt;
 }
 
+Stmt* stmt_do_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range)
+{
+    Stmt* stmt = stmt_alloc(allocator, STMT_DO_WHILE, range);
+    stmt->as_do_while.cond = cond;
+    stmt->as_do_while.block.num_stmts = block->num_stmts;
+
+    dllist_replace(&block->stmts, &stmt->as_do_while.block.stmts);
+
+    return stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -709,6 +720,13 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             StmtCondBlock* w = &stmt->as_while;
 
             ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, w->cond),
+                               ftprint_stmt_block(allocator, &w->block));
+        } break;
+        case STMT_DO_WHILE: {
+            dstr = array_create(allocator, char, 32);
+            StmtCondBlock* w = &stmt->as_do_while;
+
+            ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, w->cond),
                                ftprint_stmt_block(allocator, &w->block));
         } break;
         default: {
