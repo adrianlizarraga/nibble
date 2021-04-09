@@ -416,6 +416,17 @@ Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, E
     return stmt;
 }
 
+Stmt* stmt_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range)
+{
+    Stmt* stmt = stmt_alloc(allocator, STMT_WHILE, range);
+    stmt->as_while.cond = cond;
+    stmt->as_while.block.num_stmts = block->num_stmts;
+
+    dllist_replace(&block->stmts, &stmt->as_while.block.stmts);
+
+    return stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -659,7 +670,7 @@ static char* ftprint_stmt_block(Allocator* allocator, StmtBlock* block)
         }
     }
 
-    ftprint_char_array(&dstr, false, ")");
+    ftprint_char_array(&dstr, true, ")");
 
     return dstr;
 }
@@ -674,21 +685,31 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             assert(0);
         } break;
         case STMT_BLOCK: {
-            dstr = ftprint_stmt_block(allocator, &stmt->as_block);
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "%s", ftprint_stmt_block(allocator, &stmt->as_block));
         } break;
         case STMT_DECL: {
-            dstr = ftprint_decl(allocator, stmt->as_decl.decl);
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, stmt->as_decl.decl));
         } break;
         case STMT_EXPR: {
-            dstr = ftprint_expr(allocator, stmt->as_expr.expr);
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, stmt->as_expr.expr));
         } break;
         case STMT_EXPR_ASSIGN: {
             dstr = array_create(allocator, char, 32);
             StmtExprAssign* s = &stmt->as_expr_assign;
             const char* op = token_kind_names[s->op_assign];
 
-            ftprint_char_array(&dstr, false, "(%s %s %s)", 
-                               op, ftprint_expr(allocator, s->left), ftprint_expr(allocator, s->right));
+            ftprint_char_array(&dstr, false, "(%s %s %s)", op, ftprint_expr(allocator, s->left),
+                               ftprint_expr(allocator, s->right));
+        } break;
+        case STMT_WHILE: {
+            dstr = array_create(allocator, char, 32);
+            StmtCondBlock* w = &stmt->as_while;
+
+            ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, w->cond),
+                               ftprint_stmt_block(allocator, &w->block));
         } break;
         default: {
             ftprint_err("Unknown stmt kind: %d\n", stmt->kind);
