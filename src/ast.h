@@ -321,7 +321,7 @@ typedef struct StmtExpr {
 
 typedef struct StmtExprAssign {
     Expr* left;
-    TokenKind op;
+    TokenKind op_assign;
     Expr* right;
 } StmtExprAssign;
 
@@ -364,13 +364,16 @@ struct Stmt {
         StmtLabel as_label;
         StmtGoto as_goto;
         StmtExpr as_expr;
-        StmtExprAssign as_assign;
+        StmtExprAssign as_expr_assign;
         StmtDecl as_decl;
         StmtBlock as_block;
     };
 };
 
 Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRange range);
+Stmt* stmt_decl(Allocator* allocator, Decl* decl);
+Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
+Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range); 
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////

@@ -16,7 +16,7 @@ typedef struct Parser {
 Parser parser_create(Allocator* allocator, const char* str, ProgPos pos, ByteStream* errors);
 void parser_destroy(Parser* parser);
 
-typedef enum OpPrecedence {
+typedef enum TokenKindProps {
     OP_PRECEDENCE_TERNARY = 1 << 0,
     OP_PRECEDENCE_OR = 1 << 1,
     OP_PRECEDENCE_AND = 1 << 2,
@@ -24,11 +24,13 @@ typedef enum OpPrecedence {
     OP_PRECEDENCE_ADD = 1 << 4,
     OP_PRECEDENCE_MUL = 1 << 5,
     OP_PRECEDENCE_UNARY = 1 << 6,
-} OpPrecedence;
+
+    OP_ASSIGN = 1 << 7,
+} TokenKindProps;
 
 bool next_token(Parser* parser);
 bool is_token_kind(Parser* parser, TokenKind kind);
-bool is_token_op_kind(Parser* parser, uint8_t precedence);
+bool is_token_prop_kind(Parser* parser, uint8_t props);
 bool is_keyword(Parser* parser, Keyword kw);
 bool match_token_next(Parser* parser, TokenKind kind);
 bool match_keyword_next(Parser* parser, Keyword kw);

@@ -80,10 +80,10 @@ stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' st
      | 'continue' TKN_IDENT? ';'
      | 'goto' TKN_IDENT ';'
      | 'label' TKN_IDENT ':'
-     | expr ';'
-     | expr_assign ';'
      | decl
      | stmt_block
+     | expr ';'
+     | expr_assign ';'
 
 expr_assign = expr ASSIGN_OP expr      // ASSIGN_OP = ['=' '+=' '-=' '*=' '/=' '^=' '%=']
 stmt_block = '{' stmt* '}'

@@ -390,6 +390,32 @@ Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRang
     return stmt;
 }
 
+Stmt* stmt_decl(Allocator* allocator, Decl* decl)
+{
+    Stmt* stmt = stmt_alloc(allocator, STMT_DECL, decl->range);
+    stmt->as_decl.decl = decl;
+
+    return stmt;
+}
+
+Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range)
+{
+    Stmt* stmt = stmt_alloc(allocator, STMT_EXPR, range);
+    stmt->as_expr.expr = expr;
+
+    return stmt;
+}
+
+Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range)
+{
+    Stmt* stmt = stmt_alloc(allocator, STMT_EXPR_ASSIGN, range);
+    stmt->as_expr_assign.left = lexpr;
+    stmt->as_expr_assign.op_assign = op_assign;
+    stmt->as_expr_assign.right = rexpr;
+
+    return stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -649,6 +675,20 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
         } break;
         case STMT_BLOCK: {
             dstr = ftprint_stmt_block(allocator, &stmt->as_block);
+        } break;
+        case STMT_DECL: {
+            dstr = ftprint_decl(allocator, stmt->as_decl.decl);
+        } break;
+        case STMT_EXPR: {
+            dstr = ftprint_expr(allocator, stmt->as_expr.expr);
+        } break;
+        case STMT_EXPR_ASSIGN: {
+            dstr = array_create(allocator, char, 32);
+            StmtExprAssign* s = &stmt->as_expr_assign;
+            const char* op = token_kind_names[s->op_assign];
+
+            ftprint_char_array(&dstr, false, "(%s %s %s)", 
+                               op, ftprint_expr(allocator, s->left), ftprint_expr(allocator, s->right));
         } break;
         default: {
             ftprint_err("Unknown stmt kind: %d\n", stmt->kind);

@@ -41,7 +41,7 @@ bool is_token_kind(Parser* parser, TokenKind kind)
     return (parser->token.kind == kind);
 }
 
-static const uint8_t op_precedence[TKN_KIND_COUNT] = {
+static const uint8_t token_kind_props[TKN_KIND_COUNT] = {
     [TKN_QUESTION] = OP_PRECEDENCE_TERNARY,
     [TKN_LOGIC_OR] = OP_PRECEDENCE_OR,
     [TKN_LOGIC_AND] = OP_PRECEDENCE_AND,
@@ -67,13 +67,23 @@ static const uint8_t op_precedence[TKN_KIND_COUNT] = {
 
     [TKN_NEG] = OP_PRECEDENCE_UNARY,
     [TKN_NOT] = OP_PRECEDENCE_UNARY,
+
+    [TKN_ASSIGN] = OP_ASSIGN,
+    [TKN_ADD_ASSIGN] = OP_ASSIGN,
+    [TKN_SUB_ASSIGN] = OP_ASSIGN,
+    [TKN_MUL_ASSIGN] = OP_ASSIGN,
+    [TKN_DIV_ASSIGN] = OP_ASSIGN,
+    [TKN_AND_ASSIGN] = OP_ASSIGN,
+    [TKN_OR_ASSIGN] = OP_ASSIGN,
+    [TKN_XOR_ASSIGN] = OP_ASSIGN,
+    [TKN_MOD_ASSIGN] = OP_ASSIGN,
 };
 
-bool is_token_op_kind(Parser* parser, uint8_t precedence)
+bool is_token_prop_kind(Parser* parser, uint8_t props)
 {
     TokenKind kind = parser->token.kind;
 
-    return (op_precedence[kind] & precedence);
+    return (token_kind_props[kind] & props);
 }
 
 bool is_keyword(Parser* parser, Keyword kw)
@@ -724,7 +734,7 @@ static Expr* parse_expr_unary(Parser* parser)
 {
     Expr* expr = NULL;
 
-    if (is_token_op_kind(parser, OP_PRECEDENCE_UNARY)) {
+    if (is_token_prop_kind(parser, OP_PRECEDENCE_UNARY)) {
         ProgRange range = {.start = parser->token.range.start};
         TokenKind op = parser->token.kind;
 
@@ -748,7 +758,7 @@ static Expr* parse_expr_mul(Parser* parser)
 {
     Expr* expr = parse_expr_unary(parser);
 
-    while (expr && is_token_op_kind(parser, OP_PRECEDENCE_MUL)) {
+    while (expr && is_token_prop_kind(parser, OP_PRECEDENCE_MUL)) {
         TokenKind op = parser->token.kind;
 
         next_token(parser);
@@ -771,7 +781,7 @@ static Expr* parse_expr_add(Parser* parser)
 {
     Expr* expr = parse_expr_mul(parser);
 
-    while (expr && is_token_op_kind(parser, OP_PRECEDENCE_ADD)) {
+    while (expr && is_token_prop_kind(parser, OP_PRECEDENCE_ADD)) {
         TokenKind op = parser->token.kind;
 
         next_token(parser);
@@ -794,7 +804,7 @@ static Expr* parse_expr_cmp(Parser* parser)
 {
     Expr* expr = parse_expr_add(parser);
 
-    while (expr && is_token_op_kind(parser, OP_PRECEDENCE_CMP)) {
+    while (expr && is_token_prop_kind(parser, OP_PRECEDENCE_CMP)) {
         TokenKind op = parser->token.kind;
 
         next_token(parser);
@@ -923,15 +933,69 @@ static Stmt* parse_stmt_block(Parser* parser)
     return stmt;
 }
 
+static Stmt* parse_stmt_decl(Parser* parser)
+{
+    Stmt* stmt = NULL;
+    Decl* decl = parse_decl(parser);
+
+    if (decl) {
+        stmt = stmt_decl(parser->allocator, decl);
+    }
+
+    return stmt;
+}
+
+static Stmt* parse_stmt_expr(Parser* parser)
+{
+    Stmt* stmt = NULL;
+    Expr* expr = parse_expr(parser);
+    ProgRange range = {.start = expr->range.start};
+    const char* error_prefix = "Failed to parse expression statement";
+
+    if (expr) {
+        if (match_token_next(parser, TKN_SEMICOLON)) {
+            range.end = parser->ptoken.range.end;
+            stmt = stmt_expr(parser->allocator, expr, range);
+        } else if (is_token_prop_kind(parser, OP_ASSIGN)) {
+            TokenKind op_assign = parser->token.kind;
+
+            next_token(parser);
+
+            Expr* rexpr = parse_expr(parser);
+
+            if (rexpr && expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+                range.end = parser->ptoken.range.end;
+                stmt = stmt_expr_assign(parser->allocator, expr, op_assign, rexpr, range);
+            }
+        }
+    }
+
+    return stmt;
+}
+
+// stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
+//      | 'while' '(' expr ')' stmt_block
+//      | 'do' stmt_block 'while' '(' expr ')' ';'
+//      | 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
+//      | 'switch' '(' expr ')' '{' case_item* '}'
+//      | 'return' expr? ';'
+//      | 'break' TKN_IDENT? ';'
+//      | 'continue' TKN_IDENT? ';'
+//      | 'goto' TKN_IDENT ';'
+//      | 'label' TKN_IDENT ':'
+//      | decl
+//      | stmt_block
+//      | expr ';'
+//      | expr_assign ';'
 Stmt* parse_stmt(Parser* parser)
 {
     Token token = parser->token;
 
     switch (token.kind) {
-    case TKN_LBRACE: 
+    case TKN_LBRACE:
         return parse_stmt_block(parser);
     case TKN_KW: {
-        switch(token.as_kw.kw) {
+        switch (token.as_kw.kw) {
         case KW_IF:
             break;
         case KW_WHILE:
@@ -953,13 +1017,11 @@ Stmt* parse_stmt(Parser* parser)
         case KW_LABEL:
             break;
         default:
-            // Declaration statement
-            break;
+            return parse_stmt_decl(parser);
         }
     } break;
     case TKN_IDENT:
-        // expr; or expr1 = expr2;
-        break;
+        return parse_stmt_expr(parser);
     default:
         break;
     }
