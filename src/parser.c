@@ -925,13 +925,52 @@ static Stmt* parse_stmt_block(Parser* parser)
 
 Stmt* parse_stmt(Parser* parser)
 {
-    Stmt* stmt = NULL;
+    Token token = parser->token;
 
-    if (is_token_kind(parser, TKN_LBRACE)) {
-        stmt = parse_stmt_block(parser);
+    switch (token.kind) {
+    case TKN_LBRACE: 
+        return parse_stmt_block(parser);
+    case TKN_KW: {
+        switch(token.as_kw.kw) {
+        case KW_IF:
+            break;
+        case KW_WHILE:
+            break;
+        case KW_DO:
+            break;
+        case KW_FOR:
+            break;
+        case KW_SWITCH:
+            break;
+        case KW_RETURN:
+            break;
+        case KW_BREAK:
+            break;
+        case KW_CONTINUE:
+            break;
+        case KW_GOTO:
+            break;
+        case KW_LABEL:
+            break;
+        default:
+            // Declaration statement
+            break;
+        }
+    } break;
+    case TKN_IDENT:
+        // expr; or expr1 = expr2;
+        break;
+    default:
+        break;
     }
 
-    return stmt;
+    // If we got here, we have an unexpected token.
+    char tmp[32];
+
+    print_token(&parser->token, tmp, sizeof(tmp));
+    parser_on_error(parser, "Unexpected token `%s` while parsing a statement", tmp);
+
+    return NULL;
 }
 
 ///////////////////////////////

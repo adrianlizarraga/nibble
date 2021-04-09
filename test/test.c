@@ -3,22 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "nibble.h"
-
 #include "allocator.c"
 #include "cstring.c"
 #include "print.c"
 #include "array.c"
-#include "llist.h"
 #include "hash_map.c"
 #include "stream.c"
+#include "llist.h"
+#include "nibble.c"
 #include "lexer.c"
-
-typedef struct NibbleCtx {
-    Allocator allocator;
-} NibbleCtx;
-
-static NibbleCtx g_ctx;
 
 static void print_errors(ByteStream* errors)
 {
@@ -30,30 +23,6 @@ static void print_errors(ByteStream* errors)
             chunk = chunk->next;
         }
     }
-}
-
-const char* intern_str_lit(const char* str, size_t len)
-{
-    char* dup = new_array(&g_ctx.allocator, char, len + 1, false);
-
-    for (size_t i = 0; i < len; ++i) {
-        dup[i] = str[i];
-    }
-    dup[len] = '\0';
-
-    return dup;
-}
-
-const char* intern_ident(const char* str, size_t len)
-{
-    char* dup = new_array(&g_ctx.allocator, char, len + 1, false);
-
-    for (size_t i = 0; i < len; ++i) {
-        dup[i] = str[i];
-    }
-    dup[len] = '\0';
-
-    return dup;
 }
 
 #define TKN_TEST_POS(tk, tp, a, b)                                                                                     \
@@ -89,9 +58,16 @@ const char* intern_ident(const char* str, size_t len)
         assert((tk.kind == TKN_IDENT));                                                                                \
         assert(strcmp(tk.as_ident.value, v) == 0);                                                                     \
     } while (0)
+#define TKN_TEST_KW(tk, k)                                                                                            \
+    do {                                                                                                               \
+        assert((tk.kind == TKN_KW));                                                                                   \
+        assert(tk.as_kw.kw == (k));                                                                                   \
+    } while (0)
 
 static void test_lexer(void)
 {
+    Allocator allocator = allocator_create(4096);
+
     // Test basic tokens, newlines, and c++ comments.
     {
         unsigned int i = 10;
@@ -261,7 +237,7 @@ static void test_lexer(void)
 
     // Test error when have unclosed c-style comments
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         Lexer lexer = lexer_create("/* An unclosed comment", 0, &errors);
         Token token = {0};
 
@@ -275,7 +251,7 @@ static void test_lexer(void)
     }
 
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         Lexer lexer = lexer_create("/* An unclosed comment\n", 0, &errors);
         Token token = {0};
 
@@ -319,7 +295,7 @@ static void test_lexer(void)
 
     // Test integer literal lexing errors
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         Lexer lexer = lexer_create("0Z 0b3 09 1A\n999999999999999999999999", 0, &errors);
         Token token = {0};
 
@@ -363,7 +339,7 @@ static void test_lexer(void)
     }
 
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         Lexer lexer = lexer_create("1.33ea 1.33e100000000000", 0, &errors);
 
         scan_token(&lexer);
@@ -378,7 +354,7 @@ static void test_lexer(void)
 
     // Test character literals
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         Lexer lexer = lexer_create("'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' "
                                    "'\\\\' '\\'' '\\\"' '\\?'",
                                    0, &errors);
@@ -438,7 +414,7 @@ static void test_lexer(void)
 
     // Test escaped hex chars
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         Lexer lexer = lexer_create("'\\x12'  '\\x3'", 0, &errors);
         Token token = {0};
 
@@ -457,7 +433,7 @@ static void test_lexer(void)
 
     // Test errors when lexing escaped hex chars
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         Lexer lexer = lexer_create("'' 'a '\n' '\\z' '\\0'", 0, &errors);
         Token token = {0};
 
@@ -485,7 +461,7 @@ static void test_lexer(void)
 
     // Test basic string literals
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         const char* str = "\"hello world\" \"a\\nb\" \n \"\\x50 a \\x51\" \"\" \"\\\"nested\\\"\"";
         Lexer lexer = lexer_create(str, 0, &errors);
         Token token = {0};
@@ -514,7 +490,7 @@ static void test_lexer(void)
 
     // Test errors when scanning string literals
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         const char* str = "\"\n\" \"\\xTF\" \"\\W\" \"unclosed";
         Lexer lexer = lexer_create(str, 0, &errors);
 
@@ -536,13 +512,13 @@ static void test_lexer(void)
 
     // Test basic identifiers
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
-        const char* str = "var x1a x11 _abc abc_ _ab_c_ i";
+        ByteStream errors = byte_stream_create(&allocator);
+        const char* str = "vars x1a x11 _abc abc_ _ab_c_ i";
         Lexer lexer = lexer_create(str, 0, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
-        TKN_TEST_IDEN(token, "var");
+        TKN_TEST_IDEN(token, "vars");
 
         token = scan_token(&lexer);
         TKN_TEST_IDEN(token, "x1a");
@@ -571,7 +547,7 @@ static void test_lexer(void)
 
     // Test invalid identifier combinations.
     {
-        ByteStream errors = byte_stream_create(&g_ctx.allocator);
+        ByteStream errors = byte_stream_create(&allocator);
         const char* str = "1var";
         Lexer lexer = lexer_create(str, 0, &errors);
         Token token = {0};
@@ -585,6 +561,34 @@ static void test_lexer(void)
         print_errors(&errors);
         lexer_destroy(&lexer);
     }
+
+    // Test keywords
+    {
+        ByteStream errors = byte_stream_create(&allocator);
+        char* str = array_create(&allocator, char, 256);
+
+        for (int i = 0; i < KW_COUNT; i += 1) {
+            ftprint_char_array(&str, false, "%s ", keyword_names[i].str);
+        }
+
+        array_push(str, '\0');
+
+        Lexer lexer = lexer_create(str, 0, &errors);
+        Token token = {0};
+
+        for (int i = 0; i < KW_COUNT; i += 1) {
+            token = scan_token(&lexer);
+            TKN_TEST_KW(token, (Keyword)i);
+        }
+
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
+        assert(errors.num_chunks == 0);
+
+        lexer_destroy(&lexer);
+    }
+
+    allocator_destroy(&allocator);
 }
 
 void test_allocator(void)
@@ -889,13 +893,13 @@ void test_interning(void)
 
     const char* a = "hello";
     const char* b = "hello!";
-    const char* a_in = str_intern(&arena, &strmap, a, strlen(a));
-    const char* b_in = str_intern(&arena, &strmap, b, strlen(b));
+    const char* a_in = intern_str(&arena, &strmap, a, strlen(a));
+    const char* b_in = intern_str(&arena, &strmap, b, strlen(b));
 
     assert(a != a_in);
     assert(b != b_in);
-    assert(a_in == str_intern(&arena, &strmap, a, strlen(a)));
-    assert(b_in == str_intern(&arena, &strmap, b, strlen(b)));
+    assert(a_in == intern_str(&arena, &strmap, a, strlen(a)));
+    assert(b_in == intern_str(&arena, &strmap, b, strlen(b)));
     assert(strmap.len == 2);
     assert(a_in != b_in);
 
@@ -955,9 +959,13 @@ void test_dllist(void)
 
 int main(void)
 {
-    g_ctx.allocator = allocator_create(4096);
-
     ftprint_out("Nibble tests!\n");
+
+    if (!nibble_init()) {
+        ftprint_err("Failed to initialize\n");
+        exit(1);
+    }
+
     test_lexer();
     test_allocator();
     test_array();
@@ -965,5 +973,5 @@ int main(void)
     test_interning();
     test_dllist();
 
-    allocator_destroy(&g_ctx.allocator);
+    nibble_cleanup();
 }

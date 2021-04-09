@@ -51,6 +51,10 @@ typedef enum Keyword {
 } Keyword;
 
 extern const char* keywords[KW_COUNT];
+
 const char* intern_str_lit(const char* str, size_t len);
 const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
+
+bool nibble_init(void);
+void nibble_cleanup(void);
 #endif
