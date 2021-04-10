@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 #include "nibble.h"
-#include "allocator.h"
 #include "llist.h"
+#include "allocator.h"
 #include "lexer.h"
 
 typedef struct Expr Expr;
@@ -393,6 +393,8 @@ Stmt* stmt_do_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* 
 Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, ElseBlock* else_blk,
               ProgRange range);
 ElifBlock* elif_block(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range);
+Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, size_t num_stmts, DLList* stmts,
+               ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////

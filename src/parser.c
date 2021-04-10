@@ -1141,7 +1141,7 @@ static Stmt* parse_stmt_decl(Parser* parser)
     return stmt;
 }
 
-static Stmt* parse_stmt_expr(Parser* parser)
+static Stmt* parse_stmt_expr(Parser* parser, bool terminate)
 {
     Stmt* stmt = NULL;
     Expr* expr = parse_expr(parser);
@@ -1149,24 +1149,98 @@ static Stmt* parse_stmt_expr(Parser* parser)
     const char* error_prefix = "Failed to parse expression statement";
 
     if (expr) {
-        if (match_token_next(parser, TKN_SEMICOLON)) {
-            range.end = parser->ptoken.range.end;
-            stmt = stmt_expr(parser->allocator, expr, range);
-        } else if (is_token_prop_kind(parser, OP_ASSIGN)) {
+        if (is_token_prop_kind(parser, OP_ASSIGN)) {
             TokenKind op_assign = parser->token.kind;
 
             next_token(parser);
 
             Expr* rexpr = parse_expr(parser);
 
-            if (rexpr && expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+            if (rexpr && !terminate) {
+                range.end = rexpr->range.end;
+                stmt = stmt_expr_assign(parser->allocator, expr, op_assign, rexpr, range);
+            } else if (rexpr && expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
                 range.end = parser->ptoken.range.end;
                 stmt = stmt_expr_assign(parser->allocator, expr, op_assign, rexpr, range);
             }
+        } else if (!terminate) {
+            range.end = expr->range.end;
+            stmt = stmt_expr(parser->allocator, expr, range);
+        } else if (expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+            range.end = parser->ptoken.range.end;
+            stmt = stmt_expr(parser->allocator, expr, range);
         }
     }
 
     return stmt;
+}
+
+// stmt_for = 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
+static Stmt* parse_stmt_for(Parser* parser)
+{
+    assert(is_keyword(parser, KW_FOR));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse for-loop statement";
+
+    next_token(parser);
+
+    if (!expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        return NULL;
+    }
+
+    Stmt* init = NULL;
+    Expr* cond = NULL;
+    Stmt* next = NULL;
+    bool bad_init = false;
+    bool bad_cond = false;
+    bool bad_next = false;
+
+    if (!match_token_next(parser, TKN_SEMICOLON)) {
+        if (is_keyword(parser, KW_VAR)) {
+            init = parse_stmt_decl(parser);
+        } else {
+            init = parse_stmt_expr(parser, true);
+        }
+
+        bad_init = !init;
+    }
+
+    if (bad_init) {
+        return NULL;
+    }
+
+    if (!match_token_next(parser, TKN_SEMICOLON)) {
+        cond = parse_expr(parser);
+        bad_cond = !cond || !expect_token_next(parser, TKN_SEMICOLON, error_prefix);
+    }
+
+    if (bad_cond) {
+        return NULL;
+    }
+
+    if (!is_token_kind(parser, TKN_RPAREN)) {
+        next = parse_stmt_expr(parser, false);
+        bad_next = !next;
+    }
+
+    if (bad_next) {
+        return NULL;
+    }
+
+    if (!expect_token_next(parser, TKN_RPAREN, error_prefix) || !expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    size_t num_stmts = 0;
+    DLList stmts = {0};
+
+    if (!parse_fill_stmt_list(parser, &num_stmts, &stmts) || !expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return stmt_for(parser->allocator, init, cond, next, num_stmts, &stmts, range);
 }
 
 // stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
@@ -1199,7 +1273,7 @@ Stmt* parse_stmt(Parser* parser)
         case KW_DO:
             return parse_stmt_do_while(parser);
         case KW_FOR:
-            break;
+            return parse_stmt_for(parser);
         case KW_SWITCH:
             break;
         case KW_RETURN:
@@ -1217,7 +1291,7 @@ Stmt* parse_stmt(Parser* parser)
         }
     } break;
     case TKN_IDENT:
-        return parse_stmt_expr(parser);
+        return parse_stmt_expr(parser, true);
     default:
         break;
     }
@@ -1234,7 +1308,6 @@ Stmt* parse_stmt(Parser* parser)
 ///////////////////////////////
 //    Parse declarations
 //////////////////////////////
-
 // decl_var = KW_VAR TKN_IDENT ':' type_spec? ('=' expr)? ';'
 //
 // Ex 1: var x : int = 0;

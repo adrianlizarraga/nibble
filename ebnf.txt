@@ -39,8 +39,8 @@ expr_compound_lit = '{' expr_init_list (':' typespec)?'}'
 expr_init_list = expr_init_item (',' expr_init_item)*
 expr_init_item = (TKN_IDENT '=')? expr
                | ('[' (TKN_INT | TKN_IDENT) ']' '=')? expr
-expr_sizeof = '#' KW_SIZEOF '('type_spec')'
-expr_typeof = '#' KW_TYPEOF '(' expr ')'
+expr_sizeof = KW_SIZEOF '('type_spec')'
+expr_typeof = KW_TYPEOF '(' expr ')'
 
 decl = decl_const
      | decl_typedef

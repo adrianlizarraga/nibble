@@ -96,8 +96,8 @@ int main(void)
     // sizeof(TypeSpec) = 48, sizeof(Expr) = 48, sizeof(Stmt) = 32, sizeof(Decl) = 24
     // sizeof(TypeSpec) = 12, sizeof(Expr) = 48, sizeof(Stmt) = 32, sizeof(Decl) = 24
     // sizeof(TypeSpec) = 12, sizeof(Expr) = 12, sizeof(Stmt) = 32, sizeof(Decl) = 24
-    ftprint_out("sizeof(TypeSpec) = %lu, sizeof(Expr) = %lu, sizeof(Stmt) = %lu, sizeof(Decl) = %lu\n\n", 
-                sizeof(TypeSpec), sizeof(Expr), sizeof(Stmt), sizeof(Decl));
+    // ftprint_out("sizeof(TypeSpec) = %lu, sizeof(Expr) = %lu, sizeof(Stmt) = %lu, sizeof(Decl) = %lu\n\n",
+    // sizeof(TypeSpec), sizeof(Expr), sizeof(Stmt), sizeof(Decl));
 
     // CompiledModule* module = compile_module("var a : int = 1 + 2;", 0);
     // CompiledModule* module = compile_module("var a : int = sizeof(int32);", 0);
@@ -139,7 +139,15 @@ int main(void)
     // AST usage: 840 bytes, Nibble usage: 951 bytes
     // AST usage: 760 bytes, Nibble usage: 951 bytes
     // AST usage: 600 bytes, Nibble usage: 951 bytes
-    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a; f(g);}}", 0);
+    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(var i:=0;i<10;i+=1){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i<10;i+=1){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;i+=1){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i != 0;){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(i=0;i<10;i+=1){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(g(^i);i<10;i+=1){f(i);}}", 0);
     //
 
     // CompiledModule* module = compile_module("{var a:int32 = 0;}", 0);
@@ -147,11 +155,11 @@ int main(void)
     // CompiledModule* module = compile_module("{var a:int32 = 0; f(a);}", 0);
     // CompiledModule* module = compile_module("{var a:int32 = 1 << 8; a *= 2;}", 0);
     // CompiledModule* module = compile_module("{var a:int32 = 3; while(a > 0){var b:int32 = 2; f(a); a -= 1;}}", 0);
-    // CompiledModule* module = compile_module("{var a:int32 = 3; do{var b:int32 = 2; f(a); a -= 1;} while(a > 0);}", 0);
-    // CompiledModule* module = compile_module("{if(a) {a = 3;}}", 0);
-    // CompiledModule* module = compile_module("{if(a) {a = 3;} else{b = 4;}}", 0);
-    // CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2) {c = 10;} else{b = 4;}}", 0);
-    // CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2) {b = 10;} elif(c == 3) {c = 1;} else{b = 4;}}", 0);
+    // CompiledModule* module = compile_module("{var a:int32 = 3; do{var b:int32 = 2; f(a); a -= 1;} while(a > 0);}",
+    // 0); CompiledModule* module = compile_module("{if(a) {a = 3;}}", 0); CompiledModule* module =
+    // compile_module("{if(a) {a = 3;} else{b = 4;}}", 0); CompiledModule* module = compile_module("{if(a) {a = 3;}
+    // elif(b == 2) {c = 10;} else{b = 4;}}", 0); CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2)
+    // {b = 10;} elif(c == 3) {c = 1;} else{b = 4;}}", 0);
 
     // CompiledModule* module = compile_module("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]", 0);
     // CompiledModule* module = compile_module("a ^ ^b", 0);

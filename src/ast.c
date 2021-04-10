@@ -446,6 +446,20 @@ ElifBlock* elif_block(Allocator* allocator, Expr* cond, size_t num_stmts, DLList
     return elif;
 }
 
+Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, size_t num_stmts, DLList* stmts,
+               ProgRange range)
+{
+    StmtFor* stmt = stmt_alloc(allocator, StmtFor, range);
+    stmt->init = init;
+    stmt->cond = cond;
+    stmt->next = next;
+    stmt->num_stmts = num_stmts;
+
+    dllist_replace(stmts, &stmt->stmts);
+
+    return (Stmt*)stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -761,6 +775,32 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
             ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, s->cond),
                                ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
+        } break;
+        case AST_StmtFor: {
+            StmtFor* s = (StmtFor*)stmt;
+            dstr = array_create(allocator, char, 32);
+
+            ftprint_char_array(&dstr, false, "(for ");
+
+            if (s->init) {
+                ftprint_char_array(&dstr, false, "%s; ", ftprint_stmt(allocator, s->init));
+            } else {
+                ftprint_char_array(&dstr, false, "; ");
+            }
+
+            if (s->cond) {
+                ftprint_char_array(&dstr, false, "%s; ", ftprint_expr(allocator, s->cond));
+            } else {
+                ftprint_char_array(&dstr, false, "; ");
+            }
+
+            if (s->next) {
+                ftprint_char_array(&dstr, false, "%s ", ftprint_stmt(allocator, s->next));
+            } else {
+                ftprint_char_array(&dstr, false, " ");
+            }
+
+            ftprint_char_array(&dstr, false, "%s)", ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
         } break;
         case AST_StmtIf: {
             StmtIf* s = (StmtIf*)stmt;
