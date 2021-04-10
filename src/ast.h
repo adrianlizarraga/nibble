@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 #include "nibble.h"
-#include "allocator.h"
 #include "llist.h"
+#include "allocator.h"
 #include "lexer.h"
 
 typedef struct Expr Expr;
@@ -254,116 +254,142 @@ char* ftprint_expr(Allocator* allocator, Expr* expr);
 /////////////////////////////
 //        Statements
 /////////////////////////////
-typedef struct StmtBlock {
-    size_t num_stmts;
-    DLList stmts;
-} StmtBlock;
-
-typedef struct StmtCondBlock {
-    Expr* cond;
-    StmtBlock block;
-} StmtCondBlock;
-
-typedef struct StmtElifBlock {
-    Expr* cond;
-    StmtBlock block;
-    DLList list;
-} StmtElifBlock;
-
-// TODO: This is 10 * 8 = 80 bytes. Make smaller?
-typedef struct StmtIf {
-    StmtCondBlock if_blk;
-
-    size_t num_elif_blks;
-    DLList elif_blks;
-
-    StmtBlock else_blk;
-} StmtIf;
-
-typedef struct StmtFor {
-    Stmt* init;
-    Expr* cond;
-    Stmt* next;
-    StmtBlock block;
-} StmtFor;
-
-typedef struct StmtSwitchCase {
-    Expr* start; // NOTE: Both start and end are null for default case.
-    Expr* end;
-
-    size_t num_stmts;
-    DLList stmts;
-    DLList list;
-} StmtSwitchCase;
-
-typedef struct StmtSwitch {
-    Expr* expr;
-    size_t num_cases;
-    DLList cases;
-} StmtSwitch;
-
-typedef struct StmtReturn {
-    Expr* expr;
-} StmtReturn;
-
-typedef struct StmtExpr {
-    Expr* expr;
-} StmtExpr;
-
-typedef struct StmtExprAssign {
-    Expr* left;
-    TokenKind op_assign;
-    Expr* right;
-} StmtExprAssign;
-
-typedef struct StmtDecl {
-    Decl* decl;
-} StmtDecl;
-
 typedef enum StmtKind {
     STMT_NONE,
-    STMT_IF,
-    STMT_WHILE,
-    STMT_DO_WHILE,
-    STMT_FOR,
-    STMT_SWITCH,
-    STMT_RETURN,
-    STMT_BREAK,
-    STMT_CONTINUE,
-    STMT_EXPR,
-    STMT_EXPR_ASSIGN,
-    STMT_DECL,
-    STMT_BLOCK,
+    STMT_If,
+    STMT_While,
+    STMT_DoWhile,
+    STMT_For,
+    STMT_Switch,
+    STMT_Return,
+    STMT_Break,
+    STMT_Continue,
+    STMT_Expr,
+    STMT_ExprAssign,
+    STMT_Decl,
+    STMT_Block,
 } StmtKind;
 
 struct Stmt {
     StmtKind kind;
     ProgRange range;
     DLList list;
-
-    union {
-        StmtIf as_if;
-        StmtCondBlock as_while;
-        StmtCondBlock as_do_while;
-        StmtFor as_for;
-        StmtSwitch as_switch;
-        StmtReturn as_return;
-        StmtExpr as_expr;
-        StmtExprAssign as_expr_assign;
-        StmtDecl as_decl;
-        StmtBlock as_block;
-    };
 };
+
+typedef struct StmtBlock {
+    Stmt base;
+    size_t num_stmts;
+    DLList stmts;
+} StmtBlock;
+
+typedef struct IfCondBlock {
+    ProgRange range;
+    Expr* cond;
+    size_t num_stmts;
+    DLList stmts;
+} IfCondBlock;
+
+typedef struct ElifBlock {
+    IfCondBlock block;
+    DLList list;
+} ElifBlock;
+
+typedef struct ElseBlock {
+    ProgRange range;
+    size_t num_stmts;
+    DLList stmts;
+} ElseBlock;
+
+typedef struct StmtIf {
+    Stmt base;
+    IfCondBlock if_blk;
+
+    size_t num_elif_blks;
+    DLList elif_blks;
+
+    ElseBlock else_blk;
+} StmtIf;
+
+typedef struct StmtWhile {
+    Stmt base;
+    Expr* cond;
+    size_t num_stmts;
+    DLList stmts;
+} StmtWhile;
+
+typedef struct StmtDoWhile {
+    Stmt base;
+    Expr* cond;
+    size_t num_stmts;
+    DLList stmts;
+} StmtDoWhile;
+
+typedef struct StmtFor {
+    Stmt base;
+    Stmt* init;
+    Expr* cond;
+    Stmt* next;
+    size_t num_stmts;
+    DLList stmts;
+} StmtFor;
+
+typedef struct SwitchCase {
+    Expr* start; // NOTE: Both start and end are null for default case.
+    Expr* end;
+
+    size_t num_stmts;
+    DLList stmts;
+    DLList list;
+} SwitchCase;
+
+typedef struct StmtSwitch {
+    Stmt base;
+    Expr* expr;
+    size_t num_cases;
+    DLList cases;
+} StmtSwitch;
+
+typedef struct StmtReturn {
+    Stmt base;
+    Expr* expr;
+} StmtReturn;
+
+typedef struct StmtExpr {
+    Stmt base;
+    Expr* expr;
+} StmtExpr;
+
+typedef struct StmtExprAssign {
+    Stmt base;
+    Expr* left;
+    TokenKind op_assign;
+    Expr* right;
+} StmtExprAssign;
+
+typedef struct StmtDecl {
+    Stmt base;
+    Decl* decl;
+} StmtDecl;
+
+typedef struct StmtBreak {
+    Stmt base;
+    const char* label;
+} StmtBreak;
+
+typedef struct StmtContinue {
+    Stmt base;
+    const char* label;
+} StmtContinue;
 
 Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRange range);
 Stmt* stmt_decl(Allocator* allocator, Decl* decl);
 Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
-Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range); 
-Stmt* stmt_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range);
-Stmt* stmt_do_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range);
-Stmt* stmt_if(Allocator* allocator, StmtCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, StmtBlock* else_blk, 
+Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
+Stmt* stmt_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range);
+Stmt* stmt_do_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range);
+Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, ElseBlock* else_blk,
               ProgRange range);
-StmtElifBlock* stmt_elif_block(Allocator* allocator, Expr* cond, StmtBlock* block);
+ElifBlock* elif_block(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////
@@ -402,7 +428,8 @@ typedef struct DeclProc {
     size_t num_params;
     DLList params;
     TypeSpec* ret;
-    StmtBlock block;
+    size_t num_stmts;
+    DLList stmts;
 } DeclProc;
 
 typedef struct DeclTypedef {
@@ -447,7 +474,7 @@ typedef Decl* DeclAggregateProc(Allocator* alloc, const char* name, size_t num_f
 Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLList* params, TypeSpec* ret,
-                StmtBlock* block, ProgRange range);
+                size_t num_stmts, DLList* stmts, ProgRange range);
 DeclProcParam* decl_proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);

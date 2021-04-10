@@ -47,7 +47,7 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
         ftprint_out("%s\n", ftprint_expr(&module->allocator, expr));
     }
     allocator_restore_state(state);
-#elif 0
+#elif 1
     next_token(&parser);
     Decl* decl = parse_decl(&parser);
 
@@ -139,7 +139,7 @@ int main(void)
     // CompiledModule* module = compile_module("struct Vector2 {s:struct {};}", 0);
     // CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
     //
-    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {}", 0);
+    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
     //
 
     // CompiledModule* module = compile_module("{var a:int32 = 0;}", 0);
@@ -151,7 +151,7 @@ int main(void)
     // CompiledModule* module = compile_module("{if(a) {a = 3;}}", 0);
     // CompiledModule* module = compile_module("{if(a) {a = 3;} else{b = 4;}}", 0);
     // CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2) {c = 10;} else{b = 4;}}", 0);
-    CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2) {b = 10;} elif(c == 3) {c = 1;} else{b = 4;}}", 0);
+    // CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2) {b = 10;} elif(c == 3) {c = 1;} else{b = 4;}}", 0);
 
     // CompiledModule* module = compile_module("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]", 0);
     // CompiledModule* module = compile_module("a ^ ^b", 0);

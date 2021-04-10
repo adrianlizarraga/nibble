@@ -348,15 +348,15 @@ AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec
 }
 
 Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLList* params, TypeSpec* ret,
-                StmtBlock* block, ProgRange range)
+                size_t num_stmts, DLList* stmts, ProgRange range)
 {
     Decl* decl = decl_alloc(allocator, DECL_PROC, name, range);
     decl->as_proc.num_params = num_params;
     decl->as_proc.ret = ret;
-    decl->as_proc.block.num_stmts = block->num_stmts;
+    decl->as_proc.num_stmts = num_stmts;
 
     dllist_replace(params, &decl->as_proc.params);
-    dllist_replace(&block->stmts, &decl->as_proc.block.stmts);
+    dllist_replace(stmts, &decl->as_proc.stmts);
 
     return decl;
 }
@@ -371,9 +371,10 @@ DeclProcParam* decl_proc_param(Allocator* allocator, const char* name, TypeSpec*
     return param;
 }
 
-static Stmt* stmt_alloc(Allocator* allocator, StmtKind kind, ProgRange range)
+#define stmt_alloc(a, k, r) (Stmt##k*)stmt_alloc_((a), sizeof(Stmt##k), alignof(Stmt##k), STMT_##k, (r))
+static Stmt* stmt_alloc_(Allocator* allocator, size_t size, size_t align, StmtKind kind, ProgRange range)
 {
-    Stmt* stmt = mem_allocate(allocator, sizeof(Stmt), DEFAULT_ALIGN, true);
+    Stmt* stmt = mem_allocate(allocator, size, align, true);
     stmt->kind = kind;
     stmt->range = range;
 
@@ -382,90 +383,92 @@ static Stmt* stmt_alloc(Allocator* allocator, StmtKind kind, ProgRange range)
 
 Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRange range)
 {
-    Stmt* stmt = stmt_alloc(allocator, STMT_BLOCK, range);
-    stmt->as_block.num_stmts = num_stmts;
+    StmtBlock* stmt = stmt_alloc(allocator, Block, range);
+    stmt->num_stmts = num_stmts;
 
-    dllist_replace(stmts, &stmt->as_block.stmts);
+    dllist_replace(stmts, &stmt->stmts);
 
-    return stmt;
+    return (Stmt*)stmt;
 }
 
 Stmt* stmt_decl(Allocator* allocator, Decl* decl)
 {
-    Stmt* stmt = stmt_alloc(allocator, STMT_DECL, decl->range);
-    stmt->as_decl.decl = decl;
+    StmtDecl* stmt = stmt_alloc(allocator, Decl, decl->range);
+    stmt->decl = decl;
 
-    return stmt;
+    return (Stmt*)stmt;
 }
 
 Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range)
 {
-    Stmt* stmt = stmt_alloc(allocator, STMT_EXPR, range);
-    stmt->as_expr.expr = expr;
+    StmtExpr* stmt = stmt_alloc(allocator, Expr, range);
+    stmt->expr = expr;
 
-    return stmt;
+    return (Stmt*)stmt;
 }
 
 Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range)
 {
-    Stmt* stmt = stmt_alloc(allocator, STMT_EXPR_ASSIGN, range);
-    stmt->as_expr_assign.left = lexpr;
-    stmt->as_expr_assign.op_assign = op_assign;
-    stmt->as_expr_assign.right = rexpr;
+    StmtExprAssign* stmt = stmt_alloc(allocator, ExprAssign, range);
+    stmt->left = lexpr;
+    stmt->op_assign = op_assign;
+    stmt->right = rexpr;
 
-    return stmt;
+    return (Stmt*)stmt;
 }
 
-Stmt* stmt_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range)
+Stmt* stmt_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range)
 {
-    Stmt* stmt = stmt_alloc(allocator, STMT_WHILE, range);
-    stmt->as_while.cond = cond;
-    stmt->as_while.block.num_stmts = block->num_stmts;
+    StmtWhile* stmt = stmt_alloc(allocator, While, range);
+    stmt->cond = cond;
+    stmt->num_stmts = num_stmts;
 
-    dllist_replace(&block->stmts, &stmt->as_while.block.stmts);
+    dllist_replace(stmts, &stmt->stmts);
 
-    return stmt;
+    return (Stmt*)stmt;
 }
 
-Stmt* stmt_do_while(Allocator* allocator, Expr* cond, StmtBlock* block, ProgRange range)
+Stmt* stmt_do_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range)
 {
-    Stmt* stmt = stmt_alloc(allocator, STMT_DO_WHILE, range);
-    stmt->as_do_while.cond = cond;
-    stmt->as_do_while.block.num_stmts = block->num_stmts;
+    StmtDoWhile* stmt = stmt_alloc(allocator, DoWhile, range);
+    stmt->cond = cond;
+    stmt->num_stmts = num_stmts;
 
-    dllist_replace(&block->stmts, &stmt->as_do_while.block.stmts);
+    dllist_replace(stmts, &stmt->stmts);
 
-    return stmt;
+    return (Stmt*)stmt;
 }
 
-Stmt* stmt_if(Allocator* allocator, StmtCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, StmtBlock* else_blk, 
+Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, ElseBlock* else_blk,
               ProgRange range)
 {
-    Stmt* stmt = stmt_alloc(allocator, STMT_IF, range);
-    StmtIf* as_if = &stmt->as_if;
+    StmtIf* stmt = stmt_alloc(allocator, If, range);
 
-    as_if->if_blk.cond = if_blk->cond;
-    as_if->if_blk.block.num_stmts = if_blk->block.num_stmts;
-    dllist_replace(&if_blk->block.stmts, &as_if->if_blk.block.stmts);
+    stmt->if_blk.range = if_blk->range;
+    stmt->if_blk.cond = if_blk->cond;
+    stmt->if_blk.num_stmts = if_blk->num_stmts;
+    dllist_replace(&if_blk->stmts, &stmt->if_blk.stmts);
 
-    as_if->num_elif_blks = num_elif_blks;
-    dllist_replace(elif_blks, &as_if->elif_blks);
+    stmt->num_elif_blks = num_elif_blks;
+    dllist_replace(elif_blks, &stmt->elif_blks);
 
-    as_if->else_blk.num_stmts = else_blk->num_stmts;
-    dllist_replace(&else_blk->stmts, &as_if->else_blk.stmts);
+    stmt->else_blk.range = else_blk->range;
+    stmt->else_blk.num_stmts = else_blk->num_stmts;
+    dllist_replace(&else_blk->stmts, &stmt->else_blk.stmts);
 
-    return stmt;
+    return (Stmt*)stmt;
 }
 
-StmtElifBlock* stmt_elif_block(Allocator* allocator, Expr* cond, StmtBlock* block)
+ElifBlock* elif_block(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range)
 {
-    StmtElifBlock* stmt = mem_allocate(allocator, sizeof(StmtElifBlock), DEFAULT_ALIGN, true);
-    stmt->cond = cond;
-    stmt->block.num_stmts = block->num_stmts;
+    ElifBlock* elif = new_type(allocator, ElifBlock, true);
+    elif->block.range = range;
+    elif->block.cond = cond;
+    elif->block.num_stmts = num_stmts;
 
-    dllist_replace(&block->stmts, &stmt->block.stmts);
+    dllist_replace(stmts, &elif->block.stmts);
 
-    return stmt;
+    return elif;
 }
 
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
@@ -689,16 +692,16 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
     return dstr;
 }
 
-static char* ftprint_stmt_block(Allocator* allocator, StmtBlock* block)
+static char* ftprint_stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts)
 {
     char* dstr = array_create(allocator, char, 32);
 
     ftprint_char_array(&dstr, false, "(stmt-block");
 
-    if (block->num_stmts) {
+    if (num_stmts) {
         ftprint_char_array(&dstr, false, " ");
 
-        DLList* head = &block->stmts;
+        DLList* head = stmts;
 
         for (DLList* it = head->next; it != head; it = it->next) {
             Stmt* s = dllist_entry(it, Stmt, list);
@@ -725,59 +728,60 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
         case STMT_NONE: {
             assert(0);
         } break;
-        case STMT_BLOCK: {
+        case STMT_Block: {
+            StmtBlock* s = (StmtBlock*)stmt;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "%s", ftprint_stmt_block(allocator, &stmt->as_block));
+            ftprint_char_array(&dstr, false, "%s", ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
         } break;
-        case STMT_DECL: {
+        case STMT_Decl: {
+            StmtDecl* s = (StmtDecl*)stmt;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, stmt->as_decl.decl));
+            ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, s->decl));
         } break;
-        case STMT_EXPR: {
+        case STMT_Expr: {
+            StmtExpr* s = (StmtExpr*)stmt;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, stmt->as_expr.expr));
+            ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, s->expr));
         } break;
-        case STMT_EXPR_ASSIGN: {
+        case STMT_ExprAssign: {
+            StmtExprAssign* s = (StmtExprAssign*)stmt;
             dstr = array_create(allocator, char, 32);
-            StmtExprAssign* s = &stmt->as_expr_assign;
             const char* op = token_kind_names[s->op_assign];
 
             ftprint_char_array(&dstr, false, "(%s %s %s)", op, ftprint_expr(allocator, s->left),
                                ftprint_expr(allocator, s->right));
         } break;
-        case STMT_WHILE: {
+        case STMT_While: {
+            StmtWhile* s = (StmtWhile*)stmt;
             dstr = array_create(allocator, char, 32);
-            StmtCondBlock* w = &stmt->as_while;
 
-            ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, w->cond),
-                               ftprint_stmt_block(allocator, &w->block));
+            ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, s->cond),
+                               ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
         } break;
-        case STMT_DO_WHILE: {
+        case STMT_DoWhile: {
+            StmtDoWhile* s = (StmtDoWhile*)stmt;
             dstr = array_create(allocator, char, 32);
-            StmtCondBlock* w = &stmt->as_do_while;
 
-            ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, w->cond),
-                               ftprint_stmt_block(allocator, &w->block));
+            ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, s->cond),
+                               ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
         } break;
-        case STMT_IF: {
+        case STMT_If: {
+            StmtIf* s = (StmtIf*)stmt;
             dstr = array_create(allocator, char, 64);
-            StmtIf* as_if = &stmt->as_if;
 
-            ftprint_char_array(&dstr, false, "(if %s %s",
-                               ftprint_expr(allocator, as_if->if_blk.cond),
-                               ftprint_stmt_block(allocator, &as_if->if_blk.block));
+            ftprint_char_array(&dstr, false, "(if %s %s", ftprint_expr(allocator, s->if_blk.cond),
+                               ftprint_stmt_block(allocator, s->if_blk.num_stmts, &s->if_blk.stmts));
 
-            if (as_if->num_elif_blks) {
+            if (s->num_elif_blks) {
                 ftprint_char_array(&dstr, false, " ");
 
-                DLList* head = &as_if->elif_blks;
+                DLList* head = &s->elif_blks;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
-                    StmtElifBlock* elif = dllist_entry(it, StmtElifBlock, list);
+                    ElifBlock* elif = dllist_entry(it, ElifBlock, list);
 
-                    ftprint_char_array(&dstr, false, "(elif %s %s)", 
-                                       ftprint_expr(allocator, elif->cond),
-                                       ftprint_stmt_block(allocator, &elif->block));
+                    ftprint_char_array(&dstr, false, "(elif %s %s)", ftprint_expr(allocator, elif->block.cond),
+                                       ftprint_stmt_block(allocator, elif->block.num_stmts, &elif->block.stmts));
 
                     if (it->next != head) {
                         ftprint_char_array(&dstr, false, " ");
@@ -785,8 +789,9 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 }
             }
 
-            if (as_if->else_blk.num_stmts) {
-                ftprint_char_array(&dstr, false, " (else %s)", ftprint_stmt_block(allocator, &as_if->else_blk));
+            if (s->else_blk.num_stmts) {
+                ftprint_char_array(&dstr, false, " (else %s)",
+                                   ftprint_stmt_block(allocator, s->else_blk.num_stmts, &s->else_blk.stmts));
             }
 
             ftprint_char_array(&dstr, false, ")");
@@ -917,7 +922,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 }
             }
             ftprint_char_array(&dstr, false, ") =>%s %s)", ftprint_typespec(allocator, proc->ret),
-                               ftprint_stmt_block(allocator, &proc->block));
+                               ftprint_stmt_block(allocator, proc->num_stmts, &proc->stmts));
         } break;
         default: {
             ftprint_err("Unknown decl kind: %d\n", decl->kind);

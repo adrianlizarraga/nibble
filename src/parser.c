@@ -892,19 +892,19 @@ Expr* parse_expr(Parser* parser)
 //    Parse statements
 //////////////////////////////
 
-static bool parse_fill_stmt_block(Parser* parser, StmtBlock* block)
+static bool parse_fill_stmt_list(Parser* parser, size_t* num_stmts, DLList* stmts)
 {
     bool bad_stmt = false;
 
-    dllist_head_init(&block->stmts);
-    block->num_stmts = 0;
+    dllist_head_init(stmts);
+    *num_stmts = 0;
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
         Stmt* stmt = parse_stmt(parser);
 
         if (stmt) {
-            block->num_stmts += 1;
-            dllist_add(block->stmts.prev, &stmt->list);
+            *num_stmts += 1;
+            dllist_add(stmts->prev, &stmt->list);
         } else {
             bad_stmt = true;
             break;
@@ -922,27 +922,32 @@ static Stmt* parse_stmt_block(Parser* parser)
 
     next_token(parser);
 
-    StmtBlock block = {0};
-    bool ok = parse_fill_stmt_block(parser, &block);
+    size_t num_stmts = 0;
+    DLList stmts = {0};
+    bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
 
     if (ok && expect_token_next(parser, TKN_RBRACE, "Failed to parse end of statement block")) {
         range.end = parser->ptoken.range.end;
-        stmt = stmt_block(parser->allocator, block.num_stmts, &block.stmts, range);
+        stmt = stmt_block(parser->allocator, num_stmts, &stmts, range);
     }
 
     return stmt;
 }
 
-static bool parse_fill_stmt_cond_block(Parser* parser, StmtCondBlock* cblock, const char* error_prefix)
+static bool parse_fill_if_cond_block(Parser* parser, IfCondBlock* cblock, const char* error_prefix)
 {
+    cblock->range.start = parser->token.range.start;
+
     if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
         cblock->cond = parse_expr(parser);
 
         if (cblock->cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
             expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-            bool ok = parse_fill_stmt_block(parser, &cblock->block);
+            bool ok = parse_fill_stmt_list(parser, &cblock->num_stmts, &cblock->stmts);
 
             if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+                cblock->range.end = parser->ptoken.range.end;
+
                 return true;
             }
         }
@@ -950,22 +955,45 @@ static bool parse_fill_stmt_cond_block(Parser* parser, StmtCondBlock* cblock, co
 
     return false;
 }
-static StmtElifBlock* parse_stmt_elif_block(Parser* parser)
+
+static ElifBlock* parse_stmt_elif_block(Parser* parser)
 {
     assert(is_keyword(parser, KW_ELIF));
-    StmtElifBlock* elif_blk = NULL;
+    ElifBlock* elif_blk = NULL;
     const char* error_prefix = "Failed to parse elif statement";
 
     next_token(parser);
 
-    StmtCondBlock cblock = {0};
-    bool ok = parse_fill_stmt_cond_block(parser, &cblock, error_prefix);
+    IfCondBlock cblock = {0};
+    bool ok = parse_fill_if_cond_block(parser, &cblock, error_prefix);
 
     if (ok) {
-        elif_blk = stmt_elif_block(parser->allocator, cblock.cond, &cblock.block);
+        elif_blk = elif_block(parser->allocator, cblock.cond, cblock.num_stmts, &cblock.stmts, cblock.range);
     }
 
     return elif_blk;
+}
+
+static bool parse_fill_else_block(Parser* parser, ElseBlock* else_blk)
+{
+    assert(is_keyword(parser, KW_ELSE));
+    const char* error_prefix = "Failed to parse else statement";
+
+    else_blk->range.start = parser->token.range.start;
+
+    next_token(parser);
+
+    if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+        bool filled_stmts = parse_fill_stmt_list(parser, &else_blk->num_stmts, &else_blk->stmts);
+
+        if (filled_stmts && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+            else_blk->range.end = parser->ptoken.range.end;
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // stmt_if = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
@@ -978,8 +1006,8 @@ static Stmt* parse_stmt_if(Parser* parser)
 
     next_token(parser);
 
-    StmtCondBlock if_blk = {0};
-    bool ok_if = parse_fill_stmt_cond_block(parser, &if_blk, err_pre);
+    IfCondBlock if_blk = {0};
+    bool ok_if = parse_fill_if_cond_block(parser, &if_blk, err_pre);
 
     if (ok_if) {
         size_t num_elif_blks = 0;
@@ -987,7 +1015,7 @@ static Stmt* parse_stmt_if(Parser* parser)
         bool bad_elif = false;
 
         while (is_keyword(parser, KW_ELIF)) {
-            StmtElifBlock * elif = parse_stmt_elif_block(parser);
+            ElifBlock* elif = parse_stmt_elif_block(parser);
 
             if (elif) {
                 num_elif_blks += 1;
@@ -1000,17 +1028,16 @@ static Stmt* parse_stmt_if(Parser* parser)
 
         if (!bad_elif) {
             bool bad_else = false;
-            StmtBlock else_blk = {0};
+            ElseBlock else_blk = {0};
 
             dllist_head_init(&else_blk.stmts);
 
-            if (match_keyword_next(parser, KW_ELSE) && expect_token_next(parser, TKN_LBRACE, err_pre)) {
-                bool ok_else_fill = parse_fill_stmt_block(parser, &else_blk); 
-                bad_else = !(ok_else_fill && expect_token_next(parser, TKN_RBRACE, err_pre));
+            if (is_keyword(parser, KW_ELSE)) {
+                bad_else = !parse_fill_else_block(parser, &else_blk);
             }
 
             if (!bad_else) {
-                stmt = stmt_if(parser->allocator, &if_blk, num_elif_blks, &elif_blks, &else_blk, range); 
+                stmt = stmt_if(parser->allocator, &if_blk, num_elif_blks, &elif_blks, &else_blk, range);
             }
         }
     }
@@ -1033,12 +1060,13 @@ static Stmt* parse_stmt_while(Parser* parser)
 
         if (cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
             expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-            StmtBlock block = {0};
-            bool ok = parse_fill_stmt_block(parser, &block);
+            DLList stmts = {0};
+            size_t num_stmts = 0;
+            bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
 
             if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
                 range.end = parser->ptoken.range.end;
-                stmt = stmt_while(parser->allocator, cond, &block, range);
+                stmt = stmt_while(parser->allocator, cond, num_stmts, &stmts, range);
             }
         }
     }
@@ -1057,8 +1085,9 @@ static Stmt* parse_stmt_do_while(Parser* parser)
     next_token(parser);
 
     if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-        StmtBlock block = {0};
-        bool ok = parse_fill_stmt_block(parser, &block);
+        DLList stmts = {0};
+        size_t num_stmts = 0;
+        bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
 
         if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix) &&
             expect_keyword_next(parser, KW_WHILE, error_prefix) &&
@@ -1068,7 +1097,7 @@ static Stmt* parse_stmt_do_while(Parser* parser)
             if (cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
                 expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
                 range.end = parser->ptoken.range.end;
-                stmt = stmt_do_while(parser->allocator, cond, &block, range);
+                stmt = stmt_do_while(parser->allocator, cond, num_stmts, &stmts, range);
             }
         }
     }
@@ -1299,12 +1328,13 @@ static Decl* parse_decl_proc(Parser* parser)
                 }
 
                 if (!bad_ret && expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-                    StmtBlock block = {0};
-                    bool ok = parse_fill_stmt_block(parser, &block);
+                    DLList stmts = {0};
+                    size_t num_stmts = 0;
+                    bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
 
                     if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
                         range.end = parser->ptoken.range.end;
-                        decl = decl_proc(parser->allocator, name, num_params, &params, ret, &block, range);
+                        decl = decl_proc(parser->allocator, name, num_params, &params, ret, num_stmts, &stmts, range);
                     }
                 }
             }
