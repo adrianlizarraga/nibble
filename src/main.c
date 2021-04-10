@@ -41,32 +41,20 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
     next_token(&parser);
     Expr* expr = parse_expr(&parser);
 
-    ftprint_out("Done parsing expr\n");
-    AllocatorState state = allocator_get_state(&module->allocator);
-    {
-        ftprint_out("%s\n", ftprint_expr(&module->allocator, expr));
-    }
-    allocator_restore_state(state);
+    ftprint_out("%s\n", ftprint_expr(&module->allocator, expr));
+    ftprint_out("\n\n");
 #elif 1
     next_token(&parser);
     Decl* decl = parse_decl(&parser);
 
-    ftprint_out("Done parsing decl\n");
-    AllocatorState state = allocator_get_state(&module->allocator);
-    {
-        ftprint_out("%s\n", ftprint_decl(&module->allocator, decl));
-    }
-    allocator_restore_state(state);
+    ftprint_out("%s\n", ftprint_decl(&module->allocator, decl));
+    ftprint_out("\n\n");
 #else
     next_token(&parser);
     Stmt* stmt = parse_stmt(&parser);
 
-    ftprint_out("Done parsing stmt\n");
-    AllocatorState state = allocator_get_state(&module->allocator);
-    {
-        ftprint_out("%s\n", ftprint_stmt(&module->allocator, stmt));
-    }
-    allocator_restore_state(state);
+    ftprint_out("%s\n", ftprint_stmt(&module->allocator, stmt));
+    ftprint_out("\n\n");
 #endif
 
     if (module->errors.num_chunks > 0) {
@@ -88,6 +76,11 @@ static void free_compiled_module(CompiledModule* module)
 {
     Allocator bootstrap = module->allocator;
 
+#ifndef NDEBUG
+    print_allocator_stats(&module->ast_arena, "AST mem stats");
+    print_allocator_stats(&module->allocator, "Module mem stats");
+#endif
+
     allocator_destroy(&module->ast_arena);
     allocator_destroy(&bootstrap);
 }
@@ -99,11 +92,9 @@ int main(void)
         exit(1);
     }
 
-    /*
-    ftprint_out("sizeof(TypeSpec) = %lu, sizeof(Expr) = %lu, sizeof(Stmt) = %lu, sizeof(Decl) = %lu, sizeof(StmtIf) =
-    %lu, offsetof(Stmt, as_if) = %lu\n", sizeof(TypeSpec), sizeof(Expr), sizeof(Stmt), sizeof(Decl), sizeof(StmtIf),
-    offsetof(Stmt, as_if));
-    */
+    // sizeof(TypeSpec) = 48, sizeof(Expr) = 48, sizeof(Stmt) = 32, sizeof(Decl) = 80
+    ftprint_out("sizeof(TypeSpec) = %lu, sizeof(Expr) = %lu, sizeof(Stmt) = %lu, sizeof(Decl) = %lu\n\n", 
+                sizeof(TypeSpec), sizeof(Expr), sizeof(Stmt), sizeof(Decl));
 
     // CompiledModule* module = compile_module("var a : int = 1 + 2;", 0);
     // CompiledModule* module = compile_module("var a : int = sizeof(int32);", 0);
@@ -139,6 +130,7 @@ int main(void)
     // CompiledModule* module = compile_module("struct Vector2 {s:struct {};}", 0);
     // CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
     //
+    // AST usage: 848 bytes, Nibble usage: 951 bytes
     CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
     //
 

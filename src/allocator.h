@@ -40,4 +40,13 @@ void mem_free(Allocator* allocator, void* ptr);
 AllocatorState allocator_get_state(Allocator* allocator);
 void allocator_restore_state(AllocatorState state);
 
+typedef struct AllocatorStats {
+    size_t num_blocks;
+    size_t total_size;
+    size_t used;
+} AllocatorStats;
+
+AllocatorStats allocator_stats(Allocator* allocator);
+void print_allocator_stats(Allocator* allocator, const char* label);
+
 #endif

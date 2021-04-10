@@ -99,6 +99,16 @@ bool nibble_init(void)
 
 void nibble_cleanup(void)
 {
+#ifndef NDEBUG
+    print_allocator_stats(&nibble.allocator, "Nibble mem stats");
+    ftprint_out("Ident map: len = %lu, cap = %lu, total_size (malloc) = %lu\n",
+                nibble.ident_map.len, nibble.ident_map.cap,
+                nibble.ident_map.cap * sizeof(HashMapEntry));
+    ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n",
+                nibble.str_lit_map.len, nibble.str_lit_map.cap,
+                nibble.str_lit_map.cap * sizeof(HashMapEntry));
+#endif
+
     hash_map_destroy(&nibble.str_lit_map);
     hash_map_destroy(&nibble.ident_map);
     allocator_destroy(&nibble.allocator);

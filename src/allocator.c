@@ -8,6 +8,7 @@
 
 typedef struct MemBlockFooter {
     unsigned char* pbuffer;
+    unsigned char* pat;
     unsigned char* pend;
 } MemBlockFooter;
 
@@ -22,6 +23,7 @@ static bool alloc_mem_block(Allocator* allocator, size_t block_size)
     }
 
     unsigned char* pbuffer = allocator->buffer;
+    unsigned char* pat = allocator->at;
     unsigned char* pend = allocator->end;
 
     allocator->buffer = block;
@@ -32,6 +34,7 @@ static bool alloc_mem_block(Allocator* allocator, size_t block_size)
 
     MemBlockFooter* footer = (MemBlockFooter*)allocator->end;
     footer->pbuffer = pbuffer;
+    footer->pat = pat;
     footer->pend = pend;
 
     return true;
@@ -210,4 +213,41 @@ void allocator_restore_state(AllocatorState state)
     allocator->end = end;
     allocator->at = state.at;
     allocator->pat = state.pat;
+}
+
+AllocatorStats allocator_stats(Allocator* allocator)
+{
+    AllocatorStats stats = {0};
+
+    if (!allocator || !allocator->buffer) {
+        return stats;
+    }
+
+    stats.num_blocks = 1;
+    stats.total_size = (size_t)(allocator->end - allocator->buffer);
+    stats.used = (size_t)(allocator->at - allocator->buffer);
+
+    MemBlockFooter* footer = (MemBlockFooter*)allocator->end;
+
+    while (footer->pbuffer) {
+        unsigned char* buffer = footer->pbuffer;
+        unsigned char* at = footer->pat;
+        unsigned char* end = footer->pend;
+
+        stats.num_blocks += 1;
+        stats.total_size += (size_t)(end - buffer);
+        stats.used +=  (size_t)(at - buffer);
+
+        footer = (MemBlockFooter*)end;
+    }
+
+    return stats;
+}
+
+void print_allocator_stats(Allocator* allocator, const char* label)
+{
+    AllocatorStats stats = allocator_stats(allocator);
+
+    ftprint_out("%s: num_blocks = %lu, total_size = %lu, used = %lu\n", label,
+                stats.num_blocks, stats.total_size, stats.used);
 }
