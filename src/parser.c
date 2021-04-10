@@ -537,19 +537,19 @@ static Expr* parse_expr_compound_lit(Parser* parser)
 
 static Expr* parse_expr_sizeof(Parser* parser)
 {
+    assert(is_keyword(parser, KW_SIZEOF));
     Expr* expr = NULL;
+    ProgRange range = {.start = parser->token.range.start};
     const char* error_prefix = "Failed to parse sizeof expression";
 
-    if (expect_keyword_next(parser, KW_SIZEOF, error_prefix)) {
-        ProgRange range = {.start = parser->ptoken.range.start};
+    next_token(parser);
 
-        if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
-            TypeSpec* type = parse_typespec(parser);
+    if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        TypeSpec* type = parse_typespec(parser);
 
-            if (type && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
-                range.end = parser->ptoken.range.end;
-                expr = expr_sizeof(parser->allocator, type, range);
-            }
+        if (type && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+            range.end = parser->ptoken.range.end;
+            expr = expr_sizeof(parser->allocator, type, range);
         }
     }
 
@@ -558,19 +558,19 @@ static Expr* parse_expr_sizeof(Parser* parser)
 
 static Expr* parse_expr_typeof(Parser* parser)
 {
+    assert(is_keyword(parser, KW_TYPEOF));
     Expr* expr = NULL;
+    ProgRange range = {.start = parser->token.range.start};
     const char* error_prefix = "Failed to parse typeof expression";
 
-    if (expect_keyword_next(parser, KW_TYPEOF, error_prefix)) {
-        ProgRange range = {.start = parser->ptoken.range.start};
+    next_token(parser);
 
-        if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
-            Expr* arg = parse_expr(parser);
+    if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        Expr* arg = parse_expr(parser);
 
-            if (arg && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
-                range.end = parser->ptoken.range.end;
-                expr = expr_typeof(parser->allocator, arg, range);
-            }
+        if (arg && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+            range.end = parser->ptoken.range.end;
+            expr = expr_typeof(parser->allocator, arg, range);
         }
     }
 

@@ -101,6 +101,7 @@ int main(void)
 
     // CompiledModule* module = compile_module("var a : int = 1 + 2;", 0);
     // CompiledModule* module = compile_module("var a : int = sizeof(int32);", 0);
+    // CompiledModule* module = compile_module("var a : int = typeof(int);", 0);
     // CompiledModule* module = compile_module("var a := 1 + 2;", 0);
     // CompiledModule* module = compile_module("var a : int;", 0);
     // CompiledModule* module = compile_module("var a : int = f(x=a);", 0);
