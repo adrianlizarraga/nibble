@@ -1260,10 +1260,10 @@ static Decl* parse_decl_var(Parser* parser)
     return decl;
 }
 
-// param_item = TKN_IDENT ':' type_spec
-static DeclProcParam* parse_decl_proc_param(Parser* parser)
+// proc_param = TKN_IDENT ':' type_spec
+static ProcParam* parse_proc_param(Parser* parser)
 {
-    DeclProcParam* param = NULL;
+    ProcParam* param = NULL;
     const char* error_prefix = "Failed to parse procedure parameter";
 
     if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
@@ -1275,7 +1275,7 @@ static DeclProcParam* parse_decl_proc_param(Parser* parser)
 
             if (type) {
                 range.end = type->range.end;
-                param = decl_proc_param(parser->allocator, name, type, range);
+                param = proc_param(parser->allocator, name, type, range);
             }
         }
     }
@@ -1284,7 +1284,7 @@ static DeclProcParam* parse_decl_proc_param(Parser* parser)
 }
 
 // decl_proc  = 'proc' TKN_IDENT '(' param_list ')' ('=>' typespec)? stmt_block
-// param_list = param_item (',' param_item)*
+// proc_param_list = proc_param (',' proc_param)*
 static Decl* parse_decl_proc(Parser* parser)
 {
     assert(is_keyword(parser, KW_PROC));
@@ -1303,7 +1303,7 @@ static Decl* parse_decl_proc(Parser* parser)
             bool bad_param = false;
 
             while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
-                DeclProcParam* param = parse_decl_proc_param(parser);
+                ProcParam* param = parse_proc_param(parser);
 
                 if (param) {
                     num_params += 1;
@@ -1346,7 +1346,7 @@ static Decl* parse_decl_proc(Parser* parser)
 
 // decl_union  = 'union' aggregate_body
 // decl_struct = 'struct' aggregate_body
-static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, DeclAggregateProc* decl_aggregate_fn)
+static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, DeclAggregateProc* decl_aggregate_proc)
 {
     assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
     Decl* decl = NULL;
@@ -1364,7 +1364,7 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
             if (!bad_field && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
                 if (body.num_fields) {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_aggregate_fn(parser->allocator, name, body.num_fields, &body.fields, range);
+                    decl = decl_aggregate_proc(parser->allocator, name, body.num_fields, &body.fields, range);
                 } else {
                     parser_on_error(parser, "%s: must have at least one field", error_prefix);
                 }
@@ -1375,10 +1375,10 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
     return decl;
 }
 
-// decl_enum_item  = TKN_IDENT ('=' expr)?
-static DeclEnumItem* parse_decl_enum_item(Parser* parser)
+// enum_item  = TKN_IDENT ('=' expr)?
+static EnumItem* parse_enum_item(Parser* parser)
 {
-    DeclEnumItem* item = NULL;
+    EnumItem* item = NULL;
 
     if (expect_token_next(parser, TKN_IDENT, "Failed to parse enum value")) {
         const char* name = parser->ptoken.as_ident.value;
@@ -1391,7 +1391,7 @@ static DeclEnumItem* parse_decl_enum_item(Parser* parser)
         }
 
         if (!bad_value) {
-            item = decl_enum_item(parser->allocator, name, value);
+            item = enum_item(parser->allocator, name, value);
         }
     }
 
@@ -1429,7 +1429,7 @@ static Decl* parse_decl_enum(Parser* parser)
             bool bad_item = false;
 
             while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
-                DeclEnumItem* item = parse_decl_enum_item(parser);
+                EnumItem* item = parse_enum_item(parser);
 
                 if (item) {
                     num_items += 1;

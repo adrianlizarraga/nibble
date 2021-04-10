@@ -395,36 +395,67 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////
 //       Declarations
 //////////////////////////////
+
+typedef enum DeclKind {
+    DECL_NONE,
+    DECL_Var,
+    DECL_Const,
+    DECL_Enum,
+    DECL_Union,
+    DECL_Struct,
+    DECL_Proc,
+    DECL_Typedef,
+} DeclKind;
+
+struct Decl {
+    DeclKind kind;
+    ProgRange range;
+    const char* name;
+};
+
 typedef struct DeclVar {
+    Decl base;
     TypeSpec* type;
     Expr* init;
 } DeclVar;
 
 typedef struct DeclConst {
+    Decl base;
     TypeSpec* type;
     Expr* init;
 } DeclConst;
 
-typedef struct DeclEnumItem {
+typedef struct EnumItem {
     const char* name;
     Expr* value;
     DLList list;
-} DeclEnumItem;
+} EnumItem;
 
 typedef struct DeclEnum {
+    Decl base;
     TypeSpec* type;
     size_t num_items;
     DLList items;
 } DeclEnum;
 
-typedef struct DeclProcParam {
+typedef struct DeclAggregate {
+    Decl base; 
+    size_t num_fields;
+    DLList fields;
+} DeclAggregate;
+
+typedef DeclAggregate DeclUnion;
+typedef DeclAggregate DeclStruct;
+
+typedef struct ProcParam {
     ProgRange range;
     const char* name;
     TypeSpec* type;
     DLList list;
-} DeclProcParam;
+} ProcParam;
 
 typedef struct DeclProc {
+    Decl base;
     size_t num_params;
     DLList params;
     TypeSpec* ret;
@@ -433,49 +464,23 @@ typedef struct DeclProc {
 } DeclProc;
 
 typedef struct DeclTypedef {
+    Decl base;
     TypeSpec* type;
 } DeclTypedef;
-
-typedef enum DeclKind {
-    DECL_NONE,
-    DECL_VAR,
-    DECL_CONST,
-    DECL_ENUM,
-    DECL_UNION,
-    DECL_STRUCT,
-    DECL_PROC,
-    DECL_TYPEDEF,
-} DeclKind;
-
-struct Decl {
-    DeclKind kind;
-    ProgRange range;
-    const char* name;
-
-    union {
-        DeclVar as_var;
-        DeclConst as_const;
-        DeclEnum as_enum;
-        AggregateBody as_struct;
-        AggregateBody as_union;
-        DeclProc as_proc;
-        DeclTypedef as_typedef;
-    };
-};
 
 Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, DLList* items,
                 ProgRange range);
-DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value);
+EnumItem* enum_item(Allocator* allocator, const char* name, Expr* value);
 
 typedef Decl* DeclAggregateProc(Allocator* alloc, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLList* params, TypeSpec* ret,
                 size_t num_stmts, DLList* stmts, ProgRange range);
-DeclProcParam* decl_proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
+ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 #endif

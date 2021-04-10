@@ -260,57 +260,58 @@ Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzer
     return expr;
 }
 
-static Decl* decl_alloc(Allocator* allocator, DeclKind kind, const char* name, ProgRange range)
+#define decl_alloc(a, k, n, r) (Decl##k*)decl_alloc_((a), sizeof(Decl##k), alignof(Decl##k), DECL_##k, (n), (r))
+static Decl* decl_alloc_(Allocator* allocator, size_t size, size_t align, DeclKind kind, const char* name, ProgRange range)
 {
-    Decl* decl = mem_allocate(allocator, sizeof(Decl), DEFAULT_ALIGN, true);
+    Decl* decl = mem_allocate(allocator, size, align, true);
     decl->kind = kind;
     decl->name = name;
     decl->range = range;
 
-    return decl;
+    return (Decl*)decl;
 }
 
 Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
 {
-    Decl* decl = decl_alloc(allocator, DECL_VAR, name, range);
-    decl->as_var.type = type;
-    decl->as_var.init = init;
+    DeclVar* decl = decl_alloc(allocator, Var, name, range);
+    decl->type = type;
+    decl->init = init;
 
-    return decl;
+    return (Decl*)decl;
 }
 
 Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
 {
-    Decl* decl = decl_alloc(allocator, DECL_CONST, name, range);
-    decl->as_const.type = type;
-    decl->as_const.init = init;
+    DeclConst* decl = decl_alloc(allocator, Const, name, range);
+    decl->type = type;
+    decl->init = init;
 
-    return decl;
+    return (Decl*)decl;
 }
 
 Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
 {
-    Decl* decl = decl_alloc(allocator, DECL_TYPEDEF, name, range);
-    decl->as_typedef.type = type;
+    DeclTypedef* decl = decl_alloc(allocator, Typedef, name, range);
+    decl->type = type;
 
-    return decl;
+    return (Decl*)decl;
 }
 
 Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, DLList* items,
                 ProgRange range)
 {
-    Decl* decl = decl_alloc(allocator, DECL_ENUM, name, range);
-    decl->as_enum.type = type;
-    decl->as_enum.num_items = num_items;
+    DeclEnum* decl = decl_alloc(allocator, Enum, name, range);
+    decl->type = type;
+    decl->num_items = num_items;
 
-    dllist_replace(items, &decl->as_enum.items);
+    dllist_replace(items, &decl->items);
 
-    return decl;
+    return (Decl*)decl;
 }
 
-DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value)
+EnumItem* enum_item(Allocator* allocator, const char* name, Expr* value)
 {
-    DeclEnumItem* item = mem_allocate(allocator, sizeof(DeclEnumItem), DEFAULT_ALIGN, true);
+    EnumItem* item = new_type(allocator, EnumItem, true);
     item->name = name;
     item->value = value;
 
@@ -319,27 +320,27 @@ DeclEnumItem* decl_enum_item(Allocator* allocator, const char* name, Expr* value
 
 Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range)
 {
-    Decl* decl = decl_alloc(allocator, DECL_STRUCT, name, range);
-    decl->as_struct.num_fields = num_fields;
+    DeclStruct* decl = decl_alloc(allocator, Struct, name, range);
+    decl->num_fields = num_fields;
 
-    dllist_replace(fields, &decl->as_struct.fields);
+    dllist_replace(fields, &decl->fields);
 
-    return decl;
+    return (Decl*)decl;
 }
 
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range)
 {
-    Decl* decl = decl_alloc(allocator, DECL_UNION, name, range);
-    decl->as_union.num_fields = num_fields;
+    DeclUnion* decl = decl_alloc(allocator, Union, name, range);
+    decl->num_fields = num_fields;
 
-    dllist_replace(fields, &decl->as_union.fields);
+    dllist_replace(fields, &decl->fields);
 
-    return decl;
+    return (Decl*)decl;
 }
 
 AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
 {
-    AggregateField* field = mem_allocate(allocator, sizeof(AggregateField), DEFAULT_ALIGN, true);
+    AggregateField* field = new_type(allocator, AggregateField, true);
     field->name = name;
     field->type = type;
     field->range = range;
@@ -350,20 +351,20 @@ AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec
 Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLList* params, TypeSpec* ret,
                 size_t num_stmts, DLList* stmts, ProgRange range)
 {
-    Decl* decl = decl_alloc(allocator, DECL_PROC, name, range);
-    decl->as_proc.num_params = num_params;
-    decl->as_proc.ret = ret;
-    decl->as_proc.num_stmts = num_stmts;
+    DeclProc* decl = decl_alloc(allocator, Proc, name, range);
+    decl->num_params = num_params;
+    decl->ret = ret;
+    decl->num_stmts = num_stmts;
 
-    dllist_replace(params, &decl->as_proc.params);
-    dllist_replace(stmts, &decl->as_proc.stmts);
+    dllist_replace(params, &decl->params);
+    dllist_replace(stmts, &decl->stmts);
 
-    return decl;
+    return (Decl*)decl;
 }
 
-DeclProcParam* decl_proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
+ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
 {
-    DeclProcParam* param = mem_allocate(allocator, sizeof(DeclProcParam), DEFAULT_ALIGN, true);
+    ProcParam* param = new_type(allocator, ProcParam, true);
     param->name = name;
     param->type = type;
     param->range = range;
@@ -820,52 +821,58 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case DECL_NONE: {
             assert(0);
         } break;
-        case DECL_VAR: {
+        case DECL_Var: {
+            DeclVar* d = (DeclVar*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(var %s", decl->name);
+            ftprint_char_array(&dstr, false, "(var %s", d->base.name);
 
-            if (decl->as_var.type) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, decl->as_var.type));
+            if (d->type) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
             }
 
-            if (decl->as_var.init) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, decl->as_var.init));
+            if (d->init) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, d->init));
             }
 
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case DECL_CONST: {
+        case DECL_Const: {
+            DeclConst* d = (DeclConst*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(const %s", decl->name);
+            ftprint_char_array(&dstr, false, "(const %s", d->base.name);
 
-            if (decl->as_const.type) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, decl->as_const.type));
+            if (d->type) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
             }
 
-            if (decl->as_const.init) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, decl->as_const.init));
+            if (d->init) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, d->init));
             }
 
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case DECL_TYPEDEF: {
+        case DECL_Typedef: {
+            DeclTypedef* d = (DeclTypedef*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(typedef %s %s)", decl->name,
-                               ftprint_typespec(allocator, decl->as_typedef.type));
+            ftprint_char_array(&dstr, false, "(typedef %s %s)", d->base.name,
+                               ftprint_typespec(allocator, d->type));
         } break;
-        case DECL_ENUM: {
+        case DECL_Enum: {
+            DeclEnum* d = (DeclEnum*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(enum ");
+            ftprint_char_array(&dstr, false, "(enum %s", d->base.name);
 
-            if (decl->as_enum.type) {
-                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, decl->as_enum.type));
+            if (d->type) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
             }
 
-            if (decl->as_enum.num_items) {
-                DLList* head = &decl->as_enum.items;
+            if (d->num_items) {
+                ftprint_char_array(&dstr, false, " ");
+
+                DLList* head = &d->items;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
-                    DeclEnumItem* item = dllist_entry(it, DeclEnumItem, list);
+                    EnumItem* item = dllist_entry(it, EnumItem, list);
 
                     ftprint_char_array(&dstr, false, "%s", item->name);
                     if (item->value) {
@@ -879,16 +886,16 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             }
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case DECL_STRUCT:
-        case DECL_UNION: {
+        case DECL_Struct:
+        case DECL_Union: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == DECL_STRUCT ? "struct" : "union"), decl->name);
+            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == DECL_Struct ? "struct" : "union"), decl->name);
 
-            AggregateBody* aggregate = decl->kind == DECL_STRUCT ? &decl->as_struct : &decl->as_union;
+            DeclAggregate* d = (DeclAggregate*)decl;
 
-            if (aggregate->num_fields) {
+            if (d->num_fields) {
                 ftprint_char_array(&dstr, false, " ");
-                DLList* head = &aggregate->fields;
+                DLList* head = &d->fields;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
                     AggregateField* field = dllist_entry(it, AggregateField, list);
@@ -902,17 +909,16 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             }
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case DECL_PROC: {
+        case DECL_Proc: {
+            DeclProc* proc = (DeclProc*)decl;
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(proc %s (", decl->name);
-
-            DeclProc* proc = &decl->as_proc;
 
             if (proc->num_params) {
                 DLList* head = &proc->params;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
-                    DeclProcParam* param = dllist_entry(it, DeclProcParam, list);
+                    ProcParam* param = dllist_entry(it, ProcParam, list);
 
                     ftprint_char_array(&dstr, false, "(%s %s)", param->name, ftprint_typespec(allocator, param->type));
 

@@ -93,6 +93,7 @@ int main(void)
     }
 
     // sizeof(TypeSpec) = 48, sizeof(Expr) = 48, sizeof(Stmt) = 32, sizeof(Decl) = 80
+    // sizeof(TypeSpec) = 48, sizeof(Expr) = 48, sizeof(Stmt) = 32, sizeof(Decl) = 24
     ftprint_out("sizeof(TypeSpec) = %lu, sizeof(Expr) = %lu, sizeof(Stmt) = %lu, sizeof(Decl) = %lu\n\n", 
                 sizeof(TypeSpec), sizeof(Expr), sizeof(Stmt), sizeof(Decl));
 
@@ -131,6 +132,7 @@ int main(void)
     // CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
     //
     // AST usage: 848 bytes, Nibble usage: 951 bytes
+    // AST usage: 840 bytes, Nibble usage: 951 bytes
     CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
     //
 
