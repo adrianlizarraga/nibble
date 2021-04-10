@@ -4,8 +4,8 @@
 #include <stdint.h>
 
 #include "nibble.h"
-#include "llist.h"
 #include "allocator.h"
+#include "llist.h"
 #include "lexer.h"
 
 typedef struct Expr Expr;
@@ -16,6 +16,28 @@ typedef struct Stmt Stmt;
 ///////////////////////////////
 //       Type Specifiers
 //////////////////////////////
+
+typedef enum TypeSpecKind {
+    AST_TYPE_SPEC_NONE,
+    AST_TypeSpecIdent,
+    AST_TypeSpecProc,
+    AST_TypeSpecStruct,
+    AST_TypeSpecUnion,
+    AST_TypeSpecPtr,
+    AST_TypeSpecArray,
+    AST_TypeSpecConst,
+} TypeSpecKind;
+
+struct TypeSpec {
+    TypeSpecKind kind;
+    ProgRange range;
+};
+
+typedef struct TypeSpecIdent {
+    TypeSpec super;
+    const char* name;
+} TypeSpecIdent;
+
 typedef struct AggregateField {
     const char* name;
     TypeSpec* type;
@@ -23,64 +45,44 @@ typedef struct AggregateField {
     DLList list;
 } AggregateField;
 
-typedef struct AggregateBody {
+typedef struct TypeSpecAggregate {
+    TypeSpec super;
     size_t num_fields;
     DLList fields;
-} AggregateBody;
+} TypeSpecAggregate;
 
-typedef struct TypeSpecParam {
+typedef TypeSpecAggregate TypeSpecStruct;
+typedef TypeSpecAggregate TypeSpecUnion;
+
+typedef struct ProcParam {
+    ProgRange range;
+    const char* name;
     TypeSpec* type;
     DLList list;
-} TypeSpecParam;
-
-typedef struct TypeSpecIdent {
-    const char* name;
-} TypeSpecIdent;
+} ProcParam;
 
 typedef struct TypeSpecProc {
+    TypeSpec super;
     size_t num_params;
     DLList params;
     TypeSpec* ret;
 } TypeSpecProc;
 
 typedef struct TypeSpecPtr {
+    TypeSpec super;
     TypeSpec* base;
 } TypeSpecPtr;
 
 typedef struct TypeSpecArray {
+    TypeSpec super;
     TypeSpec* base;
     Expr* len;
 } TypeSpecArray;
 
 typedef struct TypeSpecConst {
+    TypeSpec super;
     TypeSpec* base;
 } TypeSpecConst;
-
-typedef enum TypeSpecKind {
-    TYPE_SPEC_NONE,
-    TYPE_SPEC_IDENT,
-    TYPE_SPEC_PROC,
-    TYPE_SPEC_ANON_STRUCT,
-    TYPE_SPEC_ANON_UNION,
-    TYPE_SPEC_PTR,
-    TYPE_SPEC_ARRAY,
-    TYPE_SPEC_CONST,
-} TypeSpecKind;
-
-struct TypeSpec {
-    TypeSpecKind kind;
-    ProgRange range;
-
-    union {
-        TypeSpecIdent as_ident;
-        TypeSpecProc as_proc;
-        AggregateBody as_struct;
-        AggregateBody as_union;
-        TypeSpecPtr as_ptr;
-        TypeSpecArray as_array;
-        TypeSpecConst as_const;
-    };
-};
 
 AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 
@@ -88,148 +90,151 @@ TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range
 TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
 TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
-TypeSpecParam* typespec_proc_param(Allocator* allocator, TypeSpec* type);
+ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range);
 
 typedef TypeSpec* TypeSpecAggregateProc(Allocator* alloc, size_t num_fields, DLList* fields, ProgRange range);
-TypeSpec* typespec_anon_struct(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range);
-TypeSpec* typespec_anon_union(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range);
+TypeSpec* typespec_struct(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range);
+TypeSpec* typespec_union(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range);
 
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type);
 ///////////////////////////////
 //       Expressions
 //////////////////////////////
+
+typedef enum ExprKind {
+    AST_EXPR_NONE,
+    AST_ExprTernary,
+    AST_ExprBinary,
+    AST_ExprUnary,
+    AST_ExprCall,
+    AST_ExprIndex,
+    AST_ExprField,
+    AST_ExprInt,
+    AST_ExprFloat,
+    AST_ExprStr,
+    AST_ExprIdent,
+    AST_ExprCast,
+    AST_ExprSizeof,
+    AST_ExprTypeof,
+    AST_ExprCompoundLit,
+} ExprKind;
+
+struct Expr {
+    ExprKind kind;
+    ProgRange range;
+};
+
 typedef struct ExprTernary {
+    Expr super;
     Expr* cond;
     Expr* then_expr;
     Expr* else_expr;
 } ExprTernary;
 
 typedef struct ExprBinary {
+    Expr super;
     TokenKind op;
     Expr* left;
     Expr* right;
 } ExprBinary;
 
 typedef struct ExprUnary {
+    Expr super;
     TokenKind op;
     Expr* expr;
 } ExprUnary;
 
-typedef struct ExprCallArg {
+typedef struct ProcCallArg {
+    ProgRange range;
     Expr* expr;
     const char* name;
     DLList list;
-} ExprCallArg;
+} ProcCallArg;
 
 typedef struct ExprCall {
+    Expr super;
     Expr* proc;
     size_t num_args;
     DLList args;
 } ExprCall;
 
 typedef struct ExprIndex {
+    Expr super;
     Expr* array;
     Expr* index;
 } ExprIndex;
 
 typedef struct ExprField {
+    Expr super;
     Expr* object;
     const char* field;
 } ExprField;
 
 typedef struct ExprInt {
+    Expr super;
     uint64_t value;
 } ExprInt;
 
 typedef struct ExprFloat {
+    Expr super;
     double value;
 } ExprFloat;
 
 typedef struct ExprStr {
+    Expr super;
     const char* value;
 } ExprStr;
 
 typedef struct ExprIdent {
+    Expr super;
     const char* name;
 } ExprIdent;
 
 typedef struct ExprCast {
+    Expr super;
     TypeSpec* type;
     Expr* expr;
 } ExprCast;
 
 typedef struct ExprSizeof {
+    Expr super;
     TypeSpec* type;
 } ExprSizeof;
 
 typedef struct ExprTypeof {
+    Expr super;
     Expr* expr;
 } ExprTypeof;
 
-typedef enum ExprInitializerKind {
-    EXPR_INITIALIZER_POS,
-    EXPR_INITIALIZER_NAME,
-    EXPR_INITIALIZER_INDEX,
-} ExprInitializerKind;
+typedef enum DesignatorKind {
+    DESIGNATOR_NONE,
+    DESIGNATOR_NAME,
+    DESIGNATOR_INDEX,
+} DesignatorKind;
 
-typedef struct ExprInitializer {
-    ExprInitializerKind kind;
-    ProgRange range;
-    Expr* init;
+typedef struct Designator {
+    DesignatorKind kind;
+
     union {
         const char* name;
         Expr* index;
     };
+} Designator;
 
+typedef struct MemberInitializer {
+    ProgRange range;
+    Designator designator;
+    Expr* init;
     DLList list;
-} ExprInitializer;
+} MemberInitializer;
 
 typedef struct ExprCompoundLit {
+    Expr super;
     TypeSpec* type;
     size_t num_initzers;
     DLList initzers;
 } ExprCompoundLit;
-
-typedef enum ExprKind {
-    EXPR_NONE,
-    EXPR_TERNARY,
-    EXPR_BINARY,
-    EXPR_UNARY,
-    EXPR_CALL,
-    EXPR_INDEX,
-    EXPR_FIELD,
-    EXPR_INT,
-    EXPR_FLOAT,
-    EXPR_STR,
-    EXPR_IDENT,
-    EXPR_CAST,
-    EXPR_SIZEOF,
-    EXPR_TYPEOF,
-    EXPR_COMPOUND_LIT,
-} ExprKind;
-
-struct Expr {
-    ExprKind kind;
-    ProgRange range;
-
-    union {
-        ExprTernary as_ternary;
-        ExprBinary as_binary;
-        ExprUnary as_unary;
-        ExprCall as_call;
-        ExprIndex as_index;
-        ExprField as_field;
-        ExprInt as_int;
-        ExprFloat as_float;
-        ExprStr as_str;
-        ExprIdent as_ident;
-        ExprCast as_cast;
-        ExprSizeof as_sizeof;
-        ExprTypeof as_typeof;
-        ExprCompoundLit as_compound;
-    };
-};
 
 Expr* expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else_expr);
 Expr* expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right);
@@ -237,7 +242,7 @@ Expr* expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange range
 Expr* expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range);
 Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
 Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, DLList* args, ProgRange range);
-ExprCallArg* expr_call_arg(Allocator* allocator, Expr* expr, const char* name);
+ProcCallArg* proc_call_arg(Allocator* allocator, Expr* expr, const char* name);
 Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range);
 Expr* expr_float(Allocator* allocator, double value, ProgRange range);
 Expr* expr_str(Allocator* allocator, const char* value, ProgRange range);
@@ -245,9 +250,7 @@ Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range);
 Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range);
 Expr* expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* expr_typeof(Allocator* allocator, Expr* arg, ProgRange range);
-ExprInitializer* expr_pos_initializer(Allocator* allocator, Expr* init, ProgRange range);
-ExprInitializer* expr_name_initializer(Allocator* allocator, const char* name, Expr* init, ProgRange range);
-ExprInitializer* expr_index_initializer(Allocator* allocator, Expr* index, Expr* init, ProgRange range);
+MemberInitializer* member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
 Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, DLList* initzers, ProgRange range);
 
 char* ftprint_expr(Allocator* allocator, Expr* expr);
@@ -255,19 +258,19 @@ char* ftprint_expr(Allocator* allocator, Expr* expr);
 //        Statements
 /////////////////////////////
 typedef enum StmtKind {
-    STMT_NONE,
-    STMT_If,
-    STMT_While,
-    STMT_DoWhile,
-    STMT_For,
-    STMT_Switch,
-    STMT_Return,
-    STMT_Break,
-    STMT_Continue,
-    STMT_Expr,
-    STMT_ExprAssign,
-    STMT_Decl,
-    STMT_Block,
+    AST_STMT_NONE,
+    AST_StmtIf,
+    AST_StmtWhile,
+    AST_StmtDoWhile,
+    AST_StmtFor,
+    AST_StmtSwitch,
+    AST_StmtReturn,
+    AST_StmtBreak,
+    AST_StmtContinue,
+    AST_StmtExpr,
+    AST_StmtExprAssign,
+    AST_StmtDecl,
+    AST_StmtBlock,
 } StmtKind;
 
 struct Stmt {
@@ -277,7 +280,7 @@ struct Stmt {
 };
 
 typedef struct StmtBlock {
-    Stmt base;
+    Stmt super;
     size_t num_stmts;
     DLList stmts;
 } StmtBlock;
@@ -301,7 +304,7 @@ typedef struct ElseBlock {
 } ElseBlock;
 
 typedef struct StmtIf {
-    Stmt base;
+    Stmt super;
     IfCondBlock if_blk;
 
     size_t num_elif_blks;
@@ -311,21 +314,21 @@ typedef struct StmtIf {
 } StmtIf;
 
 typedef struct StmtWhile {
-    Stmt base;
+    Stmt super;
     Expr* cond;
     size_t num_stmts;
     DLList stmts;
 } StmtWhile;
 
 typedef struct StmtDoWhile {
-    Stmt base;
+    Stmt super;
     Expr* cond;
     size_t num_stmts;
     DLList stmts;
 } StmtDoWhile;
 
 typedef struct StmtFor {
-    Stmt base;
+    Stmt super;
     Stmt* init;
     Expr* cond;
     Stmt* next;
@@ -343,41 +346,41 @@ typedef struct SwitchCase {
 } SwitchCase;
 
 typedef struct StmtSwitch {
-    Stmt base;
+    Stmt super;
     Expr* expr;
     size_t num_cases;
     DLList cases;
 } StmtSwitch;
 
 typedef struct StmtReturn {
-    Stmt base;
+    Stmt super;
     Expr* expr;
 } StmtReturn;
 
 typedef struct StmtExpr {
-    Stmt base;
+    Stmt super;
     Expr* expr;
 } StmtExpr;
 
 typedef struct StmtExprAssign {
-    Stmt base;
+    Stmt super;
     Expr* left;
     TokenKind op_assign;
     Expr* right;
 } StmtExprAssign;
 
 typedef struct StmtDecl {
-    Stmt base;
+    Stmt super;
     Decl* decl;
 } StmtDecl;
 
 typedef struct StmtBreak {
-    Stmt base;
+    Stmt super;
     const char* label;
 } StmtBreak;
 
 typedef struct StmtContinue {
-    Stmt base;
+    Stmt super;
     const char* label;
 } StmtContinue;
 
@@ -397,14 +400,14 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 //////////////////////////////
 
 typedef enum DeclKind {
-    DECL_NONE,
-    DECL_Var,
-    DECL_Const,
-    DECL_Enum,
-    DECL_Union,
-    DECL_Struct,
-    DECL_Proc,
-    DECL_Typedef,
+    AST_DECL_NONE,
+    AST_DeclVar,
+    AST_DeclConst,
+    AST_DeclEnum,
+    AST_DeclUnion,
+    AST_DeclStruct,
+    AST_DeclProc,
+    AST_DeclTypedef,
 } DeclKind;
 
 struct Decl {
@@ -414,13 +417,13 @@ struct Decl {
 };
 
 typedef struct DeclVar {
-    Decl base;
+    Decl super;
     TypeSpec* type;
     Expr* init;
 } DeclVar;
 
 typedef struct DeclConst {
-    Decl base;
+    Decl super;
     TypeSpec* type;
     Expr* init;
 } DeclConst;
@@ -432,14 +435,14 @@ typedef struct EnumItem {
 } EnumItem;
 
 typedef struct DeclEnum {
-    Decl base;
+    Decl super;
     TypeSpec* type;
     size_t num_items;
     DLList items;
 } DeclEnum;
 
 typedef struct DeclAggregate {
-    Decl base; 
+    Decl super;
     size_t num_fields;
     DLList fields;
 } DeclAggregate;
@@ -447,15 +450,8 @@ typedef struct DeclAggregate {
 typedef DeclAggregate DeclUnion;
 typedef DeclAggregate DeclStruct;
 
-typedef struct ProcParam {
-    ProgRange range;
-    const char* name;
-    TypeSpec* type;
-    DLList list;
-} ProcParam;
-
 typedef struct DeclProc {
-    Decl base;
+    Decl super;
     size_t num_params;
     DLList params;
     TypeSpec* ret;
@@ -464,7 +460,7 @@ typedef struct DeclProc {
 } DeclProc;
 
 typedef struct DeclTypedef {
-    Decl base;
+    Decl super;
     TypeSpec* type;
 } DeclTypedef;
 
@@ -480,7 +476,6 @@ Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLL
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range);
 Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLList* params, TypeSpec* ret,
                 size_t num_stmts, DLList* stmts, ProgRange range);
-ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 #endif

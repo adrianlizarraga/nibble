@@ -184,19 +184,19 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 }
 
 // aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
-static bool parse_fill_aggregate_body(Parser* parser, AggregateBody* body)
+static bool parse_fill_aggregate_body(Parser* parser, size_t* num_fields, DLList* fields)
 {
     bool bad_field = false;
 
-    dllist_head_init(&body->fields);
-    body->num_fields = 0;
+    dllist_head_init(fields);
+    *num_fields = 0;
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
         AggregateField* field = parse_aggregate_field(parser);
 
         if (field) {
-            body->num_fields += 1;
-            dllist_add(body->fields.prev, &field->list);
+            *num_fields += 1;
+            dllist_add(fields->prev, &field->list);
         } else {
             bad_field = true;
             break;
@@ -206,8 +206,8 @@ static bool parse_fill_aggregate_body(Parser* parser, AggregateBody* body)
     return bad_field;
 }
 
-static TypeSpec* parse_typespec_anon_aggregate(Parser* parser, const char* error_prefix,
-                                               TypeSpecAggregateProc* typespec_aggregate_fn)
+static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_prefix,
+                                          TypeSpecAggregateProc* typespec_aggregate_proc)
 {
     assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
 
@@ -217,13 +217,14 @@ static TypeSpec* parse_typespec_anon_aggregate(Parser* parser, const char* error
     next_token(parser);
 
     if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-        AggregateBody body = {0};
-        bool bad_field = parse_fill_aggregate_body(parser, &body);
+        size_t num_fields = 0;
+        DLList fields = {0};
+        bool bad_field = parse_fill_aggregate_body(parser, &num_fields, &fields);
 
         if (!bad_field && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-            if (body.num_fields) {
+            if (num_fields) {
                 range.end = parser->ptoken.range.end;
-                type = typespec_aggregate_fn(parser->allocator, body.num_fields, &body.fields, range);
+                type = typespec_aggregate_proc(parser->allocator, num_fields, &fields, range);
             } else {
                 parser_on_error(parser, "%s: must have at least one field", error_prefix);
             }
@@ -233,22 +234,38 @@ static TypeSpec* parse_typespec_anon_aggregate(Parser* parser, const char* error
     return type;
 }
 
-// typespec_proc_param = typespec
-static TypeSpecParam* parse_typespec_proc_param(Parser* parser)
+// typespec_proc_param = (name ':')? typespec
+static ProcParam* parse_typespec_proc_param(Parser* parser)
 {
-    TypeSpecParam* type_param = NULL;
+    ProcParam* param = NULL;
     TypeSpec* type = parse_typespec(parser);
 
-    if (type) {
-        type_param = typespec_proc_param(parser->allocator, type);
+    if (type && match_token_next(parser, TKN_COLON)) {
+        if (type->kind == AST_TypeSpecIdent) { // NOTE: I wish this was truly LL1
+            ProgRange range = {.start = type->range.start};
+            const char* name = ((TypeSpecIdent*)type)->name;
+
+            mem_free(parser->allocator, type);
+
+            type = parse_typespec(parser);
+
+            if (type) {
+                range.end = type->range.end;
+                param = proc_param(parser->allocator, name, type, range);
+            }
+        } else {
+            parser_on_error(parser, "Parameter's name must be an alphanumeric identifier");
+        }
+    } else if (type) {
+        param = proc_param(parser->allocator, NULL, type, type->range);
     }
 
-    return type_param;
+    return param;
 }
 
-// typespec_proc = 'proc' '(' typespec_proc_param_list? ')' ('=>' typespec)?
+// typespec_proc = 'proc' '(' proc_param_list? ')' ('=>' typespec)?
 //
-// typespec_proc_param_list = typespec_proc_param (',' typespec_proc_param)*
+// proc_param_list = typespec_proc_param (',' typespec_proc_param)*
 static TypeSpec* parse_typespec_proc(Parser* parser)
 {
     assert(is_keyword(parser, KW_PROC));
@@ -264,7 +281,7 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
         bool bad_param = false;
 
         while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
-            TypeSpecParam* param = parse_typespec_proc_param(parser);
+            ProcParam* param = parse_typespec_proc_param(parser);
 
             if (param) {
                 num_params += 1;
@@ -313,9 +330,9 @@ static TypeSpec* parse_typespec_base(Parser* parser)
         case KW_PROC:
             return parse_typespec_proc(parser);
         case KW_STRUCT:
-            return parse_typespec_anon_aggregate(parser, "Failed to parse anonymous struct", typespec_anon_struct);
+            return parse_typespec_aggregate(parser, "Failed to parse anonymous struct", typespec_struct);
         case KW_UNION:
-            return parse_typespec_anon_aggregate(parser, "Failed to parse anonymous union", typespec_anon_union);
+            return parse_typespec_aggregate(parser, "Failed to parse anonymous union", typespec_union);
         default:
             break;
         }
@@ -414,10 +431,11 @@ TypeSpec* parse_typespec(Parser* parser)
 
 static Expr* parse_expr_unary(Parser* parser);
 
-static ExprInitializer* parse_expr_initializer(Parser* parser)
+static MemberInitializer* parse_member_initializer(Parser* parser)
 {
-    ExprInitializer* initzer = NULL;
+    MemberInitializer* initzer = NULL;
     ProgRange range = {.start = parser->token.range.start};
+    Designator designator = {0};
     const char* error_prefix = "Failed to parse initializer expression";
 
     if (match_token_next(parser, TKN_LBRACKET)) {
@@ -429,29 +447,34 @@ static ExprInitializer* parse_expr_initializer(Parser* parser)
 
             if (init) {
                 range.end = init->range.end;
-                initzer = expr_index_initializer(parser->allocator, index, init, range);
+                designator.kind = DESIGNATOR_INDEX;
+                designator.index = index;
+                initzer = member_initializer(parser->allocator, init, designator, range);
             }
         }
     } else {
         Expr* expr = parse_expr(parser);
 
         if (expr && match_token_next(parser, TKN_ASSIGN)) {
-            if (expr->kind == EXPR_IDENT) {
+            if (expr->kind == AST_ExprIdent) {
+                const char* name = ((ExprIdent*)expr)->name;
+
                 mem_free(parser->allocator, expr);
 
-                const char* name = expr->as_ident.name;
                 Expr* init = parse_expr(parser);
 
                 if (init) {
                     range.end = init->range.end;
-                    initzer = expr_name_initializer(parser->allocator, name, init, range);
+                    designator.kind = DESIGNATOR_NAME;
+                    designator.name = name;
+                    initzer = member_initializer(parser->allocator, init, designator, range);
                 }
             } else {
-                parser_on_error(parser, "Initializer name must be alphanumeric");
+                parser_on_error(parser, "Initializer designator name must be alphanumeric");
             }
         } else if (expr) {
             range.end = expr->range.end;
-            initzer = expr_pos_initializer(parser->allocator, expr, range);
+            initzer = member_initializer(parser->allocator, expr, designator, range);
         }
     }
 
@@ -475,7 +498,7 @@ static Expr* parse_expr_compound_lit(Parser* parser)
 
         while (!(is_token_kind(parser, TKN_RBRACE) || is_token_kind(parser, TKN_COLON) ||
                  is_token_kind(parser, TKN_EOF))) {
-            ExprInitializer* initzer = parse_expr_initializer(parser);
+            MemberInitializer* initzer = parse_member_initializer(parser);
 
             if (initzer) {
                 num_initzers += 1;
@@ -616,34 +639,35 @@ static Expr* parse_expr_base(Parser* parser)
     return NULL;
 }
 
-// expr_call_arg = (IDENTIFIER '=')? expr
-static ExprCallArg* parse_expr_call_arg(Parser* parser)
+// proc_call_arg = (IDENTIFIER '=')? expr
+static ProcCallArg* parse_proc_call_arg(Parser* parser)
 {
-    ExprCallArg* arg = NULL;
+    ProcCallArg* arg = NULL;
     Expr* expr = parse_expr(parser);
 
     if (expr && match_token_next(parser, TKN_ASSIGN)) {
-        if (expr->kind == EXPR_IDENT) {
+        if (expr->kind == AST_ExprIdent) {
+            const char* name = ((ExprIdent*)expr)->name;
+
             mem_free(parser->allocator, expr);
 
-            const char* name = expr->as_ident.name;
             expr = parse_expr(parser);
 
             if (expr) {
-                arg = expr_call_arg(parser->allocator, expr, name);
+                arg = proc_call_arg(parser->allocator, expr, name);
             }
         } else {
             parser_on_error(parser, "Procedure argument's name must be an alphanumeric identifier");
         }
     } else if (expr) {
-        arg = expr_call_arg(parser->allocator, expr, NULL);
+        arg = proc_call_arg(parser->allocator, expr, NULL);
     }
 
     return arg;
 }
 
-// expr_base_mod = expr_base ('.' IDENTIFIER | '[' expr ']' | '(' expr_call_arg_list* ')' | ':>' typespec)*
-// expr_call_arg_list = expr_call_arg (',' expr_call_arg)*
+// expr_base_mod = expr_base ('.' IDENTIFIER | '[' expr ']' | '(' proc_call_arg_list* ')' | ':>' typespec)*
+// proc_call_arg_list = proc_call_arg (',' proc_call_arg)*
 static Expr* parse_expr_base_mod(Parser* parser)
 {
     Expr* expr = parse_expr_base(parser);
@@ -685,7 +709,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             DLList args = dllist_head_create(args);
 
             while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
-                ExprCallArg* arg = parse_expr_call_arg(parser);
+                ProcCallArg* arg = parse_proc_call_arg(parser);
 
                 if (arg) {
                     num_args += 1;
@@ -1358,13 +1382,14 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
         const char* name = parser->ptoken.as_ident.value;
 
         if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-            AggregateBody body = {0};
-            bool bad_field = parse_fill_aggregate_body(parser, &body);
+            size_t num_fields = 0;
+            DLList fields = {0};
+            bool bad_field = parse_fill_aggregate_body(parser, &num_fields, &fields);
 
             if (!bad_field && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-                if (body.num_fields) {
+                if (num_fields) {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_aggregate_proc(parser->allocator, name, body.num_fields, &body.fields, range);
+                    decl = decl_aggregate_proc(parser->allocator, name, num_fields, &fields, range);
                 } else {
                     parser_on_error(parser, "%s: must have at least one field", error_prefix);
                 }

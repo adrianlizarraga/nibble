@@ -1,10 +1,11 @@
 #include "ast.h"
-#include "cstring.h"
 #include "array.h"
+#include "cstring.h"
 
-static TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRange range)
+#define typespec_alloc(a, k, r) (k*)typespec_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
+static TypeSpec* typespec_alloc_(Allocator* allocator, size_t size, size_t align, TypeSpecKind kind, ProgRange range)
 {
-    TypeSpec* type = mem_allocate(allocator, sizeof(TypeSpec), DEFAULT_ALIGN, true);
+    TypeSpec* type = mem_allocate(allocator, size, align, true);
     type->kind = kind;
     type->range = range;
 
@@ -13,147 +14,151 @@ static TypeSpec* typespec_alloc(Allocator* allocator, TypeSpecKind kind, ProgRan
 
 TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range)
 {
-    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_IDENT, range);
-    type->as_ident.name = name;
+    TypeSpecIdent* type = typespec_alloc(allocator, TypeSpecIdent, range);
+    type->name = name;
 
-    return type;
+    return (TypeSpec*)type;
 }
 
 TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range)
 {
-    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_PTR, range);
-    type->as_ptr.base = base;
+    TypeSpecPtr* type = typespec_alloc(allocator, TypeSpecPtr, range);
+    type->base = base;
 
-    return type;
+    return (TypeSpec*)type;
 }
 
 TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range)
 {
-    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_ARRAY, range);
-    type->as_array.base = base;
-    type->as_array.len = len;
+    TypeSpecArray* type = typespec_alloc(allocator, TypeSpecArray, range);
+    type->base = base;
+    type->len = len;
 
-    return type;
+    return (TypeSpec*)type;
 }
 
 TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range)
 {
-    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_CONST, range);
-    type->as_const.base = base;
+    TypeSpecConst* type = typespec_alloc(allocator, TypeSpecConst, range);
+    type->base = base;
 
-    return type;
+    return (TypeSpec*)type;
 }
 
 TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, DLList* params, TypeSpec* ret, ProgRange range)
 {
-    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_PROC, range);
-    type->as_proc.num_params = num_params;
-    type->as_proc.ret = ret;
+    TypeSpecProc* type = typespec_alloc(allocator, TypeSpecProc, range);
+    type->num_params = num_params;
+    type->ret = ret;
 
-    dllist_replace(params, &type->as_proc.params);
+    dllist_replace(params, &type->params);
 
-    return type;
+    return (TypeSpec*)type;
 }
 
-TypeSpecParam* typespec_proc_param(Allocator* allocator, TypeSpec* type)
+ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
 {
-    TypeSpecParam* param = mem_allocate(allocator, sizeof(TypeSpecParam), DEFAULT_ALIGN, true);
+    ProcParam* param = new_type(allocator, ProcParam, true);
+    param->name = name;
     param->type = type;
+    param->range = range;
 
     return param;
 }
 
-TypeSpec* typespec_anon_struct(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range)
+TypeSpec* typespec_struct(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range)
 {
-    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_ANON_STRUCT, range);
-    type->as_struct.num_fields = num_fields;
+    TypeSpecStruct* type = typespec_alloc(allocator, TypeSpecStruct, range);
+    type->num_fields = num_fields;
 
-    dllist_replace(fields, &type->as_struct.fields);
+    dllist_replace(fields, &type->fields);
 
-    return type;
+    return (TypeSpec*)type;
 }
 
-TypeSpec* typespec_anon_union(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range)
+TypeSpec* typespec_union(Allocator* allocator, size_t num_fields, DLList* fields, ProgRange range)
 {
-    TypeSpec* type = typespec_alloc(allocator, TYPE_SPEC_ANON_UNION, range);
-    type->as_union.num_fields = num_fields;
+    TypeSpecUnion* type = typespec_alloc(allocator, TypeSpecUnion, range);
+    type->num_fields = num_fields;
 
-    dllist_replace(fields, &type->as_union.fields);
+    dllist_replace(fields, &type->fields);
 
-    return type;
+    return (TypeSpec*)type;
 }
 
-static Expr* expr_alloc(Allocator* allocator, ExprKind kind, ProgRange range)
+#define expr_alloc(a, k, r) (k*)expr_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
+static Expr* expr_alloc_(Allocator* allocator, size_t size, size_t align, ExprKind kind, ProgRange range)
 {
-    Expr* expr = mem_allocate(allocator, sizeof(Expr), DEFAULT_ALIGN, true);
+    Expr* expr = mem_allocate(allocator, size, align, true);
     expr->kind = kind;
     expr->range = range;
 
     return expr;
 }
+
 Expr* expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else_expr)
 {
     ProgRange range = {.start = cond->range.start, .end = else_expr->range.end};
-    Expr* expr = expr_alloc(allocator, EXPR_TERNARY, range);
-    expr->as_ternary.cond = cond;
-    expr->as_ternary.then_expr = then_expr;
-    expr->as_ternary.else_expr = else_expr;
+    ExprTernary* expr = expr_alloc(allocator, ExprTernary, range);
+    expr->cond = cond;
+    expr->then_expr = then_expr;
+    expr->else_expr = else_expr;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right)
 {
     ProgRange range = {.start = left->range.start, .end = right->range.end};
-    Expr* expr = expr_alloc(allocator, EXPR_BINARY, range);
-    expr->as_binary.op = op;
-    expr->as_binary.left = left;
-    expr->as_binary.right = right;
+    ExprBinary* expr = expr_alloc(allocator, ExprBinary, range);
+    expr->op = op;
+    expr->left = left;
+    expr->right = right;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_unary(Allocator* allocator, TokenKind op, Expr* unary_expr, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_UNARY, range);
-    expr->as_unary.op = op;
-    expr->as_unary.expr = unary_expr;
+    ExprUnary* expr = expr_alloc(allocator, ExprUnary, range);
+    expr->op = op;
+    expr->expr = unary_expr;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_FIELD, range);
-    expr->as_field.object = object;
-    expr->as_field.field = field;
+    ExprField* expr = expr_alloc(allocator, ExprField, range);
+    expr->object = object;
+    expr->field = field;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_INDEX, range);
-    expr->as_index.array = array;
-    expr->as_index.index = index;
+    ExprIndex* expr = expr_alloc(allocator, ExprIndex, range);
+    expr->array = array;
+    expr->index = index;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, DLList* args, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_CALL, range);
-    expr->as_call.proc = proc;
-    expr->as_call.num_args = num_args;
+    ExprCall* expr = expr_alloc(allocator, ExprCall, range);
+    expr->proc = proc;
+    expr->num_args = num_args;
 
-    dllist_replace(args, &expr->as_call.args);
+    dllist_replace(args, &expr->args);
 
-    return expr;
+    return (Expr*)expr;
 }
 
-ExprCallArg* expr_call_arg(Allocator* allocator, Expr* expr, const char* name)
+ProcCallArg* proc_call_arg(Allocator* allocator, Expr* expr, const char* name)
 {
-    ExprCallArg* arg = mem_allocate(allocator, sizeof(ExprCallArg), DEFAULT_ALIGN, true);
+    ProcCallArg* arg = new_type(allocator, ProcCallArg, true);
     arg->expr = expr;
     arg->name = name;
 
@@ -162,106 +167,85 @@ ExprCallArg* expr_call_arg(Allocator* allocator, Expr* expr, const char* name)
 
 Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_INT, range);
-    expr->as_int.value = value;
+    ExprInt* expr = expr_alloc(allocator, ExprInt, range);
+    expr->value = value;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_float(Allocator* allocator, double value, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_FLOAT, range);
-    expr->as_float.value = value;
+    ExprFloat* expr = expr_alloc(allocator, ExprFloat, range);
+    expr->value = value;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_str(Allocator* allocator, const char* value, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_STR, range);
-    expr->as_str.value = value;
+    ExprStr* expr = expr_alloc(allocator, ExprStr, range);
+    expr->value = value;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_IDENT, range);
-    expr->as_ident.name = name;
+    ExprIdent* expr = expr_alloc(allocator, ExprIdent, range);
+    expr->name = name;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_CAST, range);
-    expr->as_cast.type = type;
-    expr->as_cast.expr = arg;
+    ExprCast* expr = expr_alloc(allocator, ExprCast, range);
+    expr->type = type;
+    expr->expr = arg;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_SIZEOF, range);
-    expr->as_sizeof.type = type;
+    ExprSizeof* expr = expr_alloc(allocator, ExprSizeof, range);
+    expr->type = type;
 
-    return expr;
+    return (Expr*)expr;
 }
 
 Expr* expr_typeof(Allocator* allocator, Expr* arg, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_TYPEOF, range);
-    expr->as_typeof.expr = arg;
+    ExprTypeof* expr = expr_alloc(allocator, ExprTypeof, range);
+    expr->expr = arg;
 
-    return expr;
+    return (Expr*)expr;
 }
 
-ExprInitializer* expr_pos_initializer(Allocator* allocator, Expr* init, ProgRange range)
+MemberInitializer* member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range)
 {
-    ExprInitializer* expr = mem_allocate(allocator, sizeof(ExprInitializer), DEFAULT_ALIGN, true);
-    expr->kind = EXPR_INITIALIZER_POS;
-    expr->range = range;
-    expr->init = init;
+    MemberInitializer* initzer = new_type(allocator, MemberInitializer, true);
+    initzer->range = range;
+    initzer->init = init;
+    initzer->designator = designator;
 
-    return expr;
-}
-
-ExprInitializer* expr_name_initializer(Allocator* allocator, const char* name, Expr* init, ProgRange range)
-{
-    ExprInitializer* expr = mem_allocate(allocator, sizeof(ExprInitializer), DEFAULT_ALIGN, true);
-    expr->kind = EXPR_INITIALIZER_NAME;
-    expr->range = range;
-    expr->init = init;
-    expr->name = name;
-
-    return expr;
-}
-
-ExprInitializer* expr_index_initializer(Allocator* allocator, Expr* index, Expr* init, ProgRange range)
-{
-    ExprInitializer* expr = mem_allocate(allocator, sizeof(ExprInitializer), DEFAULT_ALIGN, true);
-    expr->kind = EXPR_INITIALIZER_INDEX;
-    expr->range = range;
-    expr->init = init;
-    expr->index = index;
-
-    return expr;
+    return initzer;
 }
 
 Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, DLList* initzers, ProgRange range)
 {
-    Expr* expr = expr_alloc(allocator, EXPR_COMPOUND_LIT, range);
-    expr->as_compound.type = type;
-    expr->as_compound.num_initzers = num_initzers;
+    ExprCompoundLit* expr = expr_alloc(allocator, ExprCompoundLit, range);
+    expr->type = type;
+    expr->num_initzers = num_initzers;
 
-    dllist_replace(initzers, &expr->as_compound.initzers);
+    dllist_replace(initzers, &expr->initzers);
 
-    return expr;
+    return (Expr*)expr;
 }
 
-#define decl_alloc(a, k, n, r) (Decl##k*)decl_alloc_((a), sizeof(Decl##k), alignof(Decl##k), DECL_##k, (n), (r))
-static Decl* decl_alloc_(Allocator* allocator, size_t size, size_t align, DeclKind kind, const char* name, ProgRange range)
+#define decl_alloc(a, k, n, r) (k*)decl_alloc_((a), sizeof(k), alignof(k), AST_##k, (n), (r))
+static Decl* decl_alloc_(Allocator* allocator, size_t size, size_t align, DeclKind kind, const char* name,
+                         ProgRange range)
 {
     Decl* decl = mem_allocate(allocator, size, align, true);
     decl->kind = kind;
@@ -273,7 +257,7 @@ static Decl* decl_alloc_(Allocator* allocator, size_t size, size_t align, DeclKi
 
 Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
 {
-    DeclVar* decl = decl_alloc(allocator, Var, name, range);
+    DeclVar* decl = decl_alloc(allocator, DeclVar, name, range);
     decl->type = type;
     decl->init = init;
 
@@ -282,7 +266,7 @@ Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* ini
 
 Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
 {
-    DeclConst* decl = decl_alloc(allocator, Const, name, range);
+    DeclConst* decl = decl_alloc(allocator, DeclConst, name, range);
     decl->type = type;
     decl->init = init;
 
@@ -291,7 +275,7 @@ Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* i
 
 Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
 {
-    DeclTypedef* decl = decl_alloc(allocator, Typedef, name, range);
+    DeclTypedef* decl = decl_alloc(allocator, DeclTypedef, name, range);
     decl->type = type;
 
     return (Decl*)decl;
@@ -300,7 +284,7 @@ Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgR
 Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, DLList* items,
                 ProgRange range)
 {
-    DeclEnum* decl = decl_alloc(allocator, Enum, name, range);
+    DeclEnum* decl = decl_alloc(allocator, DeclEnum, name, range);
     decl->type = type;
     decl->num_items = num_items;
 
@@ -320,7 +304,7 @@ EnumItem* enum_item(Allocator* allocator, const char* name, Expr* value)
 
 Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range)
 {
-    DeclStruct* decl = decl_alloc(allocator, Struct, name, range);
+    DeclStruct* decl = decl_alloc(allocator, DeclStruct, name, range);
     decl->num_fields = num_fields;
 
     dllist_replace(fields, &decl->fields);
@@ -330,7 +314,7 @@ Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, DLL
 
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, DLList* fields, ProgRange range)
 {
-    DeclUnion* decl = decl_alloc(allocator, Union, name, range);
+    DeclUnion* decl = decl_alloc(allocator, DeclUnion, name, range);
     decl->num_fields = num_fields;
 
     dllist_replace(fields, &decl->fields);
@@ -351,7 +335,7 @@ AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec
 Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLList* params, TypeSpec* ret,
                 size_t num_stmts, DLList* stmts, ProgRange range)
 {
-    DeclProc* decl = decl_alloc(allocator, Proc, name, range);
+    DeclProc* decl = decl_alloc(allocator, DeclProc, name, range);
     decl->num_params = num_params;
     decl->ret = ret;
     decl->num_stmts = num_stmts;
@@ -362,17 +346,7 @@ Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, DLLis
     return (Decl*)decl;
 }
 
-ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
-{
-    ProcParam* param = new_type(allocator, ProcParam, true);
-    param->name = name;
-    param->type = type;
-    param->range = range;
-
-    return param;
-}
-
-#define stmt_alloc(a, k, r) (Stmt##k*)stmt_alloc_((a), sizeof(Stmt##k), alignof(Stmt##k), STMT_##k, (r))
+#define stmt_alloc(a, k, r) (k*)stmt_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
 static Stmt* stmt_alloc_(Allocator* allocator, size_t size, size_t align, StmtKind kind, ProgRange range)
 {
     Stmt* stmt = mem_allocate(allocator, size, align, true);
@@ -384,7 +358,7 @@ static Stmt* stmt_alloc_(Allocator* allocator, size_t size, size_t align, StmtKi
 
 Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRange range)
 {
-    StmtBlock* stmt = stmt_alloc(allocator, Block, range);
+    StmtBlock* stmt = stmt_alloc(allocator, StmtBlock, range);
     stmt->num_stmts = num_stmts;
 
     dllist_replace(stmts, &stmt->stmts);
@@ -394,7 +368,7 @@ Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRang
 
 Stmt* stmt_decl(Allocator* allocator, Decl* decl)
 {
-    StmtDecl* stmt = stmt_alloc(allocator, Decl, decl->range);
+    StmtDecl* stmt = stmt_alloc(allocator, StmtDecl, decl->range);
     stmt->decl = decl;
 
     return (Stmt*)stmt;
@@ -402,7 +376,7 @@ Stmt* stmt_decl(Allocator* allocator, Decl* decl)
 
 Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range)
 {
-    StmtExpr* stmt = stmt_alloc(allocator, Expr, range);
+    StmtExpr* stmt = stmt_alloc(allocator, StmtExpr, range);
     stmt->expr = expr;
 
     return (Stmt*)stmt;
@@ -410,7 +384,7 @@ Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range)
 
 Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range)
 {
-    StmtExprAssign* stmt = stmt_alloc(allocator, ExprAssign, range);
+    StmtExprAssign* stmt = stmt_alloc(allocator, StmtExprAssign, range);
     stmt->left = lexpr;
     stmt->op_assign = op_assign;
     stmt->right = rexpr;
@@ -420,7 +394,7 @@ Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, E
 
 Stmt* stmt_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range)
 {
-    StmtWhile* stmt = stmt_alloc(allocator, While, range);
+    StmtWhile* stmt = stmt_alloc(allocator, StmtWhile, range);
     stmt->cond = cond;
     stmt->num_stmts = num_stmts;
 
@@ -431,7 +405,7 @@ Stmt* stmt_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stm
 
 Stmt* stmt_do_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range)
 {
-    StmtDoWhile* stmt = stmt_alloc(allocator, DoWhile, range);
+    StmtDoWhile* stmt = stmt_alloc(allocator, StmtDoWhile, range);
     stmt->cond = cond;
     stmt->num_stmts = num_stmts;
 
@@ -443,7 +417,7 @@ Stmt* stmt_do_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* 
 Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, ElseBlock* else_blk,
               ProgRange range)
 {
-    StmtIf* stmt = stmt_alloc(allocator, If, range);
+    StmtIf* stmt = stmt_alloc(allocator, StmtIf, range);
 
     stmt->if_blk.range = if_blk->range;
     stmt->if_blk.cond = if_blk->cond;
@@ -478,26 +452,33 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 
     if (type) {
         switch (type->kind) {
-        case TYPE_SPEC_NONE: {
+        case AST_TYPE_SPEC_NONE: {
             assert(0);
         } break;
-        case TYPE_SPEC_IDENT: {
+        case AST_TypeSpecIdent: {
+            TypeSpecIdent* t = (TypeSpecIdent*)type;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(:ident %s)", type->as_ident.name);
+            ftprint_char_array(&dstr, false, "(:ident %s)", t->name);
         } break;
-        case TYPE_SPEC_PROC: {
+        case AST_TypeSpecProc: {
+            TypeSpecProc* t = (TypeSpecProc*)type;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:proc =>%s", ftprint_typespec(allocator, type->as_proc.ret));
+            ftprint_char_array(&dstr, false, "(:proc =>%s", ftprint_typespec(allocator, t->ret));
 
-            if (type->as_proc.num_params) {
+            if (t->num_params) {
                 ftprint_char_array(&dstr, false, " ");
 
-                DLList* head = &type->as_proc.params;
+                DLList* head = &t->params;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
-                    TypeSpecParam* param = dllist_entry(it, TypeSpecParam, list);
+                    ProcParam* param = dllist_entry(it, ProcParam, list);
 
-                    ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->type));
+                    if (param->name) {
+                        ftprint_char_array(&dstr, false, "(%s %s)", param->name,
+                                           ftprint_typespec(allocator, param->type));
+                    } else {
+                        ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->type));
+                    }
 
                     if (it->next != head) {
                         ftprint_char_array(&dstr, false, " ");
@@ -507,14 +488,14 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case TYPE_SPEC_ANON_STRUCT:
-        case TYPE_SPEC_ANON_UNION: {
+        case AST_TypeSpecStruct:
+        case AST_TypeSpecUnion: {
             dstr = array_create(allocator, char, 32);
-            bool is_struct = type->kind == TYPE_SPEC_ANON_STRUCT;
+            bool is_struct = type->kind == AST_TypeSpecStruct;
 
             ftprint_char_array(&dstr, false, "(:%s", (is_struct ? "struct" : "union"));
 
-            AggregateBody* aggregate = is_struct ? &type->as_struct : &type->as_union;
+            TypeSpecAggregate* aggregate = (TypeSpecAggregate*)type;
 
             if (aggregate->num_fields) {
                 ftprint_char_array(&dstr, false, " ");
@@ -532,18 +513,21 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
             }
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case TYPE_SPEC_PTR: {
+        case AST_TypeSpecPtr: {
+            TypeSpecPtr* t = (TypeSpecPtr*)type;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:ptr %s)", ftprint_typespec(allocator, type->as_ptr.base));
+            ftprint_char_array(&dstr, false, "(:ptr %s)", ftprint_typespec(allocator, t->base));
         } break;
-        case TYPE_SPEC_CONST: {
+        case AST_TypeSpecConst: {
+            TypeSpecConst* t = (TypeSpecConst*)type;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:const %s)", ftprint_typespec(allocator, type->as_const.base));
+            ftprint_char_array(&dstr, false, "(:const %s)", ftprint_typespec(allocator, t->base));
         } break;
-        case TYPE_SPEC_ARRAY: {
+        case AST_TypeSpecArray: {
+            TypeSpecArray* t = (TypeSpecArray*)type;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:arr %s %s)", ftprint_expr(allocator, type->as_array.len),
-                               ftprint_typespec(allocator, type->as_array.base));
+            ftprint_char_array(&dstr, false, "(:arr %s %s)", ftprint_expr(allocator, t->len),
+                               ftprint_typespec(allocator, t->base));
         } break;
         default: {
             ftprint_err("Unknown typespec kind: %d\n", type->kind);
@@ -565,37 +549,38 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
 
     if (expr) {
         switch (expr->kind) {
-        case EXPR_NONE: {
+        case AST_EXPR_NONE: {
             assert(0);
         } break;
-        case EXPR_TERNARY: {
+        case AST_ExprTernary: {
+            ExprTernary* e = (ExprTernary*)expr;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(? %s %s %s)", ftprint_expr(allocator, expr->as_ternary.cond),
-                               ftprint_expr(allocator, expr->as_ternary.then_expr),
-                               ftprint_expr(allocator, expr->as_ternary.else_expr));
+            ftprint_char_array(&dstr, false, "(? %s %s %s)", ftprint_expr(allocator, e->cond),
+                               ftprint_expr(allocator, e->then_expr), ftprint_expr(allocator, e->else_expr));
         } break;
-        case EXPR_BINARY: {
+        case AST_ExprBinary: {
+            ExprBinary* e = (ExprBinary*)expr;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(%s %s %s)", token_kind_names[expr->as_binary.op],
-                               ftprint_expr(allocator, expr->as_binary.left),
-                               ftprint_expr(allocator, expr->as_binary.right));
+            ftprint_char_array(&dstr, false, "(%s %s %s)", token_kind_names[e->op], ftprint_expr(allocator, e->left),
+                               ftprint_expr(allocator, e->right));
         } break;
-        case EXPR_UNARY: {
+        case AST_ExprUnary: {
+            ExprUnary* e = (ExprUnary*)expr;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(%s %s)", token_kind_names[expr->as_unary.op],
-                               ftprint_expr(allocator, expr->as_unary.expr));
+            ftprint_char_array(&dstr, false, "(%s %s)", token_kind_names[e->op], ftprint_expr(allocator, e->expr));
         } break;
-        case EXPR_CALL: {
+        case AST_ExprCall: {
+            ExprCall* e = (ExprCall*)expr;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(call %s", ftprint_expr(allocator, expr->as_call.proc));
+            ftprint_char_array(&dstr, false, "(call %s", ftprint_expr(allocator, e->proc));
 
-            if (expr->as_call.num_args) {
+            if (e->num_args) {
                 ftprint_char_array(&dstr, false, " ");
 
-                DLList* head = &expr->as_call.args;
+                DLList* head = &e->args;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
-                    ExprCallArg* arg = dllist_entry(it, ExprCallArg, list);
+                    ProcCallArg* arg = dllist_entry(it, ProcCallArg, list);
 
                     if (arg->name) {
                         ftprint_char_array(&dstr, false, "%s=", arg->name);
@@ -608,75 +593,86 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                     }
                 }
             }
+
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case EXPR_INDEX: {
+        case AST_ExprIndex: {
+            ExprIndex* e = (ExprIndex*)expr;
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(arr_index %s %s)", ftprint_expr(allocator, expr->as_index.array),
-                               ftprint_expr(allocator, expr->as_index.index));
+            ftprint_char_array(&dstr, false, "(arr_index %s %s)", ftprint_expr(allocator, e->array),
+                               ftprint_expr(allocator, e->index));
         } break;
-        case EXPR_FIELD: {
+        case AST_ExprField: {
+            ExprField* e = (ExprField*)expr;
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(obj_field %s .%s)", ftprint_expr(allocator, expr->as_field.object),
-                               expr->as_field.field);
+            ftprint_char_array(&dstr, false, "(obj_field %s .%s)", ftprint_expr(allocator, e->object), e->field);
         } break;
-        case EXPR_INT: {
+        case AST_ExprInt: {
+            ExprInt* e = (ExprInt*)expr;
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "%lu", expr->as_int.value);
+            ftprint_char_array(&dstr, false, "%lu", e->value);
         } break;
-        case EXPR_FLOAT: {
+        case AST_ExprFloat: {
+            ExprFloat* e = (ExprFloat*)expr;
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "%lf", expr->as_float.value);
+            ftprint_char_array(&dstr, false, "%lf", e->value);
         } break;
-        case EXPR_STR: {
+        case AST_ExprStr: {
+            ExprStr* e = (ExprStr*)expr;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "\"%s\"", expr->as_str.value);
+            ftprint_char_array(&dstr, false, "\"%s\"", e->value);
         } break;
-        case EXPR_IDENT: {
+        case AST_ExprIdent: {
+            ExprIdent* e = (ExprIdent*)expr;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "%s", expr->as_ident.name);
+            ftprint_char_array(&dstr, false, "%s", e->name);
         } break;
-        case EXPR_CAST: {
+        case AST_ExprCast: {
+            ExprCast* e = (ExprCast*)expr;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, expr->as_cast.type),
-                               ftprint_expr(allocator, expr->as_cast.expr));
+            ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, e->type),
+                               ftprint_expr(allocator, e->expr));
         } break;
-        case EXPR_SIZEOF: {
+        case AST_ExprSizeof: {
+            ExprSizeof* e = (ExprSizeof*)expr;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, expr->as_sizeof.type));
+            ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, e->type));
         } break;
-        case EXPR_TYPEOF: {
+        case AST_ExprTypeof: {
+            ExprTypeof* e = (ExprTypeof*)expr;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(typeof %s)", ftprint_expr(allocator, expr->as_typeof.expr));
+            ftprint_char_array(&dstr, false, "(typeof %s)", ftprint_expr(allocator, e->expr));
         } break;
-        case EXPR_COMPOUND_LIT: {
+        case AST_ExprCompoundLit: {
+            ExprCompoundLit* e = (ExprCompoundLit*)expr;
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(compound ");
 
-            if (expr->as_compound.type) {
-                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, expr->as_compound.type));
+            if (e->type) {
+                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, e->type));
             }
 
             ftprint_char_array(&dstr, false, "{");
-            if (expr->as_compound.num_initzers) {
-                DLList* head = &expr->as_compound.initzers;
+            if (e->num_initzers) {
+                DLList* head = &e->initzers;
 
                 for (DLList* it = head->next; it != head; it = it->next) {
-                    ExprInitializer* init = dllist_entry(it, ExprInitializer, list);
+                    MemberInitializer* initzer = dllist_entry(it, MemberInitializer, list);
 
-                    if (init->kind == EXPR_INITIALIZER_NAME) {
-                        ftprint_char_array(&dstr, false, "%s = ", init->name);
-                    } else if (init->kind == EXPR_INITIALIZER_INDEX) {
-                        ftprint_char_array(&dstr, false, "[%s] = ", ftprint_expr(allocator, init->index));
+                    if (initzer->designator.kind == DESIGNATOR_NAME) {
+                        ftprint_char_array(&dstr, false, "%s = ", initzer->designator.name);
+                    } else if (initzer->designator.kind == DESIGNATOR_INDEX) {
+                        ftprint_char_array(&dstr, false, "[%s] = ", ftprint_expr(allocator, initzer->designator.index));
                     }
 
-                    ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, init->init));
+                    ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, initzer->init));
 
                     if (it->next != head) {
                         ftprint_char_array(&dstr, false, " ");
                     }
                 }
             }
+
             ftprint_char_array(&dstr, false, "})");
         } break;
         default: {
@@ -726,25 +722,25 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
     if (stmt) {
         switch (stmt->kind) {
-        case STMT_NONE: {
+        case AST_STMT_NONE: {
             assert(0);
         } break;
-        case STMT_Block: {
+        case AST_StmtBlock: {
             StmtBlock* s = (StmtBlock*)stmt;
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "%s", ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
         } break;
-        case STMT_Decl: {
+        case AST_StmtDecl: {
             StmtDecl* s = (StmtDecl*)stmt;
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, s->decl));
         } break;
-        case STMT_Expr: {
+        case AST_StmtExpr: {
             StmtExpr* s = (StmtExpr*)stmt;
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, s->expr));
         } break;
-        case STMT_ExprAssign: {
+        case AST_StmtExprAssign: {
             StmtExprAssign* s = (StmtExprAssign*)stmt;
             dstr = array_create(allocator, char, 32);
             const char* op = token_kind_names[s->op_assign];
@@ -752,21 +748,21 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             ftprint_char_array(&dstr, false, "(%s %s %s)", op, ftprint_expr(allocator, s->left),
                                ftprint_expr(allocator, s->right));
         } break;
-        case STMT_While: {
+        case AST_StmtWhile: {
             StmtWhile* s = (StmtWhile*)stmt;
             dstr = array_create(allocator, char, 32);
 
             ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, s->cond),
                                ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
         } break;
-        case STMT_DoWhile: {
+        case AST_StmtDoWhile: {
             StmtDoWhile* s = (StmtDoWhile*)stmt;
             dstr = array_create(allocator, char, 32);
 
             ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, s->cond),
                                ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
         } break;
-        case STMT_If: {
+        case AST_StmtIf: {
             StmtIf* s = (StmtIf*)stmt;
             dstr = array_create(allocator, char, 64);
 
@@ -818,13 +814,13 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 
     if (decl) {
         switch (decl->kind) {
-        case DECL_NONE: {
+        case AST_DECL_NONE: {
             assert(0);
         } break;
-        case DECL_Var: {
+        case AST_DeclVar: {
             DeclVar* d = (DeclVar*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(var %s", d->base.name);
+            ftprint_char_array(&dstr, false, "(var %s", d->super.name);
 
             if (d->type) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
@@ -836,10 +832,10 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case DECL_Const: {
+        case AST_DeclConst: {
             DeclConst* d = (DeclConst*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(const %s", d->base.name);
+            ftprint_char_array(&dstr, false, "(const %s", d->super.name);
 
             if (d->type) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
@@ -851,16 +847,15 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case DECL_Typedef: {
+        case AST_DeclTypedef: {
             DeclTypedef* d = (DeclTypedef*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(typedef %s %s)", d->base.name,
-                               ftprint_typespec(allocator, d->type));
+            ftprint_char_array(&dstr, false, "(typedef %s %s)", d->super.name, ftprint_typespec(allocator, d->type));
         } break;
-        case DECL_Enum: {
+        case AST_DeclEnum: {
             DeclEnum* d = (DeclEnum*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(enum %s", d->base.name);
+            ftprint_char_array(&dstr, false, "(enum %s", d->super.name);
 
             if (d->type) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
@@ -886,10 +881,10 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             }
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case DECL_Struct:
-        case DECL_Union: {
+        case AST_DeclStruct:
+        case AST_DeclUnion: {
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == DECL_Struct ? "struct" : "union"), decl->name);
+            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == AST_DeclStruct ? "struct" : "union"), decl->name);
 
             DeclAggregate* d = (DeclAggregate*)decl;
 
@@ -909,7 +904,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             }
             ftprint_char_array(&dstr, false, ")");
         } break;
-        case DECL_Proc: {
+        case AST_DeclProc: {
             DeclProc* proc = (DeclProc*)decl;
             dstr = array_create(allocator, char, 32);
             ftprint_char_array(&dstr, false, "(proc %s (", decl->name);
