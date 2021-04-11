@@ -395,6 +395,7 @@ Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, D
 ElifBlock* elif_block(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range);
 Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, size_t num_stmts, DLList* stmts,
                ProgRange range);
+Stmt* stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////

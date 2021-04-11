@@ -460,6 +460,14 @@ Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, size_t 
     return (Stmt*)stmt;
 }
 
+Stmt* stmt_return(Allocator* allocator, Expr* expr, ProgRange range)
+{
+    StmtReturn* stmt = stmt_alloc(allocator, StmtReturn, range);
+    stmt->expr = expr;
+
+    return (Stmt*)stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -829,6 +837,18 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             if (s->else_blk.num_stmts) {
                 ftprint_char_array(&dstr, false, " (else %s)",
                                    ftprint_stmt_block(allocator, s->else_blk.num_stmts, &s->else_blk.stmts));
+            }
+
+            ftprint_char_array(&dstr, false, ")");
+        } break;
+        case AST_StmtReturn: {
+            StmtReturn* s = (StmtReturn*)stmt;
+            dstr = array_create(allocator, char, 16);
+
+            ftprint_char_array(&dstr, false, "(return");
+
+            if (s->expr) {
+                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, s->expr));
             }
 
             ftprint_char_array(&dstr, false, ")");

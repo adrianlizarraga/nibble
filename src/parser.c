@@ -1191,9 +1191,6 @@ static Stmt* parse_stmt_for(Parser* parser)
     Stmt* init = NULL;
     Expr* cond = NULL;
     Stmt* next = NULL;
-    bool bad_init = false;
-    bool bad_cond = false;
-    bool bad_next = false;
 
     if (!match_token_next(parser, TKN_SEMICOLON)) {
         if (is_keyword(parser, KW_VAR)) {
@@ -1202,29 +1199,25 @@ static Stmt* parse_stmt_for(Parser* parser)
             init = parse_stmt_expr(parser, true);
         }
 
-        bad_init = !init;
-    }
-
-    if (bad_init) {
-        return NULL;
+        if (!init) {
+            return NULL;
+        }
     }
 
     if (!match_token_next(parser, TKN_SEMICOLON)) {
         cond = parse_expr(parser);
-        bad_cond = !cond || !expect_token_next(parser, TKN_SEMICOLON, error_prefix);
-    }
 
-    if (bad_cond) {
-        return NULL;
+        if (!cond || !expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+            return NULL;
+        }
     }
 
     if (!is_token_kind(parser, TKN_RPAREN)) {
         next = parse_stmt_expr(parser, false);
-        bad_next = !next;
-    }
 
-    if (bad_next) {
-        return NULL;
+        if (!next) {
+            return NULL;
+        }
     }
 
     if (!expect_token_next(parser, TKN_RPAREN, error_prefix) || !expect_token_next(parser, TKN_LBRACE, error_prefix)) {
@@ -1241,6 +1234,40 @@ static Stmt* parse_stmt_for(Parser* parser)
     range.end = parser->ptoken.range.end;
 
     return stmt_for(parser->allocator, init, cond, next, num_stmts, &stmts, range);
+}
+
+// stmt_return = 'return' expr? ';'
+static Stmt* parse_stmt_return(Parser* parser)
+{
+    assert(is_keyword(parser, KW_RETURN));
+    Expr* expr = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+
+    next_token(parser);
+
+    // This seems like a common error, so we can try to look for it.
+    // However, this is not a complete check, or even necessary. Bikeshedding!!
+    if (is_token_kind(parser, TKN_RBRACE)) {
+        parser_on_error(parser, "Failed to parse return statement: wanted `;` or expression, but got `}`");
+
+        return NULL;
+    }
+
+    if (!is_token_kind(parser, TKN_SEMICOLON)) {
+        expr = parse_expr(parser);
+
+        if (!expr) {
+            return NULL;
+        }
+    }
+
+    if (!expect_token_next(parser, TKN_SEMICOLON, "Failed to parse return statement")) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return stmt_return(parser->allocator, expr, range);
 }
 
 // stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
@@ -1277,7 +1304,7 @@ Stmt* parse_stmt(Parser* parser)
         case KW_SWITCH:
             break;
         case KW_RETURN:
-            break;
+            return parse_stmt_return(parser);
         case KW_BREAK:
             break;
         case KW_CONTINUE:
