@@ -964,24 +964,30 @@ static Stmt* parse_stmt_block(Parser* parser)
 
 static bool parse_fill_if_cond_block(Parser* parser, IfCondBlock* cblock, const char* error_prefix)
 {
-    cblock->range.start = parser->token.range.start;
+    ProgPos start = parser->token.range.start;
 
-    if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
-        cblock->cond = parse_expr(parser);
-
-        if (cblock->cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
-            expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-            bool ok = parse_fill_stmt_list(parser, &cblock->num_stmts, &cblock->stmts);
-
-            if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-                cblock->range.end = parser->ptoken.range.end;
-
-                return true;
-            }
-        }
+    if (!expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        return false;
     }
 
-    return false;
+    Expr* cond = parse_expr(parser);
+
+    if (!cond || !expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+        return false;
+    }
+
+    Stmt* body = parse_stmt(parser);
+
+    if (!body) {
+        return false;
+    }
+
+    cblock->cond = cond;
+    cblock->body = body;
+    cblock->range.start = start;
+    cblock->range.end = body->range.end;
+
+    return true;
 }
 
 static ElifBlock* parse_stmt_elif_block(Parser* parser)
@@ -996,35 +1002,34 @@ static ElifBlock* parse_stmt_elif_block(Parser* parser)
     bool ok = parse_fill_if_cond_block(parser, &cblock, error_prefix);
 
     if (ok) {
-        elif_blk = elif_block(parser->allocator, cblock.cond, cblock.num_stmts, &cblock.stmts, cblock.range);
+        elif_blk = elif_block(parser->allocator, cblock.cond, cblock.body, cblock.range);
     }
 
     return elif_blk;
 }
 
+// stmt_else = 'else' stmt
 static bool parse_fill_else_block(Parser* parser, ElseBlock* else_blk)
 {
     assert(is_keyword(parser, KW_ELSE));
-    const char* error_prefix = "Failed to parse else statement";
-
-    else_blk->range.start = parser->token.range.start;
+    ProgPos start = parser->token.range.start;
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-        bool filled_stmts = parse_fill_stmt_list(parser, &else_blk->num_stmts, &else_blk->stmts);
+    Stmt* body = parse_stmt(parser);
 
-        if (filled_stmts && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-            else_blk->range.end = parser->ptoken.range.end;
-
-            return true;
-        }
+    if (!body) {
+        return false;
     }
 
-    return false;
+    else_blk->body = body;
+    else_blk->range.start = start;
+    else_blk->range.end = body->range.end;
+
+    return true;
 }
 
-// stmt_if = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
+// stmt_if = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
 static Stmt* parse_stmt_if(Parser* parser)
 {
     assert(is_keyword(parser, KW_IF));
@@ -1058,8 +1063,6 @@ static Stmt* parse_stmt_if(Parser* parser)
             bool bad_else = false;
             ElseBlock else_blk = {0};
 
-            dllist_head_init(&else_blk.stmts);
-
             if (is_keyword(parser, KW_ELSE)) {
                 bad_else = !parse_fill_else_block(parser, &else_blk);
             }
@@ -1073,36 +1076,37 @@ static Stmt* parse_stmt_if(Parser* parser)
     return stmt;
 }
 
-// stmt_while = 'while' '(' expr ')' stmt_block
+// stmt_while = 'while' '(' expr ')' stmt
 static Stmt* parse_stmt_while(Parser* parser)
 {
     assert(is_keyword(parser, KW_WHILE));
-    Stmt* stmt = NULL;
     ProgRange range = {.start = parser->token.range.start};
     const char* error_prefix = "Failed to parse while-loop statement";
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
-        Expr* cond = parse_expr(parser);
-
-        if (cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
-            expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-            DLList stmts = {0};
-            size_t num_stmts = 0;
-            bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
-
-            if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-                range.end = parser->ptoken.range.end;
-                stmt = stmt_while(parser->allocator, cond, num_stmts, &stmts, range);
-            }
-        }
+    if (!expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        return NULL;
     }
 
-    return stmt;
+    Expr* cond = parse_expr(parser);
+
+    if (!cond || !expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+        return NULL;
+    }
+
+    Stmt* body = parse_stmt(parser);
+
+    if (!body) {
+        return NULL;
+    }
+
+    range.end = body->range.end;
+
+    return stmt_while(parser->allocator, cond, body, range);
 }
 
-// stmt_do_while = 'do' stmt_block 'while' '(' expr ')' ';'
+// stmt_do_while = 'do' stmt 'while' '(' expr ')' ';'
 static Stmt* parse_stmt_do_while(Parser* parser)
 {
     assert(is_keyword(parser, KW_DO));
@@ -1112,21 +1116,16 @@ static Stmt* parse_stmt_do_while(Parser* parser)
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
-        DLList stmts = {0};
-        size_t num_stmts = 0;
-        bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
+    Stmt* body = parse_stmt(parser);
 
-        if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix) &&
-            expect_keyword_next(parser, KW_WHILE, error_prefix) &&
-            expect_token_next(parser, TKN_LPAREN, error_prefix)) {
-            Expr* cond = parse_expr(parser);
+    if (body && expect_keyword_next(parser, KW_WHILE, error_prefix) &&
+        expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        Expr* cond = parse_expr(parser);
 
-            if (cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
-                expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
-                range.end = parser->ptoken.range.end;
-                stmt = stmt_do_while(parser->allocator, cond, num_stmts, &stmts, range);
-            }
+        if (cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
+            expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+            range.end = parser->ptoken.range.end;
+            stmt = stmt_do_while(parser->allocator, cond, body, range);
         }
     }
 
@@ -1179,7 +1178,7 @@ static Stmt* parse_stmt_expr(Parser* parser, bool terminate)
     return stmt;
 }
 
-// stmt_for = 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
+// stmt_for = 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt
 static Stmt* parse_stmt_for(Parser* parser)
 {
     assert(is_keyword(parser, KW_FOR));
@@ -1224,20 +1223,19 @@ static Stmt* parse_stmt_for(Parser* parser)
         }
     }
 
-    if (!expect_token_next(parser, TKN_RPAREN, error_prefix) || !expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+    if (!expect_token_next(parser, TKN_RPAREN, error_prefix)) {
         return NULL;
     }
 
-    size_t num_stmts = 0;
-    DLList stmts = {0};
+    Stmt* body = parse_stmt(parser);
 
-    if (!parse_fill_stmt_list(parser, &num_stmts, &stmts) || !expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+    if (!body) {
         return NULL;
     }
 
-    range.end = parser->ptoken.range.end;
+    range.end = body->range.end;
 
-    return stmt_for(parser->allocator, init, cond, next, num_stmts, &stmts, range);
+    return stmt_for(parser->allocator, init, cond, next, body, range);
 }
 
 // stmt_return = 'return' expr? ';'
@@ -1274,10 +1272,11 @@ static Stmt* parse_stmt_return(Parser* parser)
     return stmt_return(parser->allocator, expr, range);
 }
 
-// stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' stmt_block)?
+// stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
+//      | ';'
 //      | stmt_while
 //      | stmt_do_while
-//      | 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
+//      | 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt
 //      | 'switch' '(' expr ')' '{' case_item* '}'
 //      | 'return' expr? ';'
 //      | 'break' TKN_IDENT? ';'
@@ -1293,6 +1292,9 @@ Stmt* parse_stmt(Parser* parser)
     Token token = parser->token;
 
     switch (token.kind) {
+    case TKN_SEMICOLON:
+        next_token(parser);
+        return stmt_noop(parser->allocator, token.range);
     case TKN_LBRACE:
         return parse_stmt_block(parser);
     case TKN_KW: {

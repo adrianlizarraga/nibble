@@ -259,6 +259,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr);
 /////////////////////////////
 typedef enum StmtKind {
     AST_STMT_NONE,
+    AST_StmtNoOp,
     AST_StmtIf,
     AST_StmtWhile,
     AST_StmtDoWhile,
@@ -279,6 +280,10 @@ struct Stmt {
     DLList list;
 };
 
+typedef struct StmtNoOp {
+    Stmt super;
+} StmtNoOp;
+
 typedef struct StmtBlock {
     Stmt super;
     size_t num_stmts;
@@ -288,8 +293,7 @@ typedef struct StmtBlock {
 typedef struct IfCondBlock {
     ProgRange range;
     Expr* cond;
-    size_t num_stmts;
-    DLList stmts;
+    Stmt* body;
 } IfCondBlock;
 
 typedef struct ElifBlock {
@@ -299,8 +303,7 @@ typedef struct ElifBlock {
 
 typedef struct ElseBlock {
     ProgRange range;
-    size_t num_stmts;
-    DLList stmts;
+    Stmt* body;
 } ElseBlock;
 
 typedef struct StmtIf {
@@ -316,15 +319,13 @@ typedef struct StmtIf {
 typedef struct StmtWhile {
     Stmt super;
     Expr* cond;
-    size_t num_stmts;
-    DLList stmts;
+    Stmt* body;
 } StmtWhile;
 
 typedef struct StmtDoWhile {
     Stmt super;
     Expr* cond;
-    size_t num_stmts;
-    DLList stmts;
+    Stmt* body;
 } StmtDoWhile;
 
 typedef struct StmtFor {
@@ -332,8 +333,7 @@ typedef struct StmtFor {
     Stmt* init;
     Expr* cond;
     Stmt* next;
-    size_t num_stmts;
-    DLList stmts;
+    Stmt* body;
 } StmtFor;
 
 typedef struct SwitchCase {
@@ -388,13 +388,12 @@ Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRang
 Stmt* stmt_decl(Allocator* allocator, Decl* decl);
 Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
-Stmt* stmt_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range);
-Stmt* stmt_do_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range);
+Stmt* stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
+Stmt* stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
 Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, ElseBlock* else_blk,
               ProgRange range);
-ElifBlock* elif_block(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range);
-Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, size_t num_stmts, DLList* stmts,
-               ProgRange range);
+ElifBlock* elif_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
+Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
 Stmt* stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);

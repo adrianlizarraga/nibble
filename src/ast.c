@@ -356,6 +356,13 @@ static Stmt* stmt_alloc_(Allocator* allocator, size_t size, size_t align, StmtKi
     return stmt;
 }
 
+Stmt* stmt_noop(Allocator* allocator, ProgRange range)
+{
+    StmtNoOp* stmt = stmt_alloc(allocator, StmtNoOp, range);
+
+    return (Stmt*)stmt;
+}
+
 Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRange range)
 {
     StmtBlock* stmt = stmt_alloc(allocator, StmtBlock, range);
@@ -392,24 +399,20 @@ Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, E
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range)
+Stmt* stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
 {
     StmtWhile* stmt = stmt_alloc(allocator, StmtWhile, range);
     stmt->cond = cond;
-    stmt->num_stmts = num_stmts;
-
-    dllist_replace(stmts, &stmt->stmts);
+    stmt->body = body;
 
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_do_while(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range)
+Stmt* stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
 {
     StmtDoWhile* stmt = stmt_alloc(allocator, StmtDoWhile, range);
     stmt->cond = cond;
-    stmt->num_stmts = num_stmts;
-
-    dllist_replace(stmts, &stmt->stmts);
+    stmt->body = body;
 
     return (Stmt*)stmt;
 }
@@ -421,41 +424,34 @@ Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, D
 
     stmt->if_blk.range = if_blk->range;
     stmt->if_blk.cond = if_blk->cond;
-    stmt->if_blk.num_stmts = if_blk->num_stmts;
-    dllist_replace(&if_blk->stmts, &stmt->if_blk.stmts);
+    stmt->if_blk.body = if_blk->body;
 
     stmt->num_elif_blks = num_elif_blks;
     dllist_replace(elif_blks, &stmt->elif_blks);
 
     stmt->else_blk.range = else_blk->range;
-    stmt->else_blk.num_stmts = else_blk->num_stmts;
-    dllist_replace(&else_blk->stmts, &stmt->else_blk.stmts);
+    stmt->else_blk.body = else_blk->body;
 
     return (Stmt*)stmt;
 }
 
-ElifBlock* elif_block(Allocator* allocator, Expr* cond, size_t num_stmts, DLList* stmts, ProgRange range)
+ElifBlock* elif_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
 {
     ElifBlock* elif = new_type(allocator, ElifBlock, true);
     elif->block.range = range;
     elif->block.cond = cond;
-    elif->block.num_stmts = num_stmts;
-
-    dllist_replace(stmts, &elif->block.stmts);
+    elif->block.body = body;
 
     return elif;
 }
 
-Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, size_t num_stmts, DLList* stmts,
-               ProgRange range)
+Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range)
 {
     StmtFor* stmt = stmt_alloc(allocator, StmtFor, range);
     stmt->init = init;
     stmt->cond = cond;
     stmt->next = next;
-    stmt->num_stmts = num_stmts;
-
-    dllist_replace(stmts, &stmt->stmts);
+    stmt->body = body;
 
     return (Stmt*)stmt;
 }
@@ -747,6 +743,10 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
         case AST_STMT_NONE: {
             assert(0);
         } break;
+        case AST_StmtNoOp: {
+            dstr = array_create(allocator, char, 6);
+            ftprint_char_array(&dstr, false, "no-op");
+        } break;
         case AST_StmtBlock: {
             StmtBlock* s = (StmtBlock*)stmt;
             dstr = array_create(allocator, char, 32);
@@ -775,14 +775,14 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             dstr = array_create(allocator, char, 32);
 
             ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, s->cond),
-                               ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
+                               ftprint_stmt(allocator, s->body));
         } break;
         case AST_StmtDoWhile: {
             StmtDoWhile* s = (StmtDoWhile*)stmt;
             dstr = array_create(allocator, char, 32);
 
             ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, s->cond),
-                               ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
+                               ftprint_stmt(allocator, s->body));
         } break;
         case AST_StmtFor: {
             StmtFor* s = (StmtFor*)stmt;
@@ -808,14 +808,14 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, " ");
             }
 
-            ftprint_char_array(&dstr, false, "%s)", ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
+            ftprint_char_array(&dstr, false, "%s)", ftprint_stmt(allocator, s->body));
         } break;
         case AST_StmtIf: {
             StmtIf* s = (StmtIf*)stmt;
             dstr = array_create(allocator, char, 64);
 
             ftprint_char_array(&dstr, false, "(if %s %s", ftprint_expr(allocator, s->if_blk.cond),
-                               ftprint_stmt_block(allocator, s->if_blk.num_stmts, &s->if_blk.stmts));
+                               ftprint_stmt(allocator, s->if_blk.body));
 
             if (s->num_elif_blks) {
                 ftprint_char_array(&dstr, false, " ");
@@ -826,7 +826,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                     ElifBlock* elif = dllist_entry(it, ElifBlock, list);
 
                     ftprint_char_array(&dstr, false, "(elif %s %s)", ftprint_expr(allocator, elif->block.cond),
-                                       ftprint_stmt_block(allocator, elif->block.num_stmts, &elif->block.stmts));
+                                       ftprint_stmt(allocator, elif->block.body));
 
                     if (it->next != head) {
                         ftprint_char_array(&dstr, false, " ");
@@ -834,9 +834,8 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 }
             }
 
-            if (s->else_blk.num_stmts) {
-                ftprint_char_array(&dstr, false, " (else %s)",
-                                   ftprint_stmt_block(allocator, s->else_blk.num_stmts, &s->else_blk.stmts));
+            if (s->else_blk.body) {
+                ftprint_char_array(&dstr, false, " (else %s)", ftprint_stmt(allocator, s->else_blk.body));
             }
 
             ftprint_char_array(&dstr, false, ")");

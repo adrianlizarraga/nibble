@@ -139,18 +139,23 @@ int main(void)
     // AST usage: 840 bytes, Nibble usage: 951 bytes
     // AST usage: 760 bytes, Nibble usage: 951 bytes
     // AST usage: 600 bytes, Nibble usage: 951 bytes
-    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
+    // AST usage: 624 bytes, Nibble usage: 951 bytes (dont require {} as body for loops etc)
+    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a; f(g);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(var i:=0;i<10;i+=1){f(i);}}", 0);
-    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {return 10;}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {return 10;}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {return;}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i<10;i+=1){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {while(a > b){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {do{f(i);}while(a > b);}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {do f(i); while(a > b);}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;i+=1){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i != 0;){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(i=0;i<10;i+=1){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(g(^i);i<10;i+=1){f(i);}}", 0);
     //
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {;}", 0);
 
     // CompiledModule* module = compile_module("{var a:int32 = 0;}", 0);
     // CompiledModule* module = compile_module("{var a:int32 = 0; var b:float32 = 1.0;}", 0);
