@@ -497,6 +497,30 @@ Stmt* stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRang
     return (Stmt*)stmt;
 }
 
+SwitchCase* switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num_stmts, DLList* stmts, ProgRange range)
+{
+    SwitchCase* swcase = new_type(allocator, SwitchCase, true);
+    swcase->start = start;
+    swcase->end = end;
+    swcase->range = range;
+    swcase->num_stmts = num_stmts;
+
+    dllist_replace(stmts, &swcase->stmts);
+
+    return swcase;
+}
+
+Stmt* stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, DLList* cases, ProgRange range)
+{
+    StmtSwitch* stmt = stmt_alloc(allocator, StmtSwitch, range);
+    stmt->expr = expr;
+    stmt->num_cases = num_cases;
+
+    dllist_replace(cases, &stmt->cases);
+
+    return (Stmt*)stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -740,15 +764,12 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
     return dstr;
 }
 
-static char* ftprint_stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts)
+static char* ftprint_stmt_list(Allocator* allocator, size_t num_stmts, DLList* stmts)
 {
-    char* dstr = array_create(allocator, char, 32);
-
-    ftprint_char_array(&dstr, false, "(stmt-block");
+    char* dstr = NULL;
 
     if (num_stmts) {
-        ftprint_char_array(&dstr, false, " ");
-
+        dstr = array_create(allocator, char, 32);
         DLList* head = stmts;
 
         for (DLList* it = head->next; it != head; it = it->next) {
@@ -760,9 +781,11 @@ static char* ftprint_stmt_block(Allocator* allocator, size_t num_stmts, DLList* 
                 ftprint_char_array(&dstr, false, " ");
             }
         }
+    } else {
+        dstr = array_create(allocator, char, 1);
     }
 
-    ftprint_char_array(&dstr, true, ")");
+    array_push(dstr, '\0');
 
     return dstr;
 }
@@ -783,7 +806,13 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
         case AST_StmtBlock: {
             StmtBlock* s = (StmtBlock*)stmt;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "%s", ftprint_stmt_block(allocator, s->num_stmts, &s->stmts));
+            ftprint_char_array(&dstr, false, "(stmt-block");
+
+            if (s->num_stmts) {
+                ftprint_char_array(&dstr, false, " %s)", ftprint_stmt_list(allocator, s->num_stmts, &s->stmts));
+            } else {
+                ftprint_char_array(&dstr, false, ")");
+            }
         } break;
         case AST_StmtDecl: {
             StmtDecl* s = (StmtDecl*)stmt;
@@ -869,6 +898,37 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
             if (s->else_blk.body) {
                 ftprint_char_array(&dstr, false, " (else %s)", ftprint_stmt(allocator, s->else_blk.body));
+            }
+
+            ftprint_char_array(&dstr, false, ")");
+        } break;
+        case AST_StmtSwitch: {
+            StmtSwitch* s = (StmtSwitch*)stmt;
+            dstr = array_create(allocator, char, 64);
+
+            ftprint_char_array(&dstr, false, "(switch %s ", ftprint_expr(allocator, s->expr));
+
+            DLList* head = &s->cases;
+
+            for (DLList* it = head->next; it != head; it = it->next) {
+                SwitchCase* swcase = dllist_entry(it, SwitchCase, list);
+
+                ftprint_char_array(&dstr, false, "(case");
+
+                if (swcase->start) {
+                    ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, swcase->start));
+
+                    if (swcase->end) {
+                        ftprint_char_array(&dstr, false, "..%s", ftprint_expr(allocator, swcase->end));
+                    }
+                }
+
+                ftprint_char_array(&dstr, false, " (stmt-list %s))",
+                                   ftprint_stmt_list(allocator, swcase->num_stmts, &swcase->stmts));
+
+                if (it->next != head) {
+                    ftprint_char_array(&dstr, false, " ");
+                }
             }
 
             ftprint_char_array(&dstr, false, ")");
@@ -1050,8 +1110,8 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                     }
                 }
             }
-            ftprint_char_array(&dstr, false, ") =>%s %s)", ftprint_typespec(allocator, proc->ret),
-                               ftprint_stmt_block(allocator, proc->num_stmts, &proc->stmts));
+            ftprint_char_array(&dstr, false, ") =>%s (stmt-block %s))", ftprint_typespec(allocator, proc->ret),
+                               ftprint_stmt_list(allocator, proc->num_stmts, &proc->stmts));
         } break;
         default: {
             ftprint_err("Unknown decl kind: %d\n", decl->kind);

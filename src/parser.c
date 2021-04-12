@@ -1076,6 +1076,112 @@ static Stmt* parse_stmt_if(Parser* parser)
     return stmt;
 }
 
+// switch_case = 'case' (expr ('..' expr)?)? ':' stmt*
+static SwitchCase* parse_switch_case(Parser* parser)
+{
+    const char* error_prefix = "Failed to parse switch statement case";
+
+    if (!expect_keyword_next(parser, KW_CASE, error_prefix)) {
+        return NULL;
+    }
+
+    ProgRange range = {.start = parser->ptoken.range.start};
+    Expr* start = NULL;
+    Expr* end = NULL;
+
+    // Parse case start/end expression(s).
+    if (!is_token_kind(parser, TKN_COLON)) {
+        start = parse_expr(parser);
+
+        if (!start) {
+            return NULL;
+        }
+
+        if (match_token_next(parser, TKN_ELLIPSIS)) {
+            end = parse_expr(parser);
+
+            if (!end) {
+                return NULL;
+            }
+        }
+    }
+
+    if (!expect_token_next(parser, TKN_COLON, error_prefix)) {
+        return NULL;
+    }
+
+    size_t num_stmts = 0;
+    DLList stmts = dllist_head_create(stmts);
+
+    // Parse case statements
+    while (!is_keyword(parser, KW_CASE) && !is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
+        Stmt* stmt = parse_stmt(parser);
+
+        if (!stmt) {
+            return NULL;
+        }
+
+        num_stmts += 1;
+        dllist_add(stmts.prev, &stmt->list);
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return switch_case(parser->allocator, start, end, num_stmts, &stmts, range);
+}
+
+// stmt_switch = 'switch' '(' expr ')' '{' switch_case+ '}'
+static Stmt* parse_stmt_switch(Parser* parser)
+{
+    assert(is_keyword(parser, KW_SWITCH));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse switch statement";
+
+    next_token(parser);
+
+    if (!expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        return NULL;
+    }
+
+    Expr* expr = parse_expr(parser);
+
+    if (!expr || !expect_token_next(parser, TKN_RPAREN, error_prefix) ||
+        !expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    size_t num_cases = 0;
+    DLList cases = dllist_head_create(cases);
+    bool has_default = false;
+
+    do {
+        SwitchCase* swcase = parse_switch_case(parser);
+
+        if (!swcase) {
+            return NULL;
+        }
+
+        bool is_default = !swcase->start && !swcase->end;
+
+        if (has_default && is_default) {
+            parser_on_error(parser, "Switch statement can have at most one default case");
+            return NULL;
+        }
+
+        has_default = has_default || is_default;
+        num_cases += 1;
+        dllist_add(cases.prev, &swcase->list);
+    } while (is_keyword(parser, KW_CASE));
+
+    if (!expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return stmt_switch(parser->allocator, expr, num_cases, &cases, range);
+}
+
 // stmt_while = 'while' '(' expr ')' stmt
 static Stmt* parse_stmt_while(Parser* parser)
 {
@@ -1410,7 +1516,7 @@ Stmt* parse_stmt(Parser* parser)
         case KW_FOR:
             return parse_stmt_for(parser);
         case KW_SWITCH:
-            break;
+            return parse_stmt_switch(parser);
         case KW_RETURN:
             return parse_stmt_return(parser);
         case KW_BREAK:

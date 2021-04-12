@@ -74,7 +74,7 @@ stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' st
      | 'while' '(' expr ')' stmt_block
      | 'do' stmt_block 'while' '(' expr ')' ';'
      | 'for' '(' (decl_var | expr | expr_assign)? ';' expr? ';' (expr | expr_assign)? ')' stmt_block
-     | 'switch' '(' expr ')' '{' case_item* '}' 
+     | 'switch' '(' expr ')' '{' switch_case+ '}' 
      | 'return' expr? ';'
      | 'break' ';' 
      | 'continue' ';'
@@ -85,6 +85,5 @@ stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' st
 
 expr_assign = expr ASSIGN_OP expr      // ASSIGN_OP = ['=' '+=' '-=' '*=' '/=' '^=' '%=']
 stmt_block = '{' stmt* '}'
-case_item = (case_item_range | 'default') ':' stmt*      // TODO: Consider implicit 'break' and explicit 'fallthrough'
-case_item_range = 'case' expr ('...' expr)?
+switch_case = 'case' (expr ('..' expr)?)? ':' stmt*
 

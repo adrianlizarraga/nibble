@@ -341,7 +341,7 @@ typedef struct StmtFor {
 typedef struct SwitchCase {
     Expr* start; // NOTE: Both start and end are null for default case.
     Expr* end;
-
+    ProgRange range;
     size_t num_stmts;
     DLList stmts;
     DLList list;
@@ -413,6 +413,8 @@ Stmt* stmt_break(Allocator* allocator, const char* label, ProgRange range);
 Stmt* stmt_continue(Allocator* allocator, const char* label, ProgRange range);
 Stmt* stmt_goto(Allocator* allocator, const char* label, ProgRange range);
 Stmt* stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range);
+SwitchCase* switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num_stmts, DLList* stmts, ProgRange range);
+Stmt* stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, DLList* cases, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////

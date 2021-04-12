@@ -20,6 +20,7 @@ typedef enum TokenKind {
     TKN_COLON,
     TKN_COMMA,
     TKN_DOT,
+    TKN_ELLIPSIS,
     TKN_ARROW,
     TKN_CAST,
     TKN_POUND,

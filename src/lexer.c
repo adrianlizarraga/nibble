@@ -398,6 +398,7 @@ const char* token_kind_names[] = {
     [TKN_COLON] = ":",
     [TKN_COMMA] = ",",
     [TKN_DOT] = ".",
+    [TKN_ELLIPSIS] = "..",
     [TKN_ARROW] = "=>",
     [TKN_CAST] = ":>",
     [TKN_POUND] = "#",
@@ -677,6 +678,9 @@ top:
         if (is_dec_digit(lexer->at[1])) {
             token.kind = TKN_FLOAT;
             token.as_float = scan_float(lexer);
+        } else if (lexer->at[1] == '.') {
+            token.kind = TKN_ELLIPSIS;
+            lexer->at += 2;
         } else {
             token.kind = TKN_DOT;
             lexer->at++;
