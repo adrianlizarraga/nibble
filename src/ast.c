@@ -472,6 +472,14 @@ Stmt* stmt_break(Allocator* allocator, const char* label, ProgRange range)
     return (Stmt*)stmt;
 }
 
+Stmt* stmt_continue(Allocator* allocator, const char* label, ProgRange range)
+{
+    StmtContinue* stmt = stmt_alloc(allocator, StmtContinue, range);
+    stmt->label = label;
+
+    return (Stmt*)stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -865,6 +873,18 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             dstr = array_create(allocator, char, 16);
 
             ftprint_char_array(&dstr, false, "(break");
+
+            if (s->label) {
+                ftprint_char_array(&dstr, false, " %s)", s->label);
+            } else {
+                ftprint_char_array(&dstr, false, ")");
+            }
+        } break;
+        case AST_StmtContinue: {
+            StmtContinue* s = (StmtContinue*)stmt;
+            dstr = array_create(allocator, char, 16);
+
+            ftprint_char_array(&dstr, false, "(continue");
 
             if (s->label) {
                 ftprint_char_array(&dstr, false, " %s)", s->label);

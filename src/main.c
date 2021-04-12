@@ -153,7 +153,8 @@ int main(void)
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;i+=1){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i != 0;){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){f(i);}}", 0);
-    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){break;}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){break;}}", 0);
+    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){continue;}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(i=0;i<10;i+=1){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(g(^i);i<10;i+=1){f(i);}}", 0);
     //

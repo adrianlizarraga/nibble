@@ -1296,6 +1296,28 @@ static Stmt* parse_stmt_break(Parser* parser)
     return stmt_break(parser->allocator, label, range);
 }
 
+// stmt_continue = 'continue' TKN_IDENT? ';'
+static Stmt* parse_stmt_continue(Parser* parser)
+{
+    assert(is_keyword(parser, KW_CONTINUE));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* label = NULL;
+
+    next_token(parser);
+
+    if (match_token_next(parser, TKN_IDENT)) {
+        label = parser->ptoken.as_ident.value;
+    }
+
+    if (!expect_token_next(parser, TKN_SEMICOLON, "Failed to parse continue statement")) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return stmt_continue(parser->allocator, label, range);
+}
+
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
 //      | ';'
 //      | stmt_while
@@ -1338,7 +1360,7 @@ Stmt* parse_stmt(Parser* parser)
         case KW_BREAK:
             return parse_stmt_break(parser);
         case KW_CONTINUE:
-            break;
+            return parse_stmt_continue(parser);
         case KW_GOTO:
             break;
         case KW_LABEL:
