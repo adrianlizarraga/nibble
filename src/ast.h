@@ -268,6 +268,8 @@ typedef enum StmtKind {
     AST_StmtReturn,
     AST_StmtBreak,
     AST_StmtContinue,
+    AST_StmtGoto,
+    AST_StmtLabel,
     AST_StmtExpr,
     AST_StmtExprAssign,
     AST_StmtDecl,
@@ -384,6 +386,18 @@ typedef struct StmtContinue {
     const char* label;
 } StmtContinue;
 
+typedef struct StmtGoto {
+    Stmt super;
+    const char* label;
+} StmtGoto;
+
+typedef struct StmtLabel {
+    Stmt super;
+    const char* label;
+    Stmt* target;
+} StmtLabel;
+
+Stmt* stmt_noop(Allocator* allocator, ProgRange range);
 Stmt* stmt_block(Allocator* allocator, size_t num_stmts, DLList* stmts, ProgRange range);
 Stmt* stmt_decl(Allocator* allocator, Decl* decl);
 Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
@@ -395,6 +409,10 @@ Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, D
 ElifBlock* elif_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
 Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
 Stmt* stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
+Stmt* stmt_break(Allocator* allocator, const char* label, ProgRange range);
+Stmt* stmt_continue(Allocator* allocator, const char* label, ProgRange range);
+Stmt* stmt_goto(Allocator* allocator, const char* label, ProgRange range);
+Stmt* stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////

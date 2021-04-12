@@ -480,6 +480,23 @@ Stmt* stmt_continue(Allocator* allocator, const char* label, ProgRange range)
     return (Stmt*)stmt;
 }
 
+Stmt* stmt_goto(Allocator* allocator, const char* label, ProgRange range)
+{
+    StmtGoto* stmt = stmt_alloc(allocator, StmtGoto, range);
+    stmt->label = label;
+
+    return (Stmt*)stmt;
+}
+
+Stmt* stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range)
+{
+    StmtLabel* stmt = stmt_alloc(allocator, StmtLabel, range);
+    stmt->label = label;
+    stmt->target = target;
+
+    return (Stmt*)stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -891,6 +908,18 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             } else {
                 ftprint_char_array(&dstr, false, ")");
             }
+        } break;
+        case AST_StmtGoto: {
+            StmtGoto* s = (StmtGoto*)stmt;
+            dstr = array_create(allocator, char, 16);
+
+            ftprint_char_array(&dstr, false, "(goto %s)", s->label);
+        } break;
+        case AST_StmtLabel: {
+            StmtLabel* s = (StmtLabel*)stmt;
+            dstr = array_create(allocator, char, 32);
+
+            ftprint_char_array(&dstr, false, "(label %s %s)", s->label, ftprint_stmt(allocator, s->target));
         } break;
         default: {
             ftprint_err("Unknown stmt kind: %d\n", stmt->kind);

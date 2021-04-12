@@ -1318,6 +1318,62 @@ static Stmt* parse_stmt_continue(Parser* parser)
     return stmt_continue(parser->allocator, label, range);
 }
 
+// stmt_goto = 'goto' TKN_IDENT ';'
+static Stmt* parse_stmt_goto(Parser* parser)
+{
+    assert(is_keyword(parser, KW_GOTO));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse goto statement";
+    const char* label = NULL;
+
+    next_token(parser);
+
+    if (!expect_token_next(parser, TKN_IDENT, error_prefix)) {
+        return NULL;
+    }
+
+    label = parser->ptoken.as_ident.value;
+
+    if (!expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return stmt_goto(parser->allocator, label, range);
+}
+
+// stmt_label = 'label' TKN_IDENT ':' stmt
+static Stmt* parse_stmt_label(Parser* parser)
+{
+    assert(is_keyword(parser, KW_LABEL));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse label";
+
+    next_token(parser);
+
+    if (!expect_token_next(parser, TKN_IDENT, error_prefix)) {
+        return NULL;
+    }
+
+    const char* label = parser->ptoken.as_ident.value;
+
+    if (!expect_token_next(parser, TKN_COLON, error_prefix)) {
+        return NULL;
+    }
+
+    Stmt* stmt = parse_stmt(parser);
+
+    if (!stmt) {
+        parser_on_error(parser, "Label must be attached to a statement");
+        return NULL;
+    }
+
+    range.end = stmt->range.end;
+
+    return stmt_label(parser->allocator, label, stmt, range);
+}
+
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
 //      | ';'
 //      | stmt_while
@@ -1362,9 +1418,9 @@ Stmt* parse_stmt(Parser* parser)
         case KW_CONTINUE:
             return parse_stmt_continue(parser);
         case KW_GOTO:
-            break;
+            return parse_stmt_goto(parser);
         case KW_LABEL:
-            break;
+            return parse_stmt_label(parser);
         default:
             return parse_stmt_decl(parser);
         }
