@@ -1192,8 +1192,6 @@ static Stmt* parse_stmt_for(Parser* parser)
     }
 
     Stmt* init = NULL;
-    Expr* cond = NULL;
-    Stmt* next = NULL;
 
     if (!match_token_next(parser, TKN_SEMICOLON)) {
         if (is_keyword(parser, KW_VAR)) {
@@ -1207,6 +1205,8 @@ static Stmt* parse_stmt_for(Parser* parser)
         }
     }
 
+    Expr* cond = NULL;
+
     if (!match_token_next(parser, TKN_SEMICOLON)) {
         cond = parse_expr(parser);
 
@@ -1214,6 +1214,8 @@ static Stmt* parse_stmt_for(Parser* parser)
             return NULL;
         }
     }
+
+    Stmt* next = NULL;
 
     if (!is_token_kind(parser, TKN_RPAREN)) {
         next = parse_stmt_expr(parser, false);
@@ -1272,6 +1274,28 @@ static Stmt* parse_stmt_return(Parser* parser)
     return stmt_return(parser->allocator, expr, range);
 }
 
+// stmt_break = 'break' TKN_IDENT? ';'
+static Stmt* parse_stmt_break(Parser* parser)
+{
+    assert(is_keyword(parser, KW_BREAK));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* label = NULL;
+
+    next_token(parser);
+
+    if (match_token_next(parser, TKN_IDENT)) {
+        label = parser->ptoken.as_ident.value;
+    }
+
+    if (!expect_token_next(parser, TKN_SEMICOLON, "Failed to parse break statement")) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return stmt_break(parser->allocator, label, range);
+}
+
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
 //      | ';'
 //      | stmt_while
@@ -1312,7 +1336,7 @@ Stmt* parse_stmt(Parser* parser)
         case KW_RETURN:
             return parse_stmt_return(parser);
         case KW_BREAK:
-            break;
+            return parse_stmt_break(parser);
         case KW_CONTINUE:
             break;
         case KW_GOTO:

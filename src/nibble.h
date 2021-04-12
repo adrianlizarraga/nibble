@@ -44,8 +44,6 @@ typedef enum Keyword {
     KW_FOR,
     KW_SWITCH,
     KW_CASE,
-    KW_DEFAULT,
-    KW_CAST,
     KW_UNDERSCORE,
 
     KW_COUNT,

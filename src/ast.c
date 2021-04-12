@@ -464,6 +464,14 @@ Stmt* stmt_return(Allocator* allocator, Expr* expr, ProgRange range)
     return (Stmt*)stmt;
 }
 
+Stmt* stmt_break(Allocator* allocator, const char* label, ProgRange range)
+{
+    StmtBreak* stmt = stmt_alloc(allocator, StmtBreak, range);
+    stmt->label = label;
+
+    return (Stmt*)stmt;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
@@ -851,6 +859,18 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             }
 
             ftprint_char_array(&dstr, false, ")");
+        } break;
+        case AST_StmtBreak: {
+            StmtBreak* s = (StmtBreak*)stmt;
+            dstr = array_create(allocator, char, 16);
+
+            ftprint_char_array(&dstr, false, "(break");
+
+            if (s->label) {
+                ftprint_char_array(&dstr, false, " %s)", s->label);
+            } else {
+                ftprint_char_array(&dstr, false, ")");
+            }
         } break;
         default: {
             ftprint_err("Unknown stmt kind: %d\n", stmt->kind);

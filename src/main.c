@@ -140,7 +140,8 @@ int main(void)
     // AST usage: 760 bytes, Nibble usage: 951 bytes
     // AST usage: 600 bytes, Nibble usage: 951 bytes
     // AST usage: 624 bytes, Nibble usage: 951 bytes (dont require {} as body for loops etc)
-    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;} else g=0;}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a; f(g);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(var i:=0;i<10;i+=1){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {return 10;}", 0);
@@ -152,6 +153,7 @@ int main(void)
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;i+=1){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i != 0;){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){f(i);}}", 0);
+    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){break;}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(i=0;i<10;i+=1){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(g(^i);i<10;i+=1){f(i);}}", 0);
     //
