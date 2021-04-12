@@ -163,24 +163,28 @@ bool skip_after_token(Parser* parser, TokenKind kind)
 // aggregate_field = TKN_IDENT ':' type_spec ';'
 static AggregateField* parse_aggregate_field(Parser* parser)
 {
-    AggregateField* field = NULL;
     const char* error_prefix = "Failed to parse field";
 
-    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.as_ident.value;
-        ProgRange range = {.start = parser->ptoken.range.start};
-
-        if (expect_token_next(parser, TKN_COLON, error_prefix)) {
-            TypeSpec* type = parse_typespec(parser);
-
-            if (type && expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
-                range.end = parser->ptoken.range.end;
-                field = aggregate_field(parser->allocator, name, type, range);
-            }
-        }
+    if (!expect_token_next(parser, TKN_IDENT, error_prefix)) {
+        return NULL;
     }
 
-    return field;
+    const char* name = parser->ptoken.as_ident.value;
+    ProgRange range = {.start = parser->ptoken.range.start};
+
+    if (!expect_token_next(parser, TKN_COLON, error_prefix)) {
+        return NULL;
+    }
+
+    TypeSpec* type = parse_typespec(parser);
+
+    if (!type || !expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return aggregate_field(parser->allocator, name, type, range);
 }
 
 // aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
@@ -203,7 +207,7 @@ static bool parse_fill_aggregate_body(Parser* parser, size_t* num_fields, DLList
         }
     }
 
-    return bad_field;
+    return !bad_field;
 }
 
 static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_prefix,
@@ -219,9 +223,9 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
     if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
         size_t num_fields = 0;
         DLList fields = {0};
-        bool bad_field = parse_fill_aggregate_body(parser, &num_fields, &fields);
 
-        if (!bad_field && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+        if (parse_fill_aggregate_body(parser, &num_fields, &fields) &&
+            expect_token_next(parser, TKN_RBRACE, error_prefix)) {
             if (num_fields) {
                 range.end = parser->ptoken.range.end;
                 type = typespec_aggregate_proc(parser->allocator, num_fields, &fields, range);
@@ -1484,9 +1488,9 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
         if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
             size_t num_fields = 0;
             DLList fields = {0};
-            bool bad_field = parse_fill_aggregate_body(parser, &num_fields, &fields);
 
-            if (!bad_field && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+            if (parse_fill_aggregate_body(parser, &num_fields, &fields) &&
+                expect_token_next(parser, TKN_RBRACE, error_prefix)) {
                 if (num_fields) {
                     range.end = parser->ptoken.range.end;
                     decl = decl_aggregate_proc(parser->allocator, name, num_fields, &fields, range);
