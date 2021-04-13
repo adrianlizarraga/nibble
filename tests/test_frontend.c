@@ -1,17 +1,20 @@
 //#define NDEBUG 1
+#define PRINT_MEM_USAGE 0
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "allocator.c"
-#include "cstring.c"
-#include "print.c"
 #include "array.c"
+#include "ast.c"
+#include "cstring.c"
 #include "hash_map.c"
-#include "stream.c"
+#include "lexer.c"
 #include "llist.h"
 #include "nibble.c"
-#include "lexer.c"
+#include "parser.c"
+#include "print.c"
+#include "stream.c"
 
 static void print_errors(ByteStream* errors)
 {
@@ -58,10 +61,10 @@ static void print_errors(ByteStream* errors)
         assert((tk.kind == TKN_IDENT));                                                                                \
         assert(strcmp(tk.as_ident.value, v) == 0);                                                                     \
     } while (0)
-#define TKN_TEST_KW(tk, k)                                                                                            \
+#define TKN_TEST_KW(tk, k)                                                                                             \
     do {                                                                                                               \
         assert((tk.kind == TKN_KW));                                                                                   \
-        assert(tk.as_kw.kw == (k));                                                                                   \
+        assert(tk.as_kw.kw == (k));                                                                                    \
     } while (0)
 
 static void test_lexer(void)
@@ -591,370 +594,125 @@ static void test_lexer(void)
     allocator_destroy(&allocator);
 }
 
-void test_allocator(void)
+static bool test_parse_typespec(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
 {
+    ByteStream err_stream = byte_stream_create(gen_arena);
+    Parser parser = parser_create(ast_arena, code, 0, &err_stream);
 
-    // Test allocator creation, non-expanding allocation, and allocator destruction.
-    {
-        Allocator allocator = allocator_create(512);
-        assert((allocator.end - allocator.buffer) == 512);
+    next_token(&parser);
 
-        void* m = mem_allocate(&allocator, 256, 1, true);
-        assert(m);
-        assert((allocator.at - allocator.buffer) == 256);
+    TypeSpec* type = parse_typespec(&parser);
+    char* s = ftprint_typespec(gen_arena, type);
+    AllocatorStats stats = allocator_stats(ast_arena);
 
-        unsigned char* old_buffer = allocator.buffer;
-        m = mem_allocate(&allocator, 1024, 1, false);
-        assert(m);
-        assert(old_buffer != allocator.buffer);
-        assert((allocator.at - allocator.buffer) == 1024);
-        assert((allocator.end - allocator.buffer) == ((1024 + 1) * 2));
+    ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
-        allocator_destroy(&allocator);
-        assert(!allocator.buffer);
-        assert(!allocator.at);
-        assert(!allocator.end);
-    }
+    parser_destroy(&parser);
+    allocator_reset(ast_arena);
+    allocator_reset(gen_arena);
 
-    // Test expansion, aligned allocation, and resetting the allocator after expansion.
-    {
-        Allocator allocator = allocator_create(512);
-
-        unsigned char* old_buffer = allocator.buffer;
-        void* m = mem_allocate(&allocator, 1024, DEFAULT_ALIGN, false);
-        assert(m);
-        assert(((uintptr_t)m & (DEFAULT_ALIGN - 1)) == 0);
-        assert(old_buffer != allocator.buffer);
-        assert((allocator.end - allocator.buffer) >= 1024);
-
-        allocator_reset(&allocator);
-        assert(allocator.buffer);
-        assert(allocator.at == allocator.buffer);
-        assert(allocator.end > allocator.buffer);
-
-        allocator_destroy(&allocator);
-        assert(!allocator.buffer);
-        assert(!allocator.at);
-        assert(!allocator.end);
-    }
-
-    // Test freeing the previous allocation
-    {
-        Allocator allocator = allocator_create(512);
-        assert(allocator.pat == NULL);
-
-        // Alloc 16 bytes
-        void* m1 = mem_allocate(&allocator, 16, 1, true);
-        assert(m1);
-        assert((uintptr_t)allocator.pat == (uintptr_t)m1);
-        assert((allocator.at - allocator.buffer) == 16);
-
-        // Alloc 10 more bytes
-        void* m2 = mem_allocate(&allocator, 10, 1, true);
-        unsigned char* saved_at = allocator.at;
-        assert(m2);
-        assert(m1 != m2);
-        assert((uintptr_t)allocator.pat == (uintptr_t)m2);
-        assert((allocator.at - allocator.buffer) == 26);
-
-        // Try to free the first allocation. Should be a no-op because the last allocation is m2.
-        mem_free(&allocator, m1);
-        assert(saved_at == allocator.at);
-        assert((uintptr_t)allocator.pat == (uintptr_t)m2);
-
-        // Free the second allocation. Should succeed.
-        mem_free(&allocator, m2);
-        assert(allocator.pat == NULL);
-        assert((uintptr_t)allocator.at == (uintptr_t)m2);
-
-        // Try to free the second allocation again. Should be a no-op.
-        mem_free(&allocator, m2);
-        assert(allocator.pat == NULL);
-        assert((uintptr_t)allocator.at == (uintptr_t)m2);
-
-        allocator_destroy(&allocator);
-        assert(!allocator.buffer);
-        assert(!allocator.at);
-        assert(!allocator.end);
-    }
-
-    // Test allocator state restoration after non-expanding allocation.
-    {
-        Allocator allocator = allocator_create(512);
-
-        void* m = mem_allocate(&allocator, 16, 1, false);
-        assert(m);
-        assert((allocator.at - allocator.buffer) == 16);
-
-        AllocatorState state = allocator_get_state(&allocator);
-        {
-            m = mem_allocate(&allocator, 64, 1, false);
-            assert(m);
-            assert((allocator.at - allocator.buffer) == 64 + 16);
-        }
-        allocator_restore_state(state);
-
-        assert((allocator.at - allocator.buffer) == 16);
-
-        allocator_destroy(&allocator);
-        assert(!allocator.buffer);
-        assert(!allocator.at);
-        assert(!allocator.end);
-    }
-
-    // Test allocator state restoration after expanding allocation.
-    {
-        Allocator allocator = allocator_create(512);
-
-        void* m = mem_allocate(&allocator, 16, 1, false);
-        assert(m);
-        assert((allocator.at - allocator.buffer) == 16);
-
-        unsigned char* old_buffer = allocator.buffer;
-        AllocatorState state = allocator_get_state(&allocator);
-        {
-            m = mem_allocate(&allocator, 2048, 1, false);
-            assert(m);
-            assert(old_buffer != allocator.buffer);
-            assert((allocator.at - allocator.buffer) == 2048);
-        }
-        allocator_restore_state(state);
-
-        assert(old_buffer == allocator.buffer);
-        assert((allocator.at - allocator.buffer) == 16);
-
-        allocator_destroy(&allocator);
-        assert(!allocator.buffer);
-        assert(!allocator.at);
-        assert(!allocator.end);
-    }
+    return cstr_cmp(s, sexpr) == 0;
 }
 
-void test_array(void)
+static bool test_parse_expr(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
 {
-    Allocator allocator = allocator_create(1024);
+    ByteStream err_stream = byte_stream_create(gen_arena);
+    Parser parser = parser_create(ast_arena, code, 0, &err_stream);
 
-    // Test array create and len/cap tracking.
-    {
-        int* a = array_create(&allocator, int, 128);
-        assert(array_len(a) == 0);
-        assert(array_cap(a) == 128);
+    next_token(&parser);
 
-        for (int i = 0; i < 20; i++) {
-            array_push(a, i);
-            assert(array_back(a) == i);
-            assert(array_len(a) == (size_t)i + 1);
-            assert(array_cap(a) == 128);
-        }
-    }
+    Expr* expr = parse_expr(&parser);
+    char* s = ftprint_expr(gen_arena, expr);
+    AllocatorStats stats = allocator_stats(ast_arena);
 
-    // Test array reallocation.
-    {
-        int* a = array_create(&allocator, int, 16);
-        int* old_a = a;
+    ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
-        for (int i = 0; i < 256; i++) {
-            array_push(a, i);
-            assert(array_back(a) == i);
-            assert(array_len(a) == (size_t)i + 1);
-            assert(array_cap(a) >= array_len(a));
-        }
-        assert(old_a != a);
-        assert(array_cap(a) == array_len(a));
+    parser_destroy(&parser);
+    allocator_reset(ast_arena);
+    allocator_reset(gen_arena);
 
-        array_push(a, 257);
-        assert(array_cap(a) > array_len(a));
-    }
-
-    // Test array clearing
-    {
-        int* a = array_create(&allocator, int, 16);
-        array_push(a, 10);
-        assert(array_len(a) > 0);
-
-        array_clear(a);
-        assert(array_len(a) == 0);
-        assert(array_cap(a) > 0);
-    }
-
-    // Test insertion
-    {
-        int* a = array_create(&allocator, int, 8);
-        for (int i = 0; i < 4; i++) {
-            array_push(a, i);
-        }
-        assert(array_len(a) == 4);
-
-        array_insert(a, 1, 100);
-        assert(array_len(a) == 5);
-        assert(a[0] == 0);
-        assert(a[1] == 100);
-        assert(a[2] == 1);
-        assert(a[3] == 2);
-        assert(a[4] == 3);
-    }
-
-    // Test array pop
-    {
-        int* a = array_create(&allocator, int, 8);
-
-        array_push(a, 333);
-
-        size_t old_len = array_len(a);
-        int geo = array_pop(a);
-
-        assert(array_len(a) == old_len - 1);
-        assert(geo == 333);
-    }
-
-    // Test array remove.
-    {
-        int* a = array_create(&allocator, int, 10);
-        for (int i = 0; i < 8; i++) {
-            array_push(a, i);
-        }
-        assert(array_len(a) == 8);
-
-        int rindex = 3;
-        array_remove(a, rindex);
-        assert(array_len(a) == 7);
-
-        for (int i = 0; i < 7; i++) {
-            if (i < rindex) {
-                assert(a[i] == i);
-            } else {
-                assert(a[i] == i + 1);
-            }
-        }
-    }
-
-    // Test array remove (swap last).
-    {
-        int* a = array_create(&allocator, int, 10);
-        for (int i = 0; i < 8; i++) {
-            array_push(a, i);
-        }
-        assert(array_len(a) == 8);
-
-        int rindex = 3;
-        array_remove_swap(a, rindex);
-        assert(array_len(a) == 7);
-        assert(a[rindex] == 7);
-    }
-
-    // Test array push elems
-    {
-        int b[3] = {1, 2, 3};
-        int* a = NULL;
-
-        array_push(a, 0);
-        assert(array_len(a) == 1);
-
-        array_push_elems(a, b, 3);
-        assert(array_len(a) == 4);
-
-        for (int i = 0; i < 3; ++i) {
-            assert(a[i + 1] == b[i]);
-        }
-
-        array_free(a);
-    }
-
-    allocator_destroy(&allocator);
+    return cstr_cmp(s, sexpr) == 0;
 }
 
-void test_hash_map(void)
+#define TEST_TYPESPEC(c, s) assert(test_parse_typespec(&gen_arena, &ast_arena, (c), (s)))
+#define TEST_EXPR(c, s) assert(test_parse_expr(&gen_arena, &ast_arena, (c), (s)))
+void test_parser(void)
 {
-    HashMap map = hash_map(21, NULL);
+    Allocator ast_arena = allocator_create(4096);
+    Allocator gen_arena = allocator_create(4096);
 
-    for (uint64_t i = 1; i <= (1 << 20); ++i) {
-        uint64_t* r = hash_map_put(&map, i, i);
+    // Test base typespecs
+    TEST_TYPESPEC("int32", "(:ident int32)");
+    TEST_TYPESPEC("(int32)", "(:ident int32)");
+    TEST_TYPESPEC("proc(int32, b:float32) => float32","(:proc =>(:ident float32) (:ident int32) (b (:ident float32)))");
+    TEST_TYPESPEC("proc(int32, b:float32)","(:proc => (:ident int32) (b (:ident float32)))");
+    TEST_TYPESPEC("struct {a:int32; b:float32;}", "(:struct (a (:ident int32)) (b (:ident float32)))");
+    TEST_TYPESPEC("union {a:int32; b:float32;}", "(:union (a (:ident int32)) (b (:ident float32)))");
 
-        assert(r);
-        assert(*r == i);
-    }
+    // Test pointer to base types
+    TEST_TYPESPEC("^int32", "(:ptr (:ident int32))");
+    TEST_TYPESPEC("^(int32)", "(:ptr (:ident int32))");
+    TEST_TYPESPEC("^proc(int32, b:float32) => float32",
+                  "(:ptr (:proc =>(:ident float32) (:ident int32) (b (:ident float32))))");
+    TEST_TYPESPEC("^struct {a:int32; b:float32;}", "(:ptr (:struct (a (:ident int32)) (b (:ident float32))))");
+    TEST_TYPESPEC("^union {a:int32; b:float32;}", "(:ptr (:union (a (:ident int32)) (b (:ident float32))))");
 
-    for (uint64_t i = 1; i <= (1 << 20); ++i) {
-        uint64_t* r = hash_map_get(&map, i);
+    // Test array of base types
+    TEST_TYPESPEC("[3]int32", "(:arr 3 (:ident int32))");
+    TEST_TYPESPEC("[](int32)", "(:arr (:ident int32))");
+    TEST_TYPESPEC("[3]proc(int32, b:float32) => float32",
+                  "(:arr 3 (:proc =>(:ident float32) (:ident int32) (b (:ident float32))))");
+    TEST_TYPESPEC("[3]struct {a:int32; b:float32;}", "(:arr 3 (:struct (a (:ident int32)) (b (:ident float32))))");
+    TEST_TYPESPEC("[3]union {a:int32; b:float32;}", "(:arr 3 (:union (a (:ident int32)) (b (:ident float32))))");
 
-        assert(r);
-        assert(*r == i);
-    }
+    // Test const base types
+    TEST_TYPESPEC("const int32", "(:const (:ident int32))");
+    TEST_TYPESPEC("const (int32)", "(:const (:ident int32))");
+    TEST_TYPESPEC("const proc(int32, b:float32) => float32",
+                  "(:const (:proc =>(:ident float32) (:ident int32) (b (:ident float32))))");
+    TEST_TYPESPEC("const struct {a:int32; b:float32;}", "(:const (:struct (a (:ident int32)) (b (:ident float32))))");
+    TEST_TYPESPEC("const union {a:int32; b:float32;}", "(:const (:union (a (:ident int32)) (b (:ident float32))))");
 
-    ftprint_out("cap = %lu, len = %lu\n", map.cap, map.len);
+    // Test mix of nested type modifiers
+    TEST_TYPESPEC("[3]^ const char", "(:arr 3 (:ptr (:const (:ident char))))");
 
-    hash_map_destroy(&map);
-}
+    // Test base expressions
+    TEST_EXPR("1", "1");
+    TEST_EXPR("3.14", "3.140000");
+    TEST_EXPR("\"hi\"", "\"hi\"");
+    TEST_EXPR("x", "x");
+    TEST_EXPR("(x)", "x");
+    TEST_EXPR("{0, 1}", "(compound {0 1})");
+    TEST_EXPR("{0, 1 :Vec2i}", "(compound (:ident Vec2i) {0 1})");
+    TEST_EXPR("{[0] = 0, [1] = 1}", "(compound {[0] = 0 [1] = 1})");
+    TEST_EXPR("{x = 0, y = 1}", "(compound {x = 0 y = 1})");
+    TEST_EXPR("sizeof(int32)", "(sizeof (:ident int32))");
+    TEST_EXPR("typeof(x)", "(typeof x)");
+    TEST_EXPR("(typeof(x))", "(typeof x)");
 
-void test_interning(void)
-{
-    Allocator arena = allocator_create(4096);
-    HashMap strmap = hash_map(8, NULL);
+    // Test expression modifiers
+    TEST_EXPR("x.y", "(field x y)");
+    TEST_EXPR("x.y.z", "(field (field x y) z)");
+    TEST_EXPR("x[0]", "(index x 0)");
+    TEST_EXPR("x[0][1]", "(index (index x 0) 1)");
+    TEST_EXPR("f(1)", "(call f 1)");
+    TEST_EXPR("f(1, y=2)", "(call f 1 y=2)");
+    TEST_EXPR("-x:>int", "(- (cast (:ident int) x))");
+    TEST_EXPR("(-x):>int", "(cast (:ident int) (- x))");
 
-    const char* a = "hello";
-    const char* b = "hello!";
-    const char* a_in = intern_str(&arena, &strmap, a, strlen(a));
-    const char* b_in = intern_str(&arena, &strmap, b, strlen(b));
+    TEST_EXPR("1 + x", "(+ 1 x)");
+    TEST_EXPR("-x:>int*2", "(* (- (cast (:ident int) x)) 2)");
+    TEST_EXPR("(-x):>int*2", "(* (cast (:ident int) (- x)) 2)");
+    TEST_EXPR("a ^ ^b", "(^ a (^ b))");
+    TEST_EXPR("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]",
+              "(? (> x 3) (* (- 2) x) (- (call f 1 b=2) (/ (+ 3.140000 (field y val)) (index z 2))))");
+    TEST_EXPR("\"abc\"[0]", "(index \"abc\" 0)");
+    TEST_EXPR("(a :> (int)) + 2", "(+ (cast (:ident int) a) 2)");
+    TEST_EXPR("(a:>^int)", "(cast (:ptr (:ident int)) a)");
+    TEST_EXPR("a:>^int", "(cast (:ptr (:ident int)) a)");
 
-    assert(a != a_in);
-    assert(b != b_in);
-    assert(a_in == intern_str(&arena, &strmap, a, strlen(a)));
-    assert(b_in == intern_str(&arena, &strmap, b, strlen(b)));
-    assert(strmap.len == 2);
-    assert(a_in != b_in);
-
-    hash_map_destroy(&strmap);
-    allocator_destroy(&arena);
-}
-
-typedef struct TestNode {
-    int num;
-    DLList node;
-} TestNode;
-
-void test_dllist(void)
-{
-    // Test adding new values to the head of the list.
-    {
-        DLList head = dllist_head_create(head);
-
-        TestNode node1 = {.num = 1};
-        TestNode node2 = {.num = 2};
-        TestNode node3 = {.num = 3};
-
-        dllist_add(&head, &node1.node);
-        dllist_add(&head, &node2.node);
-        dllist_add(&head, &node3.node);
-
-        int i = 0;
-        for (DLList* n = head.next; n != &head; n = n->next) {
-            TestNode* entry = dllist_entry(n, TestNode, node);
-            assert(entry->num == 3 - i);
-
-            i += 1;
-        }
-    }
-
-    // Test adding new values to the tail of the list.
-    {
-        DLList head = dllist_head_create(head);
-
-        TestNode node1 = {.num = 1};
-        TestNode node2 = {.num = 2};
-        TestNode node3 = {.num = 3};
-
-        dllist_add(head.prev, &node1.node);
-        dllist_add(head.prev, &node2.node);
-        dllist_add(head.prev, &node3.node);
-
-        int i = 0;
-        for (DLList* n = head.next; n != &head; n = n->next) {
-            TestNode* entry = dllist_entry(n, TestNode, node);
-            assert(entry->num == i + 1);
-
-            i += 1;
-        }
-    }
+    allocator_destroy(&gen_arena);
+    allocator_destroy(&ast_arena);
 }
 
 int main(void)
@@ -962,16 +720,12 @@ int main(void)
     ftprint_out("Nibble tests!\n");
 
     if (!nibble_init()) {
-        ftprint_err("Failed to initialize\n");
+        ftprint_err("Failed to initialize Nibble\n");
         exit(1);
     }
 
     test_lexer();
-    test_allocator();
-    test_array();
-    test_hash_map();
-    test_interning();
-    test_dllist();
+    test_parser();
 
     nibble_cleanup();
 }

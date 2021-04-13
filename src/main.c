@@ -1,4 +1,5 @@
 //#define NDEBUG 1
+#define PRINT_MEM_USAGE 1
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

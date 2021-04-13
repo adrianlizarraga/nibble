@@ -379,7 +379,7 @@ Lexer lexer_create(const char* str, uint32_t start, ByteStream* errors)
 
 void lexer_destroy(Lexer* lexer)
 {
-#ifndef NDEBUG
+#if !defined(NDEBUG) && PRINT_MEM_USAGE
     print_allocator_stats(&lexer->allocator, "Lexer mem stats");
 #endif
     allocator_destroy(&lexer->allocator);

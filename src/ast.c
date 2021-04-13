@@ -601,8 +601,13 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
         case AST_TypeSpecArray: {
             TypeSpecArray* t = (TypeSpecArray*)type;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:arr %s %s)", ftprint_expr(allocator, t->len),
-                               ftprint_typespec(allocator, t->base));
+
+            if (t->len) {
+                ftprint_char_array(&dstr, false, "(:arr %s %s)", ftprint_expr(allocator, t->len),
+                                   ftprint_typespec(allocator, t->base));
+            } else {
+                ftprint_char_array(&dstr, false, "(:arr %s)", ftprint_typespec(allocator, t->base));
+            }
         } break;
         default: {
             ftprint_err("Unknown typespec kind: %d\n", type->kind);
@@ -674,13 +679,13 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case AST_ExprIndex: {
             ExprIndex* e = (ExprIndex*)expr;
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(arr_index %s %s)", ftprint_expr(allocator, e->array),
+            ftprint_char_array(&dstr, false, "(index %s %s)", ftprint_expr(allocator, e->array),
                                ftprint_expr(allocator, e->index));
         } break;
         case AST_ExprField: {
             ExprField* e = (ExprField*)expr;
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(obj_field %s .%s)", ftprint_expr(allocator, e->object), e->field);
+            ftprint_char_array(&dstr, false, "(field %s %s)", ftprint_expr(allocator, e->object), e->field);
         } break;
         case AST_ExprInt: {
             ExprInt* e = (ExprInt*)expr;
