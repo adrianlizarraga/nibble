@@ -3,7 +3,8 @@
 
 static void parser_on_error(Parser* parser, const char* format, ...)
 {
-    if (parser->errors) {
+    if (parser->errors)
+    {
         char buf[MAX_ERROR_LEN];
         size_t size = 0;
         va_list vargs;
@@ -95,7 +96,8 @@ bool match_token_next(Parser* parser, TokenKind kind)
 {
     bool matches = (parser->token.kind == kind);
 
-    if (matches) {
+    if (matches)
+    {
         next_token(parser);
     }
 
@@ -106,7 +108,8 @@ bool match_keyword_next(Parser* parser, Keyword kw)
 {
     bool matches = (parser->token.kind == TKN_KW) && (parser->token.as_kw.kw == kw);
 
-    if (matches) {
+    if (matches)
+    {
         next_token(parser);
     }
 
@@ -117,9 +120,12 @@ bool expect_token_next(Parser* parser, TokenKind kind, const char* error_prefix)
 {
     bool matches = (parser->token.kind == kind);
 
-    if (matches) {
+    if (matches)
+    {
         next_token(parser);
-    } else {
+    }
+    else
+    {
         char tmp[32];
 
         print_token(&parser->token, tmp, sizeof(tmp));
@@ -134,9 +140,12 @@ bool expect_keyword_next(Parser* parser, Keyword kw, const char* error_prefix)
 {
     bool matches = (parser->token.kind == TKN_KW) && (parser->token.as_kw.kw == kw);
 
-    if (matches) {
+    if (matches)
+    {
         next_token(parser);
-    } else {
+    }
+    else
+    {
         char tmp[32];
 
         print_token(&parser->token, tmp, sizeof(tmp));
@@ -149,7 +158,8 @@ bool expect_keyword_next(Parser* parser, Keyword kw, const char* error_prefix)
 
 bool skip_after_token(Parser* parser, TokenKind kind)
 {
-    while (!is_token_kind(parser, TKN_EOF) && !is_token_kind(parser, kind)) {
+    while (!is_token_kind(parser, TKN_EOF) && !is_token_kind(parser, kind))
+    {
         next_token(parser);
     }
 
@@ -165,22 +175,19 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 {
     const char* error_prefix = "Failed to parse field";
 
-    if (!expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (!expect_token_next(parser, TKN_IDENT, error_prefix))
         return NULL;
-    }
 
     const char* name = parser->ptoken.as_ident.value;
     ProgRange range = {.start = parser->ptoken.range.start};
 
-    if (!expect_token_next(parser, TKN_COLON, error_prefix)) {
+    if (!expect_token_next(parser, TKN_COLON, error_prefix))
         return NULL;
-    }
 
     TypeSpec* type = parse_typespec(parser);
 
-    if (!type || !expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+    if (!type || !expect_token_next(parser, TKN_SEMICOLON, error_prefix))
         return NULL;
-    }
 
     range.end = parser->ptoken.range.end;
 
@@ -190,24 +197,21 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 // aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
 static bool parse_fill_aggregate_body(Parser* parser, size_t* num_fields, DLList* fields)
 {
-    bool bad_field = false;
-
     dllist_head_init(fields);
     *num_fields = 0;
 
-    while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
+    while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
+    {
         AggregateField* field = parse_aggregate_field(parser);
 
-        if (field) {
-            *num_fields += 1;
-            dllist_add(fields->prev, &field->list);
-        } else {
-            bad_field = true;
-            break;
-        }
+        if (!field)
+            return false;
+
+        *num_fields += 1;
+        dllist_add(fields->prev, &field->list);
     }
 
-    return !bad_field;
+    return true;
 }
 
 static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_prefix,
@@ -220,16 +224,21 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+    if (expect_token_next(parser, TKN_LBRACE, error_prefix))
+    {
         size_t num_fields = 0;
         DLList fields = {0};
 
         if (parse_fill_aggregate_body(parser, &num_fields, &fields) &&
-            expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-            if (num_fields) {
+            expect_token_next(parser, TKN_RBRACE, error_prefix))
+        {
+            if (num_fields)
+            {
                 range.end = parser->ptoken.range.end;
                 type = typespec_aggregate_proc(parser->allocator, num_fields, &fields, range);
-            } else {
+            }
+            else
+            {
                 parser_on_error(parser, "%s: must have at least one field", error_prefix);
             }
         }
@@ -244,8 +253,10 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
     ProcParam* param = NULL;
     TypeSpec* type = parse_typespec(parser);
 
-    if (type && match_token_next(parser, TKN_COLON)) {
-        if (type->kind == AST_TypeSpecIdent) { // NOTE: I wish this was truly LL1
+    if (type && match_token_next(parser, TKN_COLON))
+    {
+        if (type->kind == AST_TypeSpecIdent)
+        { // NOTE: I wish this was truly LL1
             ProgRange range = {.start = type->range.start};
             const char* name = ((TypeSpecIdent*)type)->name;
 
@@ -253,14 +264,19 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
 
             type = parse_typespec(parser);
 
-            if (type) {
+            if (type)
+            {
                 range.end = type->range.end;
                 param = proc_param(parser->allocator, name, type, range);
             }
-        } else {
+        }
+        else
+        {
             parser_on_error(parser, "Parameter's name must be an alphanumeric identifier");
         }
-    } else if (type) {
+    }
+    else if (type)
+    {
         param = proc_param(parser->allocator, NULL, type, type->range);
     }
 
@@ -279,37 +295,46 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+    if (expect_token_next(parser, TKN_LPAREN, error_prefix))
+    {
         size_t num_params = 0;
         DLList params = dllist_head_create(params);
         bool bad_param = false;
 
-        while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
+        while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
+        {
             ProcParam* param = parse_typespec_proc_param(parser);
 
-            if (param) {
+            if (param)
+            {
                 num_params += 1;
                 dllist_add(params.prev, &param->list);
-            } else {
+            }
+            else
+            {
                 bad_param = true;
                 break;
             }
 
-            if (!match_token_next(parser, TKN_COMMA)) {
+            if (!match_token_next(parser, TKN_COMMA))
+            {
                 break;
             }
         }
 
-        if (!bad_param && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+        if (!bad_param && expect_token_next(parser, TKN_RPAREN, error_prefix))
+        {
             TypeSpec* ret = NULL;
             bool bad_ret = false;
 
-            if (match_token_next(parser, TKN_ARROW)) {
+            if (match_token_next(parser, TKN_ARROW))
+            {
                 ret = parse_typespec(parser);
                 bad_ret = ret == NULL;
             }
 
-            if (!bad_ret) {
+            if (!bad_ret)
+            {
                 range.end = parser->ptoken.range.end;
                 type = typespec_proc(parser->allocator, num_params, &params, ret, range);
             }
@@ -328,36 +353,43 @@ static TypeSpec* parse_typespec_base(Parser* parser)
 {
     Token token = parser->token;
 
-    switch (token.kind) {
-    case TKN_KW: {
-        switch (token.as_kw.kw) {
-        case KW_PROC:
-            return parse_typespec_proc(parser);
-        case KW_STRUCT:
-            return parse_typespec_aggregate(parser, "Failed to parse anonymous struct", typespec_struct);
-        case KW_UNION:
-            return parse_typespec_aggregate(parser, "Failed to parse anonymous union", typespec_union);
+    switch (token.kind)
+    {
+        case TKN_KW:
+        {
+            switch (token.as_kw.kw)
+            {
+                case KW_PROC:
+                    return parse_typespec_proc(parser);
+                case KW_STRUCT:
+                    return parse_typespec_aggregate(parser, "Failed to parse anonymous struct", typespec_struct);
+                case KW_UNION:
+                    return parse_typespec_aggregate(parser, "Failed to parse anonymous union", typespec_union);
+                default:
+                    break;
+            }
+        }
+        break;
+        case TKN_IDENT:
+            next_token(parser);
+            return typespec_ident(parser->allocator, token.as_ident.value, token.range);
+        case TKN_LPAREN:
+        {
+            next_token(parser);
+
+            TypeSpec* type = NULL;
+            TypeSpec* enclosed_type = parse_typespec(parser);
+
+            if (enclosed_type && expect_token_next(parser, TKN_RPAREN, NULL))
+            {
+                type = enclosed_type;
+            }
+
+            return type;
+        }
+        break;
         default:
             break;
-        }
-    } break;
-    case TKN_IDENT:
-        next_token(parser);
-        return typespec_ident(parser->allocator, token.as_ident.value, token.range);
-    case TKN_LPAREN: {
-        next_token(parser);
-
-        TypeSpec* type = NULL;
-        TypeSpec* enclosed_type = parse_typespec(parser);
-
-        if (enclosed_type && expect_token_next(parser, TKN_RPAREN, NULL)) {
-            type = enclosed_type;
-        }
-
-        return type;
-    } break;
-    default:
-        break;
     }
 
     // If we got here, we have an unexpected token.
@@ -375,7 +407,8 @@ TypeSpec* parse_typespec(Parser* parser)
 {
     TypeSpec* type = NULL;
 
-    if (match_token_next(parser, TKN_CARET)) {
+    if (match_token_next(parser, TKN_CARET))
+    {
         //
         // Pointer typespec.
         //
@@ -383,11 +416,14 @@ TypeSpec* parse_typespec(Parser* parser)
         ProgRange range = {.start = parser->ptoken.range.start};
         TypeSpec* base = parse_typespec(parser);
 
-        if (base) {
+        if (base)
+        {
             range.end = base->range.end;
             type = typespec_ptr(parser->allocator, base, range);
         }
-    } else if (match_token_next(parser, TKN_LBRACKET)) {
+    }
+    else if (match_token_next(parser, TKN_LBRACKET))
+    {
         //
         // Array typespec.
         //
@@ -397,20 +433,25 @@ TypeSpec* parse_typespec(Parser* parser)
         Expr* len = NULL;
         bool bad_len = false;
 
-        if (!is_token_kind(parser, TKN_RBRACKET)) {
+        if (!is_token_kind(parser, TKN_RBRACKET))
+        {
             len = parse_expr(parser);
             bad_len = len == NULL;
         }
 
-        if (!bad_len && expect_token_next(parser, TKN_RBRACKET, "Failed to parse array type")) {
+        if (!bad_len && expect_token_next(parser, TKN_RBRACKET, "Failed to parse array type"))
+        {
             TypeSpec* base = parse_typespec(parser);
 
-            if (base) {
+            if (base)
+            {
                 range.end = base->range.end;
                 type = typespec_array(parser->allocator, base, len, range);
             }
         }
-    } else if (match_keyword_next(parser, KW_CONST)) {
+    }
+    else if (match_keyword_next(parser, KW_CONST))
+    {
         //
         // Const typespec
         //
@@ -418,11 +459,14 @@ TypeSpec* parse_typespec(Parser* parser)
         ProgRange range = {.start = parser->ptoken.range.start};
         TypeSpec* base = parse_typespec(parser);
 
-        if (base) {
+        if (base)
+        {
             range.end = base->range.end;
             type = typespec_const(parser->allocator, base, range);
         }
-    } else {
+    }
+    else
+    {
         type = parse_typespec_base(parser);
     }
 
@@ -442,41 +486,53 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
     Designator designator = {0};
     const char* error_prefix = "Failed to parse initializer expression";
 
-    if (match_token_next(parser, TKN_LBRACKET)) {
+    if (match_token_next(parser, TKN_LBRACKET))
+    {
         Expr* index = parse_expr(parser);
 
         if (index && expect_token_next(parser, TKN_RBRACKET, error_prefix) &&
-            expect_token_next(parser, TKN_ASSIGN, error_prefix)) {
+            expect_token_next(parser, TKN_ASSIGN, error_prefix))
+        {
             Expr* init = parse_expr(parser);
 
-            if (init) {
+            if (init)
+            {
                 range.end = init->range.end;
                 designator.kind = DESIGNATOR_INDEX;
                 designator.index = index;
                 initzer = member_initializer(parser->allocator, init, designator, range);
             }
         }
-    } else {
+    }
+    else
+    {
         Expr* expr = parse_expr(parser);
 
-        if (expr && match_token_next(parser, TKN_ASSIGN)) {
-            if (expr->kind == AST_ExprIdent) {
+        if (expr && match_token_next(parser, TKN_ASSIGN))
+        {
+            if (expr->kind == AST_ExprIdent)
+            {
                 const char* name = ((ExprIdent*)expr)->name;
 
                 mem_free(parser->allocator, expr);
 
                 Expr* init = parse_expr(parser);
 
-                if (init) {
+                if (init)
+                {
                     range.end = init->range.end;
                     designator.kind = DESIGNATOR_NAME;
                     designator.name = name;
                     initzer = member_initializer(parser->allocator, init, designator, range);
                 }
-            } else {
+            }
+            else
+            {
                 parser_on_error(parser, "Initializer designator name must be alphanumeric");
             }
-        } else if (expr) {
+        }
+        else if (expr)
+        {
             range.end = expr->range.end;
             initzer = member_initializer(parser->allocator, expr, designator, range);
         }
@@ -494,42 +550,53 @@ static Expr* parse_expr_compound_lit(Parser* parser)
     Expr* expr = NULL;
     const char* error_prefix = "Failed to parse compound literal expression";
 
-    if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+    if (expect_token_next(parser, TKN_LBRACE, error_prefix))
+    {
         ProgRange range = {.start = parser->ptoken.range.start};
         size_t num_initzers = 0;
         DLList initzers = dllist_head_create(initzers);
         bool bad_initzer = false;
 
-        while (!(is_token_kind(parser, TKN_RBRACE) || is_token_kind(parser, TKN_COLON) ||
-                 is_token_kind(parser, TKN_EOF))) {
+        while (
+            !(is_token_kind(parser, TKN_RBRACE) || is_token_kind(parser, TKN_COLON) || is_token_kind(parser, TKN_EOF)))
+        {
             MemberInitializer* initzer = parse_member_initializer(parser);
 
-            if (initzer) {
+            if (initzer)
+            {
                 num_initzers += 1;
                 dllist_add(initzers.prev, &initzer->list);
-            } else {
+            }
+            else
+            {
                 bad_initzer = true;
                 break;
             }
 
-            if (!match_token_next(parser, TKN_COMMA)) {
+            if (!match_token_next(parser, TKN_COMMA))
+            {
                 break;
             }
             // TODO: Can record the maximum index value for array initializers
         }
 
-        if (!bad_initzer) {
+        if (!bad_initzer)
+        {
             TypeSpec* type = NULL;
 
-            if (match_token_next(parser, TKN_COLON)) {
+            if (match_token_next(parser, TKN_COLON))
+            {
                 type = parse_typespec(parser);
                 // TODO: Can report error if using indexed initializers and not array type (etc.)
 
-                if (type && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+                if (type && expect_token_next(parser, TKN_RBRACE, error_prefix))
+                {
                     range.end = parser->ptoken.range.end;
                     expr = expr_compound_lit(parser->allocator, type, num_initzers, &initzers, range);
                 }
-            } else if (expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+            }
+            else if (expect_token_next(parser, TKN_RBRACE, error_prefix))
+            {
                 range.end = parser->ptoken.range.end;
                 expr = expr_compound_lit(parser->allocator, type, num_initzers, &initzers, range);
             }
@@ -548,10 +615,12 @@ static Expr* parse_expr_sizeof(Parser* parser)
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+    if (expect_token_next(parser, TKN_LPAREN, error_prefix))
+    {
         TypeSpec* type = parse_typespec(parser);
 
-        if (type && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+        if (type && expect_token_next(parser, TKN_RPAREN, error_prefix))
+        {
             range.end = parser->ptoken.range.end;
             expr = expr_sizeof(parser->allocator, type, range);
         }
@@ -569,10 +638,12 @@ static Expr* parse_expr_typeof(Parser* parser)
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+    if (expect_token_next(parser, TKN_LPAREN, error_prefix))
+    {
         Expr* arg = parse_expr(parser);
 
-        if (arg && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+        if (arg && expect_token_next(parser, TKN_RPAREN, error_prefix))
+        {
             range.end = parser->ptoken.range.end;
             expr = expr_typeof(parser->allocator, arg, range);
         }
@@ -596,42 +667,49 @@ static Expr* parse_expr_base(Parser* parser)
 {
     Token token = parser->token;
 
-    switch (token.kind) {
-    case TKN_INT:
-        next_token(parser);
-        return expr_int(parser->allocator, token.as_int.value, token.range);
-    case TKN_FLOAT:
-        next_token(parser);
-        return expr_float(parser->allocator, token.as_float.value, token.range);
-    case TKN_STR:
-        next_token(parser);
-        return expr_str(parser->allocator, token.as_str.value, token.range);
-    case TKN_LPAREN: {
-        next_token(parser);
+    switch (token.kind)
+    {
+        case TKN_INT:
+            next_token(parser);
+            return expr_int(parser->allocator, token.as_int.value, token.range);
+        case TKN_FLOAT:
+            next_token(parser);
+            return expr_float(parser->allocator, token.as_float.value, token.range);
+        case TKN_STR:
+            next_token(parser);
+            return expr_str(parser->allocator, token.as_str.value, token.range);
+        case TKN_LPAREN:
+        {
+            next_token(parser);
 
-        Expr* enclosed = parse_expr(parser);
+            Expr* enclosed = parse_expr(parser);
 
-        if (enclosed && expect_token_next(parser, TKN_RPAREN, NULL)) {
-            return enclosed;
+            if (enclosed && expect_token_next(parser, TKN_RPAREN, NULL))
+            {
+                return enclosed;
+            }
         }
-    } break;
-    case TKN_LBRACE:
-        return parse_expr_compound_lit(parser);
-    case TKN_KW: {
-        switch (token.as_kw.kw) {
-        case KW_SIZEOF:
-            return parse_expr_sizeof(parser);
-        case KW_TYPEOF:
-            return parse_expr_typeof(parser);
+        break;
+        case TKN_LBRACE:
+            return parse_expr_compound_lit(parser);
+        case TKN_KW:
+        {
+            switch (token.as_kw.kw)
+            {
+                case KW_SIZEOF:
+                    return parse_expr_sizeof(parser);
+                case KW_TYPEOF:
+                    return parse_expr_typeof(parser);
+                default:
+                    break;
+            }
+        }
+        break;
+        case TKN_IDENT:
+            next_token(parser);
+            return expr_ident(parser->allocator, token.as_ident.value, token.range);
         default:
             break;
-        }
-    } break;
-    case TKN_IDENT:
-        next_token(parser);
-        return expr_ident(parser->allocator, token.as_ident.value, token.range);
-    default:
-        break;
     }
 
     // If we got here, we have an unexpected token.
@@ -649,21 +727,28 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
     ProcCallArg* arg = NULL;
     Expr* expr = parse_expr(parser);
 
-    if (expr && match_token_next(parser, TKN_ASSIGN)) {
-        if (expr->kind == AST_ExprIdent) {
+    if (expr && match_token_next(parser, TKN_ASSIGN))
+    {
+        if (expr->kind == AST_ExprIdent)
+        {
             const char* name = ((ExprIdent*)expr)->name;
 
             mem_free(parser->allocator, expr);
 
             expr = parse_expr(parser);
 
-            if (expr) {
+            if (expr)
+            {
                 arg = proc_call_arg(parser->allocator, expr, name);
             }
-        } else {
+        }
+        else
+        {
             parser_on_error(parser, "Procedure argument's name must be an alphanumeric identifier");
         }
-    } else if (expr) {
+    }
+    else if (expr)
+    {
         arg = proc_call_arg(parser->allocator, expr, NULL);
     }
 
@@ -677,33 +762,45 @@ static Expr* parse_expr_base_mod(Parser* parser)
     Expr* expr = parse_expr_base(parser);
 
     while (expr && (is_token_kind(parser, TKN_DOT) || is_token_kind(parser, TKN_LBRACKET) ||
-                    is_token_kind(parser, TKN_LPAREN) || is_token_kind(parser, TKN_CAST))) {
-        if (match_token_next(parser, TKN_DOT)) {
+                    is_token_kind(parser, TKN_LPAREN) || is_token_kind(parser, TKN_CAST)))
+    {
+        if (match_token_next(parser, TKN_DOT))
+        {
             //
             // Field access.
             //
 
-            if (expect_token_next(parser, TKN_IDENT, "Failed to parse field access")) {
+            if (expect_token_next(parser, TKN_IDENT, "Failed to parse field access"))
+            {
                 const char* field = parser->ptoken.as_ident.value;
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
                 expr = expr_field(parser->allocator, expr, field, range);
-            } else {
+            }
+            else
+            {
                 expr = NULL;
             }
-        } else if (match_token_next(parser, TKN_LBRACKET)) {
+        }
+        else if (match_token_next(parser, TKN_LBRACKET))
+        {
             //
             // Array index access.
             //
 
             Expr* index = parse_expr(parser);
 
-            if (index && expect_token_next(parser, TKN_RBRACKET, "Failed to parse array access")) {
+            if (index && expect_token_next(parser, TKN_RBRACKET, "Failed to parse array access"))
+            {
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
                 expr = expr_index(parser->allocator, expr, index, range);
-            } else {
+            }
+            else
+            {
                 expr = NULL;
             }
-        } else if (match_token_next(parser, TKN_LPAREN)) {
+        }
+        else if (match_token_next(parser, TKN_LPAREN))
+        {
             //
             // Procedure call.
             //
@@ -712,29 +809,39 @@ static Expr* parse_expr_base_mod(Parser* parser)
             size_t num_args = 0;
             DLList args = dllist_head_create(args);
 
-            while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
+            while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
+            {
                 ProcCallArg* arg = parse_proc_call_arg(parser);
 
-                if (arg) {
+                if (arg)
+                {
                     num_args += 1;
                     dllist_add(args.prev, &arg->list);
-                } else {
+                }
+                else
+                {
                     bad_arg = true;
                     break;
                 }
 
-                if (!match_token_next(parser, TKN_COMMA)) {
+                if (!match_token_next(parser, TKN_COMMA))
+                {
                     break;
                 }
             }
 
-            if (!bad_arg && expect_token_next(parser, TKN_RPAREN, "Failed to parse procedure call")) {
+            if (!bad_arg && expect_token_next(parser, TKN_RPAREN, "Failed to parse procedure call"))
+            {
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
                 expr = expr_call(parser->allocator, expr, num_args, &args, range);
-            } else {
+            }
+            else
+            {
                 expr = NULL;
             }
-        } else {
+        }
+        else
+        {
             //
             // Cast expression.
             //
@@ -744,10 +851,13 @@ static Expr* parse_expr_base_mod(Parser* parser)
 
             TypeSpec* type = parse_typespec(parser);
 
-            if (type) {
+            if (type)
+            {
                 ProgRange range = {.start = expr->range.start, .end = type->range.end};
                 expr = expr_cast(parser->allocator, type, expr, range);
-            } else {
+            }
+            else
+            {
                 expr = NULL;
             }
         }
@@ -762,7 +872,8 @@ static Expr* parse_expr_unary(Parser* parser)
 {
     Expr* expr = NULL;
 
-    if (is_token_prop_kind(parser, OP_PRECEDENCE_UNARY)) {
+    if (is_token_prop_kind(parser, OP_PRECEDENCE_UNARY))
+    {
         ProgRange range = {.start = parser->token.range.start};
         TokenKind op = parser->token.kind;
 
@@ -770,11 +881,14 @@ static Expr* parse_expr_unary(Parser* parser)
 
         Expr* unary = parse_expr_unary(parser);
 
-        if (unary) {
+        if (unary)
+        {
             range.end = unary->range.end;
             expr = expr_unary(parser->allocator, op, unary, range);
         }
-    } else {
+    }
+    else
+    {
         expr = parse_expr_base_mod(parser);
     }
 
@@ -786,7 +900,8 @@ static Expr* parse_expr_mul(Parser* parser)
 {
     Expr* expr = parse_expr_unary(parser);
 
-    while (expr && is_token_prop_kind(parser, OP_PRECEDENCE_MUL)) {
+    while (expr && is_token_prop_kind(parser, OP_PRECEDENCE_MUL))
+    {
         TokenKind op = parser->token.kind;
 
         next_token(parser);
@@ -794,9 +909,12 @@ static Expr* parse_expr_mul(Parser* parser)
         Expr* left = expr;
         Expr* right = parse_expr_unary(parser);
 
-        if (right) {
+        if (right)
+        {
             expr = expr_binary(parser->allocator, op, left, right);
-        } else {
+        }
+        else
+        {
             expr = NULL;
         }
     }
@@ -809,7 +927,8 @@ static Expr* parse_expr_add(Parser* parser)
 {
     Expr* expr = parse_expr_mul(parser);
 
-    while (expr && is_token_prop_kind(parser, OP_PRECEDENCE_ADD)) {
+    while (expr && is_token_prop_kind(parser, OP_PRECEDENCE_ADD))
+    {
         TokenKind op = parser->token.kind;
 
         next_token(parser);
@@ -817,9 +936,12 @@ static Expr* parse_expr_add(Parser* parser)
         Expr* left = expr;
         Expr* right = parse_expr_mul(parser);
 
-        if (right) {
+        if (right)
+        {
             expr = expr_binary(parser->allocator, op, left, right);
-        } else {
+        }
+        else
+        {
             expr = NULL;
         }
     }
@@ -832,7 +954,8 @@ static Expr* parse_expr_cmp(Parser* parser)
 {
     Expr* expr = parse_expr_add(parser);
 
-    while (expr && is_token_prop_kind(parser, OP_PRECEDENCE_CMP)) {
+    while (expr && is_token_prop_kind(parser, OP_PRECEDENCE_CMP))
+    {
         TokenKind op = parser->token.kind;
 
         next_token(parser);
@@ -840,9 +963,12 @@ static Expr* parse_expr_cmp(Parser* parser)
         Expr* left = expr;
         Expr* right = parse_expr_add(parser);
 
-        if (right) {
+        if (right)
+        {
             expr = expr_binary(parser->allocator, op, left, right);
-        } else {
+        }
+        else
+        {
             expr = NULL;
         }
     }
@@ -855,13 +981,17 @@ static Expr* parse_expr_and(Parser* parser)
 {
     Expr* expr = parse_expr_cmp(parser);
 
-    while (expr && match_token_next(parser, TKN_LOGIC_AND)) {
+    while (expr && match_token_next(parser, TKN_LOGIC_AND))
+    {
         Expr* left = expr;
         Expr* right = parse_expr_cmp(parser);
 
-        if (right) {
+        if (right)
+        {
             expr = expr_binary(parser->allocator, TKN_LOGIC_AND, left, right);
-        } else {
+        }
+        else
+        {
             expr = NULL;
         }
     }
@@ -874,13 +1004,17 @@ static Expr* parse_expr_or(Parser* parser)
 {
     Expr* expr = parse_expr_and(parser);
 
-    while (expr && match_token_next(parser, TKN_LOGIC_OR)) {
+    while (expr && match_token_next(parser, TKN_LOGIC_OR))
+    {
         Expr* left = expr;
         Expr* right = parse_expr_and(parser);
 
-        if (right) {
+        if (right)
+        {
             expr = expr_binary(parser->allocator, TKN_LOGIC_OR, left, right);
-        } else {
+        }
+        else
+        {
             expr = NULL;
         }
     }
@@ -893,14 +1027,18 @@ static Expr* parse_expr_ternary(Parser* parser)
 {
     Expr* expr = parse_expr_or(parser);
 
-    if (expr && match_token_next(parser, TKN_QUESTION)) {
+    if (expr && match_token_next(parser, TKN_QUESTION))
+    {
         Expr* then_expr = parse_expr_ternary(parser);
 
-        if (then_expr) {
-            if (expect_token_next(parser, TKN_COLON, "Failed to parse ternary operator expression")) {
+        if (then_expr)
+        {
+            if (expect_token_next(parser, TKN_COLON, "Failed to parse ternary operator expression"))
+            {
                 Expr* else_expr = parse_expr_ternary(parser);
 
-                if (else_expr) {
+                if (else_expr)
+                {
                     expr = expr_ternary(parser->allocator, expr, then_expr, else_expr);
                 }
             }
@@ -927,13 +1065,17 @@ static bool parse_fill_stmt_list(Parser* parser, size_t* num_stmts, DLList* stmt
     dllist_head_init(stmts);
     *num_stmts = 0;
 
-    while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
+    while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
+    {
         Stmt* stmt = parse_stmt(parser);
 
-        if (stmt) {
+        if (stmt)
+        {
             *num_stmts += 1;
             dllist_add(stmts->prev, &stmt->list);
-        } else {
+        }
+        else
+        {
             bad_stmt = true;
             break;
         }
@@ -954,7 +1096,8 @@ static Stmt* parse_stmt_block(Parser* parser)
     DLList stmts = {0};
     bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
 
-    if (ok && expect_token_next(parser, TKN_RBRACE, "Failed to parse end of statement block")) {
+    if (ok && expect_token_next(parser, TKN_RBRACE, "Failed to parse end of statement block"))
+    {
         range.end = parser->ptoken.range.end;
         stmt = stmt_block(parser->allocator, num_stmts, &stmts, range);
     }
@@ -966,21 +1109,18 @@ static bool parse_fill_if_cond_block(Parser* parser, IfCondBlock* cblock, const 
 {
     ProgPos start = parser->token.range.start;
 
-    if (!expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+    if (!expect_token_next(parser, TKN_LPAREN, error_prefix))
         return false;
-    }
 
     Expr* cond = parse_expr(parser);
 
-    if (!cond || !expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+    if (!cond || !expect_token_next(parser, TKN_RPAREN, error_prefix))
         return false;
-    }
 
     Stmt* body = parse_stmt(parser);
 
-    if (!body) {
+    if (!body)
         return false;
-    }
 
     cblock->cond = cond;
     cblock->body = body;
@@ -999,11 +1139,9 @@ static ElifBlock* parse_stmt_elif_block(Parser* parser)
     next_token(parser);
 
     IfCondBlock cblock = {0};
-    bool ok = parse_fill_if_cond_block(parser, &cblock, error_prefix);
 
-    if (ok) {
+    if (parse_fill_if_cond_block(parser, &cblock, error_prefix))
         elif_blk = elif_block(parser->allocator, cblock.cond, cblock.body, cblock.range);
-    }
 
     return elif_blk;
 }
@@ -1018,9 +1156,8 @@ static bool parse_fill_else_block(Parser* parser, ElseBlock* else_blk)
 
     Stmt* body = parse_stmt(parser);
 
-    if (!body) {
+    if (!body)
         return false;
-    }
 
     else_blk->body = body;
     else_blk->range.start = start;
@@ -1042,32 +1179,40 @@ static Stmt* parse_stmt_if(Parser* parser)
     IfCondBlock if_blk = {0};
     bool ok_if = parse_fill_if_cond_block(parser, &if_blk, err_pre);
 
-    if (ok_if) {
+    if (ok_if)
+    {
         size_t num_elif_blks = 0;
         DLList elif_blks = dllist_head_create(elif_blks);
         bool bad_elif = false;
 
-        while (is_keyword(parser, KW_ELIF)) {
+        while (is_keyword(parser, KW_ELIF))
+        {
             ElifBlock* elif = parse_stmt_elif_block(parser);
 
-            if (elif) {
+            if (elif)
+            {
                 num_elif_blks += 1;
                 dllist_add(elif_blks.prev, &elif->list);
-            } else {
+            }
+            else
+            {
                 bad_elif = true;
                 break;
             }
         }
 
-        if (!bad_elif) {
+        if (!bad_elif)
+        {
             bool bad_else = false;
             ElseBlock else_blk = {0};
 
-            if (is_keyword(parser, KW_ELSE)) {
+            if (is_keyword(parser, KW_ELSE))
+            {
                 bad_else = !parse_fill_else_block(parser, &else_blk);
             }
 
-            if (!bad_else) {
+            if (!bad_else)
+            {
                 stmt = stmt_if(parser->allocator, &if_blk, num_elif_blks, &elif_blks, &else_blk, range);
             }
         }
@@ -1081,45 +1226,43 @@ static SwitchCase* parse_switch_case(Parser* parser)
 {
     const char* error_prefix = "Failed to parse switch statement case";
 
-    if (!expect_keyword_next(parser, KW_CASE, error_prefix)) {
+    if (!expect_keyword_next(parser, KW_CASE, error_prefix))
         return NULL;
-    }
 
     ProgRange range = {.start = parser->ptoken.range.start};
     Expr* start = NULL;
     Expr* end = NULL;
 
     // Parse case start/end expression(s).
-    if (!is_token_kind(parser, TKN_COLON)) {
+    if (!is_token_kind(parser, TKN_COLON))
+    {
         start = parse_expr(parser);
 
-        if (!start) {
+        if (!start)
             return NULL;
-        }
 
-        if (match_token_next(parser, TKN_ELLIPSIS)) {
+        if (match_token_next(parser, TKN_ELLIPSIS))
+        {
             end = parse_expr(parser);
 
-            if (!end) {
+            if (!end)
                 return NULL;
-            }
         }
     }
 
-    if (!expect_token_next(parser, TKN_COLON, error_prefix)) {
+    if (!expect_token_next(parser, TKN_COLON, error_prefix))
         return NULL;
-    }
 
     size_t num_stmts = 0;
     DLList stmts = dllist_head_create(stmts);
 
     // Parse case statements
-    while (!is_keyword(parser, KW_CASE) && !is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
+    while (!is_keyword(parser, KW_CASE) && !is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
+    {
         Stmt* stmt = parse_stmt(parser);
 
-        if (!stmt) {
+        if (!stmt)
             return NULL;
-        }
 
         num_stmts += 1;
         dllist_add(stmts.prev, &stmt->list);
@@ -1139,31 +1282,30 @@ static Stmt* parse_stmt_switch(Parser* parser)
 
     next_token(parser);
 
-    if (!expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+    if (!expect_token_next(parser, TKN_LPAREN, error_prefix))
         return NULL;
-    }
 
     Expr* expr = parse_expr(parser);
 
     if (!expr || !expect_token_next(parser, TKN_RPAREN, error_prefix) ||
-        !expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+        !expect_token_next(parser, TKN_LBRACE, error_prefix))
         return NULL;
-    }
 
     size_t num_cases = 0;
     DLList cases = dllist_head_create(cases);
     bool has_default = false;
 
-    do {
+    do
+    {
         SwitchCase* swcase = parse_switch_case(parser);
 
-        if (!swcase) {
+        if (!swcase)
             return NULL;
-        }
 
         bool is_default = !swcase->start && !swcase->end;
 
-        if (has_default && is_default) {
+        if (has_default && is_default)
+        {
             parser_on_error(parser, "Switch statement can have at most one default case");
             return NULL;
         }
@@ -1173,9 +1315,8 @@ static Stmt* parse_stmt_switch(Parser* parser)
         dllist_add(cases.prev, &swcase->list);
     } while (is_keyword(parser, KW_CASE));
 
-    if (!expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+    if (!expect_token_next(parser, TKN_RBRACE, error_prefix))
         return NULL;
-    }
 
     range.end = parser->ptoken.range.end;
 
@@ -1191,21 +1332,18 @@ static Stmt* parse_stmt_while(Parser* parser)
 
     next_token(parser);
 
-    if (!expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+    if (!expect_token_next(parser, TKN_LPAREN, error_prefix))
         return NULL;
-    }
 
     Expr* cond = parse_expr(parser);
 
-    if (!cond || !expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+    if (!cond || !expect_token_next(parser, TKN_RPAREN, error_prefix))
         return NULL;
-    }
 
     Stmt* body = parse_stmt(parser);
 
-    if (!body) {
+    if (!body)
         return NULL;
-    }
 
     range.end = body->range.end;
 
@@ -1225,11 +1363,13 @@ static Stmt* parse_stmt_do_while(Parser* parser)
     Stmt* body = parse_stmt(parser);
 
     if (body && expect_keyword_next(parser, KW_WHILE, error_prefix) &&
-        expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        expect_token_next(parser, TKN_LPAREN, error_prefix))
+    {
         Expr* cond = parse_expr(parser);
 
         if (cond && expect_token_next(parser, TKN_RPAREN, error_prefix) &&
-            expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+            expect_token_next(parser, TKN_SEMICOLON, error_prefix))
+        {
             range.end = parser->ptoken.range.end;
             stmt = stmt_do_while(parser->allocator, cond, body, range);
         }
@@ -1243,9 +1383,8 @@ static Stmt* parse_stmt_decl(Parser* parser)
     Stmt* stmt = NULL;
     Decl* decl = parse_decl(parser);
 
-    if (decl) {
+    if (decl)
         stmt = stmt_decl(parser->allocator, decl);
-    }
 
     return stmt;
 }
@@ -1257,25 +1396,34 @@ static Stmt* parse_stmt_expr(Parser* parser, bool terminate)
     ProgRange range = {.start = expr->range.start};
     const char* error_prefix = "Failed to parse expression statement";
 
-    if (expr) {
-        if (is_token_prop_kind(parser, OP_ASSIGN)) {
+    if (expr)
+    {
+        if (is_token_prop_kind(parser, OP_ASSIGN))
+        {
             TokenKind op_assign = parser->token.kind;
 
             next_token(parser);
 
             Expr* rexpr = parse_expr(parser);
 
-            if (rexpr && !terminate) {
+            if (rexpr && !terminate)
+            {
                 range.end = rexpr->range.end;
                 stmt = stmt_expr_assign(parser->allocator, expr, op_assign, rexpr, range);
-            } else if (rexpr && expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+            }
+            else if (rexpr && expect_token_next(parser, TKN_SEMICOLON, error_prefix))
+            {
                 range.end = parser->ptoken.range.end;
                 stmt = stmt_expr_assign(parser->allocator, expr, op_assign, rexpr, range);
             }
-        } else if (!terminate) {
+        }
+        else if (!terminate)
+        {
             range.end = expr->range.end;
             stmt = stmt_expr(parser->allocator, expr, range);
-        } else if (expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+        }
+        else if (expect_token_next(parser, TKN_SEMICOLON, error_prefix))
+        {
             range.end = parser->ptoken.range.end;
             stmt = stmt_expr(parser->allocator, expr, range);
         }
@@ -1293,53 +1441,53 @@ static Stmt* parse_stmt_for(Parser* parser)
 
     next_token(parser);
 
-    if (!expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+    if (!expect_token_next(parser, TKN_LPAREN, error_prefix))
         return NULL;
-    }
 
     Stmt* init = NULL;
 
-    if (!match_token_next(parser, TKN_SEMICOLON)) {
-        if (is_keyword(parser, KW_VAR)) {
+    if (!match_token_next(parser, TKN_SEMICOLON))
+    {
+        if (is_keyword(parser, KW_VAR))
+        {
             init = parse_stmt_decl(parser);
-        } else {
+        }
+        else
+        {
             init = parse_stmt_expr(parser, true);
         }
 
-        if (!init) {
+        if (!init)
             return NULL;
-        }
     }
 
     Expr* cond = NULL;
 
-    if (!match_token_next(parser, TKN_SEMICOLON)) {
+    if (!match_token_next(parser, TKN_SEMICOLON))
+    {
         cond = parse_expr(parser);
 
-        if (!cond || !expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+        if (!cond || !expect_token_next(parser, TKN_SEMICOLON, error_prefix))
             return NULL;
-        }
     }
 
     Stmt* next = NULL;
 
-    if (!is_token_kind(parser, TKN_RPAREN)) {
+    if (!is_token_kind(parser, TKN_RPAREN))
+    {
         next = parse_stmt_expr(parser, false);
 
-        if (!next) {
+        if (!next)
             return NULL;
-        }
     }
 
-    if (!expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+    if (!expect_token_next(parser, TKN_RPAREN, error_prefix))
         return NULL;
-    }
 
     Stmt* body = parse_stmt(parser);
 
-    if (!body) {
+    if (!body)
         return NULL;
-    }
 
     range.end = body->range.end;
 
@@ -1357,23 +1505,23 @@ static Stmt* parse_stmt_return(Parser* parser)
 
     // This seems like a common error, so we can try to look for it.
     // However, this is not a complete check, or even necessary. Bikeshedding!!
-    if (is_token_kind(parser, TKN_RBRACE)) {
+    if (is_token_kind(parser, TKN_RBRACE))
+    {
         parser_on_error(parser, "Failed to parse return statement: wanted `;` or expression, but got `}`");
 
         return NULL;
     }
 
-    if (!is_token_kind(parser, TKN_SEMICOLON)) {
+    if (!is_token_kind(parser, TKN_SEMICOLON))
+    {
         expr = parse_expr(parser);
 
-        if (!expr) {
+        if (!expr)
             return NULL;
-        }
     }
 
-    if (!expect_token_next(parser, TKN_SEMICOLON, "Failed to parse return statement")) {
+    if (!expect_token_next(parser, TKN_SEMICOLON, "Failed to parse return statement"))
         return NULL;
-    }
 
     range.end = parser->ptoken.range.end;
 
@@ -1389,13 +1537,11 @@ static Stmt* parse_stmt_break(Parser* parser)
 
     next_token(parser);
 
-    if (match_token_next(parser, TKN_IDENT)) {
+    if (match_token_next(parser, TKN_IDENT))
         label = parser->ptoken.as_ident.value;
-    }
 
-    if (!expect_token_next(parser, TKN_SEMICOLON, "Failed to parse break statement")) {
+    if (!expect_token_next(parser, TKN_SEMICOLON, "Failed to parse break statement"))
         return NULL;
-    }
 
     range.end = parser->ptoken.range.end;
 
@@ -1411,13 +1557,11 @@ static Stmt* parse_stmt_continue(Parser* parser)
 
     next_token(parser);
 
-    if (match_token_next(parser, TKN_IDENT)) {
+    if (match_token_next(parser, TKN_IDENT))
         label = parser->ptoken.as_ident.value;
-    }
 
-    if (!expect_token_next(parser, TKN_SEMICOLON, "Failed to parse continue statement")) {
+    if (!expect_token_next(parser, TKN_SEMICOLON, "Failed to parse continue statement"))
         return NULL;
-    }
 
     range.end = parser->ptoken.range.end;
 
@@ -1434,15 +1578,13 @@ static Stmt* parse_stmt_goto(Parser* parser)
 
     next_token(parser);
 
-    if (!expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (!expect_token_next(parser, TKN_IDENT, error_prefix))
         return NULL;
-    }
 
     label = parser->ptoken.as_ident.value;
 
-    if (!expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+    if (!expect_token_next(parser, TKN_SEMICOLON, error_prefix))
         return NULL;
-    }
 
     range.end = parser->ptoken.range.end;
 
@@ -1458,19 +1600,18 @@ static Stmt* parse_stmt_label(Parser* parser)
 
     next_token(parser);
 
-    if (!expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (!expect_token_next(parser, TKN_IDENT, error_prefix))
         return NULL;
-    }
 
     const char* label = parser->ptoken.as_ident.value;
 
-    if (!expect_token_next(parser, TKN_COLON, error_prefix)) {
+    if (!expect_token_next(parser, TKN_COLON, error_prefix))
         return NULL;
-    }
 
     Stmt* stmt = parse_stmt(parser);
 
-    if (!stmt) {
+    if (!stmt)
+    {
         parser_on_error(parser, "Label must be attached to a statement");
         return NULL;
     }
@@ -1499,42 +1640,46 @@ Stmt* parse_stmt(Parser* parser)
 {
     Token token = parser->token;
 
-    switch (token.kind) {
-    case TKN_SEMICOLON:
-        next_token(parser);
-        return stmt_noop(parser->allocator, token.range);
-    case TKN_LBRACE:
-        return parse_stmt_block(parser);
-    case TKN_KW: {
-        switch (token.as_kw.kw) {
-        case KW_IF:
-            return parse_stmt_if(parser);
-        case KW_WHILE:
-            return parse_stmt_while(parser);
-        case KW_DO:
-            return parse_stmt_do_while(parser);
-        case KW_FOR:
-            return parse_stmt_for(parser);
-        case KW_SWITCH:
-            return parse_stmt_switch(parser);
-        case KW_RETURN:
-            return parse_stmt_return(parser);
-        case KW_BREAK:
-            return parse_stmt_break(parser);
-        case KW_CONTINUE:
-            return parse_stmt_continue(parser);
-        case KW_GOTO:
-            return parse_stmt_goto(parser);
-        case KW_LABEL:
-            return parse_stmt_label(parser);
-        default:
-            return parse_stmt_decl(parser);
+    switch (token.kind)
+    {
+        case TKN_SEMICOLON:
+            next_token(parser);
+            return stmt_noop(parser->allocator, token.range);
+        case TKN_LBRACE:
+            return parse_stmt_block(parser);
+        case TKN_KW:
+        {
+            switch (token.as_kw.kw)
+            {
+                case KW_IF:
+                    return parse_stmt_if(parser);
+                case KW_WHILE:
+                    return parse_stmt_while(parser);
+                case KW_DO:
+                    return parse_stmt_do_while(parser);
+                case KW_FOR:
+                    return parse_stmt_for(parser);
+                case KW_SWITCH:
+                    return parse_stmt_switch(parser);
+                case KW_RETURN:
+                    return parse_stmt_return(parser);
+                case KW_BREAK:
+                    return parse_stmt_break(parser);
+                case KW_CONTINUE:
+                    return parse_stmt_continue(parser);
+                case KW_GOTO:
+                    return parse_stmt_goto(parser);
+                case KW_LABEL:
+                    return parse_stmt_label(parser);
+                default:
+                    return parse_stmt_decl(parser);
+            }
         }
-    } break;
-    case TKN_IDENT:
-        return parse_stmt_expr(parser, true);
-    default:
         break;
+        case TKN_IDENT:
+            return parse_stmt_expr(parser, true);
+        default:
+            break;
     }
 
     // If we got here, we have an unexpected token.
@@ -1563,32 +1708,41 @@ static Decl* parse_decl_var(Parser* parser)
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (expect_token_next(parser, TKN_IDENT, error_prefix))
+    {
         const char* name = parser->ptoken.as_ident.value;
 
-        if (expect_token_next(parser, TKN_COLON, error_prefix)) {
+        if (expect_token_next(parser, TKN_COLON, error_prefix))
+        {
             TypeSpec* type = NULL;
             Expr* expr = NULL;
             bool bad_type = false;
             bool bad_expr = false;
 
-            if (!is_token_kind(parser, TKN_ASSIGN) && !is_token_kind(parser, TKN_SEMICOLON)) {
+            if (!is_token_kind(parser, TKN_ASSIGN) && !is_token_kind(parser, TKN_SEMICOLON))
+            {
                 type = parse_typespec(parser);
                 bad_type = !type;
             }
 
-            if (match_token_next(parser, TKN_ASSIGN)) {
+            if (match_token_next(parser, TKN_ASSIGN))
+            {
                 expr = parse_expr(parser);
                 bad_expr = !expr;
             }
 
-            if (!bad_type && !bad_expr) {
-                if (type || expr) {
-                    if (expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+            if (!bad_type && !bad_expr)
+            {
+                if (type || expr)
+                {
+                    if (expect_token_next(parser, TKN_SEMICOLON, error_prefix))
+                    {
                         range.end = parser->ptoken.range.end;
                         decl = decl_var(parser->allocator, name, type, expr, range);
                     }
-                } else {
+                }
+                else
+                {
                     parser_on_error(parser, "A var declaration must have either a type or an initial value");
                 }
             }
@@ -1604,14 +1758,17 @@ static ProcParam* parse_proc_param(Parser* parser)
     ProcParam* param = NULL;
     const char* error_prefix = "Failed to parse procedure parameter";
 
-    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (expect_token_next(parser, TKN_IDENT, error_prefix))
+    {
         const char* name = parser->ptoken.as_ident.value;
         ProgRange range = {.start = parser->ptoken.range.start};
 
-        if (expect_token_next(parser, TKN_COLON, error_prefix)) {
+        if (expect_token_next(parser, TKN_COLON, error_prefix))
+        {
             TypeSpec* type = parse_typespec(parser);
 
-            if (type) {
+            if (type)
+            {
                 range.end = type->range.end;
                 param = proc_param(parser->allocator, name, type, range);
             }
@@ -1632,45 +1789,56 @@ static Decl* parse_decl_proc(Parser* parser)
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (expect_token_next(parser, TKN_IDENT, error_prefix))
+    {
         const char* name = parser->ptoken.as_ident.value;
 
-        if (expect_token_next(parser, TKN_LPAREN, error_prefix)) {
+        if (expect_token_next(parser, TKN_LPAREN, error_prefix))
+        {
             size_t num_params = 0;
             DLList params = dllist_head_create(params);
             bool bad_param = false;
 
-            while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
+            while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
+            {
                 ProcParam* param = parse_proc_param(parser);
 
-                if (param) {
+                if (param)
+                {
                     num_params += 1;
                     dllist_add(params.prev, &param->list);
-                } else {
+                }
+                else
+                {
                     bad_param = true;
                     break;
                 }
 
-                if (!match_token_next(parser, TKN_COMMA)) {
+                if (!match_token_next(parser, TKN_COMMA))
+                {
                     break;
                 }
             }
 
-            if (!bad_param && expect_token_next(parser, TKN_RPAREN, error_prefix)) {
+            if (!bad_param && expect_token_next(parser, TKN_RPAREN, error_prefix))
+            {
                 TypeSpec* ret = NULL;
                 bool bad_ret = false;
 
-                if (match_token_next(parser, TKN_ARROW)) {
+                if (match_token_next(parser, TKN_ARROW))
+                {
                     ret = parse_typespec(parser);
                     bad_ret = !ret;
                 }
 
-                if (!bad_ret && expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+                if (!bad_ret && expect_token_next(parser, TKN_LBRACE, error_prefix))
+                {
                     DLList stmts = {0};
                     size_t num_stmts = 0;
                     bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
 
-                    if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
+                    if (ok && expect_token_next(parser, TKN_RBRACE, error_prefix))
+                    {
                         range.end = parser->ptoken.range.end;
                         decl = decl_proc(parser->allocator, name, num_params, &params, ret, num_stmts, &stmts, range);
                     }
@@ -1692,19 +1860,25 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (expect_token_next(parser, TKN_IDENT, error_prefix))
+    {
         const char* name = parser->ptoken.as_ident.value;
 
-        if (expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+        if (expect_token_next(parser, TKN_LBRACE, error_prefix))
+        {
             size_t num_fields = 0;
             DLList fields = {0};
 
             if (parse_fill_aggregate_body(parser, &num_fields, &fields) &&
-                expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-                if (num_fields) {
+                expect_token_next(parser, TKN_RBRACE, error_prefix))
+            {
+                if (num_fields)
+                {
                     range.end = parser->ptoken.range.end;
                     decl = decl_aggregate_proc(parser->allocator, name, num_fields, &fields, range);
-                } else {
+                }
+                else
+                {
                     parser_on_error(parser, "%s: must have at least one field", error_prefix);
                 }
             }
@@ -1719,19 +1893,20 @@ static EnumItem* parse_enum_item(Parser* parser)
 {
     EnumItem* item = NULL;
 
-    if (expect_token_next(parser, TKN_IDENT, "Failed to parse enum value")) {
+    if (expect_token_next(parser, TKN_IDENT, "Failed to parse enum value"))
+    {
         const char* name = parser->ptoken.as_ident.value;
         Expr* value = NULL;
         bool bad_value = false;
 
-        if (match_token_next(parser, TKN_ASSIGN)) {
+        if (match_token_next(parser, TKN_ASSIGN))
+        {
             value = parse_expr(parser);
             bad_value = !value;
         }
 
-        if (!bad_value) {
+        if (!bad_value)
             item = enum_item(parser->allocator, name, value);
-        }
     }
 
     return item;
@@ -1752,42 +1927,52 @@ static Decl* parse_decl_enum(Parser* parser)
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (expect_token_next(parser, TKN_IDENT, error_prefix))
+    {
         const char* name = parser->ptoken.as_ident.value;
         TypeSpec* type = NULL;
         bool bad_type = false;
 
-        if (match_token_next(parser, TKN_COLON)) {
+        if (match_token_next(parser, TKN_COLON))
+        {
             type = parse_typespec(parser);
             bad_type = !type;
         }
 
-        if (!bad_type && expect_token_next(parser, TKN_LBRACE, error_prefix)) {
+        if (!bad_type && expect_token_next(parser, TKN_LBRACE, error_prefix))
+        {
             size_t num_items = 0;
             DLList items = dllist_head_create(items);
             bool bad_item = false;
 
-            while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
+            while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
+            {
                 EnumItem* item = parse_enum_item(parser);
 
-                if (item) {
+                if (item)
+                {
                     num_items += 1;
                     dllist_add(items.prev, &item->list);
-                } else {
+                }
+                else
+                {
                     bad_item = true;
                     break;
                 }
 
-                if (!match_token_next(parser, TKN_COMMA)) {
+                if (!match_token_next(parser, TKN_COMMA))
                     break;
-                }
             }
 
-            if (!bad_item && expect_token_next(parser, TKN_RBRACE, error_prefix)) {
-                if (num_items) {
+            if (!bad_item && expect_token_next(parser, TKN_RBRACE, error_prefix))
+            {
+                if (num_items)
+                {
                     range.end = parser->ptoken.range.end;
                     decl = decl_enum(parser->allocator, name, type, num_items, &items, range);
-                } else {
+                }
+                else
+                {
                     parser_on_error(parser, "%s: must have at least one enumeration constant", error_prefix);
                 }
             }
@@ -1809,13 +1994,16 @@ static Decl* parse_decl_typedef(Parser* parser)
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (expect_token_next(parser, TKN_IDENT, error_prefix))
+    {
         const char* name = parser->ptoken.as_ident.value;
 
-        if (expect_token_next(parser, TKN_ASSIGN, error_prefix)) {
+        if (expect_token_next(parser, TKN_ASSIGN, error_prefix))
+        {
             TypeSpec* type = parse_typespec(parser);
 
-            if (type && expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+            if (type && expect_token_next(parser, TKN_SEMICOLON, error_prefix))
+            {
                 range.end = parser->ptoken.range.end;
                 decl = decl_typedef(parser->allocator, name, type, range);
             }
@@ -1838,22 +2026,27 @@ static Decl* parse_decl_const(Parser* parser)
 
     next_token(parser);
 
-    if (expect_token_next(parser, TKN_IDENT, error_prefix)) {
+    if (expect_token_next(parser, TKN_IDENT, error_prefix))
+    {
         const char* name = parser->ptoken.as_ident.value;
 
-        if (expect_token_next(parser, TKN_COLON, error_prefix)) {
+        if (expect_token_next(parser, TKN_COLON, error_prefix))
+        {
             TypeSpec* type = NULL;
             bool bad_type = false;
 
-            if (!is_token_kind(parser, TKN_ASSIGN)) {
+            if (!is_token_kind(parser, TKN_ASSIGN))
+            {
                 type = parse_typespec(parser);
                 bad_type = type == NULL;
             }
 
-            if (!bad_type && expect_token_next(parser, TKN_ASSIGN, error_prefix)) {
+            if (!bad_type && expect_token_next(parser, TKN_ASSIGN, error_prefix))
+            {
                 Expr* expr = parse_expr(parser);
 
-                if (expr && expect_token_next(parser, TKN_SEMICOLON, error_prefix)) {
+                if (expr && expect_token_next(parser, TKN_SEMICOLON, error_prefix))
+                {
                     range.end = parser->ptoken.range.end;
                     decl = decl_const(parser->allocator, name, type, expr, range);
                 }
@@ -1873,24 +2066,26 @@ static Decl* parse_decl_const(Parser* parser)
 //      | decl_proc
 Decl* parse_decl(Parser* parser)
 {
-    if (is_token_kind(parser, TKN_KW)) {
-        switch (parser->token.as_kw.kw) {
-        case KW_CONST:
-            return parse_decl_const(parser);
-        case KW_TYPEDEF:
-            return parse_decl_typedef(parser);
-        case KW_VAR:
-            return parse_decl_var(parser);
-        case KW_ENUM:
-            return parse_decl_enum(parser);
-        case KW_STRUCT:
-            return parse_decl_aggregate(parser, "Failed to parse struct declaration", decl_struct);
-        case KW_UNION:
-            return parse_decl_aggregate(parser, "Failed to parse union declaration", decl_union);
-        case KW_PROC:
-            return parse_decl_proc(parser);
-        default:
-            break;
+    if (is_token_kind(parser, TKN_KW))
+    {
+        switch (parser->token.as_kw.kw)
+        {
+            case KW_CONST:
+                return parse_decl_const(parser);
+            case KW_TYPEDEF:
+                return parse_decl_typedef(parser);
+            case KW_VAR:
+                return parse_decl_var(parser);
+            case KW_ENUM:
+                return parse_decl_enum(parser);
+            case KW_STRUCT:
+                return parse_decl_aggregate(parser, "Failed to parse struct declaration", decl_struct);
+            case KW_UNION:
+                return parse_decl_aggregate(parser, "Failed to parse union declaration", decl_union);
+            case KW_PROC:
+                return parse_decl_proc(parser);
+            default:
+                break;
         }
     }
 

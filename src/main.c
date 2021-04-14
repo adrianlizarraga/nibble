@@ -58,11 +58,13 @@ static CompiledModule* compile_module(const char* str, ProgPos pos)
     ftprint_out("\n\n");
 #endif
 
-    if (module->errors.num_chunks > 0) {
+    if (module->errors.num_chunks > 0)
+    {
         ftprint_out("Num errors: %lu\n", module->errors.num_chunks);
         ByteStreamChunk* chunk = module->errors.first;
 
-        while (chunk) {
+        while (chunk)
+        {
             ftprint_out("%s\n", chunk->buf);
             chunk = chunk->next;
         }
@@ -88,7 +90,8 @@ static void free_compiled_module(CompiledModule* module)
 
 int main(void)
 {
-    if (!nibble_init()) {
+    if (!nibble_init())
+    {
         ftprint_err("Failed to initialize\n");
         exit(1);
     }
@@ -142,10 +145,10 @@ int main(void)
     // AST usage: 600 bytes, Nibble usage: 951 bytes
     // AST usage: 624 bytes, Nibble usage: 951 bytes (dont require {} as body for loops etc)
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
-    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;} else g=0;}", 0);
-    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a; f(g);}}", 0);
-    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(var i:=0;i<10;i+=1){f(i);}}", 0);
-    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {return 10;}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;} else g=0;}",
+    // 0); CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a; f(g);}}",
+    // 0); CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(var i:=0;i<10;i+=1){f(i);}}",
+    // 0); CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {return 10;}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {return;}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i<10;i+=1){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {while(a > b){f(i);}}", 0);
@@ -157,7 +160,8 @@ int main(void)
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){break;}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){continue;}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {label top: ; goto top;}", 0);
-    CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {switch(a){case 1 .. 2: a += 1; case: a = 0;}}", 0);
+    CompiledModule* module =
+        compile_module("proc add(a:int32, b:int32) =>void {switch(a){case 1 .. 2: a += 1; case: a = 0;}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(i=0;i<10;i+=1){f(i);}}", 0);
     // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(g(^i);i<10;i+=1){f(i);}}", 0);
     //

@@ -1,5 +1,5 @@
-#include "ast.h"
 #include "array.h"
+#include "ast.h"
 #include "cstring.h"
 
 #define typespec_alloc(a, k, r) (k*)typespec_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
@@ -525,96 +525,129 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 {
     char* dstr = NULL;
 
-    if (type) {
-        switch (type->kind) {
-        case AST_TYPE_SPEC_NONE: {
-            assert(0);
-        } break;
-        case AST_TypeSpecIdent: {
-            TypeSpecIdent* t = (TypeSpecIdent*)type;
-            dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(:ident %s)", t->name);
-        } break;
-        case AST_TypeSpecProc: {
-            TypeSpecProc* t = (TypeSpecProc*)type;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:proc =>%s", ftprint_typespec(allocator, t->ret));
-
-            if (t->num_params) {
-                ftprint_char_array(&dstr, false, " ");
-
-                DLList* head = &t->params;
-
-                for (DLList* it = head->next; it != head; it = it->next) {
-                    ProcParam* param = dllist_entry(it, ProcParam, list);
-
-                    if (param->name) {
-                        ftprint_char_array(&dstr, false, "(%s %s)", param->name,
-                                           ftprint_typespec(allocator, param->type));
-                    } else {
-                        ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->type));
-                    }
-
-                    if (it->next != head) {
-                        ftprint_char_array(&dstr, false, " ");
-                    }
-                }
+    if (type)
+    {
+        switch (type->kind)
+        {
+            case AST_TYPE_SPEC_NONE:
+            {
+                assert(0);
             }
+            break;
+            case AST_TypeSpecIdent:
+            {
+                TypeSpecIdent* t = (TypeSpecIdent*)type;
+                dstr = array_create(allocator, char, 16);
+                ftprint_char_array(&dstr, false, "(:ident %s)", t->name);
+            }
+            break;
+            case AST_TypeSpecProc:
+            {
+                TypeSpecProc* t = (TypeSpecProc*)type;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(:proc =>%s", ftprint_typespec(allocator, t->ret));
 
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_TypeSpecStruct:
-        case AST_TypeSpecUnion: {
-            dstr = array_create(allocator, char, 32);
-            bool is_struct = type->kind == AST_TypeSpecStruct;
+                if (t->num_params)
+                {
+                    ftprint_char_array(&dstr, false, " ");
 
-            ftprint_char_array(&dstr, false, "(:%s", (is_struct ? "struct" : "union"));
+                    DLList* head = &t->params;
 
-            TypeSpecAggregate* aggregate = (TypeSpecAggregate*)type;
+                    for (DLList* it = head->next; it != head; it = it->next)
+                    {
+                        ProcParam* param = dllist_entry(it, ProcParam, list);
 
-            if (aggregate->num_fields) {
-                ftprint_char_array(&dstr, false, " ");
-                DLList* head = &aggregate->fields;
+                        if (param->name)
+                        {
+                            ftprint_char_array(&dstr, false, "(%s %s)", param->name,
+                                               ftprint_typespec(allocator, param->type));
+                        }
+                        else
+                        {
+                            ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->type));
+                        }
 
-                for (DLList* it = head->next; it != head; it = it->next) {
-                    AggregateField* field = dllist_entry(it, AggregateField, list);
-
-                    ftprint_char_array(&dstr, false, "(%s %s)", field->name, ftprint_typespec(allocator, field->type));
-
-                    if (it->next != head) {
-                        ftprint_char_array(&dstr, false, " ");
+                        if (it->next != head)
+                        {
+                            ftprint_char_array(&dstr, false, " ");
+                        }
                     }
                 }
-            }
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_TypeSpecPtr: {
-            TypeSpecPtr* t = (TypeSpecPtr*)type;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:ptr %s)", ftprint_typespec(allocator, t->base));
-        } break;
-        case AST_TypeSpecConst: {
-            TypeSpecConst* t = (TypeSpecConst*)type;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(:const %s)", ftprint_typespec(allocator, t->base));
-        } break;
-        case AST_TypeSpecArray: {
-            TypeSpecArray* t = (TypeSpecArray*)type;
-            dstr = array_create(allocator, char, 32);
 
-            if (t->len) {
-                ftprint_char_array(&dstr, false, "(:arr %s %s)", ftprint_expr(allocator, t->len),
-                                   ftprint_typespec(allocator, t->base));
-            } else {
-                ftprint_char_array(&dstr, false, "(:arr %s)", ftprint_typespec(allocator, t->base));
+                ftprint_char_array(&dstr, false, ")");
             }
-        } break;
-        default: {
-            ftprint_err("Unknown typespec kind: %d\n", type->kind);
-            assert(0);
-        } break;
+            break;
+            case AST_TypeSpecStruct:
+            case AST_TypeSpecUnion:
+            {
+                dstr = array_create(allocator, char, 32);
+                bool is_struct = type->kind == AST_TypeSpecStruct;
+
+                ftprint_char_array(&dstr, false, "(:%s", (is_struct ? "struct" : "union"));
+
+                TypeSpecAggregate* aggregate = (TypeSpecAggregate*)type;
+
+                if (aggregate->num_fields)
+                {
+                    ftprint_char_array(&dstr, false, " ");
+                    DLList* head = &aggregate->fields;
+
+                    for (DLList* it = head->next; it != head; it = it->next)
+                    {
+                        AggregateField* field = dllist_entry(it, AggregateField, list);
+
+                        ftprint_char_array(&dstr, false, "(%s %s)", field->name,
+                                           ftprint_typespec(allocator, field->type));
+
+                        if (it->next != head)
+                        {
+                            ftprint_char_array(&dstr, false, " ");
+                        }
+                    }
+                }
+                ftprint_char_array(&dstr, false, ")");
+            }
+            break;
+            case AST_TypeSpecPtr:
+            {
+                TypeSpecPtr* t = (TypeSpecPtr*)type;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(:ptr %s)", ftprint_typespec(allocator, t->base));
+            }
+            break;
+            case AST_TypeSpecConst:
+            {
+                TypeSpecConst* t = (TypeSpecConst*)type;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(:const %s)", ftprint_typespec(allocator, t->base));
+            }
+            break;
+            case AST_TypeSpecArray:
+            {
+                TypeSpecArray* t = (TypeSpecArray*)type;
+                dstr = array_create(allocator, char, 32);
+
+                if (t->len)
+                {
+                    ftprint_char_array(&dstr, false, "(:arr %s %s)", ftprint_expr(allocator, t->len),
+                                       ftprint_typespec(allocator, t->base));
+                }
+                else
+                {
+                    ftprint_char_array(&dstr, false, "(:arr %s)", ftprint_typespec(allocator, t->base));
+                }
+            }
+            break;
+            default:
+            {
+                ftprint_err("Unknown typespec kind: %d\n", type->kind);
+                assert(0);
+            }
+            break;
         }
-    } else {
+    }
+    else
+    {
         dstr = array_create(allocator, char, 1);
     }
 
@@ -627,140 +660,188 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
 {
     char* dstr = NULL;
 
-    if (expr) {
-        switch (expr->kind) {
-        case AST_EXPR_NONE: {
-            assert(0);
-        } break;
-        case AST_ExprTernary: {
-            ExprTernary* e = (ExprTernary*)expr;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(? %s %s %s)", ftprint_expr(allocator, e->cond),
-                               ftprint_expr(allocator, e->then_expr), ftprint_expr(allocator, e->else_expr));
-        } break;
-        case AST_ExprBinary: {
-            ExprBinary* e = (ExprBinary*)expr;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(%s %s %s)", token_kind_names[e->op], ftprint_expr(allocator, e->left),
-                               ftprint_expr(allocator, e->right));
-        } break;
-        case AST_ExprUnary: {
-            ExprUnary* e = (ExprUnary*)expr;
-            dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(%s %s)", token_kind_names[e->op], ftprint_expr(allocator, e->expr));
-        } break;
-        case AST_ExprCall: {
-            ExprCall* e = (ExprCall*)expr;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(call %s", ftprint_expr(allocator, e->proc));
+    if (expr)
+    {
+        switch (expr->kind)
+        {
+            case AST_EXPR_NONE:
+            {
+                assert(0);
+            }
+            break;
+            case AST_ExprTernary:
+            {
+                ExprTernary* e = (ExprTernary*)expr;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(? %s %s %s)", ftprint_expr(allocator, e->cond),
+                                   ftprint_expr(allocator, e->then_expr), ftprint_expr(allocator, e->else_expr));
+            }
+            break;
+            case AST_ExprBinary:
+            {
+                ExprBinary* e = (ExprBinary*)expr;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(%s %s %s)", token_kind_names[e->op],
+                                   ftprint_expr(allocator, e->left), ftprint_expr(allocator, e->right));
+            }
+            break;
+            case AST_ExprUnary:
+            {
+                ExprUnary* e = (ExprUnary*)expr;
+                dstr = array_create(allocator, char, 16);
+                ftprint_char_array(&dstr, false, "(%s %s)", token_kind_names[e->op], ftprint_expr(allocator, e->expr));
+            }
+            break;
+            case AST_ExprCall:
+            {
+                ExprCall* e = (ExprCall*)expr;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(call %s", ftprint_expr(allocator, e->proc));
 
-            if (e->num_args) {
-                ftprint_char_array(&dstr, false, " ");
+                if (e->num_args)
+                {
+                    ftprint_char_array(&dstr, false, " ");
 
-                DLList* head = &e->args;
+                    DLList* head = &e->args;
 
-                for (DLList* it = head->next; it != head; it = it->next) {
-                    ProcCallArg* arg = dllist_entry(it, ProcCallArg, list);
+                    for (DLList* it = head->next; it != head; it = it->next)
+                    {
+                        ProcCallArg* arg = dllist_entry(it, ProcCallArg, list);
 
-                    if (arg->name) {
-                        ftprint_char_array(&dstr, false, "%s=", arg->name);
-                    }
+                        if (arg->name)
+                        {
+                            ftprint_char_array(&dstr, false, "%s=", arg->name);
+                        }
 
-                    ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, arg->expr));
+                        ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, arg->expr));
 
-                    if (it->next != head) {
-                        ftprint_char_array(&dstr, false, " ");
+                        if (it->next != head)
+                        {
+                            ftprint_char_array(&dstr, false, " ");
+                        }
                     }
                 }
+
+                ftprint_char_array(&dstr, false, ")");
             }
-
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_ExprIndex: {
-            ExprIndex* e = (ExprIndex*)expr;
-            dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(index %s %s)", ftprint_expr(allocator, e->array),
-                               ftprint_expr(allocator, e->index));
-        } break;
-        case AST_ExprField: {
-            ExprField* e = (ExprField*)expr;
-            dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(field %s %s)", ftprint_expr(allocator, e->object), e->field);
-        } break;
-        case AST_ExprInt: {
-            ExprInt* e = (ExprInt*)expr;
-            dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "%lu", e->value);
-        } break;
-        case AST_ExprFloat: {
-            ExprFloat* e = (ExprFloat*)expr;
-            dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "%lf", e->value);
-        } break;
-        case AST_ExprStr: {
-            ExprStr* e = (ExprStr*)expr;
-            dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "\"%s\"", e->value);
-        } break;
-        case AST_ExprIdent: {
-            ExprIdent* e = (ExprIdent*)expr;
-            dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "%s", e->name);
-        } break;
-        case AST_ExprCast: {
-            ExprCast* e = (ExprCast*)expr;
-            dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, e->type),
-                               ftprint_expr(allocator, e->expr));
-        } break;
-        case AST_ExprSizeof: {
-            ExprSizeof* e = (ExprSizeof*)expr;
-            dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, e->type));
-        } break;
-        case AST_ExprTypeof: {
-            ExprTypeof* e = (ExprTypeof*)expr;
-            dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(typeof %s)", ftprint_expr(allocator, e->expr));
-        } break;
-        case AST_ExprCompoundLit: {
-            ExprCompoundLit* e = (ExprCompoundLit*)expr;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(compound ");
-
-            if (e->type) {
-                ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, e->type));
+            break;
+            case AST_ExprIndex:
+            {
+                ExprIndex* e = (ExprIndex*)expr;
+                dstr = array_create(allocator, char, 8);
+                ftprint_char_array(&dstr, false, "(index %s %s)", ftprint_expr(allocator, e->array),
+                                   ftprint_expr(allocator, e->index));
             }
+            break;
+            case AST_ExprField:
+            {
+                ExprField* e = (ExprField*)expr;
+                dstr = array_create(allocator, char, 8);
+                ftprint_char_array(&dstr, false, "(field %s %s)", ftprint_expr(allocator, e->object), e->field);
+            }
+            break;
+            case AST_ExprInt:
+            {
+                ExprInt* e = (ExprInt*)expr;
+                dstr = array_create(allocator, char, 8);
+                ftprint_char_array(&dstr, false, "%lu", e->value);
+            }
+            break;
+            case AST_ExprFloat:
+            {
+                ExprFloat* e = (ExprFloat*)expr;
+                dstr = array_create(allocator, char, 8);
+                ftprint_char_array(&dstr, false, "%lf", e->value);
+            }
+            break;
+            case AST_ExprStr:
+            {
+                ExprStr* e = (ExprStr*)expr;
+                dstr = array_create(allocator, char, 16);
+                ftprint_char_array(&dstr, false, "\"%s\"", e->value);
+            }
+            break;
+            case AST_ExprIdent:
+            {
+                ExprIdent* e = (ExprIdent*)expr;
+                dstr = array_create(allocator, char, 16);
+                ftprint_char_array(&dstr, false, "%s", e->name);
+            }
+            break;
+            case AST_ExprCast:
+            {
+                ExprCast* e = (ExprCast*)expr;
+                dstr = array_create(allocator, char, 16);
+                ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, e->type),
+                                   ftprint_expr(allocator, e->expr));
+            }
+            break;
+            case AST_ExprSizeof:
+            {
+                ExprSizeof* e = (ExprSizeof*)expr;
+                dstr = array_create(allocator, char, 16);
+                ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, e->type));
+            }
+            break;
+            case AST_ExprTypeof:
+            {
+                ExprTypeof* e = (ExprTypeof*)expr;
+                dstr = array_create(allocator, char, 16);
+                ftprint_char_array(&dstr, false, "(typeof %s)", ftprint_expr(allocator, e->expr));
+            }
+            break;
+            case AST_ExprCompoundLit:
+            {
+                ExprCompoundLit* e = (ExprCompoundLit*)expr;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(compound ");
 
-            ftprint_char_array(&dstr, false, "{");
-            if (e->num_initzers) {
-                DLList* head = &e->initzers;
+                if (e->type)
+                {
+                    ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, e->type));
+                }
 
-                for (DLList* it = head->next; it != head; it = it->next) {
-                    MemberInitializer* initzer = dllist_entry(it, MemberInitializer, list);
+                ftprint_char_array(&dstr, false, "{");
+                if (e->num_initzers)
+                {
+                    DLList* head = &e->initzers;
 
-                    if (initzer->designator.kind == DESIGNATOR_NAME) {
-                        ftprint_char_array(&dstr, false, "%s = ", initzer->designator.name);
-                    } else if (initzer->designator.kind == DESIGNATOR_INDEX) {
-                        ftprint_char_array(&dstr, false, "[%s] = ", ftprint_expr(allocator, initzer->designator.index));
-                    }
+                    for (DLList* it = head->next; it != head; it = it->next)
+                    {
+                        MemberInitializer* initzer = dllist_entry(it, MemberInitializer, list);
 
-                    ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, initzer->init));
+                        if (initzer->designator.kind == DESIGNATOR_NAME)
+                        {
+                            ftprint_char_array(&dstr, false, "%s = ", initzer->designator.name);
+                        }
+                        else if (initzer->designator.kind == DESIGNATOR_INDEX)
+                        {
+                            ftprint_char_array(&dstr, false,
+                                               "[%s] = ", ftprint_expr(allocator, initzer->designator.index));
+                        }
 
-                    if (it->next != head) {
-                        ftprint_char_array(&dstr, false, " ");
+                        ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, initzer->init));
+
+                        if (it->next != head)
+                        {
+                            ftprint_char_array(&dstr, false, " ");
+                        }
                     }
                 }
-            }
 
-            ftprint_char_array(&dstr, false, "})");
-        } break;
-        default: {
-            ftprint_err("Unknown expr kind: %d\n", expr->kind);
-            assert(0);
-        } break;
+                ftprint_char_array(&dstr, false, "})");
+            }
+            break;
+            default:
+            {
+                ftprint_err("Unknown expr kind: %d\n", expr->kind);
+                assert(0);
+            }
+            break;
         }
-    } else {
+    }
+    else
+    {
         dstr = array_create(allocator, char, 1);
     }
 
@@ -773,20 +854,25 @@ static char* ftprint_stmt_list(Allocator* allocator, size_t num_stmts, DLList* s
 {
     char* dstr = NULL;
 
-    if (num_stmts) {
+    if (num_stmts)
+    {
         dstr = array_create(allocator, char, 32);
         DLList* head = stmts;
 
-        for (DLList* it = head->next; it != head; it = it->next) {
+        for (DLList* it = head->next; it != head; it = it->next)
+        {
             Stmt* s = dllist_entry(it, Stmt, list);
 
             ftprint_char_array(&dstr, false, "%s", ftprint_stmt(allocator, s));
 
-            if (it->next != head) {
+            if (it->next != head)
+            {
                 ftprint_char_array(&dstr, false, " ");
             }
         }
-    } else {
+    }
+    else
+    {
         dstr = array_create(allocator, char, 1);
     }
 
@@ -799,200 +885,264 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 {
     char* dstr = NULL;
 
-    if (stmt) {
-        switch (stmt->kind) {
-        case AST_STMT_NONE: {
-            assert(0);
-        } break;
-        case AST_StmtNoOp: {
-            dstr = array_create(allocator, char, 6);
-            ftprint_char_array(&dstr, false, "no-op");
-        } break;
-        case AST_StmtBlock: {
-            StmtBlock* s = (StmtBlock*)stmt;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(stmt-block");
+    if (stmt)
+    {
+        switch (stmt->kind)
+        {
+            case AST_STMT_NONE:
+            {
+                assert(0);
+            }
+            break;
+            case AST_StmtNoOp:
+            {
+                dstr = array_create(allocator, char, 6);
+                ftprint_char_array(&dstr, false, "no-op");
+            }
+            break;
+            case AST_StmtBlock:
+            {
+                StmtBlock* s = (StmtBlock*)stmt;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(stmt-block");
 
-            if (s->num_stmts) {
-                ftprint_char_array(&dstr, false, " %s)", ftprint_stmt_list(allocator, s->num_stmts, &s->stmts));
-            } else {
+                if (s->num_stmts)
+                {
+                    ftprint_char_array(&dstr, false, " %s)", ftprint_stmt_list(allocator, s->num_stmts, &s->stmts));
+                }
+                else
+                {
+                    ftprint_char_array(&dstr, false, ")");
+                }
+            }
+            break;
+            case AST_StmtDecl:
+            {
+                StmtDecl* s = (StmtDecl*)stmt;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, s->decl));
+            }
+            break;
+            case AST_StmtExpr:
+            {
+                StmtExpr* s = (StmtExpr*)stmt;
+                dstr = array_create(allocator, char, 16);
+                ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, s->expr));
+            }
+            break;
+            case AST_StmtExprAssign:
+            {
+                StmtExprAssign* s = (StmtExprAssign*)stmt;
+                dstr = array_create(allocator, char, 32);
+                const char* op = token_kind_names[s->op_assign];
+
+                ftprint_char_array(&dstr, false, "(%s %s %s)", op, ftprint_expr(allocator, s->left),
+                                   ftprint_expr(allocator, s->right));
+            }
+            break;
+            case AST_StmtWhile:
+            {
+                StmtWhile* s = (StmtWhile*)stmt;
+                dstr = array_create(allocator, char, 32);
+
+                ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, s->cond),
+                                   ftprint_stmt(allocator, s->body));
+            }
+            break;
+            case AST_StmtDoWhile:
+            {
+                StmtDoWhile* s = (StmtDoWhile*)stmt;
+                dstr = array_create(allocator, char, 32);
+
+                ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, s->cond),
+                                   ftprint_stmt(allocator, s->body));
+            }
+            break;
+            case AST_StmtFor:
+            {
+                StmtFor* s = (StmtFor*)stmt;
+                dstr = array_create(allocator, char, 32);
+
+                ftprint_char_array(&dstr, false, "(for ");
+
+                if (s->init)
+                {
+                    ftprint_char_array(&dstr, false, "%s; ", ftprint_stmt(allocator, s->init));
+                }
+                else
+                {
+                    ftprint_char_array(&dstr, false, "; ");
+                }
+
+                if (s->cond)
+                {
+                    ftprint_char_array(&dstr, false, "%s; ", ftprint_expr(allocator, s->cond));
+                }
+                else
+                {
+                    ftprint_char_array(&dstr, false, "; ");
+                }
+
+                if (s->next)
+                {
+                    ftprint_char_array(&dstr, false, "%s ", ftprint_stmt(allocator, s->next));
+                }
+                else
+                {
+                    ftprint_char_array(&dstr, false, " ");
+                }
+
+                ftprint_char_array(&dstr, false, "%s)", ftprint_stmt(allocator, s->body));
+            }
+            break;
+            case AST_StmtIf:
+            {
+                StmtIf* s = (StmtIf*)stmt;
+                dstr = array_create(allocator, char, 64);
+
+                ftprint_char_array(&dstr, false, "(if %s %s", ftprint_expr(allocator, s->if_blk.cond),
+                                   ftprint_stmt(allocator, s->if_blk.body));
+
+                if (s->num_elif_blks)
+                {
+                    ftprint_char_array(&dstr, false, " ");
+
+                    DLList* head = &s->elif_blks;
+
+                    for (DLList* it = head->next; it != head; it = it->next)
+                    {
+                        ElifBlock* elif = dllist_entry(it, ElifBlock, list);
+
+                        ftprint_char_array(&dstr, false, "(elif %s %s)", ftprint_expr(allocator, elif->block.cond),
+                                           ftprint_stmt(allocator, elif->block.body));
+
+                        if (it->next != head)
+                        {
+                            ftprint_char_array(&dstr, false, " ");
+                        }
+                    }
+                }
+
+                if (s->else_blk.body)
+                {
+                    ftprint_char_array(&dstr, false, " (else %s)", ftprint_stmt(allocator, s->else_blk.body));
+                }
+
                 ftprint_char_array(&dstr, false, ")");
             }
-        } break;
-        case AST_StmtDecl: {
-            StmtDecl* s = (StmtDecl*)stmt;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, s->decl));
-        } break;
-        case AST_StmtExpr: {
-            StmtExpr* s = (StmtExpr*)stmt;
-            dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, s->expr));
-        } break;
-        case AST_StmtExprAssign: {
-            StmtExprAssign* s = (StmtExprAssign*)stmt;
-            dstr = array_create(allocator, char, 32);
-            const char* op = token_kind_names[s->op_assign];
+            break;
+            case AST_StmtSwitch:
+            {
+                StmtSwitch* s = (StmtSwitch*)stmt;
+                dstr = array_create(allocator, char, 64);
 
-            ftprint_char_array(&dstr, false, "(%s %s %s)", op, ftprint_expr(allocator, s->left),
-                               ftprint_expr(allocator, s->right));
-        } break;
-        case AST_StmtWhile: {
-            StmtWhile* s = (StmtWhile*)stmt;
-            dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(switch %s ", ftprint_expr(allocator, s->expr));
 
-            ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, s->cond),
-                               ftprint_stmt(allocator, s->body));
-        } break;
-        case AST_StmtDoWhile: {
-            StmtDoWhile* s = (StmtDoWhile*)stmt;
-            dstr = array_create(allocator, char, 32);
+                DLList* head = &s->cases;
 
-            ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, s->cond),
-                               ftprint_stmt(allocator, s->body));
-        } break;
-        case AST_StmtFor: {
-            StmtFor* s = (StmtFor*)stmt;
-            dstr = array_create(allocator, char, 32);
+                for (DLList* it = head->next; it != head; it = it->next)
+                {
+                    SwitchCase* swcase = dllist_entry(it, SwitchCase, list);
 
-            ftprint_char_array(&dstr, false, "(for ");
+                    ftprint_char_array(&dstr, false, "(case");
 
-            if (s->init) {
-                ftprint_char_array(&dstr, false, "%s; ", ftprint_stmt(allocator, s->init));
-            } else {
-                ftprint_char_array(&dstr, false, "; ");
-            }
+                    if (swcase->start)
+                    {
+                        ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, swcase->start));
 
-            if (s->cond) {
-                ftprint_char_array(&dstr, false, "%s; ", ftprint_expr(allocator, s->cond));
-            } else {
-                ftprint_char_array(&dstr, false, "; ");
-            }
+                        if (swcase->end)
+                        {
+                            ftprint_char_array(&dstr, false, "..%s", ftprint_expr(allocator, swcase->end));
+                        }
+                    }
 
-            if (s->next) {
-                ftprint_char_array(&dstr, false, "%s ", ftprint_stmt(allocator, s->next));
-            } else {
-                ftprint_char_array(&dstr, false, " ");
-            }
+                    ftprint_char_array(&dstr, false, " (stmt-list %s))",
+                                       ftprint_stmt_list(allocator, swcase->num_stmts, &swcase->stmts));
 
-            ftprint_char_array(&dstr, false, "%s)", ftprint_stmt(allocator, s->body));
-        } break;
-        case AST_StmtIf: {
-            StmtIf* s = (StmtIf*)stmt;
-            dstr = array_create(allocator, char, 64);
-
-            ftprint_char_array(&dstr, false, "(if %s %s", ftprint_expr(allocator, s->if_blk.cond),
-                               ftprint_stmt(allocator, s->if_blk.body));
-
-            if (s->num_elif_blks) {
-                ftprint_char_array(&dstr, false, " ");
-
-                DLList* head = &s->elif_blks;
-
-                for (DLList* it = head->next; it != head; it = it->next) {
-                    ElifBlock* elif = dllist_entry(it, ElifBlock, list);
-
-                    ftprint_char_array(&dstr, false, "(elif %s %s)", ftprint_expr(allocator, elif->block.cond),
-                                       ftprint_stmt(allocator, elif->block.body));
-
-                    if (it->next != head) {
+                    if (it->next != head)
+                    {
                         ftprint_char_array(&dstr, false, " ");
                     }
                 }
-            }
 
-            if (s->else_blk.body) {
-                ftprint_char_array(&dstr, false, " (else %s)", ftprint_stmt(allocator, s->else_blk.body));
-            }
-
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_StmtSwitch: {
-            StmtSwitch* s = (StmtSwitch*)stmt;
-            dstr = array_create(allocator, char, 64);
-
-            ftprint_char_array(&dstr, false, "(switch %s ", ftprint_expr(allocator, s->expr));
-
-            DLList* head = &s->cases;
-
-            for (DLList* it = head->next; it != head; it = it->next) {
-                SwitchCase* swcase = dllist_entry(it, SwitchCase, list);
-
-                ftprint_char_array(&dstr, false, "(case");
-
-                if (swcase->start) {
-                    ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, swcase->start));
-
-                    if (swcase->end) {
-                        ftprint_char_array(&dstr, false, "..%s", ftprint_expr(allocator, swcase->end));
-                    }
-                }
-
-                ftprint_char_array(&dstr, false, " (stmt-list %s))",
-                                   ftprint_stmt_list(allocator, swcase->num_stmts, &swcase->stmts));
-
-                if (it->next != head) {
-                    ftprint_char_array(&dstr, false, " ");
-                }
-            }
-
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_StmtReturn: {
-            StmtReturn* s = (StmtReturn*)stmt;
-            dstr = array_create(allocator, char, 16);
-
-            ftprint_char_array(&dstr, false, "(return");
-
-            if (s->expr) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, s->expr));
-            }
-
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_StmtBreak: {
-            StmtBreak* s = (StmtBreak*)stmt;
-            dstr = array_create(allocator, char, 16);
-
-            ftprint_char_array(&dstr, false, "(break");
-
-            if (s->label) {
-                ftprint_char_array(&dstr, false, " %s)", s->label);
-            } else {
                 ftprint_char_array(&dstr, false, ")");
             }
-        } break;
-        case AST_StmtContinue: {
-            StmtContinue* s = (StmtContinue*)stmt;
-            dstr = array_create(allocator, char, 16);
+            break;
+            case AST_StmtReturn:
+            {
+                StmtReturn* s = (StmtReturn*)stmt;
+                dstr = array_create(allocator, char, 16);
 
-            ftprint_char_array(&dstr, false, "(continue");
+                ftprint_char_array(&dstr, false, "(return");
 
-            if (s->label) {
-                ftprint_char_array(&dstr, false, " %s)", s->label);
-            } else {
+                if (s->expr)
+                {
+                    ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, s->expr));
+                }
+
                 ftprint_char_array(&dstr, false, ")");
             }
-        } break;
-        case AST_StmtGoto: {
-            StmtGoto* s = (StmtGoto*)stmt;
-            dstr = array_create(allocator, char, 16);
+            break;
+            case AST_StmtBreak:
+            {
+                StmtBreak* s = (StmtBreak*)stmt;
+                dstr = array_create(allocator, char, 16);
 
-            ftprint_char_array(&dstr, false, "(goto %s)", s->label);
-        } break;
-        case AST_StmtLabel: {
-            StmtLabel* s = (StmtLabel*)stmt;
-            dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(break");
 
-            ftprint_char_array(&dstr, false, "(label %s %s)", s->label, ftprint_stmt(allocator, s->target));
-        } break;
-        default: {
-            ftprint_err("Unknown stmt kind: %d\n", stmt->kind);
-            assert(0);
-        } break;
+                if (s->label)
+                {
+                    ftprint_char_array(&dstr, false, " %s)", s->label);
+                }
+                else
+                {
+                    ftprint_char_array(&dstr, false, ")");
+                }
+            }
+            break;
+            case AST_StmtContinue:
+            {
+                StmtContinue* s = (StmtContinue*)stmt;
+                dstr = array_create(allocator, char, 16);
+
+                ftprint_char_array(&dstr, false, "(continue");
+
+                if (s->label)
+                {
+                    ftprint_char_array(&dstr, false, " %s)", s->label);
+                }
+                else
+                {
+                    ftprint_char_array(&dstr, false, ")");
+                }
+            }
+            break;
+            case AST_StmtGoto:
+            {
+                StmtGoto* s = (StmtGoto*)stmt;
+                dstr = array_create(allocator, char, 16);
+
+                ftprint_char_array(&dstr, false, "(goto %s)", s->label);
+            }
+            break;
+            case AST_StmtLabel:
+            {
+                StmtLabel* s = (StmtLabel*)stmt;
+                dstr = array_create(allocator, char, 32);
+
+                ftprint_char_array(&dstr, false, "(label %s %s)", s->label, ftprint_stmt(allocator, s->target));
+            }
+            break;
+            default:
+            {
+                ftprint_err("Unknown stmt kind: %d\n", stmt->kind);
+                assert(0);
+            }
+            break;
         }
-
-    } else {
+    }
+    else
+    {
         dstr = array_create(allocator, char, 1);
     }
 
@@ -1005,125 +1155,164 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 {
     char* dstr = NULL;
 
-    if (decl) {
-        switch (decl->kind) {
-        case AST_DECL_NONE: {
-            assert(0);
-        } break;
-        case AST_DeclVar: {
-            DeclVar* d = (DeclVar*)decl;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(var %s", d->super.name);
-
-            if (d->type) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
+    if (decl)
+    {
+        switch (decl->kind)
+        {
+            case AST_DECL_NONE:
+            {
+                assert(0);
             }
+            break;
+            case AST_DeclVar:
+            {
+                DeclVar* d = (DeclVar*)decl;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(var %s", d->super.name);
 
-            if (d->init) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, d->init));
+                if (d->type)
+                {
+                    ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
+                }
+
+                if (d->init)
+                {
+                    ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, d->init));
+                }
+
+                ftprint_char_array(&dstr, false, ")");
             }
+            break;
+            case AST_DeclConst:
+            {
+                DeclConst* d = (DeclConst*)decl;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(const %s", d->super.name);
 
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_DeclConst: {
-            DeclConst* d = (DeclConst*)decl;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(const %s", d->super.name);
+                if (d->type)
+                {
+                    ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
+                }
 
-            if (d->type) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
+                if (d->init)
+                {
+                    ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, d->init));
+                }
+
+                ftprint_char_array(&dstr, false, ")");
             }
-
-            if (d->init) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, d->init));
+            break;
+            case AST_DeclTypedef:
+            {
+                DeclTypedef* d = (DeclTypedef*)decl;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(typedef %s %s)", d->super.name,
+                                   ftprint_typespec(allocator, d->type));
             }
+            break;
+            case AST_DeclEnum:
+            {
+                DeclEnum* d = (DeclEnum*)decl;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(enum %s", d->super.name);
 
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_DeclTypedef: {
-            DeclTypedef* d = (DeclTypedef*)decl;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(typedef %s %s)", d->super.name, ftprint_typespec(allocator, d->type));
-        } break;
-        case AST_DeclEnum: {
-            DeclEnum* d = (DeclEnum*)decl;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(enum %s", d->super.name);
+                if (d->type)
+                {
+                    ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
+                }
 
-            if (d->type) {
-                ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
-            }
+                if (d->num_items)
+                {
+                    ftprint_char_array(&dstr, false, " ");
 
-            if (d->num_items) {
-                ftprint_char_array(&dstr, false, " ");
+                    DLList* head = &d->items;
 
-                DLList* head = &d->items;
+                    for (DLList* it = head->next; it != head; it = it->next)
+                    {
+                        EnumItem* item = dllist_entry(it, EnumItem, list);
 
-                for (DLList* it = head->next; it != head; it = it->next) {
-                    EnumItem* item = dllist_entry(it, EnumItem, list);
+                        ftprint_char_array(&dstr, false, "%s", item->name);
+                        if (item->value)
+                        {
+                            ftprint_char_array(&dstr, false, "=%s", ftprint_expr(allocator, item->value));
+                        }
 
-                    ftprint_char_array(&dstr, false, "%s", item->name);
-                    if (item->value) {
-                        ftprint_char_array(&dstr, false, "=%s", ftprint_expr(allocator, item->value));
-                    }
-
-                    if (it->next != head) {
-                        ftprint_char_array(&dstr, false, " ");
+                        if (it->next != head)
+                        {
+                            ftprint_char_array(&dstr, false, " ");
+                        }
                     }
                 }
+                ftprint_char_array(&dstr, false, ")");
             }
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_DeclStruct:
-        case AST_DeclUnion: {
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == AST_DeclStruct ? "struct" : "union"), decl->name);
+            break;
+            case AST_DeclStruct:
+            case AST_DeclUnion:
+            {
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == AST_DeclStruct ? "struct" : "union"),
+                                   decl->name);
 
-            DeclAggregate* d = (DeclAggregate*)decl;
+                DeclAggregate* d = (DeclAggregate*)decl;
 
-            if (d->num_fields) {
-                ftprint_char_array(&dstr, false, " ");
-                DLList* head = &d->fields;
+                if (d->num_fields)
+                {
+                    ftprint_char_array(&dstr, false, " ");
+                    DLList* head = &d->fields;
 
-                for (DLList* it = head->next; it != head; it = it->next) {
-                    AggregateField* field = dllist_entry(it, AggregateField, list);
+                    for (DLList* it = head->next; it != head; it = it->next)
+                    {
+                        AggregateField* field = dllist_entry(it, AggregateField, list);
 
-                    ftprint_char_array(&dstr, false, "(%s %s)", field->name, ftprint_typespec(allocator, field->type));
+                        ftprint_char_array(&dstr, false, "(%s %s)", field->name,
+                                           ftprint_typespec(allocator, field->type));
 
-                    if (it->next != head) {
-                        ftprint_char_array(&dstr, false, " ");
+                        if (it->next != head)
+                        {
+                            ftprint_char_array(&dstr, false, " ");
+                        }
                     }
                 }
+                ftprint_char_array(&dstr, false, ")");
             }
-            ftprint_char_array(&dstr, false, ")");
-        } break;
-        case AST_DeclProc: {
-            DeclProc* proc = (DeclProc*)decl;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(proc %s (", decl->name);
+            break;
+            case AST_DeclProc:
+            {
+                DeclProc* proc = (DeclProc*)decl;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "(proc %s (", decl->name);
 
-            if (proc->num_params) {
-                DLList* head = &proc->params;
+                if (proc->num_params)
+                {
+                    DLList* head = &proc->params;
 
-                for (DLList* it = head->next; it != head; it = it->next) {
-                    ProcParam* param = dllist_entry(it, ProcParam, list);
+                    for (DLList* it = head->next; it != head; it = it->next)
+                    {
+                        ProcParam* param = dllist_entry(it, ProcParam, list);
 
-                    ftprint_char_array(&dstr, false, "(%s %s)", param->name, ftprint_typespec(allocator, param->type));
+                        ftprint_char_array(&dstr, false, "(%s %s)", param->name,
+                                           ftprint_typespec(allocator, param->type));
 
-                    if (it->next != head) {
-                        ftprint_char_array(&dstr, false, " ");
+                        if (it->next != head)
+                        {
+                            ftprint_char_array(&dstr, false, " ");
+                        }
                     }
                 }
+                ftprint_char_array(&dstr, false, ") =>%s (stmt-block %s))", ftprint_typespec(allocator, proc->ret),
+                                   ftprint_stmt_list(allocator, proc->num_stmts, &proc->stmts));
             }
-            ftprint_char_array(&dstr, false, ") =>%s (stmt-block %s))", ftprint_typespec(allocator, proc->ret),
-                               ftprint_stmt_list(allocator, proc->num_stmts, &proc->stmts));
-        } break;
-        default: {
-            ftprint_err("Unknown decl kind: %d\n", decl->kind);
-            assert(0);
-        } break;
+            break;
+            default:
+            {
+                ftprint_err("Unknown decl kind: %d\n", decl->kind);
+                assert(0);
+            }
+            break;
         }
-    } else {
+    }
+    else
+    {
         dstr = array_create(allocator, char, 1);
     }
 

@@ -26,10 +26,11 @@ uint64_t hash_bytes(const void* buf, size_t len)
     const uint64_t FNV_PRIME = 0x00000100000001b3ULL;
     const uint64_t FNV_INIT = 0xcbf29ce484222325ULL;
 
-    const char* b = (const char*) buf;
+    const char* b = (const char*)buf;
     uint64_t hash = FNV_INIT;
 
-    for (size_t i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i)
+    {
         hash = hash ^ b[i];
         hash = hash * FNV_PRIME;
     }
@@ -39,18 +40,16 @@ uint64_t hash_bytes(const void* buf, size_t len)
 
 static bool hash_map_expand(HashMap* map, size_t cap)
 {
-    if (cap < HASH_MAP_MIN_CAP) {
+    if (cap < HASH_MAP_MIN_CAP)
         cap = HASH_MAP_MIN_CAP;
-    }
 
-    if (cap <= map->cap) {
+    if (cap <= map->cap)
         return true;
-    }
 
     HashMapEntry* entries = new_array(map->allocator, HashMapEntry, cap, true);
-    if (!entries) {
+
+    if (!entries)
         return false;
-    }
 
     HashMapEntry* old_entries = map->entries;
     size_t old_cap = map->cap;
@@ -60,12 +59,12 @@ static bool hash_map_expand(HashMap* map, size_t cap)
     map->len = 0;
     map->mask = cap - 1;
 
-    for (size_t i = 0; i < old_cap; ++i) {
+    for (size_t i = 0; i < old_cap; ++i)
+    {
         HashMapEntry* entry = old_entries + i;
 
-        if (entry->key > 0) {
+        if (entry->key > 0)
             hash_map_put(map, entry->key, entry->value);
-        }
     }
 
     mem_free(map->allocator, old_entries);
@@ -91,19 +90,21 @@ void hash_map_destroy(HashMap* map)
 
 uint64_t* hash_map_put(HashMap* map, uint64_t key, uint64_t value)
 {
-    if (key == HASH_MAP_NULL_KEY) {
+    if (key == HASH_MAP_NULL_KEY)
+    {
         HashMapEntry* null_key = &map->null_key;
 
         null_key->key = 1;
         null_key->value = value;
+
         return &null_key->value;
     }
 
     // Expand at 60%
-    if (10 * (map->len + 1) >= 6 * map->cap) {
-        if (!hash_map_expand(map, map->cap * 2)) {
+    if (10 * (map->len + 1) >= 6 * map->cap)
+    {
+        if (!hash_map_expand(map, map->cap * 2))
             return NULL;
-        }
     }
 
     assert(map->len < map->cap);
@@ -111,17 +112,21 @@ uint64_t* hash_map_put(HashMap* map, uint64_t key, uint64_t value)
     HashMapEntry* entries = map->entries;
     uint64_t i = hash_uint64(key);
 
-    for (;;) {
+    for (;;)
+    {
         i &= map->mask;
 
         HashMapEntry* entry = entries + i;
 
-        if (entry->key == HASH_MAP_NULL_KEY) {
+        if (entry->key == HASH_MAP_NULL_KEY)
+        {
             entry->key = key;
             entry->value = value;
             map->len += 1;
             return &entry->value;
-        } else if (entry->key == key) {
+        }
+        else if (entry->key == key)
+        {
             entry->value = value;
             return &entry->value;
         }
@@ -134,7 +139,8 @@ uint64_t* hash_map_put(HashMap* map, uint64_t key, uint64_t value)
 
 uint64_t* hash_map_get(HashMap* map, uint64_t key)
 {
-    if (key == HASH_MAP_NULL_KEY) {
+    if (key == HASH_MAP_NULL_KEY)
+    {
         HashMapEntry* null_key = &map->null_key;
 
         return null_key->key ? &null_key->value : NULL;
@@ -144,20 +150,18 @@ uint64_t* hash_map_get(HashMap* map, uint64_t key)
     uint64_t h = hash_uint64(key);
     uint64_t i = h & map->mask;
 
-    if (entries[i].key == key) {
+    if (entries[i].key == key)
         return &entries[i].value;
-    }
 
-    if (entries[i].key == HASH_MAP_NULL_KEY) {
+    if (entries[i].key == HASH_MAP_NULL_KEY)
         return NULL;
-    }
 
-    do {
+    do
+    {
         i = (i + 1) & map->mask;
 
-        if (entries[i].key == key) {
+        if (entries[i].key == key)
             return &entries[i].value;
-        }
     } while (entries[i].key);
 
     return NULL;
@@ -179,15 +183,16 @@ const char* intern_str(Allocator* allocator, HashMap* strmap, const char* str, s
     // contention for hash map slots will not occur (open addressing).
     //
     // Walk the linked list in case of collision.
-    for (InternedStr* it = intern; it; it = it->next) {
-        if ((it->len == len) && (cstr_ncmp(it->str, str, len) == 0)) {
+    for (InternedStr* it = intern; it; it = it->next)
+    {
+        if ((it->len == len) && (cstr_ncmp(it->str, str, len) == 0))
             return it->str;
-        }
     }
 
     // If we got here, need to add this string to the intern table.
     InternedStr* new_intern = mem_allocate(allocator, offsetof(InternedStr, str) + len + 1, DEFAULT_ALIGN, false);
-    if (new_intern) {
+    if (new_intern)
+    {
         new_intern->next = intern; // Record collision. If a collision did _NOT_ occur, this will be null.
         new_intern->len = len;
 

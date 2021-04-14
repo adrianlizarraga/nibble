@@ -18,10 +18,12 @@
 
 static void print_errors(ByteStream* errors)
 {
-    if (errors) {
+    if (errors)
+    {
         ByteStreamChunk* chunk = errors->first;
 
-        while (chunk) {
+        while (chunk)
+        {
             ftprint_out("[ERROR]: %s\n", chunk->buf);
             chunk = chunk->next;
         }
@@ -29,40 +31,47 @@ static void print_errors(ByteStream* errors)
 }
 
 #define TKN_TEST_POS(tk, tp, a, b)                                                                                     \
-    do {                                                                                                               \
+    do                                                                                                                 \
+    {                                                                                                                  \
         assert((tk.kind == tp));                                                                                       \
         assert((tk.range.start == a));                                                                                 \
         assert((tk.range.end == b));                                                                                   \
     } while (0)
 #define TKN_TEST_INT(tk, b, v)                                                                                         \
-    do {                                                                                                               \
+    do                                                                                                                 \
+    {                                                                                                                  \
         assert((tk.kind == TKN_INT));                                                                                  \
         assert((tk.as_int.rep == b));                                                                                  \
         assert((tk.as_int.value == v));                                                                                \
     } while (0)
 #define TKN_TEST_FLOAT(tk, v)                                                                                          \
-    do {                                                                                                               \
+    do                                                                                                                 \
+    {                                                                                                                  \
         assert((tk.kind == TKN_FLOAT));                                                                                \
         assert((tk.as_float.value == v));                                                                              \
     } while (0)
 #define TKN_TEST_CHAR(tk, v)                                                                                           \
-    do {                                                                                                               \
+    do                                                                                                                 \
+    {                                                                                                                  \
         assert((tk.kind == TKN_INT));                                                                                  \
         assert((tk.as_int.rep == TKN_INT_CHAR));                                                                       \
         assert((tk.as_int.value == v));                                                                                \
     } while (0)
 #define TKN_TEST_STR(tk, v)                                                                                            \
-    do {                                                                                                               \
+    do                                                                                                                 \
+    {                                                                                                                  \
         assert((tk.kind == TKN_STR));                                                                                  \
         assert(strcmp(tk.as_str.value, v) == 0);                                                                       \
     } while (0)
 #define TKN_TEST_IDEN(tk, v)                                                                                           \
-    do {                                                                                                               \
+    do                                                                                                                 \
+    {                                                                                                                  \
         assert((tk.kind == TKN_IDENT));                                                                                \
         assert(strcmp(tk.as_ident.value, v) == 0);                                                                     \
     } while (0)
 #define TKN_TEST_KW(tk, k)                                                                                             \
-    do {                                                                                                               \
+    do                                                                                                                 \
+    {                                                                                                                  \
         assert((tk.kind == TKN_KW));                                                                                   \
         assert(tk.as_kw.kw == (k));                                                                                    \
     } while (0)
@@ -570,7 +579,8 @@ static void test_lexer(void)
         ByteStream errors = byte_stream_create(&allocator);
         char* str = array_create(&allocator, char, 256);
 
-        for (int i = 0; i < KW_COUNT; i += 1) {
+        for (int i = 0; i < KW_COUNT; i += 1)
+        {
             ftprint_char_array(&str, false, "%s ", keyword_names[i].str);
         }
 
@@ -579,7 +589,8 @@ static void test_lexer(void)
         Lexer lexer = lexer_create(str, 0, &errors);
         Token token = {0};
 
-        for (int i = 0; i < KW_COUNT; i += 1) {
+        for (int i = 0; i < KW_COUNT; i += 1)
+        {
             token = scan_token(&lexer);
             TKN_TEST_KW(token, (Keyword)i);
         }
@@ -644,8 +655,9 @@ void test_parser(void)
     // Test base typespecs
     TEST_TYPESPEC("int32", "(:ident int32)");
     TEST_TYPESPEC("(int32)", "(:ident int32)");
-    TEST_TYPESPEC("proc(int32, b:float32) => float32","(:proc =>(:ident float32) (:ident int32) (b (:ident float32)))");
-    TEST_TYPESPEC("proc(int32, b:float32)","(:proc => (:ident int32) (b (:ident float32)))");
+    TEST_TYPESPEC("proc(int32, b:float32) => float32",
+                  "(:proc =>(:ident float32) (:ident int32) (b (:ident float32)))");
+    TEST_TYPESPEC("proc(int32, b:float32)", "(:proc => (:ident int32) (b (:ident float32)))");
     TEST_TYPESPEC("struct {a:int32; b:float32;}", "(:struct (a (:ident int32)) (b (:ident float32)))");
     TEST_TYPESPEC("union {a:int32; b:float32;}", "(:union (a (:ident int32)) (b (:ident float32)))");
 
@@ -719,7 +731,8 @@ int main(void)
 {
     ftprint_out("Nibble tests!\n");
 
-    if (!nibble_init()) {
+    if (!nibble_init())
+    {
         ftprint_err("Failed to initialize Nibble\n");
         exit(1);
     }

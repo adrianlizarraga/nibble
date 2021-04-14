@@ -2,11 +2,11 @@
 #include <stdint.h>
 
 #include "allocator.c"
-#include "cstring.c"
-#include "print.c"
 #include "array.c"
+#include "cstring.c"
 #include "hash_map.c"
 #include "llist.h"
+#include "print.c"
 
 void test_allocator(void)
 {
@@ -157,7 +157,8 @@ void test_array(void)
         assert(array_len(a) == 0);
         assert(array_cap(a) == 128);
 
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 20; i++)
+        {
             array_push(a, i);
             assert(array_back(a) == i);
             assert(array_len(a) == (size_t)i + 1);
@@ -170,7 +171,8 @@ void test_array(void)
         int* a = array_create(&allocator, int, 16);
         int* old_a = a;
 
-        for (int i = 0; i < 256; i++) {
+        for (int i = 0; i < 256; i++)
+        {
             array_push(a, i);
             assert(array_back(a) == i);
             assert(array_len(a) == (size_t)i + 1);
@@ -197,7 +199,8 @@ void test_array(void)
     // Test insertion
     {
         int* a = array_create(&allocator, int, 8);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 4; i++)
+        {
             array_push(a, i);
         }
         assert(array_len(a) == 4);
@@ -227,7 +230,8 @@ void test_array(void)
     // Test array remove.
     {
         int* a = array_create(&allocator, int, 10);
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 8; i++)
+        {
             array_push(a, i);
         }
         assert(array_len(a) == 8);
@@ -236,10 +240,14 @@ void test_array(void)
         array_remove(a, rindex);
         assert(array_len(a) == 7);
 
-        for (int i = 0; i < 7; i++) {
-            if (i < rindex) {
+        for (int i = 0; i < 7; i++)
+        {
+            if (i < rindex)
+            {
                 assert(a[i] == i);
-            } else {
+            }
+            else
+            {
                 assert(a[i] == i + 1);
             }
         }
@@ -248,7 +256,8 @@ void test_array(void)
     // Test array remove (swap last).
     {
         int* a = array_create(&allocator, int, 10);
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 8; i++)
+        {
             array_push(a, i);
         }
         assert(array_len(a) == 8);
@@ -270,7 +279,8 @@ void test_array(void)
         array_push_elems(a, b, 3);
         assert(array_len(a) == 4);
 
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < 3; ++i)
+        {
             assert(a[i + 1] == b[i]);
         }
 
@@ -284,14 +294,16 @@ void test_hash_map(void)
 {
     HashMap map = hash_map(21, NULL);
 
-    for (uint64_t i = 1; i <= (1 << 20); ++i) {
+    for (uint64_t i = 1; i <= (1 << 20); ++i)
+    {
         uint64_t* r = hash_map_put(&map, i, i);
 
         assert(r);
         assert(*r == i);
     }
 
-    for (uint64_t i = 1; i <= (1 << 20); ++i) {
+    for (uint64_t i = 1; i <= (1 << 20); ++i)
+    {
         uint64_t* r = hash_map_get(&map, i);
 
         assert(r);
@@ -344,7 +356,8 @@ void test_dllist(void)
         dllist_add(&head, &node3.node);
 
         int i = 0;
-        for (DLList* n = head.next; n != &head; n = n->next) {
+        for (DLList* n = head.next; n != &head; n = n->next)
+        {
             TestNode* entry = dllist_entry(n, TestNode, node);
             assert(entry->num == 3 - i);
 
@@ -365,7 +378,8 @@ void test_dllist(void)
         dllist_add(head.prev, &node3.node);
 
         int i = 0;
-        for (DLList* n = head.next; n != &head; n = n->next) {
+        for (DLList* n = head.next; n != &head; n = n->next)
+        {
             TestNode* entry = dllist_entry(n, TestNode, node);
             assert(entry->num == i + 1);
 
