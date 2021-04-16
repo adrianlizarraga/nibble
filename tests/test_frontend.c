@@ -712,12 +712,37 @@ void test_parser(void)
     TEST_EXPR("-x:>int", "(- (cast (:ident int) x))");
     TEST_EXPR("(-x):>int", "(cast (:ident int) (- x))");
 
-    TEST_EXPR("1 + x", "(+ 1 x)");
-    TEST_EXPR("-x:>int*2", "(* (- (cast (:ident int) x)) 2)");
-    TEST_EXPR("(-x):>int*2", "(* (cast (:ident int) (- x)) 2)");
-    TEST_EXPR("a ^ ^b", "(^ a (^ b))");
+    // Test unary + base expressions
+    TEST_EXPR("-+~!p.a", "(- (+ (~ (! (field p a)))))");
+    TEST_EXPR("*^p.a", "(* (^ (field p a)))");
+
+    // Test expressions with multiplicative and unary precedence
+    TEST_EXPR("a * *ptr / -b", "(/ (* a (* ptr)) (- b))");
+    TEST_EXPR("a % b & !c", "(& (% a b) (! c))");
+    TEST_EXPR("a << *p >> c", "(>> (<< a (* p)) c)");
+
+    // Test expressions with additive and multiplicative precedence
+    TEST_EXPR("a * b + c / d - e % f | g & h ^ x & y",
+              "(^ (| (- (+ (* a b) (/ c d)) (% e f)) (& g h)) (& x y))");
+
+    // Test expressions with comparative and additive precedence
+    TEST_EXPR("a + b == -c - d", "(== (+ a b) (- (- c) d))");
+    TEST_EXPR("a + b != -c - d", "(!= (+ a b) (- (- c) d))");
+    TEST_EXPR("a + b > -c - d", "(> (+ a b) (- (- c) d))");
+    TEST_EXPR("a + b >= -c - d", "(>= (+ a b) (- (- c) d))");
+    TEST_EXPR("a + b < -c - d", "(< (+ a b) (- (- c) d))");
+    TEST_EXPR("a + b <= -c - d", "(<= (+ a b) (- (- c) d))");
+
+    // Test expressions with logical "or", logical "and", and comparative precedence
+    TEST_EXPR("a == b && c > d", "(&& (== a b) (> c d))");
+    TEST_EXPR("a && b || c == d", "(|| (&& a b) (== c d))");
+
+    // Large ternary expression
     TEST_EXPR("x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2]",
               "(? (> x 3) (* (- 2) x) (- (call f 1 b=2) (/ (+ 3.140000 (field y val)) (index z 2))))");
+
+    // Other expressions to test for the hell of it
+    TEST_EXPR("a ^ ^b", "(^ a (^ b))");
     TEST_EXPR("\"abc\"[0]", "(index \"abc\" 0)");
     TEST_EXPR("(a :> (int)) + 2", "(+ (cast (:ident int) a) 2)");
     TEST_EXPR("(a:>^int)", "(cast (:ptr (:ident int)) a)");
