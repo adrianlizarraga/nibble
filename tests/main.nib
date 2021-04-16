@@ -4,33 +4,28 @@ struct T {
 }
 
 
-#const MAX_LEN : int32 = 20;
+const MAX_LEN : int32 = 20;
 
-g : int32 = 10;
+var g : int32 = 10;
 
-func add_ints(a : int32, b : int32) => int32 {
+proc add_ints(a : int32, b : int32) => int32 {
     return a + b;
 }
 
-func main(argc : int32, argv : [] ^char) => int32
+proc main(argc : int32, argv : [] ^char) => int32
 {
-    t : T;
+    var t : T;
     t.a = 10;
 
-    b : int32 = 2;
-    c : int32 = add_ints(t.a, b);
+    var b : int32 = 2;
+    var c : int32 = add_ints(t.a, b);
 
-    t2 := {10 : T};
-    t3 : T = {10};
-    t4 : T = {a = 10 : T};
+    var t2 := {10 : T};
+    var t3 : T = {10};
+    var t4 : T = {a = 10 : T};
 
-    d : float32 = 10:>float + 1.0;
+    var d : float32 = 10:>float + 1.0;
 
     return 0;
 }
 
-///////////////////////////////////
-// T : type : struct { a : int32; };
-// add : proc(int32, int32)=>int32 : proc(a:int32, b:int32) { return a + b; };
-//
-// MAX_LEN : int32 : 20;

@@ -767,3 +767,79 @@ int main(void)
 
     nibble_cleanup();
 }
+
+
+    // CompiledModule* module = compile_module("var a : int = 1 + 2;", 0);
+    // CompiledModule* module = compile_module("var a : int = sizeof(int32);", 0);
+    // CompiledModule* module = compile_module("var a : int = typeof(int);", 0);
+    // CompiledModule* module = compile_module("var a := 1 + 2;", 0);
+    // CompiledModule* module = compile_module("var a : int;", 0);
+    // CompiledModule* module = compile_module("var a : int = f(x=a);", 0);
+    // CompiledModule* module = compile_module("var a : Vector2 = {x = 10, y = 20 :Vector2};", 0);
+    // CompiledModule* module = compile_module("var a : int32= x > 3 ? -2*x : f(1,b=2) - (3.14 + y.val) / z[2];", 0);
+    // CompiledModule* module = compile_module("var a: proc([]int32, ^^int32)=>int32;", 0);
+    // CompiledModule* module = compile_module("var a: proc(x:[]int32, ^^int32)=>int32;", 0);
+    // CompiledModule* module = compile_module("var a: (^int32);", 0);
+    // CompiledModule* module = compile_module("var a: struct {a:int32;};", 0);
+    // CompiledModule* module = compile_module("var a: union {a:int32; b:float32;};", 0);
+    //
+    // CompiledModule* module = compile_module("var a :;", 0);
+    // CompiledModule* module = compile_module("var a;", 0);
+    //
+    // CompiledModule* module = compile_module("const a : int = 1 + 2;", 0);
+    // CompiledModule* module = compile_module("const a := 1 + 2;", 0);
+    //
+    // CompiledModule* module = compile_module("typedef i8 = int8;", 0);
+    //
+    // CompiledModule* module = compile_module("enum Kind {A}", 0);
+    // CompiledModule* module = compile_module("enum Kind {}", 0);
+    // CompiledModule* module = compile_module("enum Kind :int8 { A = 0, B, C }", 0);
+    // CompiledModule* module = compile_module("enum Kind :uint32 { A = 1 << 0, B = 1 << 1, C = 1 << 2, }", 0);
+    //
+    // CompiledModule* module = compile_module("struct Vector2 {x: float32; y:float32;}", 0);
+    // CompiledModule* module = compile_module("struct Vector2 {}", 0);
+    // CompiledModule* module = compile_module("union Vector2 {}", 0);
+    // CompiledModule* module = compile_module("struct Vector2 {u:union{a:int;b:int;};}", 0);
+    // CompiledModule* module = compile_module("struct Vector2 {s:struct {a:int;b:int;};}", 0);
+    // CompiledModule* module = compile_module("union Vector2 {s:struct {a:int;b:int;}; z:^int;}", 0);
+    // CompiledModule* module = compile_module("struct Vector2 {s:struct {};}", 0);
+    // CompiledModule* module = compile_module("union Vector2 {data:[2]float32; s: Vec2;}", 0);
+    //
+    // AST usage: 848 bytes, Nibble usage: 951 bytes
+    // AST usage: 840 bytes, Nibble usage: 951 bytes
+    // AST usage: 760 bytes, Nibble usage: 951 bytes
+    // AST usage: 600 bytes, Nibble usage: 951 bytes
+    // AST usage: 624 bytes, Nibble usage: 951 bytes (dont require {} as body for loops etc)
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;} else g=0;}",
+    // 0); CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a; f(g);}}",
+    // 0); CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(var i:=0;i<10;i+=1){f(i);}}",
+    // 0); CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {return 10;}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {return;}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i<10;i+=1){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {while(a > b){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {do{f(i);}while(a > b);}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {do f(i); while(a > b);}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;i+=1){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i != 0;){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){break;}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){continue;}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {label top: ; goto top;}", 0);
+    // CompiledModule* module =
+        //compile_module("proc add(a:int32, b:int32) =>void {switch(a){case 1 .. 2: a += 1; case: a = 0;}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(i=0;i<10;i+=1){f(i);}}", 0);
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(g(^i);i<10;i+=1){f(i);}}", 0);
+    //
+    // CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {;}", 0);
+
+    // CompiledModule* module = compile_module("{var a:int32 = 0;}", 0);
+    // CompiledModule* module = compile_module("{var a:int32 = 0; var b:float32 = 1.0;}", 0);
+    // CompiledModule* module = compile_module("{var a:int32 = 0; f(a);}", 0);
+    // CompiledModule* module = compile_module("{var a:int32 = 1 << 8; a *= 2;}", 0);
+    // CompiledModule* module = compile_module("{var a:int32 = 3; while(a > 0){var b:int32 = 2; f(a); a -= 1;}}", 0);
+    // CompiledModule* module = compile_module("{var a:int32 = 3; do{var b:int32 = 2; f(a); a -= 1;} while(a > 0);}",
+    // 0); CompiledModule* module = compile_module("{if(a) {a = 3;}}", 0); CompiledModule* module =
+    // compile_module("{if(a) {a = 3;} else{b = 4;}}", 0); CompiledModule* module = compile_module("{if(a) {a = 3;}
+    // elif(b == 2) {c = 10;} else{b = 4;}}", 0); CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2)
+    // {b = 10;} elif(c == 3) {c = 1;} else{b = 4;}}", 0);
