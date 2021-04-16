@@ -16,7 +16,7 @@ I really enjoy using C, but I've always wanted a few features typically found in
 I've just started. This is not even close to being done. I've written a basic lexer and parser, and am currently working on type checking/resolution. The first usable version of this compiler will feature an unoptimized x64 backend. Afterwards, I might consider adding an LLVM backend (who knows).
 
 ### Build/run
-`gcc -o nibble src/main.c`
-`./nibble`
+- build: `gcc -o nibble src/main.c`
+- run: `./nibble`
 
 At the moment this just prints a program's AST. To call this a compiler at this point would be wishful thinking.
