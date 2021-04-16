@@ -7,7 +7,7 @@ A programming language based on C. The goal is to create a language with much of
 - Multiple return values
 - Module import system
 
-The syntax is based on C and rust, but is very much subject to radical change.
+The syntax is based on C and rust, but is very much subject to change.
 
 ### Why not just use C++, D, Odin, or another language? 
 I really enjoy using C, but I've always wanted a few features typically found in higher-level languages. That said, I don't claim to have any innovative ideas. I'm doing this primarily for fun.
