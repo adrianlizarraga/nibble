@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "allocator.h"
+#include "stream.h"
+
 #define MAX_ERROR_LEN 256
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 #define ALIGN_UP(p, a) (((p) + (a) - 1) & ~((a) - 1))
@@ -49,6 +52,12 @@ typedef enum Keyword {
     KW_COUNT,
 } Keyword;
 
+typedef struct CompiledModule {
+    Allocator allocator;
+    Allocator ast_arena;
+    ByteStream errors;
+} CompiledModule;
+
 extern const char* keywords[KW_COUNT];
 
 const char* intern_str_lit(const char* str, size_t len);
@@ -56,4 +65,7 @@ const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
 
 bool nibble_init(void);
 void nibble_cleanup(void);
+
+CompiledModule* compile_module(const char* filename, ProgPos pos);
+void free_compiled_module(CompiledModule* module);
 #endif
