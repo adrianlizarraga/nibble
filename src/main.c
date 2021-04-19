@@ -17,6 +17,7 @@
 #include "lexer.c"
 #include "ast.c"
 #include "parser.c"
+#include "types.c"
 #include "nibble.c"
 
 void print_usage(FILE* fd, const char* program_name)
@@ -71,7 +72,11 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    if (!nibble_init())
+    // TODO: Retrieve from command-line or environment.
+    OS target_os = OS_LINUX;
+    Arch target_arch = ARCH_X64;
+
+    if (!nibble_init(target_os, target_arch))
     {
         ftprint_err("ERROR: Failed to initialize compiler.\n");
         exit(1);

@@ -11,6 +11,7 @@
 #include "hash_map.c"
 #include "lexer.c"
 #include "llist.h"
+#include "types.c"
 #include "nibble.c"
 #include "parser.c"
 #include "print.c"
@@ -756,7 +757,11 @@ int main(void)
 {
     ftprint_out("Nibble tests!\n");
 
-    if (!nibble_init())
+    // TODO: Retrieve from command-line or environment.
+    OS target_os = OS_LINUX;
+    Arch target_arch = ARCH_X64;
+
+    if (!nibble_init(target_os, target_arch))
     {
         ftprint_err("Failed to initialize Nibble\n");
         exit(1);

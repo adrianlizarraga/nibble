@@ -1,12 +1,16 @@
 #include "nibble.h"
 #include "cstring.h"
 #include "hash_map.h"
+#include "types.h"
 #include "parser.h"
 
 typedef struct NibbleCtx {
     HashMap ident_map;
     HashMap str_lit_map;
     Allocator allocator;
+
+    OS target_os;
+    Arch target_arch;
 } NibbleCtx;
 
 typedef struct InternedIdent {
@@ -16,6 +20,19 @@ typedef struct InternedIdent {
     bool is_kw;
     char str[];
 } InternedIdent;
+
+static NibbleCtx nibble;
+
+const char* os_names[NUM_OS] = {
+    [OS_LINUX] = "Linux",
+    [OS_WIN32] = "Windows",
+    [OS_OSX] = "OS X",
+};
+
+const char* arch_names[NUM_ARCH] = {
+    [ARCH_X86] = "x86",
+    [ARCH_X64] = "x64",
+};
 
 const char* keywords[KW_COUNT];
 
@@ -45,10 +62,10 @@ static StringView keyword_names[KW_COUNT] = {
     [KW_UNDERSCORE] = string_view_lit("_"),
 };
 
-static NibbleCtx nibble;
-
-bool nibble_init(void)
+bool nibble_init(OS target_os, Arch target_arch)
 {
+    nibble.target_os = target_os;
+    nibble.target_arch = target_arch;
     nibble.allocator = allocator_create(4096);
     nibble.str_lit_map = hash_map(6, NULL);
     nibble.ident_map = hash_map(6, NULL);
@@ -93,6 +110,8 @@ bool nibble_init(void)
     }
     assert((size_t)(kws_mem_ptr - kws_mem) == kws_size);
     assert(nibble.ident_map.len == KW_COUNT);
+
+    init_builtin_types(target_os, target_arch);
 
     return true;
 }

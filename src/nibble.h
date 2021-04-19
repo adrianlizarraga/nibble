@@ -11,6 +11,22 @@
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 #define ALIGN_UP(p, a) (((p) + (a) - 1) & ~((a) - 1))
 
+typedef enum OS {
+    OS_LINUX,
+    OS_WIN32,
+    OS_OSX,
+    NUM_OS,
+} OS;
+
+typedef enum Arch {
+    ARCH_X64,
+    ARCH_X86,
+    NUM_ARCH,
+} Arch;
+
+extern const char* os_names[NUM_OS];
+extern const char* arch_names[NUM_ARCH];
+
 typedef uint32_t ProgPos;
 
 typedef struct ProgRange {
@@ -63,7 +79,7 @@ extern const char* keywords[KW_COUNT];
 const char* intern_str_lit(const char* str, size_t len);
 const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
 
-bool nibble_init(void);
+bool nibble_init(OS target_os, Arch target_arch);
 void nibble_cleanup(void);
 
 CompiledModule* compile_module(const char* filename, ProgPos pos);
