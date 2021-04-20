@@ -65,6 +65,23 @@ size_t cstr_len(const char* str)
     return s - str;
 }
 
+void cstr_tolower(char* str)
+{
+    if (str)
+    {
+        while (*str)
+        {
+            // NOTE: A table-based lookup approach would be faster (probably).
+            if (*str >= 'A' && *str <= 'Z')
+            {
+                *str += 'a' - 'A';
+            }
+
+            str += 1;
+        }
+    }
+}
+
 // Generated with tools/char_props_printer.c
 const unsigned char char_props[256] = {
     0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x1, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,

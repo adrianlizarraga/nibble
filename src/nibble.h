@@ -12,6 +12,7 @@
 #define ALIGN_UP(p, a) (((p) + (a) - 1) & ~((a) - 1))
 
 typedef enum OS {
+    OS_INVALID,
     OS_LINUX,
     OS_WIN32,
     OS_OSX,
@@ -19,6 +20,7 @@ typedef enum OS {
 } OS;
 
 typedef enum Arch {
+    ARCH_INVALID,
     ARCH_X64,
     ARCH_X86,
     NUM_ARCH,

@@ -9,6 +9,7 @@
 int    cstr_cmp(const char* str1, const char* str2);
 int    cstr_ncmp(const char* str1, const char* str2, size_t num);
 size_t cstr_len(const char* str);
+void   cstr_tolower(char* str);
 
 extern const unsigned char char_props[256];
 extern const unsigned char char_to_biased_digit[256];

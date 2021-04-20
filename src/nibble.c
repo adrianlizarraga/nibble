@@ -24,14 +24,14 @@ typedef struct InternedIdent {
 static NibbleCtx nibble;
 
 const char* os_names[NUM_OS] = {
-    [OS_LINUX] = "Linux",
-    [OS_WIN32] = "Windows",
-    [OS_OSX] = "OS X",
+    [OS_LINUX]   = "linux",
+    [OS_WIN32]   = "win32",
+    [OS_OSX]     = "osx",
 };
 
 const char* arch_names[NUM_ARCH] = {
-    [ARCH_X86] = "x86",
-    [ARCH_X64] = "x64",
+    [ARCH_X86]     = "x86",
+    [ARCH_X64]     = "x64",
 };
 
 const char* keywords[KW_COUNT];
