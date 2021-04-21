@@ -331,7 +331,7 @@ static void test_lexer(void)
     // Test integer literal lexing errors
     {
         ByteStream errors = byte_stream_create(&allocator);
-        Lexer lexer = lexer_create("0Z 0b3 09 1A\n999999999999999999999999", 0, &errors);
+        Lexer lexer = lexer_create("0Z 0b3 09 1A\n999999999999999999999999 12ulu", 0, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -348,6 +348,9 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         assert(errors.num_chunks == 5);
+
+        token = scan_token(&lexer);
+        assert(errors.num_chunks == 6);
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);

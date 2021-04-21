@@ -94,13 +94,13 @@ static void skip_c_comment(Lexer* lexer)
 
 static TokenInt scan_int(Lexer* lexer)
 {
-    // TODO: Support length suffixes e.g., U, UL, ULL, L, LL
     assert((lexer->at[0] >= '0') && (lexer->at[0] <= '9'));
 
     TokenInt tint = {.rep = TKN_INT_DEC, .value = 0};
     uint32_t base = 10;
     const char* start = lexer->at;
 
+    // Scan base.
     if (lexer->at[0] == '0')
     {
         lexer->at++;
@@ -132,6 +132,7 @@ static TokenInt scan_int(Lexer* lexer)
         return tint;
     }
 
+    // Scan digit.
     while (biased != 0)
     {
         unsigned int digit = biased - 1;
@@ -162,6 +163,7 @@ static TokenInt scan_int(Lexer* lexer)
 
     TokenIntSuffix suffix = TKN_INT_SUFFIX_NONE;
 
+    // Scan suffix.
     switch (lexer->at[0])
     {
         case 'u':
