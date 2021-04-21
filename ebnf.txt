@@ -83,7 +83,7 @@ stmt = 'if' '(' expr ')' stmt_block ('elif' '(' expr ')' stmt_block)* ('else' st
      | expr ';'
      | expr_assign ';'
 
-expr_assign = expr ASSIGN_OP expr      // ASSIGN_OP = ['=' '+=' '-=' '*=' '/=' '^=' '%=']
+expr_assign = expr ASSIGN_OP expr      // ASSIGN_OP = ['=' '+=' '-=' '*=' '/=' '&=' '|=' '^=' '%=']
 stmt_block = '{' stmt* '}'
 switch_case = 'case' (expr ('..' expr)?)? ':' stmt*
 

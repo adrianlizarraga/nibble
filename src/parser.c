@@ -1676,9 +1676,8 @@ Stmt* parse_stmt(Parser* parser)
             }
         }
         break;
-        case TKN_IDENT:
-            return parse_stmt_expr(parser, true);
         default:
+            return parse_stmt_expr(parser, true);
             break;
     }
 

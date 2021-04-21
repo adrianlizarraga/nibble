@@ -670,6 +670,9 @@ static bool test_parse_typespec(Allocator* gen_arena, Allocator* ast_arena, cons
 
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
+    if (err_stream.num_chunks)
+        print_errors(&err_stream);
+
     parser_destroy(&parser);
     allocator_reset(ast_arena);
     allocator_reset(gen_arena);
@@ -689,6 +692,9 @@ static bool test_parse_expr(Allocator* gen_arena, Allocator* ast_arena, const ch
     AllocatorStats stats = allocator_stats(ast_arena);
 
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
+
+    if (err_stream.num_chunks)
+        print_errors(&err_stream);
 
     parser_destroy(&parser);
     allocator_reset(ast_arena);
@@ -710,6 +716,32 @@ static bool test_parse_decl(Allocator* gen_arena, Allocator* ast_arena, const ch
 
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
+    if (err_stream.num_chunks)
+        print_errors(&err_stream);
+
+    parser_destroy(&parser);
+    allocator_reset(ast_arena);
+    allocator_reset(gen_arena);
+
+    return cstr_cmp(s, sexpr) == 0;
+}
+
+static bool test_parse_stmt(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
+{
+    ByteStream err_stream = byte_stream_create(gen_arena);
+    Parser parser = parser_create(ast_arena, code, 0, &err_stream);
+
+    next_token(&parser);
+
+    Stmt* stmt = parse_stmt(&parser);
+    char* s = ftprint_stmt(gen_arena, stmt);
+    AllocatorStats stats = allocator_stats(ast_arena);
+
+    ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
+
+    if (err_stream.num_chunks)
+        print_errors(&err_stream);
+
     parser_destroy(&parser);
     allocator_reset(ast_arena);
     allocator_reset(gen_arena);
@@ -725,6 +757,7 @@ void test_parser(void)
 #define TEST_TYPESPEC(c, s) assert(test_parse_typespec(&gen_arena, &ast_arena, (c), (s)))
 #define TEST_EXPR(c, s) assert(test_parse_expr(&gen_arena, &ast_arena, (c), (s)))
 #define TEST_DECL(c, s) assert(test_parse_decl(&gen_arena, &ast_arena, (c), (s)))
+#define TEST_STMT(c, s) assert(test_parse_stmt(&gen_arena, &ast_arena, (c), (s)))
 
     // Test base typespecs
     TEST_TYPESPEC("int32", "(:ident int32)");
@@ -862,9 +895,86 @@ void test_parser(void)
               "(proc f ((a (:ident int)) (b (:ident int))) =>(:ident int) (stmt-block))");
     TEST_DECL("proc f() => int {return 0;}", "(proc f () =>(:ident int) (stmt-block (return 0)))");
 
+    // Test decl statements
+    TEST_STMT("var a : int;", "(var a (:ident int))");
+    TEST_STMT("const a := 1;", "(const a 1)");
+    TEST_STMT("enum Kind {A}", "(enum Kind A)");
+    TEST_STMT("struct A {x: int;}", "(struct A (x (:ident int)))");
+    TEST_STMT("union A {x: int; y: float32;}", "(union A (x (:ident int)) (y (:ident float32)))");
+    TEST_STMT("typedef i32 = int;", "(typedef i32 (:ident int))");
+    TEST_STMT("proc f(){}", "(proc f () => (stmt-block))");
+
+    // Test expression statements
+    TEST_STMT("f(1);", "(call f 1)");
+    TEST_STMT("f(1, b=3);", "(call f 1 b=3)");
+    TEST_STMT("*p = 3;", "(= (* p) 3)");
+    TEST_STMT("a = 3;", "(= a 3)");
+    TEST_STMT("a += 3;", "(+= a 3)");
+    TEST_STMT("a -= 3;", "(-= a 3)");
+    TEST_STMT("a *= 3;", "(*= a 3)");
+    TEST_STMT("a /= 3;", "(/= a 3)");
+    TEST_STMT("a &= 3;", "(&= a 3)");
+    TEST_STMT("a |= 3;", "(|= a 3)");
+    TEST_STMT("a ^= 3;", "(^= a 3)");
+    TEST_STMT("a %= 3;", "(%= a 3)");
+
+    // Test no-op, return, break, continue, goto, label statements
+    TEST_STMT(";", "no-op");
+    TEST_STMT("return 0;", "(return 0)");
+    TEST_STMT("break;", "(break)");
+    TEST_STMT("break loop1;", "(break loop1)");
+    TEST_STMT("continue;", "(continue)");
+    TEST_STMT("continue loop1;", "(continue loop1)");
+    TEST_STMT("goto top;", "(goto top)");
+    TEST_STMT("label top:;", "(label top no-op)");
+    TEST_STMT("label top: g = 1;", "(label top (= g 1))");
+
+    // Test if statements
+    TEST_STMT("if(a==2){}", "(if (== a 2) (stmt-block))");
+    TEST_STMT("if(a==2);", "(if (== a 2) no-op)");
+    TEST_STMT("if(a==2){g=2;}", "(if (== a 2) (stmt-block (= g 2)))");
+    TEST_STMT("if(a==2){g=2;} else {g=3;}", "(if (== a 2) (stmt-block (= g 2)) (else (stmt-block (= g 3))))");
+    TEST_STMT("if(a==2){g=2;} elif(a >= 10) {g = 1;} else {g=3;}",
+              "(if (== a 2) (stmt-block (= g 2)) (elif (>= a 10) (stmt-block (= g 1))) (else (stmt-block (= g 3))))");
+
+    // Test while loop statements
+    TEST_STMT("while(a!=0){}", "(while (!= a 0) (stmt-block))");
+    TEST_STMT("while(a!=0);", "(while (!= a 0) no-op)");
+    TEST_STMT("while(a!=0){g = 1;}", "(while (!= a 0) (stmt-block (= g 1)))");
+
+    // Test do-while loop statements
+    TEST_STMT("do{}while(a!=0);", "(do-while (!= a 0) (stmt-block))");
+    TEST_STMT("do;while(a!=0);", "(do-while (!= a 0) no-op)");
+    TEST_STMT("do{g = 1;}while(a!=0);", "(do-while (!= a 0) (stmt-block (= g 1)))");
+
+    // Test for-loop statements
+    TEST_STMT("for(;;);", "(for ; ;  no-op)");
+    TEST_STMT("for(;;){}", "(for ; ;  (stmt-block))");
+    TEST_STMT("for(;;){g += 1;}", "(for ; ;  (stmt-block (+= g 1)))");
+    TEST_STMT("for(var i:=0;;);", "(for (var i 0); ;  no-op)");
+    TEST_STMT("for(i=0;;);", "(for (= i 0); ;  no-op)");
+    TEST_STMT("for(;i < 10;);", "(for ; (< i 10);  no-op)");
+    TEST_STMT("for(;; i += 1);", "(for ; ; (+= i 1) no-op)");
+    TEST_STMT("for(i=0;i<10;i+=1);", "(for (= i 0); (< i 10); (+= i 1) no-op)");
+
+    // Test switch-statements
+    TEST_STMT("switch (a) {case 0: break;}", "(switch a (case 0 (stmt-list (break))))");
+    TEST_STMT("switch (a) {case 0: case 1: break;}", "(switch a (case 0 (stmt-list)) (case 1 (stmt-list (break))))");
+    TEST_STMT("switch (a) {case 0 .. 10: break;}", "(switch a (case 0..10 (stmt-list (break))))");
+    TEST_STMT(
+        "switch (a) {case 0: break; case 1: g = 1; break; case: g = 0;}",
+        "(switch a (case 0 (stmt-list (break))) (case 1 (stmt-list (= g 1) (break))) (case (stmt-list (= g 0))))");
+
+    // Test block statements.
+    TEST_STMT("{}", "(stmt-block)");
+    TEST_STMT("{;}", "(stmt-block no-op)");
+    TEST_STMT("{g = 10;}", "(stmt-block (= g 10))");
+    TEST_STMT("{for(;;);}", "(stmt-block (for ; ;  no-op))");
+
 #undef TEST_TYPESPEC
 #undef TEST_EXPR
 #undef TEST_DECL
+#undef TEST_STMT
 
     allocator_destroy(&gen_arena);
     allocator_destroy(&ast_arena);
@@ -890,41 +1000,3 @@ int main(void)
     nibble_cleanup();
 }
 
-// AST usage: 848 bytes, Nibble usage: 951 bytes
-// AST usage: 840 bytes, Nibble usage: 951 bytes
-// AST usage: 760 bytes, Nibble usage: 951 bytes
-// AST usage: 600 bytes, Nibble usage: 951 bytes
-// AST usage: 624 bytes, Nibble usage: 951 bytes (dont require {} as body for loops etc)
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a;} else g=0;}",
-// 0); CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {if(a == 2) {g = 2*a; f(g);}}",
-// 0); CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(var i:=0;i<10;i+=1){f(i);}}",
-// 0); CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>int32 {return 10;}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {return;}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i<10;i+=1){f(i);}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {while(a > b){f(i);}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {do{f(i);}while(a > b);}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {do f(i); while(a > b);}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;i+=1){f(i);}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;i != 0;){f(i);}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){f(i);}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){break;}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(;;){continue;}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {label top: ; goto top;}", 0);
-// CompiledModule* module =
-// compile_module("proc add(a:int32, b:int32) =>void {switch(a){case 1 .. 2: a += 1; case: a = 0;}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(i=0;i<10;i+=1){f(i);}}", 0);
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {for(g(^i);i<10;i+=1){f(i);}}", 0);
-//
-// CompiledModule* module = compile_module("proc add(a:int32, b:int32) =>void {;}", 0);
-
-// CompiledModule* module = compile_module("{var a:int32 = 0;}", 0);
-// CompiledModule* module = compile_module("{var a:int32 = 0; var b:float32 = 1.0;}", 0);
-// CompiledModule* module = compile_module("{var a:int32 = 0; f(a);}", 0);
-// CompiledModule* module = compile_module("{var a:int32 = 1 << 8; a *= 2;}", 0);
-// CompiledModule* module = compile_module("{var a:int32 = 3; while(a > 0){var b:int32 = 2; f(a); a -= 1;}}", 0);
-// CompiledModule* module = compile_module("{var a:int32 = 3; do{var b:int32 = 2; f(a); a -= 1;} while(a > 0);}",
-// 0); CompiledModule* module = compile_module("{if(a) {a = 3;}}", 0); CompiledModule* module =
-// compile_module("{if(a) {a = 3;} else{b = 4;}}", 0); CompiledModule* module = compile_module("{if(a) {a = 3;}
-// elif(b == 2) {c = 10;} else{b = 4;}}", 0); CompiledModule* module = compile_module("{if(a) {a = 3;} elif(b == 2)
-// {b = 10;} elif(c == 3) {c = 1;} else{b = 4;}}", 0);

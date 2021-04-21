@@ -1022,16 +1022,12 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                                            ftprint_stmt(allocator, elif->block.body));
 
                         if (it->next != head)
-                        {
                             ftprint_char_array(&dstr, false, " ");
-                        }
                     }
                 }
 
                 if (s->else_blk.body)
-                {
                     ftprint_char_array(&dstr, false, " (else %s)", ftprint_stmt(allocator, s->else_blk.body));
-                }
 
                 ftprint_char_array(&dstr, false, ")");
             }
@@ -1056,18 +1052,17 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                         ftprint_char_array(&dstr, false, " %s", ftprint_expr(allocator, swcase->start));
 
                         if (swcase->end)
-                        {
                             ftprint_char_array(&dstr, false, "..%s", ftprint_expr(allocator, swcase->end));
-                        }
                     }
 
-                    ftprint_char_array(&dstr, false, " (stmt-list %s))",
-                                       ftprint_stmt_list(allocator, swcase->num_stmts, &swcase->stmts));
+                    if (swcase->num_stmts)
+                        ftprint_char_array(&dstr, false, " (stmt-list %s))",
+                                           ftprint_stmt_list(allocator, swcase->num_stmts, &swcase->stmts));
+                    else
+                        ftprint_char_array(&dstr, false, " (stmt-list))");
 
                     if (it->next != head)
-                    {
                         ftprint_char_array(&dstr, false, " ");
-                    }
                 }
 
                 ftprint_char_array(&dstr, false, ")");
