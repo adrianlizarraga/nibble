@@ -1,5 +1,5 @@
-#include "array.h"
 #include "ast.h"
+#include "array.h"
 #include "cstring.h"
 
 #define typespec_alloc(a, k, r) (k*)typespec_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
@@ -1299,13 +1299,16 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                                            ftprint_typespec(allocator, param->type));
 
                         if (it->next != head)
-                        {
                             ftprint_char_array(&dstr, false, " ");
-                        }
                     }
                 }
-                ftprint_char_array(&dstr, false, ") =>%s (stmt-block %s))", ftprint_typespec(allocator, proc->ret),
-                                   ftprint_stmt_list(allocator, proc->num_stmts, &proc->stmts));
+                ftprint_char_array(&dstr, false, ") =>%s (stmt-block", ftprint_typespec(allocator, proc->ret));
+
+                if (proc->num_stmts)
+                    ftprint_char_array(&dstr, false, " %s))",
+                                       ftprint_stmt_list(allocator, proc->num_stmts, &proc->stmts));
+                else
+                    ftprint_char_array(&dstr, false, "))");
             }
             break;
             default:
