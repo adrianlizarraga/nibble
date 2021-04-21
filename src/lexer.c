@@ -255,18 +255,12 @@ static TokenFloat scan_float(Lexer* lexer)
             lexer->at++;
     }
 
-    FloatKind fkind = FLOAT_F64;
-
-    if (lexer->at[0] == 'f' || lexer->at[0] == 'F')
-    {
-        fkind = FLOAT_F32;
-        lexer->at += 1;
-    }
-
     // If we reached this point, use libc's strtod/strtof to get the floating point value.
     // TODO: Make a custom atof implementation (not trivial!).
-    if (fkind == FLOAT_F32)
+    if (lexer->at[0] == 'f' || lexer->at[0] == 'F')
     {
+        lexer->at += 1;
+
         char* end = NULL;
         float value = strtof(start, &end);
 
@@ -279,6 +273,7 @@ static TokenFloat scan_float(Lexer* lexer)
         }
 
         tfloat.value.f32 = value;
+        tfloat.fkind = FLOAT_F32;
     }
     else
     {
@@ -294,9 +289,8 @@ static TokenFloat scan_float(Lexer* lexer)
         }
 
         tfloat.value.f64 = value;
+        tfloat.fkind = FLOAT_F64;
     }
-
-    tfloat.fkind = fkind;
 
     return tfloat;
 }
