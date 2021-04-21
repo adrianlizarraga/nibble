@@ -46,11 +46,19 @@ static void print_errors(ByteStream* errors)
         assert((tk.as_int.value == v));                                                                                \
         assert((tk.as_int.suffix == s));                                                                               \
     } while (0)
-#define TKN_TEST_FLOAT(tk, v)                                                                                          \
+#define TKN_TEST_FLOAT64(tk, v)                                                                                        \
     do                                                                                                                 \
     {                                                                                                                  \
         assert((tk.kind == TKN_FLOAT));                                                                                \
-        assert((tk.as_float.value == v));                                                                              \
+        assert((tk.as_float.value.f64 == v));                                                                          \
+        assert((tk.as_float.fkind == FLOAT_F64));                                                                      \
+    } while (0)
+#define TKN_TEST_FLOAT32(tk, v)                                                                                        \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        assert((tk.kind == TKN_FLOAT));                                                                                \
+        assert((tk.as_float.value.f32 == v));                                                                          \
+        assert((tk.as_float.fkind == FLOAT_F32));                                                                      \
     } while (0)
 #define TKN_TEST_CHAR(tk, v)                                                                                           \
     do                                                                                                                 \
@@ -280,7 +288,7 @@ static void test_lexer(void)
 
     // Test integer literals
     {
-        Lexer lexer = lexer_create("123 333\n0xFF 0b0111 011 0 1u 1ul 1ull 1ULL 2l 2ll 2LL", 0, NULL);
+        Lexer lexer = lexer_create("123 333\n0xFF 0b0111 011 0 1u 1ul 1ull 1ULL 2l 2ll 2LL 3lU 3LLU", 0, NULL);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -323,6 +331,12 @@ static void test_lexer(void)
         TKN_TEST_INT(token, TKN_INT_DEC, 2, TKN_INT_SUFFIX_LL);
 
         token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 3, TKN_INT_SUFFIX_UL);
+
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 3, TKN_INT_SUFFIX_ULL);
+
+        token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
 
         lexer_destroy(&lexer);
@@ -361,30 +375,42 @@ static void test_lexer(void)
 
     // Test floating point literals
     {
-        Lexer lexer = lexer_create("1.23 .23 1.33E2", 0, NULL);
+        Lexer lexer = lexer_create("1.23 .23 1.33E2 0.1f 0.1F", 0, NULL);
         Token token = {0};
 
         token = scan_token(&lexer);
-        TKN_TEST_FLOAT(token, 1.23);
+        TKN_TEST_FLOAT64(token, 1.23);
 
         token = scan_token(&lexer);
-        TKN_TEST_FLOAT(token, .23);
+        TKN_TEST_FLOAT64(token, .23);
 
         token = scan_token(&lexer);
-        TKN_TEST_FLOAT(token, 1.33E2);
+        TKN_TEST_FLOAT64(token, 1.33E2);
+
+        token = scan_token(&lexer);
+        TKN_TEST_FLOAT32(token, 0.1f);
+
+        token = scan_token(&lexer);
+        TKN_TEST_FLOAT32(token, 0.1f);
+
+        token = scan_token(&lexer);
+        assert(token.kind == TKN_EOF);
 
         lexer_destroy(&lexer);
     }
 
     {
         ByteStream errors = byte_stream_create(&allocator);
-        Lexer lexer = lexer_create("1.33ea 1.33e100000000000", 0, &errors);
+        Lexer lexer = lexer_create("1.33ea 1.33e100000000000 1.33e100000000000f", 0, &errors);
 
         scan_token(&lexer);
         assert(errors.num_chunks == 1);
 
         scan_token(&lexer);
         assert(errors.num_chunks == 2);
+
+        scan_token(&lexer);
+        assert(errors.num_chunks == 3);
 
         print_errors(&errors);
         lexer_destroy(&lexer);

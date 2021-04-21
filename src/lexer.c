@@ -192,6 +192,17 @@ static TokenInt scan_int(Lexer* lexer)
             {
                 suffix = TKN_INT_SUFFIX_LL;
                 lexer->at += 1;
+
+                if (lexer->at[0] == 'u' || lexer->at[0] == 'U')
+                {
+                    suffix = TKN_INT_SUFFIX_ULL;
+                    lexer->at += 1;
+                }
+            }
+            else if (lexer->at[0] == 'u' || lexer->at[0] == 'U')
+            {
+                suffix = TKN_INT_SUFFIX_UL;
+                lexer->at += 1;
             }
             break;
         default:
@@ -213,7 +224,7 @@ static TokenFloat scan_float(Lexer* lexer)
 {
     assert(((lexer->at[0] >= '0') && (lexer->at[0] <= '9')) || (lexer->at[0] == '.'));
 
-    TokenFloat tfloat = {.value = 0.0};
+    TokenFloat tfloat = {0};
     const char* start = lexer->at;
 
     // \d*\.?\d*(e[+-]?\d*)?
@@ -244,20 +255,48 @@ static TokenFloat scan_float(Lexer* lexer)
             lexer->at++;
     }
 
-    // If we reached this point, use libc's strtod to get the floating point value.
-    // TODO: Make a custom atof implementation (not trivial!).
-    char* end = NULL;
-    double value = strtod(start, &end);
+    FloatKind fkind = FLOAT_F64;
 
-    assert(end == lexer->at);
-
-    if (value == HUGE_VAL)
+    if (lexer->at[0] == 'f' || lexer->at[0] == 'F')
     {
-        lexer_on_error(lexer, "Floating point literal is too large");
-        return tfloat;
+        fkind = FLOAT_F32;
+        lexer->at += 1;
     }
 
-    tfloat.value = value;
+    // If we reached this point, use libc's strtod/strtof to get the floating point value.
+    // TODO: Make a custom atof implementation (not trivial!).
+    if (fkind == FLOAT_F32)
+    {
+        char* end = NULL;
+        float value = strtof(start, &end);
+
+        assert((end + 1) == lexer->at);
+
+        if (value == HUGE_VALF)
+        {
+            lexer_on_error(lexer, "32-bit floating-point literal is too large");
+            return tfloat;
+        }
+
+        tfloat.value.f32 = value;
+    }
+    else
+    {
+        char* end = NULL;
+        double value = strtod(start, &end);
+
+        assert(end == lexer->at);
+
+        if (value == HUGE_VAL)
+        {
+            lexer_on_error(lexer, "64-bit floating-point literal is too large");
+            return tfloat;
+        }
+
+        tfloat.value.f64 = value;
+    }
+
+    tfloat.fkind = fkind;
 
     return tfloat;
 }
@@ -536,7 +575,10 @@ int print_token(Token* token, char* buf, size_t size)
         case TKN_INT:
             return snprintf(buf, size, "%lu", token->as_int.value);
         case TKN_FLOAT:
-            return snprintf(buf, size, "%.3f", token->as_float.value);
+            if (token->as_float.fkind == FLOAT_F32)
+                return snprintf(buf, size, "%.3f", token->as_float.value.f32);
+
+            return snprintf(buf, size, "%.3f", token->as_float.value.f64);
         case TKN_STR:
             return snprintf(buf, size, "\"%s\"", token->as_str.value);
         case TKN_IDENT:

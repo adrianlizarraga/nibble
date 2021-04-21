@@ -92,8 +92,19 @@ typedef struct TokenInt {
     TokenIntSuffix suffix;
 } TokenInt;
 
+typedef enum FloatKind {
+    FLOAT_F64,
+    FLOAT_F32,
+} FloatKind;
+
+typedef union Float {
+    double f64;
+    float f32;
+} Float;
+
 typedef struct TokenFloat {
-    double value;
+    Float value;
+    FloatKind fkind;
 } TokenFloat;
 
 typedef struct TokenIdent {

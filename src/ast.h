@@ -178,7 +178,8 @@ typedef struct ExprInt {
 
 typedef struct ExprFloat {
     Expr super;
-    double value;
+    FloatKind fkind;
+    Float value;
 } ExprFloat;
 
 typedef struct ExprStr {
@@ -244,7 +245,7 @@ Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range
 Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, DLList* args, ProgRange range);
 ProcCallArg* proc_call_arg(Allocator* allocator, Expr* expr, const char* name);
 Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range);
-Expr* expr_float(Allocator* allocator, double value, ProgRange range);
+Expr* expr_float(Allocator* allocator, Float value, FloatKind fkind, ProgRange range);
 Expr* expr_str(Allocator* allocator, const char* value, ProgRange range);
 Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range);
 Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range);

@@ -173,10 +173,11 @@ Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range)
     return (Expr*)expr;
 }
 
-Expr* expr_float(Allocator* allocator, double value, ProgRange range)
+Expr* expr_float(Allocator* allocator, Float value, FloatKind fkind, ProgRange range)
 {
     ExprFloat* expr = expr_alloc(allocator, ExprFloat, range);
     expr->value = value;
+    expr->fkind = fkind;
 
     return (Expr*)expr;
 }
@@ -751,7 +752,11 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             {
                 ExprFloat* e = (ExprFloat*)expr;
                 dstr = array_create(allocator, char, 8);
-                ftprint_char_array(&dstr, false, "%lf", e->value);
+
+                if (e->fkind == FLOAT_F64)
+                    ftprint_char_array(&dstr, false, "%lf", e->value.f64);
+                else
+                    ftprint_char_array(&dstr, false, "%lf", e->value.f32);
             }
             break;
             case AST_ExprStr:
