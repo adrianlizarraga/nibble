@@ -160,6 +160,44 @@ static TokenInt scan_int(Lexer* lexer)
         biased = biased_digit(lexer->at[0]);
     }
 
+    TokenIntSuffix suffix = TKN_INT_SUFFIX_NONE;
+
+    switch (lexer->at[0])
+    {
+        case 'u':
+        case 'U':
+            suffix = TKN_INT_SUFFIX_U;
+            lexer->at += 1;
+
+            if (lexer->at[0] == 'l' || lexer->at[0] == 'L')
+            {
+                suffix = TKN_INT_SUFFIX_UL;
+                lexer->at += 1;
+
+                if (lexer->at[0] == 'l' || lexer->at[0] == 'L')
+                {
+                    suffix = TKN_INT_SUFFIX_ULL;
+                    lexer->at += 1;
+                }
+            }
+            break;
+        case 'l':
+        case 'L':
+            suffix = TKN_INT_SUFFIX_L;
+            lexer->at += 1;
+
+            if (lexer->at[0] == 'l' || lexer->at[0] == 'L')
+            {
+                suffix = TKN_INT_SUFFIX_LL;
+                lexer->at += 1;
+            }
+            break;
+        default:
+            break;
+    }
+
+    tint.suffix = suffix;
+
     if (is_alphanum(lexer->at[0]))
     {
         lexer_on_error(lexer, "Invalid integer literal character '%c'", lexer->at[0]);

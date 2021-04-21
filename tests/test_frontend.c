@@ -38,12 +38,13 @@ static void print_errors(ByteStream* errors)
         assert((tk.range.start == a));                                                                                 \
         assert((tk.range.end == b));                                                                                   \
     } while (0)
-#define TKN_TEST_INT(tk, b, v)                                                                                         \
+#define TKN_TEST_INT(tk, b, v, s)                                                                                      \
     do                                                                                                                 \
     {                                                                                                                  \
         assert((tk.kind == TKN_INT));                                                                                  \
         assert((tk.as_int.rep == b));                                                                                  \
         assert((tk.as_int.value == v));                                                                                \
+        assert((tk.as_int.suffix == s));                                                                               \
     } while (0)
 #define TKN_TEST_FLOAT(tk, v)                                                                                          \
     do                                                                                                                 \
@@ -279,26 +280,47 @@ static void test_lexer(void)
 
     // Test integer literals
     {
-        Lexer lexer = lexer_create("123 333\n0xFF 0b0111 011 0", 0, NULL);
+        Lexer lexer = lexer_create("123 333\n0xFF 0b0111 011 0 1u 1ul 1ull 1ULL 2l 2ll 2LL", 0, NULL);
         Token token = {0};
 
         token = scan_token(&lexer);
-        TKN_TEST_INT(token, TKN_INT_DEC, 123);
+        TKN_TEST_INT(token, TKN_INT_DEC, 123, TKN_INT_SUFFIX_NONE);
 
         token = scan_token(&lexer);
-        TKN_TEST_INT(token, TKN_INT_DEC, 333);
+        TKN_TEST_INT(token, TKN_INT_DEC, 333, TKN_INT_SUFFIX_NONE);
 
         token = scan_token(&lexer);
-        TKN_TEST_INT(token, TKN_INT_HEX, 0xFF);
+        TKN_TEST_INT(token, TKN_INT_HEX, 0xFF, TKN_INT_SUFFIX_NONE);
 
         token = scan_token(&lexer);
-        TKN_TEST_INT(token, TKN_INT_BIN, 7);
+        TKN_TEST_INT(token, TKN_INT_BIN, 7, TKN_INT_SUFFIX_NONE);
 
         token = scan_token(&lexer);
-        TKN_TEST_INT(token, TKN_INT_OCT, 9);
+        TKN_TEST_INT(token, TKN_INT_OCT, 9, TKN_INT_SUFFIX_NONE);
 
         token = scan_token(&lexer);
-        TKN_TEST_INT(token, TKN_INT_DEC, 0);
+        TKN_TEST_INT(token, TKN_INT_DEC, 0, TKN_INT_SUFFIX_NONE);
+
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 1, TKN_INT_SUFFIX_U);
+
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 1, TKN_INT_SUFFIX_UL);
+
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 1, TKN_INT_SUFFIX_ULL);
+
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 1, TKN_INT_SUFFIX_ULL);
+
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 2, TKN_INT_SUFFIX_L);
+
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 2, TKN_INT_SUFFIX_LL);
+
+        token = scan_token(&lexer);
+        TKN_TEST_INT(token, TKN_INT_DEC, 2, TKN_INT_SUFFIX_LL);
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);

@@ -160,6 +160,7 @@ int main(int argc, char* argv[])
     if (!module)
     {
         ftprint_err("ERROR: Failed to compile file.\n");
+        nibble_cleanup();
         exit(1);
     }
 

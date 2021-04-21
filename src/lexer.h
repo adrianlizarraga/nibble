@@ -77,9 +77,19 @@ typedef enum TokenIntRep {
     TKN_INT_CHAR,
 } TokenIntRep;
 
+typedef enum TokenIntSuffix {
+    TKN_INT_SUFFIX_NONE,
+    TKN_INT_SUFFIX_U,
+    TKN_INT_SUFFIX_L,
+    TKN_INT_SUFFIX_UL,
+    TKN_INT_SUFFIX_LL,
+    TKN_INT_SUFFIX_ULL,
+} TokenIntSuffix;
+
 typedef struct TokenInt {
     uint64_t value;
     TokenIntRep rep;
+    TokenIntSuffix suffix;
 } TokenInt;
 
 typedef struct TokenFloat {
