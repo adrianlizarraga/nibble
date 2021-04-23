@@ -32,10 +32,10 @@ bool next_token(Parser* parser);
 bool is_token_kind(Parser* parser, TokenKind kind);
 bool is_token_prop_kind(Parser* parser, uint8_t props);
 bool is_keyword(Parser* parser, Keyword kw);
-bool match_token_next(Parser* parser, TokenKind kind);
-bool match_keyword_next(Parser* parser, Keyword kw);
-bool expect_token_next(Parser* parser, TokenKind kind, const char* error_prefix);
-bool expect_keyword_next(Parser* parser, Keyword kw, const char* error_prefix);
+bool match_token(Parser* parser, TokenKind kind);
+bool match_keyword(Parser* parser, Keyword kw);
+bool expect_token(Parser* parser, TokenKind kind, const char* error_prefix);
+bool expect_keyword(Parser* parser, Keyword kw, const char* error_prefix);
 bool skip_after_token(Parser* parser, TokenKind kind);
 
 
