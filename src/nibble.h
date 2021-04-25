@@ -42,6 +42,32 @@ typedef struct StringView {
 } StringView;
 #define string_view_lit(cstr_lit) { .str = cstr_lit, .len = sizeof(cstr_lit) - 1 }
 
+typedef enum FloatKind {
+    FLOAT_F64,
+    FLOAT_F32,
+} FloatKind;
+
+typedef union Float {
+    double f64;
+    float f32;
+} Float;
+
+typedef union Integer {
+    bool b;
+    char c;
+    unsigned char uc;
+    signed char sc;
+    short s;
+    unsigned short us;
+    int i;
+    unsigned u;
+    long l;
+    unsigned long ul;
+    long long ll;
+    unsigned long long ull;
+    size_t word;
+} Integer;
+
 typedef enum Keyword {
     KW_VAR = 0,
     KW_CONST,
@@ -70,12 +96,6 @@ typedef enum Keyword {
     KW_COUNT,
 } Keyword;
 
-typedef struct CompiledModule {
-    Allocator allocator;
-    Allocator ast_arena;
-    ByteStream errors;
-} CompiledModule;
-
 extern const char* keywords[KW_COUNT];
 
 const char* intern_str_lit(const char* str, size_t len);
@@ -83,7 +103,4 @@ const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
 
 bool nibble_init(OS target_os, Arch target_arch);
 void nibble_cleanup(void);
-
-CompiledModule* compile_module(const char* filename, ProgPos pos);
-void free_compiled_module(CompiledModule* module);
 #endif

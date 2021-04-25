@@ -9,8 +9,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#define LEXER_ARENA_BLOCK_SIZE 256
-
 static void skip_word_end(Lexer* lexer)
 {
     while (lexer->at[0] && is_alphanum(lexer->at[0]))
@@ -342,7 +340,8 @@ static TokenStr scan_string(Lexer* lexer)
 
     lexer->at++;
 
-    Allocator* arena = &lexer->allocator;
+    Allocator* arena = lexer->arena;
+    AllocatorState state = allocator_get_state(arena);
     char* tmp = array_create(arena, char, 128);
 
     while (lexer->at[0] && (lexer->at[0] != '"') && (lexer->at[0] != '\n'))
@@ -406,7 +405,7 @@ static TokenStr scan_string(Lexer* lexer)
     array_push(tmp, '\0');
     tstr.value = intern_str_lit(tmp, array_len(tmp) - 1);
 
-    allocator_reset(arena);
+    allocator_restore_state(state);
 
     return tstr;
 }
@@ -481,24 +480,16 @@ static TokenInt scan_char(Lexer* lexer)
     return tint;
 }
 
-Lexer lexer_create(const char* str, uint32_t start, ByteStream* errors)
+Lexer lexer_create(const char* str, uint32_t start, Allocator* arena, ByteStream* errors)
 {
     Lexer lexer = {0};
     lexer.str = str;
     lexer.at = str;
     lexer.start = start;
     lexer.errors = errors;
-    lexer.allocator = allocator_create(LEXER_ARENA_BLOCK_SIZE);
+    lexer.arena = arena;
 
     return lexer;
-}
-
-void lexer_destroy(Lexer* lexer)
-{
-#if !defined(NDEBUG) && PRINT_MEM_USAGE
-    print_allocator_stats(&lexer->allocator, "Lexer mem stats");
-#endif
-    allocator_destroy(&lexer->allocator);
 }
 
 const char* token_kind_names[] = {

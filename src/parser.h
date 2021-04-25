@@ -5,7 +5,8 @@
 #include "lexer.h"
 
 typedef struct Parser {
-    Allocator* allocator;
+    Allocator* ast_arena;
+    Allocator temp_arena;
     ByteStream* errors;
     ProgPos start;
     Lexer lexer;
@@ -13,7 +14,7 @@ typedef struct Parser {
     Token ptoken;
 } Parser;
 
-Parser parser_create(Allocator* allocator, const char* str, ProgPos pos, ByteStream* errors);
+void parser_init(Parser* parser, Allocator* ast_arena, const char* str, ProgPos pos, ByteStream* errors);
 void parser_destroy(Parser* parser);
 
 typedef enum TokenKindProps {

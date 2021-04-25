@@ -2,7 +2,6 @@
 #define NIBBLE_LEXER_H
 #include <stdbool.h>
 #include <stdint.h>
-
 #include "nibble.h"
 #include "allocator.h"
 #include "stream.h"
@@ -92,16 +91,6 @@ typedef struct TokenInt {
     TokenIntSuffix suffix;
 } TokenInt;
 
-typedef enum FloatKind {
-    FLOAT_F64,
-    FLOAT_F32,
-} FloatKind;
-
-typedef union Float {
-    double f64;
-    float f32;
-} Float;
-
 typedef struct TokenFloat {
     Float value;
     FloatKind fkind;
@@ -137,13 +126,13 @@ typedef struct Lexer {
     const char* str;
     const char* at;
     ProgPos start;
-    Allocator allocator;
+    Allocator* arena;
     ByteStream* errors;
 } Lexer;
 
 extern const char* token_kind_names[];
 
-Lexer lexer_create(const char* str, uint32_t start, ByteStream* errors);
+Lexer lexer_create(const char* str, uint32_t start, Allocator* arena, ByteStream* errors);
 void lexer_destroy(Lexer* lexer);
 
 int print_token(Token* token, char* buf, size_t size);

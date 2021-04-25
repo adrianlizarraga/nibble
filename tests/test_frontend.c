@@ -89,13 +89,14 @@ static void print_errors(ByteStream* errors)
 static void test_lexer(void)
 {
     Allocator allocator = allocator_create(4096);
+    Allocator temp = allocator_create(512);
 
     // Test basic tokens, newlines, and c++ comments.
     {
         unsigned int i = 10;
         Token token = {0};
         Lexer lexer = lexer_create(
-            "(+[]-*%&|^<>#) && || => :> >> << == >= <= = += -= *= /= &= |= ^= %= \n  //++--\n{;:,./}", i, NULL);
+            "(+[]-*%&|^<>#) && || => :> >> << == >= <= = += -= *= /= &= |= ^= %= \n  //++--\n{;:,./}", i, &temp, NULL);
 
         token = scan_token(&lexer);
         TKN_TEST_POS(token, TKN_LPAREN, i, ++i);
@@ -236,13 +237,11 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         TKN_TEST_POS(token, TKN_EOF, i, i);
-
-        lexer_destroy(&lexer);
     }
 
     // Test nested c-style comments
     {
-        Lexer lexer = lexer_create("/**** 1 /* 2 */ \n***/+-", 0, NULL);
+        Lexer lexer = lexer_create("/**** 1 /* 2 */ \n***/+-", 0, &temp, NULL);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -253,14 +252,12 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         TKN_TEST_POS(token, TKN_EOF, 23, 23);
-
-        lexer_destroy(&lexer);
     }
 
     // Test error when have unclosed c-style comments
     {
         ByteStream errors = byte_stream_create(&allocator);
-        Lexer lexer = lexer_create("/* An unclosed comment", 0, &errors);
+        Lexer lexer = lexer_create("/* An unclosed comment", 0, &temp, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -268,13 +265,11 @@ static void test_lexer(void)
         assert(errors.num_chunks == 1);
 
         print_errors(&errors);
-
-        lexer_destroy(&lexer);
     }
 
     {
         ByteStream errors = byte_stream_create(&allocator);
-        Lexer lexer = lexer_create("/* An unclosed comment\n", 0, &errors);
+        Lexer lexer = lexer_create("/* An unclosed comment\n", 0, &temp, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -283,12 +278,11 @@ static void test_lexer(void)
         assert(errors.num_chunks == 1);
 
         print_errors(&errors);
-        lexer_destroy(&lexer);
     }
 
     // Test integer literals
     {
-        Lexer lexer = lexer_create("123 333\n0xFF 0b0111 011 0 1u 1ul 1ull 1ULL 2l 2ll 2LL 3lU 3LLU", 0, NULL);
+        Lexer lexer = lexer_create("123 333\n0xFF 0b0111 011 0 1u 1ul 1ull 1ULL 2l 2ll 2LL 3lU 3LLU", 0, &temp, NULL);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -338,14 +332,12 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
-
-        lexer_destroy(&lexer);
     }
 
     // Test integer literal lexing errors
     {
         ByteStream errors = byte_stream_create(&allocator);
-        Lexer lexer = lexer_create("0Z 0b3 09 1A\n999999999999999999999999 12ulu", 0, &errors);
+        Lexer lexer = lexer_create("0Z 0b3 09 1A\n999999999999999999999999 12ulu", 0, &temp, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -370,12 +362,11 @@ static void test_lexer(void)
         assert(token.kind == TKN_EOF);
 
         print_errors(&errors);
-        lexer_destroy(&lexer);
     }
 
     // Test floating point literals
     {
-        Lexer lexer = lexer_create("1.23 .23 1.33E2 0.1f 0.1F", 0, NULL);
+        Lexer lexer = lexer_create("1.23 .23 1.33E2 0.1f 0.1F", 0, &temp, NULL);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -395,13 +386,11 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
-
-        lexer_destroy(&lexer);
     }
 
     {
         ByteStream errors = byte_stream_create(&allocator);
-        Lexer lexer = lexer_create("1.33ea 1.33e100000000000 1.33e100000000000f", 0, &errors);
+        Lexer lexer = lexer_create("1.33ea 1.33e100000000000 1.33e100000000000f", 0, &temp, &errors);
 
         scan_token(&lexer);
         assert(errors.num_chunks == 1);
@@ -413,7 +402,6 @@ static void test_lexer(void)
         assert(errors.num_chunks == 3);
 
         print_errors(&errors);
-        lexer_destroy(&lexer);
     }
 
     // Test character literals
@@ -421,7 +409,7 @@ static void test_lexer(void)
         ByteStream errors = byte_stream_create(&allocator);
         Lexer lexer = lexer_create("'a' '1' ' ' '\\0' '\\a' '\\b' '\\f' '\\n' '\\r' '\\t' '\\v' "
                                    "'\\\\' '\\'' '\\\"' '\\?'",
-                                   0, &errors);
+                                   0, &temp, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -472,14 +460,12 @@ static void test_lexer(void)
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
         assert(errors.num_chunks == 0);
-
-        lexer_destroy(&lexer);
     }
 
     // Test escaped hex chars
     {
         ByteStream errors = byte_stream_create(&allocator);
-        Lexer lexer = lexer_create("'\\x12'  '\\x3'", 0, &errors);
+        Lexer lexer = lexer_create("'\\x12'  '\\x3'", 0, &temp, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -491,14 +477,12 @@ static void test_lexer(void)
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
         assert(errors.num_chunks == 0);
-
-        lexer_destroy(&lexer);
     }
 
     // Test errors when lexing escaped hex chars
     {
         ByteStream errors = byte_stream_create(&allocator);
-        Lexer lexer = lexer_create("'' 'a '\n' '\\z' '\\0'", 0, &errors);
+        Lexer lexer = lexer_create("'' 'a '\n' '\\z' '\\0'", 0, &temp, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -520,14 +504,13 @@ static void test_lexer(void)
         assert(token.kind == TKN_EOF);
 
         print_errors(&errors);
-        lexer_destroy(&lexer);
     }
 
     // Test basic string literals
     {
         ByteStream errors = byte_stream_create(&allocator);
         const char* str = "\"hello world\" \"a\\nb\" \n \"\\x50 a \\x51\" \"\" \"\\\"nested\\\"\"";
-        Lexer lexer = lexer_create(str, 0, &errors);
+        Lexer lexer = lexer_create(str, 0, &temp, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -548,15 +531,13 @@ static void test_lexer(void)
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
         assert(errors.num_chunks == 0);
-
-        lexer_destroy(&lexer);
     }
 
     // Test errors when scanning string literals
     {
         ByteStream errors = byte_stream_create(&allocator);
         const char* str = "\"\n\" \"\\xTF\" \"\\W\" \"unclosed";
-        Lexer lexer = lexer_create(str, 0, &errors);
+        Lexer lexer = lexer_create(str, 0, &temp, &errors);
 
         scan_token(&lexer);
         assert(errors.num_chunks == 1);
@@ -571,14 +552,13 @@ static void test_lexer(void)
         assert(errors.num_chunks == 4);
 
         print_errors(&errors);
-        lexer_destroy(&lexer);
     }
 
     // Test basic identifiers
     {
         ByteStream errors = byte_stream_create(&allocator);
         const char* str = "vars x1a x11 _abc abc_ _ab_c_ i";
-        Lexer lexer = lexer_create(str, 0, &errors);
+        Lexer lexer = lexer_create(str, 0, &temp, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -605,15 +585,13 @@ static void test_lexer(void)
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
         assert(errors.num_chunks == 0);
-
-        lexer_destroy(&lexer);
     }
 
     // Test invalid identifier combinations.
     {
         ByteStream errors = byte_stream_create(&allocator);
         const char* str = "1var";
-        Lexer lexer = lexer_create(str, 0, &errors);
+        Lexer lexer = lexer_create(str, 0, &temp, &errors);
         Token token = {0};
 
         token = scan_token(&lexer);
@@ -623,7 +601,6 @@ static void test_lexer(void)
         assert(token.kind == TKN_EOF);
 
         print_errors(&errors);
-        lexer_destroy(&lexer);
     }
 
     // Test keywords
@@ -638,7 +615,7 @@ static void test_lexer(void)
 
         array_push(str, '\0');
 
-        Lexer lexer = lexer_create(str, 0, &errors);
+        Lexer lexer = lexer_create(str, 0, &temp, &errors);
         Token token = {0};
 
         for (int i = 0; i < KW_COUNT; i += 1)
@@ -650,18 +627,18 @@ static void test_lexer(void)
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
         assert(errors.num_chunks == 0);
-
-        lexer_destroy(&lexer);
     }
 
     allocator_destroy(&allocator);
+    allocator_destroy(&temp);
 }
 
 static bool test_parse_typespec(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
 {
     ByteStream err_stream = byte_stream_create(gen_arena);
-    Parser parser = parser_create(ast_arena, code, 0, &err_stream);
+    Parser parser = {0};
 
+    parser_init(&parser, ast_arena, code, 0, &err_stream);
     next_token(&parser);
 
     TypeSpec* type = parse_typespec(&parser);
@@ -683,8 +660,9 @@ static bool test_parse_typespec(Allocator* gen_arena, Allocator* ast_arena, cons
 static bool test_parse_expr(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
 {
     ByteStream err_stream = byte_stream_create(gen_arena);
-    Parser parser = parser_create(ast_arena, code, 0, &err_stream);
+    Parser parser = {0};
 
+    parser_init(&parser, ast_arena, code, 0, &err_stream);
     next_token(&parser);
 
     Expr* expr = parse_expr(&parser);
@@ -706,8 +684,9 @@ static bool test_parse_expr(Allocator* gen_arena, Allocator* ast_arena, const ch
 static bool test_parse_decl(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
 {
     ByteStream err_stream = byte_stream_create(gen_arena);
-    Parser parser = parser_create(ast_arena, code, 0, &err_stream);
+    Parser parser = {0};
 
+    parser_init(&parser, ast_arena, code, 0, &err_stream);
     next_token(&parser);
 
     Decl* decl = parse_decl(&parser);
@@ -729,8 +708,9 @@ static bool test_parse_decl(Allocator* gen_arena, Allocator* ast_arena, const ch
 static bool test_parse_stmt(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
 {
     ByteStream err_stream = byte_stream_create(gen_arena);
-    Parser parser = parser_create(ast_arena, code, 0, &err_stream);
+    Parser parser = {0};
 
+    parser_init(&parser, ast_arena, code, 0, &err_stream);
     next_token(&parser);
 
     Stmt* stmt = parse_stmt(&parser);
@@ -767,6 +747,8 @@ void test_parser(void)
     TEST_TYPESPEC("proc(int32, b:float32)", "(:proc => (:ident int32) (b (:ident float32)))");
     TEST_TYPESPEC("struct {a:int32; b:float32;}", "(:struct (a (:ident int32)) (b (:ident float32)))");
     TEST_TYPESPEC("union {a:int32; b:float32;}", "(:union (a (:ident int32)) (b (:ident float32)))");
+    TEST_TYPESPEC("Lexer.Token", "(:ident Lexer.Token)");
+    TEST_TYPESPEC("Parser.Lexer.Token", "(:ident Parser.Lexer.Token)");
 
     // Test pointer to base types
     TEST_TYPESPEC("^int32", "(:ptr (:ident int32))");

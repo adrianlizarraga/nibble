@@ -1,6 +1,10 @@
 #include "parser.h"
 #include "ast.h"
 
+#include <string.h>
+
+#define PARSER_ARENA_BLOCK_SIZE 512
+
 static void parser_on_error(Parser* parser, const char* format, ...)
 {
     if (parser->errors)
@@ -17,16 +21,23 @@ static void parser_on_error(Parser* parser, const char* format, ...)
     }
 }
 
-Parser parser_create(Allocator* allocator, const char* str, ProgPos pos, ByteStream* errors)
+void parser_init(Parser* parser, Allocator* ast_arena, const char* str, ProgPos pos, ByteStream* errors)
 {
-    Parser parser = {.allocator = allocator, .errors = errors, .start = pos, .lexer = lexer_create(str, pos, errors)};
+    memset(parser, 0, sizeof(Parser));
 
-    return parser;
+    parser->ast_arena = ast_arena;
+    parser->errors = errors;
+    parser->start = pos;
+    parser->temp_arena = allocator_create(PARSER_ARENA_BLOCK_SIZE);
+    parser->lexer = lexer_create(str, pos, &parser->temp_arena, errors);
 }
 
 void parser_destroy(Parser* parser)
 {
-    lexer_destroy(&parser->lexer);
+#if !defined(NDEBUG) && PRINT_MEM_USAGE
+    print_allocator_stats(&parser->temp_arena, "Parser temp mem stats");
+#endif
+    allocator_destroy(&parser->temp_arena);
 }
 
 bool next_token(Parser* parser)
@@ -191,15 +202,12 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return aggregate_field(parser->allocator, name, type, range);
+    return aggregate_field(parser->ast_arena, name, type, range);
 }
 
 // aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
-static bool parse_fill_aggregate_body(Parser* parser, size_t* num_fields, DLList* fields)
+static bool parse_fill_aggregate_body(Parser* parser, AggregateField*** fields)
 {
-    dllist_head_init(fields);
-    *num_fields = 0;
-
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
     {
         AggregateField* field = parse_aggregate_field(parser);
@@ -207,8 +215,7 @@ static bool parse_fill_aggregate_body(Parser* parser, size_t* num_fields, DLList
         if (!field)
             return false;
 
-        *num_fields += 1;
-        dllist_add(fields->prev, &field->list);
+        array_push(*fields, field);
     }
 
     return true;
@@ -226,21 +233,25 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
 
     if (expect_token(parser, TKN_LBRACE, error_prefix))
     {
-        size_t num_fields = 0;
-        DLList fields = {0};
+        AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+        AggregateField** fields = array_create(&parser->temp_arena, AggregateField*, 8);
 
-        if (parse_fill_aggregate_body(parser, &num_fields, &fields) && expect_token(parser, TKN_RBRACE, error_prefix))
+        if (parse_fill_aggregate_body(parser, &fields) && expect_token(parser, TKN_RBRACE, error_prefix))
         {
+            size_t num_fields = array_len(fields);
+
             if (num_fields)
             {
                 range.end = parser->ptoken.range.end;
-                type = typespec_aggregate_proc(parser->allocator, num_fields, &fields, range);
+                type = typespec_aggregate_proc(parser->ast_arena, num_fields, fields, range);
             }
             else
             {
                 parser_on_error(parser, "%s: must have at least one field", error_prefix);
             }
         }
+
+        allocator_restore_state(mem_state);
     }
 
     return type;
@@ -257,16 +268,17 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
         if (type->kind == AST_TypeSpecIdent)
         { // NOTE: I wish this was truly LL1
             ProgRange range = {.start = type->range.start};
-            const char* name = ((TypeSpecIdent*)type)->name;
+            TypeSpecIdent* tident = (TypeSpecIdent*)type;
+            const char* name = tident->path[tident->path_size - 1];
 
-            mem_free(parser->allocator, type);
+            mem_free(parser->ast_arena, type);
 
             type = parse_typespec(parser);
 
             if (type)
             {
                 range.end = type->range.end;
-                param = proc_param(parser->allocator, name, type, range);
+                param = proc_param(parser->ast_arena, name, type, range);
             }
         }
         else
@@ -276,7 +288,7 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
     }
     else if (type)
     {
-        param = proc_param(parser->allocator, NULL, type, type->range);
+        param = proc_param(parser->ast_arena, NULL, type, type->range);
     }
 
     return param;
@@ -296,8 +308,8 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 
     if (expect_token(parser, TKN_LPAREN, error_prefix))
     {
-        size_t num_params = 0;
-        DLList params = dllist_head_create(params);
+        AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+        ProcParam** params = array_create(&parser->temp_arena, ProcParam*, 8);
         bool bad_param = false;
 
         while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
@@ -306,8 +318,7 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 
             if (param)
             {
-                num_params += 1;
-                dllist_add(params.prev, &param->list);
+                array_push(params, param);
             }
             else
             {
@@ -316,9 +327,7 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
             }
 
             if (!match_token(parser, TKN_COMMA))
-            {
                 break;
-            }
         }
 
         if (!bad_param && expect_token(parser, TKN_RPAREN, error_prefix))
@@ -335,10 +344,47 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
             if (!bad_ret)
             {
                 range.end = parser->ptoken.range.end;
-                type = typespec_proc(parser->allocator, num_params, &params, ret, range);
+                type = typespec_proc(parser->ast_arena, array_len(params), params, ret, range);
             }
         }
+
+        allocator_restore_state(mem_state);
     }
+
+    return type;
+}
+
+static TypeSpec* parse_typespec_ident(Parser* parser)
+{
+    assert(is_token_kind(parser, TKN_IDENT));
+    TypeSpec* type = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+
+    AllocatorState temp_mem_state = allocator_get_state(&parser->temp_arena);
+    const char** path = array_create(&parser->temp_arena, const char*, 8);
+    bool bad_path = false;
+
+    array_push(path, parser->token.as_ident.value);
+    next_token(parser);
+
+    while (match_token(parser, TKN_DOT))
+    {
+        if (!expect_token(parser, TKN_IDENT, "Failed to parse type name specification"))
+        {
+            bad_path = true;
+            break;
+        }
+
+        array_push(path, parser->ptoken.as_ident.value);
+    }
+
+    if (!bad_path)
+    {
+        range.end = parser->ptoken.range.end;
+        type = typespec_ident(parser->ast_arena, array_len(path), path, range);
+    }
+
+    allocator_restore_state(temp_mem_state);
 
     return type;
 }
@@ -346,7 +392,7 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 // typespec_base  = typespec_proc
 //                | typespec_anon_struct
 //                | typespec_anon_union
-//                | TKN_IDENT
+//                | typespec_ident
 //                | '(' type_spec ')'
 static TypeSpec* parse_typespec_base(Parser* parser)
 {
@@ -370,8 +416,7 @@ static TypeSpec* parse_typespec_base(Parser* parser)
         }
         break;
         case TKN_IDENT:
-            next_token(parser);
-            return typespec_ident(parser->allocator, token.as_ident.value, token.range);
+            return parse_typespec_ident(parser);
         case TKN_LPAREN:
         {
             next_token(parser);
@@ -418,7 +463,7 @@ TypeSpec* parse_typespec(Parser* parser)
         if (base)
         {
             range.end = base->range.end;
-            type = typespec_ptr(parser->allocator, base, range);
+            type = typespec_ptr(parser->ast_arena, base, range);
         }
     }
     else if (match_token(parser, TKN_LBRACKET))
@@ -445,7 +490,7 @@ TypeSpec* parse_typespec(Parser* parser)
             if (base)
             {
                 range.end = base->range.end;
-                type = typespec_array(parser->allocator, base, len, range);
+                type = typespec_array(parser->ast_arena, base, len, range);
             }
         }
     }
@@ -461,7 +506,7 @@ TypeSpec* parse_typespec(Parser* parser)
         if (base)
         {
             range.end = base->range.end;
-            type = typespec_const(parser->allocator, base, range);
+            type = typespec_const(parser->ast_arena, base, range);
         }
     }
     else
@@ -498,7 +543,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
                 range.end = init->range.end;
                 designator.kind = DESIGNATOR_INDEX;
                 designator.index = index;
-                initzer = member_initializer(parser->allocator, init, designator, range);
+                initzer = member_initializer(parser->ast_arena, init, designator, range);
             }
         }
     }
@@ -512,7 +557,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
             {
                 const char* name = ((ExprIdent*)expr)->name;
 
-                mem_free(parser->allocator, expr);
+                mem_free(parser->ast_arena, expr);
 
                 Expr* init = parse_expr(parser);
 
@@ -521,7 +566,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
                     range.end = init->range.end;
                     designator.kind = DESIGNATOR_NAME;
                     designator.name = name;
-                    initzer = member_initializer(parser->allocator, init, designator, range);
+                    initzer = member_initializer(parser->ast_arena, init, designator, range);
                 }
             }
             else
@@ -532,7 +577,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
         else if (expr)
         {
             range.end = expr->range.end;
-            initzer = member_initializer(parser->allocator, expr, designator, range);
+            initzer = member_initializer(parser->ast_arena, expr, designator, range);
         }
     }
 
@@ -551,19 +596,18 @@ static Expr* parse_expr_compound_lit(Parser* parser)
     if (expect_token(parser, TKN_LBRACE, error_prefix))
     {
         ProgRange range = {.start = parser->ptoken.range.start};
-        size_t num_initzers = 0;
-        DLList initzers = dllist_head_create(initzers);
+        AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+        MemberInitializer** initzers = array_create(&parser->temp_arena, MemberInitializer*, 8);
         bool bad_initzer = false;
 
-        while (
-            !(is_token_kind(parser, TKN_RBRACE) || is_token_kind(parser, TKN_COLON) || is_token_kind(parser, TKN_EOF)))
+        while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_COLON) &&
+               !is_token_kind(parser, TKN_EOF))
         {
             MemberInitializer* initzer = parse_member_initializer(parser);
 
             if (initzer)
             {
-                num_initzers += 1;
-                dllist_add(initzers.prev, &initzer->list);
+                array_push(initzers, initzer);
             }
             else
             {
@@ -572,10 +616,7 @@ static Expr* parse_expr_compound_lit(Parser* parser)
             }
 
             if (!match_token(parser, TKN_COMMA))
-            {
                 break;
-            }
-            // TODO: Can record the maximum index value for array initializers
         }
 
         if (!bad_initzer)
@@ -585,20 +626,21 @@ static Expr* parse_expr_compound_lit(Parser* parser)
             if (match_token(parser, TKN_COLON))
             {
                 type = parse_typespec(parser);
-                // TODO: Can report error if using indexed initializers and not array type (etc.)
 
                 if (type && expect_token(parser, TKN_RBRACE, error_prefix))
                 {
                     range.end = parser->ptoken.range.end;
-                    expr = expr_compound_lit(parser->allocator, type, num_initzers, &initzers, range);
+                    expr = expr_compound_lit(parser->ast_arena, type, array_len(initzers), initzers, range);
                 }
             }
             else if (expect_token(parser, TKN_RBRACE, error_prefix))
             {
                 range.end = parser->ptoken.range.end;
-                expr = expr_compound_lit(parser->allocator, type, num_initzers, &initzers, range);
+                expr = expr_compound_lit(parser->ast_arena, type, array_len(initzers), initzers, range);
             }
         }
+
+        allocator_restore_state(mem_state);
     }
 
     return expr;
@@ -620,7 +662,7 @@ static Expr* parse_expr_sizeof(Parser* parser)
         if (type && expect_token(parser, TKN_RPAREN, error_prefix))
         {
             range.end = parser->ptoken.range.end;
-            expr = expr_sizeof(parser->allocator, type, range);
+            expr = expr_sizeof(parser->ast_arena, type, range);
         }
     }
 
@@ -643,7 +685,7 @@ static Expr* parse_expr_typeof(Parser* parser)
         if (arg && expect_token(parser, TKN_RPAREN, error_prefix))
         {
             range.end = parser->ptoken.range.end;
-            expr = expr_typeof(parser->allocator, arg, range);
+            expr = expr_typeof(parser->ast_arena, arg, range);
         }
     }
 
@@ -669,13 +711,13 @@ static Expr* parse_expr_base(Parser* parser)
     {
         case TKN_INT:
             next_token(parser);
-            return expr_int(parser->allocator, token.as_int.value, token.range);
+            return expr_int(parser->ast_arena, token.as_int.value, token.range);
         case TKN_FLOAT:
             next_token(parser);
-            return expr_float(parser->allocator, token.as_float.value, token.as_float.fkind, token.range);
+            return expr_float(parser->ast_arena, token.as_float.value, token.as_float.fkind, token.range);
         case TKN_STR:
             next_token(parser);
-            return expr_str(parser->allocator, token.as_str.value, token.range);
+            return expr_str(parser->ast_arena, token.as_str.value, token.range);
         case TKN_LPAREN:
         {
             next_token(parser);
@@ -705,7 +747,7 @@ static Expr* parse_expr_base(Parser* parser)
         break;
         case TKN_IDENT:
             next_token(parser);
-            return expr_ident(parser->allocator, token.as_ident.value, token.range);
+            return expr_ident(parser->ast_arena, token.as_ident.value, token.range);
         default:
             break;
     }
@@ -731,13 +773,13 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
         {
             const char* name = ((ExprIdent*)expr)->name;
 
-            mem_free(parser->allocator, expr);
+            mem_free(parser->ast_arena, expr);
 
             expr = parse_expr(parser);
 
             if (expr)
             {
-                arg = proc_call_arg(parser->allocator, expr, name);
+                arg = proc_call_arg(parser->ast_arena, expr, name);
             }
         }
         else
@@ -747,7 +789,7 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
     }
     else if (expr)
     {
-        arg = proc_call_arg(parser->allocator, expr, NULL);
+        arg = proc_call_arg(parser->ast_arena, expr, NULL);
     }
 
     return arg;
@@ -772,7 +814,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             {
                 const char* field = parser->ptoken.as_ident.value;
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
-                expr = expr_field(parser->allocator, expr, field, range);
+                expr = expr_field(parser->ast_arena, expr, field, range);
             }
             else
             {
@@ -790,7 +832,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             if (index && expect_token(parser, TKN_RBRACKET, "Failed to parse array access"))
             {
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
-                expr = expr_index(parser->allocator, expr, index, range);
+                expr = expr_index(parser->ast_arena, expr, index, range);
             }
             else
             {
@@ -803,9 +845,9 @@ static Expr* parse_expr_base_mod(Parser* parser)
             // Procedure call.
             //
 
+            AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+            ProcCallArg** args = array_create(&parser->temp_arena, ProcCallArg*, 8);
             bool bad_arg = false;
-            size_t num_args = 0;
-            DLList args = dllist_head_create(args);
 
             while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
             {
@@ -813,8 +855,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
 
                 if (arg)
                 {
-                    num_args += 1;
-                    dllist_add(args.prev, &arg->list);
+                    array_push(args, arg);
                 }
                 else
                 {
@@ -823,20 +864,20 @@ static Expr* parse_expr_base_mod(Parser* parser)
                 }
 
                 if (!match_token(parser, TKN_COMMA))
-                {
                     break;
-                }
             }
 
             if (!bad_arg && expect_token(parser, TKN_RPAREN, "Failed to parse procedure call"))
             {
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
-                expr = expr_call(parser->allocator, expr, num_args, &args, range);
+                expr = expr_call(parser->ast_arena, expr, array_len(args), args, range);
             }
             else
             {
                 expr = NULL;
             }
+
+            allocator_restore_state(mem_state);
         }
         else
         {
@@ -852,7 +893,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             if (type)
             {
                 ProgRange range = {.start = expr->range.start, .end = type->range.end};
-                expr = expr_cast(parser->allocator, type, expr, range);
+                expr = expr_cast(parser->ast_arena, type, expr, range);
             }
             else
             {
@@ -882,7 +923,7 @@ static Expr* parse_expr_unary(Parser* parser)
         if (unary)
         {
             range.end = unary->range.end;
-            expr = expr_unary(parser->allocator, op, unary, range);
+            expr = expr_unary(parser->ast_arena, op, unary, range);
         }
     }
     else
@@ -909,7 +950,7 @@ static Expr* parse_expr_mul(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->allocator, op, left, right);
+            expr = expr_binary(parser->ast_arena, op, left, right);
         }
         else
         {
@@ -936,7 +977,7 @@ static Expr* parse_expr_add(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->allocator, op, left, right);
+            expr = expr_binary(parser->ast_arena, op, left, right);
         }
         else
         {
@@ -963,7 +1004,7 @@ static Expr* parse_expr_cmp(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->allocator, op, left, right);
+            expr = expr_binary(parser->ast_arena, op, left, right);
         }
         else
         {
@@ -986,7 +1027,7 @@ static Expr* parse_expr_and(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->allocator, TKN_LOGIC_AND, left, right);
+            expr = expr_binary(parser->ast_arena, TKN_LOGIC_AND, left, right);
         }
         else
         {
@@ -1009,7 +1050,7 @@ static Expr* parse_expr_or(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->allocator, TKN_LOGIC_OR, left, right);
+            expr = expr_binary(parser->ast_arena, TKN_LOGIC_OR, left, right);
         }
         else
         {
@@ -1037,7 +1078,7 @@ static Expr* parse_expr_ternary(Parser* parser)
 
                 if (else_expr)
                 {
-                    expr = expr_ternary(parser->allocator, expr, then_expr, else_expr);
+                    expr = expr_ternary(parser->ast_arena, expr, then_expr, else_expr);
                 }
             }
         }
@@ -1056,12 +1097,9 @@ Expr* parse_expr(Parser* parser)
 //    Parse statements
 //////////////////////////////
 
-static bool parse_fill_stmt_list(Parser* parser, size_t* num_stmts, DLList* stmts)
+static bool parse_fill_stmt_list(Parser* parser, Stmt*** stmts)
 {
     bool bad_stmt = false;
-
-    dllist_head_init(stmts);
-    *num_stmts = 0;
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
     {
@@ -1069,8 +1107,7 @@ static bool parse_fill_stmt_list(Parser* parser, size_t* num_stmts, DLList* stmt
 
         if (stmt)
         {
-            *num_stmts += 1;
-            dllist_add(stmts->prev, &stmt->list);
+            array_push(*stmts, stmt);
         }
         else
         {
@@ -1090,15 +1127,17 @@ static Stmt* parse_stmt_block(Parser* parser)
 
     next_token(parser);
 
-    size_t num_stmts = 0;
-    DLList stmts = {0};
-    bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
+    AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+    Stmt** stmts = array_create(&parser->temp_arena, Stmt*, 8);
+    bool ok = parse_fill_stmt_list(parser, &stmts);
 
     if (ok && expect_token(parser, TKN_RBRACE, "Failed to parse end of statement block"))
     {
         range.end = parser->ptoken.range.end;
-        stmt = stmt_block(parser->allocator, num_stmts, &stmts, range);
+        stmt = stmt_block(parser->ast_arena, array_len(stmts), stmts, range);
     }
+
+    allocator_restore_state(mem_state);
 
     return stmt;
 }
@@ -1139,7 +1178,7 @@ static ElifBlock* parse_stmt_elif_block(Parser* parser)
     IfCondBlock cblock = {0};
 
     if (parse_fill_if_cond_block(parser, &cblock, error_prefix))
-        elif_blk = elif_block(parser->allocator, cblock.cond, cblock.body, cblock.range);
+        elif_blk = elif_block(parser->ast_arena, cblock.cond, cblock.body, cblock.range);
 
     return elif_blk;
 }
@@ -1211,7 +1250,7 @@ static Stmt* parse_stmt_if(Parser* parser)
 
             if (!bad_else)
             {
-                stmt = stmt_if(parser->allocator, &if_blk, num_elif_blks, &elif_blks, &else_blk, range);
+                stmt = stmt_if(parser->ast_arena, &if_blk, num_elif_blks, &elif_blks, &else_blk, range);
             }
         }
     }
@@ -1251,8 +1290,10 @@ static SwitchCase* parse_switch_case(Parser* parser)
     if (!expect_token(parser, TKN_COLON, error_prefix))
         return NULL;
 
-    size_t num_stmts = 0;
-    DLList stmts = dllist_head_create(stmts);
+    SwitchCase* swcase = NULL;
+    AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+    Stmt** stmts = array_create(&parser->temp_arena, Stmt*, 8);
+    bool bad_stmt = false;
 
     // Parse case statements
     while (!is_keyword(parser, KW_CASE) && !is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
@@ -1260,15 +1301,23 @@ static SwitchCase* parse_switch_case(Parser* parser)
         Stmt* stmt = parse_stmt(parser);
 
         if (!stmt)
-            return NULL;
+        {
+            bad_stmt = true;
+            break;
+        }
 
-        num_stmts += 1;
-        dllist_add(stmts.prev, &stmt->list);
+        array_push(stmts, stmt);
     }
 
-    range.end = parser->ptoken.range.end;
+    if (!bad_stmt)
+    {
+        range.end = parser->ptoken.range.end;
+        swcase = switch_case(parser->ast_arena, start, end, array_len(stmts), stmts, range);
+    }
 
-    return switch_case(parser->allocator, start, end, num_stmts, &stmts, range);
+    allocator_restore_state(mem_state);
+
+    return swcase;
 }
 
 // stmt_switch = 'switch' '(' expr ')' '{' switch_case+ '}'
@@ -1288,36 +1337,45 @@ static Stmt* parse_stmt_switch(Parser* parser)
     if (!expr || !expect_token(parser, TKN_RPAREN, error_prefix) || !expect_token(parser, TKN_LBRACE, error_prefix))
         return NULL;
 
-    size_t num_cases = 0;
-    DLList cases = dllist_head_create(cases);
+    Stmt* stmt = NULL;
+    AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+    SwitchCase** cases = array_create(&parser->temp_arena, SwitchCase*, 8);
     bool has_default = false;
+    bool bad_case = false;
 
     do
     {
         SwitchCase* swcase = parse_switch_case(parser);
 
         if (!swcase)
-            return NULL;
+        {
+            bad_case = true;
+            break;
+        }
 
         bool is_default = !swcase->start && !swcase->end;
 
         if (has_default && is_default)
         {
             parser_on_error(parser, "Switch statement can have at most one default case");
-            return NULL;
+            bad_case = true;
+            break;
         }
 
         has_default = has_default || is_default;
-        num_cases += 1;
-        dllist_add(cases.prev, &swcase->list);
+
+        array_push(cases, swcase);
     } while (is_keyword(parser, KW_CASE));
 
-    if (!expect_token(parser, TKN_RBRACE, error_prefix))
-        return NULL;
+    if (!bad_case && expect_token(parser, TKN_RBRACE, error_prefix))
+    {
+        range.end = parser->ptoken.range.end;
+        stmt = stmt_switch(parser->ast_arena, expr, array_len(cases), cases, range);
+    }
 
-    range.end = parser->ptoken.range.end;
+    allocator_restore_state(mem_state);
 
-    return stmt_switch(parser->allocator, expr, num_cases, &cases, range);
+    return stmt;
 }
 
 // stmt_while = 'while' '(' expr ')' stmt
@@ -1344,7 +1402,7 @@ static Stmt* parse_stmt_while(Parser* parser)
 
     range.end = body->range.end;
 
-    return stmt_while(parser->allocator, cond, body, range);
+    return stmt_while(parser->ast_arena, cond, body, range);
 }
 
 // stmt_do_while = 'do' stmt 'while' '(' expr ')' ';'
@@ -1366,7 +1424,7 @@ static Stmt* parse_stmt_do_while(Parser* parser)
         if (cond && expect_token(parser, TKN_RPAREN, error_prefix) && expect_token(parser, TKN_SEMICOLON, error_prefix))
         {
             range.end = parser->ptoken.range.end;
-            stmt = stmt_do_while(parser->allocator, cond, body, range);
+            stmt = stmt_do_while(parser->ast_arena, cond, body, range);
         }
     }
 
@@ -1379,7 +1437,7 @@ static Stmt* parse_stmt_decl(Parser* parser)
     Decl* decl = parse_decl(parser);
 
     if (decl)
-        stmt = stmt_decl(parser->allocator, decl);
+        stmt = stmt_decl(parser->ast_arena, decl);
 
     return stmt;
 }
@@ -1404,23 +1462,23 @@ static Stmt* parse_stmt_expr(Parser* parser, bool terminate)
             if (rexpr && !terminate)
             {
                 range.end = rexpr->range.end;
-                stmt = stmt_expr_assign(parser->allocator, expr, op_assign, rexpr, range);
+                stmt = stmt_expr_assign(parser->ast_arena, expr, op_assign, rexpr, range);
             }
             else if (rexpr && expect_token(parser, TKN_SEMICOLON, error_prefix))
             {
                 range.end = parser->ptoken.range.end;
-                stmt = stmt_expr_assign(parser->allocator, expr, op_assign, rexpr, range);
+                stmt = stmt_expr_assign(parser->ast_arena, expr, op_assign, rexpr, range);
             }
         }
         else if (!terminate)
         {
             range.end = expr->range.end;
-            stmt = stmt_expr(parser->allocator, expr, range);
+            stmt = stmt_expr(parser->ast_arena, expr, range);
         }
         else if (expect_token(parser, TKN_SEMICOLON, error_prefix))
         {
             range.end = parser->ptoken.range.end;
-            stmt = stmt_expr(parser->allocator, expr, range);
+            stmt = stmt_expr(parser->ast_arena, expr, range);
         }
     }
 
@@ -1486,7 +1544,7 @@ static Stmt* parse_stmt_for(Parser* parser)
 
     range.end = body->range.end;
 
-    return stmt_for(parser->allocator, init, cond, next, body, range);
+    return stmt_for(parser->ast_arena, init, cond, next, body, range);
 }
 
 // stmt_return = 'return' expr? ';'
@@ -1520,7 +1578,7 @@ static Stmt* parse_stmt_return(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return stmt_return(parser->allocator, expr, range);
+    return stmt_return(parser->ast_arena, expr, range);
 }
 
 // stmt_break = 'break' TKN_IDENT? ';'
@@ -1540,7 +1598,7 @@ static Stmt* parse_stmt_break(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return stmt_break(parser->allocator, label, range);
+    return stmt_break(parser->ast_arena, label, range);
 }
 
 // stmt_continue = 'continue' TKN_IDENT? ';'
@@ -1560,7 +1618,7 @@ static Stmt* parse_stmt_continue(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return stmt_continue(parser->allocator, label, range);
+    return stmt_continue(parser->ast_arena, label, range);
 }
 
 // stmt_goto = 'goto' TKN_IDENT ';'
@@ -1583,7 +1641,7 @@ static Stmt* parse_stmt_goto(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return stmt_goto(parser->allocator, label, range);
+    return stmt_goto(parser->ast_arena, label, range);
 }
 
 // stmt_label = 'label' TKN_IDENT ':' stmt
@@ -1613,7 +1671,7 @@ static Stmt* parse_stmt_label(Parser* parser)
 
     range.end = stmt->range.end;
 
-    return stmt_label(parser->allocator, label, stmt, range);
+    return stmt_label(parser->ast_arena, label, stmt, range);
 }
 
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
@@ -1639,7 +1697,7 @@ Stmt* parse_stmt(Parser* parser)
     {
         case TKN_SEMICOLON:
             next_token(parser);
-            return stmt_noop(parser->allocator, token.range);
+            return stmt_noop(parser->ast_arena, token.range);
         case TKN_LBRACE:
             return parse_stmt_block(parser);
         case TKN_KW:
@@ -1732,7 +1790,7 @@ static Decl* parse_decl_var(Parser* parser)
                     if (expect_token(parser, TKN_SEMICOLON, error_prefix))
                     {
                         range.end = parser->ptoken.range.end;
-                        decl = decl_var(parser->allocator, name, type, expr, range);
+                        decl = decl_var(parser->ast_arena, name, type, expr, range);
                     }
                 }
                 else
@@ -1764,7 +1822,7 @@ static ProcParam* parse_proc_param(Parser* parser)
             if (type)
             {
                 range.end = type->range.end;
-                param = proc_param(parser->allocator, name, type, range);
+                param = proc_param(parser->ast_arena, name, type, range);
             }
         }
     }
@@ -1789,8 +1847,8 @@ static Decl* parse_decl_proc(Parser* parser)
 
         if (expect_token(parser, TKN_LPAREN, error_prefix))
         {
-            size_t num_params = 0;
-            DLList params = dllist_head_create(params);
+            AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+            ProcParam** params = array_create(&parser->temp_arena, ProcParam*, 8);
             bool bad_param = false;
 
             while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
@@ -1799,8 +1857,7 @@ static Decl* parse_decl_proc(Parser* parser)
 
                 if (param)
                 {
-                    num_params += 1;
-                    dllist_add(params.prev, &param->list);
+                    array_push(params, param);
                 }
                 else
                 {
@@ -1809,9 +1866,7 @@ static Decl* parse_decl_proc(Parser* parser)
                 }
 
                 if (!match_token(parser, TKN_COMMA))
-                {
                     break;
-                }
             }
 
             if (!bad_param && expect_token(parser, TKN_RPAREN, error_prefix))
@@ -1827,17 +1882,19 @@ static Decl* parse_decl_proc(Parser* parser)
 
                 if (!bad_ret && expect_token(parser, TKN_LBRACE, error_prefix))
                 {
-                    DLList stmts = {0};
-                    size_t num_stmts = 0;
-                    bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
+                    Stmt** stmts = array_create(&parser->temp_arena, Stmt*, 8);
+                    bool ok = parse_fill_stmt_list(parser, &stmts);
 
                     if (ok && expect_token(parser, TKN_RBRACE, error_prefix))
                     {
                         range.end = parser->ptoken.range.end;
-                        decl = decl_proc(parser->allocator, name, num_params, &params, ret, num_stmts, &stmts, range);
+                        decl = decl_proc(parser->ast_arena, name, array_len(params), params, ret, array_len(stmts),
+                                         stmts, range);
                     }
                 }
             }
+
+            allocator_restore_state(mem_state);
         }
     }
 
@@ -1860,22 +1917,25 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
 
         if (expect_token(parser, TKN_LBRACE, error_prefix))
         {
-            size_t num_fields = 0;
-            DLList fields = {0};
+            AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+            AggregateField** fields = array_create(&parser->temp_arena, AggregateField*, 8);
 
-            if (parse_fill_aggregate_body(parser, &num_fields, &fields) &&
-                expect_token(parser, TKN_RBRACE, error_prefix))
+            if (parse_fill_aggregate_body(parser, &fields) && expect_token(parser, TKN_RBRACE, error_prefix))
             {
+                size_t num_fields = array_len(fields);
+
                 if (num_fields)
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_aggregate_proc(parser->allocator, name, num_fields, &fields, range);
+                    decl = decl_aggregate_proc(parser->ast_arena, name, num_fields, fields, range);
                 }
                 else
                 {
                     parser_on_error(parser, "%s: must have at least one field", error_prefix);
                 }
             }
+
+            allocator_restore_state(mem_state);
         }
     }
 
@@ -1900,7 +1960,7 @@ static EnumItem* parse_enum_item(Parser* parser)
         }
 
         if (!bad_value)
-            item = enum_item(parser->allocator, name, value);
+            item = enum_item(parser->ast_arena, name, value);
     }
 
     return item;
@@ -1935,8 +1995,8 @@ static Decl* parse_decl_enum(Parser* parser)
 
         if (!bad_type && expect_token(parser, TKN_LBRACE, error_prefix))
         {
-            size_t num_items = 0;
-            DLList items = dllist_head_create(items);
+            AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+            EnumItem** items = array_create(&parser->temp_arena, EnumItem*, 8);
             bool bad_item = false;
 
             while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
@@ -1945,8 +2005,7 @@ static Decl* parse_decl_enum(Parser* parser)
 
                 if (item)
                 {
-                    num_items += 1;
-                    dllist_add(items.prev, &item->list);
+                    array_push(items, item);
                 }
                 else
                 {
@@ -1960,16 +2019,20 @@ static Decl* parse_decl_enum(Parser* parser)
 
             if (!bad_item && expect_token(parser, TKN_RBRACE, error_prefix))
             {
+                size_t num_items = array_len(items);
+
                 if (num_items)
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_enum(parser->allocator, name, type, num_items, &items, range);
+                    decl = decl_enum(parser->ast_arena, name, type, num_items, items, range);
                 }
                 else
                 {
                     parser_on_error(parser, "%s: must have at least one enumeration constant", error_prefix);
                 }
             }
+
+            allocator_restore_state(mem_state);
         }
     }
 
@@ -1999,7 +2062,7 @@ static Decl* parse_decl_typedef(Parser* parser)
             if (type && expect_token(parser, TKN_SEMICOLON, error_prefix))
             {
                 range.end = parser->ptoken.range.end;
-                decl = decl_typedef(parser->allocator, name, type, range);
+                decl = decl_typedef(parser->ast_arena, name, type, range);
             }
         }
     }
@@ -2042,7 +2105,7 @@ static Decl* parse_decl_const(Parser* parser)
                 if (expr && expect_token(parser, TKN_SEMICOLON, error_prefix))
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_const(parser->allocator, name, type, expr, range);
+                    decl = decl_const(parser->ast_arena, name, type, expr, range);
                 }
             }
         }

@@ -18,6 +18,7 @@
 #include "ast.c"
 #include "parser.c"
 #include "types.c"
+#include "resolver.c"
 #include "nibble.c"
 
 void print_usage(FILE* fd, const char* program_name)
@@ -156,7 +157,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    CompiledModule* module = compile_module(input_file, 0);
+    Module* module = compile_module(input_file, 0);
     if (!module)
     {
         ftprint_err("ERROR: Failed to compile file.\n");
@@ -164,6 +165,6 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    free_compiled_module(module);
+    free_module(module);
     nibble_cleanup();
 }
