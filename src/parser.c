@@ -1167,10 +1167,10 @@ static bool parse_fill_if_cond_block(Parser* parser, IfCondBlock* cblock, const 
     return true;
 }
 
-static ElifBlock* parse_stmt_elif_block(Parser* parser)
+static IfCondBlock* parse_stmt_elif_block(Parser* parser)
 {
     assert(is_keyword(parser, KW_ELIF));
-    ElifBlock* elif_blk = NULL;
+    IfCondBlock* elif_blk = NULL;
     const char* error_prefix = "Failed to parse elif statement";
 
     next_token(parser);
@@ -1178,7 +1178,7 @@ static ElifBlock* parse_stmt_elif_block(Parser* parser)
     IfCondBlock cblock = {0};
 
     if (parse_fill_if_cond_block(parser, &cblock, error_prefix))
-        elif_blk = elif_block(parser->ast_arena, cblock.cond, cblock.body, cblock.range);
+        elif_blk = if_cond_block(parser->ast_arena, cblock.cond, cblock.body, cblock.range);
 
     return elif_blk;
 }
@@ -1218,18 +1218,17 @@ static Stmt* parse_stmt_if(Parser* parser)
 
     if (ok_if)
     {
-        size_t num_elif_blks = 0;
-        DLList elif_blks = dllist_head_create(elif_blks);
+        AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
+        IfCondBlock** elif_blks = array_create(&parser->temp_arena, IfCondBlock*, 8);
         bool bad_elif = false;
 
         while (is_keyword(parser, KW_ELIF))
         {
-            ElifBlock* elif = parse_stmt_elif_block(parser);
+            IfCondBlock* elif = parse_stmt_elif_block(parser);
 
             if (elif)
             {
-                num_elif_blks += 1;
-                dllist_add(elif_blks.prev, &elif->list);
+                array_push(elif_blks, elif);
             }
             else
             {
@@ -1250,9 +1249,11 @@ static Stmt* parse_stmt_if(Parser* parser)
 
             if (!bad_else)
             {
-                stmt = stmt_if(parser->ast_arena, &if_blk, num_elif_blks, &elif_blks, &else_blk, range);
+                stmt = stmt_if(parser->ast_arena, &if_blk, array_len(elif_blks), elif_blks, &else_blk, range);
             }
         }
+
+        allocator_restore_state(mem_state);
     }
 
     return stmt;

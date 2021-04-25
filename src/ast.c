@@ -410,8 +410,8 @@ Stmt* stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange rang
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, ElseBlock* else_blk,
-              ProgRange range)
+Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, IfCondBlock** elif_blks,
+              ElseBlock* else_blk, ProgRange range)
 {
     StmtIf* stmt = stmt_alloc(allocator, StmtIf, range);
 
@@ -420,7 +420,7 @@ Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, D
     stmt->if_blk.body = if_blk->body;
 
     stmt->num_elif_blks = num_elif_blks;
-    dllist_replace(elif_blks, &stmt->elif_blks);
+    stmt->elif_blks = mem_dup_array(allocator, IfCondBlock*, elif_blks, num_elif_blks);
 
     stmt->else_blk.range = else_blk->range;
     stmt->else_blk.body = else_blk->body;
@@ -428,14 +428,14 @@ Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, D
     return (Stmt*)stmt;
 }
 
-ElifBlock* elif_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
+IfCondBlock* if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
 {
-    ElifBlock* elif = new_type(allocator, ElifBlock, true);
-    elif->block.range = range;
-    elif->block.cond = cond;
-    elif->block.body = body;
+    IfCondBlock* cblock = new_type(allocator, IfCondBlock, true);
+    cblock->range = range;
+    cblock->cond = cond;
+    cblock->body = body;
 
-    return elif;
+    return cblock;
 }
 
 Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range)
@@ -983,20 +983,20 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, "(if %s %s", ftprint_expr(allocator, s->if_blk.cond),
                                    ftprint_stmt(allocator, s->if_blk.body));
 
-                if (s->num_elif_blks)
+                size_t num_elif_blks = s->num_elif_blks;
+
+                if (num_elif_blks)
                 {
                     ftprint_char_array(&dstr, false, " ");
 
-                    DLList* head = &s->elif_blks;
-
-                    for (DLList* it = head->next; it != head; it = it->next)
+                    for (size_t i = 0; i < num_elif_blks; i += 1)
                     {
-                        ElifBlock* elif = dllist_entry(it, ElifBlock, list);
+                        IfCondBlock* elif = s->elif_blks[i];
 
-                        ftprint_char_array(&dstr, false, "(elif %s %s)", ftprint_expr(allocator, elif->block.cond),
-                                           ftprint_stmt(allocator, elif->block.body));
+                        ftprint_char_array(&dstr, false, "(elif %s %s)", ftprint_expr(allocator, elif->cond),
+                                           ftprint_stmt(allocator, elif->body));
 
-                        if (it->next != head)
+                        if (i < num_elif_blks - 1)
                             ftprint_char_array(&dstr, false, " ");
                     }
                 }

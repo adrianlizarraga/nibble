@@ -6,7 +6,6 @@
 #include "nibble.h"
 #include "allocator.h"
 #include "lexer.h"
-#include "llist.h"
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -296,11 +295,6 @@ typedef struct IfCondBlock {
     Stmt* body;
 } IfCondBlock;
 
-typedef struct ElifBlock {
-    IfCondBlock block;
-    DLList list;
-} ElifBlock;
-
 typedef struct ElseBlock {
     ProgRange range;
     Stmt* body;
@@ -311,7 +305,7 @@ typedef struct StmtIf {
     IfCondBlock if_blk;
 
     size_t num_elif_blks;
-    DLList elif_blks;
+    IfCondBlock** elif_blks;
 
     ElseBlock else_blk;
 } StmtIf;
@@ -401,9 +395,9 @@ Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
 Stmt* stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
 Stmt* stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, DLList* elif_blks, ElseBlock* else_blk,
-              ProgRange range);
-ElifBlock* elif_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
+Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, IfCondBlock** elif_blks,
+              ElseBlock* else_blk, ProgRange range);
+IfCondBlock* if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
 Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
 Stmt* stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* stmt_break(Allocator* allocator, const char* label, ProgRange range);
