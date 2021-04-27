@@ -9,20 +9,8 @@
 
 typedef enum TypeKind {
     TYPE_VOID,
-    TYPE_BOOL,
-    TYPE_CHAR,
-    TYPE_SCHAR,
-    TYPE_UCHAR,
-    TYPE_SHORT,
-    TYPE_USHORT,
-    TYPE_INT,
-    TYPE_UINT,
-    TYPE_LONG,
-    TYPE_ULONG,
-    TYPE_LLONG,
-    TYPE_ULLONG,
+    TYPE_INTEGRAL,
     TYPE_FLOAT,
-    TYPE_DOUBLE,
     TYPE_ENUM,
     TYPE_PTR,
     TYPE_PROC,
@@ -34,6 +22,26 @@ typedef enum TypeKind {
     NUM_TYPE_KINDS,
 } TypeKind;
 
+typedef enum TypeIntegralKind {
+    TYPE_INT,
+    TYPE_BOOL,
+    TYPE_CHAR,
+    TYPE_SCHAR,
+    TYPE_UCHAR,
+    TYPE_SHORT,
+    TYPE_USHORT,
+    TYPE_UINT,
+    TYPE_LONG,
+    TYPE_ULONG,
+    TYPE_LLONG,
+    TYPE_ULLONG,
+} TypeIntegralKind;
+
+typedef enum TypeFloatKind {
+    TYPE_FLOAT64,
+    TYPE_FLOAT32,
+} TypeFloatKind;
+
 typedef enum TypeStatus {
     TYPE_STATUS_COMPLETE,
     TYPE_STATUS_INCOMPLETE,
@@ -41,6 +49,16 @@ typedef enum TypeStatus {
 } TypeStatus;
 
 typedef struct Type Type;
+
+typedef struct TypeIntegral {
+    TypeIntegralKind kind;
+    bool is_signed;
+    unsigned long long max;
+} TypeIntegral;
+
+typedef struct TypeFloat {
+    TypeFloatKind kind;
+} TypeFloat;
 
 typedef struct TypeProc {
     size_t num_params;
@@ -78,9 +96,10 @@ struct Type {
     int id;
     size_t size;
     size_t align;
-    uint32_t flags;
 
     union {
+        TypeIntegral as_integral;
+        TypeFloat as_float;
         TypePtr as_ptr;
         TypeConst as_const;
         TypeProc as_proc;
@@ -104,8 +123,11 @@ extern Type* type_llong;
 extern Type* type_ullong;
 extern Type* type_ssize;
 extern Type* type_usize;
-extern Type* type_float;
-extern Type* type_double;
+extern Type* type_float32;
+extern Type* type_float64;
+
+extern size_t PTR_SIZE;
+extern size_t PTR_ALIGN;
 
 void init_builtin_types(OS target_os, Arch target_arch);
 

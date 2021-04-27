@@ -49,6 +49,11 @@ struct Module {
     Allocator allocator;
     Allocator ast_arena;
     ByteStream errors;
+
+    size_t num_decls;
+    Decl** decls;
+
+    HashMap syms_map;
 };
 
 Module* compile_module(const char* filename, ProgPos pos);

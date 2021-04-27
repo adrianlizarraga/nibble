@@ -1294,3 +1294,19 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 
     return dstr;
 }
+
+char* ftprint_decls(Allocator* allocator, size_t num_decls, Decl** decls)
+{
+    assert(decls);
+
+    char* dstr = array_create(allocator, char, 64);
+
+    for (size_t i = 0; i < num_decls; i += 1)
+    {
+        ftprint_char_array(&dstr, false, "%s\n", ftprint_decl(allocator, decls[i]));
+    }
+
+    array_push(dstr, '\0');
+
+    return dstr;
+}

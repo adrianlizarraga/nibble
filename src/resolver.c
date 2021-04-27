@@ -1,6 +1,8 @@
 #include "resolver.h"
 #include "parser.h"
 
+//#define NIBBLE_PRINT_DECLS 
+
 static char* slurp_file(Allocator* allocator, const char* filename)
 {
     FILE* fd = fopen(filename, "r");
@@ -34,23 +36,27 @@ static char* slurp_file(Allocator* allocator, const char* filename)
 
 Module* compile_module(const char* filename, ProgPos pos)
 {
-    Allocator bootstrap = allocator_create(256);
+    Allocator bootstrap = allocator_create(4096);
     Module* module = new_type(&bootstrap, Module, true);
     module->allocator = bootstrap;
     module->errors = byte_stream_create(&module->allocator);
-    module->ast_arena = allocator_create(1024);
+    module->ast_arena = allocator_create(4096);
+    module->syms_map = hash_map(8, NULL);
 
     const char* str = slurp_file(&module->allocator, filename);
     if (!str)
         return NULL;
 
     /////////////////////////////////////
-    //  Print AST
+    //  Parse top-level declarations
     /////////////////////////////////////
 
     Parser parser = {0};
     parser_init(&parser, &module->ast_arena, str, pos, &module->errors);
     next_token(&parser);
+
+    AllocatorState mem_state = allocator_get_state(&module->allocator);
+    Decl** decls = array_create(&module->allocator, Decl*, 32);
 
     while (!is_token_kind(&parser, TKN_EOF))
     {
@@ -58,10 +64,21 @@ Module* compile_module(const char* filename, ProgPos pos)
         if (!decl)
             break;
 
-        ftprint_out("%s\n", ftprint_decl(&module->allocator, decl));
+        array_push(decls, decl);
     }
 
-    ftprint_out("\n");
+    module->num_decls = array_len(decls);
+    module->decls = mem_dup_array(&module->ast_arena, Decl*, decls, array_len(decls));
+
+#ifdef NIBBLE_PRINT_DECLS
+    ftprint_out("%s\n", ftprint_decls(&module->allocator, module->num_decls, module->decls));
+#endif
+
+    allocator_restore_state(mem_state);
+
+    ///////////////////////////////////
+    //  Print errors
+    ///////////////////////////////////
 
     if (module->errors.num_chunks > 0)
     {
@@ -89,6 +106,7 @@ void free_module(Module* module)
     print_allocator_stats(&module->allocator, "Module mem stats");
 #endif
 
+    hash_map_destroy(&module->syms_map);
     allocator_destroy(&module->ast_arena);
     allocator_destroy(&bootstrap);
 }
