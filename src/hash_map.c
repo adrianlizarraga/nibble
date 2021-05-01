@@ -82,6 +82,18 @@ HashMap hash_map(unsigned int cap_log2, Allocator* allocator)
     return map;
 }
 
+void hash_map_clear(HashMap* map)
+{
+    if (map->len)
+    {
+        memset(&map->entries, 0, map->cap * sizeof(HashMapEntry));    
+        map->len = 0;
+    }
+
+    if (map->null_key.key)
+        map->null_key.key = 0;
+}
+
 void hash_map_destroy(HashMap* map)
 {
     mem_free(map->allocator, map->entries);

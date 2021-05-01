@@ -34,7 +34,7 @@ void allocator_reset(Allocator* allocator);
 void allocator_destroy(Allocator* allocator);
 
 void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear);
-void* mem_dup(Allocator* allocator, void* src, size_t size, size_t align);
+void* mem_dup(Allocator* allocator, const void* src, size_t size, size_t align);
 void* mem_reallocate(Allocator* allocator, void* ptr, size_t old_size, size_t size, size_t align);
 void mem_free(Allocator* allocator, void* ptr);
 

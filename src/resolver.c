@@ -34,14 +34,38 @@ static char* slurp_file(Allocator* allocator, const char* filename)
     return buf;
 }
 
+static void resolver_init(Resolver* resolver, Allocator* allocator)
+{
+    resolver->modules = hash_map(8, allocator);
+    resolver->local_syms = hash_map(8, allocator);
+}
+
+static void resolver_destroy(Resolver* resolver)
+{
+    hash_map_destroy(&resolver->modules);
+    hash_map_destroy(&resolver->local_syms);
+}
+
+Module* import_module(const char* path)
+{
+    const char* name = intern_str_lit(path, cstr_len(path));
+    Resolver resolver = {0};
+    resolver_init(&resolver, NULL);
+
+    resolver_add_module(&resolver, module);
+
+    resolver_destroy(&resolver);
+}
+
 Module* compile_module(const char* filename, ProgPos pos)
 {
     Allocator bootstrap = allocator_create(4096);
     Module* module = new_type(&bootstrap, Module, true);
     module->allocator = bootstrap;
+    module->name = mem_dup(&module->allocator, filename, cstr_len(filename) + 1, DEFAULT_ALIGN);
     module->errors = byte_stream_create(&module->allocator);
     module->ast_arena = allocator_create(4096);
-    module->syms_map = hash_map(8, NULL);
+    module->syms = hash_map(8, NULL);
 
     const char* str = slurp_file(&module->allocator, filename);
     if (!str)
@@ -77,6 +101,9 @@ Module* compile_module(const char* filename, ProgPos pos)
     allocator_restore_state(mem_state);
 
     ///////////////////////////////////
+    //  Resolve symbols
+    ///////////////////////////////////
+    ///////////////////////////////////
     //  Print errors
     ///////////////////////////////////
 
@@ -106,7 +133,7 @@ void free_module(Module* module)
     print_allocator_stats(&module->allocator, "Module mem stats");
 #endif
 
-    hash_map_destroy(&module->syms_map);
+    hash_map_destroy(&module->syms);
     allocator_destroy(&module->ast_arena);
     allocator_destroy(&bootstrap);
 }

@@ -48,13 +48,22 @@ typedef struct Symbol {
 struct Module {
     Allocator allocator;
     Allocator ast_arena;
+    char* name;
+
     ByteStream errors;
 
     size_t num_decls;
     Decl** decls;
 
-    HashMap syms_map;
+    HashMap syms;
 };
+
+typedef struct Resolver {
+    HashMap modules;
+    Module* curr_module;
+
+    HashMap local_syms;
+} Resolver;
 
 Module* compile_module(const char* filename, ProgPos pos);
 void free_module(Module* module);

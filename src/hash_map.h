@@ -5,6 +5,8 @@
 
 #include "allocator.h"
 
+#define PTR_UINT(p) ((uintptr_t)((void*)(p)))
+
 typedef struct HashMapEntry {
     uint64_t key;
     uint64_t value;
@@ -27,6 +29,7 @@ typedef struct HashMap {
 } HashMap;
 
 HashMap hash_map(unsigned int cap_log2, Allocator* allocator);
+void hash_map_clear(HashMap* map);
 void hash_map_destroy(HashMap* map);
 
 uint64_t* hash_map_put(HashMap* map, uint64_t key, uint64_t value);
