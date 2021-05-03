@@ -12,6 +12,11 @@ typedef struct TypeSpec TypeSpec;
 typedef struct Decl Decl;
 typedef struct Stmt Stmt;
 
+typedef struct Ast {
+    size_t num_decls;
+    Decl** decls;
+} Ast;
+
 ///////////////////////////////
 //       Type Specifiers
 //////////////////////////////
@@ -491,4 +496,5 @@ Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, ProcP
                 size_t num_stmts, Stmt** stmts, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
+
 #endif

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #define PARSER_ARENA_BLOCK_SIZE 512
+//#define NIBBLE_PRINT_DECLS 
 
 static void parser_on_error(Parser* parser, const char* format, ...)
 {
