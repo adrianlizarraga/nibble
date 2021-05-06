@@ -31,4 +31,5 @@ size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...);
 size_t ftprintv_file(FILE* fd, bool nullterm, const char* format, va_list vargs);
 #define ftprint_out(format, ...) ftprint_file(stdout, true, (format), ## __VA_ARGS__)
 #define ftprint_err(format, ...) ftprint_file(stderr, true, (format), ## __VA_ARGS__)
+#define ftprintv_err(format, vargs) ftprintv_file(stderr, true, (format), (vargs))
 #endif

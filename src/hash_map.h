@@ -6,11 +6,12 @@
 #include "allocator.h"
 
 #define PTR_UINT(p) ((uintptr_t)((void*)(p)))
+#define UINT_PTR(i, t) (t*)((uintptr_t)(i))
 
-typedef struct HashMapEntry {
+typedef struct HMapEntry {
     uint64_t key;
     uint64_t value;
-} HashMapEntry;
+} HMapEntry;
 
 // Simple pointer/uint to pointer/uint hash table.
 // - Power-of-two size
@@ -18,26 +19,26 @@ typedef struct HashMapEntry {
 // - Linear probing
 // - Expands by 2x at ~60% load
 // - Key value of zero denotes an empty slot
-typedef struct HashMap {
-    HashMapEntry* entries;
+typedef struct HMap {
+    HMapEntry* entries;
     size_t cap;
     size_t len;
     size_t mask;
 
-    HashMapEntry null_key;
+    HMapEntry null_key;
     Allocator* allocator;
-} HashMap;
+} HMap;
 
-HashMap hash_map(unsigned int cap_log2, Allocator* allocator);
-void hash_map_clear(HashMap* map);
-void hash_map_destroy(HashMap* map);
+HMap hmap(unsigned int cap_log2, Allocator* allocator);
+void hmap_clear(HMap* map);
+void hmap_destroy(HMap* map);
 
-uint64_t* hash_map_put(HashMap* map, uint64_t key, uint64_t value);
-uint64_t* hash_map_get(HashMap* map, uint64_t key);
+uint64_t* hmap_put(HMap* map, uint64_t key, uint64_t value);
+uint64_t* hmap_get(HMap* map, uint64_t key);
 
 uint64_t hash_uint64(uint64_t h);
 uint64_t hash_bytes(const void* buf, size_t len);
 
-const char* intern_str(Allocator* allocator, HashMap* strmap, const char* str, size_t len);
+const char* intern_str(Allocator* allocator, HMap* strmap, const char* str, size_t len);
 
 #endif

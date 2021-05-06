@@ -103,4 +103,7 @@ const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
 
 bool nibble_init(OS target_os, Arch target_arch);
 void nibble_cleanup(void);
+
+#define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit((f), ## __VA_ARGS__)
+void nibble_fatal_exit(const char* format, ...);
 #endif

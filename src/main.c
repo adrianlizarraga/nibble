@@ -157,14 +157,14 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    Module* module = compile_module(input_file, 0);
-    if (!module)
+    Program* prog = compile_program(input_file);
+    if (!prog)
     {
         ftprint_err("ERROR: Failed to compile file.\n");
         nibble_cleanup();
         exit(1);
     }
 
-    free_module(module);
+    free_program(prog);
     nibble_cleanup();
 }

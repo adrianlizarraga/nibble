@@ -3,6 +3,7 @@
 #include "nibble.h"
 #include "allocator.h"
 #include "stream.h"
+#include "llist.h"
 #include "ast.h"
 #include "types.h"
 
@@ -46,10 +47,11 @@ typedef struct Symbol {
 } Symbol;
 
 struct Module {
-    char* name;
+    const char* path;
+    ProgRange range;
     size_t num_decls;
     Decl** decls;
-    HashMap syms;
+    HMap syms;
 };
 
 typedef struct Program {
@@ -57,10 +59,11 @@ typedef struct Program {
     Allocator ast_mem;
     ByteStream errors;
 
-    HashMap modules;
+    HMap modules;
     Module* curr_module;
+    ProgPos curr_pos;
 
-    HashMap local_syms;
+    DLList scopes;
 } Program;
 
 Program* compile_program(const char* path);
