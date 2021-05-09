@@ -338,27 +338,27 @@ void test_interning(void)
 
 typedef struct TestNode {
     int num;
-    DLList node;
+    List node;
 } TestNode;
 
-void test_dllist(void)
+void test_list(void)
 {
     // Test adding new values to the head of the list.
     {
-        DLList head = dllist_head_create(head);
+        List head = list_head_create(head);
 
         TestNode node1 = {.num = 1};
         TestNode node2 = {.num = 2};
         TestNode node3 = {.num = 3};
 
-        dllist_add(&head, &node1.node);
-        dllist_add(&head, &node2.node);
-        dllist_add(&head, &node3.node);
+        list_add(&head, &node1.node);
+        list_add(&head, &node2.node);
+        list_add(&head, &node3.node);
 
         int i = 0;
-        for (DLList* n = head.next; n != &head; n = n->next)
+        for (List* n = head.next; n != &head; n = n->next)
         {
-            TestNode* entry = dllist_entry(n, TestNode, node);
+            TestNode* entry = list_entry(n, TestNode, node);
             assert(entry->num == 3 - i);
 
             i += 1;
@@ -367,20 +367,20 @@ void test_dllist(void)
 
     // Test adding new values to the tail of the list.
     {
-        DLList head = dllist_head_create(head);
+        List head = list_head_create(head);
 
         TestNode node1 = {.num = 1};
         TestNode node2 = {.num = 2};
         TestNode node3 = {.num = 3};
 
-        dllist_add(head.prev, &node1.node);
-        dllist_add(head.prev, &node2.node);
-        dllist_add(head.prev, &node3.node);
+        list_add(head.prev, &node1.node);
+        list_add(head.prev, &node2.node);
+        list_add(head.prev, &node3.node);
 
         int i = 0;
-        for (DLList* n = head.next; n != &head; n = n->next)
+        for (List* n = head.next; n != &head; n = n->next)
         {
-            TestNode* entry = dllist_entry(n, TestNode, node);
+            TestNode* entry = list_entry(n, TestNode, node);
             assert(entry->num == i + 1);
 
             i += 1;
@@ -396,5 +396,5 @@ int main(void)
     test_array();
     test_hmap();
     test_interning();
-    test_dllist();
+    test_list();
 }

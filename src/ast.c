@@ -2,8 +2,8 @@
 #include "array.h"
 #include "cstring.h"
 
-#define typespec_alloc(a, k, r) (k*)typespec_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
-static TypeSpec* typespec_alloc_(Allocator* allocator, size_t size, size_t align, TypeSpecKind kind, ProgRange range)
+#define new_typespec(a, k, r) (k*)new_typespec_((a), sizeof(k), alignof(k), AST_##k, (r))
+static TypeSpec* new_typespec_(Allocator* allocator, size_t size, size_t align, TypeSpecKind kind, ProgRange range)
 {
     TypeSpec* typespec = mem_allocate(allocator, size, align, true);
     typespec->kind = kind;
@@ -12,42 +12,42 @@ static TypeSpec* typespec_alloc_(Allocator* allocator, size_t size, size_t align
     return typespec;
 }
 
-TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range)
+TypeSpec* new_typespec_ident(Allocator* allocator, const char* name, ProgRange range)
 {
-    TypeSpecIdent* typespec = typespec_alloc(allocator, TypeSpecIdent, range);
+    TypeSpecIdent* typespec = new_typespec(allocator, TypeSpecIdent, range);
     typespec->name = name;
 
     return (TypeSpec*)typespec;
 }
 
-TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range)
+TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range)
 {
-    TypeSpecPtr* typespec = typespec_alloc(allocator, TypeSpecPtr, range);
+    TypeSpecPtr* typespec = new_typespec(allocator, TypeSpecPtr, range);
     typespec->base = base;
 
     return (TypeSpec*)typespec;
 }
 
-TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range)
+TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range)
 {
-    TypeSpecArray* typespec = typespec_alloc(allocator, TypeSpecArray, range);
+    TypeSpecArray* typespec = new_typespec(allocator, TypeSpecArray, range);
     typespec->base = base;
     typespec->len = len;
 
     return (TypeSpec*)typespec;
 }
 
-TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range)
+TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range)
 {
-    TypeSpecConst* typespec = typespec_alloc(allocator, TypeSpecConst, range);
+    TypeSpecConst* typespec = new_typespec(allocator, TypeSpecConst, range);
     typespec->base = base;
 
     return (TypeSpec*)typespec;
 }
 
-TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range)
+TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range)
 {
-    TypeSpecProc* typespec = typespec_alloc(allocator, TypeSpecProc, range);
+    TypeSpecProc* typespec = new_typespec(allocator, TypeSpecProc, range);
     typespec->num_params = num_params;
     typespec->ret = ret;
 
@@ -56,9 +56,9 @@ TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, List* params, T
     return (TypeSpec*)typespec;
 }
 
-ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
+ProcParam* new_proc_param(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
 {
-    ProcParam* param = new_type(allocator, ProcParam, true);
+    ProcParam* param = alloc_type(allocator, ProcParam, true);
     param->name = name;
     param->typespec = typespec;
     param->range = range;
@@ -66,9 +66,9 @@ ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* typespec
     return param;
 }
 
-TypeSpec* typespec_struct(Allocator* allocator, size_t num_fields, List* fields, ProgRange range)
+TypeSpec* new_typespec_struct(Allocator* allocator, size_t num_fields, List* fields, ProgRange range)
 {
-    TypeSpecStruct* typespec = typespec_alloc(allocator, TypeSpecStruct, range);
+    TypeSpecStruct* typespec = new_typespec(allocator, TypeSpecStruct, range);
     typespec->num_fields = num_fields;
 
     list_replace(fields, &typespec->fields);
@@ -76,9 +76,9 @@ TypeSpec* typespec_struct(Allocator* allocator, size_t num_fields, List* fields,
     return (TypeSpec*)typespec;
 }
 
-TypeSpec* typespec_union(Allocator* allocator, size_t num_fields, List* fields, ProgRange range)
+TypeSpec* new_typespec_union(Allocator* allocator, size_t num_fields, List* fields, ProgRange range)
 {
-    TypeSpecUnion* typespec = typespec_alloc(allocator, TypeSpecUnion, range);
+    TypeSpecUnion* typespec = new_typespec(allocator, TypeSpecUnion, range);
     typespec->num_fields = num_fields;
 
     list_replace(fields, &typespec->fields);
@@ -86,8 +86,8 @@ TypeSpec* typespec_union(Allocator* allocator, size_t num_fields, List* fields, 
     return (TypeSpec*)typespec;
 }
 
-#define expr_alloc(a, k, r) (k*)expr_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
-static Expr* expr_alloc_(Allocator* allocator, size_t size, size_t align, ExprKind kind, ProgRange range)
+#define new_expr(a, k, r) (k*)new_expr_((a), sizeof(k), alignof(k), AST_##k, (r))
+static Expr* new_expr_(Allocator* allocator, size_t size, size_t align, ExprKind kind, ProgRange range)
 {
     Expr* expr = mem_allocate(allocator, size, align, true);
     expr->kind = kind;
@@ -96,10 +96,10 @@ static Expr* expr_alloc_(Allocator* allocator, size_t size, size_t align, ExprKi
     return expr;
 }
 
-Expr* expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else_expr)
+Expr* new_expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else_expr)
 {
     ProgRange range = {.start = cond->range.start, .end = else_expr->range.end};
-    ExprTernary* expr = expr_alloc(allocator, ExprTernary, range);
+    ExprTernary* expr = new_expr(allocator, ExprTernary, range);
     expr->cond = cond;
     expr->then_expr = then_expr;
     expr->else_expr = else_expr;
@@ -107,10 +107,10 @@ Expr* expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else
     return (Expr*)expr;
 }
 
-Expr* expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right)
+Expr* new_expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right)
 {
     ProgRange range = {.start = left->range.start, .end = right->range.end};
-    ExprBinary* expr = expr_alloc(allocator, ExprBinary, range);
+    ExprBinary* expr = new_expr(allocator, ExprBinary, range);
     expr->op = op;
     expr->left = left;
     expr->right = right;
@@ -118,36 +118,36 @@ Expr* expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right)
     return (Expr*)expr;
 }
 
-Expr* expr_unary(Allocator* allocator, TokenKind op, Expr* unary_expr, ProgRange range)
+Expr* new_expr_unary(Allocator* allocator, TokenKind op, Expr* unary_expr, ProgRange range)
 {
-    ExprUnary* expr = expr_alloc(allocator, ExprUnary, range);
+    ExprUnary* expr = new_expr(allocator, ExprUnary, range);
     expr->op = op;
     expr->expr = unary_expr;
 
     return (Expr*)expr;
 }
 
-Expr* expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range)
+Expr* new_expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range)
 {
-    ExprField* expr = expr_alloc(allocator, ExprField, range);
+    ExprField* expr = new_expr(allocator, ExprField, range);
     expr->object = object;
     expr->field = field;
 
     return (Expr*)expr;
 }
 
-Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range)
+Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range)
 {
-    ExprIndex* expr = expr_alloc(allocator, ExprIndex, range);
+    ExprIndex* expr = new_expr(allocator, ExprIndex, range);
     expr->array = array;
     expr->index = index;
 
     return (Expr*)expr;
 }
 
-Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range)
+Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range)
 {
-    ExprCall* expr = expr_alloc(allocator, ExprCall, range);
+    ExprCall* expr = new_expr(allocator, ExprCall, range);
     expr->proc = proc;
     expr->num_args = num_args;
 
@@ -156,75 +156,75 @@ Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, P
     return (Expr*)expr;
 }
 
-ProcCallArg* proc_call_arg(Allocator* allocator, Expr* expr, const char* name)
+ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, const char* name)
 {
-    ProcCallArg* arg = new_type(allocator, ProcCallArg, true);
+    ProcCallArg* arg = alloc_type(allocator, ProcCallArg, true);
     arg->expr = expr;
     arg->name = name;
 
     return arg;
 }
 
-Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range)
+Expr* new_expr_int(Allocator* allocator, uint64_t value, ProgRange range)
 {
-    ExprInt* expr = expr_alloc(allocator, ExprInt, range);
+    ExprInt* expr = new_expr(allocator, ExprInt, range);
     expr->value = value;
 
     return (Expr*)expr;
 }
 
-Expr* expr_float(Allocator* allocator, Float value, ProgRange range)
+Expr* new_expr_float(Allocator* allocator, Float value, ProgRange range)
 {
-    ExprFloat* expr = expr_alloc(allocator, ExprFloat, range);
+    ExprFloat* expr = new_expr(allocator, ExprFloat, range);
     expr->value = value;
 
     return (Expr*)expr;
 }
 
-Expr* expr_str(Allocator* allocator, const char* value, ProgRange range)
+Expr* new_expr_str(Allocator* allocator, const char* value, ProgRange range)
 {
-    ExprStr* expr = expr_alloc(allocator, ExprStr, range);
+    ExprStr* expr = new_expr(allocator, ExprStr, range);
     expr->value = value;
 
     return (Expr*)expr;
 }
 
-Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range)
+Expr* new_expr_ident(Allocator* allocator, const char* name, ProgRange range)
 {
-    ExprIdent* expr = expr_alloc(allocator, ExprIdent, range);
+    ExprIdent* expr = new_expr(allocator, ExprIdent, range);
     expr->name = name;
 
     return (Expr*)expr;
 }
 
-Expr* expr_cast(Allocator* allocator, TypeSpec* typespec, Expr* arg, ProgRange range)
+Expr* new_expr_cast(Allocator* allocator, TypeSpec* typespec, Expr* arg, ProgRange range)
 {
-    ExprCast* expr = expr_alloc(allocator, ExprCast, range);
+    ExprCast* expr = new_expr(allocator, ExprCast, range);
     expr->typespec = typespec;
     expr->expr = arg;
 
     return (Expr*)expr;
 }
 
-Expr* expr_sizeof(Allocator* allocator, TypeSpec* typespec, ProgRange range)
+Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* typespec, ProgRange range)
 {
-    ExprSizeof* expr = expr_alloc(allocator, ExprSizeof, range);
+    ExprSizeof* expr = new_expr(allocator, ExprSizeof, range);
     expr->typespec = typespec;
 
     return (Expr*)expr;
 }
 
-Expr* expr_typeof(Allocator* allocator, Expr* arg, ProgRange range)
+Expr* new_expr_typeof(Allocator* allocator, Expr* arg, ProgRange range)
 {
-    ExprTypeof* expr = expr_alloc(allocator, ExprTypeof, range);
+    ExprTypeof* expr = new_expr(allocator, ExprTypeof, range);
     expr->expr = arg;
 
     return (Expr*)expr;
 }
 
-MemberInitializer* member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range)
+MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range)
 {
-    MemberInitializer* initzer = new_type(allocator, MemberInitializer, true);
+    MemberInitializer* initzer = alloc_type(allocator, MemberInitializer, true);
     initzer->range = range;
     initzer->init = init;
     initzer->designator = designator;
@@ -232,9 +232,10 @@ MemberInitializer* member_initializer(Allocator* allocator, Expr* init, Designat
     return initzer;
 }
 
-Expr* expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num_initzers, List* initzers, ProgRange range)
+Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num_initzers, List* initzers,
+                            ProgRange range)
 {
-    ExprCompoundLit* expr = expr_alloc(allocator, ExprCompoundLit, range);
+    ExprCompoundLit* expr = new_expr(allocator, ExprCompoundLit, range);
     expr->typespec = typespec;
     expr->num_initzers = num_initzers;
 
@@ -243,9 +244,9 @@ Expr* expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num_ini
     return (Expr*)expr;
 }
 
-#define decl_alloc(a, k, n, r) (k*)decl_alloc_((a), sizeof(k), alignof(k), AST_##k, (n), (r))
-static Decl* decl_alloc_(Allocator* allocator, size_t size, size_t align, DeclKind kind, const char* name,
-                         ProgRange range)
+#define new_decl(a, k, n, r) (k*)new_decl_((a), sizeof(k), alignof(k), AST_##k, (n), (r))
+static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, const char* name,
+                       ProgRange range)
 {
     Decl* decl = mem_allocate(allocator, size, align, true);
     decl->kind = kind;
@@ -255,35 +256,36 @@ static Decl* decl_alloc_(Allocator* allocator, size_t size, size_t align, DeclKi
     return (Decl*)decl;
 }
 
-Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* typespec, Expr* init, ProgRange range)
+Decl* new_decl_var(Allocator* allocator, const char* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
-    DeclVar* decl = decl_alloc(allocator, DeclVar, name, range);
+    DeclVar* decl = new_decl(allocator, DeclVar, name, range);
     decl->typespec = typespec;
     decl->init = init;
 
     return (Decl*)decl;
 }
 
-Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* typespec, Expr* init, ProgRange range)
+Decl* new_decl_const(Allocator* allocator, const char* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
-    DeclConst* decl = decl_alloc(allocator, DeclConst, name, range);
+    DeclConst* decl = new_decl(allocator, DeclConst, name, range);
     decl->typespec = typespec;
     decl->init = init;
 
     return (Decl*)decl;
 }
 
-Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
+Decl* new_decl_typedef(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
 {
-    DeclTypedef* decl = decl_alloc(allocator, DeclTypedef, name, range);
+    DeclTypedef* decl = new_decl(allocator, DeclTypedef, name, range);
     decl->typespec = typespec;
 
     return (Decl*)decl;
 }
 
-Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* typespec, size_t num_items, List* items, ProgRange range)
+Decl* new_decl_enum(Allocator* allocator, const char* name, TypeSpec* typespec, size_t num_items, List* items,
+                    ProgRange range)
 {
-    DeclEnum* decl = decl_alloc(allocator, DeclEnum, name, range);
+    DeclEnum* decl = new_decl(allocator, DeclEnum, name, range);
     decl->typespec = typespec;
     decl->num_items = num_items;
 
@@ -292,18 +294,18 @@ Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* typespec, size
     return (Decl*)decl;
 }
 
-EnumItem* enum_item(Allocator* allocator, const char* name, Expr* value)
+EnumItem* new_enum_item(Allocator* allocator, const char* name, Expr* value)
 {
-    EnumItem* item = new_type(allocator, EnumItem, true);
+    EnumItem* item = alloc_type(allocator, EnumItem, true);
     item->name = name;
     item->value = value;
 
     return item;
 }
 
-Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range)
+Decl* new_decl_struct(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range)
 {
-    DeclStruct* decl = decl_alloc(allocator, DeclStruct, name, range);
+    DeclStruct* decl = new_decl(allocator, DeclStruct, name, range);
     decl->num_fields = num_fields;
 
     list_replace(fields, &decl->fields);
@@ -311,9 +313,9 @@ Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, Lis
     return (Decl*)decl;
 }
 
-Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range)
+Decl* new_decl_union(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range)
 {
-    DeclUnion* decl = decl_alloc(allocator, DeclUnion, name, range);
+    DeclUnion* decl = new_decl(allocator, DeclUnion, name, range);
     decl->num_fields = num_fields;
 
     list_replace(fields, &decl->fields);
@@ -321,9 +323,9 @@ Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, List
     return (Decl*)decl;
 }
 
-AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
+AggregateField* new_aggregate_field(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
 {
-    AggregateField* field = new_type(allocator, AggregateField, true);
+    AggregateField* field = alloc_type(allocator, AggregateField, true);
     field->name = name;
     field->typespec = typespec;
     field->range = range;
@@ -331,10 +333,10 @@ AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec
     return field;
 }
 
-Decl* decl_proc(Allocator* allocator, const char* name, Scope* param_scope, TypeSpec* ret,
-                Stmt* body, ProgRange range)
+Decl* new_decl_proc(Allocator* allocator, const char* name, Scope* param_scope, TypeSpec* ret, Stmt* body,
+                    ProgRange range)
 {
-    DeclProc* decl = decl_alloc(allocator, DeclProc, name, range);
+    DeclProc* decl = new_decl(allocator, DeclProc, name, range);
     decl->param_scope = param_scope;
     decl->ret = ret;
     decl->body = body;
@@ -342,8 +344,8 @@ Decl* decl_proc(Allocator* allocator, const char* name, Scope* param_scope, Type
     return (Decl*)decl;
 }
 
-#define stmt_alloc(a, k, r) (k*)stmt_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
-static Stmt* stmt_alloc_(Allocator* allocator, size_t size, size_t align, StmtKind kind, ProgRange range)
+#define new_stmt(a, k, r) (k*)new_stmt_((a), sizeof(k), alignof(k), AST_##k, (r))
+static Stmt* new_stmt_(Allocator* allocator, size_t size, size_t align, StmtKind kind, ProgRange range)
 {
     Stmt* stmt = mem_allocate(allocator, size, align, true);
     stmt->kind = kind;
@@ -352,16 +354,16 @@ static Stmt* stmt_alloc_(Allocator* allocator, size_t size, size_t align, StmtKi
     return stmt;
 }
 
-Stmt* stmt_noop(Allocator* allocator, ProgRange range)
+Stmt* new_stmt_noop(Allocator* allocator, ProgRange range)
 {
-    StmtNoOp* stmt = stmt_alloc(allocator, StmtNoOp, range);
+    StmtNoOp* stmt = new_stmt(allocator, StmtNoOp, range);
 
     return (Stmt*)stmt;
 }
 
 Scope* new_scope(Allocator* allocator, Scope* parent)
 {
-    Scope* scope = new_type(allocator, Scope, true);
+    Scope* scope = alloc_type(allocator, Scope, true);
     scope->parent = parent;
 
     list_head_init(&scope->decls);
@@ -370,9 +372,9 @@ Scope* new_scope(Allocator* allocator, Scope* parent)
     return scope;
 }
 
-Stmt* stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, Scope* scope, ProgRange range)
+Stmt* new_stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, Scope* scope, ProgRange range)
 {
-    StmtBlock* stmt = stmt_alloc(allocator, StmtBlock, range);
+    StmtBlock* stmt = new_stmt(allocator, StmtBlock, range);
     stmt->scope = scope;
     stmt->num_stmts = num_stmts;
 
@@ -381,17 +383,17 @@ Stmt* stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, Scope* sco
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range)
+Stmt* new_stmt_expr(Allocator* allocator, Expr* expr, ProgRange range)
 {
-    StmtExpr* stmt = stmt_alloc(allocator, StmtExpr, range);
+    StmtExpr* stmt = new_stmt(allocator, StmtExpr, range);
     stmt->expr = expr;
 
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range)
+Stmt* new_stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range)
 {
-    StmtExprAssign* stmt = stmt_alloc(allocator, StmtExprAssign, range);
+    StmtExprAssign* stmt = new_stmt(allocator, StmtExprAssign, range);
     stmt->left = lexpr;
     stmt->op_assign = op_assign;
     stmt->right = rexpr;
@@ -399,28 +401,28 @@ Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, E
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
+Stmt* new_stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
 {
-    StmtWhile* stmt = stmt_alloc(allocator, StmtWhile, range);
+    StmtWhile* stmt = new_stmt(allocator, StmtWhile, range);
     stmt->cond = cond;
     stmt->body = body;
 
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
+Stmt* new_stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
 {
-    StmtDoWhile* stmt = stmt_alloc(allocator, StmtDoWhile, range);
+    StmtDoWhile* stmt = new_stmt(allocator, StmtDoWhile, range);
     stmt->cond = cond;
     stmt->body = body;
 
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, List* elif_blks, ElseBlock* else_blk,
-              ProgRange range)
+Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, List* elif_blks, ElseBlock* else_blk,
+                  ProgRange range)
 {
-    StmtIf* stmt = stmt_alloc(allocator, StmtIf, range);
+    StmtIf* stmt = new_stmt(allocator, StmtIf, range);
 
     stmt->if_blk.range = if_blk->range;
     stmt->if_blk.cond = if_blk->cond;
@@ -435,9 +437,9 @@ Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, L
     return (Stmt*)stmt;
 }
 
-IfCondBlock* if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
+IfCondBlock* new_if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
 {
-    IfCondBlock* cblock = new_type(allocator, IfCondBlock, true);
+    IfCondBlock* cblock = alloc_type(allocator, IfCondBlock, true);
     cblock->range = range;
     cblock->cond = cond;
     cblock->body = body;
@@ -445,9 +447,9 @@ IfCondBlock* if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRan
     return cblock;
 }
 
-Stmt* stmt_for(Allocator* allocator, Scope* scope, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range)
+Stmt* new_stmt_for(Allocator* allocator, Scope* scope, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range)
 {
-    StmtFor* stmt = stmt_alloc(allocator, StmtFor, range);
+    StmtFor* stmt = new_stmt(allocator, StmtFor, range);
     stmt->scope = scope;
     stmt->init = init;
     stmt->cond = cond;
@@ -457,50 +459,51 @@ Stmt* stmt_for(Allocator* allocator, Scope* scope, Stmt* init, Expr* cond, Stmt*
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_return(Allocator* allocator, Expr* expr, ProgRange range)
+Stmt* new_stmt_return(Allocator* allocator, Expr* expr, ProgRange range)
 {
-    StmtReturn* stmt = stmt_alloc(allocator, StmtReturn, range);
+    StmtReturn* stmt = new_stmt(allocator, StmtReturn, range);
     stmt->expr = expr;
 
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_break(Allocator* allocator, const char* label, ProgRange range)
+Stmt* new_stmt_break(Allocator* allocator, const char* label, ProgRange range)
 {
-    StmtBreak* stmt = stmt_alloc(allocator, StmtBreak, range);
+    StmtBreak* stmt = new_stmt(allocator, StmtBreak, range);
     stmt->label = label;
 
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_continue(Allocator* allocator, const char* label, ProgRange range)
+Stmt* new_stmt_continue(Allocator* allocator, const char* label, ProgRange range)
 {
-    StmtContinue* stmt = stmt_alloc(allocator, StmtContinue, range);
+    StmtContinue* stmt = new_stmt(allocator, StmtContinue, range);
     stmt->label = label;
 
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_goto(Allocator* allocator, const char* label, ProgRange range)
+Stmt* new_stmt_goto(Allocator* allocator, const char* label, ProgRange range)
 {
-    StmtGoto* stmt = stmt_alloc(allocator, StmtGoto, range);
+    StmtGoto* stmt = new_stmt(allocator, StmtGoto, range);
     stmt->label = label;
 
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range)
+Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range)
 {
-    StmtLabel* stmt = stmt_alloc(allocator, StmtLabel, range);
+    StmtLabel* stmt = new_stmt(allocator, StmtLabel, range);
     stmt->label = label;
     stmt->target = target;
 
     return (Stmt*)stmt;
 }
 
-SwitchCase* switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num_stmts, List* stmts, ProgRange range)
+SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num_stmts, List* stmts,
+                            ProgRange range)
 {
-    SwitchCase* swcase = new_type(allocator, SwitchCase, true);
+    SwitchCase* swcase = alloc_type(allocator, SwitchCase, true);
     swcase->start = start;
     swcase->end = end;
     swcase->range = range;
@@ -511,9 +514,9 @@ SwitchCase* switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num
     return swcase;
 }
 
-Stmt* stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, List* cases, ProgRange range)
+Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, List* cases, ProgRange range)
 {
-    StmtSwitch* stmt = stmt_alloc(allocator, StmtSwitch, range);
+    StmtSwitch* stmt = new_stmt(allocator, StmtSwitch, range);
     stmt->expr = expr;
     stmt->num_cases = num_cases;
 
@@ -1298,8 +1301,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                     }
                 }
 
-                ftprint_char_array(&dstr, false, ") =>%s %s)",
-                                   ftprint_typespec(allocator, proc->ret),
+                ftprint_char_array(&dstr, false, ") =>%s %s)", ftprint_typespec(allocator, proc->ret),
                                    ftprint_stmt(allocator, proc->body));
             }
             break;

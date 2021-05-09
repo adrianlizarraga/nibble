@@ -23,8 +23,8 @@ typedef struct AllocatorState {
     unsigned char* pat;
 } AllocatorState;
 
-#define new_type(allocator, type, clear) (type*)mem_allocate((allocator), sizeof(type), alignof(type), (clear))
-#define new_array(allocator, elem_type, len, clear)                                                                    \
+#define alloc_type(allocator, type, clear) (type*)mem_allocate((allocator), sizeof(type), alignof(type), (clear))
+#define alloc_array(allocator, elem_type, len, clear)                                                                    \
     (elem_type*)mem_allocate((allocator), sizeof(elem_type) * (len), alignof(elem_type), (clear))
 #define mem_dup_array(allocator, elem_type, src, len)                                                                  \
     (elem_type*)mem_dup((allocator), src, sizeof(elem_type) * (len), alignof(elem_type))

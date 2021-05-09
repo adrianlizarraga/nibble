@@ -3,10 +3,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nibble.h"
 #include "allocator.h"
-#include "llist.h"
 #include "lexer.h"
+#include "llist.h"
+#include "nibble.h"
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -85,18 +85,18 @@ typedef struct TypeSpecConst {
     TypeSpec* base;
 } TypeSpecConst;
 
-AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
+AggregateField* new_aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 
-TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range);
-TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
-TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
-TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
-ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
-TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range);
+TypeSpec* new_typespec_ident(Allocator* allocator, const char* name, ProgRange range);
+TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
+TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
+TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
+ProcParam* new_proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
+TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range);
 
-typedef TypeSpec* TypeSpecAggregateProc(Allocator* alloc, size_t num_fields, List* fields, ProgRange range);
-TypeSpec* typespec_struct(Allocator* allocator, size_t num_fields, List* fields, ProgRange range);
-TypeSpec* typespec_union(Allocator* allocator, size_t num_fields, List* fields, ProgRange range);
+typedef TypeSpec* NewTypeSpecAggregateProc(Allocator* alloc, size_t num_fields, List* fields, ProgRange range);
+TypeSpec* new_typespec_struct(Allocator* allocator, size_t num_fields, List* fields, ProgRange range);
+TypeSpec* new_typespec_union(Allocator* allocator, size_t num_fields, List* fields, ProgRange range);
 
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type);
 ///////////////////////////////
@@ -237,23 +237,22 @@ typedef struct ExprCompoundLit {
     List initzers;
 } ExprCompoundLit;
 
-Expr* expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else_expr);
-Expr* expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right);
-Expr* expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange range);
-Expr* expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range);
-Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
-Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range);
-ProcCallArg* proc_call_arg(Allocator* allocator, Expr* expr, const char* name);
-Expr* expr_int(Allocator* allocator, uint64_t value, ProgRange range);
-Expr* expr_float(Allocator* allocator, Float value, ProgRange range);
-Expr* expr_str(Allocator* allocator, const char* value, ProgRange range);
-Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range);
-Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range);
-Expr* expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
-Expr* expr_typeof(Allocator* allocator, Expr* arg, ProgRange range);
-MemberInitializer* member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
-Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers,
-                        ProgRange range);
+Expr* new_expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else_expr);
+Expr* new_expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right);
+Expr* new_expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange range);
+Expr* new_expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range);
+Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
+Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range);
+ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, const char* name);
+Expr* new_expr_int(Allocator* allocator, uint64_t value, ProgRange range);
+Expr* new_expr_float(Allocator* allocator, Float value, ProgRange range);
+Expr* new_expr_str(Allocator* allocator, const char* value, ProgRange range);
+Expr* new_expr_ident(Allocator* allocator, const char* name, ProgRange range);
+Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range);
+Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
+Expr* new_expr_typeof(Allocator* allocator, Expr* arg, ProgRange range);
+MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
+Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range);
 
 char* ftprint_expr(Allocator* allocator, Expr* expr);
 /////////////////////////////
@@ -419,24 +418,25 @@ typedef struct StmtLabel {
     Stmt* target;
 } StmtLabel;
 
-Stmt* stmt_noop(Allocator* allocator, ProgRange range);
+Stmt* new_stmt_noop(Allocator* allocator, ProgRange range);
 Scope* new_scope(Allocator* allocator, Scope* parent);
-Stmt* stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, Scope* scope, ProgRange range);
-Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
-Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
-Stmt* stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, List* elif_blks,
-              ElseBlock* else_blk, ProgRange range);
-IfCondBlock* if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* stmt_for(Allocator* allocator, Scope* scope, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
-Stmt* stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
-Stmt* stmt_break(Allocator* allocator, const char* label, ProgRange range);
-Stmt* stmt_continue(Allocator* allocator, const char* label, ProgRange range);
-Stmt* stmt_goto(Allocator* allocator, const char* label, ProgRange range);
-Stmt* stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range);
-SwitchCase* switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num_stmts, List* stmts, ProgRange range);
-Stmt* stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, List* cases, ProgRange range);
+Stmt* new_stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, Scope* scope, ProgRange range);
+Stmt* new_stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
+Stmt* new_stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
+Stmt* new_stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
+Stmt* new_stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
+Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, List* elif_blks, ElseBlock* else_blk,
+                  ProgRange range);
+IfCondBlock* new_if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
+Stmt* new_stmt_for(Allocator* allocator, Scope* scope, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
+Stmt* new_stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
+Stmt* new_stmt_break(Allocator* allocator, const char* label, ProgRange range);
+Stmt* new_stmt_continue(Allocator* allocator, const char* label, ProgRange range);
+Stmt* new_stmt_goto(Allocator* allocator, const char* label, ProgRange range);
+Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range);
+SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num_stmts, List* stmts,
+                            ProgRange range);
+Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, List* cases, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////
@@ -508,19 +508,19 @@ typedef struct DeclTypedef {
     TypeSpec* typespec;
 } DeclTypedef;
 
-Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
-Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
-Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
-Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, List* items,
-                ProgRange range);
-EnumItem* enum_item(Allocator* allocator, const char* name, Expr* value);
+Decl* new_decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
+Decl* new_decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
+Decl* new_decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
+Decl* new_decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, List* items,
+                    ProgRange range);
+EnumItem* new_enum_item(Allocator* allocator, const char* name, Expr* value);
 
-typedef Decl* DeclAggregateProc(Allocator* alloc, const char* name, size_t num_fields, List* fields,
-                                ProgRange range);
-Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
-Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
-Decl* decl_proc(Allocator* allocator, const char* name, Scope* param_scope, TypeSpec* ret,
-                Stmt* body, ProgRange range);
+typedef Decl* NewDeclAggregateProc(Allocator* alloc, const char* name, size_t num_fields, List* fields,
+                                   ProgRange range);
+Decl* new_decl_struct(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
+Decl* new_decl_union(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
+Decl* new_decl_proc(Allocator* allocator, const char* name, Scope* param_scope, TypeSpec* ret, Stmt* body,
+                    ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 

@@ -88,7 +88,7 @@ const char* type_name(Type* type)
 
 static Type* type_alloc(Allocator* allocator, TypeKind kind)
 {
-    Type* type = new_type(allocator, Type, true);
+    Type* type = alloc_type(allocator, Type, true);
     type->kind = kind;
 
     return type;

@@ -46,7 +46,7 @@ static bool hmap_expand(HMap* map, size_t cap)
     if (cap <= map->cap)
         return true;
 
-    HMapEntry* entries = new_array(map->allocator, HMapEntry, cap, true);
+    HMapEntry* entries = alloc_array(map->allocator, HMapEntry, cap, true);
 
     if (!entries)
         return false;

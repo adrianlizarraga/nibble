@@ -87,7 +87,7 @@ static void program_on_error(Program* prog, const char* format, ...)
 
 static Symbol* sym_alloc(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl, Module* module)
 {
-    Symbol* sym = new_type(allocator, Symbol, true);
+    Symbol* sym = alloc_type(allocator, Symbol, true);
 
     if (!sym)
     {
@@ -251,7 +251,7 @@ static Module* import_module(Program* prog, const char* module_path)
 
     if (!module)
     {
-        module = new_type(&prog->ast_mem, Module, true);
+        module = alloc_type(&prog->ast_mem, Module, true);
         module->path = module_path;
         module->syms = hmap(8, NULL);
         module->range.start = prog->curr_pos;
@@ -471,7 +471,7 @@ Program* compile_program(const char* path)
 {
     const char* main_module_path = intern_str_lit(path, cstr_len(path));
     Allocator boot_mem = allocator_create(65536);
-    Program* prog = new_type(&boot_mem, Program, true);
+    Program* prog = alloc_type(&boot_mem, Program, true);
 
     prog->gen_mem = boot_mem;
     prog->ast_mem = allocator_create(4096);

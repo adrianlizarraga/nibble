@@ -204,7 +204,7 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return aggregate_field(parser->ast_arena, name, typespec, range);
+    return new_aggregate_field(parser->ast_arena, name, typespec, range);
 }
 
 // aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
@@ -228,7 +228,7 @@ static bool parse_fill_aggregate_body(Parser* parser, size_t* num_fields, List* 
 }
 
 static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_prefix,
-                                          TypeSpecAggregateProc* typespec_aggregate_proc)
+                                          NewTypeSpecAggregateProc* new_typespec_aggregate)
 {
     assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
 
@@ -247,7 +247,7 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
             if (num_fields)
             {
                 range.end = parser->ptoken.range.end;
-                typespec = typespec_aggregate_proc(parser->ast_arena, num_fields, &fields, range);
+                typespec = new_typespec_aggregate(parser->ast_arena, num_fields, &fields, range);
             }
             else
             {
@@ -281,7 +281,7 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
             if (typespec)
             {
                 range.end = typespec->range.end;
-                param = proc_param(parser->ast_arena, name, typespec, range);
+                param = new_proc_param(parser->ast_arena, name, typespec, range);
             }
         }
         else
@@ -291,7 +291,7 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
     }
     else if (typespec)
     {
-        param = proc_param(parser->ast_arena, NULL, typespec, typespec->range);
+        param = new_proc_param(parser->ast_arena, NULL, typespec, typespec->range);
     }
 
     return param;
@@ -348,7 +348,7 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
             if (!bad_ret)
             {
                 range.end = parser->ptoken.range.end;
-                typespec = typespec_proc(parser->ast_arena, num_params, &params, ret, range);
+                typespec = new_typespec_proc(parser->ast_arena, num_params, &params, ret, range);
             }
         }
     }
@@ -363,7 +363,7 @@ static TypeSpec* parse_typespec_ident(Parser* parser)
 
     next_token(parser);
 
-    return typespec_ident(parser->ast_arena, token.as_ident.value, token.range);
+    return new_typespec_ident(parser->ast_arena, token.as_ident.value, token.range);
 }
 
 // typespec_base  = typespec_proc
@@ -384,9 +384,9 @@ static TypeSpec* parse_typespec_base(Parser* parser)
                 case KW_PROC:
                     return parse_typespec_proc(parser);
                 case KW_STRUCT:
-                    return parse_typespec_aggregate(parser, "Failed to parse anonymous struct", typespec_struct);
+                    return parse_typespec_aggregate(parser, "Failed to parse anonymous struct", new_typespec_struct);
                 case KW_UNION:
-                    return parse_typespec_aggregate(parser, "Failed to parse anonymous union", typespec_union);
+                    return parse_typespec_aggregate(parser, "Failed to parse anonymous union", new_typespec_union);
                 default:
                     break;
             }
@@ -440,7 +440,7 @@ TypeSpec* parse_typespec(Parser* parser)
         if (base)
         {
             range.end = base->range.end;
-            typespec = typespec_ptr(parser->ast_arena, base, range);
+            typespec = new_typespec_ptr(parser->ast_arena, base, range);
         }
     }
     else if (match_token(parser, TKN_LBRACKET))
@@ -467,7 +467,7 @@ TypeSpec* parse_typespec(Parser* parser)
             if (base)
             {
                 range.end = base->range.end;
-                typespec = typespec_array(parser->ast_arena, base, len, range);
+                typespec = new_typespec_array(parser->ast_arena, base, len, range);
             }
         }
     }
@@ -483,7 +483,7 @@ TypeSpec* parse_typespec(Parser* parser)
         if (base)
         {
             range.end = base->range.end;
-            typespec = typespec_const(parser->ast_arena, base, range);
+            typespec = new_typespec_const(parser->ast_arena, base, range);
         }
     }
     else
@@ -520,7 +520,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
                 range.end = init->range.end;
                 designator.kind = DESIGNATOR_INDEX;
                 designator.index = index;
-                initzer = member_initializer(parser->ast_arena, init, designator, range);
+                initzer = new_member_initializer(parser->ast_arena, init, designator, range);
             }
         }
     }
@@ -543,7 +543,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
                     range.end = init->range.end;
                     designator.kind = DESIGNATOR_NAME;
                     designator.name = name;
-                    initzer = member_initializer(parser->ast_arena, init, designator, range);
+                    initzer = new_member_initializer(parser->ast_arena, init, designator, range);
                 }
             }
             else
@@ -554,7 +554,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
         else if (expr)
         {
             range.end = expr->range.end;
-            initzer = member_initializer(parser->ast_arena, expr, designator, range);
+            initzer = new_member_initializer(parser->ast_arena, expr, designator, range);
         }
     }
 
@@ -608,13 +608,13 @@ static Expr* parse_expr_compound_lit(Parser* parser)
                 if (typespec && expect_token(parser, TKN_RBRACE, error_prefix))
                 {
                     range.end = parser->ptoken.range.end;
-                    expr = expr_compound_lit(parser->ast_arena, typespec, num_initzers, &initzers, range);
+                    expr = new_expr_compound_lit(parser->ast_arena, typespec, num_initzers, &initzers, range);
                 }
             }
             else if (expect_token(parser, TKN_RBRACE, error_prefix))
             {
                 range.end = parser->ptoken.range.end;
-                expr = expr_compound_lit(parser->ast_arena, typespec, num_initzers, &initzers, range);
+                expr = new_expr_compound_lit(parser->ast_arena, typespec, num_initzers, &initzers, range);
             }
         }
     }
@@ -638,7 +638,7 @@ static Expr* parse_expr_sizeof(Parser* parser)
         if (typespec && expect_token(parser, TKN_RPAREN, error_prefix))
         {
             range.end = parser->ptoken.range.end;
-            expr = expr_sizeof(parser->ast_arena, typespec, range);
+            expr = new_expr_sizeof(parser->ast_arena, typespec, range);
         }
     }
 
@@ -661,7 +661,7 @@ static Expr* parse_expr_typeof(Parser* parser)
         if (arg && expect_token(parser, TKN_RPAREN, error_prefix))
         {
             range.end = parser->ptoken.range.end;
-            expr = expr_typeof(parser->ast_arena, arg, range);
+            expr = new_expr_typeof(parser->ast_arena, arg, range);
         }
     }
 
@@ -687,13 +687,13 @@ static Expr* parse_expr_base(Parser* parser)
     {
         case TKN_INT:
             next_token(parser);
-            return expr_int(parser->ast_arena, token.as_int.value, token.range);
+            return new_expr_int(parser->ast_arena, token.as_int.value, token.range);
         case TKN_FLOAT:
             next_token(parser);
-            return expr_float(parser->ast_arena, token.as_float.value, token.range);
+            return new_expr_float(parser->ast_arena, token.as_float.value, token.range);
         case TKN_STR:
             next_token(parser);
-            return expr_str(parser->ast_arena, token.as_str.value, token.range);
+            return new_expr_str(parser->ast_arena, token.as_str.value, token.range);
         case TKN_LPAREN:
         {
             next_token(parser);
@@ -723,7 +723,7 @@ static Expr* parse_expr_base(Parser* parser)
         break;
         case TKN_IDENT:
             next_token(parser);
-            return expr_ident(parser->ast_arena, token.as_ident.value, token.range);
+            return new_expr_ident(parser->ast_arena, token.as_ident.value, token.range);
         default:
             break;
     }
@@ -755,7 +755,7 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
 
             if (expr)
             {
-                arg = proc_call_arg(parser->ast_arena, expr, name);
+                arg = new_proc_call_arg(parser->ast_arena, expr, name);
             }
         }
         else
@@ -765,7 +765,7 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
     }
     else if (expr)
     {
-        arg = proc_call_arg(parser->ast_arena, expr, NULL);
+        arg = new_proc_call_arg(parser->ast_arena, expr, NULL);
     }
 
     return arg;
@@ -790,7 +790,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             {
                 const char* field = parser->ptoken.as_ident.value;
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
-                expr = expr_field(parser->ast_arena, expr, field, range);
+                expr = new_expr_field(parser->ast_arena, expr, field, range);
             }
             else
             {
@@ -808,7 +808,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             if (index && expect_token(parser, TKN_RBRACKET, "Failed to parse array access"))
             {
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
-                expr = expr_index(parser->ast_arena, expr, index, range);
+                expr = new_expr_index(parser->ast_arena, expr, index, range);
             }
             else
             {
@@ -847,7 +847,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             if (!bad_arg && expect_token(parser, TKN_RPAREN, "Failed to parse procedure call"))
             {
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
-                expr = expr_call(parser->ast_arena, expr, num_args, &args, range);
+                expr = new_expr_call(parser->ast_arena, expr, num_args, &args, range);
             }
             else
             {
@@ -868,7 +868,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             if (typespec)
             {
                 ProgRange range = {.start = expr->range.start, .end = typespec->range.end};
-                expr = expr_cast(parser->ast_arena, typespec, expr, range);
+                expr = new_expr_cast(parser->ast_arena, typespec, expr, range);
             }
             else
             {
@@ -898,7 +898,7 @@ static Expr* parse_expr_unary(Parser* parser)
         if (unary)
         {
             range.end = unary->range.end;
-            expr = expr_unary(parser->ast_arena, op, unary, range);
+            expr = new_expr_unary(parser->ast_arena, op, unary, range);
         }
     }
     else
@@ -925,7 +925,7 @@ static Expr* parse_expr_mul(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->ast_arena, op, left, right);
+            expr = new_expr_binary(parser->ast_arena, op, left, right);
         }
         else
         {
@@ -952,7 +952,7 @@ static Expr* parse_expr_add(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->ast_arena, op, left, right);
+            expr = new_expr_binary(parser->ast_arena, op, left, right);
         }
         else
         {
@@ -979,7 +979,7 @@ static Expr* parse_expr_cmp(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->ast_arena, op, left, right);
+            expr = new_expr_binary(parser->ast_arena, op, left, right);
         }
         else
         {
@@ -1002,7 +1002,7 @@ static Expr* parse_expr_and(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->ast_arena, TKN_LOGIC_AND, left, right);
+            expr = new_expr_binary(parser->ast_arena, TKN_LOGIC_AND, left, right);
         }
         else
         {
@@ -1025,7 +1025,7 @@ static Expr* parse_expr_or(Parser* parser)
 
         if (right)
         {
-            expr = expr_binary(parser->ast_arena, TKN_LOGIC_OR, left, right);
+            expr = new_expr_binary(parser->ast_arena, TKN_LOGIC_OR, left, right);
         }
         else
         {
@@ -1053,7 +1053,7 @@ static Expr* parse_expr_ternary(Parser* parser)
 
                 if (else_expr)
                 {
-                    expr = expr_ternary(parser->ast_arena, expr, then_expr, else_expr);
+                    expr = new_expr_ternary(parser->ast_arena, expr, then_expr, else_expr);
                 }
             }
         }
@@ -1185,9 +1185,8 @@ static Stmt* parse_stmt_block(Parser* parser)
         exit_scope(parser); // TODO: Skip scope on error
 
         range.end = parser->ptoken.range.end;
-        stmt = stmt_block(parser->ast_arena, num_stmts, &stmts, scope, range);
+        stmt = new_stmt_block(parser->ast_arena, num_stmts, &stmts, scope, range);
     }
-
 
     return stmt;
 }
@@ -1228,7 +1227,7 @@ static IfCondBlock* parse_stmt_elif_block(Parser* parser)
     IfCondBlock cblock = {0};
 
     if (parse_fill_if_cond_block(parser, &cblock, error_prefix))
-        elif_blk = if_cond_block(parser->ast_arena, cblock.cond, cblock.body, cblock.range);
+        elif_blk = new_if_cond_block(parser->ast_arena, cblock.cond, cblock.body, cblock.range);
 
     return elif_blk;
 }
@@ -1297,7 +1296,7 @@ static Stmt* parse_stmt_if(Parser* parser)
                 bad_else = !parse_fill_else_block(parser, &else_blk);
 
             if (!bad_else)
-                stmt = stmt_if(parser->ast_arena, &if_blk, num_elif_blks, &elif_blks, &else_blk, range);
+                stmt = new_stmt_if(parser->ast_arena, &if_blk, num_elif_blks, &elif_blks, &else_blk, range);
         }
     }
 
@@ -1359,7 +1358,7 @@ static SwitchCase* parse_switch_case(Parser* parser)
     if (!bad_stmt)
     {
         range.end = parser->ptoken.range.end;
-        swcase = switch_case(parser->ast_arena, start, end, num_stmts, &stmts, range);
+        swcase = new_switch_case(parser->ast_arena, start, end, num_stmts, &stmts, range);
     }
 
     return swcase;
@@ -1416,7 +1415,7 @@ static Stmt* parse_stmt_switch(Parser* parser)
     if (!bad_case && expect_token(parser, TKN_RBRACE, error_prefix))
     {
         range.end = parser->ptoken.range.end;
-        stmt = stmt_switch(parser->ast_arena, expr, num_cases, &cases, range);
+        stmt = new_stmt_switch(parser->ast_arena, expr, num_cases, &cases, range);
     }
 
     return stmt;
@@ -1446,7 +1445,7 @@ static Stmt* parse_stmt_while(Parser* parser)
 
     range.end = body->range.end;
 
-    return stmt_while(parser->ast_arena, cond, body, range);
+    return new_stmt_while(parser->ast_arena, cond, body, range);
 }
 
 // stmt_do_while = 'do' stmt 'while' '(' expr ')' ';'
@@ -1468,7 +1467,7 @@ static Stmt* parse_stmt_do_while(Parser* parser)
         if (cond && expect_token(parser, TKN_RPAREN, error_prefix) && expect_token(parser, TKN_SEMICOLON, error_prefix))
         {
             range.end = parser->ptoken.range.end;
-            stmt = stmt_do_while(parser->ast_arena, cond, body, range);
+            stmt = new_stmt_do_while(parser->ast_arena, cond, body, range);
         }
     }
 
@@ -1495,23 +1494,23 @@ static Stmt* parse_stmt_expr(Parser* parser, bool terminate)
             if (rexpr && !terminate)
             {
                 range.end = rexpr->range.end;
-                stmt = stmt_expr_assign(parser->ast_arena, expr, op_assign, rexpr, range);
+                stmt = new_stmt_expr_assign(parser->ast_arena, expr, op_assign, rexpr, range);
             }
             else if (rexpr && expect_token(parser, TKN_SEMICOLON, error_prefix))
             {
                 range.end = parser->ptoken.range.end;
-                stmt = stmt_expr_assign(parser->ast_arena, expr, op_assign, rexpr, range);
+                stmt = new_stmt_expr_assign(parser->ast_arena, expr, op_assign, rexpr, range);
             }
         }
         else if (!terminate)
         {
             range.end = expr->range.end;
-            stmt = stmt_expr(parser->ast_arena, expr, range);
+            stmt = new_stmt_expr(parser->ast_arena, expr, range);
         }
         else if (expect_token(parser, TKN_SEMICOLON, error_prefix))
         {
             range.end = parser->ptoken.range.end;
-            stmt = stmt_expr(parser->ast_arena, expr, range);
+            stmt = new_stmt_expr(parser->ast_arena, expr, range);
         }
     }
 
@@ -1583,7 +1582,7 @@ static Stmt* parse_stmt_for(Parser* parser)
 
     exit_scope(parser); // TODO: Skip scope on error
 
-    return stmt_for(parser->ast_arena, scope, init, cond, next, body, range);
+    return new_stmt_for(parser->ast_arena, scope, init, cond, next, body, range);
 }
 
 // stmt_return = 'return' expr? ';'
@@ -1617,7 +1616,7 @@ static Stmt* parse_stmt_return(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return stmt_return(parser->ast_arena, expr, range);
+    return new_stmt_return(parser->ast_arena, expr, range);
 }
 
 // stmt_break = 'break' TKN_IDENT? ';'
@@ -1637,7 +1636,7 @@ static Stmt* parse_stmt_break(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return stmt_break(parser->ast_arena, label, range);
+    return new_stmt_break(parser->ast_arena, label, range);
 }
 
 // stmt_continue = 'continue' TKN_IDENT? ';'
@@ -1657,7 +1656,7 @@ static Stmt* parse_stmt_continue(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return stmt_continue(parser->ast_arena, label, range);
+    return new_stmt_continue(parser->ast_arena, label, range);
 }
 
 // stmt_goto = 'goto' TKN_IDENT ';'
@@ -1680,7 +1679,7 @@ static Stmt* parse_stmt_goto(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return stmt_goto(parser->ast_arena, label, range);
+    return new_stmt_goto(parser->ast_arena, label, range);
 }
 
 // stmt_label = 'label' TKN_IDENT ':' stmt
@@ -1710,7 +1709,7 @@ static Stmt* parse_stmt_label(Parser* parser)
 
     range.end = stmt->range.end;
 
-    return stmt_label(parser->ast_arena, label, stmt, range);
+    return new_stmt_label(parser->ast_arena, label, stmt, range);
 }
 
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
@@ -1735,7 +1734,7 @@ Stmt* parse_stmt(Parser* parser)
     {
         case TKN_SEMICOLON:
             next_token(parser);
-            return stmt_noop(parser->ast_arena, token.range);
+            return new_stmt_noop(parser->ast_arena, token.range);
         case TKN_LBRACE:
             return parse_stmt_block(parser);
         case TKN_KW:
@@ -1828,7 +1827,7 @@ static Decl* parse_decl_var(Parser* parser)
                     if (expect_token(parser, TKN_SEMICOLON, error_prefix))
                     {
                         range.end = parser->ptoken.range.end;
-                        decl = decl_var(parser->ast_arena, name, typespec, expr, range);
+                        decl = new_decl_var(parser->ast_arena, name, typespec, expr, range);
                     }
                 }
                 else
@@ -1863,7 +1862,7 @@ static Decl* parse_proc_param(Parser* parser)
 
     range.end = typespec->range.end;
 
-    return decl_var(parser->ast_arena, name, typespec, NULL, range);
+    return new_decl_var(parser->ast_arena, name, typespec, NULL, range);
 }
 
 // decl_proc  = 'proc' TKN_IDENT '(' param_list ')' ('=>' typespec)? stmt_block
@@ -1926,7 +1925,7 @@ static Decl* parse_decl_proc(Parser* parser)
                             exit_scope(parser); // TODO: Skip scope on error?
 
                             range.end = body->range.end;
-                            decl = decl_proc(parser->ast_arena, name, param_scope, ret, body, range);
+                            decl = new_decl_proc(parser->ast_arena, name, param_scope, ret, body, range);
                         }
                     }
                     else
@@ -1943,7 +1942,7 @@ static Decl* parse_decl_proc(Parser* parser)
 
 // decl_union  = 'union' aggregate_body
 // decl_struct = 'struct' aggregate_body
-static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, DeclAggregateProc* decl_aggregate_proc)
+static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, NewDeclAggregateProc* new_decl_aggregate)
 {
     assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
     Decl* decl = NULL;
@@ -1966,7 +1965,7 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
                 if (num_fields)
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_aggregate_proc(parser->ast_arena, name, num_fields, &fields, range);
+                    decl = new_decl_aggregate(parser->ast_arena, name, num_fields, &fields, range);
                 }
                 else
                 {
@@ -1997,7 +1996,7 @@ static EnumItem* parse_enum_item(Parser* parser)
         }
 
         if (!bad_value)
-            item = enum_item(parser->ast_arena, name, value);
+            item = new_enum_item(parser->ast_arena, name, value);
     }
 
     return item;
@@ -2060,7 +2059,7 @@ static Decl* parse_decl_enum(Parser* parser)
                 if (num_items)
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_enum(parser->ast_arena, name, typespec, num_items, &items, range);
+                    decl = new_decl_enum(parser->ast_arena, name, typespec, num_items, &items, range);
                 }
                 else
                 {
@@ -2096,7 +2095,7 @@ static Decl* parse_decl_typedef(Parser* parser)
             if (typespec && expect_token(parser, TKN_SEMICOLON, error_prefix))
             {
                 range.end = parser->ptoken.range.end;
-                decl = decl_typedef(parser->ast_arena, name, typespec, range);
+                decl = new_decl_typedef(parser->ast_arena, name, typespec, range);
             }
         }
     }
@@ -2139,7 +2138,7 @@ static Decl* parse_decl_const(Parser* parser)
                 if (expr && expect_token(parser, TKN_SEMICOLON, error_prefix))
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_const(parser->ast_arena, name, typespec, expr, range);
+                    decl = new_decl_const(parser->ast_arena, name, typespec, expr, range);
                 }
             }
         }
@@ -2170,9 +2169,9 @@ Decl* parse_decl(Parser* parser)
             case KW_ENUM:
                 return parse_decl_enum(parser);
             case KW_STRUCT:
-                return parse_decl_aggregate(parser, "Failed to parse struct declaration", decl_struct);
+                return parse_decl_aggregate(parser, "Failed to parse struct declaration", new_decl_struct);
             case KW_UNION:
-                return parse_decl_aggregate(parser, "Failed to parse union declaration", decl_union);
+                return parse_decl_aggregate(parser, "Failed to parse union declaration", new_decl_union);
             case KW_PROC:
                 return parse_decl_proc(parser);
             default:
@@ -2188,4 +2187,3 @@ Decl* parse_decl(Parser* parser)
 
     return NULL;
 }
-
