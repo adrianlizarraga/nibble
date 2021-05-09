@@ -51,14 +51,14 @@ static void print_errors(ByteStream* errors)
     {                                                                                                                  \
         assert((tk.kind == TKN_FLOAT));                                                                                \
         assert((tk.as_float.value.f64 == v));                                                                          \
-        assert((tk.as_float.fkind == FLOAT_F64));                                                                      \
+        assert((tk.as_float.value.kind == FLOAT_F64));                                                                 \
     } while (0)
 #define TKN_TEST_FLOAT32(tk, v)                                                                                        \
     do                                                                                                                 \
     {                                                                                                                  \
         assert((tk.kind == TKN_FLOAT));                                                                                \
         assert((tk.as_float.value.f32 == v));                                                                          \
-        assert((tk.as_float.fkind == FLOAT_F32));                                                                      \
+        assert((tk.as_float.value.kind == FLOAT_F32));                                                                 \
     } while (0)
 #define TKN_TEST_CHAR(tk, v)                                                                                           \
     do                                                                                                                 \
@@ -262,7 +262,7 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         TKN_TEST_POS(token, TKN_EOF, 22, 22);
-        assert(errors.num_chunks == 1);
+        assert(errors.count == 1);
 
         print_errors(&errors);
     }
@@ -275,7 +275,7 @@ static void test_lexer(void)
         token = scan_token(&lexer);
         size_t len = cstr_len(lexer.str);
         TKN_TEST_POS(token, TKN_EOF, len, len);
-        assert(errors.num_chunks == 1);
+        assert(errors.count == 1);
 
         print_errors(&errors);
     }
@@ -341,22 +341,22 @@ static void test_lexer(void)
         Token token = {0};
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 1);
+        assert(errors.count == 1);
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 2);
+        assert(errors.count == 2);
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 3);
+        assert(errors.count == 3);
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 4);
+        assert(errors.count == 4);
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 5);
+        assert(errors.count == 5);
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 6);
+        assert(errors.count == 6);
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
@@ -393,13 +393,13 @@ static void test_lexer(void)
         Lexer lexer = lexer_create("1.33ea 1.33e100000000000 1.33e100000000000f", 0, &temp, &errors);
 
         scan_token(&lexer);
-        assert(errors.num_chunks == 1);
+        assert(errors.count == 1);
 
         scan_token(&lexer);
-        assert(errors.num_chunks == 2);
+        assert(errors.count == 2);
 
         scan_token(&lexer);
-        assert(errors.num_chunks == 3);
+        assert(errors.count == 3);
 
         print_errors(&errors);
     }
@@ -459,7 +459,7 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
-        assert(errors.num_chunks == 0);
+        assert(errors.count == 0);
     }
 
     // Test escaped hex chars
@@ -476,7 +476,7 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
-        assert(errors.num_chunks == 0);
+        assert(errors.count == 0);
     }
 
     // Test errors when lexing escaped hex chars
@@ -486,16 +486,16 @@ static void test_lexer(void)
         Token token = {0};
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 1);
+        assert(errors.count == 1);
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 2);
+        assert(errors.count == 2);
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 3);
+        assert(errors.count == 3);
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 4);
+        assert(errors.count == 4);
 
         token = scan_token(&lexer);
         TKN_TEST_CHAR(token, '\0');
@@ -530,7 +530,7 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
-        assert(errors.num_chunks == 0);
+        assert(errors.count == 0);
     }
 
     // Test errors when scanning string literals
@@ -540,16 +540,16 @@ static void test_lexer(void)
         Lexer lexer = lexer_create(str, 0, &temp, &errors);
 
         scan_token(&lexer);
-        assert(errors.num_chunks == 1);
+        assert(errors.count == 1);
 
         scan_token(&lexer);
-        assert(errors.num_chunks == 2);
+        assert(errors.count == 2);
 
         scan_token(&lexer);
-        assert(errors.num_chunks == 3);
+        assert(errors.count == 3);
 
         scan_token(&lexer);
-        assert(errors.num_chunks == 4);
+        assert(errors.count == 4);
 
         print_errors(&errors);
     }
@@ -584,7 +584,7 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
-        assert(errors.num_chunks == 0);
+        assert(errors.count == 0);
     }
 
     // Test invalid identifier combinations.
@@ -595,7 +595,7 @@ static void test_lexer(void)
         Token token = {0};
 
         token = scan_token(&lexer);
-        assert(errors.num_chunks == 1);
+        assert(errors.count == 1);
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
@@ -626,7 +626,7 @@ static void test_lexer(void)
 
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
-        assert(errors.num_chunks == 0);
+        assert(errors.count == 0);
     }
 
     allocator_destroy(&allocator);
@@ -647,7 +647,7 @@ static bool test_parse_typespec(Allocator* gen_arena, Allocator* ast_arena, cons
 
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
-    if (err_stream.num_chunks)
+    if (err_stream.count)
         print_errors(&err_stream);
 
     parser_destroy(&parser);
@@ -671,7 +671,7 @@ static bool test_parse_expr(Allocator* gen_arena, Allocator* ast_arena, const ch
 
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
-    if (err_stream.num_chunks)
+    if (err_stream.count)
         print_errors(&err_stream);
 
     parser_destroy(&parser);
@@ -695,7 +695,7 @@ static bool test_parse_decl(Allocator* gen_arena, Allocator* ast_arena, const ch
 
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
-    if (err_stream.num_chunks)
+    if (err_stream.count)
         print_errors(&err_stream);
 
     parser_destroy(&parser);
@@ -719,7 +719,7 @@ static bool test_parse_stmt(Allocator* gen_arena, Allocator* ast_arena, const ch
 
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
-    if (err_stream.num_chunks)
+    if (err_stream.count)
         print_errors(&err_stream);
 
     parser_destroy(&parser);

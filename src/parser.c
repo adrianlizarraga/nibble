@@ -4,6 +4,7 @@
 #include <string.h>
 
 #define PARSER_ARENA_BLOCK_SIZE 512
+//#define NIBBLE_PRINT_DECLS 
 
 static void parser_on_error(Parser* parser, const char* format, ...)
 {
@@ -714,7 +715,7 @@ static Expr* parse_expr_base(Parser* parser)
             return expr_int(parser->ast_arena, token.as_int.value, token.range);
         case TKN_FLOAT:
             next_token(parser);
-            return expr_float(parser->ast_arena, token.as_float.value, token.as_float.fkind, token.range);
+            return expr_float(parser->ast_arena, token.as_float.value, token.range);
         case TKN_STR:
             next_token(parser);
             return expr_str(parser->ast_arena, token.as_str.value, token.range);

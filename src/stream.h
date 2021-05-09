@@ -11,7 +11,7 @@ typedef struct ByteStreamChunk {
 typedef struct ByteStream {
     ByteStreamChunk* first;
     ByteStreamChunk* last;
-    size_t num_chunks;
+    size_t count;
     Allocator* allocator;
 } ByteStream;
 

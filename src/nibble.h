@@ -47,9 +47,13 @@ typedef enum FloatKind {
     FLOAT_F32,
 } FloatKind;
 
-typedef union Float {
-    double f64;
-    float f32;
+typedef struct Float {
+    FloatKind kind;
+
+    union {
+        double f64;
+        float f32;
+    };
 } Float;
 
 typedef union Integer {
@@ -67,6 +71,20 @@ typedef union Integer {
     unsigned long long ull;
     size_t word;
 } Integer;
+
+typedef enum ScalarKind {
+    SCALAR_INTEGER,
+    SCALAR_FLOAT,
+} ScalarKind;
+
+typedef struct Scalar {
+    ScalarKind kind;
+
+    union {
+        Float as_float;
+        Integer as_int;
+    };
+} Scalar;
 
 typedef enum Keyword {
     KW_VAR = 0,
@@ -103,4 +121,7 @@ const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
 
 bool nibble_init(OS target_os, Arch target_arch);
 void nibble_cleanup(void);
+
+#define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit((f), ## __VA_ARGS__)
+void nibble_fatal_exit(const char* format, ...);
 #endif

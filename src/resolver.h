@@ -3,10 +3,16 @@
 #include "nibble.h"
 #include "allocator.h"
 #include "stream.h"
+#include "llist.h"
 #include "ast.h"
 #include "types.h"
 
 typedef struct Module Module;
+typedef struct SymbolTyped SymbolTyped;
+typedef struct SymbolModule SymbolModule;
+typedef struct Symbol Symbol;
+typedef struct Program Program;
+typedef struct ResolvedExpr ResolvedExpr;
 
 typedef enum SymbolKind {
     SYMBOL_NONE,
@@ -23,18 +29,19 @@ typedef enum SymbolStatus {
     SYMBOL_STATUS_RESOLVED,
 } SymbolStatus;
 
-typedef struct SymbolTyped {
+struct SymbolTyped {
     Type* type;
-    Integer value;
-} SymbolTyped;
+    Scalar const_val;
+};
 
-typedef struct SymbolModule {
+struct SymbolModule {
     Module* module;
-} SymbolModule;
+};
 
-typedef struct Symbol {
+struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
+    bool is_local;
     const char* name;
     Module* module;
     Decl* decl;
@@ -43,19 +50,36 @@ typedef struct Symbol {
         SymbolTyped t;
         SymbolModule m;
     };
-} Symbol;
-
-struct Module {
-    Allocator allocator;
-    Allocator ast_arena;
-    ByteStream errors;
-
-    size_t num_decls;
-    Decl** decls;
-
-    HashMap syms_map;
 };
 
-Module* compile_module(const char* filename, ProgPos pos);
-void free_module(Module* module);
+struct ResolvedExpr {
+    Type* type;
+    bool is_lvalue;
+    bool is_const;
+    ScalarKind scalar_kind;
+    Scalar value;
+};
+
+struct Module {
+    const char* path;
+    ProgRange range;
+    size_t num_decls;
+    Decl** decls;
+    HMap syms;
+};
+
+struct Program {
+    Allocator gen_mem;
+    Allocator ast_mem;
+    ByteStream errors;
+
+    HMap modules;
+    Module* curr_module;
+    ProgPos curr_pos;
+
+    DLList local_syms;
+};
+
+Program* compile_program(const char* path);
+void free_program(Program* program);
 #endif

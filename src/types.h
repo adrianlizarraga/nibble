@@ -19,7 +19,7 @@ typedef enum TypeKind {
     TYPE_UNION,
     TYPE_CONST,
 
-    NUM_TYPE_KINDS,
+    NUM_TYPE_KINDS
 } TypeKind;
 
 typedef enum TypeIntegralKind {
@@ -35,11 +35,15 @@ typedef enum TypeIntegralKind {
     TYPE_ULONG,
     TYPE_LLONG,
     TYPE_ULLONG,
+
+    NUM_TYPE_INTEGRAL_KINDS
 } TypeIntegralKind;
 
 typedef enum TypeFloatKind {
     TYPE_FLOAT64,
     TYPE_FLOAT32,
+
+    NUM_TYPE_FLOAT_KINDS
 } TypeFloatKind;
 
 typedef enum TypeStatus {
@@ -108,6 +112,8 @@ struct Type {
     };
 };
 
+Type* type_ptr(Allocator* allocator, Type* base);
+
 extern Type* type_void;
 extern Type* type_bool;
 extern Type* type_char;
@@ -130,5 +136,6 @@ extern size_t PTR_SIZE;
 extern size_t PTR_ALIGN;
 
 void init_builtin_types(OS target_os, Arch target_arch);
+const char* type_name(Type* type);
 
 #endif

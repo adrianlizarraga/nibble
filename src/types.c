@@ -37,6 +37,71 @@ Type* type_usize;
 size_t PTR_SIZE = 8;
 size_t PTR_ALIGN = 8;
 
+static const char* type_names[NUM_TYPE_KINDS] = {
+    [TYPE_VOID] = "void",
+    [TYPE_INTEGRAL] = "_integral_",
+    [TYPE_FLOAT] = "_float_",
+    [TYPE_ENUM] = "_enum_",
+    [TYPE_PTR] = "_ptr_",
+    [TYPE_PROC] = "_proc_",
+    [TYPE_ARRAY] = "_array_",
+    [TYPE_STRUCT] = "_struct_",
+    [TYPE_UNION] = "_union_",
+    [TYPE_CONST] = "_const_",
+};
+
+static const char* type_integral_names[NUM_TYPE_INTEGRAL_KINDS] = {
+    [TYPE_INT] = "int",
+    [TYPE_BOOL] = "bool",
+    [TYPE_CHAR] = "char",
+    [TYPE_SCHAR] = "schar",
+    [TYPE_UCHAR] = "uchar",
+    [TYPE_SHORT] = "short",
+    [TYPE_USHORT] = "ushort",
+    [TYPE_UINT] = "uint",
+    [TYPE_LONG] = "long",
+    [TYPE_ULONG] = "ulong",
+    [TYPE_LLONG] = "llong",
+    [TYPE_ULLONG] = "ullong"
+};
+
+static const char* type_float_names[NUM_TYPE_FLOAT_KINDS] = {
+    [TYPE_FLOAT64] = "float64",
+    [TYPE_FLOAT32] = "float32",
+};
+
+const char* type_name(Type* type)
+{
+    if (!type)
+        return "null";
+
+    switch (type->kind)
+    {
+        case TYPE_INTEGRAL:
+            return type_integral_names[type->as_integral.kind];
+        case TYPE_FLOAT:
+            return type_float_names[type->as_float.kind];
+        default:
+            return type_names[type->kind];
+    }
+}
+
+static Type* type_alloc(Allocator* allocator, TypeKind kind)
+{
+    Type* type = new_type(allocator, Type, true);
+    type->kind = kind;
+
+    return type;
+}
+
+Type* type_ptr(Allocator* allocator, Type* base)
+{
+    Type* type = type_alloc(allocator, TYPE_PTR);
+    type->as_ptr.base = base;
+
+    return type;
+}
+
 static size_t next_type_id = 1;
 
 static void init_type(Type* type, size_t size, size_t align)

@@ -42,7 +42,7 @@ void add_byte_stream_chunk(ByteStream* stream, const char* buf, size_t size)
             else
                 stream->last = stream->last->next = chunk;
 
-            stream->num_chunks += 1;
+            stream->count += 1;
         }
     }
 }

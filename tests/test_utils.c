@@ -290,13 +290,13 @@ void test_array(void)
     allocator_destroy(&allocator);
 }
 
-void test_hash_map(void)
+void test_hmap(void)
 {
-    HashMap map = hash_map(21, NULL);
+    HMap map = hmap(21, NULL);
 
     for (uint64_t i = 1; i <= (1 << 20); ++i)
     {
-        uint64_t* r = hash_map_put(&map, i, i);
+        uint64_t* r = hmap_put(&map, i, i);
 
         assert(r);
         assert(*r == i);
@@ -304,7 +304,7 @@ void test_hash_map(void)
 
     for (uint64_t i = 1; i <= (1 << 20); ++i)
     {
-        uint64_t* r = hash_map_get(&map, i);
+        uint64_t* r = hmap_get(&map, i);
 
         assert(r);
         assert(*r == i);
@@ -312,13 +312,13 @@ void test_hash_map(void)
 
     ftprint_out("cap = %lu, len = %lu\n", map.cap, map.len);
 
-    hash_map_destroy(&map);
+    hmap_destroy(&map);
 }
 
 void test_interning(void)
 {
     Allocator arena = allocator_create(4096);
-    HashMap strmap = hash_map(8, NULL);
+    HMap strmap = hmap(8, NULL);
 
     const char* a = "hello";
     const char* b = "hello!";
@@ -332,7 +332,7 @@ void test_interning(void)
     assert(strmap.len == 2);
     assert(a_in != b_in);
 
-    hash_map_destroy(&strmap);
+    hmap_destroy(&strmap);
     allocator_destroy(&arena);
 }
 
@@ -394,7 +394,7 @@ int main(void)
 
     test_allocator();
     test_array();
-    test_hash_map();
+    test_hmap();
     test_interning();
     test_dllist();
 }

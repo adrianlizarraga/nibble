@@ -5,8 +5,8 @@
 #include "parser.h"
 
 typedef struct NibbleCtx {
-    HashMap ident_map;
-    HashMap str_lit_map;
+    HMap ident_map;
+    HMap str_lit_map;
     Allocator allocator;
 
     OS target_os;
@@ -67,8 +67,8 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble.target_os = target_os;
     nibble.target_arch = target_arch;
     nibble.allocator = allocator_create(4096);
-    nibble.str_lit_map = hash_map(6, NULL);
-    nibble.ident_map = hash_map(6, NULL);
+    nibble.str_lit_map = hmap(6, NULL);
+    nibble.ident_map = hmap(6, NULL);
 
     // Compute the total amount of memory needed to store all interned keywords.
     // Why? Program needs all keywords to reside in a contigous block of memory to facilitate
@@ -103,7 +103,7 @@ bool nibble_init(OS target_os, Arch target_arch)
         memcpy(kw->str, str, len);
         kw->str[len] = '\0';
 
-        hash_map_put(&nibble.ident_map, hash_bytes(str, len), (uintptr_t)kw);
+        hmap_put(&nibble.ident_map, hash_bytes(str, len), (uintptr_t)kw);
         keywords[i] = kw->str;
 
         kws_mem_ptr += ALIGN_UP(size, DEFAULT_ALIGN);
@@ -121,22 +121,21 @@ void nibble_cleanup(void)
 #ifndef NDEBUG
     print_allocator_stats(&nibble.allocator, "Nibble mem stats");
     ftprint_out("Ident map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble.ident_map.len,
-                nibble.ident_map.cap, nibble.ident_map.cap * sizeof(HashMapEntry));
+                nibble.ident_map.cap, nibble.ident_map.cap * sizeof(HMapEntry));
     ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble.str_lit_map.len,
-                nibble.str_lit_map.cap, nibble.str_lit_map.cap * sizeof(HashMapEntry));
+                nibble.str_lit_map.cap, nibble.str_lit_map.cap * sizeof(HMapEntry));
 #endif
 
-    hash_map_destroy(&nibble.str_lit_map);
-    hash_map_destroy(&nibble.ident_map);
+    hmap_destroy(&nibble.str_lit_map);
+    hmap_destroy(&nibble.ident_map);
     allocator_destroy(&nibble.allocator);
 }
 
 const char* intern_str_lit(const char* str, size_t len)
 {
     Allocator* allocator = &nibble.allocator;
-    HashMap* strmap = &nibble.str_lit_map;
-
-    const char* interned_str = intern_str(allocator, strmap, str, len);
+    HMap* strmap = &nibble.str_lit_map;
+const char* interned_str = intern_str(allocator, strmap, str, len);
 
     if (!interned_str)
     {
@@ -152,9 +151,9 @@ const char* intern_str_lit(const char* str, size_t len)
 const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw)
 {
     Allocator* allocator = &nibble.allocator;
-    HashMap* strmap = &nibble.ident_map;
+    HMap* strmap = &nibble.ident_map;
     uint64_t key = hash_bytes(str, len);
-    uint64_t* pval = hash_map_get(strmap, key);
+    uint64_t* pval = hmap_get(strmap, key);
     InternedIdent* intern = pval ? (void*)*pval : NULL;
 
     // Collisions will only occur if identical hash values are produced. Collisions due to
@@ -189,13 +188,12 @@ const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw)
         memcpy(new_intern->str, str, len);
         new_intern->str[len] = '\0';
 
-        hash_map_put(strmap, key, (uintptr_t)new_intern);
+        hmap_put(strmap, key, (uintptr_t)new_intern);
     }
     else
     {
-        // TODO: Handle in a better way.
-        ftprint_err("[INTERNAL ERROR]: Out of memory.\n%s:%d\n", __FILE__, __LINE__);
-        exit(1);
+        NIBBLE_FATAL_EXIT("Out of memory: %s:%d", __FILE__, __LINE__);
+        return NULL;
     }
 
     if (is_kw)
@@ -209,3 +207,17 @@ const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw)
     return new_intern->str;
 }
 
+void nibble_fatal_exit(const char* format, ...)
+{
+    va_list vargs;
+
+    ftprint_err("[FATAL ERROR]: ");
+
+    va_start(vargs, format);
+    ftprintv_err(format, vargs);
+    va_end(vargs);
+
+    ftprint_err("\n");
+
+    exit(1);
+}

@@ -93,7 +93,6 @@ typedef struct TokenInt {
 
 typedef struct TokenFloat {
     Float value;
-    FloatKind fkind;
 } TokenFloat;
 
 typedef struct TokenIdent {
