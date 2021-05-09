@@ -503,8 +503,7 @@ typedef struct DeclProc {
     size_t num_params;
     List params;
 
-    size_t num_stmts;
-    List stmts;
+    Stmt* body;
 } DeclProc;
 
 typedef struct DeclTypedef {
@@ -524,7 +523,7 @@ typedef Decl* DeclAggregateProc(Allocator* alloc, const char* name, size_t num_f
 Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
 Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, List* params, TypeSpec* ret,
-                size_t num_stmts, List* stmts, ProgRange range);
+                Stmt* body, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 

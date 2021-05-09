@@ -332,15 +332,14 @@ AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec
 }
 
 Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, List* params, TypeSpec* ret,
-                size_t num_stmts, List* stmts, ProgRange range)
+                Stmt* body, ProgRange range)
 {
     DeclProc* decl = decl_alloc(allocator, DeclProc, name, range);
     decl->num_params = num_params;
     decl->ret = ret;
-    decl->num_stmts = num_stmts;
+    decl->body = body;
 
     list_replace(params, &decl->params);
-    list_replace(stmts, &decl->stmts);
 
     return (Decl*)decl;
 }
@@ -1279,13 +1278,9 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                     }
                 }
 
-                ftprint_char_array(&dstr, false, ") =>%s (stmt-block", ftprint_typespec(allocator, proc->ret));
-
-                if (proc->num_stmts)
-                    ftprint_char_array(&dstr, false, " %s))",
-                                       ftprint_stmt_list(allocator, proc->num_stmts, &proc->stmts));
-                else
-                    ftprint_char_array(&dstr, false, "))");
+                ftprint_char_array(&dstr, false, ") =>%s %s)",
+                                   ftprint_typespec(allocator, proc->ret),
+                                   ftprint_stmt(allocator, proc->body));
             }
             break;
             default:

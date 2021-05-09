@@ -128,22 +128,23 @@ bool match_keyword(Parser* parser, Keyword kw)
     return matches;
 }
 
+static void parser_unexpected_token(Parser* parser, TokenKind expected_kind, const char* error_prefix)
+{
+    char tmp[32];
+
+    print_token(&parser->token, tmp, sizeof(tmp));
+    parser_on_error(parser, "%s: wanted token `%s`, but got token `%s`.",
+                    error_prefix ? error_prefix : "Unexpected token", token_kind_names[expected_kind], tmp);
+}
+
 bool expect_token(Parser* parser, TokenKind kind, const char* error_prefix)
 {
     bool matches = (parser->token.kind == kind);
 
     if (matches)
-    {
         next_token(parser);
-    }
     else
-    {
-        char tmp[32];
-
-        print_token(&parser->token, tmp, sizeof(tmp));
-        parser_on_error(parser, "%s: wanted token `%s`, but got token `%s`.",
-                        error_prefix ? error_prefix : "Unexpected token", token_kind_names[kind], tmp);
-    }
+        parser_unexpected_token(parser, kind, error_prefix);
 
     return matches;
 }
@@ -1851,16 +1852,21 @@ static Decl* parse_decl_proc(Parser* parser)
                     bad_ret = !ret;
                 }
 
-                if (!bad_ret && expect_token(parser, TKN_LBRACE, error_prefix))
+                if (!bad_ret)
                 {
-                    size_t num_stmts = 0;
-                    List stmts = {0};
-                    bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
-
-                    if (ok && expect_token(parser, TKN_RBRACE, error_prefix))
+                    if (is_token_kind(parser, TKN_LBRACE))
                     {
-                        range.end = parser->ptoken.range.end;
-                        decl = decl_proc(parser->ast_arena, name, num_params, &params, ret, num_stmts, &stmts, range);
+                        Stmt* body = parse_stmt(parser);
+
+                        if (body)
+                        {
+                            range.end = body->range.end;
+                            decl = decl_proc(parser->ast_arena, name, num_params, &params, ret, body, range);
+                        }
+                    }
+                    else
+                    {
+                        parser_unexpected_token(parser, TKN_RBRACE, error_prefix);
                     }
                 }
             }
