@@ -480,7 +480,7 @@ static TokenInt scan_char(Lexer* lexer)
     return tint;
 }
 
-Lexer lexer_create(const char* str, uint32_t start, Allocator* arena, ByteStream* errors)
+Lexer lexer_create(const char* str, ProgPos start, Allocator* arena, ByteStream* errors)
 {
     Lexer lexer = {0};
     lexer.str = str;

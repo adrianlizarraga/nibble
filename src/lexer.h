@@ -131,8 +131,7 @@ typedef struct Lexer {
 
 extern const char* token_kind_names[];
 
-Lexer lexer_create(const char* str, uint32_t start, Allocator* arena, ByteStream* errors);
-void lexer_destroy(Lexer* lexer);
+Lexer lexer_create(const char* str, ProgPos start, Allocator* arena, ByteStream* errors);
 
 int print_token(Token* token, char* buf, size_t size);
 Token scan_token(Lexer* lexer);

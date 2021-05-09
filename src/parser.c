@@ -8,7 +8,7 @@
 
 static void parser_on_error(Parser* parser, const char* format, ...)
 {
-    if (parser->errors && !parser->suppress_errors)
+    if (parser->errors)
     {
         char buf[MAX_ERROR_LEN];
         size_t size = 0;
@@ -22,23 +22,14 @@ static void parser_on_error(Parser* parser, const char* format, ...)
     }
 }
 
-void parser_init(Parser* parser, Allocator* ast_arena, const char* str, ProgPos pos, ByteStream* errors)
+void parser_init(Parser* parser, Allocator* ast_arena, Allocator* tmp_arena, const char* str, ProgPos pos,
+                 ByteStream* errors)
 {
     memset(parser, 0, sizeof(Parser));
 
     parser->ast_arena = ast_arena;
     parser->errors = errors;
-    parser->start = pos;
-    parser->temp_arena = allocator_create(PARSER_ARENA_BLOCK_SIZE);
-    parser->lexer = lexer_create(str, pos, &parser->temp_arena, errors);
-}
-
-void parser_destroy(Parser* parser)
-{
-#if !defined(NDEBUG) && PRINT_MEM_USAGE
-    print_allocator_stats(&parser->temp_arena, "Parser temp mem stats");
-#endif
-    allocator_destroy(&parser->temp_arena);
+    parser->lexer = lexer_create(str, pos, tmp_arena, errors);
 }
 
 bool next_token(Parser* parser)

@@ -633,12 +633,13 @@ static void test_lexer(void)
     allocator_destroy(&temp);
 }
 
-static bool test_parse_typespec(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
+static bool test_parse_typespec(Allocator* gen_arena, Allocator* ast_arena, Allocator* tmp_arena,
+                                const char* code, const char* sexpr)
 {
     ByteStream err_stream = byte_stream_create(gen_arena);
     Parser parser = {0};
 
-    parser_init(&parser, ast_arena, code, 0, &err_stream);
+    parser_init(&parser, ast_arena, tmp_arena, code, 0, &err_stream);
     next_token(&parser);
 
     TypeSpec* type = parse_typespec(&parser);
@@ -650,19 +651,20 @@ static bool test_parse_typespec(Allocator* gen_arena, Allocator* ast_arena, cons
     if (err_stream.count)
         print_errors(&err_stream);
 
-    parser_destroy(&parser);
-    allocator_reset(ast_arena);
     allocator_reset(gen_arena);
+    allocator_reset(ast_arena);
+    allocator_reset(tmp_arena);
 
     return cstr_cmp(s, sexpr) == 0;
 }
 
-static bool test_parse_expr(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
+static bool test_parse_expr(Allocator* gen_arena, Allocator* ast_arena, Allocator* tmp_arena,
+                            const char* code, const char* sexpr)
 {
     ByteStream err_stream = byte_stream_create(gen_arena);
     Parser parser = {0};
 
-    parser_init(&parser, ast_arena, code, 0, &err_stream);
+    parser_init(&parser, ast_arena, tmp_arena, code, 0, &err_stream);
     next_token(&parser);
 
     Expr* expr = parse_expr(&parser);
@@ -674,19 +676,20 @@ static bool test_parse_expr(Allocator* gen_arena, Allocator* ast_arena, const ch
     if (err_stream.count)
         print_errors(&err_stream);
 
-    parser_destroy(&parser);
-    allocator_reset(ast_arena);
     allocator_reset(gen_arena);
+    allocator_reset(ast_arena);
+    allocator_reset(tmp_arena);
 
     return cstr_cmp(s, sexpr) == 0;
 }
 
-static bool test_parse_decl(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
+static bool test_parse_decl(Allocator* gen_arena, Allocator* ast_arena, Allocator* tmp_arena,
+                            const char* code, const char* sexpr)
 {
     ByteStream err_stream = byte_stream_create(gen_arena);
     Parser parser = {0};
 
-    parser_init(&parser, ast_arena, code, 0, &err_stream);
+    parser_init(&parser, ast_arena, tmp_arena, code, 0, &err_stream);
     next_token(&parser);
 
     Decl* decl = parse_decl(&parser);
@@ -698,19 +701,20 @@ static bool test_parse_decl(Allocator* gen_arena, Allocator* ast_arena, const ch
     if (err_stream.count)
         print_errors(&err_stream);
 
-    parser_destroy(&parser);
-    allocator_reset(ast_arena);
     allocator_reset(gen_arena);
+    allocator_reset(ast_arena);
+    allocator_reset(tmp_arena);
 
     return cstr_cmp(s, sexpr) == 0;
 }
 
-static bool test_parse_stmt(Allocator* gen_arena, Allocator* ast_arena, const char* code, const char* sexpr)
+static bool test_parse_stmt(Allocator* gen_arena, Allocator* ast_arena, Allocator* tmp_arena,
+                            const char* code, const char* sexpr)
 {
     ByteStream err_stream = byte_stream_create(gen_arena);
     Parser parser = {0};
 
-    parser_init(&parser, ast_arena, code, 0, &err_stream);
+    parser_init(&parser, ast_arena, tmp_arena, code, 0, &err_stream);
     next_token(&parser);
 
     Stmt* stmt = parse_stmt(&parser);
@@ -722,22 +726,23 @@ static bool test_parse_stmt(Allocator* gen_arena, Allocator* ast_arena, const ch
     if (err_stream.count)
         print_errors(&err_stream);
 
-    parser_destroy(&parser);
-    allocator_reset(ast_arena);
     allocator_reset(gen_arena);
+    allocator_reset(ast_arena);
+    allocator_reset(tmp_arena);
 
     return cstr_cmp(s, sexpr) == 0;
 }
 
 void test_parser(void)
 {
-    Allocator ast_arena = allocator_create(4096);
     Allocator gen_arena = allocator_create(4096);
+    Allocator ast_arena = allocator_create(4096);
+    Allocator tmp_arena = allocator_create(256);
 
-#define TEST_TYPESPEC(c, s) assert(test_parse_typespec(&gen_arena, &ast_arena, (c), (s)))
-#define TEST_EXPR(c, s) assert(test_parse_expr(&gen_arena, &ast_arena, (c), (s)))
-#define TEST_DECL(c, s) assert(test_parse_decl(&gen_arena, &ast_arena, (c), (s)))
-#define TEST_STMT(c, s) assert(test_parse_stmt(&gen_arena, &ast_arena, (c), (s)))
+#define TEST_TYPESPEC(c, s) assert(test_parse_typespec(&gen_arena, &ast_arena, &tmp_arena, (c), (s)))
+#define TEST_EXPR(c, s) assert(test_parse_expr(&gen_arena, &ast_arena, &tmp_arena, (c), (s)))
+#define TEST_DECL(c, s) assert(test_parse_decl(&gen_arena, &ast_arena, &tmp_arena, (c), (s)))
+#define TEST_STMT(c, s) assert(test_parse_stmt(&gen_arena, &ast_arena, &tmp_arena, (c), (s)))
 
     // Test base typespecs
     TEST_TYPESPEC("int32", "(:ident int32)");
@@ -951,6 +956,7 @@ void test_parser(void)
 
     allocator_destroy(&gen_arena);
     allocator_destroy(&ast_arena);
+    allocator_destroy(&tmp_arena);
 }
 
 int main(void)

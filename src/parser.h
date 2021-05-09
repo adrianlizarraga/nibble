@@ -6,10 +6,7 @@
 
 typedef struct Parser {
     Allocator* ast_arena;
-    Allocator temp_arena;
-    bool suppress_errors;
     ByteStream* errors;
-    ProgPos start;
     Lexer lexer;
     Token token;
     Token ptoken;
@@ -17,8 +14,8 @@ typedef struct Parser {
     Scope* curr_scope;
 } Parser;
 
-void parser_init(Parser* parser, Allocator* ast_arena, const char* str, ProgPos pos, ByteStream* errors);
-void parser_destroy(Parser* parser);
+void parser_init(Parser* parser, Allocator* ast_arena, Allocator* tmp_arena, const char* str, ProgPos pos,
+                 ByteStream* errors);
 
 typedef enum TokenKindProps {
     OP_PRECEDENCE_TERNARY = 1 << 0,

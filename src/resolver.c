@@ -211,7 +211,7 @@ static void parse_module(Program* prog, Module* module)
     Parser parser = {0};
     Decl** decls = array_create(&prog->gen_mem, Decl*, 32);
 
-    parser_init(&parser, &prog->ast_mem, code, module->range.start, &prog->errors);
+    parser_init(&parser, &prog->ast_mem, &prog->tmp_mem, code, module->range.start, &prog->errors);
     next_token(&parser);
 
     while (!is_token_kind(&parser, TKN_EOF))
@@ -232,7 +232,6 @@ static void parse_module(Program* prog, Module* module)
     ftprint_out("%s\n", ftprint_decls(&prog->gen_mem, module->num_decls, module->decls));
 #endif
 
-    parser_destroy(&parser);
     allocator_restore_state(mem_state);
     import_builtin_syms(prog, module);
 
@@ -475,6 +474,7 @@ Program* compile_program(const char* path)
 
     prog->gen_mem = boot_mem;
     prog->ast_mem = allocator_create(4096);
+    prog->tmp_mem = allocator_create(256);
     prog->errors = byte_stream_create(&prog->ast_mem);
     prog->modules = hmap(8, NULL);
 
@@ -526,9 +526,11 @@ void free_program(Program* prog)
 
 #ifndef NDEBUG
     print_allocator_stats(&prog->ast_mem, "Prog AST mem stats");
+    print_allocator_stats(&prog->tmp_mem, "Prog tmp mem stats");
     print_allocator_stats(&prog->gen_mem, "Prog gen mem stats");
 #endif
 
     allocator_destroy(&prog->ast_mem);
+    allocator_destroy(&prog->tmp_mem);
     allocator_destroy(&bootstrap);
 }

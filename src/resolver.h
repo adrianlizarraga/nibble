@@ -70,6 +70,7 @@ struct Module {
 
 struct Program {
     Allocator gen_mem;
+    Allocator tmp_mem;
     Allocator ast_mem;
     ByteStream errors;
 
