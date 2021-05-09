@@ -365,7 +365,7 @@ static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
 
 static Type* resolve_decl_var(Program* prog, DeclVar* decl)
 {
-    TypeSpec* typespec = decl->type;
+    TypeSpec* typespec = decl->typespec;
     Expr* expr = decl->init;
     Type* type = NULL;
 
@@ -484,7 +484,7 @@ Program* compile_program(const char* path)
     Module* module = import_module(prog, main_module_path);
 
     // 2. Resolve all syms
-    resolve_module(prog, module);
+    //resolve_module(prog, module);
 
     if (prog->errors.count > 0)
     {

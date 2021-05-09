@@ -41,7 +41,7 @@ typedef struct TypeSpecIdent {
 
 typedef struct AggregateField {
     const char* name;
-    TypeSpec* type;
+    TypeSpec* typespec;
     ProgRange range;
     ListNode lnode;
 } AggregateField;
@@ -58,7 +58,7 @@ typedef TypeSpecAggregate TypeSpecUnion;
 typedef struct ProcParam {
     ProgRange range;
     const char* name;
-    TypeSpec* type;
+    TypeSpec* typespec;
     ListNode lnode;
 } ProcParam;
 
@@ -194,13 +194,13 @@ typedef struct ExprIdent {
 
 typedef struct ExprCast {
     Expr super;
-    TypeSpec* type;
+    TypeSpec* typespec;
     Expr* expr;
 } ExprCast;
 
 typedef struct ExprSizeof {
     Expr super;
-    TypeSpec* type;
+    TypeSpec* typespec;
 } ExprSizeof;
 
 typedef struct ExprTypeof {
@@ -232,7 +232,7 @@ typedef struct MemberInitializer {
 
 typedef struct ExprCompoundLit {
     Expr super;
-    TypeSpec* type;
+    TypeSpec* typespec;
     size_t num_initzers;
     List initzers;
 } ExprCompoundLit;
@@ -463,13 +463,13 @@ struct Decl {
 
 typedef struct DeclVar {
     Decl super;
-    TypeSpec* type;
+    TypeSpec* typespec;
     Expr* init;
 } DeclVar;
 
 typedef struct DeclConst {
     Decl super;
-    TypeSpec* type;
+    TypeSpec* typespec;
     Expr* init;
 } DeclConst;
 
@@ -481,7 +481,7 @@ typedef struct EnumItem {
 
 typedef struct DeclEnum {
     Decl super;
-    TypeSpec* type;
+    TypeSpec* typespec;
 
     size_t num_items;
     List items;
@@ -505,7 +505,7 @@ typedef struct DeclProc {
 
 typedef struct DeclTypedef {
     Decl super;
-    TypeSpec* type;
+    TypeSpec* typespec;
 } DeclTypedef;
 
 Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);

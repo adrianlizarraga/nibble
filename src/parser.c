@@ -197,14 +197,14 @@ static AggregateField* parse_aggregate_field(Parser* parser)
     if (!expect_token(parser, TKN_COLON, error_prefix))
         return NULL;
 
-    TypeSpec* type = parse_typespec(parser);
+    TypeSpec* typespec = parse_typespec(parser);
 
-    if (!type || !expect_token(parser, TKN_SEMICOLON, error_prefix))
+    if (!typespec || !expect_token(parser, TKN_SEMICOLON, error_prefix))
         return NULL;
 
     range.end = parser->ptoken.range.end;
 
-    return aggregate_field(parser->ast_arena, name, type, range);
+    return aggregate_field(parser->ast_arena, name, typespec, range);
 }
 
 // aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
@@ -232,7 +232,7 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
 {
     assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
 
-    TypeSpec* type = NULL;
+    TypeSpec* typespec = NULL;
     ProgRange range = {.start = parser->token.range.start};
 
     next_token(parser);
@@ -247,7 +247,7 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
             if (num_fields)
             {
                 range.end = parser->ptoken.range.end;
-                type = typespec_aggregate_proc(parser->ast_arena, num_fields, &fields, range);
+                typespec = typespec_aggregate_proc(parser->ast_arena, num_fields, &fields, range);
             }
             else
             {
@@ -256,32 +256,32 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
         }
     }
 
-    return type;
+    return typespec;
 }
 
 // typespec_proc_param = (name ':')? typespec
 static ProcParam* parse_typespec_proc_param(Parser* parser)
 {
     ProcParam* param = NULL;
-    TypeSpec* type = parse_typespec(parser);
+    TypeSpec* typespec = parse_typespec(parser);
 
-    if (type && match_token(parser, TKN_COLON))
+    if (typespec && match_token(parser, TKN_COLON))
     {
-        if (type->kind == AST_TypeSpecIdent)
+        if (typespec->kind == AST_TypeSpecIdent)
         {
             // NOTE: I wish this was truly LL1
-            ProgRange range = {.start = type->range.start};
-            TypeSpecIdent* tident = (TypeSpecIdent*)type;
+            ProgRange range = {.start = typespec->range.start};
+            TypeSpecIdent* tident = (TypeSpecIdent*)typespec;
             const char* name = tident->name;
 
-            mem_free(parser->ast_arena, type);
+            mem_free(parser->ast_arena, typespec);
 
-            type = parse_typespec(parser);
+            typespec = parse_typespec(parser);
 
-            if (type)
+            if (typespec)
             {
-                range.end = type->range.end;
-                param = proc_param(parser->ast_arena, name, type, range);
+                range.end = typespec->range.end;
+                param = proc_param(parser->ast_arena, name, typespec, range);
             }
         }
         else
@@ -289,9 +289,9 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
             parser_on_error(parser, "Parameter's name must be an alphanumeric identifier");
         }
     }
-    else if (type)
+    else if (typespec)
     {
-        param = proc_param(parser->ast_arena, NULL, type, type->range);
+        param = proc_param(parser->ast_arena, NULL, typespec, typespec->range);
     }
 
     return param;
@@ -303,7 +303,7 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
 static TypeSpec* parse_typespec_proc(Parser* parser)
 {
     assert(is_keyword(parser, KW_PROC));
-    TypeSpec* type = NULL;
+    TypeSpec* typespec = NULL;
     ProgRange range = {.start = parser->token.range.start};
     const char* error_prefix = "Failed to parse procedure type specification";
 
@@ -348,12 +348,12 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
             if (!bad_ret)
             {
                 range.end = parser->ptoken.range.end;
-                type = typespec_proc(parser->ast_arena, num_params, &params, ret, range);
+                typespec = typespec_proc(parser->ast_arena, num_params, &params, ret, range);
             }
         }
     }
 
-    return type;
+    return typespec;
 }
 
 static TypeSpec* parse_typespec_ident(Parser* parser)
@@ -398,15 +398,15 @@ static TypeSpec* parse_typespec_base(Parser* parser)
         {
             next_token(parser);
 
-            TypeSpec* type = NULL;
-            TypeSpec* enclosed_type = parse_typespec(parser);
+            TypeSpec* typespec = NULL;
+            TypeSpec* enclosed_typespec = parse_typespec(parser);
 
-            if (enclosed_type && expect_token(parser, TKN_RPAREN, NULL))
+            if (enclosed_typespec && expect_token(parser, TKN_RPAREN, NULL))
             {
-                type = enclosed_type;
+                typespec = enclosed_typespec;
             }
 
-            return type;
+            return typespec;
         }
         break;
         default:
@@ -426,7 +426,7 @@ static TypeSpec* parse_typespec_base(Parser* parser)
 //          | typespec_base
 TypeSpec* parse_typespec(Parser* parser)
 {
-    TypeSpec* type = NULL;
+    TypeSpec* typespec = NULL;
 
     if (match_token(parser, TKN_CARET))
     {
@@ -440,7 +440,7 @@ TypeSpec* parse_typespec(Parser* parser)
         if (base)
         {
             range.end = base->range.end;
-            type = typespec_ptr(parser->ast_arena, base, range);
+            typespec = typespec_ptr(parser->ast_arena, base, range);
         }
     }
     else if (match_token(parser, TKN_LBRACKET))
@@ -467,7 +467,7 @@ TypeSpec* parse_typespec(Parser* parser)
             if (base)
             {
                 range.end = base->range.end;
-                type = typespec_array(parser->ast_arena, base, len, range);
+                typespec = typespec_array(parser->ast_arena, base, len, range);
             }
         }
     }
@@ -483,15 +483,15 @@ TypeSpec* parse_typespec(Parser* parser)
         if (base)
         {
             range.end = base->range.end;
-            type = typespec_const(parser->ast_arena, base, range);
+            typespec = typespec_const(parser->ast_arena, base, range);
         }
     }
     else
     {
-        type = parse_typespec_base(parser);
+        typespec = parse_typespec_base(parser);
     }
 
-    return type;
+    return typespec;
 }
 
 ///////////////////////////////
@@ -599,22 +599,22 @@ static Expr* parse_expr_compound_lit(Parser* parser)
 
         if (!bad_initzer)
         {
-            TypeSpec* type = NULL;
+            TypeSpec* typespec = NULL;
 
             if (match_token(parser, TKN_COLON))
             {
-                type = parse_typespec(parser);
+                typespec = parse_typespec(parser);
 
-                if (type && expect_token(parser, TKN_RBRACE, error_prefix))
+                if (typespec && expect_token(parser, TKN_RBRACE, error_prefix))
                 {
                     range.end = parser->ptoken.range.end;
-                    expr = expr_compound_lit(parser->ast_arena, type, num_initzers, &initzers, range);
+                    expr = expr_compound_lit(parser->ast_arena, typespec, num_initzers, &initzers, range);
                 }
             }
             else if (expect_token(parser, TKN_RBRACE, error_prefix))
             {
                 range.end = parser->ptoken.range.end;
-                expr = expr_compound_lit(parser->ast_arena, type, num_initzers, &initzers, range);
+                expr = expr_compound_lit(parser->ast_arena, typespec, num_initzers, &initzers, range);
             }
         }
     }
@@ -633,12 +633,12 @@ static Expr* parse_expr_sizeof(Parser* parser)
 
     if (expect_token(parser, TKN_LPAREN, error_prefix))
     {
-        TypeSpec* type = parse_typespec(parser);
+        TypeSpec* typespec = parse_typespec(parser);
 
-        if (type && expect_token(parser, TKN_RPAREN, error_prefix))
+        if (typespec && expect_token(parser, TKN_RPAREN, error_prefix))
         {
             range.end = parser->ptoken.range.end;
-            expr = expr_sizeof(parser->ast_arena, type, range);
+            expr = expr_sizeof(parser->ast_arena, typespec, range);
         }
     }
 
@@ -863,12 +863,12 @@ static Expr* parse_expr_base_mod(Parser* parser)
             assert(is_token_kind(parser, TKN_CAST));
             next_token(parser);
 
-            TypeSpec* type = parse_typespec(parser);
+            TypeSpec* typespec = parse_typespec(parser);
 
-            if (type)
+            if (typespec)
             {
-                ProgRange range = {.start = expr->range.start, .end = type->range.end};
-                expr = expr_cast(parser->ast_arena, type, expr, range);
+                ProgRange range = {.start = expr->range.start, .end = typespec->range.end};
+                expr = expr_cast(parser->ast_arena, typespec, expr, range);
             }
             else
             {
@@ -1804,15 +1804,15 @@ static Decl* parse_decl_var(Parser* parser)
 
         if (expect_token(parser, TKN_COLON, error_prefix))
         {
-            TypeSpec* type = NULL;
+            TypeSpec* typespec = NULL;
             Expr* expr = NULL;
             bool bad_type = false;
             bool bad_expr = false;
 
             if (!is_token_kind(parser, TKN_ASSIGN) && !is_token_kind(parser, TKN_SEMICOLON))
             {
-                type = parse_typespec(parser);
-                bad_type = !type;
+                typespec = parse_typespec(parser);
+                bad_type = !typespec;
             }
 
             if (match_token(parser, TKN_ASSIGN))
@@ -1823,12 +1823,12 @@ static Decl* parse_decl_var(Parser* parser)
 
             if (!bad_type && !bad_expr)
             {
-                if (type || expr)
+                if (typespec || expr)
                 {
                     if (expect_token(parser, TKN_SEMICOLON, error_prefix))
                     {
                         range.end = parser->ptoken.range.end;
-                        decl = decl_var(parser->ast_arena, name, type, expr, range);
+                        decl = decl_var(parser->ast_arena, name, typespec, expr, range);
                     }
                 }
                 else
@@ -1856,14 +1856,14 @@ static Decl* parse_proc_param(Parser* parser)
     if (!expect_token(parser, TKN_COLON, error_prefix))
         return NULL;
 
-    TypeSpec* type = parse_typespec(parser);
+    TypeSpec* typespec = parse_typespec(parser);
 
-    if (!type)
+    if (!typespec)
         return NULL;
 
-    range.end = type->range.end;
+    range.end = typespec->range.end;
 
-    return decl_var(parser->ast_arena, name, type, NULL, range);
+    return decl_var(parser->ast_arena, name, typespec, NULL, range);
 }
 
 // decl_proc  = 'proc' TKN_IDENT '(' param_list ')' ('=>' typespec)? stmt_block
@@ -2021,13 +2021,13 @@ static Decl* parse_decl_enum(Parser* parser)
     if (expect_token(parser, TKN_IDENT, error_prefix))
     {
         const char* name = parser->ptoken.as_ident.value;
-        TypeSpec* type = NULL;
+        TypeSpec* typespec = NULL;
         bool bad_type = false;
 
         if (match_token(parser, TKN_COLON))
         {
-            type = parse_typespec(parser);
-            bad_type = !type;
+            typespec = parse_typespec(parser);
+            bad_type = !typespec;
         }
 
         if (!bad_type && expect_token(parser, TKN_LBRACE, error_prefix))
@@ -2060,7 +2060,7 @@ static Decl* parse_decl_enum(Parser* parser)
                 if (num_items)
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_enum(parser->ast_arena, name, type, num_items, &items, range);
+                    decl = decl_enum(parser->ast_arena, name, typespec, num_items, &items, range);
                 }
                 else
                 {
@@ -2091,12 +2091,12 @@ static Decl* parse_decl_typedef(Parser* parser)
 
         if (expect_token(parser, TKN_ASSIGN, error_prefix))
         {
-            TypeSpec* type = parse_typespec(parser);
+            TypeSpec* typespec = parse_typespec(parser);
 
-            if (type && expect_token(parser, TKN_SEMICOLON, error_prefix))
+            if (typespec && expect_token(parser, TKN_SEMICOLON, error_prefix))
             {
                 range.end = parser->ptoken.range.end;
-                decl = decl_typedef(parser->ast_arena, name, type, range);
+                decl = decl_typedef(parser->ast_arena, name, typespec, range);
             }
         }
     }
@@ -2123,13 +2123,13 @@ static Decl* parse_decl_const(Parser* parser)
 
         if (expect_token(parser, TKN_COLON, error_prefix))
         {
-            TypeSpec* type = NULL;
+            TypeSpec* typespec = NULL;
             bool bad_type = false;
 
             if (!is_token_kind(parser, TKN_ASSIGN))
             {
-                type = parse_typespec(parser);
-                bad_type = type == NULL;
+                typespec = parse_typespec(parser);
+                bad_type = typespec == NULL;
             }
 
             if (!bad_type && expect_token(parser, TKN_ASSIGN, error_prefix))
@@ -2139,7 +2139,7 @@ static Decl* parse_decl_const(Parser* parser)
                 if (expr && expect_token(parser, TKN_SEMICOLON, error_prefix))
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_const(parser->ast_arena, name, type, expr, range);
+                    decl = decl_const(parser->ast_arena, name, typespec, expr, range);
                 }
             }
         }

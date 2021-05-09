@@ -5,62 +5,62 @@
 #define typespec_alloc(a, k, r) (k*)typespec_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
 static TypeSpec* typespec_alloc_(Allocator* allocator, size_t size, size_t align, TypeSpecKind kind, ProgRange range)
 {
-    TypeSpec* type = mem_allocate(allocator, size, align, true);
-    type->kind = kind;
-    type->range = range;
+    TypeSpec* typespec = mem_allocate(allocator, size, align, true);
+    typespec->kind = kind;
+    typespec->range = range;
 
-    return type;
+    return typespec;
 }
 
 TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range)
 {
-    TypeSpecIdent* type = typespec_alloc(allocator, TypeSpecIdent, range);
-    type->name = name;
+    TypeSpecIdent* typespec = typespec_alloc(allocator, TypeSpecIdent, range);
+    typespec->name = name;
 
-    return (TypeSpec*)type;
+    return (TypeSpec*)typespec;
 }
 
 TypeSpec* typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range)
 {
-    TypeSpecPtr* type = typespec_alloc(allocator, TypeSpecPtr, range);
-    type->base = base;
+    TypeSpecPtr* typespec = typespec_alloc(allocator, TypeSpecPtr, range);
+    typespec->base = base;
 
-    return (TypeSpec*)type;
+    return (TypeSpec*)typespec;
 }
 
 TypeSpec* typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range)
 {
-    TypeSpecArray* type = typespec_alloc(allocator, TypeSpecArray, range);
-    type->base = base;
-    type->len = len;
+    TypeSpecArray* typespec = typespec_alloc(allocator, TypeSpecArray, range);
+    typespec->base = base;
+    typespec->len = len;
 
-    return (TypeSpec*)type;
+    return (TypeSpec*)typespec;
 }
 
 TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range)
 {
-    TypeSpecConst* type = typespec_alloc(allocator, TypeSpecConst, range);
-    type->base = base;
+    TypeSpecConst* typespec = typespec_alloc(allocator, TypeSpecConst, range);
+    typespec->base = base;
 
-    return (TypeSpec*)type;
+    return (TypeSpec*)typespec;
 }
 
 TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range)
 {
-    TypeSpecProc* type = typespec_alloc(allocator, TypeSpecProc, range);
-    type->num_params = num_params;
-    type->ret = ret;
+    TypeSpecProc* typespec = typespec_alloc(allocator, TypeSpecProc, range);
+    typespec->num_params = num_params;
+    typespec->ret = ret;
 
-    list_replace(params, &type->params);
+    list_replace(params, &typespec->params);
 
-    return (TypeSpec*)type;
+    return (TypeSpec*)typespec;
 }
 
-ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
+ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
 {
     ProcParam* param = new_type(allocator, ProcParam, true);
     param->name = name;
-    param->type = type;
+    param->typespec = typespec;
     param->range = range;
 
     return param;
@@ -68,22 +68,22 @@ ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, Pr
 
 TypeSpec* typespec_struct(Allocator* allocator, size_t num_fields, List* fields, ProgRange range)
 {
-    TypeSpecStruct* type = typespec_alloc(allocator, TypeSpecStruct, range);
-    type->num_fields = num_fields;
+    TypeSpecStruct* typespec = typespec_alloc(allocator, TypeSpecStruct, range);
+    typespec->num_fields = num_fields;
 
-    list_replace(fields, &type->fields);
+    list_replace(fields, &typespec->fields);
 
-    return (TypeSpec*)type;
+    return (TypeSpec*)typespec;
 }
 
 TypeSpec* typespec_union(Allocator* allocator, size_t num_fields, List* fields, ProgRange range)
 {
-    TypeSpecUnion* type = typespec_alloc(allocator, TypeSpecUnion, range);
-    type->num_fields = num_fields;
+    TypeSpecUnion* typespec = typespec_alloc(allocator, TypeSpecUnion, range);
+    typespec->num_fields = num_fields;
 
-    list_replace(fields, &type->fields);
+    list_replace(fields, &typespec->fields);
 
-    return (TypeSpec*)type;
+    return (TypeSpec*)typespec;
 }
 
 #define expr_alloc(a, k, r) (k*)expr_alloc_((a), sizeof(k), alignof(k), AST_##k, (r))
@@ -197,19 +197,19 @@ Expr* expr_ident(Allocator* allocator, const char* name, ProgRange range)
     return (Expr*)expr;
 }
 
-Expr* expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range)
+Expr* expr_cast(Allocator* allocator, TypeSpec* typespec, Expr* arg, ProgRange range)
 {
     ExprCast* expr = expr_alloc(allocator, ExprCast, range);
-    expr->type = type;
+    expr->typespec = typespec;
     expr->expr = arg;
 
     return (Expr*)expr;
 }
 
-Expr* expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range)
+Expr* expr_sizeof(Allocator* allocator, TypeSpec* typespec, ProgRange range)
 {
     ExprSizeof* expr = expr_alloc(allocator, ExprSizeof, range);
-    expr->type = type;
+    expr->typespec = typespec;
 
     return (Expr*)expr;
 }
@@ -232,10 +232,10 @@ MemberInitializer* member_initializer(Allocator* allocator, Expr* init, Designat
     return initzer;
 }
 
-Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range)
+Expr* expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num_initzers, List* initzers, ProgRange range)
 {
     ExprCompoundLit* expr = expr_alloc(allocator, ExprCompoundLit, range);
-    expr->type = type;
+    expr->typespec = typespec;
     expr->num_initzers = num_initzers;
 
     list_replace(initzers, &expr->initzers);
@@ -255,36 +255,36 @@ static Decl* decl_alloc_(Allocator* allocator, size_t size, size_t align, DeclKi
     return (Decl*)decl;
 }
 
-Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
+Decl* decl_var(Allocator* allocator, const char* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
     DeclVar* decl = decl_alloc(allocator, DeclVar, name, range);
-    decl->type = type;
+    decl->typespec = typespec;
     decl->init = init;
 
     return (Decl*)decl;
 }
 
-Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range)
+Decl* decl_const(Allocator* allocator, const char* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
     DeclConst* decl = decl_alloc(allocator, DeclConst, name, range);
-    decl->type = type;
+    decl->typespec = typespec;
     decl->init = init;
 
     return (Decl*)decl;
 }
 
-Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
+Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
 {
     DeclTypedef* decl = decl_alloc(allocator, DeclTypedef, name, range);
-    decl->type = type;
+    decl->typespec = typespec;
 
     return (Decl*)decl;
 }
 
-Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, List* items, ProgRange range)
+Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* typespec, size_t num_items, List* items, ProgRange range)
 {
     DeclEnum* decl = decl_alloc(allocator, DeclEnum, name, range);
-    decl->type = type;
+    decl->typespec = typespec;
     decl->num_items = num_items;
 
     list_replace(items, &decl->items);
@@ -321,11 +321,11 @@ Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, List
     return (Decl*)decl;
 }
 
-AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range)
+AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
 {
     AggregateField* field = new_type(allocator, AggregateField, true);
     field->name = name;
-    field->type = type;
+    field->typespec = typespec;
     field->range = range;
 
     return field;
@@ -522,13 +522,13 @@ Stmt* stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, List* case
     return (Stmt*)stmt;
 }
 
-char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
+char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
 {
     char* dstr = NULL;
 
-    if (type)
+    if (typespec)
     {
-        switch (type->kind)
+        switch (typespec->kind)
         {
             case AST_TYPE_SPEC_NONE:
             {
@@ -537,14 +537,14 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
             break;
             case AST_TypeSpecIdent:
             {
-                TypeSpecIdent* t = (TypeSpecIdent*)type;
+                TypeSpecIdent* t = (TypeSpecIdent*)typespec;
                 dstr = array_create(allocator, char, 16);
                 ftprint_char_array(&dstr, false, "(:ident %s)", t->name);
             }
             break;
             case AST_TypeSpecProc:
             {
-                TypeSpecProc* t = (TypeSpecProc*)type;
+                TypeSpecProc* t = (TypeSpecProc*)typespec;
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(:proc =>%s", ftprint_typespec(allocator, t->ret));
 
@@ -562,9 +562,9 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
 
                         if (param->name)
                             ftprint_char_array(&dstr, false, "(%s %s)", param->name,
-                                               ftprint_typespec(allocator, param->type));
+                                               ftprint_typespec(allocator, param->typespec));
                         else
-                            ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->type));
+                            ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->typespec));
 
                         if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
@@ -578,11 +578,11 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
             case AST_TypeSpecUnion:
             {
                 dstr = array_create(allocator, char, 32);
-                bool is_struct = type->kind == AST_TypeSpecStruct;
+                bool is_struct = typespec->kind == AST_TypeSpecStruct;
 
                 ftprint_char_array(&dstr, false, "(:%s", (is_struct ? "struct" : "union"));
 
-                TypeSpecAggregate* aggregate = (TypeSpecAggregate*)type;
+                TypeSpecAggregate* aggregate = (TypeSpecAggregate*)typespec;
                 size_t num_fields = aggregate->num_fields;
 
                 if (num_fields)
@@ -596,7 +596,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
                         AggregateField* field = list_entry(it, AggregateField, lnode);
 
                         ftprint_char_array(&dstr, false, "(%s %s)", field->name,
-                                           ftprint_typespec(allocator, field->type));
+                                           ftprint_typespec(allocator, field->typespec));
 
                         if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
@@ -608,21 +608,21 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
             break;
             case AST_TypeSpecPtr:
             {
-                TypeSpecPtr* t = (TypeSpecPtr*)type;
+                TypeSpecPtr* t = (TypeSpecPtr*)typespec;
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(:ptr %s)", ftprint_typespec(allocator, t->base));
             }
             break;
             case AST_TypeSpecConst:
             {
-                TypeSpecConst* t = (TypeSpecConst*)type;
+                TypeSpecConst* t = (TypeSpecConst*)typespec;
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(:const %s)", ftprint_typespec(allocator, t->base));
             }
             break;
             case AST_TypeSpecArray:
             {
-                TypeSpecArray* t = (TypeSpecArray*)type;
+                TypeSpecArray* t = (TypeSpecArray*)typespec;
                 dstr = array_create(allocator, char, 32);
 
                 if (t->len)
@@ -638,7 +638,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
             break;
             default:
             {
-                ftprint_err("Unknown typespec kind: %d\n", type->kind);
+                ftprint_err("Unknown typespec kind: %d\n", typespec->kind);
                 assert(0);
             }
             break;
@@ -772,7 +772,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             {
                 ExprCast* e = (ExprCast*)expr;
                 dstr = array_create(allocator, char, 16);
-                ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, e->type),
+                ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, e->typespec),
                                    ftprint_expr(allocator, e->expr));
             }
             break;
@@ -780,7 +780,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             {
                 ExprSizeof* e = (ExprSizeof*)expr;
                 dstr = array_create(allocator, char, 16);
-                ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, e->type));
+                ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, e->typespec));
             }
             break;
             case AST_ExprTypeof:
@@ -797,8 +797,8 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
 
                 ftprint_char_array(&dstr, false, "(compound ");
 
-                if (e->type)
-                    ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, e->type));
+                if (e->typespec)
+                    ftprint_char_array(&dstr, false, "%s ", ftprint_typespec(allocator, e->typespec));
 
                 ftprint_char_array(&dstr, false, "{");
 
@@ -1173,9 +1173,9 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(var %s", d->super.name);
 
-                if (d->type)
+                if (d->typespec)
                 {
-                    ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
+                    ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
                 }
 
                 if (d->init)
@@ -1192,9 +1192,9 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(const %s", d->super.name);
 
-                if (d->type)
+                if (d->typespec)
                 {
-                    ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
+                    ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
                 }
 
                 if (d->init)
@@ -1210,7 +1210,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 DeclTypedef* d = (DeclTypedef*)decl;
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(typedef %s %s)", d->super.name,
-                                   ftprint_typespec(allocator, d->type));
+                                   ftprint_typespec(allocator, d->typespec));
             }
             break;
             case AST_DeclEnum:
@@ -1220,8 +1220,8 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 
                 ftprint_char_array(&dstr, false, "(enum %s", d->super.name);
 
-                if (d->type)
-                    ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
+                if (d->typespec)
+                    ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
 
                 if (d->num_items)
                 {
@@ -1266,7 +1266,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                         AggregateField* field = list_entry(it, AggregateField, lnode);
 
                         ftprint_char_array(&dstr, false, "(%s %s)", field->name,
-                                           ftprint_typespec(allocator, field->type));
+                                           ftprint_typespec(allocator, field->typespec));
 
                         if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
