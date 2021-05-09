@@ -12,6 +12,8 @@ typedef struct Parser {
     Lexer lexer;
     Token token;
     Token ptoken;
+
+    Scope* curr_scope;
 } Parser;
 
 void parser_init(Parser* parser, Allocator* ast_arena, const char* str, ProgPos pos, ByteStream* errors);

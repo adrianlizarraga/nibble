@@ -77,7 +77,7 @@ struct Program {
     Module* curr_module;
     ProgPos curr_pos;
 
-    DLList local_syms;
+    List local_syms;
 };
 
 Program* compile_program(const char* path);

@@ -12,11 +12,10 @@ static TypeSpec* typespec_alloc_(Allocator* allocator, size_t size, size_t align
     return type;
 }
 
-TypeSpec* typespec_ident(Allocator* allocator, size_t path_size, const char** path, ProgRange range)
+TypeSpec* typespec_ident(Allocator* allocator, const char* name, ProgRange range)
 {
     TypeSpecIdent* type = typespec_alloc(allocator, TypeSpecIdent, range);
-    type->path_size = path_size;
-    type->path = mem_dup_array(allocator, const char*, path, path_size);
+    type->name = name;
 
     return (TypeSpec*)type;
 }
@@ -46,12 +45,13 @@ TypeSpec* typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range)
     return (TypeSpec*)type;
 }
 
-TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, ProcParam** params, TypeSpec* ret, ProgRange range)
+TypeSpec* typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range)
 {
     TypeSpecProc* type = typespec_alloc(allocator, TypeSpecProc, range);
     type->num_params = num_params;
-    type->params = mem_dup_array(allocator, ProcParam*, params, num_params);
     type->ret = ret;
+
+    list_replace(params, &type->params);
 
     return (TypeSpec*)type;
 }
@@ -66,20 +66,22 @@ ProcParam* proc_param(Allocator* allocator, const char* name, TypeSpec* type, Pr
     return param;
 }
 
-TypeSpec* typespec_struct(Allocator* allocator, size_t num_fields, AggregateField** fields, ProgRange range)
+TypeSpec* typespec_struct(Allocator* allocator, size_t num_fields, List* fields, ProgRange range)
 {
     TypeSpecStruct* type = typespec_alloc(allocator, TypeSpecStruct, range);
     type->num_fields = num_fields;
-    type->fields = mem_dup_array(allocator, AggregateField*, fields, num_fields);
+
+    list_replace(fields, &type->fields);
 
     return (TypeSpec*)type;
 }
 
-TypeSpec* typespec_union(Allocator* allocator, size_t num_fields, AggregateField** fields, ProgRange range)
+TypeSpec* typespec_union(Allocator* allocator, size_t num_fields, List* fields, ProgRange range)
 {
     TypeSpecUnion* type = typespec_alloc(allocator, TypeSpecUnion, range);
     type->num_fields = num_fields;
-    type->fields = mem_dup_array(allocator, AggregateField*, fields, num_fields);
+
+    list_replace(fields, &type->fields);
 
     return (TypeSpec*)type;
 }
@@ -143,12 +145,13 @@ Expr* expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range
     return (Expr*)expr;
 }
 
-Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, ProcCallArg** args, ProgRange range)
+Expr* expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range)
 {
     ExprCall* expr = expr_alloc(allocator, ExprCall, range);
     expr->proc = proc;
     expr->num_args = num_args;
-    expr->args = mem_dup_array(allocator, ProcCallArg*, args, num_args);
+
+    list_replace(args, &expr->args);
 
     return (Expr*)expr;
 }
@@ -229,13 +232,13 @@ MemberInitializer* member_initializer(Allocator* allocator, Expr* init, Designat
     return initzer;
 }
 
-Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, MemberInitializer** initzers,
-                        ProgRange range)
+Expr* expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range)
 {
     ExprCompoundLit* expr = expr_alloc(allocator, ExprCompoundLit, range);
     expr->type = type;
     expr->num_initzers = num_initzers;
-    expr->initzers = mem_dup_array(allocator, MemberInitializer*, initzers, num_initzers);
+
+    list_replace(initzers, &expr->initzers);
 
     return (Expr*)expr;
 }
@@ -278,13 +281,13 @@ Decl* decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgR
     return (Decl*)decl;
 }
 
-Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, EnumItem** items,
-                ProgRange range)
+Decl* decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, List* items, ProgRange range)
 {
     DeclEnum* decl = decl_alloc(allocator, DeclEnum, name, range);
     decl->type = type;
     decl->num_items = num_items;
-    decl->items = mem_dup_array(allocator, EnumItem*, items, num_items);
+
+    list_replace(items, &decl->items);
 
     return (Decl*)decl;
 }
@@ -298,20 +301,22 @@ EnumItem* enum_item(Allocator* allocator, const char* name, Expr* value)
     return item;
 }
 
-Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, AggregateField** fields, ProgRange range)
+Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range)
 {
     DeclStruct* decl = decl_alloc(allocator, DeclStruct, name, range);
     decl->num_fields = num_fields;
-    decl->fields = mem_dup_array(allocator, AggregateField*, fields, num_fields);
+
+    list_replace(fields, &decl->fields);
 
     return (Decl*)decl;
 }
 
-Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, AggregateField** fields, ProgRange range)
+Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range)
 {
     DeclUnion* decl = decl_alloc(allocator, DeclUnion, name, range);
     decl->num_fields = num_fields;
-    decl->fields = mem_dup_array(allocator, AggregateField*, fields, num_fields);
+
+    list_replace(fields, &decl->fields);
 
     return (Decl*)decl;
 }
@@ -326,15 +331,16 @@ AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec
     return field;
 }
 
-Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, ProcParam** params, TypeSpec* ret,
-                size_t num_stmts, Stmt** stmts, ProgRange range)
+Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, List* params, TypeSpec* ret,
+                size_t num_stmts, List* stmts, ProgRange range)
 {
     DeclProc* decl = decl_alloc(allocator, DeclProc, name, range);
     decl->num_params = num_params;
-    decl->params = mem_dup_array(allocator, ProcParam*, params, num_params);
     decl->ret = ret;
     decl->num_stmts = num_stmts;
-    decl->stmts = mem_dup_array(allocator, Stmt*, stmts, num_stmts);
+
+    list_replace(params, &decl->params);
+    list_replace(stmts, &decl->stmts);
 
     return (Decl*)decl;
 }
@@ -356,11 +362,12 @@ Stmt* stmt_noop(Allocator* allocator, ProgRange range)
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_block(Allocator* allocator, size_t num_stmts, Stmt** stmts, ProgRange range)
+Stmt* stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, ProgRange range)
 {
     StmtBlock* stmt = stmt_alloc(allocator, StmtBlock, range);
     stmt->num_stmts = num_stmts;
-    stmt->stmts = mem_dup_array(allocator, Stmt*, stmts, num_stmts);
+
+    list_replace(stmts, &stmt->stmts);
 
     return (Stmt*)stmt;
 }
@@ -409,8 +416,8 @@ Stmt* stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange rang
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, IfCondBlock** elif_blks,
-              ElseBlock* else_blk, ProgRange range)
+Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, List* elif_blks, ElseBlock* else_blk,
+              ProgRange range)
 {
     StmtIf* stmt = stmt_alloc(allocator, StmtIf, range);
 
@@ -419,7 +426,7 @@ Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, I
     stmt->if_blk.body = if_blk->body;
 
     stmt->num_elif_blks = num_elif_blks;
-    stmt->elif_blks = mem_dup_array(allocator, IfCondBlock*, elif_blks, num_elif_blks);
+    list_replace(elif_blks, &stmt->elif_blks);
 
     stmt->else_blk.range = else_blk->range;
     stmt->else_blk.body = else_blk->body;
@@ -489,24 +496,26 @@ Stmt* stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRang
     return (Stmt*)stmt;
 }
 
-SwitchCase* switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num_stmts, Stmt** stmts, ProgRange range)
+SwitchCase* switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num_stmts, List* stmts, ProgRange range)
 {
     SwitchCase* swcase = new_type(allocator, SwitchCase, true);
     swcase->start = start;
     swcase->end = end;
     swcase->range = range;
     swcase->num_stmts = num_stmts;
-    swcase->stmts = mem_dup_array(allocator, Stmt*, stmts, num_stmts);
+
+    list_replace(stmts, &swcase->stmts);
 
     return swcase;
 }
 
-Stmt* stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, SwitchCase** cases, ProgRange range)
+Stmt* stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, List* cases, ProgRange range)
 {
     StmtSwitch* stmt = stmt_alloc(allocator, StmtSwitch, range);
     stmt->expr = expr;
     stmt->num_cases = num_cases;
-    stmt->cases = mem_dup_array(allocator, SwitchCase*, cases, num_cases);
+
+    list_replace(cases, &stmt->cases);
 
     return (Stmt*)stmt;
 }
@@ -528,17 +537,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
             {
                 TypeSpecIdent* t = (TypeSpecIdent*)type;
                 dstr = array_create(allocator, char, 16);
-                ftprint_char_array(&dstr, false, "(:ident ");
-
-                for (size_t i = 0; i < t->path_size; i += 1)
-                {
-                    ftprint_char_array(&dstr, false, "%s", t->path[i]);
-
-                    if (i < t->path_size - 1)
-                        ftprint_char_array(&dstr, false, ".");
-                }
-
-                ftprint_char_array(&dstr, false, ")");
+                ftprint_char_array(&dstr, false, "(:ident %s)", t->name);
             }
             break;
             case AST_TypeSpecProc:
@@ -553,9 +552,11 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
                 {
                     ftprint_char_array(&dstr, false, " ");
 
-                    for (size_t i = 0; i < num_params; i += 1)
+                    ListNode* head = &t->params;
+
+                    for (ListNode* it = head->next; it != head; it = it->next)
                     {
-                        ProcParam* param = t->params[i];
+                        ProcParam* param = list_entry(it, ProcParam, lnode);
 
                         if (param->name)
                             ftprint_char_array(&dstr, false, "(%s %s)", param->name,
@@ -563,7 +564,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
                         else
                             ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->type));
 
-                        if (i < num_params - 1)
+                        if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
                     }
                 }
@@ -586,17 +587,20 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type)
                 {
                     ftprint_char_array(&dstr, false, " ");
 
-                    for (size_t i = 0; i < num_fields; i += 1)
+                    ListNode* head = &aggregate->fields;
+
+                    for (ListNode* it = head->next; it != head; it = it->next)
                     {
-                        AggregateField* field = aggregate->fields[i];
+                        AggregateField* field = list_entry(it, AggregateField, lnode);
 
                         ftprint_char_array(&dstr, false, "(%s %s)", field->name,
                                            ftprint_typespec(allocator, field->type));
 
-                        if (i < num_fields - 1)
+                        if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
                     }
                 }
+
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
@@ -696,16 +700,18 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                 {
                     ftprint_char_array(&dstr, false, " ");
 
-                    for (size_t i = 0; i < num_args; i += 1)
+                    List* head = &e->args;
+
+                    for (List* it = head->next; it != head; it = it->next)
                     {
-                        ProcCallArg* arg = e->args[i];
+                        ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
 
                         if (arg->name)
                             ftprint_char_array(&dstr, false, "%s=", arg->name);
 
                         ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, arg->expr));
 
-                        if (i < num_args - 1)
+                        if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
                     }
                 }
@@ -794,13 +800,13 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
 
                 ftprint_char_array(&dstr, false, "{");
 
-                size_t num_initzers = e->num_initzers;
-
-                if (num_initzers)
+                if (e->num_initzers)
                 {
-                    for (size_t i = 0; i < num_initzers; i += 1)
+                    List* head = &e->initzers;
+
+                    for (List* it = head->next; it != head; it = it->next)
                     {
-                        MemberInitializer* initzer = e->initzers[i];
+                        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
 
                         if (initzer->designator.kind == DESIGNATOR_NAME)
                             ftprint_char_array(&dstr, false, "%s = ", initzer->designator.name);
@@ -810,7 +816,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
 
                         ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, initzer->init));
 
-                        if (i < num_initzers - 1)
+                        if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
                     }
                 }
@@ -836,21 +842,22 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
     return dstr;
 }
 
-static char* ftprint_stmt_list(Allocator* allocator, size_t num_stmts, Stmt** stmts)
+static char* ftprint_stmt_list(Allocator* allocator, size_t num_stmts, List* stmts)
 {
     char* dstr = NULL;
 
     if (num_stmts)
     {
         dstr = array_create(allocator, char, 32);
+        List* head = stmts;
 
-        for (size_t i = 0; i < num_stmts; i += 1)
+        for (List* it = head->next; it != head; it = it->next)
         {
-            Stmt* s = stmts[i];
+            Stmt* s = list_entry(it, Stmt, lnode);
 
             ftprint_char_array(&dstr, false, "%s", ftprint_stmt(allocator, s));
 
-            if (i < num_stmts - 1)
+            if (it->next != head)
                 ftprint_char_array(&dstr, false, " ");
         }
     }
@@ -890,7 +897,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, "(stmt-block");
 
                 if (s->num_stmts)
-                    ftprint_char_array(&dstr, false, " %s)", ftprint_stmt_list(allocator, s->num_stmts, s->stmts));
+                    ftprint_char_array(&dstr, false, " %s)", ftprint_stmt_list(allocator, s->num_stmts, &s->stmts));
                 else
                     ftprint_char_array(&dstr, false, ")");
             }
@@ -988,14 +995,16 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 {
                     ftprint_char_array(&dstr, false, " ");
 
-                    for (size_t i = 0; i < num_elif_blks; i += 1)
+                    List* head = &s->elif_blks;
+
+                    for (List* it = head->next; it != head; it = it->next)
                     {
-                        IfCondBlock* elif = s->elif_blks[i];
+                        IfCondBlock* elif = list_entry(it, IfCondBlock, lnode);
 
                         ftprint_char_array(&dstr, false, "(elif %s %s)", ftprint_expr(allocator, elif->cond),
                                            ftprint_stmt(allocator, elif->body));
 
-                        if (i < num_elif_blks - 1)
+                        if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
                     }
                 }
@@ -1013,11 +1022,11 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
                 ftprint_char_array(&dstr, false, "(switch %s ", ftprint_expr(allocator, s->expr));
 
-                size_t num_cases = s->num_cases;
+                List* head = &s->cases;
 
-                for (size_t i = 0; i < num_cases; i += 1)
+                for (List* it = head->next; it != head; it = it->next)
                 {
-                    SwitchCase* swcase = s->cases[i];
+                    SwitchCase* swcase = list_entry(it, SwitchCase, lnode);
 
                     ftprint_char_array(&dstr, false, "(case");
 
@@ -1031,11 +1040,11 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
                     if (swcase->num_stmts)
                         ftprint_char_array(&dstr, false, " (stmt-list %s))",
-                                           ftprint_stmt_list(allocator, swcase->num_stmts, swcase->stmts));
+                                           ftprint_stmt_list(allocator, swcase->num_stmts, &swcase->stmts));
                     else
                         ftprint_char_array(&dstr, false, " (stmt-list))");
 
-                    if (i < num_cases - 1)
+                    if (it->next != head)
                         ftprint_char_array(&dstr, false, " ");
                 }
 
@@ -1194,22 +1203,22 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 if (d->type)
                     ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->type));
 
-                size_t num_items = d->num_items;
-
-                if (num_items)
+                if (d->num_items)
                 {
                     ftprint_char_array(&dstr, false, " ");
 
-                    for (size_t i = 0; i < num_items; i += 1)
+                    List* head = &d->items;
+
+                    for (List* it = head->next; it != head; it = it->next)
                     {
-                        EnumItem* item = d->items[i];
+                        EnumItem* item = list_entry(it, EnumItem, lnode);
 
                         ftprint_char_array(&dstr, false, "%s", item->name);
 
                         if (item->value)
                             ftprint_char_array(&dstr, false, "=%s", ftprint_expr(allocator, item->value));
 
-                        if (i < num_items - 1)
+                        if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
                     }
                 }
@@ -1225,23 +1234,25 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                                    decl->name);
 
                 DeclAggregate* d = (DeclAggregate*)decl;
-                size_t num_fields = d->num_fields;
 
-                if (num_fields)
+                if (d->num_fields)
                 {
                     ftprint_char_array(&dstr, false, " ");
 
-                    for (size_t i = 0; i < num_fields; i += 1)
+                    List* head = &d->fields;
+
+                    for (List* it = head->next; it != head; it = it->next)
                     {
-                        AggregateField* field = d->fields[i];
+                        AggregateField* field = list_entry(it, AggregateField, lnode);
 
                         ftprint_char_array(&dstr, false, "(%s %s)", field->name,
                                            ftprint_typespec(allocator, field->type));
 
-                        if (i < num_fields - 1)
+                        if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
                     }
                 }
+
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
@@ -1249,20 +1260,21 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             {
                 DeclProc* proc = (DeclProc*)decl;
                 dstr = array_create(allocator, char, 32);
+
                 ftprint_char_array(&dstr, false, "(proc %s (", decl->name);
 
-                size_t num_params = proc->num_params;
-
-                if (num_params)
+                if (proc->num_params)
                 {
-                    for (size_t i = 0; i < num_params; i += 1)
+                    List* head = &proc->params;
+
+                    for (List* it = head->next; it != head; it = it->next)
                     {
-                        ProcParam* param = proc->params[i];
+                        ProcParam* param = list_entry(it, ProcParam, lnode);
 
                         ftprint_char_array(&dstr, false, "(%s %s)", param->name,
                                            ftprint_typespec(allocator, param->type));
 
-                        if (i < num_params - 1)
+                        if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");
                     }
                 }
@@ -1271,7 +1283,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 
                 if (proc->num_stmts)
                     ftprint_char_array(&dstr, false, " %s))",
-                                       ftprint_stmt_list(allocator, proc->num_stmts, proc->stmts));
+                                       ftprint_stmt_list(allocator, proc->num_stmts, &proc->stmts));
                 else
                     ftprint_char_array(&dstr, false, "))");
             }

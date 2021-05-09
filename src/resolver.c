@@ -324,9 +324,8 @@ static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
             TypeSpecIdent* ts = (TypeSpecIdent*)typespec;
 
             // TODO: Support module path
-            assert(ts->path_size == 1);
 
-            const char* ident_name = ts->path[ts->path_size - 1];
+            const char* ident_name = ts->name;
             Symbol* ident_sym = lookup_symbol(prog, ident_name);
 
             if (!ident_sym)
@@ -479,7 +478,7 @@ Program* compile_program(const char* path)
     prog->errors = byte_stream_create(&prog->ast_mem);
     prog->modules = hmap(8, NULL);
 
-    dllist_head_init(&prog->local_syms);
+    list_head_init(&prog->local_syms);
 
     // 1. Import module (parses, install decl syms, install builtins, import imports (not yet))
     Module* module = import_module(prog, main_module_path);

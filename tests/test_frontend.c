@@ -747,8 +747,6 @@ void test_parser(void)
     TEST_TYPESPEC("proc(int32, b:float32)", "(:proc => (:ident int32) (b (:ident float32)))");
     TEST_TYPESPEC("struct {a:int32; b:float32;}", "(:struct (a (:ident int32)) (b (:ident float32)))");
     TEST_TYPESPEC("union {a:int32; b:float32;}", "(:union (a (:ident int32)) (b (:ident float32)))");
-    TEST_TYPESPEC("Lexer.Token", "(:ident Lexer.Token)");
-    TEST_TYPESPEC("Parser.Lexer.Token", "(:ident Parser.Lexer.Token)");
 
     // Test pointer to base types
     TEST_TYPESPEC("^int32", "(:ptr (:ident int32))");

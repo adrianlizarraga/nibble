@@ -4,7 +4,7 @@
 #include <string.h>
 
 #define PARSER_ARENA_BLOCK_SIZE 512
-//#define NIBBLE_PRINT_DECLS 
+//#define NIBBLE_PRINT_DECLS
 
 static void parser_on_error(Parser* parser, const char* format, ...)
 {
@@ -207,8 +207,11 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 }
 
 // aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
-static bool parse_fill_aggregate_body(Parser* parser, AggregateField*** fields)
+static bool parse_fill_aggregate_body(Parser* parser, size_t* num_fields, List* fields)
 {
+    list_head_init(fields);
+    *num_fields = 0;
+
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
     {
         AggregateField* field = parse_aggregate_field(parser);
@@ -216,7 +219,8 @@ static bool parse_fill_aggregate_body(Parser* parser, AggregateField*** fields)
         if (!field)
             return false;
 
-        array_push(*fields, field);
+        *num_fields += 1;
+        list_add(fields->prev, &field->lnode);
     }
 
     return true;
@@ -234,25 +238,21 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
 
     if (expect_token(parser, TKN_LBRACE, error_prefix))
     {
-        AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-        AggregateField** fields = array_create(&parser->temp_arena, AggregateField*, 8);
+        size_t num_fields = 0;
+        List fields = {0};
 
-        if (parse_fill_aggregate_body(parser, &fields) && expect_token(parser, TKN_RBRACE, error_prefix))
+        if (parse_fill_aggregate_body(parser, &num_fields, &fields) && expect_token(parser, TKN_RBRACE, error_prefix))
         {
-            size_t num_fields = array_len(fields);
-
             if (num_fields)
             {
                 range.end = parser->ptoken.range.end;
-                type = typespec_aggregate_proc(parser->ast_arena, num_fields, fields, range);
+                type = typespec_aggregate_proc(parser->ast_arena, num_fields, &fields, range);
             }
             else
             {
                 parser_on_error(parser, "%s: must have at least one field", error_prefix);
             }
         }
-
-        allocator_restore_state(mem_state);
     }
 
     return type;
@@ -267,10 +267,11 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
     if (type && match_token(parser, TKN_COLON))
     {
         if (type->kind == AST_TypeSpecIdent)
-        { // NOTE: I wish this was truly LL1
+        {
+            // NOTE: I wish this was truly LL1
             ProgRange range = {.start = type->range.start};
             TypeSpecIdent* tident = (TypeSpecIdent*)type;
-            const char* name = tident->path[tident->path_size - 1];
+            const char* name = tident->name;
 
             mem_free(parser->ast_arena, type);
 
@@ -309,8 +310,8 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 
     if (expect_token(parser, TKN_LPAREN, error_prefix))
     {
-        AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-        ProcParam** params = array_create(&parser->temp_arena, ProcParam*, 8);
+        size_t num_params = 0;
+        List params = list_head_create(params);
         bool bad_param = false;
 
         while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
@@ -319,7 +320,8 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 
             if (param)
             {
-                array_push(params, param);
+                num_params += 1;
+                list_add(params.prev, &param->lnode);
             }
             else
             {
@@ -345,11 +347,9 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
             if (!bad_ret)
             {
                 range.end = parser->ptoken.range.end;
-                type = typespec_proc(parser->ast_arena, array_len(params), params, ret, range);
+                type = typespec_proc(parser->ast_arena, num_params, &params, ret, range);
             }
         }
-
-        allocator_restore_state(mem_state);
     }
 
     return type;
@@ -358,36 +358,11 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 static TypeSpec* parse_typespec_ident(Parser* parser)
 {
     assert(is_token_kind(parser, TKN_IDENT));
-    TypeSpec* type = NULL;
-    ProgRange range = {.start = parser->token.range.start};
+    Token token = parser->token;
 
-    AllocatorState temp_mem_state = allocator_get_state(&parser->temp_arena);
-    const char** path = array_create(&parser->temp_arena, const char*, 8);
-    bool bad_path = false;
-
-    array_push(path, parser->token.as_ident.value);
     next_token(parser);
 
-    while (match_token(parser, TKN_DOT))
-    {
-        if (!expect_token(parser, TKN_IDENT, "Failed to parse type name specification"))
-        {
-            bad_path = true;
-            break;
-        }
-
-        array_push(path, parser->ptoken.as_ident.value);
-    }
-
-    if (!bad_path)
-    {
-        range.end = parser->ptoken.range.end;
-        type = typespec_ident(parser->ast_arena, array_len(path), path, range);
-    }
-
-    allocator_restore_state(temp_mem_state);
-
-    return type;
+    return typespec_ident(parser->ast_arena, token.as_ident.value, token.range);
 }
 
 // typespec_base  = typespec_proc
@@ -597,8 +572,8 @@ static Expr* parse_expr_compound_lit(Parser* parser)
     if (expect_token(parser, TKN_LBRACE, error_prefix))
     {
         ProgRange range = {.start = parser->ptoken.range.start};
-        AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-        MemberInitializer** initzers = array_create(&parser->temp_arena, MemberInitializer*, 8);
+        size_t num_initzers = 0;
+        List initzers = list_head_create(initzers);
         bool bad_initzer = false;
 
         while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_COLON) &&
@@ -608,7 +583,8 @@ static Expr* parse_expr_compound_lit(Parser* parser)
 
             if (initzer)
             {
-                array_push(initzers, initzer);
+                num_initzers += 1;
+                list_add(initzers.prev, &initzer->lnode);
             }
             else
             {
@@ -631,17 +607,15 @@ static Expr* parse_expr_compound_lit(Parser* parser)
                 if (type && expect_token(parser, TKN_RBRACE, error_prefix))
                 {
                     range.end = parser->ptoken.range.end;
-                    expr = expr_compound_lit(parser->ast_arena, type, array_len(initzers), initzers, range);
+                    expr = expr_compound_lit(parser->ast_arena, type, num_initzers, &initzers, range);
                 }
             }
             else if (expect_token(parser, TKN_RBRACE, error_prefix))
             {
                 range.end = parser->ptoken.range.end;
-                expr = expr_compound_lit(parser->ast_arena, type, array_len(initzers), initzers, range);
+                expr = expr_compound_lit(parser->ast_arena, type, num_initzers, &initzers, range);
             }
         }
-
-        allocator_restore_state(mem_state);
     }
 
     return expr;
@@ -846,8 +820,8 @@ static Expr* parse_expr_base_mod(Parser* parser)
             // Procedure call.
             //
 
-            AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-            ProcCallArg** args = array_create(&parser->temp_arena, ProcCallArg*, 8);
+            size_t num_args = 0;
+            List args = list_head_create(args);
             bool bad_arg = false;
 
             while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
@@ -856,7 +830,8 @@ static Expr* parse_expr_base_mod(Parser* parser)
 
                 if (arg)
                 {
-                    array_push(args, arg);
+                    num_args += 1;
+                    list_add(args.prev, &arg->lnode);
                 }
                 else
                 {
@@ -871,14 +846,12 @@ static Expr* parse_expr_base_mod(Parser* parser)
             if (!bad_arg && expect_token(parser, TKN_RPAREN, "Failed to parse procedure call"))
             {
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
-                expr = expr_call(parser->ast_arena, expr, array_len(args), args, range);
+                expr = expr_call(parser->ast_arena, expr, num_args, &args, range);
             }
             else
             {
                 expr = NULL;
             }
-
-            allocator_restore_state(mem_state);
         }
         else
         {
@@ -1098,9 +1071,12 @@ Expr* parse_expr(Parser* parser)
 //    Parse statements
 //////////////////////////////
 
-static bool parse_fill_stmt_list(Parser* parser, Stmt*** stmts)
+static bool parse_fill_stmt_list(Parser* parser, size_t* num_stmts, List* stmts)
 {
     bool bad_stmt = false;
+
+    list_head_init(stmts);
+    *num_stmts = 0;
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
     {
@@ -1108,7 +1084,8 @@ static bool parse_fill_stmt_list(Parser* parser, Stmt*** stmts)
 
         if (stmt)
         {
-            array_push(*stmts, stmt);
+            *num_stmts += 1;
+            list_add(stmts->prev, &stmt->lnode);
         }
         else
         {
@@ -1128,17 +1105,15 @@ static Stmt* parse_stmt_block(Parser* parser)
 
     next_token(parser);
 
-    AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-    Stmt** stmts = array_create(&parser->temp_arena, Stmt*, 8);
-    bool ok = parse_fill_stmt_list(parser, &stmts);
+    size_t num_stmts = 0;
+    List stmts = {0};
+    bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
 
     if (ok && expect_token(parser, TKN_RBRACE, "Failed to parse end of statement block"))
     {
         range.end = parser->ptoken.range.end;
-        stmt = stmt_block(parser->ast_arena, array_len(stmts), stmts, range);
+        stmt = stmt_block(parser->ast_arena, num_stmts, &stmts, range);
     }
-
-    allocator_restore_state(mem_state);
 
     return stmt;
 }
@@ -1219,8 +1194,8 @@ static Stmt* parse_stmt_if(Parser* parser)
 
     if (ok_if)
     {
-        AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-        IfCondBlock** elif_blks = array_create(&parser->temp_arena, IfCondBlock*, 8);
+        size_t num_elif_blks = 0;
+        List elif_blks = list_head_create(elif_blks);
         bool bad_elif = false;
 
         while (is_keyword(parser, KW_ELIF))
@@ -1229,7 +1204,8 @@ static Stmt* parse_stmt_if(Parser* parser)
 
             if (elif)
             {
-                array_push(elif_blks, elif);
+                num_elif_blks += 1;
+                list_add(elif_blks.prev, &elif->lnode);
             }
             else
             {
@@ -1244,17 +1220,11 @@ static Stmt* parse_stmt_if(Parser* parser)
             ElseBlock else_blk = {0};
 
             if (is_keyword(parser, KW_ELSE))
-            {
                 bad_else = !parse_fill_else_block(parser, &else_blk);
-            }
 
             if (!bad_else)
-            {
-                stmt = stmt_if(parser->ast_arena, &if_blk, array_len(elif_blks), elif_blks, &else_blk, range);
-            }
+                stmt = stmt_if(parser->ast_arena, &if_blk, num_elif_blks, &elif_blks, &else_blk, range);
         }
-
-        allocator_restore_state(mem_state);
     }
 
     return stmt;
@@ -1293,8 +1263,8 @@ static SwitchCase* parse_switch_case(Parser* parser)
         return NULL;
 
     SwitchCase* swcase = NULL;
-    AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-    Stmt** stmts = array_create(&parser->temp_arena, Stmt*, 8);
+    size_t num_stmts = 0;
+    List stmts = list_head_create(stmts);
     bool bad_stmt = false;
 
     // Parse case statements
@@ -1308,16 +1278,15 @@ static SwitchCase* parse_switch_case(Parser* parser)
             break;
         }
 
-        array_push(stmts, stmt);
+        num_stmts += 1;
+        list_add(stmts.prev, &stmt->lnode);
     }
 
     if (!bad_stmt)
     {
         range.end = parser->ptoken.range.end;
-        swcase = switch_case(parser->ast_arena, start, end, array_len(stmts), stmts, range);
+        swcase = switch_case(parser->ast_arena, start, end, num_stmts, &stmts, range);
     }
-
-    allocator_restore_state(mem_state);
 
     return swcase;
 }
@@ -1340,8 +1309,8 @@ static Stmt* parse_stmt_switch(Parser* parser)
         return NULL;
 
     Stmt* stmt = NULL;
-    AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-    SwitchCase** cases = array_create(&parser->temp_arena, SwitchCase*, 8);
+    size_t num_cases = 0;
+    List cases = list_head_create(cases);
     bool has_default = false;
     bool bad_case = false;
 
@@ -1366,16 +1335,15 @@ static Stmt* parse_stmt_switch(Parser* parser)
 
         has_default = has_default || is_default;
 
-        array_push(cases, swcase);
+        num_cases += 1;
+        list_add(cases.prev, &swcase->lnode);
     } while (is_keyword(parser, KW_CASE));
 
     if (!bad_case && expect_token(parser, TKN_RBRACE, error_prefix))
     {
         range.end = parser->ptoken.range.end;
-        stmt = stmt_switch(parser->ast_arena, expr, array_len(cases), cases, range);
+        stmt = stmt_switch(parser->ast_arena, expr, num_cases, &cases, range);
     }
-
-    allocator_restore_state(mem_state);
 
     return stmt;
 }
@@ -1849,8 +1817,8 @@ static Decl* parse_decl_proc(Parser* parser)
 
         if (expect_token(parser, TKN_LPAREN, error_prefix))
         {
-            AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-            ProcParam** params = array_create(&parser->temp_arena, ProcParam*, 8);
+            size_t num_params = 0;
+            List params = list_head_create(params);
             bool bad_param = false;
 
             while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
@@ -1859,7 +1827,8 @@ static Decl* parse_decl_proc(Parser* parser)
 
                 if (param)
                 {
-                    array_push(params, param);
+                    num_params += 1;
+                    list_add(params.prev, &param->lnode);
                 }
                 else
                 {
@@ -1884,19 +1853,17 @@ static Decl* parse_decl_proc(Parser* parser)
 
                 if (!bad_ret && expect_token(parser, TKN_LBRACE, error_prefix))
                 {
-                    Stmt** stmts = array_create(&parser->temp_arena, Stmt*, 8);
-                    bool ok = parse_fill_stmt_list(parser, &stmts);
+                    size_t num_stmts = 0;
+                    List stmts = {0};
+                    bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
 
                     if (ok && expect_token(parser, TKN_RBRACE, error_prefix))
                     {
                         range.end = parser->ptoken.range.end;
-                        decl = decl_proc(parser->ast_arena, name, array_len(params), params, ret, array_len(stmts),
-                                         stmts, range);
+                        decl = decl_proc(parser->ast_arena, name, num_params, &params, ret, num_stmts, &stmts, range);
                     }
                 }
             }
-
-            allocator_restore_state(mem_state);
         }
     }
 
@@ -1919,25 +1886,22 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, Decl
 
         if (expect_token(parser, TKN_LBRACE, error_prefix))
         {
-            AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-            AggregateField** fields = array_create(&parser->temp_arena, AggregateField*, 8);
+            size_t num_fields = 0;
+            List fields = {0};
 
-            if (parse_fill_aggregate_body(parser, &fields) && expect_token(parser, TKN_RBRACE, error_prefix))
+            if (parse_fill_aggregate_body(parser, &num_fields, &fields) &&
+                expect_token(parser, TKN_RBRACE, error_prefix))
             {
-                size_t num_fields = array_len(fields);
-
                 if (num_fields)
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_aggregate_proc(parser->ast_arena, name, num_fields, fields, range);
+                    decl = decl_aggregate_proc(parser->ast_arena, name, num_fields, &fields, range);
                 }
                 else
                 {
                     parser_on_error(parser, "%s: must have at least one field", error_prefix);
                 }
             }
-
-            allocator_restore_state(mem_state);
         }
     }
 
@@ -1997,8 +1961,8 @@ static Decl* parse_decl_enum(Parser* parser)
 
         if (!bad_type && expect_token(parser, TKN_LBRACE, error_prefix))
         {
-            AllocatorState mem_state = allocator_get_state(&parser->temp_arena);
-            EnumItem** items = array_create(&parser->temp_arena, EnumItem*, 8);
+            size_t num_items = 0;
+            List items = list_head_create(items);
             bool bad_item = false;
 
             while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
@@ -2007,7 +1971,8 @@ static Decl* parse_decl_enum(Parser* parser)
 
                 if (item)
                 {
-                    array_push(items, item);
+                    num_items += 1;
+                    list_add(items.prev, &item->lnode);
                 }
                 else
                 {
@@ -2021,20 +1986,16 @@ static Decl* parse_decl_enum(Parser* parser)
 
             if (!bad_item && expect_token(parser, TKN_RBRACE, error_prefix))
             {
-                size_t num_items = array_len(items);
-
                 if (num_items)
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = decl_enum(parser->ast_arena, name, type, num_items, items, range);
+                    decl = decl_enum(parser->ast_arena, name, type, num_items, &items, range);
                 }
                 else
                 {
                     parser_on_error(parser, "%s: must have at least one enumeration constant", error_prefix);
                 }
             }
-
-            allocator_restore_state(mem_state);
         }
     }
 
