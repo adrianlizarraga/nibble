@@ -274,7 +274,6 @@ typedef enum StmtKind {
     AST_StmtLabel,
     AST_StmtExpr,
     AST_StmtExprAssign,
-    AST_StmtDecl,
     AST_StmtBlock,
 } StmtKind;
 
@@ -288,11 +287,34 @@ typedef struct StmtNoOp {
     Stmt super;
 } StmtNoOp;
 
+struct Scope {
+    size_t num_decls;
+    List decls;
+
+    ListNode lnode;
+    Scope* parent;
+    List children; // Scopes
+};
+
+typedef enum BlockItemKind {
+    BLOCK_ITEM_NONE,
+    BLOCK_ITEM_DECL,
+    BLOCK_ITEM_STMT,
+} BlockItemKind;
+
+typedef struct BlockItem {
+    BlockItemKind kind;
+
+    union {
+        Decl* decl;
+        Stmt* stmt;
+    };
+} BlockItem;
+
 typedef struct StmtBlock {
     Stmt super;
     size_t num_stmts;
     List stmts;
-
     Scope* scope;
 } StmtBlock;
 
@@ -332,6 +354,7 @@ typedef struct StmtDoWhile {
 
 typedef struct StmtFor {
     Stmt super;
+    Scope* scope;
     Stmt* init;
     Expr* cond;
     Stmt* next;
@@ -344,7 +367,7 @@ typedef struct SwitchCase {
     Expr* start; // NOTE: Both start and end are null for default case.
     Expr* end;
 
-    size_t num_stmts;
+    size_t num_stmts; // TODO: Make this just a Stmt* body??
     List stmts;
 
     ListNode lnode;
@@ -375,11 +398,6 @@ typedef struct StmtExprAssign {
     Expr* right;
 } StmtExprAssign;
 
-typedef struct StmtDecl {
-    Stmt super;
-    Decl* decl;
-} StmtDecl;
-
 typedef struct StmtBreak {
     Stmt super;
     const char* label;
@@ -402,8 +420,8 @@ typedef struct StmtLabel {
 } StmtLabel;
 
 Stmt* stmt_noop(Allocator* allocator, ProgRange range);
-Stmt* stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, ProgRange range);
-Stmt* stmt_decl(Allocator* allocator, Decl* decl);
+Scope* new_scope(Allocator* allocator, Scope* parent);
+Stmt* stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, Scope* scope, ProgRange range);
 Stmt* stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
 Stmt* stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
@@ -411,7 +429,7 @@ Stmt* stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange rang
 Stmt* stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, List* elif_blks,
               ElseBlock* else_blk, ProgRange range);
 IfCondBlock* if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
+Stmt* stmt_for(Allocator* allocator, Scope* scope, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
 Stmt* stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* stmt_break(Allocator* allocator, const char* label, ProgRange range);
 Stmt* stmt_continue(Allocator* allocator, const char* label, ProgRange range);
@@ -424,25 +442,6 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////
 //       Declarations
 //////////////////////////////
-
-struct Scope {
-    size_t num_var_decls;
-    Decl** var_decls;
-
-    size_t num_const_decls;
-    Decl** const_decls;
-
-    size_t num_type_decls;
-    Decl** type_decls;
-
-    size_t num_proc_decls;
-    Decl** proc_decls;
-
-    ListNode lnode;
-
-    Scope* parent;
-    List children; // Scopes
-};
 
 typedef enum DeclKind {
     AST_DECL_NONE,
@@ -459,6 +458,7 @@ struct Decl {
     DeclKind kind;
     ProgRange range;
     const char* name;
+    ListNode lnode;
 };
 
 typedef struct DeclVar {
@@ -499,10 +499,7 @@ typedef DeclAggregate DeclStruct;
 typedef struct DeclProc {
     Decl super;
     TypeSpec* ret;
-
-    size_t num_params;
-    List params;
-
+    Scope* param_scope;
     Stmt* body;
 } DeclProc;
 
@@ -522,7 +519,7 @@ typedef Decl* DeclAggregateProc(Allocator* alloc, const char* name, size_t num_f
                                 ProgRange range);
 Decl* decl_struct(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
 Decl* decl_union(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
-Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, List* params, TypeSpec* ret,
+Decl* decl_proc(Allocator* allocator, const char* name, Scope* param_scope, TypeSpec* ret,
                 Stmt* body, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);

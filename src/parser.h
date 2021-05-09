@@ -7,6 +7,7 @@
 typedef struct Parser {
     Allocator* ast_arena;
     Allocator temp_arena;
+    bool suppress_errors;
     ByteStream* errors;
     ProgPos start;
     Lexer lexer;

@@ -331,15 +331,13 @@ AggregateField* aggregate_field(Allocator* allocator, const char* name, TypeSpec
     return field;
 }
 
-Decl* decl_proc(Allocator* allocator, const char* name, size_t num_params, List* params, TypeSpec* ret,
+Decl* decl_proc(Allocator* allocator, const char* name, Scope* param_scope, TypeSpec* ret,
                 Stmt* body, ProgRange range)
 {
     DeclProc* decl = decl_alloc(allocator, DeclProc, name, range);
-    decl->num_params = num_params;
+    decl->param_scope = param_scope;
     decl->ret = ret;
     decl->body = body;
-
-    list_replace(params, &decl->params);
 
     return (Decl*)decl;
 }
@@ -361,20 +359,24 @@ Stmt* stmt_noop(Allocator* allocator, ProgRange range)
     return (Stmt*)stmt;
 }
 
-Stmt* stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, ProgRange range)
+Scope* new_scope(Allocator* allocator, Scope* parent)
+{
+    Scope* scope = new_type(allocator, Scope, true);
+    scope->parent = parent;
+
+    list_head_init(&scope->decls);
+    list_head_init(&scope->children);
+
+    return scope;
+}
+
+Stmt* stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, Scope* scope, ProgRange range)
 {
     StmtBlock* stmt = stmt_alloc(allocator, StmtBlock, range);
+    stmt->scope = scope;
     stmt->num_stmts = num_stmts;
 
     list_replace(stmts, &stmt->stmts);
-
-    return (Stmt*)stmt;
-}
-
-Stmt* stmt_decl(Allocator* allocator, Decl* decl)
-{
-    StmtDecl* stmt = stmt_alloc(allocator, StmtDecl, decl->range);
-    stmt->decl = decl;
 
     return (Stmt*)stmt;
 }
@@ -443,9 +445,10 @@ IfCondBlock* if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRan
     return cblock;
 }
 
-Stmt* stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range)
+Stmt* stmt_for(Allocator* allocator, Scope* scope, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range)
 {
     StmtFor* stmt = stmt_alloc(allocator, StmtFor, range);
+    stmt->scope = scope;
     stmt->init = init;
     stmt->cond = cond;
     stmt->next = next;
@@ -895,17 +898,29 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(stmt-block");
 
+                // Print declarations before statements.
+                if (s->scope->num_decls)
+                {
+                    ftprint_char_array(&dstr, false, " ");
+
+                    List* head = &s->scope->decls;
+
+                    for (List* it = head->next; it != head; it = it->next)
+                    {
+                        Decl* decl = list_entry(it, Decl, lnode);
+
+                        ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, decl));
+
+                        if (it->next != head)
+                            ftprint_char_array(&dstr, false, " ");
+                    }
+                }
+
+                // Print statements.
                 if (s->num_stmts)
                     ftprint_char_array(&dstr, false, " %s)", ftprint_stmt_list(allocator, s->num_stmts, &s->stmts));
                 else
                     ftprint_char_array(&dstr, false, ")");
-            }
-            break;
-            case AST_StmtDecl:
-            {
-                StmtDecl* s = (StmtDecl*)stmt;
-                dstr = array_create(allocator, char, 32);
-                ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, s->decl));
             }
             break;
             case AST_StmtExpr:
@@ -950,7 +965,13 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
                 ftprint_char_array(&dstr, false, "(for ");
 
-                if (s->init)
+                if (s->scope->num_decls)
+                {
+                    Decl* init_decl = list_entry(s->scope->decls.next, Decl, lnode);
+
+                    ftprint_char_array(&dstr, false, "%s; ", ftprint_decl(allocator, init_decl));
+                }
+                else if (s->init)
                 {
                     ftprint_char_array(&dstr, false, "%s; ", ftprint_stmt(allocator, s->init));
                 }
@@ -1262,16 +1283,15 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
 
                 ftprint_char_array(&dstr, false, "(proc %s (", decl->name);
 
-                if (proc->num_params)
+                if (proc->param_scope->num_decls)
                 {
-                    List* head = &proc->params;
+                    List* head = &proc->param_scope->decls;
 
                     for (List* it = head->next; it != head; it = it->next)
                     {
-                        ProcParam* param = list_entry(it, ProcParam, lnode);
+                        Decl* param = list_entry(it, Decl, lnode);
 
-                        ftprint_char_array(&dstr, false, "(%s %s)", param->name,
-                                           ftprint_typespec(allocator, param->type));
+                        ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, param));
 
                         if (it->next != head)
                             ftprint_char_array(&dstr, false, " ");

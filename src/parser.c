@@ -8,7 +8,7 @@
 
 static void parser_on_error(Parser* parser, const char* format, ...)
 {
-    if (parser->errors)
+    if (parser->errors && !parser->suppress_errors)
     {
         char buf[MAX_ERROR_LEN];
         size_t size = 0;
@@ -1072,30 +1072,62 @@ Expr* parse_expr(Parser* parser)
 //    Parse statements
 //////////////////////////////
 
-static bool parse_fill_stmt_list(Parser* parser, size_t* num_stmts, List* stmts)
+static Scope* enter_scope(Parser* parser)
 {
-    bool bad_stmt = false;
+    Scope* parent = parser->curr_scope;
+    Scope* scope = new_scope(parser->ast_arena, parent);
 
-    list_head_init(stmts);
-    *num_stmts = 0;
+    parser->curr_scope = scope;
 
-    while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
+    if (parent)
     {
-        Stmt* stmt = parse_stmt(parser);
+        list_add(parent->children.prev, &scope->lnode);
+    }
 
-        if (stmt)
+    return scope;
+}
+
+static void exit_scope(Parser* parser)
+{
+    assert(parser->curr_scope);
+    parser->curr_scope = parser->curr_scope->parent;
+}
+
+static void add_decl_to_scope(Scope* scope, Decl* decl)
+{
+    scope->num_decls += 1;
+
+    list_add(scope->decls.prev, &decl->lnode);
+}
+
+static BlockItem parse_block_item(Parser* parser)
+{
+    BlockItem item = {0};
+
+    if (is_token_kind(parser, TKN_KW))
+    {
+        switch (parser->token.as_kw.kw)
         {
-            *num_stmts += 1;
-            list_add(stmts->prev, &stmt->lnode);
-        }
-        else
-        {
-            bad_stmt = true;
-            break;
+            case KW_CONST:
+            case KW_TYPEDEF:
+            case KW_VAR:
+            case KW_ENUM:
+            case KW_STRUCT:
+            case KW_UNION:
+            case KW_PROC:
+                item.kind = BLOCK_ITEM_DECL;
+                item.decl = parse_decl(parser);
+
+                return item;
+            default:
+                break;
         }
     }
 
-    return !bad_stmt;
+    item.kind = BLOCK_ITEM_STMT;
+    item.stmt = parse_stmt(parser);
+
+    return item;
 }
 
 static Stmt* parse_stmt_block(Parser* parser)
@@ -1107,14 +1139,55 @@ static Stmt* parse_stmt_block(Parser* parser)
     next_token(parser);
 
     size_t num_stmts = 0;
-    List stmts = {0};
-    bool ok = parse_fill_stmt_list(parser, &num_stmts, &stmts);
+    List stmts = list_head_create(stmts);
+    bool bad_item = false;
+    Scope* scope = enter_scope(parser);
 
-    if (ok && expect_token(parser, TKN_RBRACE, "Failed to parse end of statement block"))
+    while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
     {
-        range.end = parser->ptoken.range.end;
-        stmt = stmt_block(parser->ast_arena, num_stmts, &stmts, range);
+        BlockItem item = parse_block_item(parser);
+
+        switch (item.kind)
+        {
+            case BLOCK_ITEM_DECL:
+                if (item.decl)
+                {
+                    assert(scope == parser->curr_scope);
+                    add_decl_to_scope(scope, item.decl);
+                }
+                else
+                {
+                    bad_item = true;
+                }
+                break;
+            case BLOCK_ITEM_STMT:
+                if (item.stmt)
+                {
+                    num_stmts += 1;
+                    list_add(stmts.prev, &item.stmt->lnode);
+                }
+                else
+                {
+                    bad_item = true;
+                }
+                break;
+            default:
+                bad_item = true;
+                break;
+        }
+
+        if (bad_item)
+            break;
     }
+
+    if (!bad_item && expect_token(parser, TKN_RBRACE, "Failed to parse end of statement block"))
+    {
+        exit_scope(parser); // TODO: Skip scope on error
+
+        range.end = parser->ptoken.range.end;
+        stmt = stmt_block(parser->ast_arena, num_stmts, &stmts, scope, range);
+    }
+
 
     return stmt;
 }
@@ -1402,17 +1475,6 @@ static Stmt* parse_stmt_do_while(Parser* parser)
     return stmt;
 }
 
-static Stmt* parse_stmt_decl(Parser* parser)
-{
-    Stmt* stmt = NULL;
-    Decl* decl = parse_decl(parser);
-
-    if (decl)
-        stmt = stmt_decl(parser->ast_arena, decl);
-
-    return stmt;
-}
-
 static Stmt* parse_stmt_expr(Parser* parser, bool terminate)
 {
     Stmt* stmt = NULL;
@@ -1468,20 +1530,24 @@ static Stmt* parse_stmt_for(Parser* parser)
     if (!expect_token(parser, TKN_LPAREN, error_prefix))
         return NULL;
 
+    Scope* scope = enter_scope(parser);
     Stmt* init = NULL;
 
     if (!match_token(parser, TKN_SEMICOLON))
     {
         if (is_keyword(parser, KW_VAR))
         {
-            init = parse_stmt_decl(parser);
+            Decl* decl = parse_decl(parser);
+
+            if (decl)
+                add_decl_to_scope(scope, decl);
         }
         else
         {
             init = parse_stmt_expr(parser, true);
         }
 
-        if (!init)
+        if (!init && !scope->num_decls)
             return NULL;
     }
 
@@ -1515,7 +1581,9 @@ static Stmt* parse_stmt_for(Parser* parser)
 
     range.end = body->range.end;
 
-    return stmt_for(parser->ast_arena, init, cond, next, body, range);
+    exit_scope(parser); // TODO: Skip scope on error
+
+    return stmt_for(parser->ast_arena, scope, init, cond, next, body, range);
 }
 
 // stmt_return = 'return' expr? ';'
@@ -1656,7 +1724,6 @@ static Stmt* parse_stmt_label(Parser* parser)
 //      | 'continue' TKN_IDENT? ';'
 //      | 'goto' TKN_IDENT ';'
 //      | 'label' TKN_IDENT ':'
-//      | decl
 //      | stmt_block
 //      | expr ';'
 //      | expr_assign ';'
@@ -1696,7 +1763,7 @@ Stmt* parse_stmt(Parser* parser)
                 case KW_LABEL:
                     return parse_stmt_label(parser);
                 default:
-                    return parse_stmt_decl(parser);
+                    break;
             }
         }
         break;
@@ -1776,29 +1843,27 @@ static Decl* parse_decl_var(Parser* parser)
 }
 
 // proc_param = TKN_IDENT ':' type_spec
-static ProcParam* parse_proc_param(Parser* parser)
+static Decl* parse_proc_param(Parser* parser)
 {
-    ProcParam* param = NULL;
     const char* error_prefix = "Failed to parse procedure parameter";
 
-    if (expect_token(parser, TKN_IDENT, error_prefix))
-    {
-        const char* name = parser->ptoken.as_ident.value;
-        ProgRange range = {.start = parser->ptoken.range.start};
+    if (!expect_token(parser, TKN_IDENT, error_prefix))
+        return NULL;
 
-        if (expect_token(parser, TKN_COLON, error_prefix))
-        {
-            TypeSpec* type = parse_typespec(parser);
+    const char* name = parser->ptoken.as_ident.value;
+    ProgRange range = {.start = parser->ptoken.range.start};
 
-            if (type)
-            {
-                range.end = type->range.end;
-                param = proc_param(parser->ast_arena, name, type, range);
-            }
-        }
-    }
+    if (!expect_token(parser, TKN_COLON, error_prefix))
+        return NULL;
 
-    return param;
+    TypeSpec* type = parse_typespec(parser);
+
+    if (!type)
+        return NULL;
+
+    range.end = type->range.end;
+
+    return decl_var(parser->ast_arena, name, type, NULL, range);
 }
 
 // decl_proc  = 'proc' TKN_IDENT '(' param_list ')' ('=>' typespec)? stmt_block
@@ -1818,18 +1883,16 @@ static Decl* parse_decl_proc(Parser* parser)
 
         if (expect_token(parser, TKN_LPAREN, error_prefix))
         {
-            size_t num_params = 0;
-            List params = list_head_create(params);
+            Scope* param_scope = enter_scope(parser);
             bool bad_param = false;
 
             while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
             {
-                ProcParam* param = parse_proc_param(parser);
+                Decl* param = parse_proc_param(parser);
 
                 if (param)
                 {
-                    num_params += 1;
-                    list_add(params.prev, &param->lnode);
+                    add_decl_to_scope(param_scope, param);
                 }
                 else
                 {
@@ -1860,8 +1923,10 @@ static Decl* parse_decl_proc(Parser* parser)
 
                         if (body)
                         {
+                            exit_scope(parser); // TODO: Skip scope on error?
+
                             range.end = body->range.end;
-                            decl = decl_proc(parser->ast_arena, name, num_params, &params, ret, body, range);
+                            decl = decl_proc(parser->ast_arena, name, param_scope, ret, body, range);
                         }
                     }
                     else
@@ -2123,3 +2188,4 @@ Decl* parse_decl(Parser* parser)
 
     return NULL;
 }
+
