@@ -290,9 +290,10 @@ struct Scope {
     size_t num_decls;
     List decls;
 
-    ListNode lnode;
     Scope* parent;
     List children; // Scopes
+
+    ListNode lnode;
 };
 
 typedef enum BlockItemKind {
