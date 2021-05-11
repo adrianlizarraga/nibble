@@ -21,7 +21,7 @@ static inline void list_head_init(List* list)
     list->next = list;
 }
 
-static inline void list_add(List* prev_node, List* new_node)
+static inline void list_add(ListNode* prev_node, ListNode* new_node)
 {
     List* next_node = prev_node->next;
 
@@ -31,12 +31,22 @@ static inline void list_add(List* prev_node, List* new_node)
     prev_node->next = new_node;
 }
 
+static inline void list_add_last(List* list, ListNode* node)
+{
+    list_add(list->prev, node);
+}
+
 static inline void list_replace(List* old_node, List* new_node)
 {
     new_node->next = old_node->next;
     new_node->next->prev = new_node;
     new_node->prev = old_node->prev;
     new_node->prev->next = new_node;
+}
+
+static inline bool list_empty(List* list)
+{
+    return (list->next == list);
 }
 
 #endif

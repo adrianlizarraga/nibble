@@ -199,10 +199,9 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 }
 
 // aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
-static bool parse_fill_aggregate_body(Parser* parser, size_t* num_fields, List* fields)
+static bool parse_fill_aggregate_body(Parser* parser, List* fields)
 {
     list_head_init(fields);
-    *num_fields = 0;
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
     {
@@ -211,7 +210,6 @@ static bool parse_fill_aggregate_body(Parser* parser, size_t* num_fields, List* 
         if (!field)
             return false;
 
-        *num_fields += 1;
         list_add(fields->prev, &field->lnode);
     }
 
@@ -230,15 +228,14 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
 
     if (expect_token(parser, TKN_LBRACE, error_prefix))
     {
-        size_t num_fields = 0;
         List fields = {0};
 
-        if (parse_fill_aggregate_body(parser, &num_fields, &fields) && expect_token(parser, TKN_RBRACE, error_prefix))
+        if (parse_fill_aggregate_body(parser, &fields) && expect_token(parser, TKN_RBRACE, error_prefix))
         {
-            if (num_fields)
+            if (!list_empty(&fields))
             {
                 range.end = parser->ptoken.range.end;
-                typespec = new_typespec_aggregate(parser->ast_arena, num_fields, &fields, range);
+                typespec = new_typespec_aggregate(parser->ast_arena, &fields, range);
             }
             else
             {
@@ -1063,34 +1060,6 @@ Expr* parse_expr(Parser* parser)
 //    Parse statements
 //////////////////////////////
 
-static Scope* enter_scope(Parser* parser)
-{
-    Scope* parent = parser->curr_scope;
-    Scope* scope = new_scope(parser->ast_arena, parent);
-
-    parser->curr_scope = scope;
-
-    if (parent)
-    {
-        list_add(parent->children.prev, &scope->lnode);
-    }
-
-    return scope;
-}
-
-static void exit_scope(Parser* parser)
-{
-    assert(parser->curr_scope);
-    parser->curr_scope = parser->curr_scope->parent;
-}
-
-static void add_decl_to_scope(Scope* scope, Decl* decl)
-{
-    scope->num_decls += 1;
-
-    list_add(scope->decls.prev, &decl->lnode);
-}
-
 static BlockItem parse_block_item(Parser* parser)
 {
     BlockItem item = {0};
@@ -1129,10 +1098,9 @@ static Stmt* parse_stmt_block(Parser* parser)
 
     next_token(parser);
 
-    size_t num_stmts = 0;
+    List decls = list_head_create(decls);
     List stmts = list_head_create(stmts);
     bool bad_item = false;
-    Scope* scope = enter_scope(parser);
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
     {
@@ -1142,25 +1110,17 @@ static Stmt* parse_stmt_block(Parser* parser)
         {
             case BLOCK_ITEM_DECL:
                 if (item.decl)
-                {
-                    assert(scope == parser->curr_scope);
-                    add_decl_to_scope(scope, item.decl);
-                }
+                    list_add(decls.prev, &item.decl->lnode);
                 else
-                {
                     bad_item = true;
-                }
+
                 break;
             case BLOCK_ITEM_STMT:
                 if (item.stmt)
-                {
-                    num_stmts += 1;
                     list_add(stmts.prev, &item.stmt->lnode);
-                }
                 else
-                {
                     bad_item = true;
-                }
+
                 break;
             default:
                 bad_item = true;
@@ -1173,10 +1133,8 @@ static Stmt* parse_stmt_block(Parser* parser)
 
     if (!bad_item && expect_token(parser, TKN_RBRACE, "Failed to parse end of statement block"))
     {
-        exit_scope(parser); // TODO: Skip scope on error
-
         range.end = parser->ptoken.range.end;
-        stmt = new_stmt_block(parser->ast_arena, num_stmts, &stmts, scope, range);
+        stmt = new_stmt_block(parser->ast_arena, &decls, &stmts, range);
     }
 
     return stmt;
@@ -1287,7 +1245,7 @@ static Stmt* parse_stmt_if(Parser* parser)
                 bad_else = !parse_fill_else_block(parser, &else_blk);
 
             if (!bad_else)
-                stmt = new_stmt_if(parser->ast_arena, &if_blk, num_elif_blks, &elif_blks, &else_blk, range);
+                stmt = new_stmt_if(parser->ast_arena, &if_blk, &elif_blks, &else_blk, range);
         }
     }
 
@@ -1327,7 +1285,6 @@ static SwitchCase* parse_switch_case(Parser* parser)
         return NULL;
 
     SwitchCase* swcase = NULL;
-    size_t num_stmts = 0;
     List stmts = list_head_create(stmts);
     bool bad_stmt = false;
 
@@ -1342,14 +1299,13 @@ static SwitchCase* parse_switch_case(Parser* parser)
             break;
         }
 
-        num_stmts += 1;
         list_add(stmts.prev, &stmt->lnode);
     }
 
     if (!bad_stmt)
     {
         range.end = parser->ptoken.range.end;
-        swcase = new_switch_case(parser->ast_arena, start, end, num_stmts, &stmts, range);
+        swcase = new_switch_case(parser->ast_arena, start, end, &stmts, range);
     }
 
     return swcase;
@@ -1373,7 +1329,6 @@ static Stmt* parse_stmt_switch(Parser* parser)
         return NULL;
 
     Stmt* stmt = NULL;
-    size_t num_cases = 0;
     List cases = list_head_create(cases);
     bool has_default = false;
     bool bad_case = false;
@@ -1399,14 +1354,13 @@ static Stmt* parse_stmt_switch(Parser* parser)
 
         has_default = has_default || is_default;
 
-        num_cases += 1;
         list_add(cases.prev, &swcase->lnode);
     } while (is_keyword(parser, KW_CASE));
 
     if (!bad_case && expect_token(parser, TKN_RBRACE, error_prefix))
     {
         range.end = parser->ptoken.range.end;
-        stmt = new_stmt_switch(parser->ast_arena, expr, num_cases, &cases, range);
+        stmt = new_stmt_switch(parser->ast_arena, expr, &cases, range);
     }
 
     return stmt;
@@ -1520,25 +1474,26 @@ static Stmt* parse_stmt_for(Parser* parser)
     if (!expect_token(parser, TKN_LPAREN, error_prefix))
         return NULL;
 
-    Scope* scope = enter_scope(parser);
-    Stmt* init = NULL;
+    BlockItem init = {0};
 
     if (!match_token(parser, TKN_SEMICOLON))
     {
         if (is_keyword(parser, KW_VAR))
         {
-            Decl* decl = parse_decl(parser);
+            init.kind = BLOCK_ITEM_DECL;
+            init.decl = parse_decl(parser);
 
-            if (decl)
-                add_decl_to_scope(scope, decl);
+            if (!init.decl)
+                return NULL;
         }
         else
         {
-            init = parse_stmt_expr(parser, true);
-        }
+            init.kind = BLOCK_ITEM_STMT;
+            init.stmt = parse_stmt_expr(parser, true);
 
-        if (!init && !scope->num_decls)
-            return NULL;
+            if (!init.stmt)
+                return NULL;
+        }
     }
 
     Expr* cond = NULL;
@@ -1571,9 +1526,7 @@ static Stmt* parse_stmt_for(Parser* parser)
 
     range.end = body->range.end;
 
-    exit_scope(parser); // TODO: Skip scope on error
-
-    return new_stmt_for(parser->ast_arena, scope, init, cond, next, body, range);
+    return new_stmt_for(parser->ast_arena, init, cond, next, body, range);
 }
 
 // stmt_return = 'return' expr? ';'
@@ -1873,7 +1826,8 @@ static Decl* parse_decl_proc(Parser* parser)
 
         if (expect_token(parser, TKN_LPAREN, error_prefix))
         {
-            Scope* param_scope = enter_scope(parser);
+            size_t num_params = 0;
+            List params = list_head_create(params);
             bool bad_param = false;
 
             while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF))
@@ -1882,15 +1836,15 @@ static Decl* parse_decl_proc(Parser* parser)
 
                 if (param)
                 {
-                    add_decl_to_scope(param_scope, param);
+                    num_params += 1;
+                    list_add(params.prev, &param->lnode);
                 }
                 else
                 {
                     bad_param = true;
-                    break;
                 }
 
-                if (!match_token(parser, TKN_COMMA))
+                if (bad_param || !match_token(parser, TKN_COMMA))
                     break;
             }
 
@@ -1913,10 +1867,8 @@ static Decl* parse_decl_proc(Parser* parser)
 
                         if (body)
                         {
-                            exit_scope(parser); // TODO: Skip scope on error?
-
                             range.end = body->range.end;
-                            decl = new_decl_proc(parser->ast_arena, name, param_scope, ret, body, range);
+                            decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, body, range);
                         }
                     }
                     else
@@ -1947,16 +1899,15 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, NewD
 
         if (expect_token(parser, TKN_LBRACE, error_prefix))
         {
-            size_t num_fields = 0;
             List fields = {0};
 
-            if (parse_fill_aggregate_body(parser, &num_fields, &fields) &&
+            if (parse_fill_aggregate_body(parser, &fields) &&
                 expect_token(parser, TKN_RBRACE, error_prefix))
             {
-                if (num_fields)
+                if (!list_empty(&fields))
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = new_decl_aggregate(parser->ast_arena, name, num_fields, &fields, range);
+                    decl = new_decl_aggregate(parser->ast_arena, name, &fields, range);
                 }
                 else
                 {
@@ -2050,7 +2001,7 @@ static Decl* parse_decl_enum(Parser* parser)
                 if (num_items)
                 {
                     range.end = parser->ptoken.range.end;
-                    decl = new_decl_enum(parser->ast_arena, name, typespec, num_items, &items, range);
+                    decl = new_decl_enum(parser->ast_arena, name, typespec, &items, range);
                 }
                 else
                 {

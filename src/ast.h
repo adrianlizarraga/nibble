@@ -12,7 +12,6 @@ typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
 typedef struct Decl Decl;
 typedef struct Stmt Stmt;
-typedef struct Scope Scope;
 
 ///////////////////////////////
 //       Type Specifiers
@@ -48,7 +47,6 @@ typedef struct AggregateField {
 
 typedef struct TypeSpecAggregate {
     TypeSpec super;
-    size_t num_fields;
     List fields;
 } TypeSpecAggregate;
 
@@ -94,9 +92,9 @@ TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange ran
 ProcParam* new_proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
 TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range);
 
-typedef TypeSpec* NewTypeSpecAggregateProc(Allocator* alloc, size_t num_fields, List* fields, ProgRange range);
-TypeSpec* new_typespec_struct(Allocator* allocator, size_t num_fields, List* fields, ProgRange range);
-TypeSpec* new_typespec_union(Allocator* allocator, size_t num_fields, List* fields, ProgRange range);
+typedef TypeSpec* NewTypeSpecAggregateProc(Allocator* alloc, List* fields, ProgRange range);
+TypeSpec* new_typespec_struct(Allocator* allocator, List* fields, ProgRange range);
+TypeSpec* new_typespec_union(Allocator* allocator, List* fields, ProgRange range);
 
 char* ftprint_typespec(Allocator* allocator, TypeSpec* type);
 ///////////////////////////////
@@ -286,18 +284,8 @@ typedef struct StmtNoOp {
     Stmt super;
 } StmtNoOp;
 
-struct Scope {
-    size_t num_decls;
-    List decls;
-
-    Scope* parent;
-    List children; // Scopes
-
-    ListNode lnode;
-};
-
 typedef enum BlockItemKind {
-    BLOCK_ITEM_NONE,
+    BLOCK_ITEM_NONE = 0,
     BLOCK_ITEM_DECL,
     BLOCK_ITEM_STMT,
 } BlockItemKind;
@@ -313,9 +301,8 @@ typedef struct BlockItem {
 
 typedef struct StmtBlock {
     Stmt super;
-    size_t num_stmts;
+    List decls;
     List stmts;
-    Scope* scope;
 } StmtBlock;
 
 typedef struct IfCondBlock {
@@ -333,10 +320,7 @@ typedef struct ElseBlock {
 typedef struct StmtIf {
     Stmt super;
     IfCondBlock if_blk;
-
-    size_t num_elif_blks;
     List elif_blks;
-
     ElseBlock else_blk;
 } StmtIf;
 
@@ -354,8 +338,7 @@ typedef struct StmtDoWhile {
 
 typedef struct StmtFor {
     Stmt super;
-    Scope* scope;
-    Stmt* init;
+    BlockItem init;
     Expr* cond;
     Stmt* next;
     Stmt* body;
@@ -367,7 +350,6 @@ typedef struct SwitchCase {
     Expr* start; // NOTE: Both start and end are null for default case.
     Expr* end;
 
-    size_t num_stmts; // TODO: Make this just a Stmt* body??
     List stmts;
 
     ListNode lnode;
@@ -376,8 +358,6 @@ typedef struct SwitchCase {
 typedef struct StmtSwitch {
     Stmt super;
     Expr* expr;
-
-    size_t num_cases;
     List cases;
 } StmtSwitch;
 
@@ -420,24 +400,21 @@ typedef struct StmtLabel {
 } StmtLabel;
 
 Stmt* new_stmt_noop(Allocator* allocator, ProgRange range);
-Scope* new_scope(Allocator* allocator, Scope* parent);
-Stmt* new_stmt_block(Allocator* allocator, size_t num_stmts, List* stmts, Scope* scope, ProgRange range);
+Stmt* new_stmt_block(Allocator* allocator, List* stmts, List* decls, ProgRange range);
 Stmt* new_stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
 Stmt* new_stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
 Stmt* new_stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, size_t num_elif_blks, List* elif_blks, ElseBlock* else_blk,
-                  ProgRange range);
+Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, List* elif_blks, ElseBlock* else_blk, ProgRange range);
 IfCondBlock* new_if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* new_stmt_for(Allocator* allocator, Scope* scope, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
+Stmt* new_stmt_for(Allocator* allocator, BlockItem init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
 Stmt* new_stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_break(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_continue(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_goto(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range);
-SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, size_t num_stmts, List* stmts,
-                            ProgRange range);
-Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, size_t num_cases, List* cases, ProgRange range);
+SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
+Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////
@@ -483,14 +460,11 @@ typedef struct EnumItem {
 typedef struct DeclEnum {
     Decl super;
     TypeSpec* typespec;
-
-    size_t num_items;
     List items;
 } DeclEnum;
 
 typedef struct DeclAggregate {
     Decl super;
-    size_t num_fields;
     List fields;
 } DeclAggregate;
 
@@ -500,7 +474,8 @@ typedef DeclAggregate DeclStruct;
 typedef struct DeclProc {
     Decl super;
     TypeSpec* ret;
-    Scope* param_scope;
+    size_t num_params;
+    List params;
     Stmt* body;
 } DeclProc;
 
@@ -512,15 +487,13 @@ typedef struct DeclTypedef {
 Decl* new_decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
-Decl* new_decl_enum(Allocator* allocator, const char* name, TypeSpec* type, size_t num_items, List* items,
-                    ProgRange range);
+Decl* new_decl_enum(Allocator* allocator, const char* name, TypeSpec* type, List* items, ProgRange range);
 EnumItem* new_enum_item(Allocator* allocator, const char* name, Expr* value);
 
-typedef Decl* NewDeclAggregateProc(Allocator* alloc, const char* name, size_t num_fields, List* fields,
-                                   ProgRange range);
-Decl* new_decl_struct(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
-Decl* new_decl_union(Allocator* allocator, const char* name, size_t num_fields, List* fields, ProgRange range);
-Decl* new_decl_proc(Allocator* allocator, const char* name, Scope* param_scope, TypeSpec* ret, Stmt* body,
+typedef Decl* NewDeclAggregateProc(Allocator* alloc, const char* name, List* fields, ProgRange range);
+Decl* new_decl_struct(Allocator* allocator, const char* name, List* fields, ProgRange range);
+Decl* new_decl_union(Allocator* allocator, const char* name, List* fields, ProgRange range);
+Decl* new_decl_proc(Allocator* allocator, const char* name, size_t num_params, List* params, TypeSpec* ret, Stmt* body,
                     ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
