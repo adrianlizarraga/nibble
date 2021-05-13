@@ -357,11 +357,18 @@ Stmt* new_stmt_noop(Allocator* allocator, ProgRange range)
     return (Stmt*)stmt;
 }
 
-Stmt* new_stmt_block(Allocator* allocator, List* decls, List* stmts, ProgRange range)
+Stmt* new_stmt_decl(Allocator* allocator, Decl* decl)
+{
+    StmtDecl* stmt = new_stmt(allocator, StmtDecl, decl->range);
+    stmt->decl = decl;
+
+    return (Stmt*)stmt;
+}
+
+Stmt* new_stmt_block(Allocator* allocator, List* stmts, ProgRange range)
 {
     StmtBlock* stmt = new_stmt(allocator, StmtBlock, range);
 
-    list_replace(decls, &stmt->decls);
     list_replace(stmts, &stmt->stmts);
 
     return (Stmt*)stmt;
@@ -429,7 +436,7 @@ IfCondBlock* new_if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, Pro
     return cblock;
 }
 
-Stmt* new_stmt_for(Allocator* allocator, BlockItem init, Expr* cond, Stmt* next, Stmt* body, ProgRange range)
+Stmt* new_stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range)
 {
     StmtFor* stmt = new_stmt(allocator, StmtFor, range);
     stmt->init = init;
@@ -502,6 +509,357 @@ Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange r
 
     return (Stmt*)stmt;
 }
+
+//////////////////////////////
+//     Types
+//////////////////////////////
+
+static Type type_void_ = {.kind = TYPE_VOID};
+static Type type_bool_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_BOOL};
+static Type type_char_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_CHAR};
+static Type type_schar_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_SCHAR};
+static Type type_uchar_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_UCHAR};
+static Type type_short_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_SHORT};
+static Type type_ushort_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_USHORT};
+static Type type_int_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_INT};
+static Type type_uint_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_UINT};
+static Type type_long_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_LONG};
+static Type type_ulong_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_ULONG};
+static Type type_llong_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_LLONG};
+static Type type_ullong_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_ULLONG};
+static Type type_f32_ = {.kind = TYPE_FLOAT, .as_float.kind = FLOAT_F32};
+static Type type_f64_ = {.kind = TYPE_FLOAT, .as_float.kind = FLOAT_F64};
+
+Type* type_void = &type_void_;
+Type* type_bool = &type_bool_;
+Type* type_char = &type_char_;
+Type* type_schar = &type_schar_;
+Type* type_uchar = &type_uchar_;
+Type* type_short = &type_short_;
+Type* type_ushort = &type_ushort_;
+Type* type_int = &type_int_;
+Type* type_uint = &type_uint_;
+Type* type_long = &type_long_;
+Type* type_ulong = &type_ulong_;
+Type* type_llong = &type_llong_;
+Type* type_ullong = &type_ullong_;
+Type* type_f32 = &type_f32_;
+Type* type_f64 = &type_f64_;
+Type* type_ssize;
+Type* type_usize;
+
+size_t PTR_SIZE = 8;
+size_t PTR_ALIGN = 8;
+
+static const char* type_names[] = {
+    [TYPE_VOID] = "void",
+    [TYPE_INTEGER] = "_integer_",
+    [TYPE_FLOAT] = "_float_",
+    [TYPE_ENUM] = "_enum_",
+    [TYPE_PTR] = "_ptr_",
+    [TYPE_PROC] = "_proc_",
+    [TYPE_ARRAY] = "_array_",
+    [TYPE_STRUCT] = "_struct_",
+    [TYPE_UNION] = "_union_",
+};
+
+static const char* type_integer_names[] = {
+    [INTEGER_INT] = "int",
+    [INTEGER_BOOL] = "bool",
+    [INTEGER_CHAR] = "char",
+    [INTEGER_SCHAR] = "schar",
+    [INTEGER_UCHAR] = "uchar",
+    [INTEGER_SHORT] = "short",
+    [INTEGER_USHORT] = "ushort",
+    [INTEGER_UINT] = "uint",
+    [INTEGER_LONG] = "long",
+    [INTEGER_ULONG] = "ulong",
+    [INTEGER_LLONG] = "llong",
+    [INTEGER_ULLONG] = "ullong"
+};
+
+static const char* type_float_names[] = {
+    [FLOAT_F64] = "float64",
+    [FLOAT_F32] = "float32",
+};
+
+static size_t next_type_id = 1;
+
+const char* type_name(Type* type)
+{
+    if (!type)
+        return "null";
+
+    switch (type->kind)
+    {
+        case TYPE_INTEGER:
+            return type_integer_names[type->as_integer.kind];
+        case TYPE_FLOAT:
+            return type_float_names[type->as_float.kind];
+        default:
+            return type_names[type->kind];
+    }
+}
+
+static Type* type_alloc(Allocator* allocator, TypeKind kind)
+{
+    Type* type = alloc_type(allocator, Type, true);
+    type->kind = kind;
+    type->id = next_type_id++;
+
+    return type;
+}
+
+Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base)
+{
+    uint64_t* pval = hmap_get(type_ptr_cache, PTR_UINT(base));
+    Type* type = pval ? (void*)*pval : NULL;
+
+    if (!type)
+    {
+        type = type_alloc(allocator, TYPE_PTR);
+        type->size = PTR_SIZE;
+        type->align = PTR_ALIGN;
+        type->as_ptr.base = base;
+
+        hmap_put(type_ptr_cache, PTR_UINT(base), PTR_UINT(type));
+    }
+
+    return type;
+}
+
+typedef struct CachedType {
+    Type* type;
+    struct CachedType* next;
+} CachedType;
+
+Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret)
+{
+    size_t params_size = num_params * sizeof(params[0]);
+    uint64_t key = hash_mix_uint64(hash_bytes(params, params_size), hash_ptr(ret));
+    uint64_t* pval = hmap_get(type_proc_cache, key);
+    CachedType* cached = pval ? (void*)*pval : NULL;
+
+    // Return cached type, if it exists.
+    for (CachedType* it = cached; it != NULL; it = it->next)
+    {
+        Type* type = it->type;
+
+        if ((type->as_proc.num_params == num_params) && (type->as_proc.ret == ret))
+        {
+            bool params_equal = true;
+
+            for (size_t i = 0; i < num_params; i += 1)
+            {
+                if (type->as_proc.params[i] != params[i])
+                {
+                    params_equal = false;
+                    break;
+                }
+            }
+
+            if (params_equal)
+                return it->type;
+        }
+    }
+
+    // Create a new type, cache it, and return it.
+    Type* type = type_alloc(allocator, TYPE_PROC);
+    type->size = PTR_SIZE;
+    type->align = PTR_ALIGN;
+    type->as_proc.num_params = num_params;
+    type->as_proc.params = mem_dup_array(allocator, Type*, params, num_params);
+    type->as_proc.ret = ret;
+
+    CachedType* new_cached = alloc_type(allocator, CachedType, true);
+    new_cached->type = type;
+    new_cached->next = cached;
+
+    hmap_put(type_proc_cache, key, PTR_UINT(new_cached));
+
+    return type;
+}
+
+
+static void init_type(Type* type, size_t size, size_t align)
+{
+    type->id = next_type_id;
+    type->size = size;
+    type->align = align;
+
+    next_type_id += 1;
+}
+
+static void init_integer_type(Type* type, size_t size, size_t align, bool is_signed, unsigned long long max)
+{
+    init_type(type, size, align);
+
+    type->as_integer.is_signed = is_signed;
+    type->as_integer.max = max;
+}
+
+void init_builtin_types(OS target_os, Arch target_arch)
+{
+    bool invalid_os_arch = false;
+
+    init_type(type_void, 0, 0);
+    init_integer_type(type_bool, 1, 1, false, 0xFF);
+    init_integer_type(type_char, 1, 1, true, 0x7F);
+    init_integer_type(type_schar, 1, 1, true, 0x7F);
+    init_integer_type(type_uchar, 1, 1, false, 0xFF);
+    init_integer_type(type_short, 2, 2, true, 0x7FFF);
+    init_integer_type(type_ushort, 2, 2, false, 0xFFFF);
+    init_integer_type(type_int, 4, 4, true, 0x7FFFFFFF);
+    init_integer_type(type_uint, 4, 4, false, 0xFFFFFFFF);
+    init_integer_type(type_llong, 8, 8, true, 0x7FFFFFFFFFFFFFFF);
+    init_integer_type(type_ullong, 8, 8, false, 0xFFFFFFFFFFFFFFFF);
+    init_type(type_f32, 4, 4);
+    init_type(type_f64, 8, 8);
+
+    switch (target_os)
+    {
+        case OS_LINUX:
+            switch (target_arch)
+            {
+                case ARCH_X86:
+                    init_integer_type(type_long, 4, 4, true, 0x7FFFFFFF);
+                    init_integer_type(type_ulong, 4, 4, false, 0xFFFFFFFF);
+
+                    PTR_SIZE = 4;
+                    PTR_ALIGN = 4;
+                    break;
+                case ARCH_X64:
+                    init_integer_type(type_long, 8, 8, true, 0x7FFFFFFFFFFFFFFF);
+                    init_integer_type(type_ulong, 8, 8, false, 0xFFFFFFFFFFFFFFFF);
+
+                    PTR_SIZE = 8;
+                    PTR_ALIGN = 8;
+                    break;
+                default:
+                    invalid_os_arch = true;
+                    break;
+            }
+            break;
+        case OS_WIN32:
+            switch (target_arch)
+            {
+                case ARCH_X86:
+                    init_integer_type(type_long, 4, 4, true, 0x7FFFFFFF);
+                    init_integer_type(type_ulong, 4, 4, false, 0xFFFFFFFF);
+
+                    PTR_SIZE = 4;
+                    PTR_ALIGN = 4;
+                    break;
+                case ARCH_X64:
+                    init_integer_type(type_long, 4, 4, true, 0x7FFFFFFF);
+                    init_integer_type(type_ulong, 4, 4, false, 0xFFFFFFFF);
+
+                    PTR_SIZE = 8;
+                    PTR_ALIGN = 8;
+                    break;
+                default:
+                    invalid_os_arch = true;
+                    break;
+            }
+            break;
+        case OS_OSX:
+            switch (target_arch)
+            {
+                case ARCH_X64:
+                    init_integer_type(type_long, 8, 8, true, 0x7FFFFFFFFFFFFFFF);
+                    init_integer_type(type_ulong, 8, 8, false, 0xFFFFFFFFFFFFFFFF);
+
+                    PTR_SIZE = 8;
+                    PTR_ALIGN = 8;
+                    break;
+                default:
+                    invalid_os_arch = true;
+                    break;
+            }
+            break;
+        default:
+            invalid_os_arch = true;
+            break;
+    }
+
+    if (invalid_os_arch)
+    {
+        ftprint_err("Unsupported OS architecture: %s %s\n", os_names[target_os], arch_names[target_arch]);
+        exit(1);
+    }
+
+    if (PTR_SIZE == 4)
+    {
+        type_ssize = type_int;
+        type_usize = type_uint;
+
+    }
+    else
+    {
+        assert(PTR_SIZE == 8);
+        type_ssize = type_llong;
+        type_usize = type_ullong;
+    }
+}
+
+//////////////////////////////
+//     Symbols
+//////////////////////////////
+
+static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, const char* name)
+{
+    Symbol* sym = alloc_type(allocator, Symbol, true);
+
+    sym->kind = kind;
+    sym->name = name;
+
+    return sym;
+}
+
+Symbol* new_symbol_decl(Allocator* allocator, Decl* decl)
+{
+    Symbol* sym = new_symbol(allocator, SYMBOL_DECL, decl->name);
+    sym->decl = decl;
+
+    return sym;
+}
+
+Symbol* new_symbol_type(Allocator* allocator, const char* name, Type* type)
+{
+    Symbol* sym = new_symbol(allocator, SYMBOL_TYPE, name);
+    sym->status = SYMBOL_STATUS_RESOLVED;
+    sym->type = type;
+
+    return sym;
+}
+
+bool symbol_is_type(Symbol* sym)
+{
+    switch (sym->kind)
+    {
+        case SYMBOL_TYPE:
+            return true;
+        case SYMBOL_DECL:
+            switch (sym->decl->kind)
+            {
+                case AST_DeclStruct:
+                case AST_DeclUnion:
+                case AST_DeclTypedef:
+                case AST_DeclEnum:
+                    return true;
+                default:
+                    break;
+            }
+        default:
+            break;
+    }
+
+    return false;
+}
+
+//////////////////////////////
+//     AST Printing
+//////////////////////////////
 
 char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
 {
@@ -872,31 +1230,19 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, "no-op");
             }
             break;
+            case AST_StmtDecl:
+            {
+                StmtDecl* s = (StmtDecl*)stmt;
+                dstr = array_create(allocator, char, 32);
+                ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, s->decl));
+            }
+            break;
             case AST_StmtBlock:
             {
                 StmtBlock* s = (StmtBlock*)stmt;
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(stmt-block");
 
-                // Print declarations before statements.
-                if (!list_empty(&s->decls))
-                {
-                    ftprint_char_array(&dstr, false, " ");
-
-                    List* head = &s->decls;
-
-                    for (List* it = head->next; it != head; it = it->next)
-                    {
-                        Decl* decl = list_entry(it, Decl, lnode);
-
-                        ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, decl));
-
-                        if (it->next != head)
-                            ftprint_char_array(&dstr, false, " ");
-                    }
-                }
-
-                // Print statements.
                 if (!list_empty(&s->stmts))
                     ftprint_char_array(&dstr, false, " %s)", ftprint_stmt_list(allocator, &s->stmts));
                 else
@@ -945,10 +1291,8 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
                 ftprint_char_array(&dstr, false, "(for ");
 
-                if (s->init.kind == BLOCK_ITEM_DECL)
-                    ftprint_char_array(&dstr, false, "%s; ", ftprint_decl(allocator, s->init.decl));
-                else if (s->init.kind == BLOCK_ITEM_STMT)
-                    ftprint_char_array(&dstr, false, "%s; ", ftprint_stmt(allocator, s->init.stmt));
+                if (s->init)
+                    ftprint_char_array(&dstr, false, "%s; ", ftprint_stmt(allocator, s->init));
                 else
                     ftprint_char_array(&dstr, false, "; ");
 

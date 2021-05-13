@@ -2,15 +2,20 @@
 #include "parser.h"
 #define NIBBLE_PRINT_DECLS
 
-static void resolve_symbol(Program* prog, Symbol* sym);
-static Type* resolve_decl_var(Program* prog, DeclVar* decl);
+static bool resolve_program(Program* prog);
+static Symbol* resolve_name(Program* prog, const char* name);
+static bool resolve_symbol(Program* prog, Symbol* sym);
+static bool resolve_decl(Program* prog, Decl* decl);
+static bool resolve_decl_var(Program* prog, Decl* decl);
 static Type* resolve_typespec(Program* prog, TypeSpec* typespec);
-static ResolvedExpr resolve_expr(Program* prog, Expr* expr, Type* expected_type);
-static ResolvedExpr resolve_expr_int(Program* prog, ExprInt* expr);
+static bool resolve_expr(Program* prog, Expr* expr, Type* expected_type);
+static bool resolve_expr_int(Program* prog, Expr* expr);
 static Symbol* lookup_symbol(Program* prog, const char* name);
 
-static void init_scope(Scope* scope, Scope* parent);
-static void free_scope(Scope* scope);
+static bool parse_code(Program* prog, const char* code);
+static void init_builtin_syms(Program* prog);
+static bool add_global_type_symbol(Program* prog, const char* name, Type* type);
+static bool add_global_decl_symbol(Program* prog, Decl* decl);
 
 static char* slurp_file(Allocator* allocator, const char* filename)
 {
@@ -74,124 +79,60 @@ static void program_on_error(Program* prog, const char* format, ...)
     add_byte_stream_chunk(&prog->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
 }
 
-static Symbol* sym_alloc(Allocator* allocator, SymbolKind kind, const char* name)
-{
-    Symbol* sym = alloc_type(allocator, Symbol, true);
-
-    sym->kind = kind;
-    sym->name = name;
-
-    return sym;
-}
-
-static Symbol* sym_decl(Allocator* allocator, Decl* decl)
-{
-    Symbol* sym = NULL;
-
-    switch (decl->kind)
-    {
-        case AST_DeclVar:
-            sym = sym_alloc(allocator, SYMBOL_VAR, decl->name);
-            sym->as_var.decl = decl;
-            break;
-        case AST_DeclConst:
-            sym = sym_alloc(allocator, SYMBOL_CONST, decl->name);
-            sym->as_const.decl = decl;
-            break;
-        case AST_DeclProc:
-            sym = sym_alloc(allocator, SYMBOL_PROC, decl->name);
-            sym->as_proc.decl = decl;
-            break;
-        case AST_DeclStruct:
-            sym = sym_alloc(allocator, SYMBOL_TYPE, decl->name);
-            sym->as_type.decl = decl;
-            sym->as_type.kind = SYMBOL_TYPE_STRUCT;
-            break;
-        case AST_DeclUnion:
-            sym = sym_alloc(allocator, SYMBOL_TYPE, decl->name);
-            sym->as_type.decl = decl;
-            sym->as_type.kind = SYMBOL_TYPE_UNION;
-            break;
-        case AST_DeclEnum:
-            sym = sym_alloc(allocator, SYMBOL_TYPE, decl->name);
-            sym->as_type.decl = decl;
-            sym->as_type.kind = SYMBOL_TYPE_ENUM;
-            break;
-        case AST_DeclTypedef:
-            sym = sym_alloc(allocator, SYMBOL_TYPE, decl->name);
-            sym->as_type.decl = decl;
-            sym->as_type.kind = SYMBOL_TYPE_TYPEDEF;
-            break;
-        default:
-            ftprint_err("Cannot create symbol from declaration kind %d\n", decl->kind);
-            assert(0);
-            break;
-    }
-
-    return sym;
-}
-
-static bool add_decl_sym(Program* prog, Scope* scope, Decl* decl)
+static bool add_global_decl_symbol(Program* prog, Decl* decl)
 {
     const char* sym_name = decl->name;
 
-    if (hmap_get(&scope->syms_map, PTR_UINT(sym_name)))
+    if (hmap_get(&prog->global_syms, PTR_UINT(sym_name)))
     {
         program_on_error(prog, "Duplicate definition of `%s`", sym_name);
         return false;
     }
 
-    Symbol* sym = sym_decl(&prog->ast_mem, decl);
+    Symbol* sym = new_symbol_decl(&prog->ast_mem, decl);
 
-    list_add_last(&scope->decls, &decl->lnode);
-    hmap_put(&scope->syms_map, PTR_UINT(sym_name), PTR_UINT(sym));
+    list_add_last(&prog->decls, &decl->lnode);
+    hmap_put(&prog->global_syms, PTR_UINT(sym_name), PTR_UINT(sym));
 
     return true;
 }
 
-static bool add_basic_type_sym(Program* prog, const char* name, Type* type)
+static bool add_global_type_symbol(Program* prog, const char* name, Type* type)
 {
     const char* sym_name = intern_ident(name, cstr_len(name), NULL, NULL);
-    Allocator* allocator = &prog->ast_mem;
-    Scope* scope = &prog->global_scope;
 
-    if (hmap_get(&scope->syms_map, PTR_UINT(sym_name)))
+    if (hmap_get(&prog->global_syms, PTR_UINT(sym_name)))
     {
         program_on_error(prog, "Duplicate definition of `%s`", sym_name);
         return false;
     }
 
-    Symbol* sym = sym_alloc(allocator, SYMBOL_TYPE, sym_name);
+    Symbol* sym = new_symbol_type(&prog->ast_mem, sym_name, type);
 
-    sym->status = SYMBOL_STATUS_RESOLVED;
-    sym->flags = SYMBOL_IS_BUILTIN;
-    sym->as_type.kind = SYMBOL_TYPE_BASIC;
-    sym->as_type.type = type;
-
-    hmap_put(&scope->syms_map, PTR_UINT(sym_name), PTR_UINT(sym));
+    hmap_put(&prog->global_syms, PTR_UINT(sym_name), PTR_UINT(sym));
 
     return true;
 }
 
 static void init_builtin_syms(Program* prog)
 {
-    add_basic_type_sym(prog, "void", type_void);
-    add_basic_type_sym(prog, "bool", type_bool);
-    add_basic_type_sym(prog, "char", type_char);
-    add_basic_type_sym(prog, "schar", type_schar);
-    add_basic_type_sym(prog, "uchar", type_uchar);
-    add_basic_type_sym(prog, "short", type_short);
-    add_basic_type_sym(prog, "ushort", type_ushort);
-    add_basic_type_sym(prog, "int", type_int);
-    add_basic_type_sym(prog, "uint", type_uint);
-    add_basic_type_sym(prog, "long", type_long);
-    add_basic_type_sym(prog, "ulong", type_ulong);
-    add_basic_type_sym(prog, "llong", type_llong);
-    add_basic_type_sym(prog, "ullong", type_ullong);
-    add_basic_type_sym(prog, "ssize", type_ssize);
-    add_basic_type_sym(prog, "usize", type_usize);
-    add_basic_type_sym(prog, "float32", type_float32);
-    add_basic_type_sym(prog, "float64", type_float64);
+    add_global_type_symbol(prog, "void", type_void);
+    add_global_type_symbol(prog, "bool", type_bool);
+    add_global_type_symbol(prog, "char", type_char);
+    add_global_type_symbol(prog, "schar", type_schar);
+    add_global_type_symbol(prog, "uchar", type_uchar);
+    add_global_type_symbol(prog, "short", type_short);
+    add_global_type_symbol(prog, "ushort", type_ushort);
+    add_global_type_symbol(prog, "int", type_int);
+    add_global_type_symbol(prog, "uint", type_uint);
+    add_global_type_symbol(prog, "long", type_long);
+    add_global_type_symbol(prog, "ulong", type_ulong);
+    add_global_type_symbol(prog, "llong", type_llong);
+    add_global_type_symbol(prog, "ullong", type_ullong);
+    add_global_type_symbol(prog, "ssize", type_ssize);
+    add_global_type_symbol(prog, "usize", type_usize);
+    add_global_type_symbol(prog, "float32", type_f32);
+    add_global_type_symbol(prog, "float64", type_f64);
 }
 
 static bool parse_code(Program* prog, const char* code)
@@ -208,7 +149,7 @@ static bool parse_code(Program* prog, const char* code)
         if (!decl)
             return false;
 
-        add_decl_sym(prog, &prog->global_scope, decl);
+        add_global_decl_symbol(prog, decl);
 
 #ifdef NIBBLE_PRINT_DECLS
         ftprint_out("%s\n", ftprint_decl(&prog->gen_mem, decl));
@@ -220,39 +161,40 @@ static bool parse_code(Program* prog, const char* code)
 
 static Symbol* lookup_symbol(Program* prog, const char* name)
 {
-    for (Scope* scope = prog->curr_scope; scope != NULL; scope = scope->parent)
+    // Lookup local symbols first.
+    for (Symbol* it = prog->local_syms; it != prog->local_syms_at; it += 1)
     {
-        uint64_t* pval = hmap_get(&scope->syms_map, PTR_UINT(name));
-
-        if (pval)
-            return (Symbol*)*pval;
+        if (it->name == name)
+            return it;
     }
 
-    return NULL;
+    // Lookup global syms.
+    uint64_t* pval = hmap_get(&prog->global_syms, PTR_UINT(name));
+    Symbol* sym = pval ? (void*)*pval : NULL;
+
+    return sym;
 }
 
-static ResolvedExpr resolve_expr_int(Program* prog, ExprInt* expr)
+static bool resolve_expr_int(Program* prog, Expr* expr)
 {
+    ExprInt* eint = (ExprInt*)expr;
+
     // TODO: Take into account literal suffix (e.g., u, ul, etc.)
-    ResolvedExpr operand = {
-        .type = type_int,
-        .value.kind = SCALAR_INTEGER,
-        .value.as_int.i = (int)expr->value,
-        .is_const = true
-    };
+    expr->type = type_int;
+    expr->is_const = true;
+    expr->const_val.kind = SCALAR_INTEGER;
+    expr->const_val.as_int.kind = INTEGER_INT; // TODO: Redundant
+    expr->const_val.as_int.i = (int)eint->value;
 
-    return operand;
+    return true;
 }
 
-static ResolvedExpr resolve_expr(Program* prog, Expr* expr, Type* expected_type)
+static bool resolve_expr(Program* prog, Expr* expr, Type* expected_type)
 {
-    ResolvedExpr operand = {0};
-
     switch (expr->kind)
     {
         case AST_ExprInt: {
-            ExprInt* eint = (ExprInt*)expr;
-            operand = resolve_expr_int(prog, eint);
+            return resolve_expr_int(prog, expr);
         } break;
         default:
             ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
@@ -260,7 +202,7 @@ static ResolvedExpr resolve_expr(Program* prog, Expr* expr, Type* expected_type)
             break;
     }
 
-    return operand;
+    return false;
 }
 
 static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
@@ -272,7 +214,8 @@ static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
 
     switch (typespec->kind)
     {
-        case AST_TypeSpecIdent: {
+        case AST_TypeSpecIdent:
+        {
             TypeSpecIdent* ts = (TypeSpecIdent*)typespec;
 
             // TODO: Support module path
@@ -286,7 +229,7 @@ static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
                 return NULL;
             }
 
-            if (ident_sym->kind != SYMBOL_TYPE)
+            if (!symbol_is_type(ident_sym))
             {
                 program_on_error(prog, "Symbol `%s` is not a type", ident_name);
                 return NULL;
@@ -294,9 +237,10 @@ static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
 
             resolve_symbol(prog, ident_sym);
 
-            return ident_sym->as_type.type;
+            return ident_sym->kind == SYMBOL_TYPE ? ident_sym->type : ident_sym->decl->type;
         }
-        case AST_TypeSpecPtr: {
+        case AST_TypeSpecPtr:
+        {
             TypeSpecPtr* ts = (TypeSpecPtr*)typespec;
             TypeSpec* base_ts = ts->base;
             Type* base_type = resolve_typespec(prog, base_ts);
@@ -304,7 +248,40 @@ static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
             if (!base_type)
                 return NULL;
 
-            return type_ptr(&prog->ast_mem, base_type); // TODO: Hash consing!
+            return type_ptr(&prog->ast_mem, &prog->type_ptr_cache, base_type);
+        }
+        case AST_TypeSpecProc:
+        {
+            TypeSpecProc* ts = (TypeSpecProc*)typespec;
+
+            AllocatorState mem_state = allocator_get_state(&prog->tmp_mem);
+            Type** params = array_create(&prog->tmp_mem, Type*, 16);
+            List* head = &ts->params;
+            size_t num_params = 0;
+
+            for (List* it = head->next; it != head; it = it->next)
+            {
+                ProcParam* proc_param = list_entry(it, ProcParam, lnode);
+                Type* param = resolve_typespec(prog, proc_param->typespec);
+
+                if (!param)
+                {
+                    allocator_restore_state(mem_state);
+                    return NULL;
+                }
+
+                params[num_params] = param;
+                num_params += 1;
+            }
+
+            assert(num_params == ts->num_params);
+            allocator_restore_state(mem_state);
+
+            Type* ret = resolve_typespec(prog, ts->ret);
+            if (!ret)
+                return NULL;
+
+            return type_proc(&prog->ast_mem, &prog->type_proc_cache, num_params, params, ret);
         }
         default:
             ftprint_err("Unsupported typespec kind `%d` in resolution\n", typespec->kind);
@@ -315,10 +292,11 @@ static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
     return type;
 }
 
-static Type* resolve_decl_var(Program* prog, DeclVar* decl)
+static bool resolve_decl_var(Program* prog, Decl* decl)
 {
-    TypeSpec* typespec = decl->typespec;
-    Expr* expr = decl->init;
+    DeclVar* decl_var = (DeclVar*)decl;
+    TypeSpec* typespec = decl_var->typespec;
+    Expr* expr = decl_var->init;
     Type* type = NULL;
 
     if (typespec)
@@ -327,19 +305,21 @@ static Type* resolve_decl_var(Program* prog, DeclVar* decl)
 
         if (expr && declared_type)
         {
-            ResolvedExpr operand = resolve_expr(prog, expr, declared_type);
-            Type* inferred_type = operand.type;
+            if (resolve_expr(prog, expr, declared_type))
+            {
+                Type* inferred_type = expr->type;
 
-            // TODO: Check if can convert type.
-            if (inferred_type != declared_type)
-            {
-                program_on_error(prog, "Incompatible types. Cannot convert `%s` to `%s`", 
-                                 type_name(inferred_type),
-                                 type_name(declared_type));
-            }
-            else
-            {
-                type = declared_type;
+                // TODO: Check if can convert type.
+                if (inferred_type != declared_type)
+                {
+                    program_on_error(prog, "Incompatible types. Cannot convert `%s` to `%s`", 
+                                     type_name(inferred_type),
+                                     type_name(declared_type));
+                }
+                else
+                {
+                    type = declared_type;
+                }
             }
         }
     }
@@ -347,84 +327,103 @@ static Type* resolve_decl_var(Program* prog, DeclVar* decl)
     {
         assert(expr); // NOTE: Parser should catch this.
 
-        ResolvedExpr operand = resolve_expr(prog, expr, NULL);
-        type = operand.type;
+        if (resolve_expr(prog, expr, NULL))
+            type = expr->type;
     }
 
-    return type;
+    decl->type = type;
+
+    return type != NULL;
 }
 
-static void resolve_symbol(Program* prog, Symbol* sym)
+static bool resolve_decl(Program* prog, Decl* decl)
+{
+    switch (decl->kind)
+    {
+        case AST_DeclVar:
+            return resolve_decl_var(prog, decl);
+        case AST_DeclConst:
+        case AST_DeclEnum:
+        case AST_DeclUnion:
+        case AST_DeclStruct:
+        case AST_DeclTypedef:
+        case AST_DeclProc:
+            ftprint_err("Decl kind `%d` not YET supported in resolution\n", decl->kind);
+            break;
+        default:
+            ftprint_err("Unknown decl kind `%d` while resolving symbol\n", decl->kind);
+            assert(0);
+            break;
+    }
+
+    return false;
+}
+
+static bool resolve_symbol(Program* prog, Symbol* sym)
 {
     if (sym->status == SYMBOL_STATUS_RESOLVED)
-        return;
+        return true;
 
     if (sym->status == SYMBOL_STATUS_RESOLVING)
     {
         program_on_error(prog, "Cannot resolve symbol `%s` due to cyclic dependency", sym->name);
-        return;
+        return false;
     }
 
     assert(sym->status == SYMBOL_STATUS_UNRESOLVED);
 
     sym->status = SYMBOL_STATUS_RESOLVING;
 
+    bool resolved = true;
+
     switch (sym->kind)
     {
-        case SYMBOL_VAR:
-            sym->as_var.type = resolve_decl_var(prog, (DeclVar*)sym->as_var.decl);
-            sym->status = SYMBOL_STATUS_RESOLVED;
-            break;
-        case SYMBOL_CONST:
-            break;
-        case SYMBOL_PROC:
-            break;
         case SYMBOL_TYPE:
+            break;
+        case SYMBOL_DECL:
+            resolved = resolve_decl(prog, sym->decl);
             break;
         default:
             ftprint_err("Unknown symbol kind `%d`\n", sym->kind);
             assert(0);
             break;
     }
+
+    if (resolved)
+        sym->status = SYMBOL_STATUS_RESOLVED;
+
+    return resolved;
 }
 
 static Symbol* resolve_name(Program* prog, const char* name)
 {
     Symbol* sym = lookup_symbol(prog, name);
 
-    if (sym)
-        resolve_symbol(prog, sym);
+    if (!sym)
+        return NULL;
+
+    if (!resolve_symbol(prog, sym))
+        return NULL;
 
     return sym;
 }
 
-static void enter_scope(Program* prog, Scope* scope)
+static bool resolve_program(Program* prog)
 {
-    assert(scope);
-    prog->curr_scope = scope;
-}
-
-static void exit_scope(Program* prog)
-{
-    prog->curr_scope = prog->curr_scope->parent;
-}
-
-static void resolve_scope(Program* prog, Scope* scope)
-{
-    enter_scope(prog, scope);
-
-    List* head = &scope->decls;
+    List* head = &prog->decls;
 
     for (List* it = head->next; it != head; it = it->next)
     {
         Decl* decl = list_entry(it, Decl, lnode);
         Symbol* sym = resolve_name(prog, decl->name);
 
-        //ftprint_out("Resolved `%s`. type is `%s`\n", sym->name, type_name(sym->t.type));
-        ftprint_out("Resolved symbol `%s`\n", sym->name);
+        if (!sym)
+            return NULL;
+
+        ftprint_out("Resolved symbol `%s` type: `%s`\n", sym->name, type_name(decl->type));
     }
 
-    exit_scope(prog);
+    return true;
 }
 
 static void print_errors(ByteStream* errors)
@@ -456,13 +455,17 @@ Program* compile_program(const char* path)
     prog->errors = byte_stream_create(&prog->ast_mem);
     prog->path = intern_str_lit(path, cstr_len(path));
     prog->code = slurp_file(&prog->gen_mem, prog->path);
+    prog->global_syms = hmap(8, NULL);
+    prog->local_syms_at = prog->local_syms;
+    prog->type_ptr_cache = hmap(6, NULL);
+    prog->type_proc_cache = hmap(6, NULL);
 
-    init_scope(&prog->global_scope, NULL);
+    list_head_init(&prog->decls);
     init_builtin_syms(prog);
 
     if (parse_code(prog, prog->code))
     {
-        resolve_scope(prog, &prog->global_scope);
+        resolve_program(prog);
     }
 
     print_errors(&prog->errors);
@@ -470,32 +473,11 @@ Program* compile_program(const char* path)
     return prog;
 }
 
-static void init_scope(Scope* scope, Scope* parent)
-{
-    scope->syms_map = hmap(8, NULL);
-    scope->parent = parent;
-
-    list_head_init(&scope->decls);
-    list_head_init(&scope->children);
-}
-
-static void free_scope(Scope* scope)
-{
-    hmap_destroy(&scope->syms_map);
-
-    List* head = &scope->children;
-
-    for (List* it = head->next; it != head; it = it->next)
-    {
-        Scope* child = list_entry(it, Scope, lnode);
-
-        free_scope(child);
-    }
-}
-
 void free_program(Program* prog)
 {
-    free_scope(&prog->global_scope);
+    hmap_destroy(&prog->global_syms);
+    hmap_destroy(&prog->type_ptr_cache);
+    hmap_destroy(&prog->type_proc_cache);
 
     // Clean up memory arenas
     Allocator bootstrap = prog->gen_mem;

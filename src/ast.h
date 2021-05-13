@@ -7,11 +7,15 @@
 #include "lexer.h"
 #include "llist.h"
 #include "nibble.h"
+#include "hash_map.h"
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
 typedef struct Decl Decl;
 typedef struct Stmt Stmt;
+
+typedef struct Type Type;
+typedef struct Symbol Symbol;
 
 ///////////////////////////////
 //       Type Specifiers
@@ -122,6 +126,10 @@ typedef enum ExprKind {
 struct Expr {
     ExprKind kind;
     ProgRange range;
+
+    Type* type;
+    bool is_const;
+    Scalar const_val;
 };
 
 typedef struct ExprTernary {
@@ -188,6 +196,7 @@ typedef struct ExprStr {
 typedef struct ExprIdent {
     Expr super;
     const char* name;
+    Symbol* sym;
 } ExprIdent;
 
 typedef struct ExprCast {
@@ -271,6 +280,7 @@ typedef enum StmtKind {
     AST_StmtLabel,
     AST_StmtExpr,
     AST_StmtExprAssign,
+    AST_StmtDecl,
     AST_StmtBlock,
 } StmtKind;
 
@@ -284,24 +294,8 @@ typedef struct StmtNoOp {
     Stmt super;
 } StmtNoOp;
 
-typedef enum BlockItemKind {
-    BLOCK_ITEM_NONE = 0,
-    BLOCK_ITEM_DECL,
-    BLOCK_ITEM_STMT,
-} BlockItemKind;
-
-typedef struct BlockItem {
-    BlockItemKind kind;
-
-    union {
-        Decl* decl;
-        Stmt* stmt;
-    };
-} BlockItem;
-
 typedef struct StmtBlock {
     Stmt super;
-    List decls;
     List stmts;
 } StmtBlock;
 
@@ -338,7 +332,7 @@ typedef struct StmtDoWhile {
 
 typedef struct StmtFor {
     Stmt super;
-    BlockItem init;
+    Stmt* init;
     Expr* cond;
     Stmt* next;
     Stmt* body;
@@ -399,15 +393,21 @@ typedef struct StmtLabel {
     Stmt* target;
 } StmtLabel;
 
+typedef struct StmtDecl {
+    Stmt super;
+    Decl* decl;
+} StmtDecl;
+
 Stmt* new_stmt_noop(Allocator* allocator, ProgRange range);
-Stmt* new_stmt_block(Allocator* allocator, List* stmts, List* decls, ProgRange range);
+Stmt* new_stmt_decl(Allocator* allocator, Decl* decl);
+Stmt* new_stmt_block(Allocator* allocator, List* stmts, ProgRange range);
 Stmt* new_stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
 Stmt* new_stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
 Stmt* new_stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
 Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, List* elif_blks, ElseBlock* else_blk, ProgRange range);
 IfCondBlock* new_if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* new_stmt_for(Allocator* allocator, BlockItem init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
+Stmt* new_stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
 Stmt* new_stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_break(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_continue(Allocator* allocator, const char* label, ProgRange range);
@@ -436,6 +436,7 @@ struct Decl {
     DeclKind kind;
     ProgRange range;
     const char* name;
+    Type* type;
     ListNode lnode;
 };
 
@@ -498,4 +499,148 @@ Decl* new_decl_proc(Allocator* allocator, const char* name, size_t num_params, L
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 
+///////////////////////////////
+//       Types
+//////////////////////////////
+
+typedef enum TypeKind {
+    TYPE_VOID,
+    TYPE_INTEGER,
+    TYPE_FLOAT,
+    TYPE_ENUM,
+    TYPE_PTR,
+    TYPE_PROC,
+    TYPE_ARRAY,
+    TYPE_STRUCT,
+    TYPE_UNION,
+} TypeKind;
+
+typedef enum TypeStatus {
+    TYPE_STATUS_COMPLETE,
+    TYPE_STATUS_INCOMPLETE,
+    TYPE_STATUS_COMPLETING,
+} TypeStatus;
+
+typedef struct Type Type;
+
+typedef struct TypeInteger {
+    IntegerKind kind;
+    bool is_signed;
+    unsigned long long max;
+} TypeInteger;
+
+typedef struct TypeFloat {
+    FloatKind kind;
+} TypeFloat;
+
+typedef struct TypeProc {
+    size_t num_params;
+    Type** params;
+    Type* ret;
+} TypeProc;
+
+typedef struct TypeArray {
+    Type* base;
+    size_t len;
+} TypeArray;
+
+typedef struct TypePtr {
+    Type* base;
+} TypePtr;
+
+typedef struct TypeAggregateField {
+    Type* type;
+    size_t offset;
+    const char* name;
+} TypeAggregateField;
+
+typedef struct TypeAggregate {
+    size_t num_fields;
+    TypeAggregateField* fields;
+} TypeAggregate;
+
+struct Type {
+    TypeKind kind;
+    TypeStatus status;
+    int id;
+    size_t size;
+    size_t align;
+
+    union {
+        TypeInteger as_integer;
+        TypeFloat as_float;
+        TypePtr as_ptr;
+        TypeProc as_proc;
+        TypeArray as_array;
+        TypeAggregate as_struct;
+        TypeAggregate as_union;
+    };
+};
+
+
+extern Type* type_void;
+extern Type* type_bool;
+extern Type* type_char;
+extern Type* type_schar;
+extern Type* type_uchar;
+extern Type* type_short;
+extern Type* type_ushort;
+extern Type* type_int;
+extern Type* type_uint;
+extern Type* type_long;
+extern Type* type_ulong;
+extern Type* type_llong;
+extern Type* type_ullong;
+extern Type* type_ssize;
+extern Type* type_usize;
+extern Type* type_f32;
+extern Type* type_f64;
+
+extern size_t PTR_SIZE;
+extern size_t PTR_ALIGN;
+
+void init_builtin_types(OS target_os, Arch target_arch);
+const char* type_name(Type* type);
+
+Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
+Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
+
+///////////////////////////////
+//       Symbols
+//////////////////////////////
+
+typedef enum SymbolKind {
+    SYMBOL_NONE,
+    SYMBOL_DECL,
+    SYMBOL_TYPE,
+} SymbolKind;
+
+typedef enum SymbolStatus {
+    SYMBOL_STATUS_UNRESOLVED,
+    SYMBOL_STATUS_RESOLVING,
+    SYMBOL_STATUS_RESOLVED,
+} SymbolStatus;
+
+enum SymbolFlags {
+    SYMBOL_IS_LOCAL   = 0x1,
+};
+
+struct Symbol {
+    SymbolKind kind;
+    SymbolStatus status;
+    uint64_t flags;
+    const char* name;
+
+    union {
+        Decl* decl;
+        Type* type;
+    };
+
+    ListNode lnode;
+};
+
+Symbol* new_symbol_decl(Allocator* allocator, Decl* decl);
+Symbol* new_symbol_type(Allocator* allocator, const char* name, Type* type);
+
+bool symbol_is_type(Symbol* sym);
 #endif

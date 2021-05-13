@@ -210,7 +210,7 @@ static bool parse_fill_aggregate_body(Parser* parser, List* fields)
         if (!field)
             return false;
 
-        list_add(fields->prev, &field->lnode);
+        list_add_last(fields, &field->lnode);
     }
 
     return true;
@@ -310,7 +310,7 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
             if (param)
             {
                 num_params += 1;
-                list_add(params.prev, &param->lnode);
+                list_add_last(&params, &param->lnode);
             }
             else
             {
@@ -573,7 +573,7 @@ static Expr* parse_expr_compound_lit(Parser* parser)
             if (initzer)
             {
                 num_initzers += 1;
-                list_add(initzers.prev, &initzer->lnode);
+                list_add_last(&initzers, &initzer->lnode);
             }
             else
             {
@@ -820,7 +820,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
                 if (arg)
                 {
                     num_args += 1;
-                    list_add(args.prev, &arg->lnode);
+                    list_add_last(&args, &arg->lnode);
                 }
                 else
                 {
@@ -1060,36 +1060,6 @@ Expr* parse_expr(Parser* parser)
 //    Parse statements
 //////////////////////////////
 
-static BlockItem parse_block_item(Parser* parser)
-{
-    BlockItem item = {0};
-
-    if (is_token_kind(parser, TKN_KW))
-    {
-        switch (parser->token.as_kw.kw)
-        {
-            case KW_CONST:
-            case KW_TYPEDEF:
-            case KW_VAR:
-            case KW_ENUM:
-            case KW_STRUCT:
-            case KW_UNION:
-            case KW_PROC:
-                item.kind = BLOCK_ITEM_DECL;
-                item.decl = parse_decl(parser);
-
-                return item;
-            default:
-                break;
-        }
-    }
-
-    item.kind = BLOCK_ITEM_STMT;
-    item.stmt = parse_stmt(parser);
-
-    return item;
-}
-
 static Stmt* parse_stmt_block(Parser* parser)
 {
     assert(is_token_kind(parser, TKN_LBRACE));
@@ -1098,43 +1068,26 @@ static Stmt* parse_stmt_block(Parser* parser)
 
     next_token(parser);
 
-    List decls = list_head_create(decls);
     List stmts = list_head_create(stmts);
     bool bad_item = false;
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
     {
-        BlockItem item = parse_block_item(parser);
+        Stmt* item = parse_stmt(parser);
 
-        switch (item.kind)
+        if (!item)
         {
-            case BLOCK_ITEM_DECL:
-                if (item.decl)
-                    list_add(decls.prev, &item.decl->lnode);
-                else
-                    bad_item = true;
-
-                break;
-            case BLOCK_ITEM_STMT:
-                if (item.stmt)
-                    list_add(stmts.prev, &item.stmt->lnode);
-                else
-                    bad_item = true;
-
-                break;
-            default:
-                bad_item = true;
-                break;
+            bad_item = true;
+            break;
         }
 
-        if (bad_item)
-            break;
+        list_add_last(&stmts, &item->lnode);
     }
 
     if (!bad_item && expect_token(parser, TKN_RBRACE, "Failed to parse end of statement block"))
     {
         range.end = parser->ptoken.range.end;
-        stmt = new_stmt_block(parser->ast_arena, &decls, &stmts, range);
+        stmt = new_stmt_block(parser->ast_arena, &stmts, range);
     }
 
     return stmt;
@@ -1227,7 +1180,7 @@ static Stmt* parse_stmt_if(Parser* parser)
             if (elif)
             {
                 num_elif_blks += 1;
-                list_add(elif_blks.prev, &elif->lnode);
+                list_add_last(&elif_blks, &elif->lnode);
             }
             else
             {
@@ -1299,7 +1252,7 @@ static SwitchCase* parse_switch_case(Parser* parser)
             break;
         }
 
-        list_add(stmts.prev, &stmt->lnode);
+        list_add_last(&stmts, &stmt->lnode);
     }
 
     if (!bad_stmt)
@@ -1354,7 +1307,7 @@ static Stmt* parse_stmt_switch(Parser* parser)
 
         has_default = has_default || is_default;
 
-        list_add(cases.prev, &swcase->lnode);
+        list_add_last(&cases, &swcase->lnode);
     } while (is_keyword(parser, KW_CASE));
 
     if (!bad_case && expect_token(parser, TKN_RBRACE, error_prefix))
@@ -1419,6 +1372,17 @@ static Stmt* parse_stmt_do_while(Parser* parser)
     return stmt;
 }
 
+static Stmt* parse_stmt_decl(Parser* parser)
+{
+    Stmt* stmt = NULL;
+    Decl* decl = parse_decl(parser);
+
+    if (decl)
+        stmt = new_stmt_decl(parser->ast_arena, decl);
+
+    return stmt;
+}
+
 static Stmt* parse_stmt_expr(Parser* parser, bool terminate)
 {
     Stmt* stmt = NULL;
@@ -1474,26 +1438,17 @@ static Stmt* parse_stmt_for(Parser* parser)
     if (!expect_token(parser, TKN_LPAREN, error_prefix))
         return NULL;
 
-    BlockItem init = {0};
+    Stmt* init = NULL;
 
     if (!match_token(parser, TKN_SEMICOLON))
     {
         if (is_keyword(parser, KW_VAR))
-        {
-            init.kind = BLOCK_ITEM_DECL;
-            init.decl = parse_decl(parser);
-
-            if (!init.decl)
-                return NULL;
-        }
+            init = parse_stmt_decl(parser);
         else
-        {
-            init.kind = BLOCK_ITEM_STMT;
-            init.stmt = parse_stmt_expr(parser, true);
+            init = parse_stmt_expr(parser, true);
 
-            if (!init.stmt)
-                return NULL;
-        }
+        if (!init)
+            return NULL;
     }
 
     Expr* cond = NULL;
@@ -1682,7 +1637,6 @@ Stmt* parse_stmt(Parser* parser)
         case TKN_LBRACE:
             return parse_stmt_block(parser);
         case TKN_KW:
-        {
             switch (token.as_kw.kw)
             {
                 case KW_IF:
@@ -1706,22 +1660,11 @@ Stmt* parse_stmt(Parser* parser)
                 case KW_LABEL:
                     return parse_stmt_label(parser);
                 default:
-                    break;
+                    return parse_stmt_decl(parser);
             }
-        }
-        break;
         default:
             return parse_stmt_expr(parser, true);
-            break;
     }
-
-    // If we got here, we have an unexpected token.
-    char tmp[32];
-
-    print_token(&parser->token, tmp, sizeof(tmp));
-    parser_on_error(parser, "Unexpected token `%s` while parsing a statement", tmp);
-
-    return NULL;
 }
 
 ///////////////////////////////
@@ -1837,7 +1780,7 @@ static Decl* parse_decl_proc(Parser* parser)
                 if (param)
                 {
                     num_params += 1;
-                    list_add(params.prev, &param->lnode);
+                    list_add_last(&params, &param->lnode);
                 }
                 else
                 {
@@ -1984,7 +1927,7 @@ static Decl* parse_decl_enum(Parser* parser)
                 if (item)
                 {
                     num_items += 1;
-                    list_add(items.prev, &item->lnode);
+                    list_add_last(&items, &item->lnode);
                 }
                 else
                 {

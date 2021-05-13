@@ -11,7 +11,6 @@
 #include "hash_map.c"
 #include "lexer.c"
 #include "llist.h"
-#include "types.c"
 #include "nibble.c"
 #include "parser.c"
 #include "print.c"
@@ -880,6 +879,15 @@ void test_parser(void)
               "(proc f ((var a (:ident int)) (var b (:ident int))) =>(:ident int) (stmt-block))");
     TEST_DECL("proc f() => int {return 0;}", "(proc f () =>(:ident int) (stmt-block (return 0)))");
 
+    // Test decl statements
+    TEST_STMT("var a : int;", "(var a (:ident int))");
+    TEST_STMT("const a := 1;", "(const a 1)");
+    TEST_STMT("enum Kind {A}", "(enum Kind A)");
+    TEST_STMT("struct A {x: int;}", "(struct A (x (:ident int)))");
+    TEST_STMT("union A {x: int; y: float32;}", "(union A (x (:ident int)) (y (:ident float32)))");
+    TEST_STMT("typedef i32 = int;", "(typedef i32 (:ident int))");
+    TEST_STMT("proc f(){}", "(proc f () => (stmt-block))");
+
     // Test expression statements
     TEST_STMT("f(1);", "(call f 1)");
     TEST_STMT("f(1, b=3);", "(call f 1 b=3)");
@@ -946,7 +954,7 @@ void test_parser(void)
     TEST_STMT("{;}", "(stmt-block no-op)");
     TEST_STMT("{g = 10;}", "(stmt-block (= g 10))");
     TEST_STMT("{var a : int = 1; g = 10;}", "(stmt-block (var a (:ident int) 1) (= g 10))");
-    TEST_STMT("{g = 10; var a : int = 1;}", "(stmt-block (var a (:ident int) 1) (= g 10))");
+    TEST_STMT("{g = 10; var a : int = 1;}", "(stmt-block (= g 10) (var a (:ident int) 1))");
     TEST_STMT("{for(;;);}", "(stmt-block (for ; ;  no-op))");
 
 #undef TEST_TYPESPEC

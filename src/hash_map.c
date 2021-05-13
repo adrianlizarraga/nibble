@@ -19,6 +19,16 @@ uint64_t hash_uint64(uint64_t h)
     return h;
 }
 
+uint64_t hash_ptr(const void* ptr)
+{
+    return hash_uint64((uintptr_t)ptr);
+}
+
+uint64_t hash_mix_uint64(uint64_t a, uint64_t b)
+{
+    return hash_uint64(a ^ b);
+}
+
 // FNV-1a hash
 // TODO: Replace with a better hash function ;)
 uint64_t hash_bytes(const void* buf, size_t len)
