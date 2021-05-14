@@ -601,6 +601,20 @@ const char* type_name(Type* type)
     }
 }
 
+bool type_is_arithmetic(Type* type)
+{
+    TypeKind kind = type->kind;
+
+    return (kind == TYPE_INTEGER) || (kind == TYPE_FLOAT) || (kind == TYPE_ENUM);
+}
+
+bool type_is_scalar(Type* type)
+{
+    TypeKind kind = type->kind;
+
+    return type_is_arithmetic(type) || (kind == TYPE_PTR) || (kind == TYPE_PROC);
+}
+
 static Type* type_alloc(Allocator* allocator, TypeKind kind)
 {
     Type* type = alloc_type(allocator, Type, true);

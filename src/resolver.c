@@ -2,15 +2,37 @@
 #include "parser.h"
 #define NIBBLE_PRINT_DECLS
 
-static bool resolve_program(Program* prog);
+static bool resolve_decls(Program* prog);
 static Symbol* resolve_name(Program* prog, const char* name);
 static bool resolve_symbol(Program* prog, Symbol* sym);
 static bool resolve_decl(Program* prog, Decl* decl);
 static bool resolve_decl_var(Program* prog, Decl* decl);
-static Type* resolve_typespec(Program* prog, TypeSpec* typespec);
+static bool resolve_decl_const(Program* prog, Decl* decl);
+static bool resolve_decl_proc(Program* prog, Decl* decl);
+static bool resolve_decl_proc_body(Program* prog, Decl* decl);
 static bool resolve_expr(Program* prog, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Program* prog, Expr* expr);
+static bool resolve_expr_binary(Program* prog, Expr* expr);
+static Type* resolve_typespec(Program* prog, TypeSpec* typespec);
+
+enum ResolveStmtRetFlags {
+    RESOLVE_STMT_SUCCESS = 0x1,
+    RESOLVE_STMT_RETURNS = 0x2,
+};
+
+enum ResolveStmtInFlags {
+    RESOLVE_STMT_BREAK_ALLOWED = 0x1,
+    RESOLVE_STMT_CONTINUE_ALLOWED = 0x2,
+};
+
+static unsigned resolve_stmt(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags);
+static unsigned resolve_stmt_block(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags);
+
 static Symbol* lookup_symbol(Program* prog, const char* name);
+static Symbol* lookup_local_symbol(Program* prog, const char* name);
+static Symbol* enter_scope(Program* prog);
+static void exit_scope(Program* prog, Symbol* scope_begin);
+static bool push_local_var(Program* prog, Decl* decl);
 
 static bool parse_code(Program* prog, const char* code);
 static void init_builtin_syms(Program* prog);
@@ -159,18 +181,65 @@ static bool parse_code(Program* prog, const char* code)
     return true;
 }
 
+static Symbol* enter_scope(Program* prog)
+{
+    return prog->local_syms_at;
+}
+
+static void exit_scope(Program* prog, Symbol* scope_begin)
+{
+    prog->local_syms_at = scope_begin;
+}
+
+static bool push_local_var(Program* prog, Decl* decl)
+{
+    // TODO: Only look up to the beginning of the current scope to allow shadowing
+    // variables in parent scopes. This currently prohibits all local variable shadowing;
+    // global variable shadowing is currently allowed.
+    if (lookup_local_symbol(prog, decl->name))
+        return false;
+
+    if (prog->local_syms_at == prog->local_syms + MAX_LOCAL_SYMS)
+    {
+        NIBBLE_FATAL_EXIT("INTERNAL ERROR: Pushed too many local symbols");
+        return false;
+    }
+
+    Symbol* sym = prog->local_syms_at;
+    sym->kind = SYMBOL_DECL;
+    sym->status = SYMBOL_STATUS_RESOLVED;
+    sym->name = decl->name;
+    sym->decl = decl;
+
+    prog->local_syms_at += 1;
+
+    return true;
+}
+
+static Symbol* lookup_local_symbol(Program* prog, const char* name)
+{
+    for (Symbol* it = prog->local_syms_at; it != prog->local_syms; it -= 1)
+    {
+        Symbol* sym = it - 1;
+
+        if (sym->name == name)
+            return sym;
+    }
+
+    return NULL;
+}
+
 static Symbol* lookup_symbol(Program* prog, const char* name)
 {
     // Lookup local symbols first.
-    for (Symbol* it = prog->local_syms; it != prog->local_syms_at; it += 1)
-    {
-        if (it->name == name)
-            return it;
-    }
+    Symbol* sym = lookup_local_symbol(prog, name);
 
     // Lookup global syms.
-    uint64_t* pval = hmap_get(&prog->global_syms, PTR_UINT(name));
-    Symbol* sym = pval ? (void*)*pval : NULL;
+    if (!sym)
+    {
+        uint64_t* pval = hmap_get(&prog->global_syms, PTR_UINT(name));
+        sym = pval ? (void*)*pval : NULL;
+    }
 
     return sym;
 }
@@ -182,9 +251,127 @@ static bool resolve_expr_int(Program* prog, Expr* expr)
     // TODO: Take into account literal suffix (e.g., u, ul, etc.)
     expr->type = type_int;
     expr->is_const = true;
+    expr->is_lvalue = false;
     expr->const_val.kind = SCALAR_INTEGER;
     expr->const_val.as_int.kind = INTEGER_INT; // TODO: Redundant
     expr->const_val.as_int.i = (int)eint->value;
+
+    return true;
+}
+
+static bool resolve_expr_binary(Program* prog, Expr* expr)
+{
+    ExprBinary* ebinary = (ExprBinary*)expr;
+    Expr* left = ebinary->left;
+    Expr* right = ebinary->right;
+
+    if (!resolve_expr(prog, left, NULL))
+        return false;
+
+    if (!resolve_expr(prog, right, NULL))
+        return false;
+
+    switch (ebinary->op)
+    {
+        case TKN_PLUS:
+            if (type_is_arithmetic(left->type) && type_is_arithmetic(right->type))
+            {
+                if (left->type == right->type)
+                {
+                    if (left->is_const && right->is_const)
+                    {
+                        assert(left->type == type_int); // TODO: Support other types
+                        expr->type = left->type;
+                        expr->is_const = true;
+                        expr->is_lvalue = false;
+                        expr->const_val.kind = SCALAR_INTEGER;
+                        expr->const_val.as_int.kind = INTEGER_INT; // TODO: Redundant
+                        expr->const_val.as_int.i = (int)left->const_val.as_int.i + (int)right->const_val.as_int.i;
+                    }
+                    else
+                    {
+                        expr->type = left->type;
+                        expr->is_const = false;
+                        expr->is_lvalue = false;
+                    }
+
+                    return true;
+                }
+                else
+                {
+                    // TODO: Support type conversion
+                    program_on_error(prog, "Cannot add operands of different types");
+                    return false;
+                }
+            }
+            else
+            {
+                // TODO: Support pointer arithmetic.
+                program_on_error(prog, "Can only add arithmetic types");
+                return false;
+            }
+            break;
+        default:
+            program_on_error(prog, "Operation type `%d` not supported", ebinary->op);
+            break;
+    }
+
+    return false;
+}
+
+static bool resolve_expr_ident(Program* prog, Expr* expr)
+{
+    ExprIdent* eident = (ExprIdent*)expr;
+    Symbol* sym = resolve_name(prog, eident->name);
+
+    if (!sym)
+    {
+        program_on_error(prog, "Unknown symbol `%s` in expression", eident->name);
+        return false;
+    }
+
+    switch (sym->kind)
+    {
+        case SYMBOL_DECL:
+            switch (sym->decl->kind)
+            {
+                case AST_DeclVar:
+                    expr->type = sym->decl->type;
+                    expr->is_lvalue = true;
+                    expr->is_const = false;
+                    eident->sym = sym;
+                    // TODO: Support array decay to pointer when identifer refers to an actual array.
+                    return true;
+                case AST_DeclConst:
+                    expr->type = sym->decl->type;
+                    expr->is_lvalue = false;
+                    expr->is_const = true;
+                    expr->const_val = ((DeclConst*)(sym->decl))->init->const_val;
+                    eident->sym = sym;
+
+                    return true;
+                case AST_DeclProc:
+                    expr->type = sym->decl->type;
+                    expr->is_lvalue = false;
+                    expr->is_const = false;
+                    eident->sym = sym;
+
+                    return true;
+                default:
+                    break;
+            }
+            break;
+        default:
+            break;
+    }
+
+    program_on_error(prog, "Expression identifier `%s` must refer to a var, const, or proc declaration", eident->name);
+    return false;
+}
+
+static bool resolve_expr_call(Program* prog, Expr* expr)
+{
+    ExprCall* ecall = (ExprCall*)expr;
 
     return true;
 }
@@ -193,9 +380,14 @@ static bool resolve_expr(Program* prog, Expr* expr, Type* expected_type)
 {
     switch (expr->kind)
     {
-        case AST_ExprInt: {
+        case AST_ExprInt:
             return resolve_expr_int(prog, expr);
-        } break;
+        case AST_ExprBinary:
+            return resolve_expr_binary(prog, expr);
+        case AST_ExprIdent:
+            return resolve_expr_ident(prog, expr);
+        case AST_ExprCall:
+            return resolve_expr_call(prog, expr);
         default:
             ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
             assert(0);
@@ -257,7 +449,6 @@ static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
             AllocatorState mem_state = allocator_get_state(&prog->tmp_mem);
             Type** params = array_create(&prog->tmp_mem, Type*, 16);
             List* head = &ts->params;
-            size_t num_params = 0;
 
             for (List* it = head->next; it != head; it = it->next)
             {
@@ -270,18 +461,30 @@ static Type* resolve_typespec(Program* prog, TypeSpec* typespec)
                     return NULL;
                 }
 
-                params[num_params] = param;
-                num_params += 1;
+                if (param == type_void)
+                {
+                    program_on_error(prog, "Procedure parameter cannot be void");
+                    allocator_restore_state(mem_state);
+                    return NULL;
+                }
+
+                array_push(params, param);
             }
 
-            assert(num_params == ts->num_params);
+            assert(array_len(params) == ts->num_params);
             allocator_restore_state(mem_state);
 
-            Type* ret = resolve_typespec(prog, ts->ret);
-            if (!ret)
-                return NULL;
+            Type* ret = type_void;
 
-            return type_proc(&prog->ast_mem, &prog->type_proc_cache, num_params, params, ret);
+            if (ts->ret)
+            {
+                ret = resolve_typespec(prog, ts->ret);
+
+                if (!ret)
+                    return NULL;
+            }
+
+            return type_proc(&prog->ast_mem, &prog->type_proc_cache, array_len(params), params, ret);
         }
         default:
             ftprint_err("Unsupported typespec kind `%d` in resolution\n", typespec->kind);
@@ -303,7 +506,10 @@ static bool resolve_decl_var(Program* prog, Decl* decl)
     {
         Type* declared_type = resolve_typespec(prog, typespec);
 
-        if (expr && declared_type)
+        if (!declared_type)
+            return NULL;
+
+        if (expr)
         {
             if (resolve_expr(prog, expr, declared_type))
             {
@@ -312,8 +518,7 @@ static bool resolve_decl_var(Program* prog, Decl* decl)
                 // TODO: Check if can convert type.
                 if (inferred_type != declared_type)
                 {
-                    program_on_error(prog, "Incompatible types. Cannot convert `%s` to `%s`", 
-                                     type_name(inferred_type),
+                    program_on_error(prog, "Incompatible types. Cannot convert `%s` to `%s`", type_name(inferred_type),
                                      type_name(declared_type));
                 }
                 else
@@ -321,6 +526,10 @@ static bool resolve_decl_var(Program* prog, Decl* decl)
                     type = declared_type;
                 }
             }
+        }
+        else
+        {
+            type = declared_type;
         }
     }
     else
@@ -331,9 +540,133 @@ static bool resolve_decl_var(Program* prog, Decl* decl)
             type = expr->type;
     }
 
+    // TODO: Complete incomplete aggregate type
+
     decl->type = type;
 
     return type != NULL;
+}
+
+static bool resolve_decl_const(Program* prog, Decl* decl)
+{
+    DeclConst* dconst = (DeclConst*)decl;
+    TypeSpec* typespec = dconst->typespec;
+    Expr* init = dconst->init;
+
+    if (!resolve_expr(prog, init, NULL))
+        return false;
+
+    if (!init->is_const)
+    {
+        program_on_error(prog, "Value for const decl `%s` must be a constant expression", decl->name);
+        return false;
+    }
+
+    if (!type_is_scalar(init->type))
+    {
+        program_on_error(prog, "Constant expression must be of a scalar type");
+        return false;
+    }
+
+    if (typespec)
+    {
+        Type* declared_type = resolve_typespec(prog, typespec);
+
+        if (declared_type != init->type)
+        {
+            // TODO: Support type conversions
+            program_on_error(prog, "Incompatible types. Cannot convert expression of type `%s` to `%s`",
+                             type_name(init->type), type_name(declared_type));
+            return false;
+        }
+
+        decl->type = declared_type;
+    }
+    else
+    {
+        decl->type = init->type;
+    }
+
+    return true;
+}
+
+static bool resolve_decl_proc(Program* prog, Decl* decl)
+{
+    DeclProc* dproc = (DeclProc*)decl;
+    AllocatorState mem_state = allocator_get_state(&prog->tmp_mem);
+    Type** params = array_create(&prog->tmp_mem, Type*, 16);
+    List* head = &dproc->params;
+
+    for (List* it = head->next; it != head; it = it->next)
+    {
+        Decl* proc_param = list_entry(it, Decl, lnode);
+
+        if (!resolve_decl_var(prog, proc_param))
+        {
+            allocator_restore_state(mem_state);
+            return false;
+        }
+
+        // TODO: recursive ptr decay on param type
+        // TODO: complete incomplete param type (struct, union)
+
+        if (proc_param->type == type_void)
+        {
+            program_on_error(prog, "Procedure parameter cannot be void");
+            allocator_restore_state(mem_state);
+            return false;
+        }
+
+        array_push(params, proc_param->type);
+    }
+
+    assert(array_len(params) == dproc->num_params);
+    allocator_restore_state(mem_state);
+
+    Type* ret = type_void;
+
+    if (dproc->ret)
+    {
+        ret = resolve_typespec(prog, dproc->ret);
+
+        if (!ret)
+            return false;
+    }
+
+    decl->type = type_proc(&prog->ast_mem, &prog->type_proc_cache, array_len(params), params, ret);
+
+    return true;
+}
+
+static bool resolve_decl_proc_body(Program* prog, Decl* decl)
+{
+    assert(decl->kind == AST_DeclProc);
+
+    DeclProc* dproc = (DeclProc*)decl;
+    Symbol* scope_begin = enter_scope(prog);
+    List* head = &dproc->params;
+
+    for (List* it = head->next; it != head; it = it->next)
+    {
+        Decl* proc_param = list_entry(it, Decl, lnode);
+
+        push_local_var(prog, proc_param);    
+    }
+
+    Type* ret_type = decl->type->as_proc.ret;
+    unsigned r = resolve_stmt(prog, dproc->body, ret_type, 0);
+    bool returns = r & RESOLVE_STMT_RETURNS;
+    bool success = r & RESOLVE_STMT_SUCCESS;
+
+    exit_scope(prog, scope_begin);
+
+    if ((ret_type != type_void) && !returns)
+    {
+        program_on_error(prog, "Not all code paths in procedure `%s` return a value", decl->name);
+        return false;
+    }
+
+    return success;
 }
 
 static bool resolve_decl(Program* prog, Decl* decl)
@@ -343,13 +676,15 @@ static bool resolve_decl(Program* prog, Decl* decl)
         case AST_DeclVar:
             return resolve_decl_var(prog, decl);
         case AST_DeclConst:
+            return resolve_decl_const(prog, decl);
         case AST_DeclEnum:
         case AST_DeclUnion:
         case AST_DeclStruct:
         case AST_DeclTypedef:
-        case AST_DeclProc:
             ftprint_err("Decl kind `%d` not YET supported in resolution\n", decl->kind);
             break;
+        case AST_DeclProc:
+            return resolve_decl_proc(prog, decl);
         default:
             ftprint_err("Unknown decl kind `%d` while resolving symbol\n", decl->kind);
             assert(0);
@@ -357,6 +692,118 @@ static bool resolve_decl(Program* prog, Decl* decl)
     }
 
     return false;
+}
+
+static unsigned resolve_stmt_block(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags)
+{
+    StmtBlock* sblock = (StmtBlock*)stmt;
+    Symbol* scope_begin = enter_scope(prog);
+
+    unsigned ret_success = RESOLVE_STMT_SUCCESS;
+    List* head = &sblock->stmts;
+
+    for (List* it = head->next; it != head; it = it->next)
+    {
+        Stmt* child_stmt = list_entry(it, Stmt, lnode);
+        unsigned r = resolve_stmt(prog, child_stmt, ret_type, flags);
+
+        // NOTE: Keeps track if any statement in the block returns.
+        ret_success = (r & RESOLVE_STMT_RETURNS) | ret_success;
+
+        if (!(r & RESOLVE_STMT_SUCCESS))
+        {
+            ret_success &= ~RESOLVE_STMT_SUCCESS;
+            break;
+        }
+    }
+
+    exit_scope(prog, scope_begin);
+
+    return ret_success;
+}
+
+static unsigned resolve_stmt(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags)
+{
+    bool break_allowed = flags & RESOLVE_STMT_BREAK_ALLOWED;
+    bool continue_allowed = flags & RESOLVE_STMT_CONTINUE_ALLOWED;
+
+    switch (stmt->kind)
+    {
+        case AST_StmtNoOp:
+            return RESOLVE_STMT_SUCCESS;
+        case AST_StmtReturn:
+        { 
+            StmtReturn* sret = (StmtReturn*)stmt;
+
+            if (!sret->expr && (ret_type != type_void))
+            {
+                program_on_error(prog, "Return statement is missing a return value of type `%s`",
+                                 type_name(ret_type));
+                return RESOLVE_STMT_RETURNS;
+            }
+
+            if (sret->expr)
+            {
+                if (!resolve_expr(prog, sret->expr, ret_type))
+                    return RESOLVE_STMT_RETURNS;
+
+                // TODO: Support type conversions
+                if (sret->expr->type != ret_type)
+                {
+                    program_on_error(prog, "Invalid return type. Wanted `%s`, but got `%s`",
+                                     type_name(ret_type), type_name(sret->expr->type));
+                    return RESOLVE_STMT_RETURNS;
+                }
+            }
+
+            return RESOLVE_STMT_SUCCESS | RESOLVE_STMT_RETURNS;
+        }
+        case AST_StmtBreak:
+            if (!break_allowed)
+            {
+                program_on_error(prog, "Illegal break statement");
+                return 0;
+            }
+
+            return RESOLVE_STMT_SUCCESS;
+        case AST_StmtContinue:
+            if (!continue_allowed)
+            {
+                program_on_error(prog, "Illegal continue statement");
+                return 0;
+            }
+
+            return RESOLVE_STMT_SUCCESS;
+        case AST_StmtDecl:
+        {
+            StmtDecl* sdecl = (StmtDecl*)stmt;
+            Decl* decl = sdecl->decl;
+
+            if (decl->kind != AST_DeclVar)
+            {
+                // TODO: Support other declaration kinds.
+                program_on_error(prog, "Only variable declarations are supported inside procedures");
+                return 0;
+            }
+
+            if (!resolve_decl(prog, decl))
+                return 0;
+
+            if (!push_local_var(prog, decl))
+            {
+                program_on_error(prog, "Variable `%s` shadows a previous local declaration", decl->name);
+                return 0;
+            }
+
+            return RESOLVE_STMT_SUCCESS;
+        }
+        case AST_StmtBlock:
+            return resolve_stmt_block(prog, stmt, ret_type, flags);
+        default:
+            break;
+    }
+
+    return 0;
 }
 
 static bool resolve_symbol(Program* prog, Symbol* sym)
@@ -373,6 +820,7 @@ static bool resolve_symbol(Program* prog, Symbol* sym)
     assert(sym->status == SYMBOL_STATUS_UNRESOLVED);
 
     sym->status = SYMBOL_STATUS_RESOLVING;
+    ftprint_out("Trying to resolve `%s`\n", sym->name);
 
     bool resolved = true;
 
@@ -390,7 +838,14 @@ static bool resolve_symbol(Program* prog, Symbol* sym)
     }
 
     if (resolved)
+    {
         sym->status = SYMBOL_STATUS_RESOLVED;
+        ftprint_out("Resolved `%s`\n", sym->name);
+    }
+    else
+    {
+        ftprint_out("Failed to resolve `%s`\n", sym->name);
+    }
 
     return resolved;
 }
@@ -408,7 +863,7 @@ static Symbol* resolve_name(Program* prog, const char* name)
     return sym;
 }
 
-static bool resolve_program(Program* prog)
+static bool resolve_decls(Program* prog)
 {
     List* head = &prog->decls;
 
@@ -419,8 +874,24 @@ static bool resolve_program(Program* prog)
 
         if (!sym)
             return NULL;
+    }
 
-        ftprint_out("Resolved symbol `%s` type: `%s`\n", sym->name, type_name(decl->type));
+    return true;
+}
+
+static bool resolve_decls_body(Program* prog)
+{
+    List* head = &prog->decls;
+
+    for (List* it = head->next; it != head; it = it->next)
+    {
+        Decl* decl = list_entry(it, Decl, lnode);
+
+        if (decl->kind == AST_DeclProc)
+        {
+            if (!resolve_decl_proc_body(prog, decl))
+                return false;
+        }
     }
 
     return true;
@@ -441,7 +912,6 @@ static void print_errors(ByteStream* errors)
             chunk = chunk->next;
         }
     }
-
 }
 
 Program* compile_program(const char* path)
@@ -465,7 +935,13 @@ Program* compile_program(const char* path)
 
     if (parse_code(prog, prog->code))
     {
-        resolve_program(prog);
+        if (resolve_decls(prog))
+        {
+            if (resolve_decls_body(prog))
+            {
+                ftprint_out("FINISHED RESOLVING\n");
+            }
+        }
     }
 
     print_errors(&prog->errors);

@@ -129,6 +129,7 @@ struct Expr {
 
     Type* type;
     bool is_const;
+    bool is_lvalue;
     Scalar const_val;
 };
 
@@ -601,6 +602,8 @@ extern size_t PTR_ALIGN;
 
 void init_builtin_types(OS target_os, Arch target_arch);
 const char* type_name(Type* type);
+bool type_is_arithmetic(Type* type);
+bool type_is_scalar(Type* type);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
@@ -635,8 +638,6 @@ struct Symbol {
         Decl* decl;
         Type* type;
     };
-
-    ListNode lnode;
 };
 
 Symbol* new_symbol_decl(Allocator* allocator, Decl* decl);

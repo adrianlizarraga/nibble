@@ -9,6 +9,7 @@
 #define MAX_LOCAL_SYMS 512
 
 typedef struct Program Program;
+typedef struct Scope Scope;
 
 struct Program {
     Allocator gen_mem;
@@ -22,6 +23,7 @@ struct Program {
     List decls;
     HMap global_syms;
 
+    // TODO: Create an expandable stack similar to the arena allocator
     Symbol local_syms[MAX_LOCAL_SYMS];
     Symbol* local_syms_at;
 
