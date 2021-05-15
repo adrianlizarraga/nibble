@@ -1,7 +1,6 @@
 #include "nibble.h"
 #include "cstring.h"
 #include "hash_map.h"
-#include "types.h"
 #include "parser.h"
 
 typedef struct NibbleCtx {

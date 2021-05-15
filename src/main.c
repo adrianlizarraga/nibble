@@ -17,7 +17,6 @@
 #include "lexer.c"
 #include "ast.c"
 #include "parser.c"
-#include "types.c"
 #include "resolver.c"
 #include "nibble.c"
 

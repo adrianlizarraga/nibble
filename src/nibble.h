@@ -56,20 +56,38 @@ typedef struct Float {
     };
 } Float;
 
-typedef union Integer {
-    bool b;
-    char c;
-    unsigned char uc;
-    signed char sc;
-    short s;
-    unsigned short us;
-    int i;
-    unsigned u;
-    long l;
-    unsigned long ul;
-    long long ll;
-    unsigned long long ull;
-    size_t word;
+typedef enum IntegerKind {
+    INTEGER_INT,
+    INTEGER_BOOL,
+    INTEGER_CHAR,
+    INTEGER_SCHAR,
+    INTEGER_UCHAR,
+    INTEGER_SHORT,
+    INTEGER_USHORT,
+    INTEGER_UINT,
+    INTEGER_LONG,
+    INTEGER_ULONG,
+    INTEGER_LLONG,
+    INTEGER_ULLONG,
+} IntegerKind;
+
+typedef struct Integer {
+    IntegerKind kind;
+
+    union {
+        bool b;
+        char c;
+        unsigned char uc;
+        signed char sc;
+        short s;
+        unsigned short us;
+        int i;
+        unsigned u;
+        long l;
+        unsigned long ul;
+        long long ll;
+        unsigned long long ull;
+    };
 } Integer;
 
 typedef enum ScalarKind {
