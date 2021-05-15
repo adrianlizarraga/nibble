@@ -758,6 +758,14 @@ static unsigned resolve_stmt_block(Program* prog, Stmt* stmt, Type* ret_type, un
 
     for (List* it = head->next; it != head; it = it->next)
     {
+        if (ret_success & RESOLVE_STMT_RETURNS)
+        {
+            program_on_error(prog, "Statement will never be executed; all previous control paths return");
+
+            ret_success &= ~RESOLVE_STMT_SUCCESS;
+            break;
+        }
+
         Stmt* child_stmt = list_entry(it, Stmt, lnode);
         unsigned r = resolve_stmt(prog, child_stmt, ret_type, flags);
 
@@ -774,6 +782,86 @@ static unsigned resolve_stmt_block(Program* prog, Stmt* stmt, Type* ret_type, un
     exit_scope(prog, scope_begin);
 
     return ret_success;
+}
+
+static bool resolve_cond_expr(Program* prog, Expr* expr)
+{
+    // Resolve condition expression.
+    if (!resolve_expr(prog, expr, NULL))
+        return false;
+
+    // Ensure that condition express is a scalar type.
+    Type* cond_type = type_decay(&prog->ast_mem, &prog->type_ptr_cache, expr->type);
+
+    if (!type_is_scalar(cond_type))
+    {
+        program_on_error(prog, "Conditional expression must resolve to a scalar type, have type `%s`",
+                         type_name(cond_type));
+        return false;
+    }
+
+    return true;
+}
+
+static unsigned resolve_cond_block(Program* prog, IfCondBlock* cblock, Type* ret_type, unsigned flags)
+{
+    if (!resolve_cond_expr(prog, cblock->cond))
+        return 0;
+
+    return resolve_stmt(prog, cblock->body, ret_type, flags);
+}
+
+static unsigned resolve_stmt_if(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags)
+{
+    StmtIf* sif = (StmtIf*)stmt;
+
+    // Resolve if block.
+    unsigned ret = resolve_cond_block(prog, &sif->if_blk, ret_type, flags);
+
+    if (!(ret & RESOLVE_STMT_SUCCESS))
+        return ret;
+
+    // Resolve elif blocks.
+    List* head = &sif->elif_blks;
+    List* it = head->next;
+
+    while (it != head)
+    {
+        IfCondBlock* elif_blk = list_entry(it, IfCondBlock, lnode);
+
+        unsigned elif_ret = resolve_cond_block(prog, elif_blk, ret_type, flags);
+
+        if (!(elif_ret & RESOLVE_STMT_SUCCESS))
+            return 0;
+
+        ret &= elif_ret; // NOTE: All blocks have to return in order to say that all control paths return.
+
+        it = it->next;
+    }
+
+    // TODO: Ensure conditions are mutually exclusive (condition ANDed with each previous condition == false)
+    // Can probably only do this for successive condition expressions that evaluate to compile-time constants.
+
+    // Resolve else block.
+    if (sif->else_blk.body)
+        ret &= resolve_stmt(prog, sif->else_blk.body, ret_type, flags);
+    else
+        ret &= ~RESOLVE_STMT_RETURNS;
+
+    return ret;
+}
+
+static unsigned resolve_stmt_while(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags)
+{
+    StmtWhile* swhile = (StmtWhile*)stmt;
+
+    // Resolve condition expression.
+    if (!resolve_cond_expr(prog, swhile->cond))
+        return 0;
+
+    // Resolve loop body.
+    return resolve_stmt(prog, swhile->body, ret_type,
+                        flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
 }
 
 static unsigned resolve_stmt(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags)
@@ -827,6 +915,11 @@ static unsigned resolve_stmt(Program* prog, Stmt* stmt, Type* ret_type, unsigned
             }
 
             return RESOLVE_STMT_SUCCESS;
+        case AST_StmtIf:
+            return resolve_stmt_if(prog, stmt, ret_type, flags);
+        case AST_StmtWhile:
+        case AST_StmtDoWhile:
+            return resolve_stmt_while(prog, stmt, ret_type, flags);
         case AST_StmtDecl:
         {
             StmtDecl* sdecl = (StmtDecl*)stmt;
