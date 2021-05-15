@@ -606,6 +606,7 @@ bool type_is_arithmetic(Type* type);
 bool type_is_scalar(Type* type);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
+Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
 
 ///////////////////////////////

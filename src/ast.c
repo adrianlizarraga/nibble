@@ -642,6 +642,14 @@ Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base)
     return type;
 }
 
+Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type)
+{
+    if (type->kind == TYPE_ARRAY)
+        return type_ptr(allocator, type_ptr_cache, type->as_array.base);
+
+    return type;
+}
+
 typedef struct CachedType {
     Type* type;
     struct CachedType* next;

@@ -9,7 +9,6 @@
 #define MAX_LOCAL_SYMS 512
 
 typedef struct Program Program;
-typedef struct Scope Scope;
 
 struct Program {
     Allocator gen_mem;

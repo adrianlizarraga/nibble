@@ -13,6 +13,7 @@ static bool resolve_decl_proc_body(Program* prog, Decl* decl);
 static bool resolve_expr(Program* prog, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Program* prog, Expr* expr);
 static bool resolve_expr_binary(Program* prog, Expr* expr);
+static bool resolve_expr_call(Program* prog, Expr* expr);
 static Type* resolve_typespec(Program* prog, TypeSpec* typespec);
 
 enum ResolveStmtRetFlags {
@@ -336,11 +337,11 @@ static bool resolve_expr_ident(Program* prog, Expr* expr)
             switch (sym->decl->kind)
             {
                 case AST_DeclVar:
-                    expr->type = sym->decl->type;
+                    expr->type = type_decay(&prog->ast_mem, &prog->type_ptr_cache, sym->decl->type);
                     expr->is_lvalue = true;
                     expr->is_const = false;
                     eident->sym = sym;
-                    // TODO: Support array decay to pointer when identifer refers to an actual array.
+
                     return true;
                 case AST_DeclConst:
                     expr->type = sym->decl->type;
@@ -372,6 +373,59 @@ static bool resolve_expr_ident(Program* prog, Expr* expr)
 static bool resolve_expr_call(Program* prog, Expr* expr)
 {
     ExprCall* ecall = (ExprCall*)expr;
+
+    // Resolve procedure expression.
+    if (!resolve_expr(prog, ecall->proc, NULL))
+        return false;
+
+    Type* proc_type = ecall->proc->type;
+
+    // Verifty that we're calling an actual procedure type.
+    if (proc_type->kind != TYPE_PROC)
+    {
+        program_on_error(prog, "Cannot use procedure call syntax on a value with a non-procedure type");
+        return false;
+    }
+
+    // Verify that the number of arguments match number of parameters.
+    if (proc_type->as_proc.num_params != ecall->num_args)
+    {
+        program_on_error(prog, "Incorrect number of procedure call arguments. Expected `%d` arguments, but got `%d`",
+                         proc_type->as_proc.num_params, ecall->num_args);
+        return false;
+    }
+
+    // Resolve argument expressions and verify that argument types match parameter types.
+    List* head = &ecall->args;
+    List* it = head->next;
+    Type** params = proc_type->as_proc.params;
+    size_t i = 0;
+
+    while (it != head)
+    {
+        ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
+
+        if (!resolve_expr(prog, arg->expr, NULL))
+            return false;
+
+        Type* arg_type = type_decay(&prog->ast_mem, &prog->type_ptr_cache, arg->expr->type);
+        Type* param_type = type_decay(&prog->ast_mem, &prog->type_ptr_cache, params[i]);
+
+        // TODO: Support type conversion
+        if (arg->expr->type != param_type)
+        {
+            program_on_error(prog, "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`",
+                             (i + 1), type_name(params[i]), type_name(arg_type));
+            return false;
+        }
+
+        it = it->next;
+        i += 1;
+    }
+
+    expr->type = proc_type->as_proc.ret;
+    expr->is_lvalue = false;
+    expr->is_const = false;
 
     return true;
 }
@@ -650,7 +704,7 @@ static bool resolve_decl_proc_body(Program* prog, Decl* decl)
     {
         Decl* proc_param = list_entry(it, Decl, lnode);
 
-        push_local_var(prog, proc_param);    
+        push_local_var(prog, proc_param);
     }
 
     Type* ret_type = decl->type->as_proc.ret;
@@ -660,7 +714,7 @@ static bool resolve_decl_proc_body(Program* prog, Decl* decl)
 
     exit_scope(prog, scope_begin);
 
-    if ((ret_type != type_void) && !returns)
+    if ((ret_type != type_void) && !returns && success)
     {
         program_on_error(prog, "Not all code paths in procedure `%s` return a value", decl->name);
         return false;
@@ -707,7 +761,7 @@ static unsigned resolve_stmt_block(Program* prog, Stmt* stmt, Type* ret_type, un
         Stmt* child_stmt = list_entry(it, Stmt, lnode);
         unsigned r = resolve_stmt(prog, child_stmt, ret_type, flags);
 
-        // NOTE: Keeps track if any statement in the block returns.
+        // NOTE: Track whether any statement in the block returns from the parent procedure.
         ret_success = (r & RESOLVE_STMT_RETURNS) | ret_success;
 
         if (!(r & RESOLVE_STMT_SUCCESS))
@@ -732,13 +786,12 @@ static unsigned resolve_stmt(Program* prog, Stmt* stmt, Type* ret_type, unsigned
         case AST_StmtNoOp:
             return RESOLVE_STMT_SUCCESS;
         case AST_StmtReturn:
-        { 
+        {
             StmtReturn* sret = (StmtReturn*)stmt;
 
             if (!sret->expr && (ret_type != type_void))
             {
-                program_on_error(prog, "Return statement is missing a return value of type `%s`",
-                                 type_name(ret_type));
+                program_on_error(prog, "Return statement is missing a return value of type `%s`", type_name(ret_type));
                 return RESOLVE_STMT_RETURNS;
             }
 
@@ -750,8 +803,8 @@ static unsigned resolve_stmt(Program* prog, Stmt* stmt, Type* ret_type, unsigned
                 // TODO: Support type conversions
                 if (sret->expr->type != ret_type)
                 {
-                    program_on_error(prog, "Invalid return type. Wanted `%s`, but got `%s`",
-                                     type_name(ret_type), type_name(sret->expr->type));
+                    program_on_error(prog, "Invalid return type. Wanted `%s`, but got `%s`", type_name(ret_type),
+                                     type_name(sret->expr->type));
                     return RESOLVE_STMT_RETURNS;
                 }
             }
@@ -820,7 +873,6 @@ static bool resolve_symbol(Program* prog, Symbol* sym)
     assert(sym->status == SYMBOL_STATUS_UNRESOLVED);
 
     sym->status = SYMBOL_STATUS_RESOLVING;
-    ftprint_out("Trying to resolve `%s`\n", sym->name);
 
     bool resolved = true;
 
@@ -838,14 +890,9 @@ static bool resolve_symbol(Program* prog, Symbol* sym)
     }
 
     if (resolved)
-    {
         sym->status = SYMBOL_STATUS_RESOLVED;
-        ftprint_out("Resolved `%s`\n", sym->name);
-    }
     else
-    {
-        ftprint_out("Failed to resolve `%s`\n", sym->name);
-    }
+        ftprint_err("Failed to resolve `%s`\n", sym->name);
 
     return resolved;
 }
