@@ -14,6 +14,7 @@ static bool resolve_expr(Program* prog, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Program* prog, Expr* expr);
 static bool resolve_expr_binary(Program* prog, Expr* expr);
 static bool resolve_expr_call(Program* prog, Expr* expr);
+static bool resolve_cond_expr(Program* prog, Expr* expr);
 static Type* resolve_typespec(Program* prog, TypeSpec* typespec);
 
 enum ResolveStmtRetFlags {
@@ -28,6 +29,10 @@ enum ResolveStmtInFlags {
 
 static unsigned resolve_stmt(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags);
 static unsigned resolve_stmt_block(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags);
+static unsigned resolve_stmt_while(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags);
+static unsigned resolve_stmt_if(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags);
+static unsigned resolve_cond_block(Program* prog, IfCondBlock* cblock, Type* ret_type, unsigned flags);
+static unsigned resolve_stmt_expr_assign(Program* prog, Stmt* stmt);
 
 static Symbol* lookup_symbol(Program* prog, const char* name);
 static Symbol* lookup_local_symbol(Program* prog, const char* name);
@@ -860,8 +865,59 @@ static unsigned resolve_stmt_while(Program* prog, Stmt* stmt, Type* ret_type, un
         return 0;
 
     // Resolve loop body.
-    return resolve_stmt(prog, swhile->body, ret_type,
-                        flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
+    unsigned ret =
+        resolve_stmt(prog, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
+
+    // NOTE: Because while loops don't have an "else" path, we can't say that all control paths return.
+    // TODO: Add else to while loop!!
+    ret &= ~RESOLVE_STMT_RETURNS;
+
+    return ret;
+}
+
+static unsigned resolve_stmt_expr_assign(Program* prog, Stmt* stmt)
+{
+    StmtExprAssign* sassign = (StmtExprAssign*)stmt;
+    Expr* left_expr = sassign->left;
+    Expr* right_expr = sassign->right;
+
+    if (!resolve_expr(prog, left_expr, NULL))
+        return 0;
+
+    if (!resolve_expr(prog, right_expr, NULL))
+        return 0;
+
+    if (!left_expr->is_lvalue)
+    {
+        program_on_error(prog, "Left side of assignment statement must be an l-value");
+        return 0;
+    }
+
+    if (left_expr->type->kind == TYPE_ARRAY)
+    {
+        program_on_error(prog, "Left side of assignment statement cannot be an array");
+        return 0;
+    }
+
+    // TODO: Support other assignment operators.
+    if (sassign->op_assign != TKN_ASSIGN)
+    {
+        program_on_error(prog, "Sorry! Only the `=` assignment operator is currently supported. Soon!");
+        return 0;
+    }
+
+    Type* left_type = left_expr->type;
+    Type* right_type = type_decay(&prog->ast_mem, &prog->type_ptr_cache, right_expr->type);
+
+    // TODO: Support type conversion.
+    if (left_type != right_type)
+    {
+        program_on_error(prog, "Type mismatch in assignment statement: expected type `%s`, but got `%s`",
+                         type_name(left_type), type_name(right_type));
+        return 0;
+    }
+
+    return RESOLVE_STMT_SUCCESS;
 }
 
 static unsigned resolve_stmt(Program* prog, Stmt* stmt, Type* ret_type, unsigned flags)
@@ -920,6 +976,17 @@ static unsigned resolve_stmt(Program* prog, Stmt* stmt, Type* ret_type, unsigned
         case AST_StmtWhile:
         case AST_StmtDoWhile:
             return resolve_stmt_while(prog, stmt, ret_type, flags);
+        case AST_StmtExpr:
+        {
+            StmtExpr* sexpr = (StmtExpr*)stmt;
+
+            if (!resolve_expr(prog, sexpr->expr, NULL))
+                return 0;
+
+            return RESOLVE_STMT_SUCCESS;
+        }
+        case AST_StmtExprAssign:
+            return resolve_stmt_expr_assign(prog, stmt);
         case AST_StmtDecl:
         {
             StmtDecl* sdecl = (StmtDecl*)stmt;
