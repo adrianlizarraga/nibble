@@ -824,7 +824,7 @@ static unsigned resolve_stmt_if(Program* prog, Stmt* stmt, Type* ret_type, unsig
     unsigned ret = resolve_cond_block(prog, &sif->if_blk, ret_type, flags);
 
     if (!(ret & RESOLVE_STMT_SUCCESS))
-        return ret;
+        return 0;
 
     // Resolve elif blocks.
     List* head = &sif->elif_blks;
