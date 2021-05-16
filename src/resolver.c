@@ -1162,14 +1162,14 @@ void free_program(Program* prog)
     hmap_destroy(&prog->type_ptr_cache);
     hmap_destroy(&prog->type_proc_cache);
 
-    // Clean up memory arenas
-    Allocator bootstrap = prog->gen_mem;
-
 #ifndef NDEBUG
     print_allocator_stats(&prog->ast_mem, "Prog AST mem stats");
     print_allocator_stats(&prog->tmp_mem, "Prog tmp mem stats");
     print_allocator_stats(&prog->gen_mem, "Prog gen mem stats");
 #endif
+
+    // Clean up memory arenas
+    Allocator bootstrap = prog->gen_mem;
 
     allocator_destroy(&prog->ast_mem);
     allocator_destroy(&prog->tmp_mem);

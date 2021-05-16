@@ -27,6 +27,7 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "    -h                              Print this help message\n");
     ftprint_file(fd, true, "    -os   [linux | win32 | osx]     Target OS\n");
     ftprint_file(fd, true, "    -arch [x64 | x86]               Target architecture\n");
+    ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `a.out`\n");
 }
 
 char* consume_arg(int* argc, char*** argv)
@@ -108,6 +109,7 @@ int main(int argc, char* argv[])
 {
     const char* program_name = consume_arg(&argc, &argv);
     const char* input_file = NULL;
+    const char* output_file = "a.out";
 
     // TODO: Detect default os/arch from env variables or GCC macros
     OS target_os = OS_LINUX;
@@ -129,6 +131,10 @@ int main(int argc, char* argv[])
         else if (cstr_cmp(arg, "-arch") == 0)
         {
             target_arch = get_target_arch(&argc, &argv, program_name);
+        }
+        else if (cstr_cmp(arg, "-o") == 0)
+        {
+            output_file = get_flag_value(&argc, &argv, program_name, "-o");
         }
         else
         {
@@ -163,6 +169,8 @@ int main(int argc, char* argv[])
         nibble_cleanup();
         exit(1);
     }
+
+    ftprint_out("\nGenerating `%s`\n", output_file);
 
     free_program(prog);
     nibble_cleanup();
