@@ -18,6 +18,7 @@
 #include "ast.c"
 #include "parser.c"
 #include "resolver.c"
+#include "gen_assembly.c"
 #include "nibble.c"
 
 void print_usage(FILE* fd, const char* program_name)
@@ -27,7 +28,7 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "    -h                              Print this help message\n");
     ftprint_file(fd, true, "    -os   [linux | win32 | osx]     Target OS\n");
     ftprint_file(fd, true, "    -arch [x64 | x86]               Target architecture\n");
-    ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `a.out`\n");
+    ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `out.s`\n");
 }
 
 char* consume_arg(int* argc, char*** argv)
@@ -109,7 +110,7 @@ int main(int argc, char* argv[])
 {
     const char* program_name = consume_arg(&argc, &argv);
     const char* input_file = NULL;
-    const char* output_file = "a.out";
+    const char* output_file = "out.s";
 
     // TODO: Detect default os/arch from env variables or GCC macros
     OS target_os = OS_LINUX;
@@ -170,7 +171,11 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    ftprint_out("\nGenerating `%s`\n", output_file);
+    if (prog->errors.count == 0)
+    {
+        ftprint_out("\nGenerating `%s`\n", output_file);
+        generate_program(prog, output_file);
+    }
 
     free_program(prog);
     nibble_cleanup();
