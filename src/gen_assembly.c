@@ -11,7 +11,8 @@ static Generator generator;
 
 #define emit_data(f, ...) ftprint_char_array(&generator.out_buf, false, (f), ## __VA_ARGS__)
 
-bool generate_program(Program* prog, const char* output_file)
+#if 0
+bool generate_program(void* prog, const char* output_file)
 {
     generator.out_buf = array_create(&prog->gen_mem, char, 512);
     generator.out_fd = fopen(output_file, "w");    
@@ -29,3 +30,5 @@ bool generate_program(Program* prog, const char* output_file)
 
     return true;
 }
+#endif
+

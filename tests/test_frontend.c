@@ -6,17 +6,18 @@
 
 #include "allocator.c"
 #include "array.c"
-#include "ast.c"
+#include "cst.c"
 #include "cstring.c"
 #include "hash_map.c"
 #include "lexer.c"
 #include "llist.h"
+#include "resolver.c"
 #include "nibble.c"
 #include "parser.c"
 #include "print.c"
 #include "stream.c"
 
-static void print_errors(ByteStream* errors)
+static void print_error_stream(ByteStream* errors)
 {
     if (errors)
     {
@@ -263,7 +264,7 @@ static void test_lexer(void)
         TKN_TEST_POS(token, TKN_EOF, 22, 22);
         assert(errors.count == 1);
 
-        print_errors(&errors);
+        print_error_stream(&errors);
     }
 
     {
@@ -276,7 +277,7 @@ static void test_lexer(void)
         TKN_TEST_POS(token, TKN_EOF, len, len);
         assert(errors.count == 1);
 
-        print_errors(&errors);
+        print_error_stream(&errors);
     }
 
     // Test integer literals
@@ -360,7 +361,7 @@ static void test_lexer(void)
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
 
-        print_errors(&errors);
+        print_error_stream(&errors);
     }
 
     // Test floating point literals
@@ -400,7 +401,7 @@ static void test_lexer(void)
         scan_token(&lexer);
         assert(errors.count == 3);
 
-        print_errors(&errors);
+        print_error_stream(&errors);
     }
 
     // Test character literals
@@ -502,7 +503,7 @@ static void test_lexer(void)
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
 
-        print_errors(&errors);
+        print_error_stream(&errors);
     }
 
     // Test basic string literals
@@ -550,7 +551,7 @@ static void test_lexer(void)
         scan_token(&lexer);
         assert(errors.count == 4);
 
-        print_errors(&errors);
+        print_error_stream(&errors);
     }
 
     // Test basic identifiers
@@ -599,7 +600,7 @@ static void test_lexer(void)
         token = scan_token(&lexer);
         assert(token.kind == TKN_EOF);
 
-        print_errors(&errors);
+        print_error_stream(&errors);
     }
 
     // Test keywords
@@ -648,7 +649,7 @@ static bool test_parse_typespec(Allocator* gen_arena, Allocator* ast_arena, Allo
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
     if (err_stream.count)
-        print_errors(&err_stream);
+        print_error_stream(&err_stream);
 
     allocator_reset(gen_arena);
     allocator_reset(ast_arena);
@@ -673,7 +674,7 @@ static bool test_parse_expr(Allocator* gen_arena, Allocator* ast_arena, Allocato
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
     if (err_stream.count)
-        print_errors(&err_stream);
+        print_error_stream(&err_stream);
 
     allocator_reset(gen_arena);
     allocator_reset(ast_arena);
@@ -698,7 +699,7 @@ static bool test_parse_decl(Allocator* gen_arena, Allocator* ast_arena, Allocato
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
     if (err_stream.count)
-        print_errors(&err_stream);
+        print_error_stream(&err_stream);
 
     allocator_reset(gen_arena);
     allocator_reset(ast_arena);
@@ -723,7 +724,7 @@ static bool test_parse_stmt(Allocator* gen_arena, Allocator* ast_arena, Allocato
     ftprint_out("%s\n\t%s\n\tAST mem size: %lu bytes\n", code, s, stats.used);
 
     if (err_stream.count)
-        print_errors(&err_stream);
+        print_error_stream(&err_stream);
 
     allocator_reset(gen_arena);
     allocator_reset(ast_arena);

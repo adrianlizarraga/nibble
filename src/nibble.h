@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #include "allocator.h"
+#include "hash_map.h"
 #include "stream.h"
 
 #define MAX_ERROR_LEN 256
@@ -132,12 +133,18 @@ typedef enum Keyword {
     KW_COUNT,
 } Keyword;
 
+typedef struct TypeCache {
+    HMap ptrs;
+    HMap procs;
+} TypeCache;
+
 extern const char* keywords[KW_COUNT];
 
 const char* intern_str_lit(const char* str, size_t len);
 const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
 
 bool nibble_init(OS target_os, Arch target_arch);
+void nibble_compile(const char* input_file, const char* output_file);
 void nibble_cleanup(void);
 
 #define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit((f), ## __VA_ARGS__)

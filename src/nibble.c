@@ -4,9 +4,17 @@
 #include "parser.h"
 
 typedef struct NibbleCtx {
+    Allocator gen_mem;
+    Allocator ast_mem;
+    Allocator tmp_mem;
+
     HMap ident_map;
     HMap str_lit_map;
-    Allocator allocator;
+
+    ByteStream errors;
+
+    TypeCache type_cache;
+    Resolver resolver;
 
     OS target_os;
     Arch target_arch;
@@ -20,7 +28,7 @@ typedef struct InternedIdent {
     char str[];
 } InternedIdent;
 
-static NibbleCtx nibble;
+static NibbleCtx* nibble;
 
 const char* os_names[NUM_OS] = {
     [OS_LINUX]   = "linux",
@@ -61,14 +69,74 @@ static StringView keyword_names[KW_COUNT] = {
     [KW_UNDERSCORE] = string_view_lit("_"),
 };
 
-bool nibble_init(OS target_os, Arch target_arch)
+static char* slurp_file(Allocator* allocator, const char* filename)
 {
-    nibble.target_os = target_os;
-    nibble.target_arch = target_arch;
-    nibble.allocator = allocator_create(4096);
-    nibble.str_lit_map = hmap(6, NULL);
-    nibble.ident_map = hmap(6, NULL);
+    FILE* fd = fopen(filename, "r");
+    if (!fd)
+    {
+        NIBBLE_FATAL_EXIT("Failed to open file %s", filename);
+        return NULL;
+    }
 
+    if (fseek(fd, 0, SEEK_END) < 0)
+    {
+        NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
+        return NULL;
+    }
+
+    long int size = ftell(fd);
+    if (size < 0)
+    {
+        NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
+        return NULL;
+    }
+
+    char* buf = mem_allocate(allocator, size + 1, DEFAULT_ALIGN, false);
+    if (!buf)
+    {
+        NIBBLE_FATAL_EXIT("Out of memory: %s:%d", __FILE__, __LINE__);
+        return NULL;
+    }
+
+    if (fseek(fd, 0, SEEK_SET) < 0)
+    {
+        NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
+        return NULL;
+    }
+
+    size_t n = fread(buf, 1, (size_t)size, fd);
+    if (ferror(fd))
+    {
+        NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
+        return NULL;
+    }
+
+    fclose(fd);
+
+    buf[n] = '\0';
+
+    return buf;
+}
+
+static void print_errors(ByteStream* errors)
+{
+    if (errors->count > 0)
+    {
+        ftprint_out("\nErrors: %lu\n", errors->count);
+
+        ByteStreamChunk* chunk = errors->first;
+
+        while (chunk)
+        {
+            ftprint_out("%s\n", chunk->buf);
+
+            chunk = chunk->next;
+        }
+    }
+}
+
+static bool init_keywords()
+{
     // Compute the total amount of memory needed to store all interned keywords.
     // Why? Program needs all keywords to reside in a contigous block of memory to facilitate
     // determining whether a string is a keyword using simple pointer comparisons.
@@ -80,7 +148,7 @@ bool nibble_init(OS target_os, Arch target_arch)
         kws_size += ALIGN_UP(size, DEFAULT_ALIGN);
     }
 
-    char* kws_mem = mem_allocate(&nibble.allocator, kws_size, DEFAULT_ALIGN, false);
+    char* kws_mem = mem_allocate(&nibble->gen_mem, kws_size, DEFAULT_ALIGN, false);
 
     if (!kws_mem)
         return false;
@@ -102,38 +170,139 @@ bool nibble_init(OS target_os, Arch target_arch)
         memcpy(kw->str, str, len);
         kw->str[len] = '\0';
 
-        hmap_put(&nibble.ident_map, hash_bytes(str, len), (uintptr_t)kw);
+        hmap_put(&nibble->ident_map, hash_bytes(str, len), (uintptr_t)kw);
         keywords[i] = kw->str;
 
         kws_mem_ptr += ALIGN_UP(size, DEFAULT_ALIGN);
     }
     assert((size_t)(kws_mem_ptr - kws_mem) == kws_size);
-    assert(nibble.ident_map.len == KW_COUNT);
-
-    init_builtin_types(target_os, target_arch);
+    assert(nibble->ident_map.len == KW_COUNT);
 
     return true;
+}
+
+bool nibble_init(OS target_os, Arch target_arch)
+{
+    Allocator bootstrap = allocator_create(32768);
+    nibble = alloc_type(&bootstrap, NibbleCtx, true);
+
+    nibble->target_os = target_os;
+    nibble->target_arch = target_arch;
+    nibble->gen_mem = bootstrap;
+    nibble->ast_mem = allocator_create(16384);
+    nibble->tmp_mem = allocator_create(256);
+    nibble->errors = byte_stream_create(&nibble->gen_mem);
+    nibble->str_lit_map = hmap(6, NULL);
+    nibble->ident_map = hmap(8, NULL);
+    nibble->type_cache.ptrs = hmap(6, NULL);
+    nibble->type_cache.procs = hmap(6, NULL);
+
+    if (!init_keywords())
+        return false;
+
+    init_builtin_types(target_os, target_arch);
+    init_resolver(&nibble->resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors, &nibble->type_cache);
+
+    return true;
+}
+
+static bool parse_code(List* decls, const char* code)
+{
+    Parser parser = {0};
+
+    parser_init(&parser, &nibble->ast_mem, &nibble->tmp_mem, code, 0, &nibble->errors);
+    next_token(&parser);
+
+    while (!is_token_kind(&parser, TKN_EOF))
+    {
+        Decl* decl = parse_decl(&parser);
+
+        if (!decl)
+            return false;
+
+        list_add_last(decls, &decl->lnode);
+
+#ifdef NIBBLE_PRINT_DECLS
+        ftprint_out("%s\n", ftprint_decl(&nibble->gen_mem, decl));
+#endif
+    }
+
+#ifdef NIBBLE_PRINT_DECLS
+        ftprint_out("\n");
+#endif
+
+    return true;
+}
+
+
+void nibble_compile(const char* input_file, const char* output_file)
+{
+    //////////////////////////////////////////
+    //                Parse
+    //////////////////////////////////////////
+    ftprint_out("1. Parsing %s ...\n", input_file);
+
+    const char* path = intern_str_lit(input_file, cstr_len(input_file));
+    const char* code = slurp_file(&nibble->gen_mem, path);
+    List decls = list_head_create(decls);
+
+    if (!parse_code(&decls, code))
+    {
+        print_errors(&nibble->errors);
+        return;
+    }
+
+    //////////////////////////////////////////
+    //          Resolve/Typecheck
+    //////////////////////////////////////////
+    ftprint_out("2. Type-checking ...\n");
+
+    if (!resolve_global_decls(&nibble->resolver, &decls))
+    {
+        print_errors(&nibble->errors);
+        return;
+    }
+
+    //////////////////////////////////////////
+    //          Resolve/Typecheck
+    //////////////////////////////////////////
+    ftprint_out("3. Generating IR ...\n");
+
+    ftprint_out("4. Generating output ...\n");
 }
 
 void nibble_cleanup(void)
 {
 #ifndef NDEBUG
-    print_allocator_stats(&nibble.allocator, "Nibble mem stats");
-    ftprint_out("Ident map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble.ident_map.len,
-                nibble.ident_map.cap, nibble.ident_map.cap * sizeof(HMapEntry));
-    ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble.str_lit_map.len,
-                nibble.str_lit_map.cap, nibble.str_lit_map.cap * sizeof(HMapEntry));
+    print_allocator_stats(&nibble->gen_mem, "GEN mem stats");
+    print_allocator_stats(&nibble->ast_mem, "AST mem stats");
+    print_allocator_stats(&nibble->tmp_mem, "TMP mem stats");
+    ftprint_out("Ident map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->ident_map.len,
+                nibble->ident_map.cap, nibble->ident_map.cap * sizeof(HMapEntry));
+    ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->str_lit_map.len,
+                nibble->str_lit_map.cap, nibble->str_lit_map.cap * sizeof(HMapEntry));
+    ftprint_out("type_ptr cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.ptrs.len,
+                nibble->type_cache.ptrs.cap, nibble->type_cache.ptrs.cap * sizeof(HMapEntry));
+    ftprint_out("type_proc cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.procs.len,
+                nibble->type_cache.procs.cap, nibble->type_cache.procs.cap * sizeof(HMapEntry));
 #endif
 
-    hmap_destroy(&nibble.str_lit_map);
-    hmap_destroy(&nibble.ident_map);
-    allocator_destroy(&nibble.allocator);
+    free_resolver(&nibble->resolver);
+    hmap_destroy(&nibble->str_lit_map);
+    hmap_destroy(&nibble->ident_map);
+    hmap_destroy(&nibble->type_cache.ptrs);
+    hmap_destroy(&nibble->type_cache.procs);
+    allocator_destroy(&nibble->tmp_mem);
+    allocator_destroy(&nibble->ast_mem);
+
+    Allocator bootstrap = nibble->gen_mem;
+    allocator_destroy(&bootstrap);
 }
 
 const char* intern_str_lit(const char* str, size_t len)
 {
-    Allocator* allocator = &nibble.allocator;
-    HMap* strmap = &nibble.str_lit_map;
+    Allocator* allocator = &nibble->gen_mem;
+    HMap* strmap = &nibble->str_lit_map;
 const char* interned_str = intern_str(allocator, strmap, str, len);
 
     if (!interned_str)
@@ -149,8 +318,8 @@ const char* interned_str = intern_str(allocator, strmap, str, len);
 // TODO: Reuse duplicated interning code!
 const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw)
 {
-    Allocator* allocator = &nibble.allocator;
-    HMap* strmap = &nibble.ident_map;
+    Allocator* allocator = &nibble->gen_mem;
+    HMap* strmap = &nibble->ident_map;
     uint64_t key = hash_bytes(str, len);
     uint64_t* pval = hmap_get(strmap, key);
     InternedIdent* intern = pval ? (void*)*pval : NULL;

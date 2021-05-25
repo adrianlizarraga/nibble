@@ -1,8 +1,8 @@
-#include "ast.h"
+#include "cst.h"
 #include "array.h"
 #include "cstring.h"
 
-#define new_typespec(a, k, r) (k*)new_typespec_((a), sizeof(k), alignof(k), AST_##k, (r))
+#define new_typespec(a, k, r) (k*)new_typespec_((a), sizeof(k), alignof(k), CST_##k, (r))
 static TypeSpec* new_typespec_(Allocator* allocator, size_t size, size_t align, TypeSpecKind kind, ProgRange range)
 {
     TypeSpec* typespec = mem_allocate(allocator, size, align, true);
@@ -84,7 +84,7 @@ TypeSpec* new_typespec_union(Allocator* allocator, List* fields, ProgRange range
     return (TypeSpec*)typespec;
 }
 
-#define new_expr(a, k, r) (k*)new_expr_((a), sizeof(k), alignof(k), AST_##k, (r))
+#define new_expr(a, k, r) (k*)new_expr_((a), sizeof(k), alignof(k), CST_##k, (r))
 static Expr* new_expr_(Allocator* allocator, size_t size, size_t align, ExprKind kind, ProgRange range)
 {
     Expr* expr = mem_allocate(allocator, size, align, true);
@@ -242,7 +242,7 @@ Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num
     return (Expr*)expr;
 }
 
-#define new_decl(a, k, n, r) (k*)new_decl_((a), sizeof(k), alignof(k), AST_##k, (n), (r))
+#define new_decl(a, k, n, r) (k*)new_decl_((a), sizeof(k), alignof(k), CST_##k, (n), (r))
 static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, const char* name,
                        ProgRange range)
 {
@@ -340,7 +340,7 @@ Decl* new_decl_proc(Allocator* allocator, const char* name, size_t num_params, L
     return (Decl*)decl;
 }
 
-#define new_stmt(a, k, r) (k*)new_stmt_((a), sizeof(k), alignof(k), AST_##k, (r))
+#define new_stmt(a, k, r) (k*)new_stmt_((a), sizeof(k), alignof(k), CST_##k, (r))
 static Stmt* new_stmt_(Allocator* allocator, size_t size, size_t align, StmtKind kind, ProgRange range)
 {
     Stmt* stmt = mem_allocate(allocator, size, align, true);
@@ -864,10 +864,10 @@ bool symbol_is_type(Symbol* sym)
         case SYMBOL_DECL:
             switch (sym->decl->kind)
             {
-                case AST_DeclStruct:
-                case AST_DeclUnion:
-                case AST_DeclTypedef:
-                case AST_DeclEnum:
+                case CST_DeclStruct:
+                case CST_DeclUnion:
+                case CST_DeclTypedef:
+                case CST_DeclEnum:
                     return true;
                 default:
                     break;
@@ -880,7 +880,7 @@ bool symbol_is_type(Symbol* sym)
 }
 
 //////////////////////////////
-//     AST Printing
+//     CST Printing
 //////////////////////////////
 
 char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
@@ -891,19 +891,19 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
     {
         switch (typespec->kind)
         {
-            case AST_TYPE_SPEC_NONE:
+            case CST_TYPE_SPEC_NONE:
             {
                 assert(0);
             }
             break;
-            case AST_TypeSpecIdent:
+            case CST_TypeSpecIdent:
             {
                 TypeSpecIdent* t = (TypeSpecIdent*)typespec;
                 dstr = array_create(allocator, char, 16);
                 ftprint_char_array(&dstr, false, "(:ident %s)", t->name);
             }
             break;
-            case AST_TypeSpecProc:
+            case CST_TypeSpecProc:
             {
                 TypeSpecProc* t = (TypeSpecProc*)typespec;
                 dstr = array_create(allocator, char, 32);
@@ -935,11 +935,11 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_TypeSpecStruct:
-            case AST_TypeSpecUnion:
+            case CST_TypeSpecStruct:
+            case CST_TypeSpecUnion:
             {
                 dstr = array_create(allocator, char, 32);
-                bool is_struct = typespec->kind == AST_TypeSpecStruct;
+                bool is_struct = typespec->kind == CST_TypeSpecStruct;
 
                 ftprint_char_array(&dstr, false, "(:%s", (is_struct ? "struct" : "union"));
 
@@ -966,21 +966,21 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_TypeSpecPtr:
+            case CST_TypeSpecPtr:
             {
                 TypeSpecPtr* t = (TypeSpecPtr*)typespec;
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(:ptr %s)", ftprint_typespec(allocator, t->base));
             }
             break;
-            case AST_TypeSpecConst:
+            case CST_TypeSpecConst:
             {
                 TypeSpecConst* t = (TypeSpecConst*)typespec;
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "(:const %s)", ftprint_typespec(allocator, t->base));
             }
             break;
-            case AST_TypeSpecArray:
+            case CST_TypeSpecArray:
             {
                 TypeSpecArray* t = (TypeSpecArray*)typespec;
                 dstr = array_create(allocator, char, 32);
@@ -1022,12 +1022,12 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
     {
         switch (expr->kind)
         {
-            case AST_EXPR_NONE:
+            case CST_EXPR_NONE:
             {
                 assert(0);
             }
             break;
-            case AST_ExprTernary:
+            case CST_ExprTernary:
             {
                 ExprTernary* e = (ExprTernary*)expr;
                 dstr = array_create(allocator, char, 32);
@@ -1035,7 +1035,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                                    ftprint_expr(allocator, e->then_expr), ftprint_expr(allocator, e->else_expr));
             }
             break;
-            case AST_ExprBinary:
+            case CST_ExprBinary:
             {
                 ExprBinary* e = (ExprBinary*)expr;
                 dstr = array_create(allocator, char, 32);
@@ -1043,14 +1043,14 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                                    ftprint_expr(allocator, e->left), ftprint_expr(allocator, e->right));
             }
             break;
-            case AST_ExprUnary:
+            case CST_ExprUnary:
             {
                 ExprUnary* e = (ExprUnary*)expr;
                 dstr = array_create(allocator, char, 16);
                 ftprint_char_array(&dstr, false, "(%s %s)", token_kind_names[e->op], ftprint_expr(allocator, e->expr));
             }
             break;
-            case AST_ExprCall:
+            case CST_ExprCall:
             {
                 ExprCall* e = (ExprCall*)expr;
                 dstr = array_create(allocator, char, 32);
@@ -1081,7 +1081,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_ExprIndex:
+            case CST_ExprIndex:
             {
                 ExprIndex* e = (ExprIndex*)expr;
                 dstr = array_create(allocator, char, 8);
@@ -1089,21 +1089,21 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                                    ftprint_expr(allocator, e->index));
             }
             break;
-            case AST_ExprField:
+            case CST_ExprField:
             {
                 ExprField* e = (ExprField*)expr;
                 dstr = array_create(allocator, char, 8);
                 ftprint_char_array(&dstr, false, "(field %s %s)", ftprint_expr(allocator, e->object), e->field);
             }
             break;
-            case AST_ExprInt:
+            case CST_ExprInt:
             {
                 ExprInt* e = (ExprInt*)expr;
                 dstr = array_create(allocator, char, 8);
                 ftprint_char_array(&dstr, false, "%lu", e->value);
             }
             break;
-            case AST_ExprFloat:
+            case CST_ExprFloat:
             {
                 ExprFloat* e = (ExprFloat*)expr;
                 dstr = array_create(allocator, char, 8);
@@ -1114,21 +1114,21 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                     ftprint_char_array(&dstr, false, "%lf", e->value.f32);
             }
             break;
-            case AST_ExprStr:
+            case CST_ExprStr:
             {
                 ExprStr* e = (ExprStr*)expr;
                 dstr = array_create(allocator, char, 16);
                 ftprint_char_array(&dstr, false, "\"%s\"", e->value);
             }
             break;
-            case AST_ExprIdent:
+            case CST_ExprIdent:
             {
                 ExprIdent* e = (ExprIdent*)expr;
                 dstr = array_create(allocator, char, 16);
                 ftprint_char_array(&dstr, false, "%s", e->name);
             }
             break;
-            case AST_ExprCast:
+            case CST_ExprCast:
             {
                 ExprCast* e = (ExprCast*)expr;
                 dstr = array_create(allocator, char, 16);
@@ -1136,21 +1136,21 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                                    ftprint_expr(allocator, e->expr));
             }
             break;
-            case AST_ExprSizeof:
+            case CST_ExprSizeof:
             {
                 ExprSizeof* e = (ExprSizeof*)expr;
                 dstr = array_create(allocator, char, 16);
                 ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, e->typespec));
             }
             break;
-            case AST_ExprTypeof:
+            case CST_ExprTypeof:
             {
                 ExprTypeof* e = (ExprTypeof*)expr;
                 dstr = array_create(allocator, char, 16);
                 ftprint_char_array(&dstr, false, "(typeof %s)", ftprint_expr(allocator, e->expr));
             }
             break;
-            case AST_ExprCompoundLit:
+            case CST_ExprCompoundLit:
             {
                 ExprCompoundLit* e = (ExprCompoundLit*)expr;
                 dstr = array_create(allocator, char, 32);
@@ -1241,25 +1241,25 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
     {
         switch (stmt->kind)
         {
-            case AST_STMT_NONE:
+            case CST_STMT_NONE:
             {
                 assert(0);
             }
             break;
-            case AST_StmtNoOp:
+            case CST_StmtNoOp:
             {
                 dstr = array_create(allocator, char, 6);
                 ftprint_char_array(&dstr, false, "no-op");
             }
             break;
-            case AST_StmtDecl:
+            case CST_StmtDecl:
             {
                 StmtDecl* s = (StmtDecl*)stmt;
                 dstr = array_create(allocator, char, 32);
                 ftprint_char_array(&dstr, false, "%s", ftprint_decl(allocator, s->decl));
             }
             break;
-            case AST_StmtBlock:
+            case CST_StmtBlock:
             {
                 StmtBlock* s = (StmtBlock*)stmt;
                 dstr = array_create(allocator, char, 32);
@@ -1271,14 +1271,14 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                     ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_StmtExpr:
+            case CST_StmtExpr:
             {
                 StmtExpr* s = (StmtExpr*)stmt;
                 dstr = array_create(allocator, char, 16);
                 ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, s->expr));
             }
             break;
-            case AST_StmtExprAssign:
+            case CST_StmtExprAssign:
             {
                 StmtExprAssign* s = (StmtExprAssign*)stmt;
                 dstr = array_create(allocator, char, 32);
@@ -1288,7 +1288,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                                    ftprint_expr(allocator, s->right));
             }
             break;
-            case AST_StmtWhile:
+            case CST_StmtWhile:
             {
                 StmtWhile* s = (StmtWhile*)stmt;
                 dstr = array_create(allocator, char, 32);
@@ -1297,7 +1297,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                                    ftprint_stmt(allocator, s->body));
             }
             break;
-            case AST_StmtDoWhile:
+            case CST_StmtDoWhile:
             {
                 StmtDoWhile* s = (StmtDoWhile*)stmt;
                 dstr = array_create(allocator, char, 32);
@@ -1306,7 +1306,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                                    ftprint_stmt(allocator, s->body));
             }
             break;
-            case AST_StmtFor:
+            case CST_StmtFor:
             {
                 StmtFor* s = (StmtFor*)stmt;
                 dstr = array_create(allocator, char, 32);
@@ -1331,7 +1331,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, "%s)", ftprint_stmt(allocator, s->body));
             }
             break;
-            case AST_StmtIf:
+            case CST_StmtIf:
             {
                 StmtIf* s = (StmtIf*)stmt;
                 dstr = array_create(allocator, char, 64);
@@ -1363,7 +1363,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_StmtSwitch:
+            case CST_StmtSwitch:
             {
                 StmtSwitch* s = (StmtSwitch*)stmt;
                 dstr = array_create(allocator, char, 64);
@@ -1399,7 +1399,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_StmtReturn:
+            case CST_StmtReturn:
             {
                 StmtReturn* s = (StmtReturn*)stmt;
                 dstr = array_create(allocator, char, 16);
@@ -1414,7 +1414,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_StmtBreak:
+            case CST_StmtBreak:
             {
                 StmtBreak* s = (StmtBreak*)stmt;
                 dstr = array_create(allocator, char, 16);
@@ -1431,7 +1431,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 }
             }
             break;
-            case AST_StmtContinue:
+            case CST_StmtContinue:
             {
                 StmtContinue* s = (StmtContinue*)stmt;
                 dstr = array_create(allocator, char, 16);
@@ -1448,7 +1448,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 }
             }
             break;
-            case AST_StmtGoto:
+            case CST_StmtGoto:
             {
                 StmtGoto* s = (StmtGoto*)stmt;
                 dstr = array_create(allocator, char, 16);
@@ -1456,7 +1456,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, "(goto %s)", s->label);
             }
             break;
-            case AST_StmtLabel:
+            case CST_StmtLabel:
             {
                 StmtLabel* s = (StmtLabel*)stmt;
                 dstr = array_create(allocator, char, 32);
@@ -1490,12 +1490,12 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
     {
         switch (decl->kind)
         {
-            case AST_DECL_NONE:
+            case CST_DECL_NONE:
             {
                 assert(0);
             }
             break;
-            case AST_DeclVar:
+            case CST_DeclVar:
             {
                 DeclVar* d = (DeclVar*)decl;
                 dstr = array_create(allocator, char, 32);
@@ -1514,7 +1514,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_DeclConst:
+            case CST_DeclConst:
             {
                 DeclConst* d = (DeclConst*)decl;
                 dstr = array_create(allocator, char, 32);
@@ -1533,7 +1533,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_DeclTypedef:
+            case CST_DeclTypedef:
             {
                 DeclTypedef* d = (DeclTypedef*)decl;
                 dstr = array_create(allocator, char, 32);
@@ -1541,7 +1541,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                                    ftprint_typespec(allocator, d->typespec));
             }
             break;
-            case AST_DeclEnum:
+            case CST_DeclEnum:
             {
                 DeclEnum* d = (DeclEnum*)decl;
                 dstr = array_create(allocator, char, 32);
@@ -1574,11 +1574,11 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_DeclStruct:
-            case AST_DeclUnion:
+            case CST_DeclStruct:
+            case CST_DeclUnion:
             {
                 dstr = array_create(allocator, char, 32);
-                ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == AST_DeclStruct ? "struct" : "union"),
+                ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"),
                                    decl->name);
 
                 DeclAggregate* d = (DeclAggregate*)decl;
@@ -1604,7 +1604,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 ftprint_char_array(&dstr, false, ")");
             }
             break;
-            case AST_DeclProc:
+            case CST_DeclProc:
             {
                 DeclProc* proc = (DeclProc*)decl;
                 dstr = array_create(allocator, char, 32);

@@ -6,6 +6,7 @@
 
 #include "ast.h"
 
+typedef struct IR_Program IR_Program;
 typedef struct IR_Scope IR_Scope;
 typedef struct IR_Var IR_Var;
 typedef struct IR_Proc IR_Proc;
@@ -158,4 +159,20 @@ struct IR_Proc {
     // NOTE: This scope contains parameter variables and a single body statement.
     IR_Scope scope;
 };
+
+struct IR_Program {
+    Allocator mem;
+
+    size_t num_vars;
+    IR_Var** vars;
+
+    size_t num_procs;
+    IR_Proc** procs;
+
+    HMap type_ptr_cache;
+    HMap type_proc_cache;
+};
+
+IR_Program* compile_program(const char* path);
+void free_program(IR_Program* program);
 #endif

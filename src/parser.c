@@ -1,5 +1,5 @@
 #include "parser.h"
-#include "ast.h"
+#include "cst.h"
 
 #include <string.h>
 
@@ -255,7 +255,7 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
 
     if (typespec && match_token(parser, TKN_COLON))
     {
-        if (typespec->kind == AST_TypeSpecIdent)
+        if (typespec->kind == CST_TypeSpecIdent)
         {
             // NOTE: I wish this was truly LL1
             ProgRange range = {.start = typespec->range.start};
@@ -518,7 +518,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
 
         if (expr && match_token(parser, TKN_ASSIGN))
         {
-            if (expr->kind == AST_ExprIdent)
+            if (expr->kind == CST_ExprIdent)
             {
                 const char* name = ((ExprIdent*)expr)->name;
 
@@ -733,7 +733,7 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
 
     if (expr && match_token(parser, TKN_ASSIGN))
     {
-        if (expr->kind == AST_ExprIdent)
+        if (expr->kind == CST_ExprIdent)
         {
             const char* name = ((ExprIdent*)expr)->name;
 

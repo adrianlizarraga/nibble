@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+//#define NDEBUG
+#define NIBBLE_PRINT_DECLS
+
 // This is a "unity build".
 // Having a single compilation unit makes building trivial.
 // I'll add a proper build system later.
@@ -15,7 +18,7 @@
 #include "hash_map.c"
 #include "stream.c"
 #include "lexer.c"
-#include "ast.c"
+#include "cst.c"
 #include "parser.c"
 #include "resolver.c"
 #include "gen_assembly.c"
@@ -163,20 +166,6 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    Program* prog = compile_program(input_file);
-    if (!prog)
-    {
-        ftprint_err("ERROR: Failed to compile file.\n");
-        nibble_cleanup();
-        exit(1);
-    }
-
-    if (prog->errors.count == 0)
-    {
-        ftprint_out("\nGenerating `%s`\n", output_file);
-        generate_program(prog, output_file);
-    }
-
-    free_program(prog);
+    nibble_compile(input_file, output_file);
     nibble_cleanup();
 }

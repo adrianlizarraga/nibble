@@ -1,5 +1,5 @@
-#ifndef NIBBLE_AST_H
-#define NIBBLE_AST_H
+#ifndef NIBBLE_CST_H
+#define NIBBLE_CST_H
 #include <stddef.h>
 #include <stdint.h>
 
@@ -22,14 +22,14 @@ typedef struct Symbol Symbol;
 //////////////////////////////
 
 typedef enum TypeSpecKind {
-    AST_TYPE_SPEC_NONE,
-    AST_TypeSpecIdent,
-    AST_TypeSpecProc,
-    AST_TypeSpecStruct,
-    AST_TypeSpecUnion,
-    AST_TypeSpecPtr,
-    AST_TypeSpecArray,
-    AST_TypeSpecConst,
+    CST_TYPE_SPEC_NONE,
+    CST_TypeSpecIdent,
+    CST_TypeSpecProc,
+    CST_TypeSpecStruct,
+    CST_TypeSpecUnion,
+    CST_TypeSpecPtr,
+    CST_TypeSpecArray,
+    CST_TypeSpecConst,
 } TypeSpecKind;
 
 struct TypeSpec {
@@ -106,21 +106,21 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* type);
 //////////////////////////////
 
 typedef enum ExprKind {
-    AST_EXPR_NONE,
-    AST_ExprTernary,
-    AST_ExprBinary,
-    AST_ExprUnary,
-    AST_ExprCall,
-    AST_ExprIndex,
-    AST_ExprField,
-    AST_ExprInt,
-    AST_ExprFloat,
-    AST_ExprStr,
-    AST_ExprIdent,
-    AST_ExprCast,
-    AST_ExprSizeof,
-    AST_ExprTypeof,
-    AST_ExprCompoundLit,
+    CST_EXPR_NONE,
+    CST_ExprTernary,
+    CST_ExprBinary,
+    CST_ExprUnary,
+    CST_ExprCall,
+    CST_ExprIndex,
+    CST_ExprField,
+    CST_ExprInt,
+    CST_ExprFloat,
+    CST_ExprStr,
+    CST_ExprIdent,
+    CST_ExprCast,
+    CST_ExprSizeof,
+    CST_ExprTypeof,
+    CST_ExprCompoundLit,
 } ExprKind;
 
 struct Expr {
@@ -267,22 +267,22 @@ char* ftprint_expr(Allocator* allocator, Expr* expr);
 //        Statements
 /////////////////////////////
 typedef enum StmtKind {
-    AST_STMT_NONE,
-    AST_StmtNoOp,
-    AST_StmtIf,
-    AST_StmtWhile,
-    AST_StmtDoWhile,
-    AST_StmtFor,
-    AST_StmtSwitch,
-    AST_StmtReturn,
-    AST_StmtBreak,
-    AST_StmtContinue,
-    AST_StmtGoto,
-    AST_StmtLabel,
-    AST_StmtExpr,
-    AST_StmtExprAssign,
-    AST_StmtDecl,
-    AST_StmtBlock,
+    CST_STMT_NONE,
+    CST_StmtNoOp,
+    CST_StmtIf,
+    CST_StmtWhile,
+    CST_StmtDoWhile,
+    CST_StmtFor,
+    CST_StmtSwitch,
+    CST_StmtReturn,
+    CST_StmtBreak,
+    CST_StmtContinue,
+    CST_StmtGoto,
+    CST_StmtLabel,
+    CST_StmtExpr,
+    CST_StmtExprAssign,
+    CST_StmtDecl,
+    CST_StmtBlock,
 } StmtKind;
 
 struct Stmt {
@@ -423,14 +423,14 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 //////////////////////////////
 
 typedef enum DeclKind {
-    AST_DECL_NONE,
-    AST_DeclVar,
-    AST_DeclConst,
-    AST_DeclEnum,
-    AST_DeclUnion,
-    AST_DeclStruct,
-    AST_DeclProc,
-    AST_DeclTypedef,
+    CST_DECL_NONE,
+    CST_DeclVar,
+    CST_DeclConst,
+    CST_DeclEnum,
+    CST_DeclUnion,
+    CST_DeclStruct,
+    CST_DeclProc,
+    CST_DeclTypedef,
 } DeclKind;
 
 struct Decl {
