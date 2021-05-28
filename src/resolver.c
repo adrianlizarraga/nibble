@@ -3,10 +3,10 @@
 
 static Symbol* resolve_name(Resolver* resolver, const char* name);
 static bool resolve_symbol(Resolver* resolver, Symbol* sym);
-static bool resolve_decl(Resolver* resolver, Decl* decl);
-static bool resolve_decl_var(Resolver* resolver, Decl* decl);
-static bool resolve_decl_const(Resolver* resolver, Decl* decl);
-static bool resolve_decl_proc(Resolver* resolver, Decl* decl);
+static Type* resolve_decl(Resolver* resolver, Decl* decl);
+static Type* resolve_decl_var(Resolver* resolver, Decl* decl);
+static Type* resolve_decl_const(Resolver* resolver, Decl* decl);
+static Type* resolve_decl_proc(Resolver* resolver, Decl* decl);
 static bool resolve_decl_proc_body(Resolver* resolver, Decl* decl);
 static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
@@ -33,10 +33,11 @@ static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type
 static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt);
 
 static Symbol* lookup_symbol(Resolver* resolver, const char* name);
+static Symbol* lookup_global_symbol(Resolver* resolver, const char* name);
 static Symbol* lookup_local_symbol(Resolver* resolver, const char* name);
 static Symbol* enter_scope(Resolver* resolver);
 static void exit_scope(Resolver* resolver, Symbol* scope_begin);
-static bool push_local_var(Resolver* resolver, Decl* decl);
+static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type);
 
 static void init_builtin_syms(Resolver* resolver);
 static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type);
@@ -57,17 +58,83 @@ static void resolver_on_error(Resolver* resolver, const char* format, ...)
 
 static bool add_global_decl_symbol(Resolver* resolver, Decl* decl)
 {
-    const char* sym_name = decl->name;
+    SymbolKind kind = SYMBOL_NONE;
+    const char* name = NULL;
 
-    if (hmap_get(&resolver->global_syms, PTR_UINT(sym_name)))
+    switch (decl->kind)
+    {
+        case CST_DeclVar:
+        {
+            DeclVar* dvar = (DeclVar*)decl;
+
+            kind = SYMBOL_VAR;
+            name = dvar->name; // TODO: Multiple variables per cst decl
+            break;
+        }
+        case CST_DeclConst:
+        {
+            DeclConst* dconst = (DeclConst*)decl;
+
+            kind = SYMBOL_CONST;
+            name = dconst->name;
+            break;
+        }
+        case CST_DeclProc:
+        {
+            DeclProc* dproc = (DeclProc*)decl;
+
+            kind = SYMBOL_PROC;
+            name = dproc->name;
+            break;
+        }
+        case CST_DeclEnum:
+        {
+            DeclEnum* denum = (DeclEnum*)decl;
+
+            kind = SYMBOL_TYPE;
+            name = denum->name;
+            break;
+        }
+        case CST_DeclUnion:
+        {
+            DeclUnion* dunion = (DeclUnion*)decl;
+
+            kind = SYMBOL_TYPE;
+            name = dunion->name;
+            break;
+        }
+        case CST_DeclStruct:
+        {
+            DeclStruct* dstruct = (DeclStruct*)decl;
+
+            kind = SYMBOL_TYPE;
+            name = dstruct->name;
+            break;
+        }
+        case CST_DeclTypedef:
+        {
+            DeclTypedef* dtypedef = (DeclTypedef*)decl;
+
+            kind = SYMBOL_TYPE;
+            name = dtypedef->name;
+            break;
+        }
+        default:
+            ftprint_err("Not handling Decl kind %d in file %s, line %d\n", decl->kind, __FILE__, __LINE__);
+            assert(0);
+            break;
+    }
+
+    if (hmap_get(&resolver->global_syms, PTR_UINT(name)))
     {
         resolver_on_error(resolver, "Duplicate definition of `%s`", sym_name);
         return false;
     }
 
-    Symbol* sym = new_symbol_decl(resolver->ast_mem, decl);
+    Symbol* sym = new_symbol_decl(resolver->ast_mem, kind, name, decl);
 
-    hmap_put(&resolver->global_syms, PTR_UINT(sym_name), PTR_UINT(sym));
+    hmap_put(&resolver->global_syms, PTR_UINT(name), PTR_UINT(sym));
+    list_add_last(&resolver->syms_list, &sym->lnode);
 
     return true;
 }
@@ -82,7 +149,7 @@ static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* t
         return false;
     }
 
-    Symbol* sym = new_symbol_type(resolver->ast_mem, sym_name, type);
+    Symbol* sym = new_symbol_builtin_type(resolver->ast_mem, sym_name, type);
 
     hmap_put(&resolver->global_syms, PTR_UINT(sym_name), PTR_UINT(sym));
 
@@ -120,7 +187,7 @@ static void exit_scope(Resolver* resolver, Symbol* scope_begin)
     resolver->local_syms_at = scope_begin;
 }
 
-static bool push_local_var(Resolver* resolver, Decl* decl)
+static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type)
 {
     // TODO: Only look up to the beginning of the current scope to allow shadowing
     // variables in parent scopes. This currently prohibits all local variable shadowing;
@@ -135,10 +202,11 @@ static bool push_local_var(Resolver* resolver, Decl* decl)
     }
 
     Symbol* sym = resolver->local_syms_at;
-    sym->kind = SYMBOL_DECL;
+    sym->kind = SYMBOL_VAR;
     sym->status = SYMBOL_STATUS_RESOLVED;
     sym->name = decl->name;
-    sym->decl = decl;
+    sym->decl = (Decl*)decl;
+    sym->type = type;
 
     resolver->local_syms_at += 1;
 
@@ -158,17 +226,19 @@ static Symbol* lookup_local_symbol(Resolver* resolver, const char* name)
     return NULL;
 }
 
+static Symbol* lookup_global_symbol(Resolver* resolver, const char* name)
+{
+    uint64_t* pval = hmap_get(&resolver->global_syms, PTR_UINT(name));
+
+    return pval ? (void*)*pval : NULL;
+}
+
 static Symbol* lookup_symbol(Resolver* resolver, const char* name)
 {
-    // Lookup local symbols first.
     Symbol* sym = lookup_local_symbol(resolver, name);
 
-    // Lookup global syms.
     if (!sym)
-    {
-        uint64_t* pval = hmap_get(&resolver->global_syms, PTR_UINT(name));
-        sym = pval ? (void*)*pval : NULL;
-    }
+        sym = lookup_global_symbol(resolver, name);
 
     return sym;
 }
@@ -296,7 +366,8 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
             break;
     }
 
-    resolver_on_error(resolver, "Expression identifier `%s` must refer to a var, const, or proc declaration", eident->name);
+    resolver_on_error(resolver, "Expression identifier `%s` must refer to a var, const, or proc declaration",
+                      eident->name);
     return false;
 }
 
@@ -320,8 +391,9 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
     // Verify that the number of arguments match number of parameters.
     if (proc_type->as_proc.num_params != ecall->num_args)
     {
-        resolver_on_error(resolver, "Incorrect number of procedure call arguments. Expected `%d` arguments, but got `%d`",
-                         proc_type->as_proc.num_params, ecall->num_args);
+        resolver_on_error(resolver,
+                          "Incorrect number of procedure call arguments. Expected `%d` arguments, but got `%d`",
+                          proc_type->as_proc.num_params, ecall->num_args);
         return false;
     }
 
@@ -344,8 +416,9 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         // TODO: Support type conversion
         if (arg->expr->type != param_type)
         {
-            resolver_on_error(resolver, "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`",
-                             (i + 1), type_name(params[i]), type_name(arg_type));
+            resolver_on_error(resolver,
+                              "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`",
+                              (i + 1), type_name(params[i]), type_name(arg_type));
             return false;
         }
 
@@ -401,11 +474,11 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
             if (!ident_sym)
             {
-                resolver_on_error(resolver, "Unresolved type `%s`", ident_name);
+                resolver_on_error(resolver, "Undefined type `%s`", ident_name);
                 return NULL;
             }
 
-            if (!symbol_is_type(ident_sym))
+            if (ident_sym->kind != SYMBOL_TYPE)
             {
                 resolver_on_error(resolver, "Symbol `%s` is not a type", ident_name);
                 return NULL;
@@ -483,7 +556,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
     return NULL;
 }
 
-static bool resolve_decl_var(Resolver* resolver, Decl* decl)
+static Type* resolve_decl_var(Resolver* resolver, Decl* decl)
 {
     DeclVar* decl_var = (DeclVar*)decl;
     TypeSpec* typespec = decl_var->typespec;
@@ -505,14 +578,10 @@ static bool resolve_decl_var(Resolver* resolver, Decl* decl)
 
                 // TODO: Check if can convert type.
                 if (inferred_type != declared_type)
-                {
-                    resolver_on_error(resolver, "Incompatible types. Cannot convert `%s` to `%s`", type_name(inferred_type),
-                                     type_name(declared_type));
-                }
+                    resolver_on_error(resolver, "Incompatible types. Cannot convert `%s` to `%s`",
+                                      type_name(inferred_type), type_name(declared_type));
                 else
-                {
                     type = declared_type;
-                }
             }
         }
         else
@@ -529,10 +598,9 @@ static bool resolve_decl_var(Resolver* resolver, Decl* decl)
     }
 
     // TODO: Complete incomplete aggregate type
+    //decl->type = type;
 
-    decl->type = type;
-
-    return type != NULL;
+    return type;
 }
 
 static bool resolve_decl_const(Resolver* resolver, Decl* decl)
@@ -564,7 +632,7 @@ static bool resolve_decl_const(Resolver* resolver, Decl* decl)
         {
             // TODO: Support type conversions
             resolver_on_error(resolver, "Incompatible types. Cannot convert expression of type `%s` to `%s`",
-                             type_name(init->type), type_name(declared_type));
+                              type_name(init->type), type_name(declared_type));
             return false;
         }
 
@@ -636,7 +704,7 @@ static bool resolve_decl_proc_body(Resolver* resolver, Decl* decl)
 
     for (List* it = head->next; it != head; it = it->next)
     {
-        Decl* proc_param = list_entry(it, Decl, lnode);
+        DeclVar* proc_param = (DeclVar*)list_entry(it, Decl, lnode);
 
         push_local_var(resolver, proc_param);
     }
@@ -657,7 +725,7 @@ static bool resolve_decl_proc_body(Resolver* resolver, Decl* decl)
     return success;
 }
 
-static bool resolve_decl(Resolver* resolver, Decl* decl)
+static Type* resolve_decl(Resolver* resolver, Decl* decl)
 {
     switch (decl->kind)
     {
@@ -679,7 +747,7 @@ static bool resolve_decl(Resolver* resolver, Decl* decl)
             break;
     }
 
-    return false;
+    return NULL;
 }
 
 static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
@@ -730,7 +798,7 @@ static bool resolve_cond_expr(Resolver* resolver, Expr* expr)
     if (!type_is_scalar(cond_type))
     {
         resolver_on_error(resolver, "Conditional expression must resolve to a scalar type, have type `%s`",
-                         type_name(cond_type));
+                          type_name(cond_type));
         return false;
     }
 
@@ -794,8 +862,8 @@ static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_typ
         return 0;
 
     // Resolve loop body.
-    unsigned ret =
-        resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
+    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type,
+                                flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
 
     // NOTE: Because while loops don't have an "else" path, we can't say that all control paths return.
     // TODO: Add else to while loop!!
@@ -842,7 +910,7 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
     if (left_type != right_type)
     {
         resolver_on_error(resolver, "Type mismatch in assignment statement: expected type `%s`, but got `%s`",
-                         type_name(left_type), type_name(right_type));
+                          type_name(left_type), type_name(right_type));
         return 0;
     }
 
@@ -864,7 +932,8 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
 
             if (!sret->expr && (ret_type != type_void))
             {
-                resolver_on_error(resolver, "Return statement is missing a return value of type `%s`", type_name(ret_type));
+                resolver_on_error(resolver, "Return statement is missing a return value of type `%s`",
+                                  type_name(ret_type));
                 return RESOLVE_STMT_RETURNS;
             }
 
@@ -877,7 +946,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
                 if (sret->expr->type != ret_type)
                 {
                     resolver_on_error(resolver, "Invalid return type. Wanted `%s`, but got `%s`", type_name(ret_type),
-                                     type_name(sret->expr->type));
+                                      type_name(sret->expr->type));
                     return RESOLVE_STMT_RETURNS;
                 }
             }
@@ -928,10 +997,13 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
                 return 0;
             }
 
-            if (!resolve_decl(resolver, decl))
+            Type* type = resolve_decl(resolver, decl);
+            DeclVar* dvar = (DeclVar*)decl;
+
+            if (!type)
                 return 0;
 
-            if (!push_local_var(resolver, decl))
+            if (!push_local_var(resolver, dvar, type))
             {
                 resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", decl->name);
                 return 0;
@@ -963,27 +1035,26 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 
     sym->status = SYMBOL_STATUS_RESOLVING;
 
-    bool resolved = true;
-
     switch (sym->kind)
     {
+        case SYMBOL_VAR:
+        case SYMBOL_CONST:
+        case SYMBOL_PROC:
         case SYMBOL_TYPE:
-            break;
-        case SYMBOL_DECL:
-            resolved = resolve_decl(resolver, sym->decl);
+            sym->type = resolve_decl(resolver, sym->decl);
             break;
         default:
-            ftprint_err("Unknown symbol kind `%d`\n", sym->kind);
+            ftprint_err("Unhandled symbol kind `%d`\n", sym->kind);
             assert(0);
             break;
     }
 
-    if (resolved)
-        sym->status = SYMBOL_STATUS_RESOLVED;
-    else
+    if (!sym->type)
         ftprint_err("Failed to resolve `%s`\n", sym->name);
 
-    return resolved;
+    sym->status = SYMBOL_STATUS_RESOLVED;
+
+    return true;
 }
 
 static Symbol* resolve_name(Resolver* resolver, const char* name)
@@ -1033,11 +1104,11 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
         }
     }
 
-
     return true;
 }
 
-void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors, TypeCache* type_cache)
+void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors,
+                   TypeCache* type_cache)
 {
     resolver->ast_mem = ast_mem;
     resolver->tmp_mem = tmp_mem;
@@ -1046,6 +1117,7 @@ void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, B
     resolver->local_syms_at = resolver->local_syms;
     resolver->type_cache = type_cache;
 
+    list_head_init(&resolver->syms_list);
     init_builtin_syms(resolver);
 }
 
@@ -1057,4 +1129,3 @@ void free_resolver(Resolver* resolver)
 #endif
     hmap_destroy(&resolver->global_syms);
 }
-

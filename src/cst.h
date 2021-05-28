@@ -197,7 +197,7 @@ typedef struct ExprStr {
 typedef struct ExprIdent {
     Expr super;
     const char* name;
-    Symbol* sym;
+    //Symbol* sym;
 } ExprIdent;
 
 typedef struct ExprCast {
@@ -436,19 +436,20 @@ typedef enum DeclKind {
 struct Decl {
     DeclKind kind;
     ProgRange range;
-    const char* name;
-    Type* type;
+    //Type* type;
     ListNode lnode;
 };
 
 typedef struct DeclVar {
     Decl super;
+    const char* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclVar;
 
 typedef struct DeclConst {
     Decl super;
+    const char* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclConst;
@@ -461,12 +462,14 @@ typedef struct EnumItem {
 
 typedef struct DeclEnum {
     Decl super;
+    const char* name;
     TypeSpec* typespec;
     List items;
 } DeclEnum;
 
 typedef struct DeclAggregate {
     Decl super;
+    const char* name;
     List fields;
 } DeclAggregate;
 
@@ -475,6 +478,7 @@ typedef DeclAggregate DeclStruct;
 
 typedef struct DeclProc {
     Decl super;
+    const char* name;
     TypeSpec* ret;
     size_t num_params;
     List params;
@@ -483,6 +487,7 @@ typedef struct DeclProc {
 
 typedef struct DeclTypedef {
     Decl super;
+    const char* name;
     TypeSpec* typespec;
 } DeclTypedef;
 
@@ -615,8 +620,11 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
 
 typedef enum SymbolKind {
     SYMBOL_NONE,
-    SYMBOL_DECL,
+    SYMBOL_VAR,
+    SYMBOL_CONST,
+    SYMBOL_PROC,
     SYMBOL_TYPE,
+    SYMBOL_PACKAGE,
 } SymbolKind;
 
 typedef enum SymbolStatus {
@@ -625,24 +633,15 @@ typedef enum SymbolStatus {
     SYMBOL_STATUS_RESOLVED,
 } SymbolStatus;
 
-enum SymbolFlags {
-    SYMBOL_IS_LOCAL   = 0x1,
-};
-
 struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
-    uint64_t flags;
     const char* name;
-
-    union {
-        Decl* decl;
-        Type* type;
-    };
+    Decl* decl;
+    Type* type;
+    List lnode;
 };
 
-Symbol* new_symbol_decl(Allocator* allocator, Decl* decl);
+Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);
 Symbol* new_symbol_type(Allocator* allocator, const char* name, Type* type);
-
-bool symbol_is_type(Symbol* sym);
 #endif

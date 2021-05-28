@@ -17,6 +17,7 @@ struct Resolver {
     TypeCache* type_cache;
 
     HMap global_syms;
+    List syms_list;
 
     // TODO: Create an expandable stack similar to the arena allocator
     Symbol local_syms[MAX_LOCAL_SYMS];
