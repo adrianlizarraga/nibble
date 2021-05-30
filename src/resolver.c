@@ -1108,24 +1108,14 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
 }
 
 void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors,
-                   TypeCache* type_cache)
+                   TypeCache* type_cache, Scope* global_scope)
 {
     resolver->ast_mem = ast_mem;
     resolver->tmp_mem = tmp_mem;
     resolver->errors = errors;
-    resolver->global_syms = hmap(8, NULL);
-    resolver->local_syms_at = resolver->local_syms;
     resolver->type_cache = type_cache;
+    resolver->global_scope = global_scope;
 
-    list_head_init(&resolver->syms_list);
     init_builtin_syms(resolver);
 }
 
-void free_resolver(Resolver* resolver)
-{
-#ifndef NDEBUG
-    ftprint_out("global syms map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", resolver->global_syms.len,
-                resolver->global_syms.cap, resolver->global_syms.cap * sizeof(HMapEntry));
-#endif
-    hmap_destroy(&resolver->global_syms);
-}

@@ -10,22 +10,20 @@
 
 typedef struct Resolver Resolver;
 
+// Exprs have a Type*
+// Create hmap for const exprs
+
 struct Resolver {
     Allocator* ast_mem;
     Allocator* tmp_mem;
     ByteStream* errors;
     TypeCache* type_cache;
+    Scope* global_scope;
 
-    HMap global_syms;
-    List syms_list;
-
-    // TODO: Create an expandable stack similar to the arena allocator
-    Symbol local_syms[MAX_LOCAL_SYMS];
-    Symbol* local_syms_at;
+    Scope* curr_scope;
 };
 
 void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors,
-                   TypeCache* type_cache);
-void free_resolver(Resolver* resolver);
+                   TypeCache* type_cache, Scope* global_scope);
 bool resolve_global_decls(Resolver* resolver, List* decls);
 #endif

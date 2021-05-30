@@ -14,7 +14,7 @@ typedef struct NibbleCtx {
     ByteStream errors;
 
     TypeCache type_cache;
-    Resolver resolver;
+    Scope global_scope;
 
     OS target_os;
     Arch target_arch;
@@ -201,7 +201,9 @@ bool nibble_init(OS target_os, Arch target_arch)
         return false;
 
     init_builtin_types(target_os, target_arch);
-    init_resolver(&nibble->resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors, &nibble->type_cache);
+    init_scope(&nibble->global_scope, NULL, 8);
+    init_resolver(&nibble->resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors,
+                  &nibble->type_cache, &nibble->global_scope);
 
     return true;
 }
@@ -287,7 +289,8 @@ void nibble_cleanup(void)
                 nibble->type_cache.procs.cap, nibble->type_cache.procs.cap * sizeof(HMapEntry));
 #endif
 
-    free_resolver(&nibble->resolver);
+    free_scope(&nibble->global_scope);
+
     hmap_destroy(&nibble->str_lit_map);
     hmap_destroy(&nibble->ident_map);
     hmap_destroy(&nibble->type_cache.ptrs);

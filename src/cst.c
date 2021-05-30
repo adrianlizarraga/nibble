@@ -861,6 +861,38 @@ Symbol* new_symbol_builtin_type(Allocator* allocator, const char* name, Type* ty
 }
 
 //////////////////////////////
+//     Scope
+//////////////////////////////
+
+void init_scope(Scope* scope, Scope* parent, size_t log2_num_syms)
+{
+    scope->parent = parent;
+    scope->sym_table = hmap(log2_num_syms, NULL);
+
+    list_head_init(&scope->children);
+    list_head_init(&scope->sym_list);
+}
+
+void free_scope(Scope* scope)
+{
+#ifndef NDEBUG
+    ftprint_out("Scope sym table: len = %lu, cap = %lu, total_size (malloc) = %lu\n", scope->sym_table.len,
+                scope->sym_table.cap, scope->sym_table.cap * sizeof(HMapEntry));
+#endif
+
+    hmap_destroy(&scope->sym_table);
+
+    List* head = &scope->children;
+
+    for (List* it = head->next; it != head; it = it->next)
+    {
+        Scope* child = list_entry(it, Scope, lnode);
+
+        free_scope(child);
+    }
+}
+
+//////////////////////////////
 //     CST Printing
 //////////////////////////////
 

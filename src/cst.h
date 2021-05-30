@@ -16,6 +16,7 @@ typedef struct Stmt Stmt;
 
 typedef struct Type Type;
 typedef struct Symbol Symbol;
+typedef struct Scope Scope;
 
 ///////////////////////////////
 //       Type Specifiers
@@ -126,11 +127,10 @@ typedef enum ExprKind {
 struct Expr {
     ExprKind kind;
     ProgRange range;
-
     Type* type;
-    bool is_const;
-    bool is_lvalue;
-    Scalar const_val;
+    //bool is_const;
+    //bool is_lvalue;
+    //Scalar const_val;
 };
 
 typedef struct ExprTernary {
@@ -197,7 +197,6 @@ typedef struct ExprStr {
 typedef struct ExprIdent {
     Expr super;
     const char* name;
-    //Symbol* sym;
 } ExprIdent;
 
 typedef struct ExprCast {
@@ -644,4 +643,21 @@ struct Symbol {
 
 Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);
 Symbol* new_symbol_type(Allocator* allocator, const char* name, Type* type);
+
+///////////////////////////////
+//       Scope
+//////////////////////////////
+
+struct Scope {
+    struct Scope* parent;
+    List children;
+
+    HMap sym_table;
+    List sym_list;
+
+    ListNode lnode;
+};
+
+void init_scope(Scope* scope, Scope* parent, size_t log2_num_syms);
+void free_scope(Scope* scope);
 #endif
