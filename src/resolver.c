@@ -33,11 +33,12 @@ static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type
 static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt);
 
 static Symbol* lookup_symbol(Resolver* resolver, const char* name);
-static Symbol* lookup_global_symbol(Resolver* resolver, const char* name);
-static Symbol* lookup_local_symbol(Resolver* resolver, const char* name);
-static Symbol* enter_scope(Resolver* resolver);
-static void exit_scope(Resolver* resolver, Symbol* scope_begin);
-static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type);
+static Symbol* lookup_scope_symbol(Resolver* resolver, const char* name);
+static Scope* enter_new_scope(Resolver* resolver);
+static void enter_scope(Resolver* resolver, Scope* scope);
+static void exit_curr_scope(Resolver* resolver);
+static void add_scope_symbol(Scope* scope, Symbol* sym);
+static bool push_local_var(Resolver* resolver, Scope* scope, DeclVar* decl, Type* type);
 
 static void init_builtin_syms(Resolver* resolver);
 static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type);
@@ -125,7 +126,10 @@ static bool add_global_decl_symbol(Resolver* resolver, Decl* decl)
             break;
     }
 
-    if (hmap_get(&resolver->global_syms, PTR_UINT(name)))
+    HMap* sym_table = &resolver->global_scope->sym_table;
+    List* sym_list  = &resolver->global_scope->sym_list;
+
+    if (hmap_get(sym_table, PTR_UINT(name)))
     {
         resolver_on_error(resolver, "Duplicate definition of `%s`", sym_name);
         return false;
@@ -133,8 +137,8 @@ static bool add_global_decl_symbol(Resolver* resolver, Decl* decl)
 
     Symbol* sym = new_symbol_decl(resolver->ast_mem, kind, name, decl);
 
-    hmap_put(&resolver->global_syms, PTR_UINT(name), PTR_UINT(sym));
-    list_add_last(&resolver->syms_list, &sym->lnode);
+    hmap_put(sym_table, PTR_UINT(name), PTR_UINT(sym));
+    list_add_last(sym_list, &sym->lnode);
 
     return true;
 }
@@ -142,8 +146,9 @@ static bool add_global_decl_symbol(Resolver* resolver, Decl* decl)
 static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type)
 {
     const char* sym_name = intern_ident(name, cstr_len(name), NULL, NULL);
+    HMap* sym_table = &resolver->global_scope->sym_table;
 
-    if (hmap_get(&resolver->global_syms, PTR_UINT(sym_name)))
+    if (hmap_get(sym_table, PTR_UINT(sym_name)))
     {
         resolver_on_error(resolver, "Duplicate definition of `%s`", sym_name);
         return false;
@@ -151,7 +156,7 @@ static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* t
 
     Symbol* sym = new_symbol_builtin_type(resolver->ast_mem, sym_name, type);
 
-    hmap_put(&resolver->global_syms, PTR_UINT(sym_name), PTR_UINT(sym));
+    hmap_put(sym_table, PTR_UINT(sym_name), PTR_UINT(sym));
 
     return true;
 }
@@ -177,70 +182,63 @@ static void init_builtin_syms(Resolver* resolver)
     add_global_type_symbol(resolver, "float64", type_f64);
 }
 
-static Symbol* enter_scope(Resolver* resolver)
+static Scope* enter_new_scope(Resolver* resolver)
 {
-    return resolver->local_syms_at;
+    Scope* prev_scope = resolver->curr_scope;
+    Scope* new_scope = alloc_type(resolver->ast_mem, Scope, true);
+
+    init_scope(new_scope, prev_scope, 8);
+    list_add_last(&prev_scope->children, &new_scope->lnode);
+
+    return new_scope;
 }
 
-static void exit_scope(Resolver* resolver, Symbol* scope_begin)
+static void exit_scope(Resolver* resolver)
 {
-    resolver->local_syms_at = scope_begin;
+    resolver->curr_scope = resolver->curr_scope->parent;
+}
+
+static void add_scope_symbol(Scope* scope, Symbol* sym)
+{
+    hmap_put(&scope->sym_table, PTR_UINT(sym->name), PTR_UINT(sym));
+    list_add_last(&scope->sym_list, sym->lnode);
 }
 
 static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type)
 {
-    // TODO: Only look up to the beginning of the current scope to allow shadowing
-    // variables in parent scopes. This currently prohibits all local variable shadowing;
-    // global variable shadowing is currently allowed.
-    if (lookup_local_symbol(resolver, decl->name))
+    Scope* scope = resolver->curr_scope;
+    const char* sym_name = decl->name;
+
+    if (lookup_scope_symbol(scope, sym_name))
         return false;
 
-    if (resolver->local_syms_at == resolver->local_syms + MAX_LOCAL_SYMS)
-    {
-        NIBBLE_FATAL_EXIT("INTERNAL ERROR: Pushed too many local symbols");
-        return false;
-    }
-
-    Symbol* sym = resolver->local_syms_at;
-    sym->kind = SYMBOL_VAR;
+    Symbol* sym = new_symbol_decl(resolver->ast_mem, SYMBOL_VAR, sym_name, (Decl*)decl);
     sym->status = SYMBOL_STATUS_RESOLVED;
-    sym->name = decl->name;
-    sym->decl = (Decl*)decl;
     sym->type = type;
 
-    resolver->local_syms_at += 1;
+    add_scope_symbol(scope, sym);
 
     return true;
 }
 
-static Symbol* lookup_local_symbol(Resolver* resolver, const char* name)
+static Symbol* lookup_scope_symbol(Scope* scope, const char* name)
 {
-    for (Symbol* it = resolver->local_syms_at; it != resolver->local_syms; it -= 1)
-    {
-        Symbol* sym = it - 1;
-
-        if (sym->name == name)
-            return sym;
-    }
-
-    return NULL;
-}
-
-static Symbol* lookup_global_symbol(Resolver* resolver, const char* name)
-{
-    uint64_t* pval = hmap_get(&resolver->global_syms, PTR_UINT(name));
+    uint64_t* pval = hmap_get(&scope->sym_table, PTR_UINT(name));
 
     return pval ? (void*)*pval : NULL;
 }
 
 static Symbol* lookup_symbol(Resolver* resolver, const char* name)
 {
-    Symbol* sym = lookup_local_symbol(resolver, name);
+    for (Scope* scope = resolver->curr_scope; scope != NULL; scope = scope->parent)
+    {
+        Symbol* sym = lookup_scope_symbol(scope, name);
 
-    if (!sym)
-        sym = lookup_global_symbol(resolver, name);
+        if (sym)
+            return sym;
+    }
 
-    return sym;
+    return NULL;
 }
 
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
@@ -699,7 +697,7 @@ static bool resolve_decl_proc_body(Resolver* resolver, Decl* decl)
     assert(decl->kind == CST_DeclProc);
 
     DeclProc* dproc = (DeclProc*)decl;
-    Symbol* scope_begin = enter_scope(resolver);
+    Symbol* scope_begin = enter_new_scope(resolver);
     List* head = &dproc->params;
 
     for (List* it = head->next; it != head; it = it->next)
@@ -753,7 +751,7 @@ static Type* resolve_decl(Resolver* resolver, Decl* decl)
 static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     StmtBlock* sblock = (StmtBlock*)stmt;
-    Symbol* scope_begin = enter_scope(resolver);
+    Symbol* scope_begin = enter_new_scope(resolver);
 
     unsigned ret_success = RESOLVE_STMT_SUCCESS;
     List* head = &sblock->stmts;

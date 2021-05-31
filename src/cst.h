@@ -128,9 +128,9 @@ struct Expr {
     ExprKind kind;
     ProgRange range;
     Type* type;
-    //bool is_const;
-    //bool is_lvalue;
-    //Scalar const_val;
+    bool is_const;
+    bool is_lvalue;
+    Scalar const_val;
 };
 
 typedef struct ExprTernary {
@@ -435,7 +435,6 @@ typedef enum DeclKind {
 struct Decl {
     DeclKind kind;
     ProgRange range;
-    //Type* type;
     ListNode lnode;
 };
 
@@ -482,6 +481,7 @@ typedef struct DeclProc {
     size_t num_params;
     List params;
     Stmt* body;
+    Scope* scope;
 } DeclProc;
 
 typedef struct DeclTypedef {
