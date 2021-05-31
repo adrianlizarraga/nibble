@@ -1,13 +1,14 @@
 #include "resolver.h"
+#include "cst.h"
 #include "parser.h"
 
 static Symbol* resolve_name(Resolver* resolver, const char* name);
 static bool resolve_symbol(Resolver* resolver, Symbol* sym);
 static Type* resolve_decl(Resolver* resolver, Decl* decl);
-static Type* resolve_decl_var(Resolver* resolver, Decl* decl);
-static Type* resolve_decl_const(Resolver* resolver, Decl* decl);
-static Type* resolve_decl_proc(Resolver* resolver, Decl* decl);
-static bool resolve_decl_proc_body(Resolver* resolver, Decl* decl);
+static Type* resolve_decl_var(Resolver* resolver, DeclVar* decl);
+static Type* resolve_decl_const(Resolver* resolver, DeclConst* decl);
+static Type* resolve_decl_proc(Resolver* resolver, DeclProc* decl);
+static bool resolve_decl_proc_body(Resolver* resolver, Symbol* sym);
 static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr);
@@ -33,12 +34,12 @@ static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type
 static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt);
 
 static Symbol* lookup_symbol(Resolver* resolver, const char* name);
-static Symbol* lookup_scope_symbol(Resolver* resolver, const char* name);
-static Scope* enter_new_scope(Resolver* resolver);
-static void enter_scope(Resolver* resolver, Scope* scope);
-static void exit_curr_scope(Resolver* resolver);
+static Symbol* lookup_scope_symbol(Scope* scope, const char* name);
+static void set_scope(Resolver* resolver, Scope* scope);
+static Scope* push_scope(Resolver* resolver);
+static void pop_scope(Resolver* resolver);
 static void add_scope_symbol(Scope* scope, Symbol* sym);
-static bool push_local_var(Resolver* resolver, Scope* scope, DeclVar* decl, Type* type);
+static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type);
 
 static void init_builtin_syms(Resolver* resolver);
 static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type);
@@ -126,19 +127,15 @@ static bool add_global_decl_symbol(Resolver* resolver, Decl* decl)
             break;
     }
 
-    HMap* sym_table = &resolver->global_scope->sym_table;
-    List* sym_list  = &resolver->global_scope->sym_list;
-
-    if (hmap_get(sym_table, PTR_UINT(name)))
+    if (lookup_scope_symbol(resolver->global_scope, name))
     {
-        resolver_on_error(resolver, "Duplicate definition of `%s`", sym_name);
+        resolver_on_error(resolver, "Duplicate definition of `%s`", name);
         return false;
     }
 
     Symbol* sym = new_symbol_decl(resolver->ast_mem, kind, name, decl);
 
-    hmap_put(sym_table, PTR_UINT(name), PTR_UINT(sym));
-    list_add_last(sym_list, &sym->lnode);
+    add_scope_symbol(resolver->global_scope, sym);
 
     return true;
 }
@@ -146,9 +143,8 @@ static bool add_global_decl_symbol(Resolver* resolver, Decl* decl)
 static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type)
 {
     const char* sym_name = intern_ident(name, cstr_len(name), NULL, NULL);
-    HMap* sym_table = &resolver->global_scope->sym_table;
 
-    if (hmap_get(sym_table, PTR_UINT(sym_name)))
+    if (lookup_scope_symbol(resolver->global_scope, sym_name))
     {
         resolver_on_error(resolver, "Duplicate definition of `%s`", sym_name);
         return false;
@@ -156,7 +152,7 @@ static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* t
 
     Symbol* sym = new_symbol_builtin_type(resolver->ast_mem, sym_name, type);
 
-    hmap_put(sym_table, PTR_UINT(sym_name), PTR_UINT(sym));
+    add_scope_symbol(resolver->global_scope, sym);
 
     return true;
 }
@@ -182,18 +178,25 @@ static void init_builtin_syms(Resolver* resolver)
     add_global_type_symbol(resolver, "float64", type_f64);
 }
 
-static Scope* enter_new_scope(Resolver* resolver)
+static void set_scope(Resolver* resolver, Scope* scope)
 {
-    Scope* prev_scope = resolver->curr_scope;
-    Scope* new_scope = alloc_type(resolver->ast_mem, Scope, true);
-
-    init_scope(new_scope, prev_scope, 8);
-    list_add_last(&prev_scope->children, &new_scope->lnode);
-
-    return new_scope;
+    resolver->curr_scope = scope;
 }
 
-static void exit_scope(Resolver* resolver)
+static Scope* push_scope(Resolver* resolver)
+{
+    Scope* prev_scope = resolver->curr_scope;
+    Scope* scope = new_scope(resolver->ast_mem, 5); // TODO: Size individual scopes to reduce memory usage.
+
+    scope->parent = prev_scope;
+
+    list_add_last(&prev_scope->children, &scope->lnode);
+    set_scope(resolver, scope);
+
+    return scope;
+}
+
+static void pop_scope(Resolver* resolver)
 {
     resolver->curr_scope = resolver->curr_scope->parent;
 }
@@ -201,7 +204,7 @@ static void exit_scope(Resolver* resolver)
 static void add_scope_symbol(Scope* scope, Symbol* sym)
 {
     hmap_put(&scope->sym_table, PTR_UINT(sym->name), PTR_UINT(sym));
-    list_add_last(&scope->sym_list, sym->lnode);
+    list_add_last(&scope->sym_list, &sym->lnode);
 }
 
 static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type)
@@ -331,35 +334,25 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
 
     switch (sym->kind)
     {
-        case SYMBOL_DECL:
-            switch (sym->decl->kind)
-            {
-                case CST_DeclVar:
-                    expr->type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, sym->decl->type);
-                    expr->is_lvalue = true;
-                    expr->is_const = false;
-                    eident->sym = sym;
+        case SYMBOL_VAR:
+            expr->type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, sym->type);
+            expr->is_lvalue = true;
+            expr->is_const = false;
 
-                    return true;
-                case CST_DeclConst:
-                    expr->type = sym->decl->type;
-                    expr->is_lvalue = false;
-                    expr->is_const = true;
-                    expr->const_val = ((DeclConst*)(sym->decl))->init->const_val;
-                    eident->sym = sym;
+            return true;
+        case SYMBOL_CONST:
+            expr->type = sym->type;
+            expr->is_lvalue = false;
+            expr->is_const = true;
+            expr->const_val = ((DeclConst*)(sym->decl))->init->const_val;
 
-                    return true;
-                case CST_DeclProc:
-                    expr->type = sym->decl->type;
-                    expr->is_lvalue = false;
-                    expr->is_const = false;
-                    eident->sym = sym;
+            return true;
+        case SYMBOL_PROC:
+            expr->type = sym->type;
+            expr->is_lvalue = false;
+            expr->is_const = false;
 
-                    return true;
-                default:
-                    break;
-            }
-            break;
+            return true;
         default:
             break;
     }
@@ -468,7 +461,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             // TODO: Support module path
 
             const char* ident_name = ts->name;
-            Symbol* ident_sym = lookup_symbol(resolver, ident_name);
+            Symbol* ident_sym = resolve_name(resolver, ident_name);
 
             if (!ident_sym)
             {
@@ -482,9 +475,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 return NULL;
             }
 
-            resolve_symbol(resolver, ident_sym);
-
-            return ident_sym->kind == SYMBOL_TYPE ? ident_sym->type : ident_sym->decl->type;
+            return ident_sym->type;
         }
         case CST_TypeSpecPtr:
         {
@@ -554,11 +545,10 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
     return NULL;
 }
 
-static Type* resolve_decl_var(Resolver* resolver, Decl* decl)
+static Type* resolve_decl_var(Resolver* resolver, DeclVar* decl)
 {
-    DeclVar* decl_var = (DeclVar*)decl;
-    TypeSpec* typespec = decl_var->typespec;
-    Expr* expr = decl_var->init;
+    TypeSpec* typespec = decl->typespec;
+    Expr* expr = decl->init;
     Type* type = NULL;
 
     if (typespec)
@@ -596,31 +586,31 @@ static Type* resolve_decl_var(Resolver* resolver, Decl* decl)
     }
 
     // TODO: Complete incomplete aggregate type
-    //decl->type = type;
 
     return type;
 }
 
-static bool resolve_decl_const(Resolver* resolver, Decl* decl)
+static Type* resolve_decl_const(Resolver* resolver, DeclConst* decl)
 {
-    DeclConst* dconst = (DeclConst*)decl;
-    TypeSpec* typespec = dconst->typespec;
-    Expr* init = dconst->init;
+    TypeSpec* typespec = decl->typespec;
+    Expr* init = decl->init;
 
     if (!resolve_expr(resolver, init, NULL))
-        return false;
+        return NULL;
 
     if (!init->is_const)
     {
         resolver_on_error(resolver, "Value for const decl `%s` must be a constant expression", decl->name);
-        return false;
+        return NULL;
     }
 
     if (!type_is_scalar(init->type))
     {
         resolver_on_error(resolver, "Constant expression must be of a scalar type");
-        return false;
+        return NULL;
     }
+
+    Type* type = NULL;
 
     if (typespec)
     {
@@ -631,92 +621,88 @@ static bool resolve_decl_const(Resolver* resolver, Decl* decl)
             // TODO: Support type conversions
             resolver_on_error(resolver, "Incompatible types. Cannot convert expression of type `%s` to `%s`",
                               type_name(init->type), type_name(declared_type));
-            return false;
+            return NULL;
         }
 
-        decl->type = declared_type;
+        type = declared_type;
     }
     else
     {
-        decl->type = init->type;
+        type = init->type;
     }
 
-    return true;
+    return type;
 }
 
-static bool resolve_decl_proc(Resolver* resolver, Decl* decl)
+static Type* resolve_decl_proc(Resolver* resolver, DeclProc* decl)
 {
-    DeclProc* dproc = (DeclProc*)decl;
+    decl->scope = push_scope(resolver);
+
     AllocatorState mem_state = allocator_get_state(resolver->tmp_mem);
     Type** params = array_create(resolver->tmp_mem, Type*, 16);
-    List* head = &dproc->params;
-
-    for (List* it = head->next; it != head; it = it->next)
-    {
-        Decl* proc_param = list_entry(it, Decl, lnode);
-
-        if (!resolve_decl_var(resolver, proc_param))
-        {
-            allocator_restore_state(mem_state);
-            return false;
-        }
-
-        // TODO: recursive ptr decay on param type
-        // TODO: complete incomplete param type (struct, union)
-
-        if (proc_param->type == type_void)
-        {
-            resolver_on_error(resolver, "Procedure parameter cannot be void");
-            allocator_restore_state(mem_state);
-            return false;
-        }
-
-        array_push(params, proc_param->type);
-    }
-
-    assert(array_len(params) == dproc->num_params);
-    allocator_restore_state(mem_state);
-
-    Type* ret = type_void;
-
-    if (dproc->ret)
-    {
-        ret = resolve_typespec(resolver, dproc->ret);
-
-        if (!ret)
-            return false;
-    }
-
-    decl->type = type_proc(resolver->ast_mem, &resolver->type_cache->procs, array_len(params), params, ret);
-
-    return true;
-}
-
-static bool resolve_decl_proc_body(Resolver* resolver, Decl* decl)
-{
-    assert(decl->kind == CST_DeclProc);
-
-    DeclProc* dproc = (DeclProc*)decl;
-    Symbol* scope_begin = enter_new_scope(resolver);
-    List* head = &dproc->params;
+    List* head = &decl->params;
 
     for (List* it = head->next; it != head; it = it->next)
     {
         DeclVar* proc_param = (DeclVar*)list_entry(it, Decl, lnode);
+        Type* param_type = resolve_decl_var(resolver, proc_param);
 
-        push_local_var(resolver, proc_param);
+        if (!param_type)
+        {
+            allocator_restore_state(mem_state);
+            return NULL;
+        }
+
+        push_local_var(resolver, proc_param, param_type);
+
+        // TODO: recursive ptr decay on param type
+        // TODO: complete incomplete param type (struct, union)
+
+        if (param_type == type_void)
+        {
+            resolver_on_error(resolver, "Procedure parameter cannot be void");
+            allocator_restore_state(mem_state);
+            return NULL;
+        }
+
+        array_push(params, param_type);
     }
 
-    Type* ret_type = decl->type->as_proc.ret;
+    pop_scope(resolver);
+    assert(array_len(params) == decl->num_params);
+    allocator_restore_state(mem_state);
+
+    Type* ret_type = type_void;
+
+    if (decl->ret)
+    {
+        ret_type = resolve_typespec(resolver, decl->ret);
+
+        if (!ret_type)
+            return NULL;
+    }
+
+    return type_proc(resolver->ast_mem, &resolver->type_cache->procs, array_len(params), params, ret_type);
+}
+
+static bool resolve_decl_proc_body(Resolver* resolver, Symbol* sym)
+{
+    assert(sym->kind == SYMBOL_PROC);
+
+    DeclProc* dproc = (DeclProc*)(sym->decl);
+
+    set_scope(resolver, dproc->scope);
+
+    Type* ret_type = sym->type->as_proc.ret;
     unsigned r = resolve_stmt(resolver, dproc->body, ret_type, 0);
     bool returns = r & RESOLVE_STMT_RETURNS;
     bool success = r & RESOLVE_STMT_SUCCESS;
 
-    exit_scope(resolver, scope_begin);
+    pop_scope(resolver);
 
     if ((ret_type != type_void) && !returns && success)
     {
-        resolver_on_error(resolver, "Not all code paths in procedure `%s` return a value", decl->name);
+        resolver_on_error(resolver, "Not all code paths in procedure `%s` return a value", dproc->name);
         return false;
     }
 
@@ -728,9 +714,9 @@ static Type* resolve_decl(Resolver* resolver, Decl* decl)
     switch (decl->kind)
     {
         case CST_DeclVar:
-            return resolve_decl_var(resolver, decl);
+            return resolve_decl_var(resolver, (DeclVar*)decl);
         case CST_DeclConst:
-            return resolve_decl_const(resolver, decl);
+            return resolve_decl_const(resolver, (DeclConst*)decl);
         case CST_DeclEnum:
         case CST_DeclUnion:
         case CST_DeclStruct:
@@ -738,7 +724,7 @@ static Type* resolve_decl(Resolver* resolver, Decl* decl)
             ftprint_err("Decl kind `%d` not YET supported in resolution\n", decl->kind);
             break;
         case CST_DeclProc:
-            return resolve_decl_proc(resolver, decl);
+            return resolve_decl_proc(resolver, (DeclProc*)decl);
         default:
             ftprint_err("Unknown decl kind `%d` while resolving symbol\n", decl->kind);
             assert(0);
@@ -751,7 +737,7 @@ static Type* resolve_decl(Resolver* resolver, Decl* decl)
 static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     StmtBlock* sblock = (StmtBlock*)stmt;
-    Symbol* scope_begin = enter_new_scope(resolver);
+    sblock->scope = push_scope(resolver);
 
     unsigned ret_success = RESOLVE_STMT_SUCCESS;
     List* head = &sblock->stmts;
@@ -779,7 +765,7 @@ static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_typ
         }
     }
 
-    exit_scope(resolver, scope_begin);
+    pop_scope(resolver);
 
     return ret_success;
 }
@@ -820,27 +806,6 @@ static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, 
 
     if (!(ret & RESOLVE_STMT_SUCCESS))
         return 0;
-
-    // Resolve elif blocks.
-    List* head = &sif->elif_blks;
-    List* it = head->next;
-
-    while (it != head)
-    {
-        IfCondBlock* elif_blk = list_entry(it, IfCondBlock, lnode);
-
-        unsigned elif_ret = resolve_cond_block(resolver, elif_blk, ret_type, flags);
-
-        if (!(elif_ret & RESOLVE_STMT_SUCCESS))
-            return 0;
-
-        ret &= elif_ret; // NOTE: All blocks have to return in order to say that all control paths return.
-
-        it = it->next;
-    }
-
-    // TODO: Ensure conditions are mutually exclusive (condition ANDed with each previous condition == false)
-    // Can probably only do this for successive condition expressions that evaluate to compile-time constants.
 
     // Resolve else block.
     if (sif->else_blk.body)
@@ -1003,7 +968,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
 
             if (!push_local_var(resolver, dvar, type))
             {
-                resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", decl->name);
+                resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name);
                 return 0;
             }
 
@@ -1048,7 +1013,10 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
     }
 
     if (!sym->type)
+    {
         ftprint_err("Failed to resolve `%s`\n", sym->name);
+        return false;
+    }
 
     sym->status = SYMBOL_STATUS_RESOLVED;
 
@@ -1061,6 +1029,7 @@ static Symbol* resolve_name(Resolver* resolver, const char* name)
 
     if (!sym)
         return NULL;
+
 
     if (!resolve_symbol(resolver, sym))
         return NULL;
@@ -1080,24 +1049,25 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
         add_global_decl_symbol(resolver, decl);
     }
 
-    // Resolve declarations. Will not resolve procedure bodies or complete aggregate types.
-    for (List* it = head->next; it != head; it = it->next)
-    {
-        Decl* decl = list_entry(it, Decl, lnode);
-        Symbol* sym = resolve_name(resolver, decl->name);
+    // Resolve declaration "headers". Will not resolve procedure bodies or complete aggregate types.
+    List* sym_head = &resolver->global_scope->sym_list;
 
-        if (!sym)
+    for (List* it = sym_head->next; it != sym_head; it = it->next)
+    {
+        Symbol* sym = list_entry(it, Symbol, lnode);
+
+        if (!resolve_symbol(resolver, sym))
             return false;
     }
 
     // Resolve procedure bodies and complete aggregate types.
-    for (List* it = head->next; it != head; it = it->next)
+    for (List* it = sym_head->next; it != sym_head; it = it->next)
     {
-        Decl* decl = list_entry(it, Decl, lnode);
+        Symbol* sym = list_entry(it, Symbol, lnode);
 
-        if (decl->kind == CST_DeclProc)
+        if (sym->kind == SYMBOL_PROC)
         {
-            if (!resolve_decl_proc_body(resolver, decl))
+            if (!resolve_decl_proc_body(resolver, sym))
                 return false;
         }
     }
@@ -1114,6 +1084,7 @@ void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, B
     resolver->type_cache = type_cache;
     resolver->global_scope = global_scope;
 
+    set_scope(resolver, global_scope);
     init_builtin_syms(resolver);
 }
 

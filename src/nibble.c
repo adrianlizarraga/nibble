@@ -60,7 +60,6 @@ static StringView keyword_names[KW_COUNT] = {
     [KW_RETURN] = string_view_lit("return"),
     [KW_IF] = string_view_lit("if"),
     [KW_ELSE] = string_view_lit("else"),
-    [KW_ELIF] = string_view_lit("elif"),
     [KW_WHILE] = string_view_lit("while"),
     [KW_DO] = string_view_lit("do"),
     [KW_FOR] = string_view_lit("for"),
@@ -201,9 +200,7 @@ bool nibble_init(OS target_os, Arch target_arch)
         return false;
 
     init_builtin_types(target_os, target_arch);
-    init_scope(&nibble->global_scope, NULL, 8);
-    init_resolver(&nibble->resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors,
-                  &nibble->type_cache, &nibble->global_scope);
+    init_scope(&nibble->global_scope, 8);
 
     return true;
 }
@@ -259,7 +256,12 @@ void nibble_compile(const char* input_file, const char* output_file)
     //////////////////////////////////////////
     ftprint_out("2. Type-checking ...\n");
 
-    if (!resolve_global_decls(&nibble->resolver, &decls))
+    Resolver resolver = {0};
+
+    init_resolver(&resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors,
+                  &nibble->type_cache, &nibble->global_scope);
+
+    if (!resolve_global_decls(&resolver, &decls))
     {
         print_errors(&nibble->errors);
         return;

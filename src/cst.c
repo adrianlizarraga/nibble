@@ -415,7 +415,7 @@ Stmt* new_stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange 
     return (Stmt*)stmt;
 }
 
-Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, List* elif_blks, ElseBlock* else_blk, ProgRange range)
+Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, ElseBlock* else_blk, ProgRange range)
 {
     StmtIf* stmt = new_stmt(allocator, StmtIf, range);
 
@@ -426,19 +426,7 @@ Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, List* elif_blks, El
     stmt->else_blk.range = else_blk->range;
     stmt->else_blk.body = else_blk->body;
 
-    list_replace(elif_blks, &stmt->elif_blks);
-
     return (Stmt*)stmt;
-}
-
-IfCondBlock* new_if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range)
-{
-    IfCondBlock* cblock = alloc_type(allocator, IfCondBlock, true);
-    cblock->range = range;
-    cblock->cond = cond;
-    cblock->body = body;
-
-    return cblock;
 }
 
 Stmt* new_stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range)
@@ -864,9 +852,17 @@ Symbol* new_symbol_builtin_type(Allocator* allocator, const char* name, Type* ty
 //     Scope
 //////////////////////////////
 
-void init_scope(Scope* scope, Scope* parent, size_t log2_num_syms)
+Scope* new_scope(Allocator* allocator, size_t log2_num_syms)
 {
-    scope->parent = parent;
+    Scope* scope = alloc_type(allocator, Scope, true);
+
+    init_scope(scope, log2_num_syms);
+
+    return scope;
+}
+
+void init_scope(Scope* scope, size_t log2_num_syms)
+{
     scope->sym_table = hmap(log2_num_syms, NULL);
 
     list_head_init(&scope->children);
@@ -1351,24 +1347,6 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
                 ftprint_char_array(&dstr, false, "(if %s %s", ftprint_expr(allocator, s->if_blk.cond),
                                    ftprint_stmt(allocator, s->if_blk.body));
-
-                if (!list_empty(&s->elif_blks))
-                {
-                    ftprint_char_array(&dstr, false, " ");
-
-                    List* head = &s->elif_blks;
-
-                    for (List* it = head->next; it != head; it = it->next)
-                    {
-                        IfCondBlock* elif = list_entry(it, IfCondBlock, lnode);
-
-                        ftprint_char_array(&dstr, false, "(elif %s %s)", ftprint_expr(allocator, elif->cond),
-                                           ftprint_stmt(allocator, elif->body));
-
-                        if (it->next != head)
-                            ftprint_char_array(&dstr, false, " ");
-                    }
-                }
 
                 if (s->else_blk.body)
                     ftprint_char_array(&dstr, false, " (else %s)", ftprint_stmt(allocator, s->else_blk.body));

@@ -297,13 +297,13 @@ typedef struct StmtNoOp {
 typedef struct StmtBlock {
     Stmt super;
     List stmts;
+    Scope* scope;
 } StmtBlock;
 
 typedef struct IfCondBlock {
     ProgRange range;
     Expr* cond;
     Stmt* body;
-    ListNode lnode;
 } IfCondBlock;
 
 typedef struct ElseBlock {
@@ -314,7 +314,6 @@ typedef struct ElseBlock {
 typedef struct StmtIf {
     Stmt super;
     IfCondBlock if_blk;
-    List elif_blks;
     ElseBlock else_blk;
 } StmtIf;
 
@@ -405,8 +404,7 @@ Stmt* new_stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
 Stmt* new_stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
 Stmt* new_stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, List* elif_blks, ElseBlock* else_blk, ProgRange range);
-IfCondBlock* new_if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
+Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, ElseBlock* else_blk, ProgRange range);
 Stmt* new_stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
 Stmt* new_stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_break(Allocator* allocator, const char* label, ProgRange range);
@@ -658,6 +656,7 @@ struct Scope {
     ListNode lnode;
 };
 
-void init_scope(Scope* scope, Scope* parent, size_t log2_num_syms);
+Scope* new_scope(Allocator* allocator, size_t log2_num_syms);
+void init_scope(Scope* scope, size_t log2_num_syms);
 void free_scope(Scope* scope);
 #endif
