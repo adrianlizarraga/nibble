@@ -867,9 +867,8 @@ void init_scope_sym_table(Scope* scope, size_t num_syms)
     if (num_syms)
     {
         size_t log2_cap = calc_hmap_size(num_syms);
-        size_t cap = 1 << log2_cap;
-        ftprint_out("Scope num_syms %ld => %ld (log2 %ld)\n", num_syms, cap, log2_cap);
-        scope->sym_table = hmap(log2_cap, NULL);
+
+        scope->sym_table = hmap(log2_cap, NULL); // TODO: Should just be allocated by ast_mem arena.
     }
 }
 

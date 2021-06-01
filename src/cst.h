@@ -581,7 +581,8 @@ struct Type {
     };
 };
 
-
+// TODO: Basic int types should be explicitly sized (e.g., uint8, uint16) and type_int, type_long, etc, should
+// be aliases.
 extern Type* type_void;
 extern Type* type_bool;
 extern Type* type_char;

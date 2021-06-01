@@ -261,8 +261,9 @@ void nibble_compile(const char* input_file, const char* output_file)
     ftprint_out("2. Type-checking ...\n");
 
     Resolver resolver = {0};
+    size_t num_global_syms = num_decls + 17; // TODO: Update magic 17 to num of builtin types.
 
-    init_scope_sym_table(&nibble->global_scope, num_decls);
+    init_scope_sym_table(&nibble->global_scope, num_global_syms * 2);
     init_resolver(&resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors,
                   &nibble->type_cache, &nibble->global_scope);
 
