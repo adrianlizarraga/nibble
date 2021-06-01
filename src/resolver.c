@@ -36,7 +36,7 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt);
 static Symbol* lookup_symbol(Resolver* resolver, const char* name);
 static Symbol* lookup_scope_symbol(Scope* scope, const char* name);
 static void set_scope(Resolver* resolver, Scope* scope);
-static Scope* push_scope(Resolver* resolver);
+static Scope* push_scope(Resolver* resolver, size_t num_syms);
 static void pop_scope(Resolver* resolver);
 static void add_scope_symbol(Scope* scope, Symbol* sym);
 static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type);
@@ -183,10 +183,10 @@ static void set_scope(Resolver* resolver, Scope* scope)
     resolver->curr_scope = scope;
 }
 
-static Scope* push_scope(Resolver* resolver)
+static Scope* push_scope(Resolver* resolver, size_t num_syms)
 {
     Scope* prev_scope = resolver->curr_scope;
-    Scope* scope = new_scope(resolver->ast_mem, 5); // TODO: Size individual scopes to reduce memory usage.
+    Scope* scope = new_scope(resolver->ast_mem, num_syms + num_syms);
 
     scope->parent = prev_scope;
 
@@ -636,7 +636,7 @@ static Type* resolve_decl_const(Resolver* resolver, DeclConst* decl)
 
 static Type* resolve_decl_proc(Resolver* resolver, DeclProc* decl)
 {
-    decl->scope = push_scope(resolver);
+    decl->scope = push_scope(resolver, decl->num_params);
 
     AllocatorState mem_state = allocator_get_state(resolver->tmp_mem);
     Type** params = array_create(resolver->tmp_mem, Type*, 16);
@@ -737,7 +737,7 @@ static Type* resolve_decl(Resolver* resolver, Decl* decl)
 static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     StmtBlock* sblock = (StmtBlock*)stmt;
-    sblock->scope = push_scope(resolver);
+    sblock->scope = push_scope(resolver, sblock->num_decls);
 
     unsigned ret_success = RESOLVE_STMT_SUCCESS;
     List* head = &sblock->stmts;

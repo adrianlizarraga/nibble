@@ -199,15 +199,16 @@ bool nibble_init(OS target_os, Arch target_arch)
     if (!init_keywords())
         return false;
 
+    init_scope_lists(&nibble->global_scope);
     init_builtin_types(target_os, target_arch);
-    init_scope(&nibble->global_scope, 8);
 
     return true;
 }
 
-static bool parse_code(List* decls, const char* code)
+static int64_t parse_code(List* decls, const char* code)
 {
     Parser parser = {0};
+    int64_t num_decls = 0;
 
     parser_init(&parser, &nibble->ast_mem, &nibble->tmp_mem, code, 0, &nibble->errors);
     next_token(&parser);
@@ -217,8 +218,9 @@ static bool parse_code(List* decls, const char* code)
         Decl* decl = parse_decl(&parser);
 
         if (!decl)
-            return false;
+            return -1;
 
+        num_decls += 1;
         list_add_last(decls, &decl->lnode);
 
 #ifdef NIBBLE_PRINT_DECLS
@@ -230,7 +232,7 @@ static bool parse_code(List* decls, const char* code)
         ftprint_out("\n");
 #endif
 
-    return true;
+    return num_decls;
 }
 
 
@@ -245,7 +247,9 @@ void nibble_compile(const char* input_file, const char* output_file)
     const char* code = slurp_file(&nibble->gen_mem, path);
     List decls = list_head_create(decls);
 
-    if (!parse_code(&decls, code))
+    int64_t num_decls = parse_code(&decls, code);
+
+    if (num_decls <= 0)
     {
         print_errors(&nibble->errors);
         return;
@@ -258,6 +262,7 @@ void nibble_compile(const char* input_file, const char* output_file)
 
     Resolver resolver = {0};
 
+    init_scope_sym_table(&nibble->global_scope, num_decls);
     init_resolver(&resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors,
                   &nibble->type_cache, &nibble->global_scope);
 

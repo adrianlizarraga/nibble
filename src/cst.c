@@ -370,9 +370,10 @@ Stmt* new_stmt_decl(Allocator* allocator, Decl* decl)
     return (Stmt*)stmt;
 }
 
-Stmt* new_stmt_block(Allocator* allocator, List* stmts, ProgRange range)
+Stmt* new_stmt_block(Allocator* allocator, List* stmts, size_t num_decls, ProgRange range)
 {
     StmtBlock* stmt = new_stmt(allocator, StmtBlock, range);
+    stmt->num_decls = num_decls;
 
     list_replace(stmts, &stmt->stmts);
 
@@ -852,21 +853,36 @@ Symbol* new_symbol_builtin_type(Allocator* allocator, const char* name, Type* ty
 //     Scope
 //////////////////////////////
 
-Scope* new_scope(Allocator* allocator, size_t log2_num_syms)
+Scope* new_scope(Allocator* allocator, size_t num_syms)
 {
     Scope* scope = alloc_type(allocator, Scope, true);
 
-    init_scope(scope, log2_num_syms);
+    init_scope(scope, num_syms);
 
     return scope;
 }
 
-void init_scope(Scope* scope, size_t log2_num_syms)
+void init_scope_sym_table(Scope* scope, size_t num_syms)
 {
-    scope->sym_table = hmap(log2_num_syms, NULL);
+    if (num_syms)
+    {
+        size_t log2_cap = calc_hmap_size(num_syms);
+        size_t cap = 1 << log2_cap;
+        ftprint_out("Scope num_syms %ld => %ld (log2 %ld)\n", num_syms, cap, log2_cap);
+        scope->sym_table = hmap(log2_cap, NULL);
+    }
+}
 
+void init_scope_lists(Scope* scope)
+{
     list_head_init(&scope->children);
     list_head_init(&scope->sym_list);
+}
+
+void init_scope(Scope* scope, size_t num_syms)
+{
+    init_scope_lists(scope);
+    init_scope_sym_table(scope, num_syms);
 }
 
 void free_scope(Scope* scope)

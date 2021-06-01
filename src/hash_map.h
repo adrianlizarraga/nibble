@@ -29,6 +29,7 @@ typedef struct HMap {
     Allocator* allocator;
 } HMap;
 
+size_t calc_hmap_size(size_t cap);
 HMap hmap(unsigned int cap_log2, Allocator* allocator);
 void hmap_clear(HMap* map);
 void hmap_destroy(HMap* map);

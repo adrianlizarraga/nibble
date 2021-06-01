@@ -297,6 +297,7 @@ typedef struct StmtNoOp {
 typedef struct StmtBlock {
     Stmt super;
     List stmts;
+    size_t num_decls;
     Scope* scope;
 } StmtBlock;
 
@@ -399,7 +400,7 @@ typedef struct StmtDecl {
 
 Stmt* new_stmt_noop(Allocator* allocator, ProgRange range);
 Stmt* new_stmt_decl(Allocator* allocator, Decl* decl);
-Stmt* new_stmt_block(Allocator* allocator, List* stmts, ProgRange range);
+Stmt* new_stmt_block(Allocator* allocator, List* stmts, size_t num_decls, ProgRange range);
 Stmt* new_stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
 Stmt* new_stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
@@ -656,7 +657,9 @@ struct Scope {
     ListNode lnode;
 };
 
-Scope* new_scope(Allocator* allocator, size_t log2_num_syms);
-void init_scope(Scope* scope, size_t log2_num_syms);
+Scope* new_scope(Allocator* allocator, size_t num_syms);
+void init_scope_lists(Scope* scope);
+void init_scope_sym_table(Scope* scope, size_t num_syms);
+void init_scope(Scope* scope, size_t num_syms);
 void free_scope(Scope* scope);
 #endif

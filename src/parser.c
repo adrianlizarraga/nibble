@@ -1069,6 +1069,7 @@ static Stmt* parse_stmt_block(Parser* parser)
     next_token(parser);
 
     List stmts = list_head_create(stmts);
+    size_t num_decls = 0;
     bool bad_item = false;
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
@@ -1081,13 +1082,16 @@ static Stmt* parse_stmt_block(Parser* parser)
             break;
         }
 
+        if (item->kind == CST_StmtDecl)
+            num_decls += 1;
+
         list_add_last(&stmts, &item->lnode);
     }
 
     if (!bad_item && expect_token(parser, TKN_RBRACE, "Failed to parse end of statement block"))
     {
         range.end = parser->ptoken.range.end;
-        stmt = new_stmt_block(parser->ast_arena, &stmts, range);
+        stmt = new_stmt_block(parser->ast_arena, &stmts, num_decls, range);
     }
 
     return stmt;

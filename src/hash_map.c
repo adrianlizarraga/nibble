@@ -7,6 +7,21 @@
 #define HASH_MAP_MIN_CAP 16
 #define HASH_MAP_NULL_KEY 0
 
+size_t calc_hmap_size(size_t cap)
+{
+    size_t pow2_cap = 1;
+    size_t log2_cap = 0;
+
+    while (cap > pow2_cap)
+    {
+        pow2_cap = pow2_cap << 1;
+        log2_cap += 1;
+    }
+
+    return log2_cap;
+}
+
+
 // Pelle Evensen's "Moremur" 64-bit mixer based on Murmur3 mixer
 uint64_t hash_uint64(uint64_t h)
 {
@@ -161,6 +176,9 @@ uint64_t* hmap_put(HMap* map, uint64_t key, uint64_t value)
 
 uint64_t* hmap_get(HMap* map, uint64_t key)
 {
+    if (!map->entries)
+        return NULL;
+
     if (key == HASH_MAP_NULL_KEY)
     {
         HMapEntry* null_key = &map->null_key;
