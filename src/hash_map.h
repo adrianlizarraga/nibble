@@ -25,7 +25,6 @@ typedef struct HMap {
     size_t len;
     size_t mask;
 
-    HMapEntry null_key;
     Allocator* allocator;
 } HMap;
 
