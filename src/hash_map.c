@@ -6,6 +6,7 @@
 
 #define HASH_MAP_NULL_KEY 0
 
+// TODO: Use clp2 from Hacker's Delight 2nd edition, pg 62.
 size_t calc_hmap_size(size_t cap)
 {
     size_t pow2_cap = 1;
@@ -19,7 +20,6 @@ size_t calc_hmap_size(size_t cap)
 
     return log2_cap;
 }
-
 
 // Pelle Evensen's "Moremur" 64-bit mixer based on Murmur3 mixer
 uint64_t hash_uint64(uint64_t h)
