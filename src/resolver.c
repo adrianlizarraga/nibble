@@ -4,8 +4,8 @@
 
 static Symbol* resolve_name(Resolver* resolver, const char* name);
 static bool resolve_symbol(Resolver* resolver, Symbol* sym);
-static Type* resolve_decl(Resolver* resolver, Decl* decl);
-static Type* resolve_decl_var(Resolver* resolver, DeclVar* decl);
+static Type* resolve_decl(Resolver* resolver, Decl* decl, bool global);
+static Type* resolve_decl_var(Resolver* resolver, DeclVar* decl, bool global);
 static Type* resolve_decl_const(Resolver* resolver, DeclConst* decl);
 static Type* resolve_decl_proc(Resolver* resolver, DeclProc* decl);
 static bool resolve_decl_proc_body(Resolver* resolver, Symbol* sym);
@@ -218,6 +218,7 @@ static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type)
     Symbol* sym = new_symbol_decl(resolver->ast_mem, SYMBOL_VAR, sym_name, (Decl*)decl);
     sym->status = SYMBOL_STATUS_RESOLVED;
     sym->type = type;
+    sym->is_local = true;
 
     add_scope_symbol(scope, sym);
 
@@ -545,7 +546,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
     return NULL;
 }
 
-static Type* resolve_decl_var(Resolver* resolver, DeclVar* decl)
+static Type* resolve_decl_var(Resolver* resolver, DeclVar* decl, bool global)
 {
     TypeSpec* typespec = decl->typespec;
     Expr* expr = decl->init;
@@ -568,6 +569,8 @@ static Type* resolve_decl_var(Resolver* resolver, DeclVar* decl)
                 if (inferred_type != declared_type)
                     resolver_on_error(resolver, "Incompatible types. Cannot convert `%s` to `%s`",
                                       type_name(inferred_type), type_name(declared_type));
+                else if (global && !expr->is_const)
+                    resolver_on_error(resolver, "Global variables must be initialized with a constant value");
                 else
                     type = declared_type;
             }
@@ -582,7 +585,12 @@ static Type* resolve_decl_var(Resolver* resolver, DeclVar* decl)
         assert(expr); // NOTE: Parser should catch this.
 
         if (resolve_expr(resolver, expr, NULL))
-            type = expr->type;
+        {
+            if (global && !expr->is_const)
+                resolver_on_error(resolver, "Global variables must be initialized with a constant value");
+            else
+                type = expr->type;
+        }
     }
 
     // TODO: Complete incomplete aggregate type
@@ -645,7 +653,7 @@ static Type* resolve_decl_proc(Resolver* resolver, DeclProc* decl)
     for (List* it = head->next; it != head; it = it->next)
     {
         DeclVar* proc_param = (DeclVar*)list_entry(it, Decl, lnode);
-        Type* param_type = resolve_decl_var(resolver, proc_param);
+        Type* param_type = resolve_decl_var(resolver, proc_param, false);
 
         if (!param_type)
         {
@@ -709,12 +717,12 @@ static bool resolve_decl_proc_body(Resolver* resolver, Symbol* sym)
     return success;
 }
 
-static Type* resolve_decl(Resolver* resolver, Decl* decl)
+static Type* resolve_decl(Resolver* resolver, Decl* decl, bool global)
 {
     switch (decl->kind)
     {
         case CST_DeclVar:
-            return resolve_decl_var(resolver, (DeclVar*)decl);
+            return resolve_decl_var(resolver, (DeclVar*)decl, global);
         case CST_DeclConst:
             return resolve_decl_const(resolver, (DeclConst*)decl);
         case CST_DeclEnum:
@@ -960,7 +968,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
                 return 0;
             }
 
-            Type* type = resolve_decl(resolver, decl);
+            Type* type = resolve_decl(resolver, decl, false);
             DeclVar* dvar = (DeclVar*)decl;
 
             if (!type)
@@ -1004,7 +1012,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
         case SYMBOL_CONST:
         case SYMBOL_PROC:
         case SYMBOL_TYPE:
-            sym->type = resolve_decl(resolver, sym->decl);
+            sym->type = resolve_decl(resolver, sym->decl, true);
             break;
         default:
             ftprint_err("Unhandled symbol kind `%d`\n", sym->kind);
@@ -1014,7 +1022,6 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 
     if (!sym->type)
     {
-        ftprint_err("Failed to resolve `%s`\n", sym->name);
         return false;
     }
 

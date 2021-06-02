@@ -263,7 +263,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     Resolver resolver = {0};
     size_t num_global_syms = num_decls + 17; // TODO: Update magic 17 to num of builtin types.
 
-    init_scope_sym_table(&nibble->global_scope, num_global_syms * 2);
+    init_scope_sym_table(&nibble->global_scope, &nibble->ast_mem, num_global_syms * 2);
     init_resolver(&resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors,
                   &nibble->type_cache, &nibble->global_scope);
 
@@ -277,6 +277,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     //          Resolve/Typecheck
     //////////////////////////////////////////
     ftprint_out("3. Generating IR ...\n");
+    gen_gasm(&nibble->global_scope, output_file);
 
     ftprint_out("4. Generating output ...\n");
 }
@@ -297,8 +298,6 @@ void nibble_cleanup(void)
                 nibble->type_cache.procs.cap, nibble->type_cache.procs.cap * sizeof(HMapEntry));
 #endif
 
-    free_scope(&nibble->global_scope);
-
     hmap_destroy(&nibble->str_lit_map);
     hmap_destroy(&nibble->ident_map);
     hmap_destroy(&nibble->type_cache.ptrs);
@@ -314,7 +313,7 @@ const char* intern_str_lit(const char* str, size_t len)
 {
     Allocator* allocator = &nibble->gen_mem;
     HMap* strmap = &nibble->str_lit_map;
-const char* interned_str = intern_str(allocator, strmap, str, len);
+    const char* interned_str = intern_str(allocator, strmap, str, len);
 
     if (!interned_str)
     {

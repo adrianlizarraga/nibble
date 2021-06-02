@@ -857,18 +857,19 @@ Scope* new_scope(Allocator* allocator, size_t num_syms)
 {
     Scope* scope = alloc_type(allocator, Scope, true);
 
-    init_scope(scope, num_syms);
+    init_scope_lists(scope);
+    init_scope_sym_table(scope, allocator, num_syms);
 
     return scope;
 }
 
-void init_scope_sym_table(Scope* scope, size_t num_syms)
+void init_scope_sym_table(Scope* scope, Allocator* allocator, size_t num_syms)
 {
     if (num_syms)
     {
         size_t log2_cap = calc_hmap_size(num_syms);
 
-        scope->sym_table = hmap(log2_cap, NULL); // TODO: Should just be allocated by ast_mem arena.
+        scope->sym_table = hmap(log2_cap, allocator); // TODO: Should just be allocated by ast_mem arena.
     }
 }
 
@@ -876,31 +877,6 @@ void init_scope_lists(Scope* scope)
 {
     list_head_init(&scope->children);
     list_head_init(&scope->sym_list);
-}
-
-void init_scope(Scope* scope, size_t num_syms)
-{
-    init_scope_lists(scope);
-    init_scope_sym_table(scope, num_syms);
-}
-
-void free_scope(Scope* scope)
-{
-#ifndef NDEBUG
-    ftprint_out("Scope sym table: len = %lu, cap = %lu, total_size (malloc) = %lu\n", scope->sym_table.len,
-                scope->sym_table.cap, scope->sym_table.cap * sizeof(HMapEntry));
-#endif
-
-    hmap_destroy(&scope->sym_table);
-
-    List* head = &scope->children;
-
-    for (List* it = head->next; it != head; it = it->next)
-    {
-        Scope* child = list_entry(it, Scope, lnode);
-
-        free_scope(child);
-    }
 }
 
 //////////////////////////////
