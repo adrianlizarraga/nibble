@@ -639,7 +639,7 @@ struct Symbol {
     Decl* decl;
     Type* type;
     bool is_local;
-    size_t offset;
+    int offset;
     List lnode;
 };
 
@@ -663,4 +663,7 @@ struct Scope {
 Scope* new_scope(Allocator* allocator, size_t num_syms);
 void init_scope_lists(Scope* scope);
 void init_scope_sym_table(Scope* scope, Allocator* allocator, size_t num_syms);
+
+Symbol* lookup_symbol(Scope* curr_scope, const char* name);
+Symbol* lookup_scope_symbol(Scope* scope, const char* name);
 #endif

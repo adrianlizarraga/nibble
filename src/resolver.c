@@ -33,8 +33,6 @@ static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, 
 static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type* ret_type, unsigned flags);
 static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt);
 
-static Symbol* lookup_symbol(Resolver* resolver, const char* name);
-static Symbol* lookup_scope_symbol(Scope* scope, const char* name);
 static void set_scope(Resolver* resolver, Scope* scope);
 static Scope* push_scope(Resolver* resolver, size_t num_syms);
 static void pop_scope(Resolver* resolver);
@@ -223,26 +221,6 @@ static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type)
     add_scope_symbol(scope, sym);
 
     return true;
-}
-
-static Symbol* lookup_scope_symbol(Scope* scope, const char* name)
-{
-    uint64_t* pval = hmap_get(&scope->sym_table, PTR_UINT(name));
-
-    return pval ? (void*)*pval : NULL;
-}
-
-static Symbol* lookup_symbol(Resolver* resolver, const char* name)
-{
-    for (Scope* scope = resolver->curr_scope; scope != NULL; scope = scope->parent)
-    {
-        Symbol* sym = lookup_scope_symbol(scope, name);
-
-        if (sym)
-            return sym;
-    }
-
-    return NULL;
 }
 
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
@@ -1032,7 +1010,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 
 static Symbol* resolve_name(Resolver* resolver, const char* name)
 {
-    Symbol* sym = lookup_symbol(resolver, name);
+    Symbol* sym = lookup_symbol(resolver->curr_scope, name);
 
     if (!sym)
         return NULL;

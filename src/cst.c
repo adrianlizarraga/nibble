@@ -879,6 +879,26 @@ void init_scope_lists(Scope* scope)
     list_head_init(&scope->sym_list);
 }
 
+Symbol* lookup_scope_symbol(Scope* scope, const char* name)
+{
+    uint64_t* pval = hmap_get(&scope->sym_table, PTR_UINT(name));
+
+    return pval ? (void*)*pval : NULL;
+}
+
+Symbol* lookup_symbol(Scope* curr_scope, const char* name)
+{
+    for (Scope* scope = curr_scope; scope != NULL; scope = scope->parent)
+    {
+        Symbol* sym = lookup_scope_symbol(scope, name);
+
+        if (sym)
+            return sym;
+    }
+
+    return NULL;
+}
+
 //////////////////////////////
 //     CST Printing
 //////////////////////////////

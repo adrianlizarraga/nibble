@@ -2,6 +2,6 @@
 #define NIBBLE_GEN_ASSEMBLY_H
 #include "resolver.h"
 
-bool gen_gasm(Scope* global_scope, const char* output_file);
+bool gen_gasm(Allocator* arena, Scope* global_scope, const char* output_file);
 
 #endif
