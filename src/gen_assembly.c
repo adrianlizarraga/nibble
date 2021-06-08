@@ -2,6 +2,7 @@
 
 typedef struct Generator Generator;
 typedef struct Operand Operand;
+typedef struct ProcState ProcState;
 
 typedef enum Register {
     RAX = 0,
@@ -127,6 +128,16 @@ static const char* reg_names[MAX_OP_BYTE_SIZE + 1][REG_COUNT] = {
 static char op_suffix[MAX_OP_BYTE_SIZE + 1] = {[1] = 'b', [2] = 'w', [4] = 'l', [8] = 'q'};
 
 #define TMP_INST_BUF_LEN 64
+
+struct ProcState {
+    const char* name;
+    
+    // NOTE: Bit is 1 if corresponding reg has been used at all within procedure.
+    // This is used to generate push/pop instructions to save/restore reg values
+    // across procedure calls.
+    uint32_t used_callee_regs; 
+};
+
 struct Generator {
     FILE* out_fd;
     char* out_buf;
