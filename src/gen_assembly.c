@@ -37,7 +37,7 @@ static Register ret_regs[] = {RAX, RDX};
 
 static Register scratch_regs[] = {
     R10, R11, RDI, RSI, RDX, RCX, R8, R9, RAX, // NOTE: Caller saved
-    RBX, R12, R13, R14, R15,                   // NOTE: Callee saved
+    R12, R13, R14, R15, RBX,                   // NOTE: Callee saved
 };
 
 static uint32_t reg_flags[] = {
@@ -131,25 +131,27 @@ static char op_suffix[MAX_OP_BYTE_SIZE + 1] = {[1] = 'b', [2] = 'w', [4] = 'l', 
 
 struct ProcState {
     const char* name;
-    
+
     // NOTE: Bit is 1 if corresponding reg has been used at all within procedure.
     // This is used to generate push/pop instructions to save/restore reg values
     // across procedure calls.
-    uint32_t used_callee_regs; 
+    uint32_t used_callee_regs;
+
+    // NOTE: Bit is 1 if corresponding reg is currently in use by an expression value.
+    uint32_t free_regs;
 };
 
 struct Generator {
     FILE* out_fd;
-    char* out_buf;
-    char* data_buf;
+    char** text_lines;
+    char** data_lines;
     char tmp_inst_buf[TMP_INST_BUF_LEN];
 
-    const char* curr_proc;
+    ProcState curr_proc;
     Scope* curr_scope;
 
-    uint32_t free_reg_mask;
-
-    Allocator* arena;
+    Allocator* gen_mem;
+    Allocator* tmp_mem;
 };
 
 typedef enum OperandKind {
@@ -176,8 +178,51 @@ struct Operand {
 
 static Generator generator;
 
-#define emit(f, ...) ftprint_char_array(&generator.out_buf, false, (f), ##__VA_ARGS__)
-#define emit_data(f, ...) ftprint_char_array(&generator.data_buf, false, (f), ##__VA_ARGS__)
+#define INIT_LINE_LEN 128
+#define emit_text(f, ...) emit_line(&generator.text_lines, (f), ##__VA_ARGS__)
+#define emit_data(f, ...) emit_line(&generator.data_lines, (f), ##__VA_ARGS__)
+
+char** emit_line(char*** lines_ptr, const char* format, ...)
+{
+    char* line = NULL;
+
+    if (format)
+    {
+        AllocatorState mem_state = allocator_get_state(generator.tmp_mem);
+        {
+            char* tmp_line = array_create(generator.tmp_mem, char, INIT_LINE_LEN);
+            va_list vargs;
+
+            va_start(vargs, format);
+            size_t size = ftprintv_char_array(&tmp_line, true, format, vargs);
+            va_end(vargs);
+
+            line = mem_dup(generator.gen_mem, tmp_line, size + 1, DEFAULT_ALIGN);
+        }
+        allocator_restore_state(mem_state);
+    }
+
+    array_push(*lines_ptr, line);
+
+    return &array_back(*lines_ptr);
+}
+
+void fill_line(char** line, const char* format, ...)
+{
+
+    AllocatorState mem_state = allocator_get_state(generator.tmp_mem);
+    {
+        char* tmp_line = array_create(generator.tmp_mem, char, INIT_LINE_LEN);
+        va_list vargs;
+
+        va_start(vargs, format);
+        size_t size = ftprintv_char_array(&tmp_line, true, format, vargs);
+        va_end(vargs);
+
+        *line = mem_dup(generator.gen_mem, tmp_line, size + 1, DEFAULT_ALIGN);
+    }
+    allocator_restore_state(mem_state);
+}
 
 static void enter_gen_scope(Scope* scope);
 static void exit_gen_scope();
@@ -186,7 +231,7 @@ static void gen_expr(Expr* expr, Operand* dest);
 
 static void print_reg_mask(unsigned i)
 {
-    unsigned reg_mask = generator.free_reg_mask;
+    unsigned reg_mask = generator.curr_proc.free_regs;
     ftprint_out("%d: reg_mask: %b\n", i, reg_mask);
 }
 
@@ -313,53 +358,60 @@ static size_t movs_inst(char* buf, size_t len, unsigned op1_size, unsigned op2_s
     return snprintf(buf, len, "mov");
 }
 
+static void set_reg(uint32_t* reg_mask, Register reg)
+{
+    *reg_mask |= (1 << reg);
+}
+
+static void unset_reg(uint32_t* reg_mask, Register reg)
+{
+    *reg_mask &= ~(1 << reg);
+}
+
+static bool is_reg_set(uint32_t reg_mask, Register reg)
+{
+    return reg_mask & (1 << reg);
+}
+
+#define free_reg(r) set_reg(&generator.curr_proc.free_regs, (r))
+
+static void alloc_reg(Register reg)
+{
+    unset_reg(&generator.curr_proc.free_regs, reg);
+
+    if (reg_flags[reg] & CALLEE_SAVED)
+        set_reg(&generator.curr_proc.used_callee_regs, reg);
+}
+
 static bool try_alloc_reg(Register reg)
 {
-    unsigned reg_flag = (1 << reg);
-    bool is_free = generator.free_reg_mask & reg_flag;
+    bool is_free = is_reg_set(generator.curr_proc.free_regs, reg);
 
     if (is_free)
-    {
-        ftprint_out("Allocating reg %s\n", reg_names[8][reg]);
-        generator.free_reg_mask &= ~reg_flag;
-    }
+        alloc_reg(reg);
 
     return is_free;
 }
 
-static void alloc_reg(Register reg)
-{
-    ftprint_out("Allocating reg %s\n", reg_names[8][reg]);
-    generator.free_reg_mask &= ~(1 << reg);
-}
-
-static void free_reg(Register reg)
-{
-    ftprint_out("Freeing reg %s\n", reg_names[8][reg]);
-    generator.free_reg_mask |= 1 << reg;
-}
-
-static unsigned init_regs()
+static unsigned init_free_regs()
 {
     size_t num_scratch_regs = sizeof(scratch_regs) / sizeof(Register);
 
     for (size_t i = 0; i < num_scratch_regs; i += 1)
         free_reg(scratch_regs[i]);
 
-    return generator.free_reg_mask;
+    return generator.curr_proc.free_regs;
 }
 
 static Register next_reg()
 {
     Register reg = REG_INVALID;
     size_t num_regs = sizeof(scratch_regs) / sizeof(Register);
+    uint32_t free_regs = generator.curr_proc.free_regs;
 
     for (size_t i = 0; i < num_regs; i += 1)
     {
-        unsigned reg_flag = (1 << scratch_regs[i]);
-        bool is_free = generator.free_reg_mask & reg_flag;
-
-        if (is_free)
+        if (is_reg_set(free_regs, scratch_regs[i]))
         {
             reg = scratch_regs[i];
             break;
@@ -380,16 +432,6 @@ static Register next_reg()
     // TODO: Keep track of caller or callee-saved regs that we need to spill
 
     return reg;
-}
-
-static void emit_data_seg()
-{
-    emit("# Data segment\n");
-    emit(".data\n");
-
-    array_push(generator.data_buf, '\0');
-
-    emit("%s\n\n", generator.data_buf);
 }
 
 static void emit_data_value(Type* type, Scalar scalar)
@@ -423,18 +465,18 @@ static void emit_operand_to_reg(Operand* operand, Register reg)
             char* movs_buf = generator.tmp_inst_buf;
 
             movs_inst(movs_buf, TMP_INST_BUF_LEN, 0, op_size);
-            emit("    %s $%d, %%%s\n", movs_buf, operand->imm.as_int.i, dst_reg_name);
+            emit_text("    %s $%d, %%%s", movs_buf, operand->imm.as_int.i, dst_reg_name);
             break;
         }
         case OPERAND_FRAME_OFFSET:
-            emit("    %s %d(%%rbp), %%%s\n", mov_inst(op_size), operand->offset, dst_reg_name);
+            emit_text("    %s %d(%%rbp), %%%s", mov_inst(op_size), operand->offset, dst_reg_name);
             break;
         case OPERAND_GLOBAL_VAR:
-            emit("    %s %s(%%rip), %%%s\n", mov_inst(op_size), operand->var, dst_reg_name);
+            emit_text("    %s %s(%%rip), %%%s", mov_inst(op_size), operand->var, dst_reg_name);
             break;
         case OPERAND_REGISTER:
             if (operand->reg != reg)
-                emit("    %s %%%s, %%%s\n", mov_inst(op_size), reg_names[op_size][operand->reg], dst_reg_name);
+                emit_text("    %s %%%s, %%%s", mov_inst(op_size), reg_names[op_size][operand->reg], dst_reg_name);
 
             break;
         default:
@@ -466,13 +508,13 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
 
         if (rhs_op->kind == OPERAND_IMMEDIATE)
         {
-            emit("    %s $%d, %d(%%rbp)\n", mov_inst(var_size), rhs_op->imm.as_int.i, var_offset);
+            emit_text("    %s $%d, %d(%%rbp)", mov_inst(var_size), rhs_op->imm.as_int.i, var_offset);
         }
         else
         {
             ensure_operand_in_reg(rhs_op);
-            emit("    %s %%%s, %d(%%rbp)\n", mov_inst(var_size), reg_names[rhs_op->type->size][rhs_op->reg],
-                 var_offset);
+            emit_text("    %s %%%s, %d(%%rbp)", mov_inst(var_size), reg_names[rhs_op->type->size][rhs_op->reg],
+                      var_offset);
         }
     }
     else if (var_op->kind == OPERAND_GLOBAL_VAR)
@@ -481,12 +523,13 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
 
         if (rhs_op->kind == OPERAND_IMMEDIATE)
         {
-            emit("    %s $%d, %s(%%rip)\n", mov_inst(var_size), rhs_op->imm.as_int.i, var_name);
+            emit_text("    %s $%d, %s(%%rip)", mov_inst(var_size), rhs_op->imm.as_int.i, var_name);
         }
         else
         {
             ensure_operand_in_reg(rhs_op);
-            emit("    %s %%%s, %s(%%rip)\n", mov_inst(var_size), reg_names[rhs_op->type->size][rhs_op->reg], var_name);
+            emit_text("    %s %%%s, %s(%%rip)", mov_inst(var_size), reg_names[rhs_op->type->size][rhs_op->reg],
+                      var_name);
         }
     }
     else
@@ -511,7 +554,7 @@ static void emit_add(Type* type, Operand* src, Operand* dst)
     {
         // Add into the src register.
         ensure_operand_in_reg(src);
-        emit("    %s $%d, %%%s\n", add_inst(size), dst->imm.as_int.i, reg_names[src->type->size][src->reg]);
+        emit_text("    %s $%d, %%%s", add_inst(size), dst->imm.as_int.i, reg_names[src->type->size][src->reg]);
 
         // Steal src operand's register.
         dst->kind = OPERAND_REGISTER;
@@ -525,20 +568,20 @@ static void emit_add(Type* type, Operand* src, Operand* dst)
 
         if (src->kind == OPERAND_IMMEDIATE)
         {
-            emit("    %s $%d, %%%s\n", add_inst(size), src->imm.as_int.i, reg_names[dst->type->size][dst->reg]);
+            emit_text("    %s $%d, %%%s", add_inst(size), src->imm.as_int.i, reg_names[dst->type->size][dst->reg]);
         }
         else if (src->kind == OPERAND_FRAME_OFFSET)
         {
-            emit("    %s %d(%%rbp), %%%s\n", add_inst(size), src->offset, reg_names[dst->type->size][dst->reg]);
+            emit_text("    %s %d(%%rbp), %%%s", add_inst(size), src->offset, reg_names[dst->type->size][dst->reg]);
         }
         else if (src->kind == OPERAND_GLOBAL_VAR)
         {
-            emit("    %s %s(%%rip), %%%s\n", add_inst(size), src->var, reg_names[dst->type->size][dst->reg]);
+            emit_text("    %s %s(%%rip), %%%s", add_inst(size), src->var, reg_names[dst->type->size][dst->reg]);
         }
         else if (src->kind == OPERAND_REGISTER)
         {
-            emit("    %s %%%s, %%%s\n", add_inst(size), reg_names[src->type->size][src->reg],
-                 reg_names[dst->type->size][dst->reg]);
+            emit_text("    %s %%%s, %%%s", add_inst(size), reg_names[src->type->size][src->reg],
+                      reg_names[dst->type->size][dst->reg]);
         }
         else
         {
@@ -605,82 +648,129 @@ static void gen_expr_ident(ExprIdent* eident, Operand* dest)
 
 static void gen_expr_call(ExprCall* ecall, Operand* dest)
 {
-    //
-    // Generate procedure arguments.
-    //
-    AllocatorState mem_state = allocator_get_state(generator.arena);
-    Operand* arg_ops = alloc_array(generator.arena, Operand, ecall->num_args, false);
-    List* head = &ecall->args;
-    size_t arg_index = 0;
+    Type* result_type = ecall->super.type;
+    uint32_t init_free_regs = generator.curr_proc.free_regs;
 
-    for (List* it = head->next; it != head; it = it->next)
+    // Save caller-saved registers (i.e., arg and ret val registers) currently in use.
+    for (uint32_t r = 0; r < REG_COUNT; r += 1)
     {
-        ProcCallArg* call_arg = list_entry(it, ProcCallArg, lnode);
+        Register reg = (Register)r;
+        bool is_caller_saved = !(reg_flags[reg] & CALLEE_SAVED);
+        bool is_being_used = !is_reg_set(init_free_regs, reg);
 
-        // TODO: Optimization: pass preferred reg to gen_expr
-        gen_expr(call_arg->expr, &arg_ops[arg_index]);
-
-        if (arg_ops[arg_index].kind == OPERAND_REGISTER)
+        if (is_caller_saved && is_being_used)
         {
-            if (arg_ops[arg_index].reg != arg_regs[arg_index])
+            emit_text("    push %%%s", reg_names[8][reg]);
+            free_reg(reg);
+        }
+    }
+
+    // Generate procedure arguments.
+    AllocatorState mem_state = allocator_get_state(generator.tmp_mem);
+    {
+        Operand* arg_ops = alloc_array(generator.tmp_mem, Operand, ecall->num_args, false);
+        List* head = &ecall->args;
+        size_t arg_index = 0;
+
+        for (List* it = head->next; it != head; it = it->next)
+        {
+            ProcCallArg* call_arg = list_entry(it, ProcCallArg, lnode);
+
+            // TODO: Optimization: pass preferred reg to gen_expr
+            gen_expr(call_arg->expr, &arg_ops[arg_index]);
+
+            if (arg_ops[arg_index].kind == OPERAND_REGISTER)
             {
-                Register old_reg = arg_ops[arg_index].reg;
-
-                if (!try_alloc_reg(arg_regs[arg_index]))
+                if (arg_ops[arg_index].reg != arg_regs[arg_index])
                 {
-                    ftprint_err("Failed to allocate arg register %d\n", arg_regs[arg_index]);
-                    assert(0);
-                }
+                    Register old_reg = arg_ops[arg_index].reg;
 
-                emit_operand_to_reg(&arg_ops[arg_index], arg_regs[arg_index]);
-                free_reg(old_reg);
+                    if (!try_alloc_reg(arg_regs[arg_index]))
+                    {
+                        ftprint_err("Failed to allocate arg register %d\n", arg_regs[arg_index]);
+                        assert(0);
+                    }
+
+                    emit_operand_to_reg(&arg_ops[arg_index], arg_regs[arg_index]);
+                    free_reg(old_reg);
+                }
             }
+            else
+            {
+                emit_operand_to_reg(&arg_ops[arg_index], arg_regs[arg_index]);
+            }
+
+            free_operand(&arg_ops[arg_index]);
+
+            arg_index += 1;
+        }
+    }
+    allocator_restore_state(mem_state);
+
+    // Generate procedure pointer/name expr.
+    {
+        Operand proc_op = {0};
+
+        gen_expr(ecall->proc, &proc_op);
+
+        if (proc_op.kind == OPERAND_PROC)
+        {
+            emit_text("    call %s", proc_op.proc);
         }
         else
         {
-            emit_operand_to_reg(&arg_ops[arg_index], arg_regs[arg_index]);
+            assert(proc_op.kind == OPERAND_FRAME_OFFSET || proc_op.kind == OPERAND_GLOBAL_VAR);
+            ensure_operand_in_reg(&proc_op);
+
+            emit_text("    call *%%%s", reg_names[proc_op.type->size][proc_op.reg]);
         }
 
-        free_operand(&arg_ops[arg_index]);
-
-        arg_index += 1;
+        free_operand(&proc_op);
     }
 
-    allocator_restore_state(mem_state);
-
-    //
-    // Generate procedure pointer/name expr.
-    //
-    Operand proc_op = {0};
-
-    gen_expr(ecall->proc, &proc_op);
-
-    if (proc_op.kind == OPERAND_PROC)
+    // Result is in RAX. If we were not using RAX before, keep it there.
+    // Otherwise, move the result to a new register.
+    if (result_type != type_void)
     {
-        emit("    call %s\n", proc_op.proc);
-    }
-    else
-    {
-        assert(proc_op.kind == OPERAND_FRAME_OFFSET || proc_op.kind == OPERAND_GLOBAL_VAR);
-        ensure_operand_in_reg(&proc_op);
+        Register result_reg;
 
-        emit("    call *%%%s\n", reg_names[proc_op.type->size][proc_op.reg]);
-    }
+        if (!is_reg_set(init_free_regs, RAX)) // RAX was used before.
+        {
+            result_reg = next_reg();
+            size_t result_size = result_type->size;
 
-    free_operand(&proc_op);
+            emit_text("    %s %%%s, %%%s", mov_inst(result_size), reg_names[result_size][RAX],
+                      reg_names[result_size][result_reg]);
+        }
+        else
+        {
+            alloc_reg(RAX);
+            result_reg = RAX;
+        }
 
-    //
-    // Result is in RAX
-    //
-    if (try_alloc_reg(RAX))
-    {
         dest->kind = OPERAND_REGISTER;
-        dest->type = ecall->super.type;
-        dest->reg = RAX;
+        dest->type = result_type;
+        dest->reg = result_reg;
     }
     else
     {
-        assert(0);
+        dest->kind = OPERAND_NONE;
+        dest->type = type_void;
+        dest->reg = REG_INVALID;
+    }
+
+    // Restore caller-saved registers (i.e., arg and ret val registers) that were in use before this procedure call.
+    for (uint32_t r = 0; r < REG_COUNT; r += 1)
+    {
+        Register reg = (Register)r;
+        bool is_caller_saved = !(reg_flags[reg] & CALLEE_SAVED);
+        bool was_being_used = !is_reg_set(init_free_regs, reg);
+
+        if (is_caller_saved && was_being_used)
+        {
+            emit_text("    pop %%%s", reg_names[8][reg]);
+            alloc_reg(reg);
+        }
     }
 }
 
@@ -732,12 +822,12 @@ static void gen_stmt_return(StmtReturn* sreturn)
         }
 
         // mov OP_REG, %rax
-        emit("    %s %%%s, %%%s\n", mov_inst(op_size), reg_names[op_size][operand.reg], reg_names[op_size][RAX]);
+        emit_text("    %s %%%s, %%%s", mov_inst(op_size), reg_names[op_size][operand.reg], reg_names[op_size][RAX]);
         free_reg(RAX);
     }
 
     free_operand(&operand);
-    emit("    jmp end.%s\n", generator.curr_proc);
+    emit_text("    jmp end.%s", generator.curr_proc.name);
 }
 
 static void gen_stmt_expr_assign(StmtExprAssign* seassign)
@@ -780,6 +870,7 @@ static void gen_stmt_decl(StmtDecl* sdecl)
         gen_expr(dvar->init, &rhs_op);
         operand_from_sym(&lhs_op, sym);
         emit_var_assign(&lhs_op, &rhs_op);
+        free_operand(&lhs_op);
         free_operand(&rhs_op);
     }
 }
@@ -902,7 +993,7 @@ static size_t compute_proc_var_offsets(DeclProc* dproc)
                 stack_size = ALIGN_UP(stack_size, arg_align);
                 sym->offset = -stack_size;
 
-                emit("    %s %%%s, %d(%%rbp)\n", mov_inst(arg_size), reg_names[arg_size][arg_reg], sym->offset);
+                emit_text("    %s %%%s, %d(%%rbp)", mov_inst(arg_size), reg_names[arg_size][arg_reg], sym->offset);
 
                 arg_index += 1;
             }
@@ -935,14 +1026,17 @@ static void exit_gen_scope()
 
 static void enter_proc(DeclProc* dproc)
 {
-    generator.curr_proc = dproc->name;
+    generator.curr_proc.name = dproc->name;
+    generator.curr_proc.used_callee_regs = 0;
 
+    init_free_regs();
     enter_gen_scope(dproc->scope);
 }
 
 static void exit_proc()
 {
-    generator.curr_proc = NULL;
+    generator.curr_proc.name = NULL;
+    generator.curr_proc.used_callee_regs = 0;
 
     exit_gen_scope();
 }
@@ -953,24 +1047,61 @@ static void gen_proc(Symbol* sym)
 
     enter_proc(dproc);
 
-    emit("\n");
-    emit(".text\n");
-    emit(".globl %s\n", sym->name);
-    emit("%s:\n", sym->name);
+    emit_text("");
+    emit_text(".text");
+    emit_text(".globl %s", sym->name);
+    emit_text("%s:", sym->name);
 
-    emit("    push %%rbp\n");
-    emit("    movq %%rsp, %%rbp\n");
+    emit_text("    push %%rbp");
+    emit_text("    movq %%rsp, %%rbp");
 
-    size_t stack_size = compute_proc_var_offsets(dproc);
+    // NOTE: We don't yet know which callee-saved registers the procedure will use,
+    // so save a pointer to this instruction line for later patching. (HACKY)
+    char** save_regs_inst = emit_text(NULL);
+
+    // NOTE: We don't yet know how much stack space to reserve, so save a pointer
+    // to this instruction for later patching.
+    char** sub_rsp_inst = emit_text(NULL);
+
+    size_t stack_size = compute_proc_var_offsets(dproc); // NOTE: Will spill argument registers.
 
     if (stack_size)
-        emit("    subq $%d, %%rsp\n", stack_size);
+        fill_line(sub_rsp_inst, "    subq $%d, %%rsp", stack_size);
+    else
+        fill_line(sub_rsp_inst, "\n");
 
     gen_stmt(dproc->body);
 
-    emit("\n    end.%s:\n", sym->name);
-    emit("    leave\n");
-    emit("    ret\n");
+    emit_text("    end.%s:", sym->name);
+
+    // Save/Restore callee-saved registers.
+    AllocatorState mem_state = allocator_get_state(generator.tmp_mem);
+    {
+        char* tmp_line = array_create(generator.tmp_mem, char, INIT_LINE_LEN);
+
+        for (uint32_t r = 0; r < REG_COUNT; r += 1)
+        {
+            Register reg = (Register)r;
+
+            if (is_reg_set(generator.curr_proc.used_callee_regs, reg))
+            {
+                ftprint_char_array(&tmp_line, false, "    push %%%s\n", reg_names[8][reg]);
+                emit_text("    pop %%%s", reg_names[8][reg]);
+                unset_reg(&generator.curr_proc.used_callee_regs, reg);
+            }
+        }
+
+        array_push(tmp_line, '\0');
+
+        *save_regs_inst = mem_dup(generator.gen_mem, tmp_line, array_len(tmp_line), DEFAULT_ALIGN);
+    }
+    allocator_restore_state(mem_state);
+
+    if (stack_size)
+        emit_text("    movq %%rbp, %%rsp");
+
+    emit_text("    pop %%rbp");
+    emit_text("    ret");
 
     exit_proc();
 }
@@ -982,6 +1113,8 @@ static void gen_global_scope(Scope* scope)
     //
     // Generate global variables
     //
+    emit_data(".data\n");
+
     List* head = &scope->sym_list;
     List* it = head->next;
 
@@ -993,7 +1126,7 @@ static void gen_global_scope(Scope* scope)
         {
             DeclVar* dvar = (DeclVar*)sym->decl;
 
-            emit_data(".align %d\n", sym->type->align);
+            emit_data(".align %d", sym->type->align);
             emit_data("%s: ", sym->name);
             emit_data_value(sym->type, dvar->init->const_val);
         }
@@ -1015,15 +1148,14 @@ static void gen_global_scope(Scope* scope)
 
         it = it->next;
     }
-
-    emit_data_seg();
 }
 
-bool gen_gasm(Allocator* arena, Scope* scope, const char* output_file)
+bool gen_gasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* output_file)
 {
-    generator.arena = arena;
-    generator.out_buf = array_create(NULL, char, 512);
-    generator.data_buf = array_create(NULL, char, 512);
+    generator.gen_mem = gen_mem;
+    generator.tmp_mem = tmp_mem;
+    generator.text_lines = array_create(NULL, char*, 512);
+    generator.data_lines = array_create(NULL, char*, 512);
     generator.out_fd = fopen(output_file, "w");
 
     if (!generator.out_fd)
@@ -1032,20 +1164,26 @@ bool gen_gasm(Allocator* arena, Scope* scope, const char* output_file)
         return false;
     }
 
-    unsigned init_reg_mask = init_regs();
-
-    ftprint_out("INIT REG MASK: %b\n", init_reg_mask);
-    emit("# Generated by Nibble compiler\n");
     gen_global_scope(scope);
 
-    unsigned final_reg_mask = generator.free_reg_mask;
-    ftprint_out("FINAL REG MASK: %b\n", final_reg_mask);
+    // Output assembly to file.
+    size_t num_text_lines = array_len(generator.text_lines);
+    size_t num_data_lines = array_len(generator.data_lines);
 
-    array_push(generator.out_buf, '\0');
-    ftprint_file(generator.out_fd, false, "%s", generator.out_buf);
+    ftprint_file(generator.out_fd, false, "# Generated by the Nibble compiler.\n\n");
 
-    array_free(generator.out_buf);
-    array_free(generator.data_buf);
+    for (size_t i = 0; i < num_data_lines; i += 1)
+    {
+        ftprint_file(generator.out_fd, false, "%s\n", generator.data_lines[i]);
+    }
+
+    for (size_t i = 0; i < num_text_lines; i += 1)
+    {
+        ftprint_file(generator.out_fd, false, "%s\n", generator.text_lines[i]);
+    }
+
+    array_free(generator.data_lines);
+    array_free(generator.text_lines);
     fclose(generator.out_fd);
 
     return true;

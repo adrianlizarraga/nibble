@@ -29,6 +29,16 @@ size_t ftprint_char_array(char** dst, bool nullterm, const char* format, ...)
     return n;
 }
 
+size_t ftprintv_char_array(char** dst, bool nullterm, const char* format, va_list vargs)
+{
+    size_t n = 0;
+    ArrayPrintCtx ctx = {.dst = dst, .nullterm = nullterm};
+
+    n = ftprintv(putc_array, &ctx, format, vargs);
+
+    return n;
+}
+
 void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, Allocator* allocator)
 {
     size_t cap = array_cap(array);

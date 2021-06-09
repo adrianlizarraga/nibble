@@ -189,7 +189,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->target_arch = target_arch;
     nibble->gen_mem = bootstrap;
     nibble->ast_mem = allocator_create(16384);
-    nibble->tmp_mem = allocator_create(256);
+    nibble->tmp_mem = allocator_create(512);
     nibble->errors = byte_stream_create(&nibble->gen_mem);
     nibble->str_lit_map = hmap(6, NULL);
     nibble->ident_map = hmap(8, NULL);
@@ -277,7 +277,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     //          Resolve/Typecheck
     //////////////////////////////////////////
     ftprint_out("3. Generating IR ...\n");
-    gen_gasm(&nibble->gen_mem, &nibble->global_scope, output_file);
+    gen_gasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
 
     ftprint_out("4. Generating output ...\n");
 }

@@ -9,7 +9,6 @@
 
 typedef struct Allocator {
     size_t id;
-    size_t block_size;
     unsigned char* buffer;
     unsigned char* end;
     unsigned char* at;

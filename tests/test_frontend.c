@@ -12,6 +12,7 @@
 #include "lexer.c"
 #include "llist.h"
 #include "resolver.c"
+#include "gen_assembly.c"
 #include "nibble.c"
 #include "parser.c"
 #include "print.c"

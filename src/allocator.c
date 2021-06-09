@@ -30,7 +30,6 @@ static bool alloc_mem_block(Allocator* allocator, size_t block_size)
     allocator->at = block;
     allocator->pat = NULL;
     allocator->end = block + block_size;
-    allocator->block_size = block_size;
 
     MemBlockFooter* footer = (MemBlockFooter*)allocator->end;
     footer->pbuffer = pbuffer;
@@ -56,7 +55,7 @@ void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
     // Allocate a new memory block if need more memory.
     if (new_at > (uintptr_t)allocator->end)
     {
-        size_t block_size = allocator->block_size;
+        size_t block_size = allocator->end - allocator->buffer;
         size_t worst_size = size + align;
 
         if (block_size < worst_size)
