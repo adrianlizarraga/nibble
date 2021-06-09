@@ -168,4 +168,6 @@ int main(int argc, char* argv[])
 
     nibble_compile(input_file, output_file);
     nibble_cleanup();
+
+    return 0;
 }

@@ -14,7 +14,7 @@ typedef struct NibbleCtx {
     ByteStream errors;
 
     TypeCache type_cache;
-    Resolver resolver;
+    Scope global_scope;
 
     OS target_os;
     Arch target_arch;
@@ -60,7 +60,6 @@ static StringView keyword_names[KW_COUNT] = {
     [KW_RETURN] = string_view_lit("return"),
     [KW_IF] = string_view_lit("if"),
     [KW_ELSE] = string_view_lit("else"),
-    [KW_ELIF] = string_view_lit("elif"),
     [KW_WHILE] = string_view_lit("while"),
     [KW_DO] = string_view_lit("do"),
     [KW_FOR] = string_view_lit("for"),
@@ -190,7 +189,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->target_arch = target_arch;
     nibble->gen_mem = bootstrap;
     nibble->ast_mem = allocator_create(16384);
-    nibble->tmp_mem = allocator_create(256);
+    nibble->tmp_mem = allocator_create(512);
     nibble->errors = byte_stream_create(&nibble->gen_mem);
     nibble->str_lit_map = hmap(6, NULL);
     nibble->ident_map = hmap(8, NULL);
@@ -200,15 +199,16 @@ bool nibble_init(OS target_os, Arch target_arch)
     if (!init_keywords())
         return false;
 
+    init_scope_lists(&nibble->global_scope);
     init_builtin_types(target_os, target_arch);
-    init_resolver(&nibble->resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors, &nibble->type_cache);
 
     return true;
 }
 
-static bool parse_code(List* decls, const char* code)
+static int64_t parse_code(List* decls, const char* code)
 {
     Parser parser = {0};
+    int64_t num_decls = 0;
 
     parser_init(&parser, &nibble->ast_mem, &nibble->tmp_mem, code, 0, &nibble->errors);
     next_token(&parser);
@@ -218,8 +218,9 @@ static bool parse_code(List* decls, const char* code)
         Decl* decl = parse_decl(&parser);
 
         if (!decl)
-            return false;
+            return -1;
 
+        num_decls += 1;
         list_add_last(decls, &decl->lnode);
 
 #ifdef NIBBLE_PRINT_DECLS
@@ -231,7 +232,7 @@ static bool parse_code(List* decls, const char* code)
         ftprint_out("\n");
 #endif
 
-    return true;
+    return num_decls;
 }
 
 
@@ -246,7 +247,9 @@ void nibble_compile(const char* input_file, const char* output_file)
     const char* code = slurp_file(&nibble->gen_mem, path);
     List decls = list_head_create(decls);
 
-    if (!parse_code(&decls, code))
+    int64_t num_decls = parse_code(&decls, code);
+
+    if (num_decls <= 0)
     {
         print_errors(&nibble->errors);
         return;
@@ -257,7 +260,14 @@ void nibble_compile(const char* input_file, const char* output_file)
     //////////////////////////////////////////
     ftprint_out("2. Type-checking ...\n");
 
-    if (!resolve_global_decls(&nibble->resolver, &decls))
+    Resolver resolver = {0};
+    size_t num_global_syms = num_decls + 17; // TODO: Update magic 17 to num of builtin types.
+
+    init_scope_sym_table(&nibble->global_scope, &nibble->ast_mem, num_global_syms * 2);
+    init_resolver(&resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors,
+                  &nibble->type_cache, &nibble->global_scope);
+
+    if (!resolve_global_decls(&resolver, &decls))
     {
         print_errors(&nibble->errors);
         return;
@@ -267,6 +277,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     //          Resolve/Typecheck
     //////////////////////////////////////////
     ftprint_out("3. Generating IR ...\n");
+    gen_gasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
 
     ftprint_out("4. Generating output ...\n");
 }
@@ -287,7 +298,6 @@ void nibble_cleanup(void)
                 nibble->type_cache.procs.cap, nibble->type_cache.procs.cap * sizeof(HMapEntry));
 #endif
 
-    free_resolver(&nibble->resolver);
     hmap_destroy(&nibble->str_lit_map);
     hmap_destroy(&nibble->ident_map);
     hmap_destroy(&nibble->type_cache.ptrs);
@@ -303,7 +313,7 @@ const char* intern_str_lit(const char* str, size_t len)
 {
     Allocator* allocator = &nibble->gen_mem;
     HMap* strmap = &nibble->str_lit_map;
-const char* interned_str = intern_str(allocator, strmap, str, len);
+    const char* interned_str = intern_str(allocator, strmap, str, len);
 
     if (!interned_str)
     {

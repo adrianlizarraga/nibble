@@ -39,6 +39,7 @@ typedef struct ArrayHdr {
 #define array_create(alloc, type, cap) _array_reserve(NULL, (cap), sizeof(type), DEFAULT_ALIGN, alloc)
 
 size_t ftprint_char_array(char** dst, bool nullterm, const char* format, ...);
+size_t ftprintv_char_array(char** dst, bool nullterm, const char* format, va_list vargs);
 
 void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, Allocator* allocator);
 void _array_free(void* array);

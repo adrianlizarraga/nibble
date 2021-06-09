@@ -12,6 +12,7 @@
 #include "lexer.c"
 #include "llist.h"
 #include "resolver.c"
+#include "gen_assembly.c"
 #include "nibble.c"
 #include "parser.c"
 #include "print.c"
@@ -919,8 +920,8 @@ void test_parser(void)
     TEST_STMT("if(a==2);", "(if (== a 2) no-op)");
     TEST_STMT("if(a==2){g=2;}", "(if (== a 2) (stmt-block (= g 2)))");
     TEST_STMT("if(a==2){g=2;} else {g=3;}", "(if (== a 2) (stmt-block (= g 2)) (else (stmt-block (= g 3))))");
-    TEST_STMT("if(a==2){g=2;} elif(a >= 10) {g = 1;} else {g=3;}",
-              "(if (== a 2) (stmt-block (= g 2)) (elif (>= a 10) (stmt-block (= g 1))) (else (stmt-block (= g 3))))");
+    TEST_STMT("if(a==2){g=2;} else if(a >= 10) {g = 1;} else {g=3;}",
+              "(if (== a 2) (stmt-block (= g 2)) (else (if (>= a 10) (stmt-block (= g 1)) (else (stmt-block (= g 3))))))");
 
     // Test while loop statements
     TEST_STMT("while(a!=0){}", "(while (!= a 0) (stmt-block))");

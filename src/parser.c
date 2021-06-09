@@ -1069,6 +1069,7 @@ static Stmt* parse_stmt_block(Parser* parser)
     next_token(parser);
 
     List stmts = list_head_create(stmts);
+    size_t num_decls = 0;
     bool bad_item = false;
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
@@ -1081,13 +1082,16 @@ static Stmt* parse_stmt_block(Parser* parser)
             break;
         }
 
+        if (item->kind == CST_StmtDecl)
+            num_decls += 1;
+
         list_add_last(&stmts, &item->lnode);
     }
 
     if (!bad_item && expect_token(parser, TKN_RBRACE, "Failed to parse end of statement block"))
     {
         range.end = parser->ptoken.range.end;
-        stmt = new_stmt_block(parser->ast_arena, &stmts, range);
+        stmt = new_stmt_block(parser->ast_arena, &stmts, num_decls, range);
     }
 
     return stmt;
@@ -1118,22 +1122,6 @@ static bool parse_fill_if_cond_block(Parser* parser, IfCondBlock* cblock, const 
     return true;
 }
 
-static IfCondBlock* parse_stmt_elif_block(Parser* parser)
-{
-    assert(is_keyword(parser, KW_ELIF));
-    IfCondBlock* elif_blk = NULL;
-    const char* error_prefix = "Failed to parse elif statement";
-
-    next_token(parser);
-
-    IfCondBlock cblock = {0};
-
-    if (parse_fill_if_cond_block(parser, &cblock, error_prefix))
-        elif_blk = new_if_cond_block(parser->ast_arena, cblock.cond, cblock.body, cblock.range);
-
-    return elif_blk;
-}
-
 // stmt_else = 'else' stmt
 static bool parse_fill_else_block(Parser* parser, ElseBlock* else_blk)
 {
@@ -1154,7 +1142,7 @@ static bool parse_fill_else_block(Parser* parser, ElseBlock* else_blk)
     return true;
 }
 
-// stmt_if = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
+// stmt_if = 'if' '(' expr ')' stmt ('else' stmt)?
 static Stmt* parse_stmt_if(Parser* parser)
 {
     assert(is_keyword(parser, KW_IF));
@@ -1169,37 +1157,14 @@ static Stmt* parse_stmt_if(Parser* parser)
 
     if (ok_if)
     {
-        size_t num_elif_blks = 0;
-        List elif_blks = list_head_create(elif_blks);
-        bool bad_elif = false;
+        bool bad_else = false;
+        ElseBlock else_blk = {0};
 
-        while (is_keyword(parser, KW_ELIF))
-        {
-            IfCondBlock* elif = parse_stmt_elif_block(parser);
+        if (is_keyword(parser, KW_ELSE))
+            bad_else = !parse_fill_else_block(parser, &else_blk);
 
-            if (elif)
-            {
-                num_elif_blks += 1;
-                list_add_last(&elif_blks, &elif->lnode);
-            }
-            else
-            {
-                bad_elif = true;
-                break;
-            }
-        }
-
-        if (!bad_elif)
-        {
-            bool bad_else = false;
-            ElseBlock else_blk = {0};
-
-            if (is_keyword(parser, KW_ELSE))
-                bad_else = !parse_fill_else_block(parser, &else_blk);
-
-            if (!bad_else)
-                stmt = new_stmt_if(parser->ast_arena, &if_blk, &elif_blks, &else_blk, range);
-        }
+        if (!bad_else)
+            stmt = new_stmt_if(parser->ast_arena, &if_blk, &else_blk, range);
     }
 
     return stmt;

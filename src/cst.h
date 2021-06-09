@@ -16,6 +16,7 @@ typedef struct Stmt Stmt;
 
 typedef struct Type Type;
 typedef struct Symbol Symbol;
+typedef struct Scope Scope;
 
 ///////////////////////////////
 //       Type Specifiers
@@ -126,7 +127,6 @@ typedef enum ExprKind {
 struct Expr {
     ExprKind kind;
     ProgRange range;
-
     Type* type;
     bool is_const;
     bool is_lvalue;
@@ -197,7 +197,6 @@ typedef struct ExprStr {
 typedef struct ExprIdent {
     Expr super;
     const char* name;
-    Symbol* sym;
 } ExprIdent;
 
 typedef struct ExprCast {
@@ -298,13 +297,14 @@ typedef struct StmtNoOp {
 typedef struct StmtBlock {
     Stmt super;
     List stmts;
+    size_t num_decls;
+    Scope* scope;
 } StmtBlock;
 
 typedef struct IfCondBlock {
     ProgRange range;
     Expr* cond;
     Stmt* body;
-    ListNode lnode;
 } IfCondBlock;
 
 typedef struct ElseBlock {
@@ -315,7 +315,6 @@ typedef struct ElseBlock {
 typedef struct StmtIf {
     Stmt super;
     IfCondBlock if_blk;
-    List elif_blks;
     ElseBlock else_blk;
 } StmtIf;
 
@@ -401,13 +400,12 @@ typedef struct StmtDecl {
 
 Stmt* new_stmt_noop(Allocator* allocator, ProgRange range);
 Stmt* new_stmt_decl(Allocator* allocator, Decl* decl);
-Stmt* new_stmt_block(Allocator* allocator, List* stmts, ProgRange range);
+Stmt* new_stmt_block(Allocator* allocator, List* stmts, size_t num_decls, ProgRange range);
 Stmt* new_stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
 Stmt* new_stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
 Stmt* new_stmt_do_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
-Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, List* elif_blks, ElseBlock* else_blk, ProgRange range);
-IfCondBlock* new_if_cond_block(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
+Stmt* new_stmt_if(Allocator* allocator, IfCondBlock* if_blk, ElseBlock* else_blk, ProgRange range);
 Stmt* new_stmt_for(Allocator* allocator, Stmt* init, Expr* cond, Stmt* next, Stmt* body, ProgRange range);
 Stmt* new_stmt_return(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_break(Allocator* allocator, const char* label, ProgRange range);
@@ -436,19 +434,19 @@ typedef enum DeclKind {
 struct Decl {
     DeclKind kind;
     ProgRange range;
-    const char* name;
-    Type* type;
     ListNode lnode;
 };
 
 typedef struct DeclVar {
     Decl super;
+    const char* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclVar;
 
 typedef struct DeclConst {
     Decl super;
+    const char* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclConst;
@@ -461,12 +459,14 @@ typedef struct EnumItem {
 
 typedef struct DeclEnum {
     Decl super;
+    const char* name;
     TypeSpec* typespec;
     List items;
 } DeclEnum;
 
 typedef struct DeclAggregate {
     Decl super;
+    const char* name;
     List fields;
 } DeclAggregate;
 
@@ -475,14 +475,17 @@ typedef DeclAggregate DeclStruct;
 
 typedef struct DeclProc {
     Decl super;
+    const char* name;
     TypeSpec* ret;
     size_t num_params;
     List params;
     Stmt* body;
+    Scope* scope;
 } DeclProc;
 
 typedef struct DeclTypedef {
     Decl super;
+    const char* name;
     TypeSpec* typespec;
 } DeclTypedef;
 
@@ -578,7 +581,8 @@ struct Type {
     };
 };
 
-
+// TODO: Basic int types should be explicitly sized (e.g., uint8, uint16) and type_int, type_long, etc, should
+// be aliases.
 extern Type* type_void;
 extern Type* type_bool;
 extern Type* type_char;
@@ -615,8 +619,11 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
 
 typedef enum SymbolKind {
     SYMBOL_NONE,
-    SYMBOL_DECL,
+    SYMBOL_VAR,
+    SYMBOL_CONST,
+    SYMBOL_PROC,
     SYMBOL_TYPE,
+    SYMBOL_PACKAGE,
 } SymbolKind;
 
 typedef enum SymbolStatus {
@@ -625,24 +632,38 @@ typedef enum SymbolStatus {
     SYMBOL_STATUS_RESOLVED,
 } SymbolStatus;
 
-enum SymbolFlags {
-    SYMBOL_IS_LOCAL   = 0x1,
-};
-
 struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
-    uint64_t flags;
     const char* name;
-
-    union {
-        Decl* decl;
-        Type* type;
-    };
+    Decl* decl;
+    Type* type;
+    bool is_local;
+    int offset;
+    List lnode;
 };
 
-Symbol* new_symbol_decl(Allocator* allocator, Decl* decl);
+Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);
 Symbol* new_symbol_type(Allocator* allocator, const char* name, Type* type);
 
-bool symbol_is_type(Symbol* sym);
+///////////////////////////////
+//       Scope
+//////////////////////////////
+
+struct Scope {
+    struct Scope* parent;
+    List children;
+
+    HMap sym_table;
+    List sym_list;
+
+    ListNode lnode;
+};
+
+Scope* new_scope(Allocator* allocator, size_t num_syms);
+void init_scope_lists(Scope* scope);
+void init_scope_sym_table(Scope* scope, Allocator* allocator, size_t num_syms);
+
+Symbol* lookup_symbol(Scope* curr_scope, const char* name);
+Symbol* lookup_scope_symbol(Scope* scope, const char* name);
 #endif

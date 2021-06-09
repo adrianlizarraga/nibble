@@ -11,6 +11,7 @@
 #define MAX_ERROR_LEN 256
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 #define ALIGN_UP(p, a) (((p) + (a) - 1) & ~((a) - 1))
+#define BITS(x) (sizeof(x) * 8)
 
 typedef enum OS {
     OS_INVALID,
@@ -122,7 +123,6 @@ typedef enum Keyword {
     KW_RETURN,
     KW_IF,
     KW_ELSE,
-    KW_ELIF,
     KW_WHILE,
     KW_DO,
     KW_FOR,

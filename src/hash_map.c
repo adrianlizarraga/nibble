@@ -4,8 +4,22 @@
 #include <assert.h>
 #include <stdbool.h>
 
-#define HASH_MAP_MIN_CAP 16
 #define HASH_MAP_NULL_KEY 0
+
+// TODO: Use clp2 from Hacker's Delight 2nd edition, pg 62.
+size_t calc_hmap_size(size_t cap)
+{
+    size_t pow2_cap = 1;
+    size_t log2_cap = 0;
+
+    while (cap > pow2_cap)
+    {
+        pow2_cap = pow2_cap << 1;
+        log2_cap += 1;
+    }
+
+    return log2_cap;
+}
 
 // Pelle Evensen's "Moremur" 64-bit mixer based on Murmur3 mixer
 uint64_t hash_uint64(uint64_t h)
@@ -50,9 +64,6 @@ uint64_t hash_bytes(const void* buf, size_t len)
 
 static bool hmap_expand(HMap* map, size_t cap)
 {
-    if (cap < HASH_MAP_MIN_CAP)
-        cap = HASH_MAP_MIN_CAP;
-
     if (cap <= map->cap)
         return true;
 
@@ -99,9 +110,6 @@ void hmap_clear(HMap* map)
         memset(&map->entries, 0, map->cap * sizeof(HMapEntry));    
         map->len = 0;
     }
-
-    if (map->null_key.key)
-        map->null_key.key = 0;
 }
 
 void hmap_destroy(HMap* map)
@@ -112,15 +120,7 @@ void hmap_destroy(HMap* map)
 
 uint64_t* hmap_put(HMap* map, uint64_t key, uint64_t value)
 {
-    if (key == HASH_MAP_NULL_KEY)
-    {
-        HMapEntry* null_key = &map->null_key;
-
-        null_key->key = 1;
-        null_key->value = value;
-
-        return &null_key->value;
-    }
+    assert(key != HASH_MAP_NULL_KEY);
 
     // Expand at 60%
     if (10 * (map->len + 1) >= 6 * map->cap)
@@ -128,8 +128,6 @@ uint64_t* hmap_put(HMap* map, uint64_t key, uint64_t value)
         if (!hmap_expand(map, map->cap * 2))
             return NULL;
     }
-
-    assert(map->len < map->cap);
 
     HMapEntry* entries = map->entries;
     uint64_t i = hash_uint64(key);
@@ -161,12 +159,10 @@ uint64_t* hmap_put(HMap* map, uint64_t key, uint64_t value)
 
 uint64_t* hmap_get(HMap* map, uint64_t key)
 {
-    if (key == HASH_MAP_NULL_KEY)
-    {
-        HMapEntry* null_key = &map->null_key;
+    assert(key != HASH_MAP_NULL_KEY);
 
-        return null_key->key ? &null_key->value : NULL;
-    }
+    if (!map->entries)
+        return NULL;
 
     HMapEntry* entries = map->entries;
     uint64_t h = hash_uint64(key);
