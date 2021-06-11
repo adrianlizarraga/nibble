@@ -967,6 +967,25 @@ static size_t compute_scope_var_offsets(Scope* scope, size_t offset)
     return ALIGN_UP(stack_size, 16);
 }
 
+// NOTE: Currently, I see three different ways of assigning a stack offset to local variables:
+//
+// 1. Whenever we enter a procedure:
+//    Since we have a scope tree (each scope contains all var syms and all child scopes),
+//    recursively walk scope tree and assign each var a stack offset. Vars in nested scopes can
+//    reuse stack space as necessary.
+//
+// 2. Whenever we enter a new scope:
+//    When we enter a new scope, assign a stack offset to local variables in that new scope only.
+//    The initial stack offset is obtained from the parent scope.
+//    When we exit a scope, update the parent scope's max_stack_size IFF the exiting scope's stack size is larger.
+//
+// 3. Whenever we encounter a new var declaration:
+//    Keep a running sum of the current procedure's stack size. Whenever we see a new var decl, increment the
+//    stack_size and set the var's offset equal to the stack_size. If the stack_size is greater than the largest seen
+//    max_stack_size, update the procedure's max_stack_size. Exiting a stmt block restores the stack_size to 
+//    its initial value before entering the stmt block.
+//
+//    Currently using #1, but #3 is attractive because of the decreased dependence on AST structures.
 static size_t compute_proc_var_offsets(DeclProc* dproc)
 {
     size_t stack_size = 0;
@@ -1016,6 +1035,25 @@ static size_t compute_proc_var_offsets(DeclProc* dproc)
 
     return compute_scope_var_offsets(proc_body->scope, stack_size);
 }
+
+#if 0
+// NOTE: Used in method #3 of assigning stack offsets to local variables.
+static void set_sym_offset(Symbol* sym)
+{
+    size_t* frame_size = &generator.curr_proc.frame_size;
+    size_t* max_frame_size = &generator.curr_proc.max_frame_size;
+
+    *frame_size += sym->type->size;
+    *frame_size = ALIGN_UP(*frame_size, sym->type->align);
+
+    // sym->offset = -(*frame_size);
+    int offset = -(int)(*frame_size);
+    assert(sym->offset == offset);
+
+    if (*frame_size > *max_frame_size)
+        *max_frame_size = *frame_size;
+}
+#endif
 
 static void enter_gen_scope(Scope* scope)
 {
@@ -1070,8 +1108,6 @@ static void gen_proc(Symbol* sym)
 
     if (stack_size)
         fill_line(sub_rsp_inst, "    subq $%d, %%rsp", stack_size);
-    else
-        fill_line(sub_rsp_inst, "\n");
 
     gen_stmt(dproc->body);
 
@@ -1178,7 +1214,10 @@ bool gen_gasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* 
     {
         for (size_t i = 0; i < bucket->len; i += 1)
         {
-            ftprint_file(generator.out_fd, false, "%s\n", bucket->buf[i]);
+            const char* str = bucket->buf[i];
+
+            if (str)
+                ftprint_file(generator.out_fd, false, "%s\n", str);
         }
     }
 
@@ -1186,7 +1225,10 @@ bool gen_gasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* 
     {
         for (size_t i = 0; i < bucket->len; i += 1)
         {
-            ftprint_file(generator.out_fd, false, "%s\n", bucket->buf[i]);
+            const char* str = bucket->buf[i];
+
+            if (str)
+                ftprint_file(generator.out_fd, false, "%s\n", str);
         }
     }
 
