@@ -150,6 +150,7 @@ struct Generator {
 
     ProcState curr_proc;
     Scope* curr_scope;
+    uint32_t if_label_count;
 
     Allocator* gen_mem;
     Allocator* tmp_mem;
@@ -229,14 +230,9 @@ void fill_line(char** line, const char* format, ...)
 
 static void enter_gen_scope(Scope* scope);
 static void exit_gen_scope();
+static uint32_t next_if_label_count();
 static void gen_stmt(Stmt* stmt);
 static void gen_expr(Expr* expr, Operand* dest);
-
-static void print_reg_mask(unsigned i)
-{
-    unsigned reg_mask = generator.curr_proc.free_regs;
-    ftprint_out("%d: reg_mask: %b\n", i, reg_mask);
-}
 
 //  ntz() from Hacker's Delight 2nd edition, pg 108
 //  Calculates the number of trailing zeros.
@@ -906,6 +902,53 @@ static void gen_stmt_block(StmtBlock* sblock)
     exit_gen_scope();
 }
 
+static void gen_stmt_if(StmtIf* stmt)
+{
+    Expr* cond_expr = stmt->if_blk.cond;
+    Stmt* if_body = stmt->if_blk.body;
+    Stmt* else_body = stmt->else_blk.body;
+
+    // If expr is a compile-time constant, do not generate the unneeded branch!!
+    if (cond_expr->is_const)
+    {
+        // TODO: Support other int types and floats.
+        assert(cond_expr->type == type_int);
+
+        bool cond_val = cond_expr->const_val.as_int.i != 0;
+
+        if (cond_val)
+            gen_stmt(if_body);
+        else
+            gen_stmt(else_body);
+    }
+    else
+    {
+        uint32_t if_id = next_if_label_count();
+        Operand cond_op = {0};
+
+        gen_expr(cond_expr, &cond_op);
+        ensure_operand_in_reg(&cond_op);
+        emit_text("    cmp $0, %%%s", reg_names[cond_op.type->size][cond_op.reg]);
+        free_operand(&cond_op);
+
+        if (else_body)
+            emit_text("    jz if.else.%u", if_id);
+        else
+            emit_text("    jz if.end.%u", if_id);
+
+        gen_stmt(if_body);
+
+        if (else_body)
+        {
+            emit_text("    jmp if.end.%u", if_id);
+            emit_text("    if.else.%u:", if_id);
+            gen_stmt(else_body);
+        }
+
+        emit_text("    if.end.%u:", if_id);
+    }
+}
+
 static void gen_stmt(Stmt* stmt)
 {
     switch (stmt->kind)
@@ -924,6 +967,9 @@ static void gen_stmt(Stmt* stmt)
             break;
         case CST_StmtExprAssign:
             gen_stmt_expr_assign((StmtExprAssign*)stmt);
+            break;
+        case CST_StmtIf:
+            gen_stmt_if((StmtIf*)stmt);
             break;
         default:
             break;
@@ -994,7 +1040,7 @@ static size_t compute_scope_var_offsets(Scope* scope, size_t offset)
 // 3. Whenever we encounter a new var declaration:
 //    Keep a running sum of the current procedure's stack size. Whenever we see a new var decl, increment the
 //    stack_size and set the var's offset equal to the stack_size. If the stack_size is greater than the largest seen
-//    max_stack_size, update the procedure's max_stack_size. Exiting a stmt block restores the stack_size to 
+//    max_stack_size, update the procedure's max_stack_size. Exiting a stmt block restores the stack_size to
 //    its initial value before entering the stmt block.
 //
 //    Currently using #1, but #3 is attractive because of the decreased dependence on AST structures.
@@ -1075,6 +1121,11 @@ static void enter_gen_scope(Scope* scope)
 static void exit_gen_scope()
 {
     generator.curr_scope = generator.curr_scope->parent;
+}
+
+static uint32_t next_if_label_count()
+{
+    return generator.if_label_count++;
 }
 
 static void enter_proc(DeclProc* dproc)
@@ -1210,6 +1261,7 @@ bool gen_gasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* 
     generator.text_lines = new_sstream(gen_mem, bucket_cap);
     generator.data_lines = new_sstream(gen_mem, bucket_cap);
     generator.out_fd = fopen(output_file, "w");
+    generator.if_label_count = 0;
 
     if (!generator.out_fd)
     {
