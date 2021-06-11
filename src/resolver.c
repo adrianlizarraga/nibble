@@ -292,6 +292,44 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 return false;
             }
             break;
+        case TKN_MINUS:
+            if (type_is_arithmetic(left->type) && type_is_arithmetic(right->type))
+            {
+                if (left->type == right->type)
+                {
+                    if (left->is_const && right->is_const)
+                    {
+                        assert(left->type == type_int); // TODO: Support other types
+                        expr->type = left->type;
+                        expr->is_const = true;
+                        expr->is_lvalue = false;
+                        expr->const_val.kind = SCALAR_INTEGER;
+                        expr->const_val.as_int.kind = INTEGER_INT; // TODO: Redundant
+                        expr->const_val.as_int.i = (int)left->const_val.as_int.i - (int)right->const_val.as_int.i;
+                    }
+                    else
+                    {
+                        expr->type = left->type;
+                        expr->is_const = false;
+                        expr->is_lvalue = false;
+                    }
+
+                    return true;
+                }
+                else
+                {
+                    // TODO: Support type conversion
+                    resolver_on_error(resolver, "Cannot subtract operands of different types");
+                    return false;
+                }
+            }
+            else
+            {
+                // TODO: Support pointer arithmetic.
+                resolver_on_error(resolver, "Can only subtract arithmetic types");
+                return false;
+            }
+            break;
         default:
             resolver_on_error(resolver, "Operation type `%d` not supported", ebinary->op);
             break;

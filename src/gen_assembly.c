@@ -325,6 +325,27 @@ static const char* add_inst(unsigned size)
     return NULL;
 }
 
+static const char* sub_inst(unsigned size)
+{
+    switch (size)
+    {
+        case 1:
+            return "subb";
+        case 2:
+            return "subw";
+        case 4:
+            return "subl";
+        case 8:
+            return "subq";
+        default:
+            ftprint_err("INTERNAL ERROR: unsupported sub instruction size: %u\n", size);
+            assert(0);
+            break;
+    }
+
+    return NULL;
+}
+
 static const char* mov_inst(unsigned size)
 {
     switch (size)
@@ -538,6 +559,34 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
     }
 }
 
+static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
+{
+    ensure_operand_in_reg(dst);
+
+    if (src->kind == OPERAND_IMMEDIATE)
+    {
+        emit_text("    %s $%d, %%%s", op_inst, src->imm.as_int.i, reg_names[dst->type->size][dst->reg]);
+    }
+    else if (src->kind == OPERAND_FRAME_OFFSET)
+    {
+        emit_text("    %s %d(%%rbp), %%%s", op_inst, src->offset, reg_names[dst->type->size][dst->reg]);
+    }
+    else if (src->kind == OPERAND_GLOBAL_VAR)
+    {
+        emit_text("    %s %s(%%rip), %%%s", op_inst, src->var, reg_names[dst->type->size][dst->reg]);
+    }
+    else if (src->kind == OPERAND_REGISTER)
+    {
+        emit_text("    %s %%%s, %%%s", op_inst, reg_names[src->type->size][src->reg],
+                  reg_names[dst->type->size][dst->reg]);
+    }
+    else
+    {
+        ftprint_err("INTERNAL ERROR: Unexpected src operand kind %d while generating %s inst\n", src->kind, op_inst);
+        assert(0);
+    }
+}
+
 static void emit_add(Type* type, Operand* src, Operand* dst)
 {
     assert(src->type == dst->type);
@@ -563,30 +612,24 @@ static void emit_add(Type* type, Operand* src, Operand* dst)
     }
     else
     {
-        ensure_operand_in_reg(dst);
+        emit_binary_op(add_inst(size), src, dst);
+    }
+}
 
-        if (src->kind == OPERAND_IMMEDIATE)
-        {
-            emit_text("    %s $%d, %%%s", add_inst(size), src->imm.as_int.i, reg_names[dst->type->size][dst->reg]);
-        }
-        else if (src->kind == OPERAND_FRAME_OFFSET)
-        {
-            emit_text("    %s %d(%%rbp), %%%s", add_inst(size), src->offset, reg_names[dst->type->size][dst->reg]);
-        }
-        else if (src->kind == OPERAND_GLOBAL_VAR)
-        {
-            emit_text("    %s %s(%%rip), %%%s", add_inst(size), src->var, reg_names[dst->type->size][dst->reg]);
-        }
-        else if (src->kind == OPERAND_REGISTER)
-        {
-            emit_text("    %s %%%s, %%%s", add_inst(size), reg_names[src->type->size][src->reg],
-                      reg_names[dst->type->size][dst->reg]);
-        }
-        else
-        {
-            ftprint_err("INTERNAL ERROR: Unexpected src operand kind %d while generating add inst\n", src->kind);
-            assert(0);
-        }
+static void emit_sub(Type* type, Operand* src, Operand* dst)
+{
+    assert(src->type == dst->type);
+    assert(type == dst->type);
+    size_t size = type->size;
+
+    if (dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE)
+    {
+        // NOTE: THIS SHOULDN'T happen because resolver should have already done constant folding.
+        dst->imm.as_int.i -= src->imm.as_int.i;
+    }
+    else
+    {
+        emit_binary_op(sub_inst(size), src, dst);
     }
 }
 
@@ -602,6 +645,18 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             gen_expr(expr->right, &src);
 
             emit_add(expr->super.type, &src, dest);
+
+            free_operand(&src);
+            break;
+        }
+        case TKN_MINUS:
+        {
+            Operand src = {0};
+
+            gen_expr(expr->left, dest);
+            gen_expr(expr->right, &src);
+
+            emit_sub(expr->super.type, &src, dest);
 
             free_operand(&src);
             break;
