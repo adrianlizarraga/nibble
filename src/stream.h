@@ -21,7 +21,7 @@ ByteStream byte_stream_create(Allocator* allocator);
 void add_byte_stream_chunk(ByteStream* stream, const char* buf, size_t size);
 
 typedef struct StrBucket StrBucket;
-typedef struct StrBucketList StrBucketList;
+typedef struct StrStream StrStream;
 
 struct StrBucket {
     StrBucket* next;
@@ -29,7 +29,7 @@ struct StrBucket {
     char* buf[];
 };
 
-struct StrBucketList {
+struct StrStream {
     StrBucket* first;
     StrBucket* last;
     size_t bucket_cap;
@@ -37,6 +37,6 @@ struct StrBucketList {
     Allocator* arena;
 };
 
-StrBucketList* new_sbl(Allocator* arena, size_t bucket_cap);
-char** sbl_add(StrBucketList* buckets, const char* str, size_t len);
+StrStream* new_sstream(Allocator* arena, size_t bucket_cap);
+char**     sstream_add(StrStream* sstream, const char* str, size_t len);
 #endif
