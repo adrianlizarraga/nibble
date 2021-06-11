@@ -151,6 +151,7 @@ struct Generator {
     ProcState curr_proc;
     Scope* curr_scope;
     uint32_t if_label_count;
+    uint32_t while_label_count;
 
     Allocator* gen_mem;
     Allocator* tmp_mem;
@@ -231,6 +232,7 @@ void fill_line(char** line, const char* format, ...)
 static void enter_gen_scope(Scope* scope);
 static void exit_gen_scope();
 static uint32_t next_if_label_count();
+static uint32_t next_while_label_count();
 static void gen_stmt(Stmt* stmt);
 static void gen_expr(Expr* expr, Operand* dest);
 
@@ -1004,6 +1006,45 @@ static void gen_stmt_if(StmtIf* stmt)
     }
 }
 
+static void gen_stmt_while(StmtWhile* stmt)
+{
+    Expr* cond_expr = stmt->cond;
+    Stmt* body = stmt->body;
+    uint32_t while_id = next_while_label_count();
+
+    if (cond_expr->is_const)
+    {
+        // TODO: Support other int types and floats.
+        assert(cond_expr->type == type_int);
+
+        bool cond_val = cond_expr->const_val.as_int.i != 0;
+
+        if (cond_val)
+        {
+            // Infinite loop
+            emit_text("    while.top.%d:", while_id);
+            gen_stmt(body);
+            emit_text("    jmp while.top.%d", while_id);
+        }
+    }
+    else
+    {
+        emit_text("    jmp while.cond.%d", while_id);
+        emit_text("    while.top.%d:", while_id);
+        gen_stmt(body);
+        emit_text("    while.cond.%d:", while_id);
+
+        Operand cond_op = {0};
+
+        gen_expr(cond_expr, &cond_op);
+        ensure_operand_in_reg(&cond_op);
+        emit_text("    cmp $0, %%%s", reg_names[cond_op.type->size][cond_op.reg]);
+        free_operand(&cond_op);
+
+        emit_text("    jne while.top.%d", while_id);
+    }
+}
+
 static void gen_stmt(Stmt* stmt)
 {
     switch (stmt->kind)
@@ -1025,6 +1066,9 @@ static void gen_stmt(Stmt* stmt)
             break;
         case CST_StmtIf:
             gen_stmt_if((StmtIf*)stmt);
+            break;
+        case CST_StmtWhile:
+            gen_stmt_while((StmtWhile*)stmt);
             break;
         default:
             break;
@@ -1183,6 +1227,11 @@ static uint32_t next_if_label_count()
     return generator.if_label_count++;
 }
 
+static uint32_t next_while_label_count()
+{
+    return generator.while_label_count++;
+}
+
 static void enter_proc(DeclProc* dproc)
 {
     generator.curr_proc.name = dproc->name;
@@ -1317,6 +1366,7 @@ bool gen_gasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* 
     generator.data_lines = new_sstream(gen_mem, bucket_cap);
     generator.out_fd = fopen(output_file, "w");
     generator.if_label_count = 0;
+    generator.while_label_count = 0;
 
     if (!generator.out_fd)
     {
