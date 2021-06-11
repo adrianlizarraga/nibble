@@ -1045,6 +1045,42 @@ static void gen_stmt_while(StmtWhile* stmt)
     }
 }
 
+static void gen_stmt_do_while(StmtDoWhile* stmt)
+{
+    Expr* cond_expr = stmt->cond;
+    Stmt* body = stmt->body;
+    uint32_t while_id = next_while_label_count();
+
+    if (cond_expr->is_const)
+    {
+        // TODO: Support other int types and floats.
+        assert(cond_expr->type == type_int);
+
+        bool cond_val = cond_expr->const_val.as_int.i != 0;
+
+        if (cond_val)
+        {
+            // Infinite loop
+            emit_text("    dowhile.top.%d:", while_id);
+            gen_stmt(body);
+            emit_text("    jmp dowhile.top.%d", while_id);
+        }
+    }
+    else
+    {
+        emit_text("    dowhile.top.%d:", while_id);
+        gen_stmt(body);
+
+        Operand cond_op = {0};
+
+        gen_expr(cond_expr, &cond_op);
+        ensure_operand_in_reg(&cond_op);
+        emit_text("    cmp $0, %%%s", reg_names[cond_op.type->size][cond_op.reg]);
+        free_operand(&cond_op);
+        emit_text("    jne dowhile.top.%d", while_id);
+    }
+}
+
 static void gen_stmt(Stmt* stmt)
 {
     switch (stmt->kind)
@@ -1069,6 +1105,9 @@ static void gen_stmt(Stmt* stmt)
             break;
         case CST_StmtWhile:
             gen_stmt_while((StmtWhile*)stmt);
+            break;
+        case CST_StmtDoWhile:
+            gen_stmt_do_while((StmtDoWhile*)stmt);
             break;
         default:
             break;
