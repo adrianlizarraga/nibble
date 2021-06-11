@@ -833,6 +833,15 @@ static void gen_stmt_return(StmtReturn* sreturn)
     emit_text("    jmp end.%s", generator.curr_proc.name);
 }
 
+static void gen_stmt_expr(StmtExpr* sexpr)
+{
+    Operand operand = {0};
+
+    gen_expr(sexpr->expr, &operand);
+
+    free_operand(&operand);
+}
+
 static void gen_stmt_expr_assign(StmtExprAssign* seassign)
 {
     switch (seassign->op_assign)
@@ -909,6 +918,9 @@ static void gen_stmt(Stmt* stmt)
             break;
         case CST_StmtDecl:
             gen_stmt_decl((StmtDecl*)stmt);
+            break;
+        case CST_StmtExpr:
+            gen_stmt_expr((StmtExpr*)stmt);
             break;
         case CST_StmtExprAssign:
             gen_stmt_expr_assign((StmtExprAssign*)stmt);
