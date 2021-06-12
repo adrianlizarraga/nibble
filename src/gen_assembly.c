@@ -460,7 +460,7 @@ static void emit_data_value(Type* type, Scalar scalar)
 {
     if (type == type_s32)
     {
-        emit_data(".long %d\n", scalar.as_int.s32);
+        emit_data(".long %d\n", scalar.as_int._s32);
     }
     else
     {
@@ -487,7 +487,7 @@ static void emit_operand_to_reg(Operand* operand, Register reg)
             char* movs_buf = generator.tmp_inst_buf;
 
             movs_inst(movs_buf, TMP_INST_BUF_LEN, 0, op_size);
-            emit_text("    %s $%d, %%%s", movs_buf, operand->imm.as_int.s32, dst_reg_name);
+            emit_text("    %s $%d, %%%s", movs_buf, operand->imm.as_int._s32, dst_reg_name);
             break;
         }
         case OPERAND_FRAME_OFFSET:
@@ -530,7 +530,7 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
 
         if (rhs_op->kind == OPERAND_IMMEDIATE)
         {
-            emit_text("    %s $%d, %d(%%rbp)", mov_inst(var_size), rhs_op->imm.as_int.s32, var_offset);
+            emit_text("    %s $%d, %d(%%rbp)", mov_inst(var_size), rhs_op->imm.as_int._s32, var_offset);
         }
         else
         {
@@ -545,7 +545,7 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
 
         if (rhs_op->kind == OPERAND_IMMEDIATE)
         {
-            emit_text("    %s $%d, %s(%%rip)", mov_inst(var_size), rhs_op->imm.as_int.s32, var_name);
+            emit_text("    %s $%d, %s(%%rip)", mov_inst(var_size), rhs_op->imm.as_int._s32, var_name);
         }
         else
         {
@@ -567,7 +567,7 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
 
     if (src->kind == OPERAND_IMMEDIATE)
     {
-        emit_text("    %s $%d, %%%s", op_inst, src->imm.as_int.s32, reg_names[dst->type->size][dst->reg]);
+        emit_text("    %s $%d, %%%s", op_inst, src->imm.as_int._s32, reg_names[dst->type->size][dst->reg]);
     }
     else if (src->kind == OPERAND_FRAME_OFFSET)
     {
@@ -598,13 +598,13 @@ static void emit_add(Type* type, Operand* src, Operand* dst)
     if (dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE)
     {
         // NOTE: THIS SHOULDN'T happen because resolver should have already done constant folding.
-        dst->imm.as_int.s32 += src->imm.as_int.s32;
+        dst->imm.as_int._s32 += src->imm.as_int._s32;
     }
     else if (dst->kind == OPERAND_IMMEDIATE)
     {
         // Add into the src register.
         ensure_operand_in_reg(src);
-        emit_text("    %s $%d, %%%s", add_inst(size), dst->imm.as_int.s32, reg_names[src->type->size][src->reg]);
+        emit_text("    %s $%d, %%%s", add_inst(size), dst->imm.as_int._s32, reg_names[src->type->size][src->reg]);
 
         // Steal src operand's register.
         dst->kind = OPERAND_REGISTER;
@@ -627,7 +627,7 @@ static void emit_sub(Type* type, Operand* src, Operand* dst)
     if (dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE)
     {
         // NOTE: THIS SHOULDN'T happen because resolver should have already done constant folding.
-        dst->imm.as_int.s32 -= src->imm.as_int.s32;
+        dst->imm.as_int._s32 -= src->imm.as_int._s32;
     }
     else
     {
@@ -971,7 +971,7 @@ static void gen_stmt_if(StmtIf* stmt)
         // TODO: Support other int types and floats.
         assert(cond_expr->type == type_s32);
 
-        bool cond_val = cond_expr->const_val.as_int.s32 != 0;
+        bool cond_val = cond_expr->const_val.as_int._s32 != 0;
 
         if (cond_val)
             gen_stmt(if_body);
@@ -1017,7 +1017,7 @@ static void gen_stmt_while(StmtWhile* stmt)
         // TODO: Support other int types and floats.
         assert(cond_expr->type == type_s32);
 
-        bool cond_val = cond_expr->const_val.as_int.s32 != 0;
+        bool cond_val = cond_expr->const_val.as_int._s32 != 0;
 
         if (cond_val)
         {
@@ -1056,7 +1056,7 @@ static void gen_stmt_do_while(StmtDoWhile* stmt)
         // TODO: Support other int types and floats.
         assert(cond_expr->type == type_s32);
 
-        bool cond_val = cond_expr->const_val.as_int.s32 != 0;
+        bool cond_val = cond_expr->const_val.as_int._s32 != 0;
 
         if (cond_val)
         {

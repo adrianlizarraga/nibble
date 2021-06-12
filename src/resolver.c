@@ -242,7 +242,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     expr->type = type_s32;
     expr->is_const = true;
     expr->is_lvalue = false;
-    expr->const_val.as_int.s32 = (int)eint->value;
+    expr->const_val.as_int._s32 = (int)eint->value;
 
     return true;
 }
@@ -272,7 +272,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                         expr->type = left->type;
                         expr->is_const = true;
                         expr->is_lvalue = false;
-                        expr->const_val.as_int.s32 = left->const_val.as_int.s32 + right->const_val.as_int.s32;
+                        expr->const_val.as_int._s32 = left->const_val.as_int._s32 + right->const_val.as_int._s32;
                     }
                     else
                     {
@@ -308,7 +308,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                         expr->type = left->type;
                         expr->is_const = true;
                         expr->is_lvalue = false;
-                        expr->const_val.as_int.s32 = left->const_val.as_int.s32 - right->const_val.as_int.s32;
+                        expr->const_val.as_int._s32 = left->const_val.as_int._s32 - right->const_val.as_int._s32;
                     }
                     else
                     {

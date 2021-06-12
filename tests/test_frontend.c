@@ -51,14 +51,14 @@ static void print_error_stream(ByteStream* errors)
     do                                                                                                                 \
     {                                                                                                                  \
         assert((tk.kind == TKN_FLOAT));                                                                                \
-        assert((tk.as_float.value.f64 == v));                                                                          \
+        assert((tk.as_float.value._f64 == v));                                                                          \
         assert((tk.as_float.kind == FLOAT_F64));                                                                 \
     } while (0)
 #define TKN_TEST_FLOAT32(tk, v)                                                                                        \
     do                                                                                                                 \
     {                                                                                                                  \
         assert((tk.kind == TKN_FLOAT));                                                                                \
-        assert((tk.as_float.value.f32 == v));                                                                          \
+        assert((tk.as_float.value._f32 == v));                                                                          \
         assert((tk.as_float.kind == FLOAT_F32));                                                                 \
     } while (0)
 #define TKN_TEST_CHAR(tk, v)                                                                                           \

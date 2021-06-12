@@ -1163,9 +1163,9 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                 dstr = array_create(allocator, char, 8);
 
                 if (e->fkind == FLOAT_F64)
-                    ftprint_char_array(&dstr, false, "%lf", e->value.f64);
+                    ftprint_char_array(&dstr, false, "%lf", e->value._f64);
                 else
-                    ftprint_char_array(&dstr, false, "%lf", e->value.f32);
+                    ftprint_char_array(&dstr, false, "%lf", e->value._f32);
             }
             break;
             case CST_ExprStr:

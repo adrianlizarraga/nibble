@@ -44,6 +44,17 @@ typedef struct StringView {
 } StringView;
 #define string_view_lit(cstr_lit) { .str = cstr_lit, .len = sizeof(cstr_lit) - 1 }
 
+typedef uint8_t  u8;
+typedef int8_t   s8;
+typedef uint16_t u16;
+typedef int16_t  s16;
+typedef uint32_t u32;
+typedef int32_t  s32;
+typedef uint64_t u64;
+typedef int64_t  s64;
+typedef float    f32;
+typedef double   f64;
+
 typedef enum FloatKind {
     FLOAT_F64,
     FLOAT_F32,
@@ -51,8 +62,8 @@ typedef enum FloatKind {
 
 typedef struct Float {
     union {
-        double f64;
-        float f32;
+        f64 _f64;
+        f32 _f32;
     };
 } Float;
 
@@ -69,20 +80,20 @@ typedef enum IntegerKind {
 
 typedef struct Integer {
     union {
-        uint8_t u8;
-        int8_t s8;
-        uint16_t u16;
-        int16_t s16;
-        uint32_t u32;
-        int32_t s32;
-        uint64_t u64;
-        int64_t s64;
+        u8  _u8;
+        s8  _s8;
+        u16 _u16;
+        s16 _s16;
+        u32 _u32;
+        s32 _s32;
+        u64 _u64;
+        s64 _s64;
     };
 } Integer;
 
 typedef struct Scalar {
     union {
-        Float as_float;
+        Float   as_float;
         Integer as_int;
     };
 } Scalar;

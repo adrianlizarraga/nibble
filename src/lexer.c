@@ -270,7 +270,7 @@ static TokenFloat scan_float(Lexer* lexer)
             return tfloat;
         }
 
-        tfloat.value.f32 = value;
+        tfloat.value._f32 = value;
         tfloat.kind = FLOAT_F32;
     }
     else
@@ -286,7 +286,7 @@ static TokenFloat scan_float(Lexer* lexer)
             return tfloat;
         }
 
-        tfloat.value.f64 = value;
+        tfloat.value._f64 = value;
         tfloat.kind = FLOAT_F64;
     }
 
@@ -561,9 +561,9 @@ int print_token(Token* token, char* buf, size_t size)
             return snprintf(buf, size, "%lu", token->as_int.value);
         case TKN_FLOAT:
             if (token->as_float.kind == FLOAT_F32)
-                return snprintf(buf, size, "%.3f", token->as_float.value.f32);
+                return snprintf(buf, size, "%.3f", token->as_float.value._f32);
 
-            return snprintf(buf, size, "%.3f", token->as_float.value.f64);
+            return snprintf(buf, size, "%.3f", token->as_float.value._f64);
         case TKN_STR:
             return snprintf(buf, size, "\"%s\"", token->as_str.value);
         case TKN_IDENT:
