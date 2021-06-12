@@ -4,7 +4,7 @@
 #include "allocator.h"
 #include "stream.h"
 #include "llist.h"
-#include "cst.h"
+#include "ast.h"
 
 #define MAX_LOCAL_SYMS 512
 

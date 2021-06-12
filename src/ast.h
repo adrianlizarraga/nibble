@@ -186,6 +186,7 @@ typedef struct ExprInt {
 
 typedef struct ExprFloat {
     Expr super;
+    FloatKind fkind;
     Float value;
 } ExprFloat;
 
@@ -252,7 +253,7 @@ Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange r
 Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range);
 ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, const char* name);
 Expr* new_expr_int(Allocator* allocator, uint64_t value, ProgRange range);
-Expr* new_expr_float(Allocator* allocator, Float value, ProgRange range);
+Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
 Expr* new_expr_str(Allocator* allocator, const char* value, ProgRange range);
 Expr* new_expr_ident(Allocator* allocator, const char* name, ProgRange range);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range);
@@ -581,9 +582,19 @@ struct Type {
     };
 };
 
-// TODO: Basic int types should be explicitly sized (e.g., uint8, uint16) and type_int, type_long, etc, should
-// be aliases.
 extern Type* type_void;
+extern Type* type_u8;
+extern Type* type_s8;
+extern Type* type_u16;
+extern Type* type_s16;
+extern Type* type_u32;
+extern Type* type_s32;
+extern Type* type_u64;
+extern Type* type_s64;
+extern Type* type_f32;
+extern Type* type_f64;
+
+// Aliases
 extern Type* type_bool;
 extern Type* type_char;
 extern Type* type_schar;
@@ -598,8 +609,6 @@ extern Type* type_llong;
 extern Type* type_ullong;
 extern Type* type_ssize;
 extern Type* type_usize;
-extern Type* type_f32;
-extern Type* type_f64;
 
 extern size_t PTR_SIZE;
 extern size_t PTR_ALIGN;

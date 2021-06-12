@@ -18,7 +18,7 @@
 #include "hash_map.c"
 #include "stream.c"
 #include "lexer.c"
-#include "cst.c"
+#include "ast.c"
 #include "parser.c"
 #include "resolver.c"
 #include "gen_assembly.c"

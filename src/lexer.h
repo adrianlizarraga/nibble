@@ -92,6 +92,7 @@ typedef struct TokenInt {
 } TokenInt;
 
 typedef struct TokenFloat {
+    FloatKind kind; // TODO: set
     Float value;
 } TokenFloat;
 

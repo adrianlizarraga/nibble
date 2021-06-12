@@ -1,4 +1,4 @@
-#include "cst.h"
+#include "ast.h"
 #include "array.h"
 #include "cstring.h"
 
@@ -171,9 +171,10 @@ Expr* new_expr_int(Allocator* allocator, uint64_t value, ProgRange range)
     return (Expr*)expr;
 }
 
-Expr* new_expr_float(Allocator* allocator, Float value, ProgRange range)
+Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range)
 {
     ExprFloat* expr = new_expr(allocator, ExprFloat, range);
+    expr->fkind = fkind;
     expr->value = value;
 
     return (Expr*)expr;
@@ -509,36 +510,82 @@ Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange r
 //////////////////////////////
 
 static Type type_void_ = {.kind = TYPE_VOID};
-static Type type_bool_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_BOOL};
-static Type type_char_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_CHAR};
-static Type type_schar_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_SCHAR};
-static Type type_uchar_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_UCHAR};
-static Type type_short_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_SHORT};
-static Type type_ushort_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_USHORT};
-static Type type_int_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_INT};
-static Type type_uint_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_UINT};
-static Type type_long_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_LONG};
-static Type type_ulong_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_ULONG};
-static Type type_llong_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_LLONG};
-static Type type_ullong_ = {.kind = TYPE_INTEGER, .as_integer.kind = INTEGER_ULLONG};
-static Type type_f32_ = {.kind = TYPE_FLOAT, .as_float.kind = FLOAT_F32};
-static Type type_f64_ = {.kind = TYPE_FLOAT, .as_float.kind = FLOAT_F64};
+static Type type_u8_ = {
+    .kind = TYPE_INTEGER,
+    .size = 1, .align = 1,
+    .as_integer = {.kind = INTEGER_U8, .is_signed = false, .max = 0xFF}
+};
+static Type type_s8_ = {
+    .kind = TYPE_INTEGER,
+    .size = 1, .align = 1,
+    .as_integer = {.kind = INTEGER_S8, .is_signed = true, .max = 0x7F}
+};
+static Type type_u16_ = {
+    .kind = TYPE_INTEGER,
+    .size = 2, .align = 2,
+    .as_integer = {.kind = INTEGER_U16, .is_signed = false, .max = 0xFFFF}
+};
+static Type type_s16_ = {
+    .kind = TYPE_INTEGER,
+    .size = 2, .align = 2,
+    .as_integer = {.kind = INTEGER_S16, .is_signed = true, .max = 0x7FFF}
+};
+static Type type_u32_ = {
+    .kind = TYPE_INTEGER,
+    .size = 4, .align = 4,
+    .as_integer = {.kind = INTEGER_U32, .is_signed = false, .max = 0xFFFFFFFF}
+};
+static Type type_s32_ = {
+    .kind = TYPE_INTEGER,
+    .size = 4, .align = 4,
+    .as_integer = {.kind = INTEGER_S32, .is_signed = true, .max = 0x7FFFFFFF}
+};
+static Type type_u64_ = {
+    .kind = TYPE_INTEGER,
+    .size = 8, .align = 8,
+    .as_integer = {.kind = INTEGER_U64, .is_signed = false, .max = 0xFFFFFFFFFFFFFFFF}
+};
+static Type type_s64_ = {
+    .kind = TYPE_INTEGER,
+    .size = 8, .align = 8,
+    .as_integer = {.kind = INTEGER_S64, .is_signed = true, .max = 0x7FFFFFFFFFFFFFFF}
+};
+static Type type_f32_ = {
+    .kind = TYPE_FLOAT,
+    .size = 4, .align = 4,
+    .as_float.kind = FLOAT_F32
+};
+static Type type_f64_ = {
+    .kind = TYPE_FLOAT,
+    .size = 8, .align = 8,
+    .as_float.kind = FLOAT_F64
+};
 
 Type* type_void = &type_void_;
-Type* type_bool = &type_bool_;
-Type* type_char = &type_char_;
-Type* type_schar = &type_schar_;
-Type* type_uchar = &type_uchar_;
-Type* type_short = &type_short_;
-Type* type_ushort = &type_ushort_;
-Type* type_int = &type_int_;
-Type* type_uint = &type_uint_;
-Type* type_long = &type_long_;
-Type* type_ulong = &type_ulong_;
-Type* type_llong = &type_llong_;
-Type* type_ullong = &type_ullong_;
+Type* type_u8 = &type_u8_;
+Type* type_s8 = &type_s8_;
+Type* type_u16 = &type_u16_;
+Type* type_s16 = &type_s16_;
+Type* type_u32 = &type_u32_;
+Type* type_s32 = &type_s32_;
+Type* type_u64 = &type_u64_;
+Type* type_s64 = &type_s64_;
 Type* type_f32 = &type_f32_;
 Type* type_f64 = &type_f64_;
+
+// Aliases
+Type* type_bool;
+Type* type_char;
+Type* type_schar;
+Type* type_uchar;
+Type* type_short;
+Type* type_ushort;
+Type* type_int;
+Type* type_uint;
+Type* type_long;
+Type* type_ulong;
+Type* type_llong;
+Type* type_ullong;
 Type* type_ssize;
 Type* type_usize;
 
@@ -558,23 +605,19 @@ static const char* type_names[] = {
 };
 
 static const char* type_integer_names[] = {
-    [INTEGER_INT] = "int",
-    [INTEGER_BOOL] = "bool",
-    [INTEGER_CHAR] = "char",
-    [INTEGER_SCHAR] = "schar",
-    [INTEGER_UCHAR] = "uchar",
-    [INTEGER_SHORT] = "short",
-    [INTEGER_USHORT] = "ushort",
-    [INTEGER_UINT] = "uint",
-    [INTEGER_LONG] = "long",
-    [INTEGER_ULONG] = "ulong",
-    [INTEGER_LLONG] = "llong",
-    [INTEGER_ULLONG] = "ullong"
+    [INTEGER_U8] = "u8",
+    [INTEGER_S8] = "s8",
+    [INTEGER_U16] = "u16",
+    [INTEGER_S16] = "s16",
+    [INTEGER_U32] = "u32",
+    [INTEGER_S32] = "s32",
+    [INTEGER_U64] = "u64",
+    [INTEGER_S64] = "s64",
 };
 
 static const char* type_float_names[] = {
-    [FLOAT_F64] = "float64",
-    [FLOAT_F32] = "float32",
+    [FLOAT_F64] = "f64",
+    [FLOAT_F32] = "f32",
 };
 
 static size_t next_type_id = 1;
@@ -696,41 +739,32 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
     return type;
 }
 
-
-static void init_type(Type* type, size_t size, size_t align)
-{
-    type->id = next_type_id;
-    type->size = size;
-    type->align = align;
-
-    next_type_id += 1;
-}
-
-static void init_integer_type(Type* type, size_t size, size_t align, bool is_signed, unsigned long long max)
-{
-    init_type(type, size, align);
-
-    type->as_integer.is_signed = is_signed;
-    type->as_integer.max = max;
-}
-
 void init_builtin_types(OS target_os, Arch target_arch)
 {
     bool invalid_os_arch = false;
 
-    init_type(type_void, 0, 0);
-    init_integer_type(type_bool, 1, 1, false, 0xFF);
-    init_integer_type(type_char, 1, 1, true, 0x7F);
-    init_integer_type(type_schar, 1, 1, true, 0x7F);
-    init_integer_type(type_uchar, 1, 1, false, 0xFF);
-    init_integer_type(type_short, 2, 2, true, 0x7FFF);
-    init_integer_type(type_ushort, 2, 2, false, 0xFFFF);
-    init_integer_type(type_int, 4, 4, true, 0x7FFFFFFF);
-    init_integer_type(type_uint, 4, 4, false, 0xFFFFFFFF);
-    init_integer_type(type_llong, 8, 8, true, 0x7FFFFFFFFFFFFFFF);
-    init_integer_type(type_ullong, 8, 8, false, 0xFFFFFFFFFFFFFFFF);
-    init_type(type_f32, 4, 4);
-    init_type(type_f64, 8, 8);
+    type_void->id = next_type_id++;
+    type_u8->id = next_type_id++;
+    type_s8->id = next_type_id++;
+    type_u16->id = next_type_id++;
+    type_s16->id = next_type_id++;
+    type_u32->id = next_type_id++;
+    type_s32->id = next_type_id++;
+    type_u64->id = next_type_id++;
+    type_s64->id = next_type_id++;
+    type_f32->id = next_type_id++;
+    type_f64->id = next_type_id++;
+
+    type_bool = type_s8;
+    type_char = type_s8;
+    type_schar = type_s8;
+    type_uchar = type_u8;
+    type_short = type_s16;
+    type_ushort = type_u16;
+    type_int = type_s32;
+    type_uint = type_u32;
+    type_llong = type_s64;
+    type_ullong = type_u64;
 
     switch (target_os)
     {
@@ -738,15 +772,15 @@ void init_builtin_types(OS target_os, Arch target_arch)
             switch (target_arch)
             {
                 case ARCH_X86:
-                    init_integer_type(type_long, 4, 4, true, 0x7FFFFFFF);
-                    init_integer_type(type_ulong, 4, 4, false, 0xFFFFFFFF);
+                    type_long = type_s32;
+                    type_ulong = type_u32;
 
                     PTR_SIZE = 4;
                     PTR_ALIGN = 4;
                     break;
                 case ARCH_X64:
-                    init_integer_type(type_long, 8, 8, true, 0x7FFFFFFFFFFFFFFF);
-                    init_integer_type(type_ulong, 8, 8, false, 0xFFFFFFFFFFFFFFFF);
+                    type_long = type_s64;
+                    type_ulong = type_u64;
 
                     PTR_SIZE = 8;
                     PTR_ALIGN = 8;
@@ -760,15 +794,15 @@ void init_builtin_types(OS target_os, Arch target_arch)
             switch (target_arch)
             {
                 case ARCH_X86:
-                    init_integer_type(type_long, 4, 4, true, 0x7FFFFFFF);
-                    init_integer_type(type_ulong, 4, 4, false, 0xFFFFFFFF);
+                    type_long = type_s32;
+                    type_ulong = type_u32;
 
                     PTR_SIZE = 4;
                     PTR_ALIGN = 4;
                     break;
                 case ARCH_X64:
-                    init_integer_type(type_long, 4, 4, true, 0x7FFFFFFF);
-                    init_integer_type(type_ulong, 4, 4, false, 0xFFFFFFFF);
+                    type_long = type_s32;
+                    type_ulong = type_u32;
 
                     PTR_SIZE = 8;
                     PTR_ALIGN = 8;
@@ -782,8 +816,8 @@ void init_builtin_types(OS target_os, Arch target_arch)
             switch (target_arch)
             {
                 case ARCH_X64:
-                    init_integer_type(type_long, 8, 8, true, 0x7FFFFFFFFFFFFFFF);
-                    init_integer_type(type_ulong, 8, 8, false, 0xFFFFFFFFFFFFFFFF);
+                    type_long = type_s64;
+                    type_ulong = type_u64;
 
                     PTR_SIZE = 8;
                     PTR_ALIGN = 8;
@@ -1128,7 +1162,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                 ExprFloat* e = (ExprFloat*)expr;
                 dstr = array_create(allocator, char, 8);
 
-                if (e->value.kind == FLOAT_F64)
+                if (e->fkind == FLOAT_F64)
                     ftprint_char_array(&dstr, false, "%lf", e->value.f64);
                 else
                     ftprint_char_array(&dstr, false, "%lf", e->value.f32);

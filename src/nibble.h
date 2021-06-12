@@ -50,8 +50,6 @@ typedef enum FloatKind {
 } FloatKind;
 
 typedef struct Float {
-    FloatKind kind;
-
     union {
         double f64;
         float f32;
@@ -59,47 +57,30 @@ typedef struct Float {
 } Float;
 
 typedef enum IntegerKind {
-    INTEGER_INT,
-    INTEGER_BOOL,
-    INTEGER_CHAR,
-    INTEGER_SCHAR,
-    INTEGER_UCHAR,
-    INTEGER_SHORT,
-    INTEGER_USHORT,
-    INTEGER_UINT,
-    INTEGER_LONG,
-    INTEGER_ULONG,
-    INTEGER_LLONG,
-    INTEGER_ULLONG,
+    INTEGER_U8,
+    INTEGER_S8,
+    INTEGER_U16,
+    INTEGER_S16,
+    INTEGER_U32,
+    INTEGER_S32,
+    INTEGER_U64,
+    INTEGER_S64,
 } IntegerKind;
 
 typedef struct Integer {
-    IntegerKind kind;
-
     union {
-        bool b;
-        char c;
-        unsigned char uc;
-        signed char sc;
-        short s;
-        unsigned short us;
-        int i;
-        unsigned u;
-        long l;
-        unsigned long ul;
-        long long ll;
-        unsigned long long ull;
+        uint8_t u8;
+        int8_t s8;
+        uint16_t u16;
+        int16_t s16;
+        uint32_t u32;
+        int32_t s32;
+        uint64_t u64;
+        int64_t s64;
     };
 } Integer;
 
-typedef enum ScalarKind {
-    SCALAR_INTEGER,
-    SCALAR_FLOAT,
-} ScalarKind;
-
 typedef struct Scalar {
-    ScalarKind kind;
-
     union {
         Float as_float;
         Integer as_int;

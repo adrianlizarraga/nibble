@@ -1,5 +1,4 @@
 #include "resolver.h"
-#include "cst.h"
 #include "parser.h"
 
 static Symbol* resolve_name(Resolver* resolver, const char* name);
@@ -158,6 +157,18 @@ static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* t
 static void init_builtin_syms(Resolver* resolver)
 {
     add_global_type_symbol(resolver, "void", type_void);
+    add_global_type_symbol(resolver, "u8", type_u8);
+    add_global_type_symbol(resolver, "s8", type_s8);
+    add_global_type_symbol(resolver, "u16", type_u16);
+    add_global_type_symbol(resolver, "s16", type_s16);
+    add_global_type_symbol(resolver, "u32", type_u32);
+    add_global_type_symbol(resolver, "s32", type_s32);
+    add_global_type_symbol(resolver, "u64", type_u64);
+    add_global_type_symbol(resolver, "s64", type_s64);
+    add_global_type_symbol(resolver, "f32", type_f32);
+    add_global_type_symbol(resolver, "f64", type_f64);
+
+    // Aliased types
     add_global_type_symbol(resolver, "bool", type_bool);
     add_global_type_symbol(resolver, "char", type_char);
     add_global_type_symbol(resolver, "schar", type_schar);
@@ -172,8 +183,6 @@ static void init_builtin_syms(Resolver* resolver)
     add_global_type_symbol(resolver, "ullong", type_ullong);
     add_global_type_symbol(resolver, "ssize", type_ssize);
     add_global_type_symbol(resolver, "usize", type_usize);
-    add_global_type_symbol(resolver, "float32", type_f32);
-    add_global_type_symbol(resolver, "float64", type_f64);
 }
 
 static void set_scope(Resolver* resolver, Scope* scope)
@@ -230,12 +239,10 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     ExprInt* eint = (ExprInt*)expr;
 
     // TODO: Take into account literal suffix (e.g., u, ul, etc.)
-    expr->type = type_int;
+    expr->type = type_s32;
     expr->is_const = true;
     expr->is_lvalue = false;
-    expr->const_val.kind = SCALAR_INTEGER;
-    expr->const_val.as_int.kind = INTEGER_INT; // TODO: Redundant
-    expr->const_val.as_int.i = (int)eint->value;
+    expr->const_val.as_int.s32 = (int)eint->value;
 
     return true;
 }
@@ -261,13 +268,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 {
                     if (left->is_const && right->is_const)
                     {
-                        assert(left->type == type_int); // TODO: Support other types
+                        assert(left->type == type_s32); // TODO: Support other types
                         expr->type = left->type;
                         expr->is_const = true;
                         expr->is_lvalue = false;
-                        expr->const_val.kind = SCALAR_INTEGER;
-                        expr->const_val.as_int.kind = INTEGER_INT; // TODO: Redundant
-                        expr->const_val.as_int.i = (int)left->const_val.as_int.i + (int)right->const_val.as_int.i;
+                        expr->const_val.as_int.s32 = left->const_val.as_int.s32 + right->const_val.as_int.s32;
                     }
                     else
                     {
@@ -299,13 +304,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 {
                     if (left->is_const && right->is_const)
                     {
-                        assert(left->type == type_int); // TODO: Support other types
+                        assert(left->type == type_s32); // TODO: Support other types
                         expr->type = left->type;
                         expr->is_const = true;
                         expr->is_lvalue = false;
-                        expr->const_val.kind = SCALAR_INTEGER;
-                        expr->const_val.as_int.kind = INTEGER_INT; // TODO: Redundant
-                        expr->const_val.as_int.i = (int)left->const_val.as_int.i - (int)right->const_val.as_int.i;
+                        expr->const_val.as_int.s32 = left->const_val.as_int.s32 - right->const_val.as_int.s32;
                     }
                     else
                     {
