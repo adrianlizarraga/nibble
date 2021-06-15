@@ -1,6 +1,7 @@
 #ifndef NIBBLE_STREAM_H
 #define NIBBLE_STREAM_H
 #include <stddef.h>
+#include "llist.h"
 typedef struct ByteStreamChunk ByteStreamChunk;
 typedef struct ByteStream ByteStream;
 
@@ -20,23 +21,28 @@ struct ByteStream {
 ByteStream byte_stream_create(Allocator* allocator);
 void add_byte_stream_chunk(ByteStream* stream, const char* buf, size_t size);
 
-typedef struct StrBucket StrBucket;
-typedef struct StrStream StrStream;
+typedef struct Bucket Bucket;
+typedef struct BucketList BucketList;
 
-struct StrBucket {
-    StrBucket* next;
-    size_t len;
-    char* buf[];
+struct Bucket {
+    List lnode;
+    size_t count;
+    void* elems[];
 };
 
-struct StrStream {
-    StrBucket* first;
-    StrBucket* last;
+struct BucketList {
+    List buckets;
     size_t bucket_cap;
-    size_t num_strs;
-    Allocator* arena;
+    size_t num_elems;
 };
 
-StrStream* new_sstream(Allocator* arena, size_t bucket_cap);
-char**     sstream_add(StrStream* sstream, const char* str, size_t len);
+BucketList* new_bucket_list(Allocator* arena, size_t bucket_cap);
+void bucket_list_init(BucketList* bucket_list, Allocator* arena, size_t bucket_cap);
+
+void** bucket_list_add_elem(BucketList* bucket_list, Allocator* arena, void* elem);
+void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const void* elem, size_t size, size_t align);
+char** sstream_add(BucketList* sstream, Allocator* arena, const char* str, size_t len);
+
+void** bucket_list_get_elem(BucketList* bucket_list, size_t index);
+void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index);
 #endif

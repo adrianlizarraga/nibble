@@ -36,11 +36,11 @@ static void set_scope(Resolver* resolver, Scope* scope);
 static Scope* push_scope(Resolver* resolver, size_t num_syms);
 static void pop_scope(Resolver* resolver);
 static void add_scope_symbol(Scope* scope, Symbol* sym);
-static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type);
 
 static void init_builtin_syms(Resolver* resolver);
 static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type);
 static bool add_global_decl_symbol(Resolver* resolver, Decl* decl);
+static Symbol* add_local_decl_symbol(Resolver* resolver, SymbolKind kind, const char* name, Decl* decl, Type* type);
 
 static void resolver_on_error(Resolver* resolver, const char* format, ...)
 {
@@ -55,74 +55,87 @@ static void resolver_on_error(Resolver* resolver, const char* format, ...)
     add_byte_stream_chunk(resolver->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
 }
 
-static bool add_global_decl_symbol(Resolver* resolver, Decl* decl)
+static void add_scope_symbol(Scope* scope, Symbol* sym)
 {
-    SymbolKind kind = SYMBOL_NONE;
-    const char* name = NULL;
+    hmap_put(&scope->sym_table, PTR_UINT(sym->name), PTR_UINT(sym));
+    list_add_last(&scope->sym_list, &sym->lnode);
+}
 
+static void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, const char** name)
+{
     switch (decl->kind)
     {
         case CST_DeclVar:
         {
             DeclVar* dvar = (DeclVar*)decl;
 
-            kind = SYMBOL_VAR;
-            name = dvar->name; // TODO: Multiple variables per cst decl
+            *kind = SYMBOL_VAR;
+            *name = dvar->name; // TODO: Multiple variables per cst decl
             break;
         }
         case CST_DeclConst:
         {
             DeclConst* dconst = (DeclConst*)decl;
 
-            kind = SYMBOL_CONST;
-            name = dconst->name;
+            *kind = SYMBOL_CONST;
+            *name = dconst->name;
             break;
         }
         case CST_DeclProc:
         {
             DeclProc* dproc = (DeclProc*)decl;
 
-            kind = SYMBOL_PROC;
-            name = dproc->name;
+            *kind = SYMBOL_PROC;
+            *name = dproc->name;
             break;
         }
         case CST_DeclEnum:
         {
             DeclEnum* denum = (DeclEnum*)decl;
 
-            kind = SYMBOL_TYPE;
-            name = denum->name;
+            *kind = SYMBOL_TYPE;
+            *name = denum->name;
             break;
         }
         case CST_DeclUnion:
         {
             DeclUnion* dunion = (DeclUnion*)decl;
 
-            kind = SYMBOL_TYPE;
-            name = dunion->name;
+            *kind = SYMBOL_TYPE;
+            *name = dunion->name;
             break;
         }
         case CST_DeclStruct:
         {
             DeclStruct* dstruct = (DeclStruct*)decl;
 
-            kind = SYMBOL_TYPE;
-            name = dstruct->name;
+            *kind = SYMBOL_TYPE;
+            *name = dstruct->name;
             break;
         }
         case CST_DeclTypedef:
         {
             DeclTypedef* dtypedef = (DeclTypedef*)decl;
 
-            kind = SYMBOL_TYPE;
-            name = dtypedef->name;
+            *kind = SYMBOL_TYPE;
+            *name = dtypedef->name;
             break;
         }
         default:
+            *kind = SYMBOL_NONE;
+            *name = NULL;
             ftprint_err("Not handling Decl kind %d in file %s, line %d\n", decl->kind, __FILE__, __LINE__);
             assert(0);
             break;
     }
+}
+
+static bool add_global_decl_symbol(Resolver* resolver, Decl* decl)
+{
+    SymbolKind kind = SYMBOL_NONE;
+    const char* name = NULL;
+
+    fill_decl_symbol_info(decl, &kind, &name);
 
     if (lookup_scope_symbol(resolver->global_scope, name))
     {
@@ -154,6 +167,46 @@ static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* t
     return true;
 }
 
+static Symbol* add_local_decl_symbol(Resolver* resolver, SymbolKind kind, const char* name, Decl* decl, Type* type)
+{
+    Scope* scope = resolver->curr_scope;
+
+    if (lookup_scope_symbol(scope, name))
+        return NULL;
+
+    Symbol* sym = new_symbol_decl(resolver->ast_mem, kind, name, decl);
+    sym->status = SYMBOL_STATUS_RESOLVED;
+    sym->type = type;
+    sym->is_local = true;
+
+    add_scope_symbol(scope, sym);
+
+    return sym;
+}
+
+static void set_scope(Resolver* resolver, Scope* scope)
+{
+    resolver->curr_scope = scope;
+}
+
+static Scope* push_scope(Resolver* resolver, size_t num_syms)
+{
+    Scope* prev_scope = resolver->curr_scope;
+    Scope* scope = new_scope(resolver->ast_mem, num_syms + num_syms);
+
+    scope->parent = prev_scope;
+
+    list_add_last(&prev_scope->children, &scope->lnode);
+    set_scope(resolver, scope);
+
+    return scope;
+}
+
+static void pop_scope(Resolver* resolver)
+{
+    resolver->curr_scope = resolver->curr_scope->parent;
+}
+
 static void init_builtin_syms(Resolver* resolver)
 {
     add_global_type_symbol(resolver, "void", type_void);
@@ -183,53 +236,6 @@ static void init_builtin_syms(Resolver* resolver)
     add_global_type_symbol(resolver, "ullong", type_ullong);
     add_global_type_symbol(resolver, "ssize", type_ssize);
     add_global_type_symbol(resolver, "usize", type_usize);
-}
-
-static void set_scope(Resolver* resolver, Scope* scope)
-{
-    resolver->curr_scope = scope;
-}
-
-static Scope* push_scope(Resolver* resolver, size_t num_syms)
-{
-    Scope* prev_scope = resolver->curr_scope;
-    Scope* scope = new_scope(resolver->ast_mem, num_syms + num_syms);
-
-    scope->parent = prev_scope;
-
-    list_add_last(&prev_scope->children, &scope->lnode);
-    set_scope(resolver, scope);
-
-    return scope;
-}
-
-static void pop_scope(Resolver* resolver)
-{
-    resolver->curr_scope = resolver->curr_scope->parent;
-}
-
-static void add_scope_symbol(Scope* scope, Symbol* sym)
-{
-    hmap_put(&scope->sym_table, PTR_UINT(sym->name), PTR_UINT(sym));
-    list_add_last(&scope->sym_list, &sym->lnode);
-}
-
-static bool push_local_var(Resolver* resolver, DeclVar* decl, Type* type)
-{
-    Scope* scope = resolver->curr_scope;
-    const char* sym_name = decl->name;
-
-    if (lookup_scope_symbol(scope, sym_name))
-        return false;
-
-    Symbol* sym = new_symbol_decl(resolver->ast_mem, SYMBOL_VAR, sym_name, (Decl*)decl);
-    sym->status = SYMBOL_STATUS_RESOLVED;
-    sym->type = type;
-    sym->is_local = true;
-
-    add_scope_symbol(scope, sym);
-
-    return true;
 }
 
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
@@ -680,7 +686,7 @@ static Type* resolve_decl_proc(Resolver* resolver, DeclProc* decl)
             return NULL;
         }
 
-        push_local_var(resolver, proc_param, param_type);
+        add_local_decl_symbol(resolver, SYMBOL_VAR, proc_param->name, (Decl*)proc_param, param_type);
 
         // TODO: recursive ptr decay on param type
         // TODO: complete incomplete param type (struct, union)
@@ -979,24 +985,50 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         {
             StmtDecl* sdecl = (StmtDecl*)stmt;
             Decl* decl = sdecl->decl;
+            Type* type = NULL;
 
-            if (decl->kind != CST_DeclVar)
+            switch (decl->kind)
             {
-                // TODO: Support other declaration kinds.
-                resolver_on_error(resolver, "Only variable declarations are supported inside procedures");
-                return 0;
-            }
+                case CST_DeclVar:
+                {
+                    DeclVar* dvar = (DeclVar*)decl;
 
-            Type* type = resolve_decl(resolver, decl, false);
-            DeclVar* dvar = (DeclVar*)decl;
+                    type = resolve_decl_var(resolver, dvar, false);
 
-            if (!type)
-                return 0;
+                    if (!type)
+                        return 0;
+                    
+                    if (!add_local_decl_symbol(resolver, SYMBOL_VAR, dvar->name, decl, type))
+                    {
+                        resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name);
+                        return 0;
+                    }
+                    break;
+                }
+                case CST_DeclProc:
+                {
+                    DeclProc* dproc = (DeclProc*)decl;
 
-            if (!push_local_var(resolver, dvar, type))
-            {
-                resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name);
-                return 0;
+                    type = resolve_decl_proc(resolver, dproc);
+
+                    if (!type)
+                        return 0;
+
+                    Symbol* sym = add_local_decl_symbol(resolver, SYMBOL_PROC, dproc->name, decl, type);
+
+                    if (!sym)
+                    {
+                        resolver_on_error(resolver, "Procedure `%s` shadows a previous local declaration", dproc->name);
+                        return 0;
+                    }
+
+                    array_push(resolver->incomplete_syms, sym);
+                    break;
+                }
+                default:
+                    // TODO: Support other declaration kinds.
+                    resolver_on_error(resolver, "Only variable and proc declarations are supported inside procedures");
+                    return 0;
             }
 
             return RESOLVE_STMT_SUCCESS;
@@ -1065,6 +1097,7 @@ static Symbol* resolve_name(Resolver* resolver, const char* name)
 
 bool resolve_global_decls(Resolver* resolver, List* decls)
 {
+    size_t num_decls = 0;
     List* head = decls;
 
     // Install decls in global symbol table.
@@ -1073,7 +1106,16 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
         Decl* decl = list_entry(it, Decl, lnode);
 
         add_global_decl_symbol(resolver, decl);
+
+        num_decls++;
     }
+
+    // TODO: This strategy will not allow full order independence of local proc/type declarations.
+    // Specifically, local procs whose parameter types depend on other local procs/types will need 
+    // to be ordered by the programmer. To fix, 1) when encounter local proc/type decl, install unresolved sym 
+    // (instead of immediately resolving header), 2) place this entire function in a loop that continues
+    // until all syms are resolved.
+    resolver->incomplete_syms = array_create(NULL, Symbol*, num_decls);
 
     // Resolve declaration "headers". Will not resolve procedure bodies or complete aggregate types.
     List* sym_head = &resolver->global_scope->sym_list;
@@ -1084,19 +1126,27 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
 
         if (!resolve_symbol(resolver, sym))
             return false;
+
+        if (sym->kind == SYMBOL_PROC)
+            array_push(resolver->incomplete_syms, sym);
     }
 
     // Resolve procedure bodies and complete aggregate types.
-    for (List* it = sym_head->next; it != sym_head; it = it->next)
+    while (array_len(resolver->incomplete_syms))
     {
-        Symbol* sym = list_entry(it, Symbol, lnode);
+        Symbol* sym = array_pop(resolver->incomplete_syms);
 
         if (sym->kind == SYMBOL_PROC)
         {
             if (!resolve_decl_proc_body(resolver, sym))
+            {
+                array_free(resolver->incomplete_syms);
                 return false;
+            }
         }
     }
+
+    array_free(resolver->incomplete_syms); // TODO: Use arena
 
     return true;
 }

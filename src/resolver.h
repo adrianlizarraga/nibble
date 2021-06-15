@@ -20,6 +20,7 @@ struct Resolver {
     TypeCache* type_cache;
     Scope* global_scope;
 
+    Symbol** incomplete_syms;
     Scope* curr_scope;
 };
 

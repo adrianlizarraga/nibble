@@ -21,6 +21,7 @@
 #include "ast.c"
 #include "parser.c"
 #include "resolver.c"
+#include "bytecode.c"
 #include "gen_assembly.c"
 #include "nibble.c"
 
