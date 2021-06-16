@@ -42,6 +42,10 @@ static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* t
 static bool add_global_decl_symbol(Resolver* resolver, Decl* decl);
 static Symbol* add_local_decl_symbol(Resolver* resolver, SymbolKind kind, const char* name, Decl* decl, Type* type);
 
+static void ir_push_local_var(Resolver* resolver, Symbol* sym);
+static void ir_push_global_var(Resolver* resolver, Symbol* sym);
+static void ir_push_global_proc(Resolver* resolver, Symbol* sym);
+
 static void resolver_on_error(Resolver* resolver, const char* format, ...)
 {
     char buf[MAX_ERROR_LEN];
@@ -997,12 +1001,16 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
 
                     if (!type)
                         return 0;
-                    
-                    if (!add_local_decl_symbol(resolver, SYMBOL_VAR, dvar->name, decl, type))
+
+                    Symbol* sym = add_local_decl_symbol(resolver, SYMBOL_VAR, dvar->name, decl, type);
+
+                    if (!sym)
                     {
                         resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name);
                         return 0;
                     }
+
+                    ir_push_local_var(resolver, sym);
                     break;
                 }
                 case CST_DeclProc:
@@ -1095,6 +1103,49 @@ static Symbol* resolve_name(Resolver* resolver, const char* name)
     return sym;
 }
 
+static void ir_push_global_var(Resolver* resolver, Symbol* sym)
+{
+    IR_Var* var = new_ir_var(resolver->ast_mem, (DeclVar*)sym->decl, sym->type, 0);
+
+    add_bucket_var(&resolver->ir_program.global_vars, resolver->ast_mem, var);
+}
+
+static void ir_push_local_var(Resolver* resolver, Symbol* sym)
+{
+    IR_Var* var = new_ir_var(resolver->ast_mem, (DeclVar*)sym->decl, sym->type, 0);
+
+    add_bucket_var(&resolver->curr_ir_proc->local_vars, resolver->ast_mem, var);
+}
+
+static void ir_push_global_proc(Resolver* resolver, Symbol* sym)
+{
+    DeclProc* proc_decl = (DeclProc*)sym->decl;
+    Type* proc_type = sym->type;
+
+    IR_Proc* proc = new_ir_proc(resolver->ast_mem, proc_decl, proc_type);
+
+    // Add proc params as local variables.
+    // TODO: This seems inefficient. Could probably be done elsewhere.
+    Type** param_types = proc_type->as_proc.params;
+    List* head = &proc_decl->params;
+    size_t index = 0;
+
+    for (List* it = head->next; it != head; it = it->next)
+    {
+        DeclVar* param_decl = (DeclVar*)list_entry(it, Decl, lnode);
+        Type* param_type = param_types[index];
+        IR_Var* var = new_ir_var(resolver->ast_mem, param_decl, param_type, 0);
+
+        add_bucket_var(&proc->local_vars, resolver->ast_mem, var);
+
+        index += 1;
+    }
+
+    add_bucket_proc(&resolver->ir_program.procs, resolver->ast_mem, proc);
+
+    resolver->curr_ir_proc = proc;
+}
+
 bool resolve_global_decls(Resolver* resolver, List* decls)
 {
     size_t num_decls = 0;
@@ -1129,6 +1180,8 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
 
         if (sym->kind == SYMBOL_PROC)
             array_push(resolver->incomplete_syms, sym);
+        else if (sym->kind == SYMBOL_VAR)
+            ir_push_global_var(resolver, sym);
     }
 
     // Resolve procedure bodies and complete aggregate types.
@@ -1138,11 +1191,17 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
 
         if (sym->kind == SYMBOL_PROC)
         {
+            ir_push_global_proc(resolver, sym);
+
             if (!resolve_decl_proc_body(resolver, sym))
             {
                 array_free(resolver->incomplete_syms);
                 return false;
             }
+
+            IR_Proc* proc = resolver->curr_ir_proc;
+
+            ftprint_out("IR_Proc (%s) num local vars: %ld\n", proc->decl->name, proc->local_vars.num_elems);
         }
     }
 
@@ -1162,5 +1221,7 @@ void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, B
 
     set_scope(resolver, global_scope);
     init_builtin_syms(resolver);
+    bucket_list_init(&resolver->ir_program.global_vars, resolver->ast_mem, IR_VARS_PER_BUCKET);
+    bucket_list_init(&resolver->ir_program.procs, resolver->ast_mem, IR_PROCS_PER_BUCKET);
 }
 
