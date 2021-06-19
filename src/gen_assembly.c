@@ -238,6 +238,7 @@ static void exit_gen_scope();
 static uint32_t next_if_label_count();
 static uint32_t next_while_label_count();
 static void gen_stmt(Stmt* stmt);
+static void gen_stmt_block_body(List* stmts);
 static void gen_expr(Expr* expr, Operand* dest);
 
 //  ntz() from Hacker's Delight 2nd edition, pg 108
@@ -949,11 +950,9 @@ static void gen_stmt_decl(StmtDecl* sdecl)
     }
 }
 
-static void gen_stmt_block(StmtBlock* sblock)
+static void gen_stmt_block_body(List* stmts)
 {
-    enter_gen_scope(sblock->scope);
-
-    List* head = &sblock->stmts;
+    List* head = stmts;
     List* it = head->next;
 
     while (it != head)
@@ -964,7 +963,12 @@ static void gen_stmt_block(StmtBlock* sblock)
 
         it = it->next;
     }
+}
 
+static void gen_stmt_block(StmtBlock* sblock)
+{
+    enter_gen_scope(sblock->scope);
+    gen_stmt_block_body(&sblock->stmts);
     exit_gen_scope();
 }
 
@@ -1193,19 +1197,27 @@ static size_t compute_scope_var_offsets(Scope* scope, size_t offset)
 //    Currently using #1, but #3 is attractive because of the decreased dependence on AST structures.
 static size_t compute_proc_var_offsets(DeclProc* dproc)
 {
+    //
+    // Sum sizes of local variables declared in this scope.
+    //
+
     size_t stack_size = 0;
     unsigned arg_index = 0;
     unsigned stack_arg_offset = 0x10;
 
-    List* head = &dproc->scope->sym_list;
+    Scope* scope = dproc->scope;
+    List* head = &scope->sym_list;
     List* it = head->next;
 
     while (it != head)
     {
         Symbol* sym = list_entry(it, Symbol, lnode);
 
-        if (sym->kind == SYMBOL_VAR)
+        // Assign stack offsets to procedure params.
+        if (arg_index < dproc->num_params)
         {
+            assert(sym->kind == SYMBOL_VAR);
+
             Type* arg_type = sym->type;
             size_t arg_size = arg_type->size;
             size_t arg_align = arg_type->align;
@@ -1231,14 +1243,38 @@ static size_t compute_proc_var_offsets(DeclProc* dproc)
                 stack_arg_offset = ALIGN_UP(stack_arg_offset, arg_align);
             }
         }
+        // Assign stack offsets to local variables in procedure.
+        else if (sym->kind == SYMBOL_VAR)
+        {
+            stack_size += sym->type->size;
+            stack_size = ALIGN_UP(stack_size, sym->type->align);
+            sym->offset = -stack_size;
+        }
 
         it = it->next;
     }
 
-    assert(dproc->body->kind == CST_StmtBlock);
-    StmtBlock* proc_body = (StmtBlock*)dproc->body;
+    //
+    // Recursively compute stack sizes for child scopes. Take the largest.
+    //
+    {
+        List* head = &scope->children;
+        List* it = head->next;
+        size_t child_offset = stack_size;
 
-    return compute_scope_var_offsets(proc_body->scope, stack_size);
+        while (it != head)
+        {
+            Scope* child_scope = list_entry(it, Scope, lnode);
+            size_t child_size = compute_scope_var_offsets(child_scope, child_offset);
+
+            if (child_size > stack_size)
+                stack_size = child_size;
+
+            it = it->next;
+        }
+    }
+
+    return ALIGN_UP(stack_size, 16);
 }
 
 #if 0
@@ -1324,7 +1360,7 @@ static void gen_proc(Symbol* sym)
     if (stack_size)
         fill_line(sub_rsp_inst, "    subq $%d, %%rsp", stack_size);
 
-    gen_stmt(dproc->body);
+    gen_stmt_block_body(&dproc->stmts);
 
     emit_text("    end.%s:", sym->name);
 

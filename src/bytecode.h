@@ -103,6 +103,11 @@ struct IR_Var {
     s64 offset;
 };
 
+struct IR_VarScope {
+    List vars;
+    List child_scopes;
+};
+
 struct IR_Proc {
     BucketList local_vars; // NOTE: BucketList of IR_Var* elems.
     BucketList instrs;     // NOTE: BucketList of IR_Instr* elems.

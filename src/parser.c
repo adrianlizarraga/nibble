@@ -1060,38 +1060,48 @@ Expr* parse_expr(Parser* parser)
 //    Parse statements
 //////////////////////////////
 
-static Stmt* parse_stmt_block(Parser* parser)
+typedef struct StmtBlockBody {
+    List stmts;
+    u32 num_decls;
+} StmtBlockBody;
+
+static bool parse_fill_stmt_block_body(Parser* parser, StmtBlockBody* body, const char* err_prefix)
 {
     assert(is_token_kind(parser, TKN_LBRACE));
-    Stmt* stmt = NULL;
-    ProgRange range = {.start = parser->token.range.start};
+
+    list_head_init(&body->stmts);
+    body->num_decls = 0;
 
     next_token(parser);
-
-    List stmts = list_head_create(stmts);
-    size_t num_decls = 0;
-    bool bad_item = false;
 
     while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF))
     {
         Stmt* item = parse_stmt(parser);
 
         if (!item)
-        {
-            bad_item = true;
-            break;
-        }
+            return false;
 
         if (item->kind == CST_StmtDecl)
-            num_decls += 1;
+            body->num_decls += 1;
 
-        list_add_last(&stmts, &item->lnode);
+        list_add_last(&body->stmts, &item->lnode);
     }
 
-    if (!bad_item && expect_token(parser, TKN_RBRACE, "Failed to parse end of statement block"))
+    return expect_token(parser, TKN_RBRACE, err_prefix);
+}
+
+static Stmt* parse_stmt_block(Parser* parser)
+{
+    assert(is_token_kind(parser, TKN_LBRACE));
+    Stmt* stmt = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+
+    StmtBlockBody body = {0};
+
+    if (parse_fill_stmt_block_body(parser, &body, "Failed to parse end of statement block"))
     {
         range.end = parser->ptoken.range.end;
-        stmt = new_stmt_block(parser->ast_arena, &stmts, num_decls, range);
+        stmt = new_stmt_block(parser->ast_arena, &body.stmts, body.num_decls, range);
     }
 
     return stmt;
@@ -1734,7 +1744,7 @@ static Decl* parse_decl_proc(Parser* parser)
 
         if (expect_token(parser, TKN_LPAREN, error_prefix))
         {
-            size_t num_params = 0;
+            u32 num_params = 0;
             List params = list_head_create(params);
             bool bad_param = false;
 
@@ -1771,12 +1781,13 @@ static Decl* parse_decl_proc(Parser* parser)
                 {
                     if (is_token_kind(parser, TKN_LBRACE))
                     {
-                        Stmt* body = parse_stmt(parser);
+                        StmtBlockBody body = {0};
 
-                        if (body)
+                        if (parse_fill_stmt_block_body(parser, &body, error_prefix))
                         {
-                            range.end = body->range.end;
-                            decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, body, range);
+                            range.end = parser->ptoken.range.end;
+                            decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, 
+                                                 &body.stmts, body.num_decls, range);
                         }
                     }
                     else
