@@ -4,7 +4,6 @@
 #include "stream.h"
 
 #define IR_INSTRS_PER_BUCKET 64
-#define IR_VARS_PER_BUCKET 32
 #define IR_PROCS_PER_BUCKET 16
 
 typedef struct IR_Program IR_Program;
@@ -83,9 +82,8 @@ struct IR_Operand {
             Type* type;
         } imm;
         u64 reg;        // Top 8 bits for reg size. Bottom 7 bytes for reg id
-        u64 local_var;  // Index into procedure's local_vars array
-        u64 global_var; // Index into program's global_var array.
-        u64 proc;       // Index into program's procedures array.
+        Symbol* var;    // Index into procedure's local_vars array
+        Symbol* proc;       // Index into program's procedures array.
         u64 label;      // Index into procedure's instructions array
     };
 };
@@ -97,41 +95,9 @@ struct IR_Instr {
     IR_Operand operand_b;
 };
 
-struct IR_Var {
-    Type* type;
-    DeclVar* decl;
-    s64 offset;
-};
-
-struct IR_VarScope {
-    List vars;
-    List child_scopes;
-};
-
-struct IR_Proc {
-    BucketList local_vars; // NOTE: BucketList of IR_Var* elems.
-    BucketList instrs;     // NOTE: BucketList of IR_Instr* elems.
-
-    Type* type;
-    DeclProc* decl;
-    Allocator* arena;
-};
-
-struct IR_Program {
-    BucketList global_vars; // NOTE: BucketList of IR_Var* elems.
-    BucketList procs;       // NOTE: BucketList of IR_Proc* elems
-};
-
 IR_Instr* new_ir_instr(Allocator* arena, IR_OpCode opcode, IR_Operand op_r, IR_Operand op_a, IR_Operand op_b);
 IR_Instr** get_bucket_instr(BucketList* bucket_list, size_t index);
 IR_Instr** add_bucket_instr(BucketList* bucket_list, Allocator* arena, IR_Instr* instr);
 
-IR_Proc* new_ir_proc(Allocator* arena, DeclProc* decl, Type* type);
-IR_Proc** get_bucket_proc(BucketList* bucket_list, size_t index);
-IR_Proc** add_bucket_proc(BucketList* bucket_list, Allocator* arena, IR_Proc* proc);
-
-IR_Var* new_ir_var(Allocator* arena, DeclVar* decl, Type* type, s64 offset);
-IR_Var** get_bucket_var(BucketList* bucket_list, size_t index);
-IR_Var** add_bucket_var(BucketList* bucket_list, Allocator* arena, IR_Var* var);
 
 #endif

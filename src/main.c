@@ -22,7 +22,7 @@
 #include "parser.c"
 #include "resolver.c"
 #include "bytecode.c"
-#include "gen_assembly.c"
+//#include "gen_assembly.c"
 #include "nibble.c"
 
 void print_usage(FILE* fd, const char* program_name)

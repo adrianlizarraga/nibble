@@ -264,7 +264,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     size_t num_global_syms = num_decls + 17; // TODO: Update magic 17 to num of builtin types.
 
     init_scope_sym_table(&nibble->global_scope, &nibble->ast_mem, num_global_syms * 2);
-    init_resolver(&resolver, &nibble->ast_mem, &nibble->gen_mem, &nibble->tmp_mem, &nibble->errors,
+    init_resolver(&resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors,
                   &nibble->type_cache, &nibble->global_scope);
 
     if (!resolve_global_decls(&resolver, &decls))
@@ -277,7 +277,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     //          Resolve/Typecheck
     //////////////////////////////////////////
     ftprint_out("3. Generating IR ...\n");
-    gen_gasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
+    //gen_gasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
 
     ftprint_out("4. Generating output ...\n");
 }

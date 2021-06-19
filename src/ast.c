@@ -904,7 +904,7 @@ void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms)
     {
         size_t log2_cap = calc_hmap_size((size_t)num_syms);
 
-        scope->sym_table = hmap(log2_cap, allocator); // TODO: Should just be allocated by ast_mem arena.
+        scope->sym_table = hmap(log2_cap, allocator);
     }
 }
 

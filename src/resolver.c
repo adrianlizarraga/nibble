@@ -3,10 +3,11 @@
 
 static Symbol* resolve_name(Resolver* resolver, const char* name);
 static bool resolve_symbol(Resolver* resolver, Symbol* sym);
-static bool resolve_decl_var(Resolver* resolver, DeclVar* decl, bool global);
-static bool resolve_decl_const(Resolver* resolver, DeclConst* decl);
-static bool resolve_decl_proc(Resolver* resolver, DeclProc* decl);
-static bool resolve_decl_proc_body(Resolver* resolver, Symbol* sym);
+static bool resolve_decl_var(Resolver* resolver, Symbol* sym);
+static bool resolve_decl_const(Resolver* resolver, Symbol* sym);
+static bool resolve_decl_proc(Resolver* resolver, Symbol* sym);
+static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym);
+static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym);
 static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr);
@@ -41,9 +42,7 @@ static void init_builtin_syms(Resolver* resolver);
 static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type);
 static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKind kind, const char* name, Decl* decl);
 
-static void ir_push_local_var(Resolver* resolver, Symbol* sym);
-static void ir_push_global_var(Resolver* resolver, Symbol* sym);
-static void ir_push_global_proc(Resolver* resolver, Symbol* sym);
+static void push_ir_proc(Resolver* resolver, Symbol* sym);
 
 static void resolver_on_error(Resolver* resolver, const char* format, ...)
 {
@@ -172,7 +171,7 @@ static void set_scope(Resolver* resolver, Scope* scope)
 static Scope* push_scope(Resolver* resolver, size_t num_syms)
 {
     Scope* prev_scope = resolver->curr_scope;
-    Scope* scope = new_scope(resolver->gen_mem, num_syms + num_syms);
+    Scope* scope = new_scope(resolver->ast_mem, num_syms + num_syms);
 
     scope->parent = prev_scope;
 
@@ -672,7 +671,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
-    sym->scope = push_scope(resolver, decl->num_params + decl->num_decls);
+    sym->_proc.scope = push_scope(resolver, decl->num_params + decl->num_decls);
 
     AllocatorState mem_state = allocator_get_state(resolver->tmp_mem);
     Type** params = array_create(resolver->tmp_mem, Type*, 16);
@@ -681,7 +680,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     for (List* it = head->next; it != head; it = it->next)
     {
         DeclVar* proc_param = (DeclVar*)list_entry(it, Decl, lnode);
-        Symbol* param_sym = add_unresolved_symbol(resolver, sym->scope, SYMBOL_VAR, proc_param->name, (Decl*)proc_param);
+        Symbol* param_sym = add_unresolved_symbol(resolver, sym->_proc.scope, SYMBOL_VAR, proc_param->name, (Decl*)proc_param);
 
         assert(param_sym);
 
@@ -724,13 +723,13 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     return true;
 }
 
-static bool resolve_decl_proc_body(Resolver* resolver, Symbol* sym)
+static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_PROC);
 
     DeclProc* dproc = (DeclProc*)(sym->decl);
 
-    set_scope(resolver, sym->scope);
+    set_scope(resolver, sym->_proc.scope);
 
     Type* ret_type = sym->type->as_proc.ret;
     unsigned r = resolve_stmt_block_body(resolver, &dproc->stmts, ret_type, 0);
@@ -746,6 +745,32 @@ static bool resolve_decl_proc_body(Resolver* resolver, Symbol* sym)
     }
 
     return success;
+}
+
+static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
+{
+    assert(sym->kind == SYMBOL_PROC);
+    assert(!array_len(resolver->incomplete_syms));
+
+    push_ir_proc(resolver, sym);
+
+    if (!resolve_proc_stmts(resolver, sym))
+        return false;
+
+    while (array_len(resolver->incomplete_syms))
+    {
+        Symbol* sym = array_pop(resolver->incomplete_syms);
+
+        if (sym->kind == SYMBOL_PROC)
+        {
+            push_ir_proc(resolver, sym);
+
+            if (!resolve_proc_stmts(resolver, sym))
+                return false;
+        }
+    }
+
+    return true;
 }
 
 static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* ret_type, unsigned flags)
@@ -974,7 +999,6 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
             StmtDecl* sdecl = (StmtDecl*)stmt;
             Decl* decl = sdecl->decl;
             Scope* scope = resolver->curr_scope;
-            Type* type = NULL;
 
             switch (decl->kind)
             {
@@ -991,8 +1015,6 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
 
                     if (!resolve_decl_var(resolver, sym))
                         return 0;
-
-                    ir_push_local_var(resolver, sym);
 
                     break;
                 }
@@ -1078,47 +1100,12 @@ static Symbol* resolve_name(Resolver* resolver, const char* name)
     return sym;
 }
 
-static void ir_push_global_var(Resolver* resolver, Symbol* sym)
+static void push_ir_proc(Resolver* resolver, Symbol* sym)
 {
-    IR_Var* var = new_ir_var(resolver->ast_mem, (DeclVar*)sym->decl, sym->type, 0);
+    bucket_list_add_elem(&resolver->procs, resolver->ast_mem, sym);
+    bucket_list_init(&sym->_proc.instrs, resolver->ast_mem, IR_INSTRS_PER_BUCKET);
 
-    add_bucket_var(&resolver->ir_program.global_vars, resolver->ast_mem, var);
-}
-
-static void ir_push_local_var(Resolver* resolver, Symbol* sym)
-{
-    IR_Var* var = new_ir_var(resolver->ast_mem, (DeclVar*)sym->decl, sym->type, 0);
-
-    add_bucket_var(&resolver->curr_ir_proc->local_vars, resolver->ast_mem, var);
-}
-
-static void ir_push_global_proc(Resolver* resolver, Symbol* sym)
-{
-    DeclProc* proc_decl = (DeclProc*)sym->decl;
-    Type* proc_type = sym->type;
-
-    IR_Proc* proc = new_ir_proc(resolver->ast_mem, proc_decl, proc_type);
-
-    // Add proc params as local variables.
-    // TODO: This seems inefficient. Could probably be done elsewhere.
-    Type** param_types = proc_type->as_proc.params;
-    List* head = &proc_decl->params;
-    size_t index = 0;
-
-    for (List* it = head->next; it != head; it = it->next)
-    {
-        DeclVar* param_decl = (DeclVar*)list_entry(it, Decl, lnode);
-        Type* param_type = param_types[index];
-        IR_Var* var = new_ir_var(resolver->ast_mem, param_decl, param_type, 0);
-
-        add_bucket_var(&proc->local_vars, resolver->ast_mem, var);
-
-        index += 1;
-    }
-
-    add_bucket_proc(&resolver->ir_program.procs, resolver->ast_mem, proc);
-
-    resolver->curr_ir_proc = proc;
+    resolver->curr_instrs_bucket = &sym->_proc.instrs;
 }
 
 bool resolve_global_decls(Resolver* resolver, List* decls)
@@ -1139,6 +1126,8 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
         num_decls++;
     }
 
+    bucket_list_init(&resolver->procs, resolver->ast_mem, num_decls);
+
     // TODO: This strategy will not allow full order independence of local proc/type declarations.
     // Specifically, local procs whose parameter types depend on other local procs/types will need 
     // to be ordered by the programmer. To fix, 1) when encounter local proc/type decl, install unresolved sym 
@@ -1155,31 +1144,19 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
 
         if (!resolve_symbol(resolver, sym))
             return false;
-
-        if (sym->kind == SYMBOL_PROC)
-            array_push(resolver->incomplete_syms, sym);
-        else if (sym->kind == SYMBOL_VAR)
-            ir_push_global_var(resolver, sym);
     }
 
-    // Resolve procedure bodies and complete aggregate types.
-    while (array_len(resolver->incomplete_syms))
+    for (List* it = sym_head->next; it != sym_head; it = it->next)
     {
-        Symbol* sym = array_pop(resolver->incomplete_syms);
+        Symbol* sym = list_entry(it, Symbol, lnode);
 
         if (sym->kind == SYMBOL_PROC)
         {
-            ir_push_global_proc(resolver, sym);
-
-            if (!resolve_decl_proc_body(resolver, sym))
+            if (!resolve_global_proc_body(resolver, sym))
             {
                 array_free(resolver->incomplete_syms);
                 return false;
             }
-
-            IR_Proc* proc = resolver->curr_ir_proc;
-
-            ftprint_out("IR_Proc (%s) num local vars: %ld\n", proc->decl->name, proc->local_vars.num_elems);
         }
     }
 
@@ -1188,11 +1165,10 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
     return true;
 }
 
-void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* gen_mem, Allocator* tmp_mem, ByteStream* errors,
+void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors,
                    TypeCache* type_cache, Scope* global_scope)
 {
     resolver->ast_mem = ast_mem;
-    resolver->gen_mem = gen_mem;
     resolver->tmp_mem = tmp_mem;
     resolver->errors = errors;
     resolver->type_cache = type_cache;
@@ -1200,7 +1176,5 @@ void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* gen_mem, A
 
     set_scope(resolver, global_scope);
     init_builtin_syms(resolver);
-    bucket_list_init(&resolver->ir_program.global_vars, resolver->ast_mem, IR_VARS_PER_BUCKET);
-    bucket_list_init(&resolver->ir_program.procs, resolver->ast_mem, IR_PROCS_PER_BUCKET);
 }
 

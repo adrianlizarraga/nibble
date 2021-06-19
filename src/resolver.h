@@ -16,7 +16,6 @@ typedef struct Resolver Resolver;
 
 struct Resolver {
     Allocator* ast_mem;
-    Allocator* gen_mem;
     Allocator* tmp_mem;
     ByteStream* errors;
     TypeCache* type_cache;
@@ -24,15 +23,13 @@ struct Resolver {
     // TODO: Only need one reusable scope tree per procedure. Can use tmp memory state restoration
     // to reuse mem.
     Scope* global_scope;
-
-    Symbol** incomplete_syms;
     Scope* curr_scope;
-
-    IR_Proc* curr_ir_proc;
-    IR_Program ir_program;
+    Symbol** incomplete_syms;
+    BucketList* curr_instrs_bucket;
+    BucketList procs;
 };
 
-void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* gen_mem, Allocator* tmp_mem, ByteStream* errors,
-                   TypeCache* type_cache, Scope* global_scope);
+void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem,
+                   ByteStream* errors, TypeCache* type_cache, Scope* global_scope);
 bool resolve_global_decls(Resolver* resolver, List* decls);
 #endif

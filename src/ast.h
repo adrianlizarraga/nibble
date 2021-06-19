@@ -8,6 +8,7 @@
 #include "llist.h"
 #include "nibble.h"
 #include "hash_map.h"
+#include "stream.h"
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -649,12 +650,22 @@ struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
     const char* name;
+    bool is_local;
+    List lnode;
+
+    // TODO: Move into union or subclass.
     Decl* decl;
     Type* type;
-    bool is_local;
-    int offset;
-    Scope* scope; // For SYMBOL_PROCs. Set when resolving proc header.
-    List lnode;
+
+    union {
+        struct {
+            s64 offset;
+        } _var;
+        struct {
+            Scope* scope;
+            BucketList instrs;
+        } _proc;
+    };
 };
 
 Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);
@@ -670,9 +681,6 @@ struct Scope {
 
     HMap sym_table;
     List sym_list;
-
-    // TODO: Build scope vars and instrs in this data structure. Convert to IR_* after resolving proc body.
-    // Nested procs are an issue though.
 
     ListNode lnode;
 };
