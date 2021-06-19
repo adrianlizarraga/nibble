@@ -11,17 +11,12 @@
 
 typedef struct Resolver Resolver;
 
-// Exprs have a Type*
-// Create hmap for const exprs
-
 struct Resolver {
     Allocator* ast_mem;
     Allocator* tmp_mem;
     ByteStream* errors;
     TypeCache* type_cache;
 
-    // TODO: Only need one reusable scope tree per procedure. Can use tmp memory state restoration
-    // to reuse mem.
     Scope* global_scope;
     Scope* curr_scope;
     Symbol** incomplete_syms;
