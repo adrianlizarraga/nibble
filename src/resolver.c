@@ -8,11 +8,13 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym);
 static bool resolve_decl_proc(Resolver* resolver, Symbol* sym);
 static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym);
 static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym);
-static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
-static bool resolve_expr_int(Resolver* resolver, Expr* expr);
-static bool resolve_expr_binary(Resolver* resolver, Expr* expr);
-static bool resolve_expr_call(Resolver* resolver, Expr* expr);
-static bool resolve_cond_expr(Resolver* resolver, Expr* expr);
+
+static bool resolve_expr(Resolver* resolver, Expr* expr, IR_Operand* dest);
+static bool resolve_expr_int(Resolver* resolver, Expr* expr, IR_Operand* dest);
+static bool resolve_expr_binary(Resolver* resolver, Expr* expr, IR_Operand* dest);
+static bool resolve_expr_call(Resolver* resolver, Expr* expr, IR_Operand* dest);
+static bool resolve_cond_expr(Resolver* resolver, Expr* expr, IR_Operand* dest);
+
 static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec);
 
 enum ResolveStmtRetFlags {
@@ -217,31 +219,31 @@ static void init_builtin_syms(Resolver* resolver)
     add_global_type_symbol(resolver, "usize", type_usize);
 }
 
-static bool resolve_expr_int(Resolver* resolver, Expr* expr)
+static bool resolve_expr_int(Resolver* resolver, Expr* expr, IR_Operand* dest)
 {
     (void)resolver;
 
     ExprInt* eint = (ExprInt*)expr;
 
-    // TODO: Take into account literal suffix (e.g., u, ul, etc.)
-    expr->type = type_s32;
-    expr->is_const = true;
-    expr->is_lvalue = false;
-    expr->const_val.as_int._s32 = (int)eint->value;
+    dest->kind = IR_OPERAND_IMM;
+    dest->flags = 0;
+    dest->_imm.type = type_s32;
+    dest->_imm.value.as_int._s32 = (int)eint->value;
 
     return true;
 }
 
-static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
+static bool resolve_expr_binary(Resolver* resolver, Expr* expr, IR_Operand* dst_op)
 {
     ExprBinary* ebinary = (ExprBinary*)expr;
     Expr* left = ebinary->left;
     Expr* right = ebinary->right;
+    IR_Operand src_op = {0};
 
-    if (!resolve_expr(resolver, left, NULL))
+    if (!resolve_expr(resolver, left, dst_op))
         return false;
 
-    if (!resolve_expr(resolver, right, NULL))
+    if (!resolve_expr(resolver, right, &src_op))
         return false;
 
     switch (ebinary->op)
@@ -265,6 +267,9 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                         expr->is_const = false;
                         expr->is_lvalue = false;
                     }
+
+                    IR_emit_add(&resolver->ir_builder, &src_op, dst_op);
+                    IR_free_op(&src_op);
 
                     return true;
                 }
@@ -326,7 +331,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
     return false;
 }
 
-static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
+static bool resolve_expr_ident(Resolver* resolver, Expr* expr, IR_Operand* dest)
 {
     ExprIdent* eident = (ExprIdent*)expr;
     Symbol* sym = resolve_name(resolver, eident->name);
@@ -340,22 +345,22 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     switch (sym->kind)
     {
         case SYMBOL_VAR:
-            expr->type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, sym->type);
-            expr->is_lvalue = true;
-            expr->is_const = false;
+            dest->kind = IR_OPERAND_VAR;
+            dest->flags |= IR_OPERAND_IS_L_VALUE;
+            dest->_var = sym;
 
             return true;
         case SYMBOL_CONST:
-            expr->type = sym->type;
-            expr->is_lvalue = false;
-            expr->is_const = true;
-            expr->const_val = ((DeclConst*)(sym->decl))->init->const_val;
+            dest->kind = IR_OPERAND_IMM;
+            dest->flags &= ~IR_OPERAND_IS_L_VALUE;
+            dest->_imm.type = sym->type;
+            dest->_imm.value = ((DeclConst*)(sym->decl))->init->const_val;
 
             return true;
         case SYMBOL_PROC:
-            expr->type = sym->type;
-            expr->is_lvalue = false;
-            expr->is_const = false;
+            dest->kind = IR_OPERAND_PROC;
+            dest->flags &= ~IR_OPERAND_IS_L_VALUE;
+            dest->_proc = sym;
 
             return true;
         default:
@@ -367,12 +372,12 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     return false;
 }
 
-static bool resolve_expr_call(Resolver* resolver, Expr* expr)
+static bool resolve_expr_call(Resolver* resolver, Expr* expr, IR_Operand* dest)
 {
     ExprCall* ecall = (ExprCall*)expr;
 
     // Resolve procedure expression.
-    if (!resolve_expr(resolver, ecall->proc, NULL))
+    if (!resolve_expr(resolver, ecall->proc))
         return false;
 
     Type* proc_type = ecall->proc->type;
@@ -403,7 +408,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
     {
         ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
 
-        if (!resolve_expr(resolver, arg->expr, NULL))
+        if (!resolve_expr(resolver, arg->expr))
             return false;
 
         Type* arg_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, arg->expr->type);
@@ -429,9 +434,9 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
     return true;
 }
 
-static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
+static bool resolve_expr(Resolver* resolver, Expr* expr)
 {
-    (void)expected_type; // TODO: Necessary when resolving compound initializers
+    //(void)expected_type; // TODO: Necessary when resolving compound initializers
 
     switch (expr->kind)
     {
@@ -567,7 +572,7 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 
         if (expr)
         {
-            if (!resolve_expr(resolver, expr, declared_type))
+            if (!resolve_expr(resolver, expr))
                 return false;
 
             Type* inferred_type = expr->type;
@@ -597,7 +602,7 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
     {
         assert(expr); // NOTE: Parser should catch this.
 
-        if (!resolve_expr(resolver, expr, NULL))
+        if (!resolve_expr(resolver, expr))
             return false;
         
         if (global && !expr->is_const)
@@ -624,7 +629,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
     TypeSpec* typespec = decl->typespec;
     Expr* init = decl->init;
 
-    if (!resolve_expr(resolver, init, NULL))
+    if (!resolve_expr(resolver, init))
         return false;
 
     if (!init->is_const)
@@ -819,7 +824,7 @@ static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_typ
 static bool resolve_cond_expr(Resolver* resolver, Expr* expr)
 {
     // Resolve condition expression.
-    if (!resolve_expr(resolver, expr, NULL))
+    if (!resolve_expr(resolver, expr))
         return false;
 
     // Ensure that condition express is a scalar type.
@@ -887,10 +892,10 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
     Expr* left_expr = sassign->left;
     Expr* right_expr = sassign->right;
 
-    if (!resolve_expr(resolver, left_expr, NULL))
+    if (!resolve_expr(resolver, left_expr))
         return 0;
 
-    if (!resolve_expr(resolver, right_expr, NULL))
+    if (!resolve_expr(resolver, right_expr))
         return 0;
 
     if (!left_expr->is_lvalue)
@@ -948,7 +953,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
 
             if (sret->expr)
             {
-                if (!resolve_expr(resolver, sret->expr, ret_type))
+                if (!resolve_expr(resolver, sret->expr))
                     return RESOLVE_STMT_RETURNS;
 
                 // TODO: Support type conversions
@@ -987,7 +992,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         {
             StmtExpr* sexpr = (StmtExpr*)stmt;
 
-            if (!resolve_expr(resolver, sexpr->expr, NULL))
+            if (!resolve_expr(resolver, sexpr->expr))
                 return 0;
 
             return RESOLVE_STMT_SUCCESS;
@@ -1105,7 +1110,9 @@ static void push_ir_proc(Resolver* resolver, Symbol* sym)
     bucket_list_add_elem(&resolver->procs, resolver->ast_mem, sym);
     bucket_list_init(&sym->_proc.instrs, resolver->ast_mem, IR_INSTRS_PER_BUCKET);
 
-    resolver->curr_instrs_bucket = &sym->_proc.instrs;
+    resolver->ir_builder.instrs = &sym->_proc.instrs;
+
+    IR_init_free_regs(&resolver->ir_builder);
 }
 
 bool resolve_global_decls(Resolver* resolver, List* decls)
@@ -1173,6 +1180,7 @@ void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, B
     resolver->errors = errors;
     resolver->type_cache = type_cache;
     resolver->global_scope = global_scope;
+    resolver->ir_builder.arena = ast_mem;
 
     set_scope(resolver, global_scope);
     init_builtin_syms(resolver);

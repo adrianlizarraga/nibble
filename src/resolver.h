@@ -20,7 +20,8 @@ struct Resolver {
     Scope* global_scope;
     Scope* curr_scope;
     Symbol** incomplete_syms;
-    BucketList* curr_instrs_bucket;
+
+    IR_Builder ir_builder;
     BucketList procs;
 };
 

@@ -49,10 +49,10 @@ void add_byte_stream_chunk(ByteStream* stream, const char* buf, size_t size)
 
 ///////////////////////////////////////////////////////////////
 
-static Bucket* bucket_list_add_bucket(BucketList* bucket_list, Allocator* arena)
+static Bucket* bucket_list_add_bucket(BucketList* bucket_list)
 {
     size_t alloc_size = offsetof(Bucket, elems) + (bucket_list->bucket_cap * sizeof(void*));
-    Bucket* bucket = mem_allocate(arena, alloc_size, DEFAULT_ALIGN, false);
+    Bucket* bucket = mem_allocate(bucket_list->arena, alloc_size, DEFAULT_ALIGN, false);
 
     bucket->count = 0;
 
@@ -111,12 +111,12 @@ void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index)
     return bucket->elems + index;
 }
 
-void** bucket_list_add_elem(BucketList* bucket_list, Allocator* arena, void* elem)
+void** bucket_list_add_elem(BucketList* bucket_list, void* elem)
 {
     Bucket* bucket = list_entry(bucket_list->buckets.prev, Bucket, lnode);
 
     if (bucket->count == bucket_list->bucket_cap)
-        bucket = bucket_list_add_bucket(bucket_list, arena);
+        bucket = bucket_list_add_bucket(bucket_list, bucket_list->arena);
 
     void** bucket_elem = bucket->elems + bucket->count;
 
@@ -132,7 +132,7 @@ void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const
     Bucket* bucket = list_entry(bucket_list->buckets.prev, Bucket, lnode);
 
     if (bucket->count == bucket_list->bucket_cap)
-        bucket = bucket_list_add_bucket(bucket_list, arena);
+        bucket = bucket_list_add_bucket(bucket_list, bucket_list->arena);
 
     void** bucket_elem = bucket->elems + bucket->count;
 
@@ -164,7 +164,8 @@ void bucket_list_init(BucketList* bucket_list, Allocator* arena, size_t bucket_c
 {
     bucket_list->bucket_cap = bucket_cap;
     bucket_list->num_elems = 0;
+    bucket_list->arena = arena;
 
     list_head_init(&bucket_list->buckets);
-    bucket_list_add_bucket(bucket_list, arena);
+    bucket_list_add_bucket(bucket_list);
 }

@@ -485,8 +485,6 @@ typedef struct DeclProc {
 
     List params;
     List stmts;
-
-    Scope* scope;
 } DeclProc;
 
 typedef struct DeclTypedef {

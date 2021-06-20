@@ -39,7 +39,7 @@ struct BucketList {
 BucketList* new_bucket_list(Allocator* arena, size_t bucket_cap);
 void bucket_list_init(BucketList* bucket_list, Allocator* arena, size_t bucket_cap);
 
-void** bucket_list_add_elem(BucketList* bucket_list, Allocator* arena, void* elem);
+void** bucket_list_add_elem(BucketList* bucket_list, void* elem);
 void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const void* elem, size_t size, size_t align);
 char** sstream_add(BucketList* sstream, Allocator* arena, const char* str, size_t len);
 
