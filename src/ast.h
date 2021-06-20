@@ -8,6 +8,7 @@
 #include "llist.h"
 #include "nibble.h"
 #include "hash_map.h"
+#include "stream.h"
 
 typedef struct Expr Expr;
 typedef struct TypeSpec TypeSpec;
@@ -298,7 +299,7 @@ typedef struct StmtNoOp {
 typedef struct StmtBlock {
     Stmt super;
     List stmts;
-    size_t num_decls;
+    u32 num_decls;
     Scope* scope;
 } StmtBlock;
 
@@ -401,7 +402,7 @@ typedef struct StmtDecl {
 
 Stmt* new_stmt_noop(Allocator* allocator, ProgRange range);
 Stmt* new_stmt_decl(Allocator* allocator, Decl* decl);
-Stmt* new_stmt_block(Allocator* allocator, List* stmts, size_t num_decls, ProgRange range);
+Stmt* new_stmt_block(Allocator* allocator, List* stmts, u32 num_decls, ProgRange range);
 Stmt* new_stmt_expr(Allocator* allocator, Expr* expr, ProgRange range);
 Stmt* new_stmt_expr_assign(Allocator* allocator, Expr* lexpr, TokenKind op_assign, Expr* rexpr, ProgRange range);
 Stmt* new_stmt_while(Allocator* allocator, Expr* cond, Stmt* body, ProgRange range);
@@ -478,9 +479,13 @@ typedef struct DeclProc {
     Decl super;
     const char* name;
     TypeSpec* ret;
-    size_t num_params;
+
+    u32 num_params;
+    u32 num_decls;
+
     List params;
-    Stmt* body;
+    List stmts;
+
     Scope* scope;
 } DeclProc;
 
@@ -499,8 +504,8 @@ EnumItem* new_enum_item(Allocator* allocator, const char* name, Expr* value);
 typedef Decl* NewDeclAggregateProc(Allocator* alloc, const char* name, List* fields, ProgRange range);
 Decl* new_decl_struct(Allocator* allocator, const char* name, List* fields, ProgRange range);
 Decl* new_decl_union(Allocator* allocator, const char* name, List* fields, ProgRange range);
-Decl* new_decl_proc(Allocator* allocator, const char* name, size_t num_params, List* params, TypeSpec* ret, Stmt* body,
-                    ProgRange range);
+Decl* new_decl_proc(Allocator* allocator, const char* name, u32 num_params, List* params, TypeSpec* ret, 
+                    List* stmts, u32 num_decls, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 
@@ -645,15 +650,20 @@ struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
     const char* name;
+    bool is_local;
+    List lnode;
+
+    // TODO: Move into union or subclass.
     Decl* decl;
     Type* type;
-    bool is_local;
-    int offset;
-    List lnode;
+
+    // TODO: Cleanup this struct.
+    // NOTE: For SYMBOL_VAR
+    s64 offset;
 };
 
 Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);
-Symbol* new_symbol_type(Allocator* allocator, const char* name, Type* type);
+Symbol* new_symbol_builtin_type(Allocator* allocator, const char* name, Type* type);
 
 ///////////////////////////////
 //       Scope
@@ -669,9 +679,9 @@ struct Scope {
     ListNode lnode;
 };
 
-Scope* new_scope(Allocator* allocator, size_t num_syms);
+Scope* new_scope(Allocator* allocator, u32 num_syms);
 void init_scope_lists(Scope* scope);
-void init_scope_sym_table(Scope* scope, Allocator* allocator, size_t num_syms);
+void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms);
 
 Symbol* lookup_symbol(Scope* curr_scope, const char* name);
 Symbol* lookup_scope_symbol(Scope* scope, const char* name);

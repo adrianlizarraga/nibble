@@ -332,16 +332,17 @@ AggregateField* new_aggregate_field(Allocator* allocator, const char* name, Type
     return field;
 }
 
-Decl* new_decl_proc(Allocator* allocator, const char* name, size_t num_params, List* params, TypeSpec* ret, Stmt* body,
-                    ProgRange range)
+Decl* new_decl_proc(Allocator* allocator, const char* name, u32 num_params, List* params, TypeSpec* ret, 
+                    List* stmts, u32 num_decls, ProgRange range)
 {
     DeclProc* decl = new_decl(allocator, DeclProc, range);
     decl->name = name;
     decl->ret = ret;
-    decl->body = body;
     decl->num_params = num_params;
+    decl->num_decls = num_decls;
 
     list_replace(params, &decl->params);
+    list_replace(stmts, &decl->stmts);
 
     return (Decl*)decl;
 }
@@ -371,7 +372,7 @@ Stmt* new_stmt_decl(Allocator* allocator, Decl* decl)
     return (Stmt*)stmt;
 }
 
-Stmt* new_stmt_block(Allocator* allocator, List* stmts, size_t num_decls, ProgRange range)
+Stmt* new_stmt_block(Allocator* allocator, List* stmts, u32 num_decls, ProgRange range)
 {
     StmtBlock* stmt = new_stmt(allocator, StmtBlock, range);
     stmt->num_decls = num_decls;
@@ -887,7 +888,7 @@ Symbol* new_symbol_builtin_type(Allocator* allocator, const char* name, Type* ty
 //     Scope
 //////////////////////////////
 
-Scope* new_scope(Allocator* allocator, size_t num_syms)
+Scope* new_scope(Allocator* allocator, u32 num_syms)
 {
     Scope* scope = alloc_type(allocator, Scope, true);
 
@@ -897,13 +898,13 @@ Scope* new_scope(Allocator* allocator, size_t num_syms)
     return scope;
 }
 
-void init_scope_sym_table(Scope* scope, Allocator* allocator, size_t num_syms)
+void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms)
 {
     if (num_syms)
     {
-        size_t log2_cap = calc_hmap_size(num_syms);
+        size_t log2_cap = calc_hmap_size((size_t)num_syms);
 
-        scope->sym_table = hmap(log2_cap, allocator); // TODO: Should just be allocated by ast_mem arena.
+        scope->sym_table = hmap(log2_cap, allocator);
     }
 }
 
@@ -1662,8 +1663,12 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                     }
                 }
 
-                ftprint_char_array(&dstr, false, ") =>%s %s)", ftprint_typespec(allocator, proc->ret),
-                                   ftprint_stmt(allocator, proc->body));
+                ftprint_char_array(&dstr, false, ") =>%s ", ftprint_typespec(allocator, proc->ret));
+
+                if (list_empty(&proc->stmts))
+                    ftprint_char_array(&dstr, false, "(stmt-block))");
+                else
+                    ftprint_char_array(&dstr, false, "(stmt-block %s))", ftprint_stmt_list(allocator, &proc->stmts));
             }
             break;
             default:

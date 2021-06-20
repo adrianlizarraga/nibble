@@ -36,6 +36,9 @@ static Register arg_regs[] = {RDI, RSI, RDX, RCX, R8, R9};
 
 static Register ret_regs[] = {RAX, RDX};
 
+// TODO: Leaf procedures should prefer to use caller-saved regs, and
+// non-leaf procedures should prefer to use callee-save regs.
+// SO, resolver should mark leaf procedures while resolving.
 static Register scratch_regs[] = {
     R10, R11, RDI, RSI, RDX, RCX, R8, R9, RAX, // NOTE: Caller saved
     R12, R13, R14, R15, RBX,                   // NOTE: Callee saved
@@ -144,8 +147,8 @@ struct ProcState {
 
 struct Generator {
     FILE* out_fd;
-    StrStream* text_lines;
-    StrStream* data_lines;
+    BucketList* text_lines;
+    BucketList* data_lines;
     char tmp_inst_buf[TMP_INST_BUF_LEN];
 
     ProcState curr_proc;
@@ -185,9 +188,10 @@ static Generator generator;
 #define emit_text(f, ...) emit_line(generator.text_lines, (f), ##__VA_ARGS__)
 #define emit_data(f, ...) emit_line(generator.data_lines, (f), ##__VA_ARGS__)
 
-char** emit_line(StrStream* sstream, const char* format, ...)
+char** emit_line(BucketList* sstream, const char* format, ...)
 {
     char** line_ptr = NULL;
+    Allocator* gen_mem = generator.gen_mem;
 
     if (format)
     {
@@ -200,13 +204,13 @@ char** emit_line(StrStream* sstream, const char* format, ...)
             size_t size = ftprintv_char_array(&tmp_line, true, format, vargs);
             va_end(vargs);
 
-            line_ptr = sstream_add(sstream, tmp_line, size);
+            line_ptr = sstream_add(sstream, gen_mem, tmp_line, size);
         }
         allocator_restore_state(mem_state);
     }
     else
     {
-        line_ptr = sstream_add(sstream, NULL, 0);
+        line_ptr = sstream_add(sstream, gen_mem, NULL, 0);
     }
 
     return line_ptr;
@@ -234,6 +238,7 @@ static void exit_gen_scope();
 static uint32_t next_if_label_count();
 static uint32_t next_while_label_count();
 static void gen_stmt(Stmt* stmt);
+static void gen_stmt_block_body(List* stmts);
 static void gen_expr(Expr* expr, Operand* dest);
 
 //  ntz() from Hacker's Delight 2nd edition, pg 108
@@ -707,6 +712,11 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
     Type* result_type = ecall->super.type;
     uint32_t init_free_regs = generator.curr_proc.free_regs;
 
+    // TODO: Stack frame not guaranteed to be 16-byte aligned in this current implementation.
+    // If the number of stack args + caller-saved regs is not even (16-byte aligned),
+    // we MUST subtract 8 from stack BEFORE pushing anything into stack
+    // See: https://godbolt.org/z/cM9Encdsc
+
     // Save caller-saved registers (i.e., arg and ret val registers) currently in use.
     for (uint32_t r = 0; r < REG_COUNT; r += 1)
     {
@@ -940,11 +950,9 @@ static void gen_stmt_decl(StmtDecl* sdecl)
     }
 }
 
-static void gen_stmt_block(StmtBlock* sblock)
+static void gen_stmt_block_body(List* stmts)
 {
-    enter_gen_scope(sblock->scope);
-
-    List* head = &sblock->stmts;
+    List* head = stmts;
     List* it = head->next;
 
     while (it != head)
@@ -955,7 +963,12 @@ static void gen_stmt_block(StmtBlock* sblock)
 
         it = it->next;
     }
+}
 
+static void gen_stmt_block(StmtBlock* sblock)
+{
+    enter_gen_scope(sblock->scope);
+    gen_stmt_block_body(&sblock->stmts);
     exit_gen_scope();
 }
 
@@ -1184,19 +1197,27 @@ static size_t compute_scope_var_offsets(Scope* scope, size_t offset)
 //    Currently using #1, but #3 is attractive because of the decreased dependence on AST structures.
 static size_t compute_proc_var_offsets(DeclProc* dproc)
 {
+    //
+    // Sum sizes of local variables declared in this scope.
+    //
+
     size_t stack_size = 0;
     unsigned arg_index = 0;
     unsigned stack_arg_offset = 0x10;
 
-    List* head = &dproc->scope->sym_list;
+    Scope* scope = dproc->scope;
+    List* head = &scope->sym_list;
     List* it = head->next;
 
     while (it != head)
     {
         Symbol* sym = list_entry(it, Symbol, lnode);
 
-        if (sym->kind == SYMBOL_VAR)
+        // Assign stack offsets to procedure params.
+        if (arg_index < dproc->num_params)
         {
+            assert(sym->kind == SYMBOL_VAR);
+
             Type* arg_type = sym->type;
             size_t arg_size = arg_type->size;
             size_t arg_align = arg_type->align;
@@ -1222,14 +1243,38 @@ static size_t compute_proc_var_offsets(DeclProc* dproc)
                 stack_arg_offset = ALIGN_UP(stack_arg_offset, arg_align);
             }
         }
+        // Assign stack offsets to local variables in procedure.
+        else if (sym->kind == SYMBOL_VAR)
+        {
+            stack_size += sym->type->size;
+            stack_size = ALIGN_UP(stack_size, sym->type->align);
+            sym->offset = -stack_size;
+        }
 
         it = it->next;
     }
 
-    assert(dproc->body->kind == CST_StmtBlock);
-    StmtBlock* proc_body = (StmtBlock*)dproc->body;
+    //
+    // Recursively compute stack sizes for child scopes. Take the largest.
+    //
+    {
+        List* head = &scope->children;
+        List* it = head->next;
+        size_t child_offset = stack_size;
 
-    return compute_scope_var_offsets(proc_body->scope, stack_size);
+        while (it != head)
+        {
+            Scope* child_scope = list_entry(it, Scope, lnode);
+            size_t child_size = compute_scope_var_offsets(child_scope, child_offset);
+
+            if (child_size > stack_size)
+                stack_size = child_size;
+
+            it = it->next;
+        }
+    }
+
+    return ALIGN_UP(stack_size, 16);
 }
 
 #if 0
@@ -1315,7 +1360,7 @@ static void gen_proc(Symbol* sym)
     if (stack_size)
         fill_line(sub_rsp_inst, "    subq $%d, %%rsp", stack_size);
 
-    gen_stmt(dproc->body);
+    gen_stmt_block_body(&dproc->stmts);
 
     emit_text("    end.%s:", sym->name);
 
@@ -1401,8 +1446,8 @@ bool gen_gasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* 
 
     generator.gen_mem = gen_mem;
     generator.tmp_mem = tmp_mem;
-    generator.text_lines = new_sstream(gen_mem, bucket_cap);
-    generator.data_lines = new_sstream(gen_mem, bucket_cap);
+    generator.text_lines = new_bucket_list(gen_mem, bucket_cap);
+    generator.data_lines = new_bucket_list(gen_mem, bucket_cap);
     generator.out_fd = fopen(output_file, "w");
     generator.if_label_count = 0;
     generator.while_label_count = 0;
@@ -1418,22 +1463,22 @@ bool gen_gasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* 
     // Output assembly to file.
     ftprint_file(generator.out_fd, false, "# Generated by the Nibble compiler.\n\n");
 
-    for (StrBucket* bucket = generator.data_lines->first; bucket != NULL; bucket = bucket->next)
+    for (Bucket* bucket = generator.data_lines->first; bucket; bucket = bucket->next)
     {
-        for (size_t i = 0; i < bucket->len; i += 1)
+        for (size_t i = 0; i < bucket->count; i += 1)
         {
-            const char* str = bucket->buf[i];
+            const char* str = (const char*)bucket->elems[i];
 
             if (str)
                 ftprint_file(generator.out_fd, false, "%s\n", str);
         }
     }
 
-    for (StrBucket* bucket = generator.text_lines->first; bucket != NULL; bucket = bucket->next)
+    for (Bucket* bucket = generator.text_lines->first; bucket; bucket = bucket->next)
     {
-        for (size_t i = 0; i < bucket->len; i += 1)
+        for (size_t i = 0; i < bucket->count; i += 1)
         {
-            const char* str = bucket->buf[i];
+            const char* str = (const char*)bucket->elems[i];
 
             if (str)
                 ftprint_file(generator.out_fd, false, "%s\n", str);

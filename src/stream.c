@@ -47,54 +47,124 @@ void add_byte_stream_chunk(ByteStream* stream, const char* buf, size_t size)
     }
 }
 
-static StrBucket* sstream_add_bucket(StrStream* sstream)
+///////////////////////////////////////////////////////////////
+
+static Bucket* bucket_list_add_bucket(BucketList* bucket_list)
 {
-    size_t alloc_size = offsetof(StrBucket, buf) + (sstream->bucket_cap * sizeof(char*));
-    StrBucket* bucket = mem_allocate(sstream->arena, alloc_size, DEFAULT_ALIGN, false);
+    size_t alloc_size = offsetof(Bucket, elems) + (bucket_list->bucket_cap * sizeof(void*));
+    Bucket* bucket = mem_allocate(bucket_list->arena, alloc_size, DEFAULT_ALIGN, false);
 
+    bucket->count = 0;
     bucket->next = NULL;
-    bucket->len = 0;
 
-    if (sstream->first)
-        sstream->last->next = bucket;
+    if (bucket_list->first)
+        bucket_list->last->next = bucket;
     else
-        sstream->first = bucket;
+        bucket_list->first = bucket;
 
-    sstream->last = bucket;
+    bucket_list->last = bucket;
 
     return bucket;
 }
 
-char** sstream_add(StrStream* sstream, const char* str, size_t len)
+// NOTE: Does not assume that any bucket is full.
+// However, it does assume that any elements in a bucket are contiguous.
+void** bucket_list_get_elem(BucketList* bucket_list, size_t index)
 {
-    assert(sstream->last);
+    if (index >= bucket_list->num_elems)
+        return NULL;
 
-    StrBucket* bucket = sstream->last;
+    Bucket* bucket = bucket_list->first;
 
-    if (bucket->len == sstream->bucket_cap)
-        bucket = sstream_add_bucket(sstream);
+    while (bucket)
+    {
+        if (index < bucket->count)
+            return bucket->elems + index;
 
-    char** bucket_elem = bucket->buf + bucket->len;
+        index -= bucket->count;
+        bucket = bucket->next;
+    }
 
-    if (str)
-        *bucket_elem = mem_dup(sstream->arena, str, len + 1, DEFAULT_ALIGN);
+    return NULL;
+}
 
-    bucket->len += 1;
-    sstream->num_strs += 1;
+// NOTE: Assumes that all buckets, except the last, are full.
+void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index)
+{
+    if (index >= bucket_list->num_elems)
+        return NULL;
+
+    size_t elems_per_bucket = bucket_list->bucket_cap;
+    size_t bucket_index = index / elems_per_bucket;
+    Bucket* bucket = bucket_list->first;
+
+    for (u64 i = 0; i < bucket_index; i += 1)
+    {
+        index -= elems_per_bucket;
+        bucket = bucket->next;
+    }
+
+    assert(index < bucket->count);
+
+    return bucket->elems + index;
+}
+
+void** bucket_list_add_elem(BucketList* bucket_list, void* elem)
+{
+    Bucket* bucket = bucket_list->last;
+
+    if (bucket->count == bucket_list->bucket_cap)
+        bucket = bucket_list_add_bucket(bucket_list);
+
+    void** bucket_elem = bucket->elems + bucket->count;
+
+    *bucket_elem = elem;
+    bucket->count += 1;
+    bucket_list->num_elems += 1;
 
     return bucket_elem;
 }
 
-StrStream* new_sstream(Allocator* arena, size_t bucket_cap)
+void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const void* elem, size_t size, size_t align)
 {
-    StrStream* sstream = alloc_type(arena, StrStream, false);
+    Bucket* bucket = bucket_list->last;
 
-    sstream->arena = arena;
-    sstream->bucket_cap = bucket_cap;
-    sstream->first = NULL;
-    sstream->last = NULL;
+    if (bucket->count == bucket_list->bucket_cap)
+        bucket = bucket_list_add_bucket(bucket_list);
 
-    sstream_add_bucket(sstream);
+    void** bucket_elem = bucket->elems + bucket->count;
 
-    return sstream;
+    if (elem)
+        *bucket_elem = mem_dup(arena, elem, size, align);
+
+    bucket->count += 1;
+    bucket_list->num_elems += 1;
+
+    return bucket_elem;
+}
+
+// NOTE: str should be a null-terminated string.
+char** sstream_add(BucketList* sstream, Allocator* arena, const char* str, size_t len)
+{
+    return (char**)bucket_list_add_elem_dup(sstream, arena, str, len + 1, alignof(char));
+}
+
+BucketList* new_bucket_list(Allocator* arena, size_t bucket_cap)
+{
+    BucketList* bucket_list = alloc_type(arena, BucketList, false);
+
+    bucket_list_init(bucket_list, arena, bucket_cap);
+
+    return bucket_list;
+}
+
+void bucket_list_init(BucketList* bucket_list, Allocator* arena, size_t bucket_cap)
+{
+    bucket_list->bucket_cap = bucket_cap;
+    bucket_list->num_elems = 0;
+    bucket_list->arena = arena;
+    bucket_list->first = NULL;
+    bucket_list->last = NULL;
+
+    bucket_list_add_bucket(bucket_list);
 }

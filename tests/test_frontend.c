@@ -13,6 +13,7 @@
 #include "llist.h"
 #include "resolver.c"
 #include "gen_assembly.c"
+//#include "bytecode.c"
 #include "nibble.c"
 #include "parser.c"
 #include "print.c"
