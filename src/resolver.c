@@ -602,17 +602,25 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         if (!resolve_expr(resolver, arg->expr))
             return false;
 
-        Type* arg_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, arg->expr->type);
-        Type* param_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, params[i]);
+        Type* param_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, params[i]); // TODO: Cast at site?
 
-        // TODO: Support type conversion
-        if (arg->expr->type != param_type)
+        ExprOperand arg_eop = {.type = arg->expr->type,
+                               .is_const = arg->expr->is_const,
+                               .is_lvalue = arg->expr->is_lvalue,
+                               .const_val = arg->expr->const_val};
+
+        if (param_type->kind == TYPE_PTR)
+            eop_decay(resolver, &arg_eop);
+
+        if (!convert_eop(&arg_eop, param_type))
         {
             resolver_on_error(resolver,
                               "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`",
-                              (i + 1), type_name(params[i]), type_name(arg_type));
+                              (i + 1), type_name(params[i]), type_name(arg->expr->type));
             return false;
         }
+
+        arg->expr = try_wrap_cast_expr(resolver, &arg_eop, arg->expr);
 
         it = it->next;
         i += 1;
@@ -847,13 +855,22 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
     {
         Type* declared_type = resolve_typespec(resolver, typespec);
 
-        if (declared_type != init->type)
+        ExprOperand init_eop = {.type = init->type,
+                                .is_const = init->is_const,
+                                .is_lvalue = init->is_lvalue,
+                                .const_val = init->const_val};
+
+        if (declared_type->kind == TYPE_PTR)
+            eop_decay(resolver, &init_eop);
+
+        if (!convert_eop(&init_eop, declared_type))
         {
-            // TODO: Support type conversions
             resolver_on_error(resolver, "Incompatible types. Cannot convert expression of type `%s` to `%s`",
                               type_name(init->type), type_name(declared_type));
             return false;
         }
+
+        decl->init = try_wrap_cast_expr(resolver, &init_eop, decl->init);
 
         type = declared_type;
     }

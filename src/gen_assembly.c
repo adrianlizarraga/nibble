@@ -896,6 +896,17 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
         }
     }
 }
+static void gen_expr_cast(ExprCast* ecast, Operand* dest)
+{
+    if (type_is_arithmetic(ecast->super.type) && type_is_arithmetic(dest->type))
+    {
+        ftprint_out("Gen cast\n");
+    }
+    else
+    {
+        assert(!"Can only generate cast code for arithmetic types");
+    }
+}
 
 static void gen_expr(Expr* expr, Operand* dest)
 {
@@ -918,6 +929,9 @@ static void gen_expr(Expr* expr, Operand* dest)
             break;
         case CST_ExprCall:
             gen_expr_call((ExprCall*)expr, dest);
+            break;
+        case CST_ExprCast:
+            gen_expr_cast((ExprCast*)expr, dest);
             break;
         default:
             ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);
