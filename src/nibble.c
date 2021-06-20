@@ -2,6 +2,7 @@
 #include "cstring.h"
 #include "hash_map.h"
 #include "parser.h"
+#include "gen_assembly.h"
 
 typedef struct NibbleCtx {
     Allocator gen_mem;
@@ -277,7 +278,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     //          Resolve/Typecheck
     //////////////////////////////////////////
     ftprint_out("3. Generating IR ...\n");
-    //gen_gasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
+    gen_gasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
 
     ftprint_out("4. Generating output ...\n");
 }

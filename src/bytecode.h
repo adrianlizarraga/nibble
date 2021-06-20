@@ -143,6 +143,8 @@ u32 IR_init_free_regs(IR_Builder* builder);
 IR_Instr* IR_push_instr(IR_Builder* builder, IR_Opcode opcode, IR_Operand* src_op, IR_Operand* dst_op);
 
 void IR_emit_add(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op);
+void IR_emit_sub(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op);
+void IR_free_op(IR_Operand* op);
 
 void IR_ensure_op_in_reg(IR_Builder* builder, IR_Operand* op);
 void IR_emit_op_to_reg(IR_Operand* src_op, IR_RegID reg, IR_Operand* dst_op);
@@ -150,5 +152,4 @@ IR_RegID IR_next_reg(IR_Builder* builder);
 void IR_free_reg(IR_Builder* builder, IR_RegID reg);
 void IR_alloc_reg(IR_Builder* builder, IR_RegID reg);
 bool IR_try_alloc_reg(IR_Builder* builder, IR_RegID reg);
-void IR_free_op(IR_Operand* op);
 #endif

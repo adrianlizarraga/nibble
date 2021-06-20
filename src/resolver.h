@@ -5,7 +5,6 @@
 #include "stream.h"
 #include "llist.h"
 #include "ast.h"
-#include "bytecode.h"
 
 #define MAX_LOCAL_SYMS 512
 
@@ -19,10 +18,6 @@ struct Resolver {
 
     Scope* global_scope;
     Scope* curr_scope;
-    Symbol** incomplete_syms;
-
-    IR_Builder ir_builder;
-    BucketList procs;
 };
 
 void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem,

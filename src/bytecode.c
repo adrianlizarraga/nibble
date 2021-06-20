@@ -253,3 +253,14 @@ void IR_emit_add(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op)
     }
 }
 
+void IR_emit_sub(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op)
+{
+    if (dst_op->kind == IR_OPERAND_IMM && src_op->kind == IR_OPERAND_IMM)
+    {
+        dst_op->_imm.as_int._s32 -= src_op->_imm.as_int._s32;
+    }
+    else
+    {
+        IR_emit_binary_instr(IR_OPCODE_SUB, src_op, dst_op);
+    }
+}

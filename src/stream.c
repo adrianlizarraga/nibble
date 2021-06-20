@@ -116,7 +116,7 @@ void** bucket_list_add_elem(BucketList* bucket_list, void* elem)
     Bucket* bucket = list_entry(bucket_list->buckets.prev, Bucket, lnode);
 
     if (bucket->count == bucket_list->bucket_cap)
-        bucket = bucket_list_add_bucket(bucket_list, bucket_list->arena);
+        bucket = bucket_list_add_bucket(bucket_list);
 
     void** bucket_elem = bucket->elems + bucket->count;
 
@@ -132,7 +132,7 @@ void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const
     Bucket* bucket = list_entry(bucket_list->buckets.prev, Bucket, lnode);
 
     if (bucket->count == bucket_list->bucket_cap)
-        bucket = bucket_list_add_bucket(bucket_list, bucket_list->arena);
+        bucket = bucket_list_add_bucket(bucket_list);
 
     void** bucket_elem = bucket->elems + bucket->count;
 

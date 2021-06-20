@@ -485,6 +485,8 @@ typedef struct DeclProc {
 
     List params;
     List stmts;
+
+    Scope* scope;
 } DeclProc;
 
 typedef struct DeclTypedef {
@@ -655,15 +657,9 @@ struct Symbol {
     Decl* decl;
     Type* type;
 
-    union {
-        struct {
-            s64 offset;
-        } _var;
-        struct {
-            Scope* scope;
-            BucketList instrs;
-        } _proc;
-    };
+    // TODO: Cleanup this struct.
+    // NOTE: For SYMBOL_VAR
+    s64 offset;
 };
 
 Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);

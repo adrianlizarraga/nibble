@@ -34,6 +34,7 @@ struct BucketList {
     List buckets;
     size_t bucket_cap;
     size_t num_elems;
+    Allocator* arena;
 };
 
 BucketList* new_bucket_list(Allocator* arena, size_t bucket_cap);
