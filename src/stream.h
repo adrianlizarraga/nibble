@@ -25,13 +25,14 @@ typedef struct Bucket Bucket;
 typedef struct BucketList BucketList;
 
 struct Bucket {
-    List lnode;
+    Bucket* next;
     size_t count;
     void* elems[];
 };
 
 struct BucketList {
-    List buckets;
+    Bucket* first;
+    Bucket* last;
     size_t bucket_cap;
     size_t num_elems;
     Allocator* arena;

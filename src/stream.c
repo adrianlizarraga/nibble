@@ -55,8 +55,14 @@ static Bucket* bucket_list_add_bucket(BucketList* bucket_list)
     Bucket* bucket = mem_allocate(bucket_list->arena, alloc_size, DEFAULT_ALIGN, false);
 
     bucket->count = 0;
+    bucket->next = NULL;
 
-    list_add_last(&bucket_list->buckets, &bucket->lnode);
+    if (bucket_list->first)
+        bucket_list->last->next = bucket;
+    else
+        bucket_list->first = bucket;
+
+    bucket_list->last = bucket;
 
     return bucket;
 }
@@ -68,20 +74,15 @@ void** bucket_list_get_elem(BucketList* bucket_list, size_t index)
     if (index >= bucket_list->num_elems)
         return NULL;
 
-    List* head = &bucket_list->buckets;
-    List* it = head->next;
+    Bucket* bucket = bucket_list->first;
 
-    while (it != head)
+    while (bucket)
     {
-        Bucket* bucket = list_entry(it, Bucket, lnode);
-
         if (index < bucket->count)
-        {
             return bucket->elems + index;
-        }
 
         index -= bucket->count;
-        it = it->next;
+        bucket = bucket->next;
     }
 
     return NULL;
@@ -95,16 +96,13 @@ void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index)
 
     size_t elems_per_bucket = bucket_list->bucket_cap;
     size_t bucket_index = index / elems_per_bucket;
-    List* head = &bucket_list->buckets;
-    List* it = head->next;
+    Bucket* bucket = bucket_list->first;
 
     for (u64 i = 0; i < bucket_index; i += 1)
     {
         index -= elems_per_bucket;
-        it = it->next;
+        bucket = bucket->next;
     }
-
-    Bucket* bucket = list_entry(it, Bucket, lnode);
 
     assert(index < bucket->count);
 
@@ -113,7 +111,7 @@ void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index)
 
 void** bucket_list_add_elem(BucketList* bucket_list, void* elem)
 {
-    Bucket* bucket = list_entry(bucket_list->buckets.prev, Bucket, lnode);
+    Bucket* bucket = bucket_list->last;
 
     if (bucket->count == bucket_list->bucket_cap)
         bucket = bucket_list_add_bucket(bucket_list);
@@ -129,7 +127,7 @@ void** bucket_list_add_elem(BucketList* bucket_list, void* elem)
 
 void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const void* elem, size_t size, size_t align)
 {
-    Bucket* bucket = list_entry(bucket_list->buckets.prev, Bucket, lnode);
+    Bucket* bucket = bucket_list->last;
 
     if (bucket->count == bucket_list->bucket_cap)
         bucket = bucket_list_add_bucket(bucket_list);
@@ -165,7 +163,8 @@ void bucket_list_init(BucketList* bucket_list, Allocator* arena, size_t bucket_c
     bucket_list->bucket_cap = bucket_cap;
     bucket_list->num_elems = 0;
     bucket_list->arena = arena;
+    bucket_list->first = NULL;
+    bucket_list->last = NULL;
 
-    list_head_init(&bucket_list->buckets);
     bucket_list_add_bucket(bucket_list);
 }
