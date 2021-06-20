@@ -385,6 +385,49 @@ static size_t movs_inst(char* buf, size_t len, unsigned op1_size, unsigned op2_s
     return snprintf(buf, len, "mov");
 }
 
+static size_t imm_to_str(char* buf, size_t len, Type* type, Scalar imm)
+{
+    if (type->kind == TYPE_INTEGER)
+    {
+        switch (type->as_integer.kind)
+        {
+            case INTEGER_U8:
+                return snprintf(buf, len, "$%u", imm.as_int._u8);
+            case INTEGER_S8:
+                return snprintf(buf, len, "$%d", imm.as_int._s8);
+            case INTEGER_U16:
+                return snprintf(buf, len, "$%u", imm.as_int._u16);
+            case INTEGER_S16:
+                return snprintf(buf, len, "$%d", imm.as_int._s16);
+            case INTEGER_U32:
+                return snprintf(buf, len, "$%u", imm.as_int._u32);
+            case INTEGER_S32:
+                return snprintf(buf, len, "$%d", imm.as_int._s32);
+            case INTEGER_U64:
+                return snprintf(buf, len, "$%lu", imm.as_int._u64);
+            case INTEGER_S64:
+                return snprintf(buf, len, "$%ld", imm.as_int._s64);
+            default:
+                return 0;
+
+        }
+    }
+    else if (type->kind == TYPE_PTR)
+    {
+        return snprintf(buf, len, "$%lu", imm.as_int._u64);
+    }
+    else if (type->kind == TYPE_FLOAT)
+    {
+        assert(0);
+    }
+    else
+    {
+        assert(0);
+    }
+
+    return 0;
+}
+
 static void set_reg(uint32_t* reg_mask, Register reg)
 {
     *reg_mask |= (1 << reg);
@@ -490,9 +533,11 @@ static void emit_operand_to_reg(Operand* operand, Register reg)
         case OPERAND_IMMEDIATE:
         {
             char* movs_buf = generator.tmp_inst_buf;
+            char imm_str[32];
 
             movs_inst(movs_buf, TMP_INST_BUF_LEN, 0, op_size);
-            emit_text("    %s $%d, %%%s", movs_buf, operand->imm.as_int._s32, dst_reg_name);
+            imm_to_str(imm_str, sizeof(imm_str), operand->type, operand->imm);
+            emit_text("    %s %s, %%%s", movs_buf, imm_str, dst_reg_name);
             break;
         }
         case OPERAND_FRAME_OFFSET:
@@ -535,7 +580,10 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
 
         if (rhs_op->kind == OPERAND_IMMEDIATE)
         {
-            emit_text("    %s $%d, %d(%%rbp)", mov_inst(var_size), rhs_op->imm.as_int._s32, var_offset);
+            char imm_str[32];
+
+            imm_to_str(imm_str, sizeof(imm_str), rhs_op->type, rhs_op->imm);
+            emit_text("    %s %s, %d(%%rbp)", mov_inst(var_size), imm_str, var_offset);
         }
         else
         {
@@ -550,7 +598,10 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
 
         if (rhs_op->kind == OPERAND_IMMEDIATE)
         {
-            emit_text("    %s $%d, %s(%%rip)", mov_inst(var_size), rhs_op->imm.as_int._s32, var_name);
+            char imm_str[32];
+
+            imm_to_str(imm_str, sizeof(imm_str), rhs_op->type, rhs_op->imm);
+            emit_text("    %s %s, %s(%%rip)", mov_inst(var_size), imm_str, var_name);
         }
         else
         {
@@ -572,7 +623,10 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
 
     if (src->kind == OPERAND_IMMEDIATE)
     {
-        emit_text("    %s $%d, %%%s", op_inst, src->imm.as_int._s32, reg_names[dst->type->size][dst->reg]);
+        char imm_str[32];
+
+        imm_to_str(imm_str, sizeof(imm_str), src->type, src->imm);
+        emit_text("    %s %s, %%%s", op_inst, imm_str, reg_names[dst->type->size][dst->reg]);
     }
     else if (src->kind == OPERAND_FRAME_OFFSET)
     {
@@ -608,8 +662,11 @@ static void emit_add(Type* type, Operand* src, Operand* dst)
     else if (dst->kind == OPERAND_IMMEDIATE)
     {
         // Add into the src register.
+        char imm_str[32];
+
+        imm_to_str(imm_str, sizeof(imm_str), dst->type, dst->imm);
         ensure_operand_in_reg(src);
-        emit_text("    %s $%d, %%%s", add_inst(size), dst->imm.as_int._s32, reg_names[src->type->size][src->reg]);
+        emit_text("    %s $%d, %%%s", add_inst(size), imm_str, reg_names[src->type->size][src->reg]);
 
         // Steal src operand's register.
         dst->kind = OPERAND_REGISTER;

@@ -205,6 +205,7 @@ typedef struct ExprCast {
     Expr super;
     TypeSpec* typespec;
     Expr* expr;
+    bool implicit;
 } ExprCast;
 
 typedef struct ExprSizeof {
@@ -257,7 +258,7 @@ Expr* new_expr_int(Allocator* allocator, uint64_t value, ProgRange range);
 Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
 Expr* new_expr_str(Allocator* allocator, const char* value, ProgRange range);
 Expr* new_expr_ident(Allocator* allocator, const char* name, ProgRange range);
-Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range);
+Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_typeof(Allocator* allocator, Expr* arg, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
@@ -558,6 +559,10 @@ typedef struct TypePtr {
     Type* base;
 } TypePtr;
 
+typedef struct TypeEnum {
+    Type* base;
+} TypeEnum;
+
 typedef struct TypeAggregateField {
     Type* type;
     size_t offset;
@@ -580,10 +585,10 @@ struct Type {
         TypeInteger as_integer;
         TypeFloat as_float;
         TypePtr as_ptr;
+        TypeEnum as_enum;
         TypeProc as_proc;
         TypeArray as_array;
-        TypeAggregate as_struct;
-        TypeAggregate as_union;
+        TypeAggregate as_aggregate;
     };
 };
 
@@ -622,6 +627,8 @@ void init_builtin_types(OS target_os, Arch target_arch);
 const char* type_name(Type* type);
 bool type_is_arithmetic(Type* type);
 bool type_is_scalar(Type* type);
+bool type_is_ptr_like(Type* type);
+bool type_is_aggregate(Type* type);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
