@@ -196,11 +196,12 @@ Expr* new_expr_ident(Allocator* allocator, const char* name, ProgRange range)
     return (Expr*)expr;
 }
 
-Expr* new_expr_cast(Allocator* allocator, TypeSpec* typespec, Expr* arg, ProgRange range)
+Expr* new_expr_cast(Allocator* allocator, TypeSpec* typespec, Expr* arg, bool implicit, ProgRange range)
 {
     ExprCast* expr = new_expr(allocator, ExprCast, range);
     expr->typespec = typespec;
     expr->expr = arg;
+    expr->implicit = implicit;
 
     return (Expr*)expr;
 }
@@ -651,6 +652,20 @@ bool type_is_scalar(Type* type)
     TypeKind kind = type->kind;
 
     return type_is_arithmetic(type) || (kind == TYPE_PTR) || (kind == TYPE_PROC);
+}
+
+bool type_is_ptr_like(Type* type)
+{
+    TypeKind kind = type->kind;
+
+    return (kind == TYPE_PTR) || (kind == TYPE_PROC);
+}
+
+bool type_is_aggregate(Type* type)
+{
+    TypeKind kind = type->kind;
+
+    return (kind == TYPE_STRUCT) || (kind == TYPE_UNION);
 }
 
 static Type* type_alloc(Allocator* allocator, TypeKind kind)

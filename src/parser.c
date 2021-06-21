@@ -856,7 +856,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             if (typespec)
             {
                 ProgRange range = {.start = expr->range.start, .end = typespec->range.end};
-                expr = new_expr_cast(parser->ast_arena, typespec, expr, range);
+                expr = new_expr_cast(parser->ast_arena, typespec, expr, false, range);
             }
             else
             {

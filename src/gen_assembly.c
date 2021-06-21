@@ -50,6 +50,20 @@ static uint32_t reg_flags[] = {
     [R12] = CALLEE_SAVED, [R13] = CALLEE_SAVED, [R14] = CALLEE_SAVED,      [R15] = CALLEE_SAVED};
 
 #define MAX_OP_BYTE_SIZE 8
+static const char* mem_size_label[MAX_OP_BYTE_SIZE + 1] = {
+    [1] = "byte",
+    [2] = "word",
+    [4] = "dword",
+    [8] = "qword"
+};
+
+static const char* data_size_label[MAX_OP_BYTE_SIZE + 1] = {
+    [1] = "db",
+    [2] = "dw",
+    [4] = "dd",
+    [8] = "dq"
+};
+
 static const char* reg_names[MAX_OP_BYTE_SIZE + 1][REG_COUNT] = {
     [1] =
         {
@@ -128,8 +142,6 @@ static const char* reg_names[MAX_OP_BYTE_SIZE + 1][REG_COUNT] = {
             [R15] = "r15",
         },
 };
-
-static char op_suffix[MAX_OP_BYTE_SIZE + 1] = {[1] = 'b', [2] = 'w', [4] = 'l', [8] = 'q'};
 
 #define TMP_INST_BUF_LEN 64
 
@@ -313,6 +325,7 @@ static void operand_from_sym(Operand* operand, Symbol* sym)
 
 static const char* add_inst(unsigned size)
 {
+#if ATT_SYNTAX
     switch (size)
     {
         case 1:
@@ -330,10 +343,15 @@ static const char* add_inst(unsigned size)
     }
 
     return NULL;
+#else
+    (void)size;
+    return "add";
+#endif
 }
 
 static const char* sub_inst(unsigned size)
 {
+#if ATT_SYNTAX
     switch (size)
     {
         case 1:
@@ -351,10 +369,15 @@ static const char* sub_inst(unsigned size)
     }
 
     return NULL;
+#else
+    (void)size;
+    return "sub";
+#endif
 }
 
 static const char* mov_inst(unsigned size)
 {
+#if ATT_SYNTAX
     switch (size)
     {
         case 1:
@@ -372,17 +395,53 @@ static const char* mov_inst(unsigned size)
     }
 
     return NULL;
+#else
+    (void)size;
+    return "mov";
+#endif
 }
 
-static size_t movs_inst(char* buf, size_t len, unsigned op1_size, unsigned op2_size)
+static size_t imm_to_str(char* buf, size_t len, Type* type, Scalar imm)
 {
-    char op1_suffix = op_suffix[op1_size];
-    char op2_suffix = op_suffix[op2_size];
+    if (type->kind == TYPE_INTEGER)
+    {
+        switch (type->as_integer.kind)
+        {
+            case INTEGER_U8:
+                return snprintf(buf, len, "%u", imm.as_int._u8);
+            case INTEGER_S8:
+                return snprintf(buf, len, "%d", imm.as_int._s8);
+            case INTEGER_U16:
+                return snprintf(buf, len, "%u", imm.as_int._u16);
+            case INTEGER_S16:
+                return snprintf(buf, len, "%d", imm.as_int._s16);
+            case INTEGER_U32:
+                return snprintf(buf, len, "%u", imm.as_int._u32);
+            case INTEGER_S32:
+                return snprintf(buf, len, "%d", imm.as_int._s32);
+            case INTEGER_U64:
+                return snprintf(buf, len, "%lu", imm.as_int._u64);
+            case INTEGER_S64:
+                return snprintf(buf, len, "%ld", imm.as_int._s64);
+            default:
+                return 0;
 
-    if (op1_suffix && op2_suffix)
-        return snprintf(buf, len, "movs%c%c", op1_suffix, op2_suffix);
+        }
+    }
+    else if (type->kind == TYPE_PTR)
+    {
+        return snprintf(buf, len, "%lu", imm.as_int._u64);
+    }
+    else if (type->kind == TYPE_FLOAT)
+    {
+        assert(0);
+    }
+    else
+    {
+        assert(0);
+    }
 
-    return snprintf(buf, len, "mov");
+    return 0;
 }
 
 static void set_reg(uint32_t* reg_mask, Register reg)
@@ -463,13 +522,16 @@ static Register next_reg()
 
 static void emit_data_value(Type* type, Scalar scalar)
 {
-    if (type == type_s32)
+    if (type->kind == TYPE_INTEGER)
     {
-        emit_data(".long %d\n", scalar.as_int._s32);
+        char imm_str[32];
+
+        imm_to_str(imm_str, sizeof(imm_str), type, scalar);
+        emit_data("%s %s\n", data_size_label[type->size], imm_str);
     }
     else
     {
-        ftprint_err("Cannot gen GAS data regions for non-int types");
+        ftprint_err("Cannot gen NASM data regions for non-int type: %s", type_name(type));
         assert(0);
     }
 }
@@ -489,21 +551,30 @@ static void emit_operand_to_reg(Operand* operand, Register reg)
     {
         case OPERAND_IMMEDIATE:
         {
-            char* movs_buf = generator.tmp_inst_buf;
+            char imm_str[32];
 
-            movs_inst(movs_buf, TMP_INST_BUF_LEN, 0, op_size);
-            emit_text("    %s $%d, %%%s", movs_buf, operand->imm.as_int._s32, dst_reg_name);
+            imm_to_str(imm_str, sizeof(imm_str), operand->type, operand->imm);
+            emit_text("    mov %s, %s", dst_reg_name, imm_str);
             break;
         }
         case OPERAND_FRAME_OFFSET:
-            emit_text("    %s %d(%%rbp), %%%s", mov_inst(op_size), operand->offset, dst_reg_name);
+            emit_text("    %s %s, %s [rbp + %d]",
+                      mov_inst(op_size),
+                      dst_reg_name,
+                      mem_size_label[op_size], operand->offset);
             break;
         case OPERAND_GLOBAL_VAR:
-            emit_text("    %s %s(%%rip), %%%s", mov_inst(op_size), operand->var, dst_reg_name);
+            emit_text("    %s %s, %s [rel %s]",
+                      mov_inst(op_size),
+                      dst_reg_name,
+                      mem_size_label[op_size], operand->var);
             break;
         case OPERAND_REGISTER:
             if (operand->reg != reg)
-                emit_text("    %s %%%s, %%%s", mov_inst(op_size), reg_names[op_size][operand->reg], dst_reg_name);
+                emit_text("    %s %s, %s",
+                        mov_inst(op_size),
+                        dst_reg_name,
+                        reg_names[op_size][operand->reg]);
 
             break;
         default:
@@ -535,13 +606,21 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
 
         if (rhs_op->kind == OPERAND_IMMEDIATE)
         {
-            emit_text("    %s $%d, %d(%%rbp)", mov_inst(var_size), rhs_op->imm.as_int._s32, var_offset);
+            char imm_str[32];
+
+            imm_to_str(imm_str, sizeof(imm_str), rhs_op->type, rhs_op->imm);
+            emit_text("    %s %s [rbp + %d], %s",
+                      mov_inst(var_size),
+                      mem_size_label[var_size], var_offset,
+                      imm_str);
         }
         else
         {
             ensure_operand_in_reg(rhs_op);
-            emit_text("    %s %%%s, %d(%%rbp)", mov_inst(var_size), reg_names[rhs_op->type->size][rhs_op->reg],
-                      var_offset);
+            emit_text("    %s %s [rbp + %d], %s",
+                      mov_inst(var_size),
+                      mem_size_label[var_size], var_offset,
+                      reg_names[rhs_op->type->size][rhs_op->reg]);
         }
     }
     else if (var_op->kind == OPERAND_GLOBAL_VAR)
@@ -550,13 +629,21 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
 
         if (rhs_op->kind == OPERAND_IMMEDIATE)
         {
-            emit_text("    %s $%d, %s(%%rip)", mov_inst(var_size), rhs_op->imm.as_int._s32, var_name);
+            char imm_str[32];
+
+            imm_to_str(imm_str, sizeof(imm_str), rhs_op->type, rhs_op->imm);
+            emit_text("    %s %s [rel %s], %s",
+                      mov_inst(var_size),
+                      mem_size_label[var_size], var_name,
+                      imm_str);
         }
         else
         {
             ensure_operand_in_reg(rhs_op);
-            emit_text("    %s %%%s, %s(%%rip)", mov_inst(var_size), reg_names[rhs_op->type->size][rhs_op->reg],
-                      var_name);
+            emit_text("    %s %s [rel %s], %s",
+                      mov_inst(var_size),
+                      mem_size_label[var_size], var_name,
+                      reg_names[rhs_op->type->size][rhs_op->reg]);
         }
     }
     else
@@ -572,20 +659,33 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
 
     if (src->kind == OPERAND_IMMEDIATE)
     {
-        emit_text("    %s $%d, %%%s", op_inst, src->imm.as_int._s32, reg_names[dst->type->size][dst->reg]);
+        char imm_str[32];
+
+        imm_to_str(imm_str, sizeof(imm_str), src->type, src->imm);
+        emit_text("    %s %s, %s", op_inst, reg_names[dst->type->size][dst->reg], imm_str);
     }
     else if (src->kind == OPERAND_FRAME_OFFSET)
     {
-        emit_text("    %s %d(%%rbp), %%%s", op_inst, src->offset, reg_names[dst->type->size][dst->reg]);
+        emit_text("    %s %s, %s [rbp + %d]",
+                  op_inst,
+                  reg_names[dst->type->size][dst->reg],
+                  mem_size_label[src->type->size], src->offset);
     }
     else if (src->kind == OPERAND_GLOBAL_VAR)
     {
-        emit_text("    %s %s(%%rip), %%%s", op_inst, src->var, reg_names[dst->type->size][dst->reg]);
+        // NOTE: add rax, [rel var_name] same as add rax, [rip + (var_name - nextInsn)]
+        // OR, add rax, [var_name wrt rip]
+        emit_text("    %s %s, %s [rel %s]",
+                  op_inst,
+                  reg_names[dst->type->size][dst->reg],
+                  mem_size_label[src->type->size], src->var);
     }
     else if (src->kind == OPERAND_REGISTER)
     {
-        emit_text("    %s %%%s, %%%s", op_inst, reg_names[src->type->size][src->reg],
-                  reg_names[dst->type->size][dst->reg]);
+        emit_text("    %s %s, %s", 
+                  op_inst, 
+                  reg_names[dst->type->size][dst->reg],
+                  reg_names[src->type->size][src->reg]);
     }
     else
     {
@@ -608,8 +708,11 @@ static void emit_add(Type* type, Operand* src, Operand* dst)
     else if (dst->kind == OPERAND_IMMEDIATE)
     {
         // Add into the src register.
+        char imm_str[32];
+
+        imm_to_str(imm_str, sizeof(imm_str), dst->type, dst->imm);
         ensure_operand_in_reg(src);
-        emit_text("    %s $%d, %%%s", add_inst(size), dst->imm.as_int._s32, reg_names[src->type->size][src->reg]);
+        emit_text("    %s %s, %d", add_inst(size), reg_names[src->type->size][src->reg], imm_str);
 
         // Steal src operand's register.
         dst->kind = OPERAND_REGISTER;
@@ -726,7 +829,7 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
 
         if (is_caller_saved && is_being_used)
         {
-            emit_text("    push %%%s", reg_names[8][reg]);
+            emit_text("    push %s", reg_names[8][reg]);
             free_reg(reg);
         }
     }
@@ -788,7 +891,7 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
             assert(proc_op.kind == OPERAND_FRAME_OFFSET || proc_op.kind == OPERAND_GLOBAL_VAR);
             ensure_operand_in_reg(&proc_op);
 
-            emit_text("    call *%%%s", reg_names[proc_op.type->size][proc_op.reg]);
+            emit_text("    call %s", reg_names[proc_op.type->size][proc_op.reg]);
         }
 
         free_operand(&proc_op);
@@ -805,8 +908,11 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
             result_reg = next_reg();
             size_t result_size = result_type->size;
 
-            emit_text("    %s %%%s, %%%s", mov_inst(result_size), reg_names[result_size][RAX],
-                      reg_names[result_size][result_reg]);
+            // mov RESULT_REG, RAX
+            emit_text("    %s %s, %s",
+                      mov_inst(result_size),
+                      reg_names[result_size][result_reg],
+                      reg_names[result_size][RAX]);
         }
         else
         {
@@ -834,9 +940,20 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
 
         if (is_caller_saved && was_being_used)
         {
-            emit_text("    pop %%%s", reg_names[8][reg]);
+            emit_text("    pop %s", reg_names[8][reg]);
             alloc_reg(reg);
         }
+    }
+}
+static void gen_expr_cast(ExprCast* ecast, Operand* dest)
+{
+    if (type_is_arithmetic(ecast->super.type) && type_is_arithmetic(dest->type))
+    {
+        ftprint_out("Gen cast\n");
+    }
+    else
+    {
+        assert(!"Can only generate cast code for arithmetic types");
     }
 }
 
@@ -861,6 +978,9 @@ static void gen_expr(Expr* expr, Operand* dest)
             break;
         case CST_ExprCall:
             gen_expr_call((ExprCall*)expr, dest);
+            break;
+        case CST_ExprCast:
+            gen_expr_cast((ExprCast*)expr, dest);
             break;
         default:
             ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);
@@ -887,8 +1007,8 @@ static void gen_stmt_return(StmtReturn* sreturn)
             assert(0);
         }
 
-        // mov OP_REG, %rax
-        emit_text("    %s %%%s, %%%s", mov_inst(op_size), reg_names[op_size][operand.reg], reg_names[op_size][RAX]);
+        // mov rax, OP_REG
+        emit_text("    %s %s, %s", mov_inst(op_size), reg_names[op_size][RAX], reg_names[op_size][operand.reg]);
         free_reg(RAX);
     }
 
@@ -998,7 +1118,7 @@ static void gen_stmt_if(StmtIf* stmt)
 
         gen_expr(cond_expr, &cond_op);
         ensure_operand_in_reg(&cond_op);
-        emit_text("    cmp $0, %%%s", reg_names[cond_op.type->size][cond_op.reg]);
+        emit_text("    cmp %s, 0", reg_names[cond_op.type->size][cond_op.reg]);
         free_operand(&cond_op);
 
         if (else_body)
@@ -1051,7 +1171,7 @@ static void gen_stmt_while(StmtWhile* stmt)
 
         gen_expr(cond_expr, &cond_op);
         ensure_operand_in_reg(&cond_op);
-        emit_text("    cmp $0, %%%s", reg_names[cond_op.type->size][cond_op.reg]);
+        emit_text("    cmp %s, 0", reg_names[cond_op.type->size][cond_op.reg]);
         free_operand(&cond_op);
 
         emit_text("    jne while.top.%d", while_id);
@@ -1088,7 +1208,7 @@ static void gen_stmt_do_while(StmtDoWhile* stmt)
 
         gen_expr(cond_expr, &cond_op);
         ensure_operand_in_reg(&cond_op);
-        emit_text("    cmp $0, %%%s", reg_names[cond_op.type->size][cond_op.reg]);
+        emit_text("    cmp %s, 0", reg_names[cond_op.type->size][cond_op.reg]);
         free_operand(&cond_op);
         emit_text("    jne dowhile.top.%d", while_id);
     }
@@ -1232,7 +1352,10 @@ static size_t compute_proc_var_offsets(DeclProc* dproc)
                 stack_size = ALIGN_UP(stack_size, arg_align);
                 sym->offset = -stack_size;
 
-                emit_text("    %s %%%s, %d(%%rbp)", mov_inst(arg_size), reg_names[arg_size][arg_reg], sym->offset);
+                emit_text("    %s [rbp + %d], %s",
+                          mov_inst(arg_size),
+                          mem_size_label[arg_size], sym->offset,
+                          reg_names[arg_size][arg_reg]);
 
                 arg_index += 1;
             }
@@ -1340,12 +1463,12 @@ static void gen_proc(Symbol* sym)
     enter_proc(dproc);
 
     emit_text("");
-    emit_text(".text");
-    emit_text(".globl %s", sym->name);
+    emit_text("SECTION .text");
+    emit_text("global %s", sym->name);
     emit_text("%s:", sym->name);
 
-    emit_text("    push %%rbp");
-    emit_text("    movq %%rsp, %%rbp");
+    emit_text("    push rbp");
+    emit_text("    mov rbp, rsp");
 
     // NOTE: We don't yet know which callee-saved registers the procedure will use,
     // so save a pointer to this instruction line for later patching. (HACKY)
@@ -1358,7 +1481,7 @@ static void gen_proc(Symbol* sym)
     size_t stack_size = compute_proc_var_offsets(dproc); // NOTE: Will spill argument registers.
 
     if (stack_size)
-        fill_line(sub_rsp_inst, "    subq $%d, %%rsp", stack_size);
+        fill_line(sub_rsp_inst, "    sub rsp, %d", stack_size);
 
     gen_stmt_block_body(&dproc->stmts);
 
@@ -1375,8 +1498,8 @@ static void gen_proc(Symbol* sym)
 
             if (is_reg_set(generator.curr_proc.used_callee_regs, reg))
             {
-                ftprint_char_array(&tmp_line, false, "    push %%%s\n", reg_names[8][reg]);
-                emit_text("    pop %%%s", reg_names[8][reg]);
+                ftprint_char_array(&tmp_line, false, "    push %s\n", reg_names[8][reg]);
+                emit_text("    pop %s", reg_names[8][reg]);
                 unset_reg(&generator.curr_proc.used_callee_regs, reg);
             }
         }
@@ -1388,9 +1511,9 @@ static void gen_proc(Symbol* sym)
     allocator_restore_state(mem_state);
 
     if (stack_size)
-        emit_text("    movq %%rbp, %%rsp");
+        emit_text("    movq rsp, rbp");
 
-    emit_text("    pop %%rbp");
+    emit_text("    pop rbp");
     emit_text("    ret");
 
     exit_proc();
@@ -1403,7 +1526,7 @@ static void gen_global_scope(Scope* scope)
     //
     // Generate global variables
     //
-    emit_data(".data\n");
+    emit_data("SECTION .data\n");
 
     List* head = &scope->sym_list;
     List* it = head->next;
@@ -1416,7 +1539,7 @@ static void gen_global_scope(Scope* scope)
         {
             DeclVar* dvar = (DeclVar*)sym->decl;
 
-            emit_data(".align %d", sym->type->align);
+            emit_data("ALIGN %d", sym->type->align);
             emit_data("%s: ", sym->name);
             emit_data_value(sym->type, dvar->init->const_val);
         }
@@ -1461,7 +1584,7 @@ bool gen_gasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* 
     gen_global_scope(scope);
 
     // Output assembly to file.
-    ftprint_file(generator.out_fd, false, "# Generated by the Nibble compiler.\n\n");
+    ftprint_file(generator.out_fd, false, "; Generated by the Nibble compiler.\n\n");
 
     for (Bucket* bucket = generator.data_lines->first; bucket; bucket = bucket->next)
     {

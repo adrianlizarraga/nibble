@@ -1,6 +1,13 @@
 #include "resolver.h"
 #include "parser.h"
 
+typedef struct ExprOperand {
+    Type* type;
+    bool is_const;
+    bool is_lvalue;
+    Scalar const_val;
+} ExprOperand;
+
 static Symbol* resolve_name(Resolver* resolver, const char* name);
 static bool resolve_symbol(Resolver* resolver, Symbol* sym);
 static bool resolve_decl_var(Resolver* resolver, Symbol* sym);
@@ -9,10 +16,19 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym);
 static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym);
 static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym);
 
+static bool cast_eop(ExprOperand* eop, Type* type);
+static bool convert_eop(ExprOperand* eop, Type* dst_type);
+static bool eop_is_null_ptr(ExprOperand eop);
+static bool can_convert_eop(ExprOperand* operand, Type* dst_type);
+static bool can_cast_eop(ExprOperand* eop, Type* dst_type);
+static void eop_decay(Resolver* resolver, ExprOperand* eop);
+static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr);
+
 static bool resolve_expr(Resolver* resolver, Expr* expr);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr);
 static bool resolve_expr_call(Resolver* resolver, Expr* expr);
+static bool resolve_expr_ident(Resolver* resolver, Expr* expr);
 static bool resolve_cond_expr(Resolver* resolver, Expr* expr);
 
 static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec);
@@ -217,6 +233,186 @@ static void init_builtin_syms(Resolver* resolver)
     add_global_type_symbol(resolver, "usize", type_usize);
 }
 
+#define CASE_INT_CAST(k, o, t, f)                                                                                      \
+    case k:                                                                                                            \
+        switch (t->kind)                                                                                               \
+        {                                                                                                              \
+            case INTEGER_U8:                                                                                           \
+                o->const_val.as_int._u8 = (u8)o->const_val.as_int.f;                                                   \
+                break;                                                                                                 \
+            case INTEGER_S8:                                                                                           \
+                o->const_val.as_int._s8 = (s8)o->const_val.as_int.f;                                                   \
+                break;                                                                                                 \
+            case INTEGER_U16:                                                                                          \
+                o->const_val.as_int._u16 = (u16)o->const_val.as_int.f;                                                 \
+                break;                                                                                                 \
+            case INTEGER_S16:                                                                                          \
+                o->const_val.as_int._s16 = (s16)o->const_val.as_int.f;                                                 \
+                break;                                                                                                 \
+            case INTEGER_U32:                                                                                          \
+                o->const_val.as_int._u32 = (u32)o->const_val.as_int.f;                                                 \
+                break;                                                                                                 \
+            case INTEGER_S32:                                                                                          \
+                o->const_val.as_int._s32 = (s32)o->const_val.as_int.f;                                                 \
+                break;                                                                                                 \
+            case INTEGER_U64:                                                                                          \
+                o->const_val.as_int._u64 = (u64)o->const_val.as_int.f;                                                 \
+                break;                                                                                                 \
+            case INTEGER_S64:                                                                                          \
+                o->const_val.as_int._s64 = (s64)o->const_val.as_int.f;                                                 \
+                break;                                                                                                 \
+            default:                                                                                                   \
+                o->is_const = false;                                                                                   \
+                break;                                                                                                 \
+        }                                                                                                              \
+        break;
+
+static bool cast_eop(ExprOperand* eop, Type* dst_type)
+{
+    Type* src_type = eop->type;
+
+    if (src_type == dst_type)
+    {
+        eop->type = dst_type;
+        return true;
+    }
+
+    if (!can_cast_eop(eop, dst_type))
+        return false;
+
+    // From this point, the following is true:
+    // 1) src_type != dst_type
+    // 2) types are castable.
+
+    if (eop->is_const)
+    {
+        if (src_type->kind == TYPE_FLOAT)
+        {
+            eop->is_const = dst_type->kind != TYPE_INTEGER;
+        }
+        else
+        {
+            if (src_type->kind == TYPE_ENUM)
+                src_type = src_type->as_enum.base;
+
+            if (dst_type->kind == TYPE_ENUM)
+                dst_type = dst_type->as_enum.base;
+
+            switch (src_type->as_integer.kind)
+            {
+                CASE_INT_CAST(INTEGER_U8, eop, dst_type, _u8)
+                CASE_INT_CAST(INTEGER_S8, eop, dst_type, _s8)
+                CASE_INT_CAST(INTEGER_U16, eop, dst_type, _u16)
+                CASE_INT_CAST(INTEGER_S16, eop, dst_type, _s16)
+                CASE_INT_CAST(INTEGER_U32, eop, dst_type, _u32)
+                CASE_INT_CAST(INTEGER_S32, eop, dst_type, _s32)
+                CASE_INT_CAST(INTEGER_U64, eop, dst_type, _u64)
+                CASE_INT_CAST(INTEGER_S64, eop, dst_type, _s64)
+                default:
+                    eop->is_const = false;
+                    break;
+            }
+        }
+    }
+
+    eop->type = dst_type;
+
+    return true;
+}
+
+static bool convert_eop(ExprOperand* eop, Type* dst_type)
+{
+    if (!can_convert_eop(eop, dst_type))
+        return false;
+
+    cast_eop(eop, dst_type);
+
+    eop->is_lvalue = false;
+
+    return true;
+}
+
+static bool eop_is_null_ptr(ExprOperand eop)
+{
+    Type* type = eop.type;
+
+    if (eop.is_const && (type->kind == TYPE_INTEGER || type->kind == TYPE_PTR))
+    {
+        cast_eop(&eop, type_u64);
+
+        return eop.const_val.as_int._u64 == 0;
+    }
+
+    return false;
+}
+
+static bool can_convert_eop(ExprOperand* operand, Type* dst_type)
+{
+    bool convertible = false;
+    Type* src_type = operand->type;
+
+    // Same types
+    if (dst_type == src_type)
+    {
+        convertible = true;
+    }
+    // Can convert anything to void
+    else if (dst_type == type_void)
+    {
+        convertible = true;
+    }
+    // Can convert between arithmetic types
+    else if (type_is_arithmetic(dst_type) && type_is_arithmetic(src_type))
+    {
+        convertible = true;
+    }
+    // Can convert const NULL (or 0) to a ptr (or proc ptr).
+    else if (type_is_ptr_like(dst_type) && eop_is_null_ptr(*operand))
+    {
+        convertible = true;
+    }
+    else if ((dst_type->kind == TYPE_PTR) && (src_type->kind == TYPE_PTR))
+    {
+        Type* dst_pointed_type = dst_type->as_ptr.base;
+        Type* src_pointed_type = src_type->as_ptr.base;
+
+        // Can convert a "derived" type to a "base" type.
+        // A type is "derived" if its first field is of type "base".
+        // Ex: struct Base { ... };  struct Derived { Base base;};
+        // Derived* d = malloc(...);
+        // Base* b = d;
+        if (type_is_aggregate(dst_pointed_type) && type_is_aggregate(src_pointed_type) &&
+            (dst_pointed_type == src_pointed_type->as_aggregate.fields[0].type))
+        {
+            convertible = true;
+        }
+        // Can convert if either is a void*
+        else if ((dst_pointed_type == type_void) || (src_pointed_type == type_void))
+        {
+            convertible = true;
+        }
+    }
+
+    return convertible;
+}
+
+static bool can_cast_eop(ExprOperand* eop, Type* dst_type)
+{
+    bool castable = false;
+    Type* src_type = eop->type;
+
+    if (can_convert_eop(eop, dst_type))
+        castable = true;
+    else if (dst_type->kind == TYPE_INTEGER)
+        castable = type_is_ptr_like(src_type);
+    else if (src_type->kind == TYPE_INTEGER)
+        castable = type_is_ptr_like(dst_type);
+    else if (type_is_ptr_like(dst_type) && type_is_ptr_like(src_type))
+        castable = true;
+
+    return castable;
+}
+
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
 {
     (void)resolver;
@@ -406,17 +602,25 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         if (!resolve_expr(resolver, arg->expr))
             return false;
 
-        Type* arg_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, arg->expr->type);
-        Type* param_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, params[i]);
+        Type* param_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, params[i]); // TODO: Cast at site?
 
-        // TODO: Support type conversion
-        if (arg->expr->type != param_type)
+        ExprOperand arg_eop = {.type = arg->expr->type,
+                               .is_const = arg->expr->is_const,
+                               .is_lvalue = arg->expr->is_lvalue,
+                               .const_val = arg->expr->const_val};
+
+        if (param_type->kind == TYPE_PTR)
+            eop_decay(resolver, &arg_eop);
+
+        if (!convert_eop(&arg_eop, param_type))
         {
             resolver_on_error(resolver,
                               "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`",
-                              (i + 1), type_name(params[i]), type_name(arg_type));
+                              (i + 1), type_name(params[i]), type_name(arg->expr->type));
             return false;
         }
+
+        arg->expr = try_wrap_cast_expr(resolver, &arg_eop, arg->expr);
 
         it = it->next;
         i += 1;
@@ -570,22 +774,28 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
             if (!resolve_expr(resolver, expr))
                 return false;
 
-            Type* inferred_type = expr->type;
+            ExprOperand right_eop = {.type = expr->type,
+                                     .is_const = expr->is_const,
+                                     .is_lvalue = expr->is_lvalue,
+                                     .const_val = expr->const_val};
 
-            // TODO: Check if can convert type.
-            if (inferred_type != declared_type)
+            if (declared_type->kind == TYPE_PTR)
+                eop_decay(resolver, &right_eop);
+
+            if (!convert_eop(&right_eop, declared_type))
             {
                 resolver_on_error(resolver, "Incompatible types. Cannot convert `%s` to `%s`",
-                                  type_name(inferred_type), type_name(declared_type));
+                                  type_name(right_eop.type), type_name(declared_type));
                 return false;
             }
 
-            if (global && !expr->is_const)
+            if (global && !right_eop.is_const)
             {
                 resolver_on_error(resolver, "Global variables must be initialized with a constant value");
                 return false;
             }
 
+            decl->init = try_wrap_cast_expr(resolver, &right_eop, decl->init);
             type = declared_type;
         }
         else
@@ -599,7 +809,7 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 
         if (!resolve_expr(resolver, expr))
             return false;
-        
+
         if (global && !expr->is_const)
         {
             resolver_on_error(resolver, "Global variables must be initialized with a constant value");
@@ -645,13 +855,22 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
     {
         Type* declared_type = resolve_typespec(resolver, typespec);
 
-        if (declared_type != init->type)
+        ExprOperand init_eop = {.type = init->type,
+                                .is_const = init->is_const,
+                                .is_lvalue = init->is_lvalue,
+                                .const_val = init->const_val};
+
+        if (declared_type->kind == TYPE_PTR)
+            eop_decay(resolver, &init_eop);
+
+        if (!convert_eop(&init_eop, declared_type))
         {
-            // TODO: Support type conversions
             resolver_on_error(resolver, "Incompatible types. Cannot convert expression of type `%s` to `%s`",
                               type_name(init->type), type_name(declared_type));
             return false;
         }
+
+        decl->init = try_wrap_cast_expr(resolver, &init_eop, decl->init);
 
         type = declared_type;
     }
@@ -659,7 +878,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
     {
         type = init->type;
     }
-    
+
     assert(type);
 
     sym->type = type;
@@ -680,7 +899,8 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     for (List* it = head->next; it != head; it = it->next)
     {
         DeclVar* proc_param = (DeclVar*)list_entry(it, Decl, lnode);
-        Symbol* param_sym = add_unresolved_symbol(resolver, decl->scope, SYMBOL_VAR, proc_param->name, (Decl*)proc_param);
+        Symbol* param_sym =
+            add_unresolved_symbol(resolver, decl->scope, SYMBOL_VAR, proc_param->name, (Decl*)proc_param);
 
         assert(param_sym);
 
@@ -881,6 +1101,32 @@ static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_typ
     return ret;
 }
 
+static void eop_decay(Resolver* resolver, ExprOperand* eop)
+{
+    eop->type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, eop->type);
+    eop->is_lvalue = false;
+}
+
+static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr)
+{
+    Expr* expr = orig_expr;
+
+    if (orig_expr->type != eop->type)
+    {
+        ftprint_out("Implicit cast from %s to %s\n", type_name(orig_expr->type), type_name(eop->type));
+        expr = new_expr_cast(resolver->ast_mem, NULL, orig_expr, true, orig_expr->range);
+
+        expr->type = eop->type;
+    }
+
+    expr->is_lvalue = eop->is_lvalue;
+    expr->is_const = eop->is_const;
+
+    memcpy(&expr->const_val, &eop->const_val, sizeof(Scalar));
+
+    return expr;
+}
+
 static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 {
     StmtExprAssign* sassign = (StmtExprAssign*)stmt;
@@ -913,15 +1159,23 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
     }
 
     Type* left_type = left_expr->type;
-    Type* right_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, right_expr->type);
+    Type* right_type = right_expr->type;
+    ExprOperand right_eop = {.type = right_type,
+                             .is_const = right_expr->is_const,
+                             .is_lvalue = right_expr->is_lvalue,
+                             .const_val = right_expr->const_val};
 
-    // TODO: Support type conversion.
-    if (left_type != right_type)
+    if (left_type->kind == TYPE_PTR)
+        eop_decay(resolver, &right_eop);
+
+    if (!convert_eop(&right_eop, left_type))
     {
         resolver_on_error(resolver, "Type mismatch in assignment statement: expected type `%s`, but got `%s`",
-                          type_name(left_type), type_name(right_type));
+                          type_name(left_type), type_name(right_eop.type));
         return 0;
     }
+
+    sassign->right = try_wrap_cast_expr(resolver, &right_eop, sassign->right);
 
     return RESOLVE_STMT_SUCCESS;
 }
@@ -951,13 +1205,21 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
                 if (!resolve_expr(resolver, sret->expr))
                     return RESOLVE_STMT_RETURNS;
 
-                // TODO: Support type conversions
-                if (sret->expr->type != ret_type)
+                ExprOperand ret_eop = {.type = sret->expr->type,
+                                       .is_const = sret->expr->is_const,
+                                       .is_lvalue = sret->expr->is_lvalue,
+                                       .const_val = sret->expr->const_val};
+
+                eop_decay(resolver, &ret_eop);
+
+                if (!convert_eop(&ret_eop, ret_type))
                 {
                     resolver_on_error(resolver, "Invalid return type. Wanted `%s`, but got `%s`", type_name(ret_type),
-                                      type_name(sret->expr->type));
+                                      type_name(ret_eop.type));
                     return RESOLVE_STMT_RETURNS;
                 }
+
+                sret->expr = try_wrap_cast_expr(resolver, &ret_eop, sret->expr);
             }
 
             return RESOLVE_STMT_SUCCESS | RESOLVE_STMT_RETURNS;
@@ -1064,7 +1326,6 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
             break;
     }
 
-
     return false;
 }
 
@@ -1074,7 +1335,6 @@ static Symbol* resolve_name(Resolver* resolver, const char* name)
 
     if (!sym)
         return NULL;
-
 
     if (!resolve_symbol(resolver, sym))
         return NULL;
@@ -1138,4 +1398,3 @@ void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, B
     set_scope(resolver, global_scope);
     init_builtin_syms(resolver);
 }
-
