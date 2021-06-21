@@ -5,7 +5,9 @@
 ; See:
 ; https://stackoverflow.com/questions/3577922/how-to-link-a-gas-assembly-program-that-uses-the-c-standard-library-with-ld-with
 ; https://en.wikipedia.org/wiki/X86_assembly_language#Syntax
-
+;
+; Disassemble in intel syntax (help converting att to intel):
+; objdump -d --disassembler-options=intel a.out
 SECTION .data
 ALIGN 4
 ga: dd 10
