@@ -1352,7 +1352,7 @@ static size_t compute_proc_var_offsets(DeclProc* dproc)
                 stack_size = ALIGN_UP(stack_size, arg_align);
                 sym->offset = -stack_size;
 
-                emit_text("    %s [rbp + %d], %s",
+                emit_text("    %s %s [rbp + %d], %s",
                           mov_inst(arg_size),
                           mem_size_label[arg_size], sym->offset,
                           reg_names[arg_size][arg_reg]);
@@ -1511,7 +1511,7 @@ static void gen_proc(Symbol* sym)
     allocator_restore_state(mem_state);
 
     if (stack_size)
-        emit_text("    movq rsp, rbp");
+        emit_text("    mov rsp, rbp");
 
     emit_text("    pop rbp");
     emit_text("    ret");
