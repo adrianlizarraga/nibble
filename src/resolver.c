@@ -609,8 +609,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
                                .is_lvalue = arg->expr->is_lvalue,
                                .const_val = arg->expr->const_val};
 
-        if (param_type->kind == TYPE_PTR)
-            eop_decay(resolver, &arg_eop);
+        eop_decay(resolver, &arg_eop);
 
         if (!convert_eop(&arg_eop, param_type))
         {
@@ -1113,16 +1112,21 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
 
     if (orig_expr->type != eop->type)
     {
-        ftprint_out("Implicit cast from %s to %s\n", type_name(orig_expr->type), type_name(eop->type));
-        expr = new_expr_cast(resolver->ast_mem, NULL, orig_expr, true, orig_expr->range);
+        if (expr->is_const)
+        {
+            assert(eop->is_const);
+            expr->const_val = eop->const_val;
+        }
+        else
+        {
+            assert(!eop->is_const);
+            expr = new_expr_cast(resolver->ast_mem, NULL, orig_expr, true, orig_expr->range);
+        }
 
         expr->type = eop->type;
     }
 
     expr->is_lvalue = eop->is_lvalue;
-    expr->is_const = eop->is_const;
-
-    memcpy(&expr->const_val, &eop->const_val, sizeof(Scalar));
 
     return expr;
 }

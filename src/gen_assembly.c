@@ -50,19 +50,9 @@ static uint32_t reg_flags[] = {
     [R12] = CALLEE_SAVED, [R13] = CALLEE_SAVED, [R14] = CALLEE_SAVED,      [R15] = CALLEE_SAVED};
 
 #define MAX_OP_BYTE_SIZE 8
-static const char* mem_size_label[MAX_OP_BYTE_SIZE + 1] = {
-    [1] = "byte",
-    [2] = "word",
-    [4] = "dword",
-    [8] = "qword"
-};
+static const char* mem_size_label[MAX_OP_BYTE_SIZE + 1] = {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword"};
 
-static const char* data_size_label[MAX_OP_BYTE_SIZE + 1] = {
-    [1] = "db",
-    [2] = "dw",
-    [4] = "dd",
-    [8] = "dq"
-};
+static const char* data_size_label[MAX_OP_BYTE_SIZE + 1] = {[1] = "db", [2] = "dw", [4] = "dd", [8] = "dq"};
 
 static const char* reg_names[MAX_OP_BYTE_SIZE + 1][REG_COUNT] = {
     [1] =
@@ -323,84 +313,6 @@ static void operand_from_sym(Operand* operand, Symbol* sym)
     }
 }
 
-static const char* add_inst(unsigned size)
-{
-#if ATT_SYNTAX
-    switch (size)
-    {
-        case 1:
-            return "addb";
-        case 2:
-            return "addw";
-        case 4:
-            return "addl";
-        case 8:
-            return "addq";
-        default:
-            ftprint_err("INTERNAL ERROR: unsupported add instruction size: %u\n", size);
-            assert(0);
-            break;
-    }
-
-    return NULL;
-#else
-    (void)size;
-    return "add";
-#endif
-}
-
-static const char* sub_inst(unsigned size)
-{
-#if ATT_SYNTAX
-    switch (size)
-    {
-        case 1:
-            return "subb";
-        case 2:
-            return "subw";
-        case 4:
-            return "subl";
-        case 8:
-            return "subq";
-        default:
-            ftprint_err("INTERNAL ERROR: unsupported sub instruction size: %u\n", size);
-            assert(0);
-            break;
-    }
-
-    return NULL;
-#else
-    (void)size;
-    return "sub";
-#endif
-}
-
-static const char* mov_inst(unsigned size)
-{
-#if ATT_SYNTAX
-    switch (size)
-    {
-        case 1:
-            return "movb";
-        case 2:
-            return "movw";
-        case 4:
-            return "movl";
-        case 8:
-            return "movq";
-        default:
-            ftprint_err("INTERNAL ERROR: unsupported mov instruction size: %u\n", size);
-            assert(0);
-            break;
-    }
-
-    return NULL;
-#else
-    (void)size;
-    return "mov";
-#endif
-}
-
 static size_t imm_to_str(char* buf, size_t len, Type* type, Scalar imm)
 {
     if (type->kind == TYPE_INTEGER)
@@ -425,7 +337,6 @@ static size_t imm_to_str(char* buf, size_t len, Type* type, Scalar imm)
                 return snprintf(buf, len, "%ld", imm.as_int._s64);
             default:
                 return 0;
-
         }
     }
     else if (type->kind == TYPE_PTR)
@@ -542,10 +453,10 @@ static void free_operand(Operand* operand)
         free_reg(operand->reg);
 }
 
-static void emit_operand_to_reg(Operand* operand, Register reg)
+static void emit_operand_to_reg(Operand* operand, Register reg, size_t reg_size)
 {
     size_t op_size = operand->type->size;
-    const char* dst_reg_name = reg_names[op_size][reg];
+    const char* dst_reg_name = reg_names[reg_size][reg];
 
     switch (operand->kind)
     {
@@ -558,23 +469,15 @@ static void emit_operand_to_reg(Operand* operand, Register reg)
             break;
         }
         case OPERAND_FRAME_OFFSET:
-            emit_text("    %s %s, %s [rbp + %d]",
-                      mov_inst(op_size),
-                      dst_reg_name,
-                      mem_size_label[op_size], operand->offset);
+            emit_text("    mov %s, %s [rbp + %d]", dst_reg_name, mem_size_label[op_size],
+                      operand->offset);
             break;
         case OPERAND_GLOBAL_VAR:
-            emit_text("    %s %s, %s [rel %s]",
-                      mov_inst(op_size),
-                      dst_reg_name,
-                      mem_size_label[op_size], operand->var);
+            emit_text("    mov %s, %s [rel %s]", dst_reg_name, mem_size_label[op_size], operand->var);
             break;
         case OPERAND_REGISTER:
             if (operand->reg != reg)
-                emit_text("    %s %s, %s",
-                        mov_inst(op_size),
-                        dst_reg_name,
-                        reg_names[op_size][operand->reg]);
+                emit_text("    mov %s, %s", dst_reg_name, reg_names[op_size][operand->reg]);
 
             break;
         default:
@@ -589,7 +492,7 @@ static void ensure_operand_in_reg(Operand* operand)
     if (operand->kind != OPERAND_REGISTER)
     {
         Register reg = next_reg();
-        emit_operand_to_reg(operand, reg);
+        emit_operand_to_reg(operand, reg, operand->type->size);
 
         operand->kind = OPERAND_REGISTER;
         operand->reg = reg;
@@ -609,17 +512,12 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
             char imm_str[32];
 
             imm_to_str(imm_str, sizeof(imm_str), rhs_op->type, rhs_op->imm);
-            emit_text("    %s %s [rbp + %d], %s",
-                      mov_inst(var_size),
-                      mem_size_label[var_size], var_offset,
-                      imm_str);
+            emit_text("    mov %s [rbp + %d], %s", mem_size_label[var_size], var_offset, imm_str);
         }
         else
         {
             ensure_operand_in_reg(rhs_op);
-            emit_text("    %s %s [rbp + %d], %s",
-                      mov_inst(var_size),
-                      mem_size_label[var_size], var_offset,
+            emit_text("    mov %s [rbp + %d], %s", mem_size_label[var_size], var_offset,
                       reg_names[rhs_op->type->size][rhs_op->reg]);
         }
     }
@@ -632,17 +530,12 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
             char imm_str[32];
 
             imm_to_str(imm_str, sizeof(imm_str), rhs_op->type, rhs_op->imm);
-            emit_text("    %s %s [rel %s], %s",
-                      mov_inst(var_size),
-                      mem_size_label[var_size], var_name,
-                      imm_str);
+            emit_text("    mov %s [rel %s], %s", mem_size_label[var_size], var_name, imm_str);
         }
         else
         {
             ensure_operand_in_reg(rhs_op);
-            emit_text("    %s %s [rel %s], %s",
-                      mov_inst(var_size),
-                      mem_size_label[var_size], var_name,
+            emit_text("    mov %s [rel %s], %s", mem_size_label[var_size], var_name,
                       reg_names[rhs_op->type->size][rhs_op->reg]);
         }
     }
@@ -666,26 +559,19 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
     }
     else if (src->kind == OPERAND_FRAME_OFFSET)
     {
-        emit_text("    %s %s, %s [rbp + %d]",
-                  op_inst,
-                  reg_names[dst->type->size][dst->reg],
+        emit_text("    %s %s, %s [rbp + %d]", op_inst, reg_names[dst->type->size][dst->reg],
                   mem_size_label[src->type->size], src->offset);
     }
     else if (src->kind == OPERAND_GLOBAL_VAR)
     {
         // NOTE: add rax, [rel var_name] same as add rax, [rip + (var_name - nextInsn)]
         // OR, add rax, [var_name wrt rip]
-        emit_text("    %s %s, %s [rel %s]",
-                  op_inst,
-                  reg_names[dst->type->size][dst->reg],
+        emit_text("    %s %s, %s [rel %s]", op_inst, reg_names[dst->type->size][dst->reg],
                   mem_size_label[src->type->size], src->var);
     }
     else if (src->kind == OPERAND_REGISTER)
     {
-        emit_text("    %s %s, %s", 
-                  op_inst, 
-                  reg_names[dst->type->size][dst->reg],
-                  reg_names[src->type->size][src->reg]);
+        emit_text("    %s %s, %s", op_inst, reg_names[dst->type->size][dst->reg], reg_names[src->type->size][src->reg]);
     }
     else
     {
@@ -694,11 +580,9 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
     }
 }
 
-static void emit_add(Type* type, Operand* src, Operand* dst)
+static void emit_add(Operand* src, Operand* dst)
 {
     assert(src->type == dst->type);
-    assert(type == dst->type);
-    size_t size = type->size;
 
     if (dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE)
     {
@@ -712,25 +596,23 @@ static void emit_add(Type* type, Operand* src, Operand* dst)
 
         imm_to_str(imm_str, sizeof(imm_str), dst->type, dst->imm);
         ensure_operand_in_reg(src);
-        emit_text("    %s %s, %d", add_inst(size), reg_names[src->type->size][src->reg], imm_str);
+        emit_text("    add %s, %d", reg_names[src->type->size][src->reg], imm_str);
 
         // Steal src operand's register.
         dst->kind = OPERAND_REGISTER;
-        dst->type = type;
+        dst->type = src->type;
         dst->reg = src->reg;
         src->kind = OPERAND_NONE;
     }
     else
     {
-        emit_binary_op(add_inst(size), src, dst);
+        emit_binary_op("add", src, dst);
     }
 }
 
-static void emit_sub(Type* type, Operand* src, Operand* dst)
+static void emit_sub(Operand* src, Operand* dst)
 {
     assert(src->type == dst->type);
-    assert(type == dst->type);
-    size_t size = type->size;
 
     if (dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE)
     {
@@ -739,7 +621,7 @@ static void emit_sub(Type* type, Operand* src, Operand* dst)
     }
     else
     {
-        emit_binary_op(sub_inst(size), src, dst);
+        emit_binary_op("sub", src, dst);
     }
 }
 
@@ -754,7 +636,7 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             gen_expr(expr->left, dest);
             gen_expr(expr->right, &src);
 
-            emit_add(expr->super.type, &src, dest);
+            emit_add(&src, dest);
 
             free_operand(&src);
             break;
@@ -766,7 +648,7 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             gen_expr(expr->left, dest);
             gen_expr(expr->right, &src);
 
-            emit_sub(expr->super.type, &src, dest);
+            emit_sub(&src, dest);
 
             free_operand(&src);
             break;
@@ -775,6 +657,70 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             ftprint_err("INTERNAL ERROR: Unsupported binary op %d during code generation\n", expr->op);
             assert(0);
             break;
+    }
+}
+
+static void gen_expr_cast(ExprCast* ecast, Operand* dest)
+{
+    Type* from_type = ecast->expr->type;
+    Type* to_type = ecast->super.type;
+
+    assert(from_type != to_type);
+    assert(from_type->size != to_type->size);
+
+    ftprint_out("Gen: casting %s to %s\n", type_name(from_type), type_name(to_type));
+
+    if ((from_type->kind == TYPE_INTEGER) && (to_type->kind == TYPE_INTEGER))
+    {
+        Operand src = {0};
+
+        // Generate expression for src expression and load it into a register.
+        gen_expr(ecast->expr, &src);
+        ensure_operand_in_reg(&src);
+
+        Register dest_reg = next_reg();
+        const char* dest_reg_name = reg_names[to_type->size][dest_reg];
+        const char* src_reg_name = reg_names[src.type->size][src.reg];
+
+        // If from_type is larger than to_type, just use mov
+        if (from_type->size > to_type->size)
+        {
+            emit_text("    mov %s, %s", dest_reg_name, src_reg_name);
+        }
+        else
+        {
+            bool from_signed = from_type->as_integer.is_signed;
+
+            // If from_type is 32bit, use movsxd or mov for signed and unsigned, respectively.
+            if (from_type->size == 4)
+            {
+                if (from_signed)
+                    emit_text("    movsxd %s, %s", dest_reg_name, src_reg_name);
+                else
+                    emit_text("    mov %s, %s", dest_reg_name, src_reg_name);
+            }
+
+            // Else, use movsx for signed or movzx for unsigned.
+            else
+            {
+                assert(from_type->size != 8);
+
+                if (from_signed)
+                    emit_text("    movsx %s, %s", dest_reg_name, src_reg_name);
+                else
+                    emit_text("    movzx %s, %s", dest_reg_name, src_reg_name);
+            }
+        }
+
+        free_operand(&src);
+
+        dest->kind = OPERAND_REGISTER;
+        dest->type = to_type;
+        dest->reg = dest_reg;
+    }
+    else
+    {
+        assert(!"Can only generate cast code for integer types");
     }
 }
 
@@ -860,13 +806,13 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
                         assert(0);
                     }
 
-                    emit_operand_to_reg(&arg_ops[arg_index], arg_regs[arg_index]);
+                    emit_operand_to_reg(&arg_ops[arg_index], arg_regs[arg_index], arg_ops[arg_index].type->size);
                     free_reg(old_reg);
                 }
             }
             else
             {
-                emit_operand_to_reg(&arg_ops[arg_index], arg_regs[arg_index]);
+                emit_operand_to_reg(&arg_ops[arg_index], arg_regs[arg_index], arg_ops[arg_index].type->size);
             }
 
             free_operand(&arg_ops[arg_index]);
@@ -909,9 +855,7 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
             size_t result_size = result_type->size;
 
             // mov RESULT_REG, RAX
-            emit_text("    %s %s, %s",
-                      mov_inst(result_size),
-                      reg_names[result_size][result_reg],
+            emit_text("    mov %s, %s", reg_names[result_size][result_reg],
                       reg_names[result_size][RAX]);
         }
         else
@@ -943,17 +887,6 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
             emit_text("    pop %s", reg_names[8][reg]);
             alloc_reg(reg);
         }
-    }
-}
-static void gen_expr_cast(ExprCast* ecast, Operand* dest)
-{
-    if (type_is_arithmetic(ecast->super.type) && type_is_arithmetic(dest->type))
-    {
-        ftprint_out("Gen cast\n");
-    }
-    else
-    {
-        assert(!"Can only generate cast code for arithmetic types");
     }
 }
 
@@ -1008,7 +941,7 @@ static void gen_stmt_return(StmtReturn* sreturn)
         }
 
         // mov rax, OP_REG
-        emit_text("    %s %s, %s", mov_inst(op_size), reg_names[op_size][RAX], reg_names[op_size][operand.reg]);
+        emit_text("    mov %s, %s", reg_names[op_size][RAX], reg_names[op_size][operand.reg]);
         free_reg(RAX);
     }
 
@@ -1352,9 +1285,7 @@ static size_t compute_proc_var_offsets(DeclProc* dproc)
                 stack_size = ALIGN_UP(stack_size, arg_align);
                 sym->offset = -stack_size;
 
-                emit_text("    %s %s [rbp + %d], %s",
-                          mov_inst(arg_size),
-                          mem_size_label[arg_size], sym->offset,
+                emit_text("    mov %s [rbp + %d], %s", mem_size_label[arg_size], sym->offset,
                           reg_names[arg_size][arg_reg]);
 
                 arg_index += 1;
