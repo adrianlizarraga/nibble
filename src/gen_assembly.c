@@ -1,5 +1,6 @@
 #include "gen_assembly.h"
 #include "stream.h"
+#include "lexer.h"
 
 typedef struct Generator Generator;
 typedef struct Operand Operand;
@@ -48,6 +49,9 @@ static uint32_t reg_flags[] = {
     [RAX] = RET_REG,      [RCX] = ARG_REG,      [RDX] = ARG_REG | RET_REG, [RBX] = CALLEE_SAVED, [RSP] = CALLEE_SAVED,
     [RBP] = CALLEE_SAVED, [RSI] = ARG_REG,      [RDI] = ARG_REG,           [R8] = ARG_REG,       [R9] = ARG_REG,
     [R12] = CALLEE_SAVED, [R13] = CALLEE_SAVED, [R14] = CALLEE_SAVED,      [R15] = CALLEE_SAVED};
+
+static const char* setcc_from_op[] = {[TKN_EQ] = "sete",   [TKN_NOTEQ] = "setne", [TKN_GT] = "setg",
+                                      [TKN_GTEQ] = "setge", [TKN_LT] = "setl",   [TKN_LTEQ] = "setle"};
 
 #define MAX_OP_BYTE_SIZE 8
 static const char* mem_size_label[MAX_OP_BYTE_SIZE + 1] = {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword"};
@@ -469,8 +473,7 @@ static void emit_operand_to_reg(Operand* operand, Register reg, size_t reg_size)
             break;
         }
         case OPERAND_FRAME_OFFSET:
-            emit_text("    mov %s, %s [rbp + %d]", dst_reg_name, mem_size_label[op_size],
-                      operand->offset);
+            emit_text("    mov %s, %s [rbp + %d]", dst_reg_name, mem_size_label[op_size], operand->offset);
             break;
         case OPERAND_GLOBAL_VAR:
             emit_text("    mov %s, %s [rel %s]", dst_reg_name, mem_size_label[op_size], operand->var);
@@ -550,28 +553,30 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
 {
     ensure_operand_in_reg(dst);
 
+    const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
+
     if (src->kind == OPERAND_IMMEDIATE)
     {
         char imm_str[32];
 
         imm_to_str(imm_str, sizeof(imm_str), src->type, src->imm);
-        emit_text("    %s %s, %s", op_inst, reg_names[dst->type->size][dst->reg], imm_str);
+        emit_text("    %s %s, %s", op_inst, dst_reg_name, imm_str);
     }
     else if (src->kind == OPERAND_FRAME_OFFSET)
     {
-        emit_text("    %s %s, %s [rbp + %d]", op_inst, reg_names[dst->type->size][dst->reg],
+        emit_text("    %s %s, %s [rbp + %d]", op_inst, dst_reg_name,
                   mem_size_label[src->type->size], src->offset);
     }
     else if (src->kind == OPERAND_GLOBAL_VAR)
     {
         // NOTE: add rax, [rel var_name] same as add rax, [rip + (var_name - nextInsn)]
         // OR, add rax, [var_name wrt rip]
-        emit_text("    %s %s, %s [rel %s]", op_inst, reg_names[dst->type->size][dst->reg],
+        emit_text("    %s %s, %s [rel %s]", op_inst, dst_reg_name,
                   mem_size_label[src->type->size], src->var);
     }
     else if (src->kind == OPERAND_REGISTER)
     {
-        emit_text("    %s %s, %s", op_inst, reg_names[dst->type->size][dst->reg], reg_names[src->type->size][src->reg]);
+        emit_text("    %s %s, %s", op_inst, dst_reg_name, reg_names[src->type->size][src->reg]);
     }
     else
     {
@@ -625,32 +630,82 @@ static void emit_sub(Operand* src, Operand* dst)
     }
 }
 
+static void emit_binary_cmp(TokenKind cmp_op, Operand* src, Operand* dst)
+{
+    assert(src->type == dst->type);
+
+    if (dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE)
+    {
+        // NOTE: THIS SHOULDN'T happen because resolver should have already done constant folding.
+        dst->imm.as_int._s32 = (dst->imm.as_int._s32 == src->imm.as_int._s32);
+    }
+    else
+    {
+        ensure_operand_in_reg(dst);
+
+        const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
+        const char* dst_reg_byte_name = reg_names[1][dst->reg];
+        const char* setcc_name = setcc_from_op[cmp_op];
+
+        if (src->kind == OPERAND_IMMEDIATE)
+        {
+            char imm_str[32];
+            imm_to_str(imm_str, sizeof(imm_str), src->type, src->imm);
+
+            emit_text("    cmp %s, %s", dst_reg_name, imm_str);
+            emit_text("    %s %s", setcc_name, dst_reg_byte_name);
+        }
+        else if (src->kind == OPERAND_FRAME_OFFSET)
+        {
+            emit_text("    cmp %s, %s [rbp + %d]", dst_reg_name, mem_size_label[src->type->size], src->offset);
+            emit_text("    %s %s", setcc_name, dst_reg_byte_name);
+        }
+        else if (src->kind == OPERAND_GLOBAL_VAR)
+        {
+            emit_text("    cmp %s, %s [rel %s]", dst_reg_name, mem_size_label[src->type->size], src->var);
+            emit_text("    %s %s", setcc_name, dst_reg_byte_name);
+        }
+        else if (src->kind == OPERAND_REGISTER)
+        {
+            emit_text("    cmp %s, %s", dst_reg_name, reg_names[src->type->size][src->reg]);
+            emit_text("    %s %s", setcc_name, dst_reg_byte_name);
+        }
+        else
+        {
+            ftprint_err("INTERNAL ERROR: Unexpected src operand kind %d while generating cmp %d inst\n", src->kind,
+                        cmp_op);
+            assert(0);
+        }
+    }
+}
+
 static void gen_expr_binary(ExprBinary* expr, Operand* dest)
 {
+    Operand src = {0};
+
+    gen_expr(expr->left, dest);
+    gen_expr(expr->right, &src);
+
     switch (expr->op)
     {
         case TKN_PLUS:
         {
-            Operand src = {0};
-
-            gen_expr(expr->left, dest);
-            gen_expr(expr->right, &src);
-
             emit_add(&src, dest);
-
-            free_operand(&src);
             break;
         }
         case TKN_MINUS:
         {
-            Operand src = {0};
-
-            gen_expr(expr->left, dest);
-            gen_expr(expr->right, &src);
-
             emit_sub(&src, dest);
-
-            free_operand(&src);
+            break;
+        }
+        case TKN_EQ:
+        case TKN_NOTEQ:
+        case TKN_GT:
+        case TKN_GTEQ:
+        case TKN_LT:
+        case TKN_LTEQ:
+        {
+            emit_binary_cmp(expr->op, &src, dest);
             break;
         }
         default:
@@ -658,6 +713,8 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             assert(0);
             break;
     }
+
+    free_operand(&src);
 }
 
 static void gen_expr_cast(ExprCast* ecast, Operand* dest)
@@ -855,8 +912,7 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
             size_t result_size = result_type->size;
 
             // mov RESULT_REG, RAX
-            emit_text("    mov %s, %s", reg_names[result_size][result_reg],
-                      reg_names[result_size][RAX]);
+            emit_text("    mov %s, %s", reg_names[result_size][result_reg], reg_names[result_size][RAX]);
         }
         else
         {
