@@ -876,11 +876,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
             return false;
 
         Type* param_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, params[i]); // TODO: Cast at site?
-
-        ExprOperand arg_eop = {.type = arg->expr->type,
-                               .is_const = arg->expr->is_const,
-                               .is_lvalue = arg->expr->is_lvalue,
-                               .const_val = arg->expr->const_val};
+        ExprOperand arg_eop = OP_FROM_EXPR(arg->expr);
 
         eop_decay(resolver, &arg_eop);
 
@@ -1046,10 +1042,7 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
             if (!resolve_expr(resolver, expr))
                 return false;
 
-            ExprOperand right_eop = {.type = expr->type,
-                                     .is_const = expr->is_const,
-                                     .is_lvalue = expr->is_lvalue,
-                                     .const_val = expr->const_val};
+            ExprOperand right_eop = OP_FROM_EXPR(expr);
 
             if (declared_type->kind == TYPE_PTR)
                 eop_decay(resolver, &right_eop);
@@ -1432,20 +1425,15 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         return 0;
     }
 
-    Type* left_type = left_expr->type;
-    Type* right_type = right_expr->type;
-    ExprOperand right_eop = {.type = right_type,
-                             .is_const = right_expr->is_const,
-                             .is_lvalue = right_expr->is_lvalue,
-                             .const_val = right_expr->const_val};
+    ExprOperand right_eop = OP_FROM_EXPR(right_expr);
 
-    if (left_type->kind == TYPE_PTR)
+    if (left_expr->type->kind == TYPE_PTR)
         eop_decay(resolver, &right_eop);
 
-    if (!convert_eop(&right_eop, left_type))
+    if (!convert_eop(&right_eop, left_expr->type))
     {
         resolver_on_error(resolver, "Type mismatch in assignment statement: expected type `%s`, but got `%s`",
-                          type_name(left_type), type_name(right_eop.type));
+                          type_name(left_expr->type), type_name(right_eop.type));
         return 0;
     }
 
@@ -1479,10 +1467,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
                 if (!resolve_expr(resolver, sret->expr))
                     return RESOLVE_STMT_RETURNS;
 
-                ExprOperand ret_eop = {.type = sret->expr->type,
-                                       .is_const = sret->expr->is_const,
-                                       .is_lvalue = sret->expr->is_lvalue,
-                                       .const_val = sret->expr->const_val};
+                ExprOperand ret_eop = OP_FROM_EXPR(sret->expr);
 
                 eop_decay(resolver, &ret_eop);
 

@@ -1,0 +1,13 @@
+proc sum_to_zero(a:int) => int
+{
+    if (a)
+        return sum_to_zero(a - 1) + a;
+    else
+        return 0;
+}
+
+proc main() => int
+{
+    return sum_to_zero(4);
+}
+
