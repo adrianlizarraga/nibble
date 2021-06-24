@@ -1,5 +1,15 @@
-#include "resolver.h"
 #include "parser.h"
+#include "resolver.h"
+
+#define OP_FROM_EXPR(e)                                                                                                \
+    {                                                                                                                  \
+        .type = (e)->type, .is_const = (e)->is_const, .is_lvalue = (e)->is_lvalue, .const_val = (e)->const_val         \
+    }
+
+#define OP_FROM_CONST(t, s)                                                                                            \
+    {                                                                                                                  \
+        .type = (t), .is_const = true, .is_lvalue = false, .const_val = (s)                                            \
+    }
 
 typedef struct ExprOperand {
     Type* type;
@@ -26,6 +36,7 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
 
 static bool resolve_expr(Resolver* resolver, Expr* expr);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
+static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right);
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr);
 static bool resolve_expr_call(Resolver* resolver, Expr* expr);
 static bool resolve_expr_ident(Resolver* resolver, Expr* expr);
@@ -413,6 +424,253 @@ static bool can_cast_eop(ExprOperand* eop, Type* dst_type)
     return castable;
 }
 
+static void promote_int_eops(ExprOperand* eop)
+{
+    switch (eop->type->kind)
+    {
+        case TYPE_INTEGER:
+        case TYPE_ENUM:
+            if (eop->type->size < type_s32->size)
+                cast_eop(eop, type_s32);
+            break;
+        default:
+            break;
+    }
+}
+
+static void convert_arith_eops(ExprOperand* left, ExprOperand* right)
+{
+    // If one is an f64, cast the other to f64.
+    if (left->type == type_f64)
+    {
+        cast_eop(right, type_f64);
+    }
+    else if (right->type == type_f64)
+    {
+        cast_eop(left, type_f64);
+    }
+    // Else if one is an f32, cast the other to f32.
+    else if (left->type == type_f32)
+    {
+        cast_eop(right, type_f32);
+    }
+    else if (right->type == type_f32)
+    {
+        cast_eop(left, type_f32);
+    }
+    // Else, do usual arithmetic conversions.
+    else
+    {
+        assert(type_is_integer_like(left->type));
+        assert(type_is_integer_like(right->type));
+
+        // First, promote both to s32 if smaller than s32.
+        // This is a lossless conversion.
+        promote_int_eops(left);
+        promote_int_eops(right);
+
+        if (left->type != right->type)
+        {
+
+            TypeInteger* left_as_int = &left->type->as_integer;
+            TypeInteger* right_as_int = &right->type->as_integer;
+
+            bool left_signed = left_as_int->is_signed;
+            bool right_signed = right_as_int->is_signed;
+            int left_rank = type_integer_ranks[left_as_int->kind];
+            int right_rank = type_integer_ranks[right_as_int->kind];
+            size_t left_size = left->type->size;
+            size_t right_size = right->type->size;
+
+            if (left_signed == right_signed)
+            {
+                if (left_rank <= right_rank)
+                    cast_eop(left, right->type);
+                else
+                    cast_eop(right, left->type);
+            }
+            else if (left_signed && (right_rank >= left_rank))
+            {
+                cast_eop(left, right->type);
+            }
+            else if (right_signed && (left_rank >= right_rank))
+            {
+                cast_eop(right, left->type);
+            }
+            else if (left_signed && (left_size > right_size))
+            {
+                cast_eop(right, left->type);
+            }
+            else if (right_signed && (right_size > left_size))
+            {
+                cast_eop(left, right->type);
+            }
+            else
+            {
+                // NOTE: This shouldn't happen for us since we're using fixed-sized types (i.e., u32, s32, u64, etc.)
+                // with ranks such that a greater rank implies a larger size.
+                //
+                // But, I'll leave this here in case I decided to use C's type system later.
+                //
+                // NOTE: In C, this happens if, for example:
+                // 1) short is the same size as int
+                // 2) left is int.
+                // 3) right is unsigned short.
+                //
+                // Said another way, this can only occur if a greater rank does not imply a greater size.
+
+                Type* signed_type = left_signed ? left->type : right->type;
+                Type* type = type_unsigned_int(signed_type);
+
+                cast_eop(left, type);
+                cast_eop(right, type);
+
+                assert(!"We shouldn't reach this code path!!! Usual arithmetic conversions code");
+            }
+        }
+    }
+
+    assert(left->type == right->type);
+}
+
+static s64 eval_binary_op_s64(TokenKind op, s64 left, s64 right)
+{
+    switch (op)
+    {
+        case TKN_PLUS: // Add
+            return left + right;
+        case TKN_MINUS: // Subtract
+            return left - right;
+        case TKN_ASTERISK: // Multiply
+            return left * right;
+        case TKN_DIV: // Divide
+            return right != 0 ? left / right : 0;
+        case TKN_MOD: // Modulo (remainder)
+            return right != 0 ? left % right : 0;
+        case TKN_LSHIFT:
+            return left << right;
+        case TKN_RSHIFT:
+            return left >> right;
+        case TKN_AND:
+            return left & right;
+        case TKN_OR:
+            return left | right;
+        case TKN_CARET: // xor
+            return left ^ right;
+        case TKN_LOGIC_AND:
+            return left && right;
+        case TKN_LOGIC_OR:
+            return left || right;
+        case TKN_EQ:
+            return left == right;
+        case TKN_NOTEQ:
+            return left != right;
+        case TKN_GT:
+            return left > right;
+        case TKN_GTEQ:
+            return left >= right;
+        case TKN_LT:
+            return left < right;
+        case TKN_LTEQ:
+            return left <= right;
+        default:
+            ftprint_err("Unexpected binary op (s64): %d\n", op);
+            assert(0);
+            break;
+    }
+
+    return 0;
+}
+
+static u64 eval_binary_op_u64(TokenKind op, u64 left, u64 right)
+{
+    switch (op)
+    {
+        case TKN_PLUS: // Add
+            return left + right;
+        case TKN_MINUS: // Subtract
+            return left - right;
+        case TKN_ASTERISK: // Multiply
+            return left * right;
+        case TKN_DIV: // Divide
+            return right != 0 ? left / right : 0;
+        case TKN_MOD: // Modulo (remainder)
+            return right != 0 ? left % right : 0;
+        case TKN_LSHIFT:
+            return left << right;
+        case TKN_RSHIFT:
+            return left >> right;
+        case TKN_AND:
+            return left & right;
+        case TKN_OR:
+            return left | right;
+        case TKN_CARET: // xor
+            return left ^ right;
+        case TKN_LOGIC_AND:
+            return left && right;
+        case TKN_LOGIC_OR:
+            return left || right;
+        case TKN_EQ:
+            return left == right;
+        case TKN_NOTEQ:
+            return left != right;
+        case TKN_GT:
+            return left > right;
+        case TKN_GTEQ:
+            return left >= right;
+        case TKN_LT:
+            return left < right;
+        case TKN_LTEQ:
+            return left <= right;
+        default:
+            ftprint_err("Unexpected binary op (u64): %d\n", op);
+            assert(0);
+            break;
+    }
+
+    return 0;
+}
+
+static Scalar eval_binary_op(TokenKind op, Type* type, Scalar left, Scalar right)
+{
+    ExprOperand result_eop = {0};
+
+    if (type_is_integer_like(type))
+    {
+        ExprOperand left_eop = OP_FROM_CONST(type, left);
+        ExprOperand right_eop = OP_FROM_CONST(type, right);
+
+        // Compute the operation in the largest type available.
+        if (type->as_integer.is_signed)
+        {
+            cast_eop(&left_eop, type_s64);
+            cast_eop(&right_eop, type_s64);
+
+            s64 r = eval_binary_op_s64(op, left.as_int._s64, right.as_int._s64);
+            Scalar result_val = {.as_int._s64 = r};
+            result_eop = (ExprOperand)OP_FROM_CONST(type_s64, result_val);
+        }
+        else
+        {
+            cast_eop(&left_eop, type_u64);
+            cast_eop(&right_eop, type_u64);
+
+            u64 r = eval_binary_op_u64(op, left.as_int._u64, right.as_int._u64);
+            Scalar result_val = {.as_int._u64 = r};
+            result_eop = (ExprOperand)OP_FROM_CONST(type_u64, result_val);
+        }
+
+        // Cast it back to the original type.
+        cast_eop(&result_eop, type);
+    }
+    else
+    {
+        assert(type->kind == TYPE_FLOAT);
+    }
+
+    return result_eop.const_val;
+}
+
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
 {
     (void)resolver;
@@ -428,48 +686,45 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     return true;
 }
 
+static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
+{
+    convert_arith_eops(left, right);
+
+    if (left->is_const & right->is_const)
+    {
+        dst->type = left->type;
+        dst->is_const = true;
+        dst->is_lvalue = false;
+        dst->const_val = eval_binary_op(op, left->type, left->const_val, right->const_val);
+    }
+    else
+    {
+        dst->type = left->type;
+        dst->is_const = false;
+        dst->is_lvalue = false;
+    }
+}
+
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 {
     ExprBinary* ebinary = (ExprBinary*)expr;
-    Expr* left = ebinary->left;
-    Expr* right = ebinary->right;
 
-    if (!resolve_expr(resolver, left))
+    if (!resolve_expr(resolver, ebinary->left))
         return false;
 
-    if (!resolve_expr(resolver, right))
+    if (!resolve_expr(resolver, ebinary->right))
         return false;
+
+    ExprOperand dst_op = {0};
+    ExprOperand left_op = OP_FROM_EXPR(ebinary->left);
+    ExprOperand right_op = OP_FROM_EXPR(ebinary->right);
 
     switch (ebinary->op)
     {
         case TKN_PLUS:
-            if (type_is_arithmetic(left->type) && type_is_arithmetic(right->type))
+            if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type))
             {
-                if (left->type == right->type)
-                {
-                    if (left->is_const && right->is_const)
-                    {
-                        assert(left->type == type_s32); // TODO: Support other types
-                        expr->type = left->type;
-                        expr->is_const = true;
-                        expr->is_lvalue = false;
-                        expr->const_val.as_int._s32 = left->const_val.as_int._s32 + right->const_val.as_int._s32;
-                    }
-                    else
-                    {
-                        expr->type = left->type;
-                        expr->is_const = false;
-                        expr->is_lvalue = false;
-                    }
-
-                    return true;
-                }
-                else
-                {
-                    // TODO: Support type conversion
-                    resolver_on_error(resolver, "Cannot add operands of different types");
-                    return false;
-                }
+                resolve_binary_eop(TKN_PLUS, &dst_op, &left_op, &right_op);
             }
             else
             {
@@ -477,35 +732,12 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 resolver_on_error(resolver, "Can only add arithmetic types");
                 return false;
             }
+
             break;
         case TKN_MINUS:
-            if (type_is_arithmetic(left->type) && type_is_arithmetic(right->type))
+            if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type))
             {
-                if (left->type == right->type)
-                {
-                    if (left->is_const && right->is_const)
-                    {
-                        assert(left->type == type_s32); // TODO: Support other types
-                        expr->type = left->type;
-                        expr->is_const = true;
-                        expr->is_lvalue = false;
-                        expr->const_val.as_int._s32 = left->const_val.as_int._s32 - right->const_val.as_int._s32;
-                    }
-                    else
-                    {
-                        expr->type = left->type;
-                        expr->is_const = false;
-                        expr->is_lvalue = false;
-                    }
-
-                    return true;
-                }
-                else
-                {
-                    // TODO: Support type conversion
-                    resolver_on_error(resolver, "Cannot subtract operands of different types");
-                    return false;
-                }
+                resolve_binary_eop(TKN_MINUS, &dst_op, &left_op, &right_op);
             }
             else
             {
@@ -513,13 +745,54 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 resolver_on_error(resolver, "Can only subtract arithmetic types");
                 return false;
             }
+
+            break;
+        case TKN_EQ:
+        case TKN_NOTEQ:
+            if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type))
+            {
+                resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
+                cast_eop(&dst_op, type_s32); // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
+            }
+            else
+            {
+                // TODO: Support pointer arithmetic.
+                resolver_on_error(resolver, "Can only compare (==, !=) arithmetic types");
+                return false;
+            }
+
+            break;
+        case TKN_GT:
+        case TKN_GTEQ:
+        case TKN_LT:
+        case TKN_LTEQ:
+            if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type))
+            {
+                resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
+                cast_eop(&dst_op, type_s32); // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
+            }
+            else
+            {
+                // TODO: Support pointer arithmetic.
+                resolver_on_error(resolver, "Can only compare (>, >=, <, <=) arithmetic types");
+                return false;
+            }
+
             break;
         default:
             resolver_on_error(resolver, "Operation type `%d` not supported", ebinary->op);
-            break;
+            return false;
     }
 
-    return false;
+    ebinary->left = try_wrap_cast_expr(resolver, &left_op, ebinary->left);
+    ebinary->right = try_wrap_cast_expr(resolver, &right_op, ebinary->right);
+
+    expr->type = dst_op.type;
+    expr->is_lvalue = dst_op.is_lvalue;
+    expr->is_const = dst_op.is_const;
+    expr->const_val = dst_op.const_val;
+
+    return true;
 }
 
 static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
@@ -854,10 +1127,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
     {
         Type* declared_type = resolve_typespec(resolver, typespec);
 
-        ExprOperand init_eop = {.type = init->type,
-                                .is_const = init->is_const,
-                                .is_lvalue = init->is_lvalue,
-                                .const_val = init->const_val};
+        ExprOperand init_eop = OP_FROM_EXPR(init);
 
         if (declared_type->kind == TYPE_PTR)
             eop_decay(resolver, &init_eop);

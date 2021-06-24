@@ -594,6 +594,17 @@ Type* type_usize;
 size_t PTR_SIZE = 8;
 size_t PTR_ALIGN = 8;
 
+int type_integer_ranks[] = {
+    [INTEGER_U8] = 1,
+    [INTEGER_S8] = 1,
+    [INTEGER_U16] = 2,
+    [INTEGER_S16] = 2,
+    [INTEGER_U32] = 3,
+    [INTEGER_S32] = 3,
+    [INTEGER_U64] = 4,
+    [INTEGER_S64] = 4,
+};
+
 static const char* type_names[] = {
     [TYPE_VOID] = "void",
     [TYPE_INTEGER] = "_integer_",
@@ -640,6 +651,13 @@ const char* type_name(Type* type)
     }
 }
 
+bool type_is_integer_like(Type* type)
+{
+    TypeKind kind = type->kind;
+
+    return (kind == TYPE_INTEGER) || (kind == TYPE_ENUM);
+}
+
 bool type_is_arithmetic(Type* type)
 {
     TypeKind kind = type->kind;
@@ -666,6 +684,29 @@ bool type_is_aggregate(Type* type)
     TypeKind kind = type->kind;
 
     return (kind == TYPE_STRUCT) || (kind == TYPE_UNION);
+}
+
+Type* type_unsigned_int(Type* type_int)
+{
+    assert(type_int->kind == TYPE_INTEGER);
+
+    switch (type_int->as_integer.kind)
+    {
+        case INTEGER_U8:
+        case INTEGER_S8:
+            return type_u8;
+        case INTEGER_U16:
+        case INTEGER_S16:
+            return type_u16;
+        case INTEGER_U32:
+        case INTEGER_S32:
+            return type_u32;
+        case INTEGER_U64:
+        case INTEGER_S64:
+            return type_u64;
+    }
+
+    return NULL;
 }
 
 static Type* type_alloc(Allocator* allocator, TypeKind kind)

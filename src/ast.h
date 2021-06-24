@@ -623,8 +623,11 @@ extern Type* type_usize;
 extern size_t PTR_SIZE;
 extern size_t PTR_ALIGN;
 
+extern int type_integer_ranks[];
+
 void init_builtin_types(OS target_os, Arch target_arch);
 const char* type_name(Type* type);
+bool type_is_integer_like(Type* type);
 bool type_is_arithmetic(Type* type);
 bool type_is_scalar(Type* type);
 bool type_is_ptr_like(Type* type);
@@ -633,6 +636,7 @@ bool type_is_aggregate(Type* type);
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
+Type* type_unsigned_int(Type* type_int);
 
 ///////////////////////////////
 //       Symbols
