@@ -796,19 +796,20 @@ static void gen_expr_cast(ExprCast* ecast, Operand* dest)
     if ((from_type->kind == TYPE_INTEGER) && (to_type->kind == TYPE_INTEGER))
     {
         Operand src = {0};
+        char src_op_str[64];
 
-        // Generate expression for src expression and load it into a register.
+        // Generate expression for src expression.
         gen_expr(ecast->expr, &src);
-        ensure_operand_in_reg(&src);
+        instr_op_str(src_op_str, sizeof(src_op_str), &src);
 
+        // Allocate register for the result.
         Register dest_reg = next_reg();
         const char* dest_reg_name = reg_names[to_type->size][dest_reg];
-        const char* src_reg_name = reg_names[src.type->size][src.reg];
 
         // If from_type is larger than to_type, just use mov
         if (from_type->size > to_type->size)
         {
-            emit_text("    mov %s, %s", dest_reg_name, src_reg_name);
+            emit_text("    mov %s, %s", dest_reg_name, src_op_str);
         }
         else
         {
@@ -818,9 +819,9 @@ static void gen_expr_cast(ExprCast* ecast, Operand* dest)
             if (from_type->size == 4)
             {
                 if (from_signed)
-                    emit_text("    movsxd %s, %s", dest_reg_name, src_reg_name);
+                    emit_text("    movsxd %s, %s", dest_reg_name, src_op_str);
                 else
-                    emit_text("    mov %s, %s", dest_reg_name, src_reg_name);
+                    emit_text("    mov %s, %s", dest_reg_name, src_op_str);
             }
 
             // Else, use movsx for signed or movzx for unsigned.
@@ -829,9 +830,9 @@ static void gen_expr_cast(ExprCast* ecast, Operand* dest)
                 assert(from_type->size != 8);
 
                 if (from_signed)
-                    emit_text("    movsx %s, %s", dest_reg_name, src_reg_name);
+                    emit_text("    movsx %s, %s", dest_reg_name, src_op_str);
                 else
-                    emit_text("    movzx %s, %s", dest_reg_name, src_reg_name);
+                    emit_text("    movzx %s, %s", dest_reg_name, src_op_str);
             }
         }
 
