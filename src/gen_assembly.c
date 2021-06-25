@@ -573,14 +573,8 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
     const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
     char src_op_str[64]; // TODO: Will overflow for large global variable names. This is temporary.
 
-    if (instr_op_str(src_op_str, sizeof(src_op_str), src))
-    {
-        emit_text("    %s %s, %s", op_inst, dst_reg_name, src_op_str);
-    }
-    else
-    {
-        assert(0);
-    }
+    instr_op_str(src_op_str, sizeof(src_op_str), src);
+    emit_text("    %s %s, %s", op_inst, dst_reg_name, src_op_str);
 }
 
 static void emit_add(Operand* src, Operand* dst)
@@ -629,16 +623,10 @@ static void emit_binary_cmp(TokenKind cmp_op, Operand* src, Operand* dst)
     const char* setcc_name = setcc_from_op[cmp_op];
     char src_op_str[64];
 
-    if (instr_op_str(src_op_str, sizeof(src_op_str), src))
-    {
-        emit_text("    cmp %s, %s", dst_reg_name, src_op_str);
-        emit_text("    %s %s", setcc_name, dst_reg_byte_name);
-        emit_text("    movzx %s, %s", dst_reg_name, dst_reg_byte_name);
-    }
-    else
-    {
-        assert(0);
-    }
+    instr_op_str(src_op_str, sizeof(src_op_str), src);
+    emit_text("    cmp %s, %s", dst_reg_name, src_op_str);
+    emit_text("    %s %s", setcc_name, dst_reg_byte_name);
+    emit_text("    movzx %s, %s", dst_reg_name, dst_reg_byte_name);
 }
 
 static void gen_expr_binary(ExprBinary* expr, Operand* dest)
