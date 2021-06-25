@@ -7,9 +7,9 @@
 #include <string.h>
 
 typedef struct MemBlockFooter {
-    unsigned char* pbuffer;
-    unsigned char* pat;
-    unsigned char* pend;
+    char* pbuffer;
+    char* pat;
+    char* pend;
 } MemBlockFooter;
 
 static bool alloc_mem_block(Allocator* allocator, size_t block_size)
@@ -17,14 +17,14 @@ static bool alloc_mem_block(Allocator* allocator, size_t block_size)
     // Adds a new block of memory to the allocator.
     // The new block will contain a pointer to the old block in its footer (for cleanup).
 
-    unsigned char* block = malloc(block_size + sizeof(MemBlockFooter));
+    char* block = malloc(block_size + sizeof(MemBlockFooter));
 
     if (!block)
         return false;
 
-    unsigned char* pbuffer = allocator->buffer;
-    unsigned char* pat = allocator->at;
-    unsigned char* pend = allocator->end;
+    char* pbuffer = allocator->buffer;
+    char* pat = allocator->at;
+    char* pend = allocator->end;
 
     allocator->buffer = block;
     allocator->at = block;
@@ -74,8 +74,8 @@ void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
     }
 
     memory = (void*)aligned_at;
-    allocator->pat = (unsigned char*)aligned_at;
-    allocator->at = (unsigned char*)new_at;
+    allocator->pat = (char*)aligned_at;
+    allocator->at = (char*)new_at;
 
     if (clear)
         memset(memory, 0, size);
@@ -116,7 +116,7 @@ void mem_free(Allocator* allocator, void* ptr)
     {
         // If ptr is the previous allocation, undo it.
         // Otherwise, do nothing.
-        unsigned char* pat = allocator->pat;
+        char* pat = allocator->pat;
 
         if (pat && (uintptr_t)ptr == (uintptr_t)pat)
         {
@@ -147,8 +147,8 @@ void allocator_reset(Allocator* allocator)
 
     while (footer->pbuffer)
     {
-        unsigned char* pbuffer = footer->pbuffer;
-        unsigned char* pend = footer->pend;
+        char* pbuffer = footer->pbuffer;
+        char* pend = footer->pend;
 
         free(allocator->buffer);
 
@@ -166,8 +166,8 @@ void allocator_destroy(Allocator* allocator)
     if (!allocator->buffer)
         return;
 
-    unsigned char* buffer = allocator->buffer;
-    unsigned char* end = allocator->end;
+    char* buffer = allocator->buffer;
+    char* end = allocator->end;
 
     while (buffer)
     {
@@ -199,9 +199,9 @@ AllocatorState allocator_get_state(Allocator* allocator)
 void allocator_restore_state(AllocatorState state)
 {
     Allocator* allocator = state.allocator;
-    unsigned char* dest_buffer = state.buffer;
-    unsigned char* buffer = allocator->buffer;
-    unsigned char* end = allocator->end;
+    char* dest_buffer = state.buffer;
+    char* buffer = allocator->buffer;
+    char* end = allocator->end;
 
     while (buffer != dest_buffer)
     {
@@ -234,9 +234,9 @@ AllocatorStats allocator_stats(Allocator* allocator)
 
     while (footer->pbuffer)
     {
-        unsigned char* buffer = footer->pbuffer;
-        unsigned char* at = footer->pat;
-        unsigned char* end = footer->pend;
+        char* buffer = footer->pbuffer;
+        char* at = footer->pat;
+        char* end = footer->pend;
 
         stats.num_blocks += 1;
         stats.total_size += (size_t)(end - buffer);

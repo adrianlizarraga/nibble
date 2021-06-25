@@ -779,6 +779,41 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
 
             break;
+        case TKN_LOGIC_AND:
+        case TKN_LOGIC_OR:
+            if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type))
+            {
+                if (left_op.is_const && right_op.is_const)
+                {
+                    cast_eop(&left_op, type_s32);
+                    cast_eop(&right_op, type_s32);
+
+                    dst_op.type = type_s32;
+                    dst_op.is_const = true;
+                    dst_op.is_lvalue = false;
+
+                    if (ebinary->op == TKN_LOGIC_AND)
+                        dst_op.const_val.as_int._s32 = (left_op.const_val.as_int._s32 &&
+                                                        right_op.const_val.as_int._s32);
+                    else
+                        dst_op.const_val.as_int._s32 = (left_op.const_val.as_int._s32 ||
+                                                        right_op.const_val.as_int._s32);
+                }
+                else
+                {
+                    dst_op.type = type_s32;
+                    dst_op.is_const = false;
+                    dst_op.is_lvalue = false;
+                }
+            }
+            else
+            {
+                // TODO: Support pointer arithmetic.
+                resolver_on_error(resolver, "Can only compare (>, >=, <, <=) arithmetic types");
+                return false;
+            }
+
+            break;
         default:
             resolver_on_error(resolver, "Operation type `%d` not supported", ebinary->op);
             return false;

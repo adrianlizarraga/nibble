@@ -50,8 +50,8 @@ static uint32_t reg_flags[] = {
     [RBP] = CALLEE_SAVED, [RSI] = ARG_REG,      [RDI] = ARG_REG,           [R8] = ARG_REG,       [R9] = ARG_REG,
     [R12] = CALLEE_SAVED, [R13] = CALLEE_SAVED, [R14] = CALLEE_SAVED,      [R15] = CALLEE_SAVED};
 
-static const char* setcc_from_op[] = {[TKN_EQ] = "sete",   [TKN_NOTEQ] = "setne", [TKN_GT] = "setg",
-                                      [TKN_GTEQ] = "setge", [TKN_LT] = "setl",   [TKN_LTEQ] = "setle"};
+static const char* setcc_from_op[] = {[TKN_EQ] = "sete",    [TKN_NOTEQ] = "setne", [TKN_GT] = "setg",
+                                      [TKN_GTEQ] = "setge", [TKN_LT] = "setl",     [TKN_LTEQ] = "setle"};
 
 #define MAX_OP_BYTE_SIZE 8
 static const char* mem_size_label[MAX_OP_BYTE_SIZE + 1] = {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword"};
@@ -359,6 +359,23 @@ static size_t imm_to_str(char* buf, size_t len, Type* type, Scalar imm)
     return 0;
 }
 
+static size_t instr_op_str(char* buf, size_t len, Operand* op)
+{
+    switch (op->kind)
+    {
+        case OPERAND_IMMEDIATE:
+            return imm_to_str(buf, len, op->type, op->imm);
+        case OPERAND_FRAME_OFFSET:
+            return snprintf(buf, len, "%s [rbp + %d]", mem_size_label[op->type->size], op->offset);
+        case OPERAND_GLOBAL_VAR:
+            return snprintf(buf, len, "%s [rel %s]", mem_size_label[op->type->size], op->var);
+        case OPERAND_REGISTER:
+            return snprintf(buf, len, "%s", reg_names[op->type->size][op->reg]);
+        default:
+            return 0;
+    }
+}
+
 static void set_reg(uint32_t* reg_mask, Register reg)
 {
     *reg_mask |= (1 << reg);
@@ -554,33 +571,14 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
     ensure_operand_in_reg(dst);
 
     const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
+    char src_op_str[64]; // TODO: Will overflow for large global variable names. This is temporary.
 
-    if (src->kind == OPERAND_IMMEDIATE)
+    if (instr_op_str(src_op_str, sizeof(src_op_str), src))
     {
-        char imm_str[32];
-
-        imm_to_str(imm_str, sizeof(imm_str), src->type, src->imm);
-        emit_text("    %s %s, %s", op_inst, dst_reg_name, imm_str);
-    }
-    else if (src->kind == OPERAND_FRAME_OFFSET)
-    {
-        emit_text("    %s %s, %s [rbp + %d]", op_inst, dst_reg_name,
-                  mem_size_label[src->type->size], src->offset);
-    }
-    else if (src->kind == OPERAND_GLOBAL_VAR)
-    {
-        // NOTE: add rax, [rel var_name] same as add rax, [rip + (var_name - nextInsn)]
-        // OR, add rax, [var_name wrt rip]
-        emit_text("    %s %s, %s [rel %s]", op_inst, dst_reg_name,
-                  mem_size_label[src->type->size], src->var);
-    }
-    else if (src->kind == OPERAND_REGISTER)
-    {
-        emit_text("    %s %s, %s", op_inst, dst_reg_name, reg_names[src->type->size][src->reg]);
+        emit_text("    %s %s, %s", op_inst, dst_reg_name, src_op_str);
     }
     else
     {
-        ftprint_err("INTERNAL ERROR: Unexpected src operand kind %d while generating %s inst\n", src->kind, op_inst);
         assert(0);
     }
 }
@@ -588,13 +586,9 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
 static void emit_add(Operand* src, Operand* dst)
 {
     assert(src->type == dst->type);
+    assert(!(dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE));
 
-    if (dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE)
-    {
-        // NOTE: THIS SHOULDN'T happen because resolver should have already done constant folding.
-        dst->imm.as_int._s32 += src->imm.as_int._s32;
-    }
-    else if (dst->kind == OPERAND_IMMEDIATE)
+    if (dst->kind == OPERAND_IMMEDIATE)
     {
         // Add into the src register.
         char imm_str[32];
@@ -618,64 +612,32 @@ static void emit_add(Operand* src, Operand* dst)
 static void emit_sub(Operand* src, Operand* dst)
 {
     assert(src->type == dst->type);
+    assert(!(dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE));
 
-    if (dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE)
-    {
-        // NOTE: THIS SHOULDN'T happen because resolver should have already done constant folding.
-        dst->imm.as_int._s32 -= src->imm.as_int._s32;
-    }
-    else
-    {
-        emit_binary_op("sub", src, dst);
-    }
+    emit_binary_op("sub", src, dst);
 }
 
 static void emit_binary_cmp(TokenKind cmp_op, Operand* src, Operand* dst)
 {
     assert(src->type == dst->type);
+    assert(!(dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE));
 
-    if (dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE)
+    ensure_operand_in_reg(dst);
+
+    const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
+    const char* dst_reg_byte_name = reg_names[1][dst->reg];
+    const char* setcc_name = setcc_from_op[cmp_op];
+    char src_op_str[64];
+
+    if (instr_op_str(src_op_str, sizeof(src_op_str), src))
     {
-        // NOTE: THIS SHOULDN'T happen because resolver should have already done constant folding.
-        dst->imm.as_int._s32 = (dst->imm.as_int._s32 == src->imm.as_int._s32);
+        emit_text("    cmp %s, %s", dst_reg_name, src_op_str);
+        emit_text("    %s %s", setcc_name, dst_reg_byte_name);
+        emit_text("    movzx %s, %s", dst_reg_name, dst_reg_byte_name);
     }
     else
     {
-        ensure_operand_in_reg(dst);
-
-        const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
-        const char* dst_reg_byte_name = reg_names[1][dst->reg];
-        const char* setcc_name = setcc_from_op[cmp_op];
-
-        if (src->kind == OPERAND_IMMEDIATE)
-        {
-            char imm_str[32];
-            imm_to_str(imm_str, sizeof(imm_str), src->type, src->imm);
-
-            emit_text("    cmp %s, %s", dst_reg_name, imm_str);
-            emit_text("    %s %s", setcc_name, dst_reg_byte_name);
-        }
-        else if (src->kind == OPERAND_FRAME_OFFSET)
-        {
-            emit_text("    cmp %s, %s [rbp + %d]", dst_reg_name, mem_size_label[src->type->size], src->offset);
-            emit_text("    %s %s", setcc_name, dst_reg_byte_name);
-        }
-        else if (src->kind == OPERAND_GLOBAL_VAR)
-        {
-            emit_text("    cmp %s, %s [rel %s]", dst_reg_name, mem_size_label[src->type->size], src->var);
-            emit_text("    %s %s", setcc_name, dst_reg_byte_name);
-        }
-        else if (src->kind == OPERAND_REGISTER)
-        {
-            emit_text("    cmp %s, %s", dst_reg_name, reg_names[src->type->size][src->reg]);
-            emit_text("    %s %s", setcc_name, dst_reg_byte_name);
-        }
-        else
-        {
-            ftprint_err("INTERNAL ERROR: Unexpected src operand kind %d while generating cmp %d inst\n", src->kind,
-                        cmp_op);
-            assert(0);
-        }
+        assert(0);
     }
 }
 
@@ -683,19 +645,22 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
 {
     Operand src = {0};
 
-    gen_expr(expr->left, dest);
-    gen_expr(expr->right, &src);
-
     switch (expr->op)
     {
         case TKN_PLUS:
         {
+            gen_expr(expr->left, dest);
+            gen_expr(expr->right, &src);
             emit_add(&src, dest);
+            free_operand(&src);
             break;
         }
         case TKN_MINUS:
         {
+            gen_expr(expr->left, dest);
+            gen_expr(expr->right, &src);
             emit_sub(&src, dest);
+            free_operand(&src);
             break;
         }
         case TKN_EQ:
@@ -705,16 +670,72 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
         case TKN_LT:
         case TKN_LTEQ:
         {
+            gen_expr(expr->left, dest);
+            gen_expr(expr->right, &src);
             emit_binary_cmp(expr->op, &src, dest);
+            free_operand(&src);
+            break;
+        }
+        case TKN_LOGIC_AND:
+        case TKN_LOGIC_OR:
+        {
+            char op_str[64];
+            uint32_t cmp_id = next_if_label_count();
+            const char* jmp_sub_label;
+            const char* jmpcc_instr;
+            int short_circuit_val;
+
+            if (expr->op == TKN_LOGIC_AND)
+            {
+                jmp_sub_label = "logic_and";
+                jmpcc_instr = "je";
+                short_circuit_val = 0;
+            }
+            else
+            {
+                jmp_sub_label = "logic_or";
+                jmpcc_instr = "jne";
+                short_circuit_val = 1;
+            }
+
+            // Get a register for the result.
+            // Initialize it with the "short circuit value". This is the value to which
+            // the expression evaluates when short-circuiting ocurrs.
+            Register result_reg = next_reg();
+            const char* result_reg_name = reg_names[expr->super.type->size][result_reg];
+            const char* result_reg_byte_name = reg_names[1][result_reg];
+
+            emit_text("    mov %s, %d", result_reg_name, short_circuit_val);
+
+            // Generate the left expression and compare it to zero.
+            // If can short-cicuit, jmp to end label.
+            gen_expr(expr->left, &src);
+            instr_op_str(op_str, sizeof(op_str), &src);
+            emit_text("    cmp %s, 0", op_str);
+            emit_text("    %s %s.end.%u", jmpcc_instr, jmp_sub_label, cmp_id);
+            free_operand(&src);
+
+            // Generate the right expression and compare it to zero.
+            // Use setne instruction to set the final value of the result register (zero extend).
+            gen_expr(expr->right, &src);
+            instr_op_str(op_str, sizeof(op_str), &src);
+            emit_text("    cmp %s, 0", op_str);
+            emit_text("    setne %s", result_reg_byte_name);
+            emit_text("    movzx %s, %s", result_reg_name, result_reg_byte_name);
+            free_operand(&src);
+
+            // This is the end label.
+            emit_text("    %s.end.%u:", jmp_sub_label, cmp_id);
+
+            dest->kind = OPERAND_REGISTER;
+            dest->type = expr->super.type;
+            dest->reg = result_reg;
             break;
         }
         default:
-            ftprint_err("INTERNAL ERROR: Unsupported binary op %d during code generation\n", expr->op);
             assert(0);
             break;
     }
-
-    free_operand(&src);
 }
 
 static void gen_expr_cast(ExprCast* ecast, Operand* dest)
@@ -724,8 +745,6 @@ static void gen_expr_cast(ExprCast* ecast, Operand* dest)
 
     assert(from_type != to_type);
     assert(from_type->size != to_type->size);
-
-    ftprint_out("Gen: casting %s to %s\n", type_name(from_type), type_name(to_type));
 
     if ((from_type->kind == TYPE_INTEGER) && (to_type->kind == TYPE_INTEGER))
     {
@@ -1550,7 +1569,7 @@ static void gen_global_scope(Scope* scope)
     }
 }
 
-bool gen_gasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* output_file)
+bool gen_nasm(Allocator* gen_mem, Allocator* tmp_mem, Scope* scope, const char* output_file)
 {
     size_t bucket_cap = 256;
 

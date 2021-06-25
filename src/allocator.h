@@ -9,17 +9,17 @@
 
 typedef struct Allocator {
     size_t id;
-    unsigned char* buffer;
-    unsigned char* end;
-    unsigned char* at;
-    unsigned char* pat;
+    char* buffer;
+    char* end;
+    char* at;
+    char* pat;
 } Allocator;
 
 typedef struct AllocatorState {
     Allocator* allocator;
-    unsigned char* buffer;
-    unsigned char* at;
-    unsigned char* pat;
+    char* buffer;
+    char* at;
+    char* pat;
 } AllocatorState;
 
 #define alloc_type(allocator, type, clear) (type*)mem_allocate((allocator), sizeof(type), alignof(type), (clear))

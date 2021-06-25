@@ -275,12 +275,10 @@ void nibble_compile(const char* input_file, const char* output_file)
     }
 
     //////////////////////////////////////////
-    //          Resolve/Typecheck
+    //          Gen NASM output
     //////////////////////////////////////////
-    ftprint_out("3. Generating IR ...\n");
-    gen_gasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
-
-    ftprint_out("4. Generating output ...\n");
+    ftprint_out("4. Generating NASM assembly output: %s ...\n", output_file);
+    gen_nasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
 }
 
 void nibble_cleanup(void)
