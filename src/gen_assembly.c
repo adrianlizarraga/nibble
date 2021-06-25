@@ -738,6 +738,53 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
     }
 }
 
+static void gen_expr_unary(ExprUnary* expr, Operand* dst)
+{
+    switch (expr->op)
+    {
+        case TKN_PLUS:
+        {
+            // Will either promote to int, or just pass-through.
+            gen_expr(expr->expr, dst);
+            break;
+        }
+        case TKN_MINUS: // Two's compliment negation.
+        {
+            char op_str[64];
+
+            gen_expr(expr->expr, dst);
+            instr_op_str(op_str, sizeof(op_str), dst);
+            emit_text("    neg %s", op_str);
+            break;
+        }
+        case TKN_NEG: // Bitwise not
+        {
+            char op_str[64];
+
+            gen_expr(expr->expr, dst);
+            instr_op_str(op_str, sizeof(op_str), dst);
+            emit_text("    not %s", op_str);
+            break;
+        }
+        case TKN_NOT: // Logical not
+        {
+            gen_expr(expr->expr, dst);
+            ensure_operand_in_reg(dst);
+
+            const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
+            const char* dst_reg_byte_name = reg_names[1][dst->reg];
+
+            emit_text("    cmp %s, 0", dst_reg_name);
+            emit_text("    sete %s", dst_reg_byte_name);
+            emit_text("    movzx %s, %s", dst_reg_name, dst_reg_byte_name);
+            break;
+        }
+        default:
+            assert(0);
+            break;
+    }
+}
+
 static void gen_expr_cast(ExprCast* ecast, Operand* dest)
 {
     Type* from_type = ecast->expr->type;
@@ -981,14 +1028,17 @@ static void gen_expr(Expr* expr, Operand* dest)
         case CST_ExprIdent:
             gen_expr_ident((ExprIdent*)expr, dest);
             break;
-        case CST_ExprBinary:
-            gen_expr_binary((ExprBinary*)expr, dest);
-            break;
         case CST_ExprCall:
             gen_expr_call((ExprCall*)expr, dest);
             break;
         case CST_ExprCast:
             gen_expr_cast((ExprCast*)expr, dest);
+            break;
+        case CST_ExprBinary:
+            gen_expr_binary((ExprBinary*)expr, dest);
+            break;
+        case CST_ExprUnary:
+            gen_expr_unary((ExprUnary*)expr, dest);
             break;
         default:
             ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);

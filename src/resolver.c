@@ -1,5 +1,5 @@
-#include "parser.h"
 #include "resolver.h"
+#include "parser.h"
 
 #define OP_FROM_EXPR(e)                                                                                                \
     {                                                                                                                  \
@@ -37,7 +37,9 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
 static bool resolve_expr(Resolver* resolver, Expr* expr);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
 static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right);
+static void resolve_unary_eop(TokenKind op, ExprOperand* dst, ExprOperand* src);
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr);
+static bool resolve_expr_unary(Resolver* resolver, Expr* expr);
 static bool resolve_expr_call(Resolver* resolver, Expr* expr);
 static bool resolve_expr_ident(Resolver* resolver, Expr* expr);
 static bool resolve_cond_expr(Resolver* resolver, Expr* expr);
@@ -533,6 +535,48 @@ static void convert_arith_eops(ExprOperand* left, ExprOperand* right)
     assert(left->type == right->type);
 }
 
+static s64 eval_unary_op_s64(TokenKind op, s64 val)
+{
+    switch (op)
+    {
+        case TKN_PLUS:
+            return +val;
+        case TKN_MINUS:
+            return -val;
+        case TKN_NEG:
+            return ~val;
+        case TKN_NOT:
+            return !val;
+        default:
+            ftprint_err("Unexpected unary op (s64): %d\n", op);
+            assert(0);
+            break;
+    }
+
+    return 0;
+}
+
+static u64 eval_unary_op_u64(TokenKind op, u64 val)
+{
+    switch (op)
+    {
+        case TKN_PLUS:
+            return +val;
+        case TKN_MINUS:
+            return -val;
+        case TKN_NEG:
+            return ~val;
+        case TKN_NOT:
+            return !val;
+        default:
+            ftprint_err("Unexpected unary op (s64): %d\n", op);
+            assert(0);
+            break;
+    }
+
+    return 0;
+}
+
 static s64 eval_binary_op_s64(TokenKind op, s64 left, s64 right)
 {
     switch (op)
@@ -631,10 +675,8 @@ static u64 eval_binary_op_u64(TokenKind op, u64 left, u64 right)
     return 0;
 }
 
-static Scalar eval_binary_op(TokenKind op, Type* type, Scalar left, Scalar right)
+static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
 {
-    ExprOperand result_eop = {0};
-
     if (type_is_integer_like(type))
     {
         ExprOperand left_eop = OP_FROM_CONST(type, left);
@@ -646,29 +688,68 @@ static Scalar eval_binary_op(TokenKind op, Type* type, Scalar left, Scalar right
             cast_eop(&left_eop, type_s64);
             cast_eop(&right_eop, type_s64);
 
-            s64 r = eval_binary_op_s64(op, left.as_int._s64, right.as_int._s64);
-            Scalar result_val = {.as_int._s64 = r};
-            result_eop = (ExprOperand)OP_FROM_CONST(type_s64, result_val);
+            s64 r = eval_binary_op_s64(op, left_eop.const_val.as_int._s64, right_eop.const_val.as_int._s64);
+
+            dst->type = type_s64;
+            dst->is_const = true;
+            dst->is_lvalue = false;
+            dst->const_val.as_int._s64 = r;
         }
         else
         {
             cast_eop(&left_eop, type_u64);
             cast_eop(&right_eop, type_u64);
 
-            u64 r = eval_binary_op_u64(op, left.as_int._u64, right.as_int._u64);
-            Scalar result_val = {.as_int._u64 = r};
-            result_eop = (ExprOperand)OP_FROM_CONST(type_u64, result_val);
+            u64 r = eval_binary_op_u64(op, left_eop.const_val.as_int._u64, right_eop.const_val.as_int._u64);
+
+            dst->type = type_u64;
+            dst->is_const = true;
+            dst->is_lvalue = false;
+            dst->const_val.as_int._u64 = r;
         }
 
         // Cast it back to the original type.
-        cast_eop(&result_eop, type);
+        cast_eop(dst, type);
     }
     else
     {
         assert(type->kind == TYPE_FLOAT);
     }
+}
 
-    return result_eop.const_val;
+static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar val)
+{
+    if (type_is_integer_like(type))
+    {
+        ExprOperand val_eop = OP_FROM_CONST(type, val);
+
+        // Compute the operation in the largest type available.
+        if (type->as_integer.is_signed)
+        {
+            cast_eop(&val_eop, type_s64);
+
+            dst->type = type_s64;
+            dst->is_const = true;
+            dst->is_lvalue = false;
+            dst->const_val.as_int._s64 = eval_unary_op_s64(op, val_eop.const_val.as_int._s64);
+        }
+        else
+        {
+            cast_eop(&val_eop, type_u64);
+
+            dst->type = type_u64;
+            dst->is_const = true;
+            dst->is_lvalue = false;
+            dst->const_val.as_int._u64 = eval_unary_op_u64(op, val_eop.const_val.as_int._u64);
+        }
+
+        // Cast it back to the original type.
+        cast_eop(dst, type);
+    }
+    else
+    {
+        assert(type->kind == TYPE_FLOAT);
+    }
 }
 
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
@@ -692,10 +773,7 @@ static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left
 
     if (left->is_const & right->is_const)
     {
-        dst->type = left->type;
-        dst->is_const = true;
-        dst->is_lvalue = false;
-        dst->const_val = eval_binary_op(op, left->type, left->const_val, right->const_val);
+        eval_const_binary_op(op, dst, left->type, left->const_val, right->const_val);
     }
     else
     {
@@ -718,6 +796,9 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
     ExprOperand dst_op = {0};
     ExprOperand left_op = OP_FROM_EXPR(ebinary->left);
     ExprOperand right_op = OP_FROM_EXPR(ebinary->right);
+
+    eop_decay(resolver, &left_op);
+    eop_decay(resolver, &right_op);
 
     switch (ebinary->op)
     {
@@ -785,6 +866,9 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             {
                 if (left_op.is_const && right_op.is_const)
                 {
+                    // NOTE: Only cast const operands to s32 here for convenience.
+                    // The generated code does need the operands to be same size; they only
+                    // need to be comparable to 0.
                     cast_eop(&left_op, type_s32);
                     cast_eop(&right_op, type_s32);
 
@@ -793,11 +877,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                     dst_op.is_lvalue = false;
 
                     if (ebinary->op == TKN_LOGIC_AND)
-                        dst_op.const_val.as_int._s32 = (left_op.const_val.as_int._s32 &&
-                                                        right_op.const_val.as_int._s32);
+                        dst_op.const_val.as_int._s32 =
+                            (left_op.const_val.as_int._s32 && right_op.const_val.as_int._s32);
                     else
-                        dst_op.const_val.as_int._s32 = (left_op.const_val.as_int._s32 ||
-                                                        right_op.const_val.as_int._s32);
+                        dst_op.const_val.as_int._s32 =
+                            (left_op.const_val.as_int._s32 || right_op.const_val.as_int._s32);
                 }
                 else
                 {
@@ -821,6 +905,79 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
     ebinary->left = try_wrap_cast_expr(resolver, &left_op, ebinary->left);
     ebinary->right = try_wrap_cast_expr(resolver, &right_op, ebinary->right);
+
+    expr->type = dst_op.type;
+    expr->is_lvalue = dst_op.is_lvalue;
+    expr->is_const = dst_op.is_const;
+    expr->const_val = dst_op.const_val;
+
+    return true;
+}
+
+static void resolve_unary_eop(TokenKind op, ExprOperand* dst, ExprOperand* src)
+{
+    promote_int_eops(src);
+
+    if (src->is_const)
+    {
+        eval_const_unary_op(op, dst, src->type, src->const_val);
+    }
+    else
+    {
+        dst->type = src->type;
+        dst->is_const = false;
+        dst->is_lvalue = false;
+    }
+}
+
+static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
+{
+    ExprUnary* eunary = (ExprUnary*)expr;
+
+    if (!resolve_expr(resolver, eunary->expr))
+        return false;
+
+    ExprOperand dst_op = {0};
+    ExprOperand src_op = OP_FROM_EXPR(eunary->expr);
+
+    eop_decay(resolver, &src_op);
+
+    switch (eunary->op)
+    {
+        case TKN_PLUS:
+        case TKN_MINUS:
+            if (!type_is_arithmetic(src_op.type))
+            {
+                resolver_on_error(resolver, "Can only use unary +/- with arithmetic types");
+                return false;
+            }
+
+            resolve_unary_eop(eunary->op, &dst_op, &src_op);
+            break;
+        case TKN_NEG:
+            if (!type_is_integer_like(src_op.type))
+            {
+                resolver_on_error(resolver, "Can only use unary ~ with integer types");
+                return false;
+            }
+
+            resolve_unary_eop(eunary->op, &dst_op, &src_op);
+            break;
+        case TKN_NOT:
+            if (!type_is_scalar(src_op.type))
+            {
+                resolver_on_error(resolver, "Can only use unary ! with scalar types");
+                return false;
+            }
+
+            resolve_unary_eop(eunary->op, &dst_op, &src_op);
+            break;
+        default:
+            resolver_on_error(resolver, "Unary operation type `%d` not supported", eunary->op);
+            return false;
+    }
+
+    eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
 
     expr->type = dst_op.type;
     expr->is_lvalue = dst_op.is_lvalue;
@@ -944,10 +1101,12 @@ static bool resolve_expr(Resolver* resolver, Expr* expr)
     {
         case CST_ExprInt:
             return resolve_expr_int(resolver, expr);
-        case CST_ExprBinary:
-            return resolve_expr_binary(resolver, expr);
         case CST_ExprIdent:
             return resolve_expr_ident(resolver, expr);
+        case CST_ExprBinary:
+            return resolve_expr_binary(resolver, expr);
+        case CST_ExprUnary:
+            return resolve_expr_unary(resolver, expr);
         case CST_ExprCall:
             return resolve_expr_call(resolver, expr);
         default:
