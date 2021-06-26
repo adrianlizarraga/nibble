@@ -797,7 +797,8 @@ static void gen_expr_cast(ExprCast* ecast, Operand* dest)
         // If from_type is larger than to_type, just use mov
         if (from_type->size > to_type->size)
         {
-            emit_text("    mov %s, %s", dest_reg_name, src_op_str);
+            // NOTE: Moving to dest registers that is the size of src operand! (larger than necessary)
+            emit_text("    mov %s, %s", reg_names[from_type->size][dest_reg], src_op_str);
         }
         else
         {
@@ -830,9 +831,49 @@ static void gen_expr_cast(ExprCast* ecast, Operand* dest)
         dest->type = to_type;
         dest->reg = dest_reg;
     }
+    else if ((from_type->kind == TYPE_INTEGER) && (to_type->kind == TYPE_PTR))
+    {
+        gen_expr(ecast->expr, dest);
+
+        dest->type = to_type;
+    }
+    else if ((from_type->kind == TYPE_PTR) && (to_type->kind == TYPE_INTEGER))
+    {
+        if (from_type->size == to_type->size)
+        {
+            gen_expr(ecast->expr, dest);
+
+            dest->type = to_type;
+        }
+        else if (from_type->size > to_type->size)
+        {
+            Operand src = {0};
+            char src_op_str[64];
+
+            // Generate expression for src (ptr) expression.
+            gen_expr(ecast->expr, &src);
+            instr_op_str(src_op_str, sizeof(src_op_str), &src);
+
+            // Allocate register for the result.
+            Register dest_reg = next_reg();
+            const char* dest_reg_name = reg_names[from_type->size][dest_reg];
+
+            // Move pointer value into a NOT smaller register.
+            emit_text("    mov %s, %s", dest_reg_name, src_op_str);
+            free_operand(&src);
+
+            dest->kind = OPERAND_REGISTER;
+            dest->type = to_type;
+            dest->reg = dest_reg;
+        }
+        else
+        {
+            assert(!"Apparently ptr is not the largest integer size!");
+        }
+    }
     else
     {
-        assert(!"Can only generate cast code for integer types");
+        assert(!"Can only generate cast code for integer and ptr types");
     }
 }
 

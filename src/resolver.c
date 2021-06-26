@@ -94,6 +94,8 @@ static void add_scope_symbol(Scope* scope, Symbol* sym)
 
 static void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, const char** name)
 {
+    // TODO: This is ugly.
+
     switch (decl->kind)
     {
         case CST_DeclVar:
@@ -940,12 +942,12 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
     ExprOperand dst_op = {0};
     ExprOperand src_op = OP_FROM_EXPR(eunary->expr);
 
-    eop_decay(resolver, &src_op);
-
     switch (eunary->op)
     {
         case TKN_PLUS:
         case TKN_MINUS:
+            eop_decay(resolver, &src_op);
+
             if (!type_is_arithmetic(src_op.type))
             {
                 resolver_on_error(resolver, "Can only use unary +/- with arithmetic types");
@@ -953,8 +955,11 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
             }
 
             resolve_unary_eop(eunary->op, &dst_op, &src_op);
+            eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
             break;
         case TKN_NEG:
+            eop_decay(resolver, &src_op);
+
             if (!type_is_integer_like(src_op.type))
             {
                 resolver_on_error(resolver, "Can only use unary ~ with integer types");
@@ -962,8 +967,11 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
             }
 
             resolve_unary_eop(eunary->op, &dst_op, &src_op);
+            eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
             break;
         case TKN_NOT:
+            eop_decay(resolver, &src_op);
+
             if (!type_is_scalar(src_op.type))
             {
                 resolver_on_error(resolver, "Can only use unary ! with scalar types");
@@ -971,13 +979,38 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
             }
 
             resolve_unary_eop(eunary->op, &dst_op, &src_op);
+            eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
+            break;
+        case TKN_AND: // NOTE: Address-of operator.
+            if (!src_op.is_lvalue)
+            {
+                resolver_on_error(resolver, "Can only take the address of an l-value");
+                return false;
+            }
+
+            dst_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, src_op.type);
+            dst_op.is_lvalue = false;
+            dst_op.is_const = false;
+            break;
+        case TKN_ASTERISK: // NOTE: Dereference operator.
+            eop_decay(resolver, &src_op);
+
+            if (src_op.type->kind != TYPE_PTR)
+            {
+                resolver_on_error(resolver, "Cannot de-reference a non-pointer value.");
+                return false;
+            }
+
+            // TODO: Cast array-type to pointer? Or just let backend handle arrays and ptrs individually?
+
+            dst_op.type = src_op.type->as_ptr.base;
+            dst_op.is_lvalue = true;
+            dst_op.is_const = false;
             break;
         default:
             resolver_on_error(resolver, "Unary operation type `%d` not supported", eunary->op);
             return false;
     }
-
-    eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
 
     expr->type = dst_op.type;
     expr->is_lvalue = dst_op.is_lvalue;
@@ -1093,6 +1126,39 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
     return true;
 }
 
+static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
+{
+    ExprCast* ecast = (ExprCast*)expr;
+
+    Type* cast_type = resolve_typespec(resolver, ecast->typespec);
+
+    if (!cast_type)
+        return false;
+
+    if (!resolve_expr(resolver, ecast->expr))
+        return false;
+
+    ExprOperand src_eop = OP_FROM_EXPR(ecast->expr);
+    eop_decay(resolver, &src_eop);
+
+    if (!cast_eop(&src_eop, cast_type))
+    {
+        resolver_on_error(resolver, "Cannot cast from type `%s` to type `%s`",
+                          type_name(ecast->expr->type),
+                          type_name(cast_type));
+        return false;
+    }
+
+    assert(cast_type == src_eop.type);
+
+    expr->type = src_eop.type;
+    expr->is_lvalue = src_eop.is_lvalue;
+    expr->is_const = src_eop.is_const;
+    expr->const_val = src_eop.const_val;
+
+    return true;
+}
+
 static bool resolve_expr(Resolver* resolver, Expr* expr)
 {
     //(void)expected_type; // TODO: Necessary when resolving compound initializers
@@ -1109,6 +1175,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr)
             return resolve_expr_unary(resolver, expr);
         case CST_ExprCall:
             return resolve_expr_call(resolver, expr);
+        case CST_ExprCast:
+            return resolve_expr_cast(resolver, expr);
         default:
             ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
             assert(0);

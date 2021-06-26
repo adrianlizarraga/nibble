@@ -128,6 +128,9 @@ typedef enum ExprKind {
 struct Expr {
     ExprKind kind;
     ProgRange range;
+
+    // TODO: Composition of ExprOperand?
+    // This would save a lot of unnecessary copying of ExprOperands.
     Type* type;
     bool is_const;
     bool is_lvalue;
