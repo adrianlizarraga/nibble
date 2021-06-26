@@ -172,12 +172,16 @@ typedef enum OperandKind {
     OPERAND_REGISTER,
     OPERAND_IMMEDIATE,
     OPERAND_GLOBAL_VAR,
+    OPERAND_ADDRESS, // An actual address
+    OPERAND_DEREF_ADDR, // Pointer has been dereference, but still holding on to address until necessary
     OPERAND_PROC,
 } OperandKind;
 
 struct Operand {
     OperandKind kind;
     Type* type;
+
+    int addr_index; // Used for OPERAND_ADDRESS
 
     union {
         int offset;
@@ -765,6 +769,37 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
             emit_text("    cmp %s, 0", dst_reg_name);
             emit_text("    sete %s", dst_reg_byte_name);
             emit_text("    movzx %s, %s", dst_reg_name, dst_reg_byte_name);
+            break;
+        }
+        case TKN_AND: // Address-of operator
+        {
+            // See: https://godbolt.org/z/sMzPExPPG
+            gen_expr(expr->expr, dst);
+
+            if (dst->kind == OPERAND_DEREF_ADDR)
+            {
+                dst->kind = OPERAND_ADDRESS;
+                dst->type = expr->super.type;
+                dst->addr_index = 0;
+                // dst->reg is already filled out and holds the original addr.
+            }
+            else
+            {
+                assert(dst->kind == OPERAND_FRAME_OFFSET || dst->kind == OPERAND_GLOBAL_VAR);
+
+                Register result_reg = next_reg();
+                const char* result_reg_name = reg_names[expr->super.type->size][result_reg];
+                char op_str[64];
+
+                instr_op_str(op_str, sizeof(op_str), dst);
+                emit_text("    lea %s, %s", result_reg_name, op_str);
+
+                dst->kind = OPERAND_ADDRESS;
+                dst->type = expr->super.type;
+                dst->reg = result_reg;
+                dst->addr_index = 0;
+            }
+
             break;
         }
         default:
