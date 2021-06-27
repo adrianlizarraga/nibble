@@ -793,6 +793,26 @@ static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left
     }
 }
 
+static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOperand* ptr)
+{
+    // Convert ^void to ^s8
+    if (ptr->type->as_ptr.base == type_void)
+    {
+        ptr->type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+    }
+    // Ensure base pointer type has non-zero size
+    else if (ptr->type->as_ptr.base->size == 0)
+    {
+        return false;
+    }
+
+    dst->type = ptr->type;
+    dst->is_const = false;
+    dst->is_lvalue = false;
+
+    return true;
+}
+
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 {
     ExprBinary* ebinary = (ExprBinary*)expr;
@@ -817,10 +837,29 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             {
                 resolve_binary_eop(TKN_PLUS, &dst_op, &left_op, &right_op);
             }
+            else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type))
+            {
+                if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op))
+                {
+                    resolver_on_error(resolver, "Cannot add to a pointer with a base type (%s) of zero size",
+                                      type_name(left_op.type->as_ptr.base));
+
+                    return false;
+                }
+            }
+            else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR))
+            {
+                if (!resolve_ptr_int_arith(resolver, &dst_op, &right_op))
+                {
+                    resolver_on_error(resolver, "Cannot add to a pointer with a base type (%s) of zero size",
+                                      type_name(right_op.type->as_ptr.base));
+
+                    return false;
+                }
+            }
             else
             {
-                // TODO: Support pointer arithmetic.
-                resolver_on_error(resolver, "Can only add arithmetic types");
+                resolver_on_error(resolver, "Can only add arithmetic and pointer types");
                 return false;
             }
 
@@ -830,10 +869,51 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             {
                 resolve_binary_eop(TKN_MINUS, &dst_op, &left_op, &right_op);
             }
+            // ptr - int
+            else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type))
+            {
+                if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op))
+                {
+                    resolver_on_error(resolver, "Cannot subtract from a pointer with a base type (%s) of zero size",
+                                      type_name(left_op.type->as_ptr.base));
+
+                    return false;
+                }
+            }
+            // ptr - ptr
+            else if ((left_op.type->kind == TYPE_PTR) && (right_op.type->kind == TYPE_PTR))
+            {
+                Type* left_base_type = left_op.type->as_ptr.base;
+                Type* right_base_type = right_op.type->as_ptr.base;
+
+                if ((left_base_type == type_void) && (right_base_type == type_void))
+                {
+                    left_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                    right_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                }
+                else if ((left_base_type == type_void) && (right_base_type == type_s8))
+                {
+                    left_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                }
+                else if ((left_base_type == type_s8) && (right_base_type == type_void))
+                {
+                    right_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                }
+
+                if (left_op.type != right_op.type)
+                {
+                    resolver_on_error(resolver, "Cannot subtract pointers of different types: `^%s` - `^%s`",
+                                      type_name(left_base_type), type_name(right_base_type));
+                    return false;
+                }
+
+                dst_op.type = left_op.type;
+                dst_op.is_const = false;
+                dst_op.is_lvalue = false;
+            }
             else
             {
-                // TODO: Support pointer arithmetic.
-                resolver_on_error(resolver, "Can only subtract arithmetic types");
+                resolver_on_error(resolver, "Can only subtract arithmetic types, pointers, and integers from pointers");
                 return false;
             }
 

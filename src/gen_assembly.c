@@ -914,7 +914,7 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
             {
                 dst->kind = OPERAND_REGISTER;
                 dst->type = expr->super.type;
-                dst->displacement = 0;
+                //dst->displacement = 0;
                 // TODO: Will addr be in a reg??
                 // dst->reg is already filled out and holds the original addr.
             }
