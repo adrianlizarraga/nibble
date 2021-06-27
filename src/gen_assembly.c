@@ -172,8 +172,7 @@ typedef enum OperandKind {
     OPERAND_REGISTER,
     OPERAND_IMMEDIATE,
     OPERAND_GLOBAL_VAR,
-    OPERAND_ADDRESS, // An actual address
-    OPERAND_DEREF_ADDR, // Pointer has been dereference, but still holding on to address until necessary
+    OPERAND_DEREF_ADDR, // Pointer has been dereferenced, but still holding on to address until necessary
     OPERAND_PROC,
 } OperandKind;
 
@@ -181,7 +180,7 @@ struct Operand {
     OperandKind kind;
     Type* type;
 
-    int addr_index; // Used for OPERAND_ADDRESS
+    s32 displacement;
 
     union {
         int offset;
@@ -376,6 +375,8 @@ static size_t instr_op_str(char* buf, size_t len, Operand* op)
         case OPERAND_REGISTER:
             return snprintf(buf, len, "%s", reg_names[op->type->size][op->reg]);
         default:
+            ftprint_err("Unexpected op kind `%d` in instr_op_str()\n", op->kind);
+            assert(0);
             return 0;
     }
 }
@@ -474,8 +475,33 @@ static void emit_data_value(Type* type, Scalar scalar)
 
 static void free_operand(Operand* operand)
 {
-    if (operand->kind == OPERAND_REGISTER)
+    if ((operand->kind == OPERAND_REGISTER) || (operand->kind == OPERAND_DEREF_ADDR))
         free_reg(operand->reg);
+}
+
+static void execute_deref(Operand* operand)
+{
+    assert(operand->kind == OPERAND_DEREF_ADDR);
+
+    // The operand currently holds the address it is supposed to derefence.
+    // This function executes the dereference into the same register that held the address.
+    const char* dst_reg_name = reg_names[operand->type->size][operand->reg];
+    const char* base_reg_name = reg_names[8][operand->reg];
+    const char* mem_label = mem_size_label[operand->type->size];
+
+    if (operand->displacement)
+        emit_text("    mov %s, %s [%s + %d]", dst_reg_name, mem_label, base_reg_name, operand->displacement);
+    else
+        emit_text("    mov %s, %s [%s]", dst_reg_name, mem_label, base_reg_name);
+
+    operand->kind = OPERAND_REGISTER;
+    operand->displacement = 0;
+}
+
+static void ensure_execute_deref(Operand* operand)
+{
+    if (operand->kind == OPERAND_DEREF_ADDR)
+        execute_deref(operand);
 }
 
 static void emit_operand_to_reg(Operand* operand, Register reg, size_t reg_size)
@@ -513,7 +539,11 @@ static void emit_operand_to_reg(Operand* operand, Register reg, size_t reg_size)
 
 static void ensure_operand_in_reg(Operand* operand)
 {
-    if (operand->kind != OPERAND_REGISTER)
+    if (operand->kind == OPERAND_DEREF_ADDR)
+    {
+        execute_deref(operand);
+    }
+    else if (operand->kind != OPERAND_REGISTER)
     {
         Register reg = next_reg();
         emit_operand_to_reg(operand, reg, operand->type->size);
@@ -563,10 +593,101 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
                       reg_names[rhs_op->type->size][rhs_op->reg]);
         }
     }
+    else if (var_op->kind == OPERAND_DEREF_ADDR)
+    {
+        char rhs_op_str[64];
+
+        if (rhs_op->kind != OPERAND_IMMEDIATE)
+            ensure_operand_in_reg(rhs_op);
+
+        instr_op_str(rhs_op_str, sizeof(rhs_op_str), rhs_op);
+
+        if (rhs_op->displacement)
+        {
+            emit_text("    mov %s [%s + %d], %s", mem_size_label[var_size], reg_names[8][var_op->reg],
+                      var_op->displacement, rhs_op_str);
+        }
+        else
+        {
+            emit_text("    mov %s [%s], %s", mem_size_label[var_size], reg_names[8][var_op->reg], rhs_op_str);
+        }
+    }
     else
     {
         ftprint_err("INTERNAL ERROR: Do not yet support indirect assignment\n");
         assert(0);
+    }
+}
+
+static void emit_int_cast(Operand* src, Type* dst_type, Operand* dst)
+{
+    assert(src->kind != OPERAND_IMMEDIATE);
+
+    Type* src_type = src->type;
+
+    if (src_type->size >= dst_type->size)
+    {
+        // If src is already in a register, don't do anything. Just steal it for the dst operand.
+        if (src->kind == OPERAND_REGISTER)
+        {
+            dst->kind = OPERAND_REGISTER;
+            dst->type = dst_type;
+            dst->reg = src->reg;
+
+            src->kind = OPERAND_NONE;
+        }
+        // Otherwise, move source operand to a new register. Assign the new register to the
+        // dst operand.
+        else
+        {
+            char src_op_str[64];
+            instr_op_str(src_op_str, sizeof(src_op_str), src);
+
+            // Allocate register for the result.
+            Register dst_reg = next_reg();
+
+            // Move src into dst register (same size as src though).
+            emit_text("    mov %s, %s", reg_names[src_type->size][dst_reg], src_op_str);
+
+            dst->kind = OPERAND_REGISTER;
+            dst->type = dst_type;
+            dst->reg = dst_reg;
+        }
+    }
+    else
+    {
+        bool src_signed = (src_type->kind == TYPE_INTEGER) && src_type->as_integer.is_signed;
+        char src_op_str[64];
+
+        instr_op_str(src_op_str, sizeof(src_op_str), src);
+
+        // Allocate register for the result.
+        Register dst_reg = next_reg();
+        const char* dst_reg_name = reg_names[dst_type->size][dst_reg];
+
+        // If src_type is 32bit, use movsxd or mov for signed and unsigned, respectively.
+        if (src_type->size == 4)
+        {
+            if (src_signed)
+                emit_text("    movsxd %s, %s", dst_reg_name, src_op_str);
+            else
+                emit_text("    mov %s, %s", reg_names[src_type->size][dst_reg], src_op_str);
+        }
+
+        // Else, use movsx for signed or movzx for unsigned.
+        else
+        {
+            assert(src_type->size != 8);
+
+            if (src_signed)
+                emit_text("    movsx %s, %s", dst_reg_name, src_op_str);
+            else
+                emit_text("    movzx %s, %s", dst_reg_name, src_op_str);
+        }
+
+        dst->kind = OPERAND_REGISTER;
+        dst->type = dst_type;
+        dst->reg = dst_reg;
     }
 }
 
@@ -577,6 +698,7 @@ static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
     const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
     char src_op_str[64]; // TODO: Will overflow for large global variable names. This is temporary.
 
+    ensure_execute_deref(src);
     instr_op_str(src_op_str, sizeof(src_op_str), src);
     emit_text("    %s %s, %s", op_inst, dst_reg_name, src_op_str);
 }
@@ -593,7 +715,7 @@ static void emit_add(Operand* src, Operand* dst)
 
         imm_to_str(imm_str, sizeof(imm_str), dst->type, dst->imm);
         ensure_operand_in_reg(src);
-        emit_text("    add %s, %d", reg_names[src->type->size][src->reg], imm_str);
+        emit_text("    add %s, %s", reg_names[src->type->size][src->reg], imm_str);
 
         // Steal src operand's register.
         dst->kind = OPERAND_REGISTER;
@@ -627,6 +749,7 @@ static void emit_binary_cmp(TokenKind cmp_op, Operand* src, Operand* dst)
     const char* setcc_name = setcc_from_op[cmp_op];
     char src_op_str[64];
 
+    ensure_execute_deref(src);
     instr_op_str(src_op_str, sizeof(src_op_str), src);
     emit_text("    cmp %s, %s", dst_reg_name, src_op_str);
     emit_text("    %s %s", setcc_name, dst_reg_byte_name);
@@ -702,6 +825,7 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             // Generate the left expression and compare it to zero.
             // If can short-cicuit, jmp to end label.
             gen_expr(expr->left, &src);
+            ensure_execute_deref(&src);
             instr_op_str(op_str, sizeof(op_str), &src);
             emit_text("    cmp %s, 0", op_str);
             emit_text("    %s %s.end.%u", jmpcc_instr, jmp_sub_label, cmp_id);
@@ -710,6 +834,7 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             // Generate the right expression and compare it to zero.
             // Use setne instruction to set the final value of the result register (zero extend).
             gen_expr(expr->right, &src);
+            ensure_execute_deref(&src);
             instr_op_str(op_str, sizeof(op_str), &src);
             emit_text("    cmp %s, 0", op_str);
             emit_text("    setne %s", result_reg_byte_name);
@@ -771,16 +896,26 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
             emit_text("    movzx %s, %s", dst_reg_name, dst_reg_byte_name);
             break;
         }
-        case TKN_AND: // Address-of operator
+        case TKN_ASTERISK:
+        {
+            gen_expr(expr->expr, dst);
+            ensure_operand_in_reg(dst);
+
+            dst->kind = OPERAND_DEREF_ADDR;
+            dst->type = expr->super.type;
+            break;
+        }
+        case TKN_CARET: // Address-of operator
         {
             // See: https://godbolt.org/z/sMzPExPPG
             gen_expr(expr->expr, dst);
 
             if (dst->kind == OPERAND_DEREF_ADDR)
             {
-                dst->kind = OPERAND_ADDRESS;
+                dst->kind = OPERAND_REGISTER;
                 dst->type = expr->super.type;
-                dst->addr_index = 0;
+                dst->displacement = 0;
+                // TODO: Will addr be in a reg??
                 // dst->reg is already filled out and holds the original addr.
             }
             else
@@ -794,10 +929,10 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
                 instr_op_str(op_str, sizeof(op_str), dst);
                 emit_text("    lea %s, %s", result_reg_name, op_str);
 
-                dst->kind = OPERAND_ADDRESS;
+                dst->kind = OPERAND_REGISTER;
                 dst->type = expr->super.type;
                 dst->reg = result_reg;
-                dst->addr_index = 0;
+                dst->displacement = 0;
             }
 
             break;
@@ -816,100 +951,15 @@ static void gen_expr_cast(ExprCast* ecast, Operand* dest)
     assert(from_type != to_type);
     assert(from_type->size != to_type->size);
 
-    if ((from_type->kind == TYPE_INTEGER) && (to_type->kind == TYPE_INTEGER))
-    {
-        Operand src = {0};
-        char src_op_str[64];
+    // TODO: Support floats.
+    assert(from_type->kind != TYPE_FLOAT);
+    assert(to_type->kind != TYPE_FLOAT);
 
-        // Generate expression for src expression.
-        gen_expr(ecast->expr, &src);
-        instr_op_str(src_op_str, sizeof(src_op_str), &src);
+    Operand src = {0};
 
-        // Allocate register for the result.
-        Register dest_reg = next_reg();
-        const char* dest_reg_name = reg_names[to_type->size][dest_reg];
-
-        // If from_type is larger than to_type, just use mov
-        if (from_type->size > to_type->size)
-        {
-            // NOTE: Moving to dest registers that is the size of src operand! (larger than necessary)
-            emit_text("    mov %s, %s", reg_names[from_type->size][dest_reg], src_op_str);
-        }
-        else
-        {
-            bool from_signed = from_type->as_integer.is_signed;
-
-            // If from_type is 32bit, use movsxd or mov for signed and unsigned, respectively.
-            if (from_type->size == 4)
-            {
-                if (from_signed)
-                    emit_text("    movsxd %s, %s", dest_reg_name, src_op_str);
-                else
-                    emit_text("    mov %s, %s", dest_reg_name, src_op_str);
-            }
-
-            // Else, use movsx for signed or movzx for unsigned.
-            else
-            {
-                assert(from_type->size != 8);
-
-                if (from_signed)
-                    emit_text("    movsx %s, %s", dest_reg_name, src_op_str);
-                else
-                    emit_text("    movzx %s, %s", dest_reg_name, src_op_str);
-            }
-        }
-
-        free_operand(&src);
-
-        dest->kind = OPERAND_REGISTER;
-        dest->type = to_type;
-        dest->reg = dest_reg;
-    }
-    else if ((from_type->kind == TYPE_INTEGER) && (to_type->kind == TYPE_PTR))
-    {
-        gen_expr(ecast->expr, dest);
-
-        dest->type = to_type;
-    }
-    else if ((from_type->kind == TYPE_PTR) && (to_type->kind == TYPE_INTEGER))
-    {
-        if (from_type->size == to_type->size)
-        {
-            gen_expr(ecast->expr, dest);
-
-            dest->type = to_type;
-        }
-        else if (from_type->size > to_type->size)
-        {
-            Operand src = {0};
-            char src_op_str[64];
-
-            // Generate expression for src (ptr) expression.
-            gen_expr(ecast->expr, &src);
-            instr_op_str(src_op_str, sizeof(src_op_str), &src);
-
-            // Allocate register for the result.
-            Register dest_reg = next_reg();
-            const char* dest_reg_name = reg_names[from_type->size][dest_reg];
-
-            // Move pointer value into a NOT smaller register.
-            emit_text("    mov %s, %s", dest_reg_name, src_op_str);
-            free_operand(&src);
-
-            dest->kind = OPERAND_REGISTER;
-            dest->type = to_type;
-            dest->reg = dest_reg;
-        }
-        else
-        {
-            assert(!"Apparently ptr is not the largest integer size!");
-        }
-    }
-    else
-    {
-        assert(!"Can only generate cast code for integer and ptr types");
-    }
+    gen_expr(ecast->expr, &src);
+    emit_int_cast(&src, to_type, dest);
+    free_operand(&src);
 }
 
 static void gen_expr_ident(ExprIdent* eident, Operand* dest)

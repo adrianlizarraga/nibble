@@ -250,7 +250,7 @@ static void init_builtin_syms(Resolver* resolver)
 
 #define CASE_INT_CAST(k, o, t, f)                                                                                      \
     case k:                                                                                                            \
-        switch (t->kind)                                                                                               \
+        switch (t)                                                                                                     \
         {                                                                                                              \
             case INTEGER_U8:                                                                                           \
                 o->const_val.as_int._u8 = (u8)o->const_val.as_int.f;                                                   \
@@ -313,16 +313,24 @@ static bool cast_eop(ExprOperand* eop, Type* dst_type)
             if (dst_type->kind == TYPE_ENUM)
                 dst_type = dst_type->as_enum.base;
 
-            switch (src_type->as_integer.kind)
+            IntegerKind src_int_kind = src_type->as_integer.kind;
+            IntegerKind dst_int_kind = dst_type->as_integer.kind;
+
+            if (src_type->kind == TYPE_PTR)
+                src_int_kind = INTEGER_U64;
+            if (dst_type->kind == TYPE_PTR)
+                dst_int_kind = INTEGER_U64;
+
+            switch (src_int_kind)
             {
-                CASE_INT_CAST(INTEGER_U8, eop, dst_type, _u8)
-                CASE_INT_CAST(INTEGER_S8, eop, dst_type, _s8)
-                CASE_INT_CAST(INTEGER_U16, eop, dst_type, _u16)
-                CASE_INT_CAST(INTEGER_S16, eop, dst_type, _s16)
-                CASE_INT_CAST(INTEGER_U32, eop, dst_type, _u32)
-                CASE_INT_CAST(INTEGER_S32, eop, dst_type, _s32)
-                CASE_INT_CAST(INTEGER_U64, eop, dst_type, _u64)
-                CASE_INT_CAST(INTEGER_S64, eop, dst_type, _s64)
+                CASE_INT_CAST(INTEGER_U8, eop, dst_int_kind, _u8)
+                CASE_INT_CAST(INTEGER_S8, eop, dst_int_kind, _s8)
+                CASE_INT_CAST(INTEGER_U16, eop, dst_int_kind, _u16)
+                CASE_INT_CAST(INTEGER_S16, eop, dst_int_kind, _s16)
+                CASE_INT_CAST(INTEGER_U32, eop, dst_int_kind, _u32)
+                CASE_INT_CAST(INTEGER_S32, eop, dst_int_kind, _s32)
+                CASE_INT_CAST(INTEGER_U64, eop, dst_int_kind, _u64)
+                CASE_INT_CAST(INTEGER_S64, eop, dst_int_kind, _s64)
                 default:
                     eop->is_const = false;
                     break;
@@ -981,7 +989,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
             resolve_unary_eop(eunary->op, &dst_op, &src_op);
             eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
             break;
-        case TKN_AND: // NOTE: Address-of operator.
+        case TKN_CARET: // NOTE: Address-of operator.
             if (!src_op.is_lvalue)
             {
                 resolver_on_error(resolver, "Can only take the address of an l-value");
@@ -997,7 +1005,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
 
             if (src_op.type->kind != TYPE_PTR)
             {
-                resolver_on_error(resolver, "Cannot de-reference a non-pointer value.");
+                resolver_on_error(resolver, "Cannot dereference a non-pointer value.");
                 return false;
             }
 
@@ -1143,8 +1151,7 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
 
     if (!cast_eop(&src_eop, cast_type))
     {
-        resolver_on_error(resolver, "Cannot cast from type `%s` to type `%s`",
-                          type_name(ecast->expr->type),
+        resolver_on_error(resolver, "Cannot cast from type `%s` to type `%s`", type_name(ecast->expr->type),
                           type_name(cast_type));
         return false;
     }
