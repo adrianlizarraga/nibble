@@ -793,7 +793,7 @@ static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left
     }
 }
 
-static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOperand* ptr)
+static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOperand* ptr, ExprOperand* int_eop)
 {
     // Convert ^void to ^s8
     if (ptr->type->as_ptr.base == type_void)
@@ -805,6 +805,8 @@ static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOper
     {
         return false;
     }
+
+    cast_eop(int_eop, type_u64);
 
     dst->type = ptr->type;
     dst->is_const = false;
@@ -839,7 +841,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
             else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type))
             {
-                if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op))
+                if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op, &right_op))
                 {
                     resolver_on_error(resolver, "Cannot add to a pointer with a base type (%s) of zero size",
                                       type_name(left_op.type->as_ptr.base));
@@ -849,7 +851,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
             else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR))
             {
-                if (!resolve_ptr_int_arith(resolver, &dst_op, &right_op))
+                if (!resolve_ptr_int_arith(resolver, &dst_op, &right_op, &left_op))
                 {
                     resolver_on_error(resolver, "Cannot add to a pointer with a base type (%s) of zero size",
                                       type_name(right_op.type->as_ptr.base));
@@ -865,14 +867,18 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
             break;
         case TKN_MINUS:
+        {
+            bool left_is_ptr = (left_op.type->kind == TYPE_PTR);
+            bool right_is_ptr = (right_op.type->kind == TYPE_PTR);
+
             if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type))
             {
                 resolve_binary_eop(TKN_MINUS, &dst_op, &left_op, &right_op);
             }
             // ptr - int
-            else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type))
+            else if (left_is_ptr && type_is_integer_like(right_op.type))
             {
-                if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op))
+                if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op, &right_op))
                 {
                     resolver_on_error(resolver, "Cannot subtract from a pointer with a base type (%s) of zero size",
                                       type_name(left_op.type->as_ptr.base));
@@ -881,7 +887,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 }
             }
             // ptr - ptr
-            else if ((left_op.type->kind == TYPE_PTR) && (right_op.type->kind == TYPE_PTR))
+            else if (left_is_ptr && right_is_ptr)
             {
                 Type* left_base_type = left_op.type->as_ptr.base;
                 Type* right_base_type = right_op.type->as_ptr.base;
@@ -907,7 +913,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                     return false;
                 }
 
-                dst_op.type = left_op.type;
+                dst_op.type = type_s64;
                 dst_op.is_const = false;
                 dst_op.is_lvalue = false;
             }
@@ -918,49 +924,109 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
 
             break;
+        }
         case TKN_EQ:
         case TKN_NOTEQ:
+        {
+            bool left_is_ptr = (left_op.type->kind == TYPE_PTR);
+            bool right_is_ptr = (right_op.type->kind == TYPE_PTR);
+
             if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type))
             {
                 resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
                 cast_eop(&dst_op, type_s32); // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
             }
+            else if (left_is_ptr && right_is_ptr)
+            {
+                bool same_type = (left_op.type == right_op.type);
+                bool one_is_void_ptr = (left_op.type->as_ptr.base == type_void) ||
+                                       (right_op.type->as_ptr.base == type_void);
+
+                if (!same_type && !one_is_void_ptr)
+                {
+                    // TODO: Better way to print pointer types (recursively print base types).
+                    resolver_on_error(resolver, "Cannot compare pointers of incompatible types");
+                    return false;
+                }
+
+                dst_op.type = type_s32;
+                dst_op.is_const = false;
+                dst_op.is_lvalue = false;
+            }
+            else if ((left_is_ptr && eop_is_null_ptr(right_op)) ||
+                     (right_is_ptr && eop_is_null_ptr(left_op)))
+            {
+                dst_op.type = type_s32;
+                dst_op.is_const = false;
+                dst_op.is_lvalue = false;
+            }
             else
             {
-                // TODO: Support pointer arithmetic.
-                resolver_on_error(resolver, "Can only compare (==, !=) arithmetic types");
+                resolver_on_error(resolver, "Can only compare arithmetic types, or compatible pointer types with `%s`",
+                                  token_kind_names[ebinary->op]);
                 return false;
             }
 
             break;
+        }
         case TKN_GT:
         case TKN_GTEQ:
         case TKN_LT:
         case TKN_LTEQ:
+        {
+            bool left_is_ptr = (left_op.type->kind == TYPE_PTR);
+            bool right_is_ptr = (right_op.type->kind == TYPE_PTR);
+
             if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type))
             {
                 resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
                 cast_eop(&dst_op, type_s32); // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
             }
+            else if (left_is_ptr && right_is_ptr)
+            {
+                Type* left_base_type = left_op.type->as_ptr.base;
+                Type* right_base_type = right_op.type->as_ptr.base;
+
+                if (left_base_type != right_base_type)
+                {
+                    left_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                    right_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                }
+
+                dst_op.type = left_op.type;
+                dst_op.is_const = false;
+                dst_op.is_lvalue = false;
+            }
+            else if ((left_is_ptr && eop_is_null_ptr(right_op)) ||
+                     (right_is_ptr && eop_is_null_ptr(left_op)))
+            {
+                dst_op.type = type_s32;
+                dst_op.is_const = false;
+                dst_op.is_lvalue = false;
+            }
             else
             {
-                // TODO: Support pointer arithmetic.
-                resolver_on_error(resolver, "Can only compare (>, >=, <, <=) arithmetic types");
+                resolver_on_error(resolver, "Can only compare arithmetic types, or compatible pointer types with `%s`",
+                                  token_kind_names[ebinary->op]);
                 return false;
             }
 
             break;
+        }
         case TKN_LOGIC_AND:
         case TKN_LOGIC_OR:
-            if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type))
+            if (type_is_scalar(left_op.type) && type_is_scalar(right_op.type))
             {
                 if (left_op.is_const && right_op.is_const)
                 {
                     // NOTE: Only cast const operands to s32 here for convenience.
-                    // The generated code does need the operands to be same size; they only
+                    // The generated code does not need the operands to be same size; they only
                     // need to be comparable to 0.
-                    cast_eop(&left_op, type_s32);
-                    cast_eop(&right_op, type_s32);
+                    //
+                    // TODO: THIS IS WRONG. Need to properly cast to bool (i.e., true if != 0), and not just truncate. 
+                    // Otherwise, ptr values with, for example, only the top bit set would evaluate to 0!!!!!
+                    cast_eop(&left_op, type_u64);
+                    cast_eop(&right_op, type_u64);
 
                     dst_op.type = type_s32;
                     dst_op.is_const = true;
@@ -968,10 +1034,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
                     if (ebinary->op == TKN_LOGIC_AND)
                         dst_op.const_val.as_int._s32 =
-                            (left_op.const_val.as_int._s32 && right_op.const_val.as_int._s32);
+                            (left_op.const_val.as_int._u64 && right_op.const_val.as_int._u64);
                     else
                         dst_op.const_val.as_int._s32 =
-                            (left_op.const_val.as_int._s32 || right_op.const_val.as_int._s32);
+                            (left_op.const_val.as_int._u64 || right_op.const_val.as_int._u64);
                 }
                 else
                 {
@@ -982,14 +1048,14 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
             else
             {
-                // TODO: Support pointer arithmetic.
-                resolver_on_error(resolver, "Can only compare (>, >=, <, <=) arithmetic types");
+                resolver_on_error(resolver, "Can only compare arithmetic types, or compatible pointer types with `%s`",
+                                  token_kind_names[ebinary->op]);
                 return false;
             }
 
             break;
         default:
-            resolver_on_error(resolver, "Operation type `%d` not supported", ebinary->op);
+            resolver_on_error(resolver, "Binary operator `%s` not supported", token_kind_names[ebinary->op]);
             return false;
     }
 

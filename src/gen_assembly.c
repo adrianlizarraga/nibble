@@ -1,3 +1,9 @@
+//
+// THIS WILL BE RE-WRITTEN! This is sloppy, experimental code.
+// This currently uses the raw AST to generate assembly (NASM) code.
+// I'd like to decouple AST from backend by generating a linear IR.
+// This entire file will be burned and recreated.
+//
 #include "gen_assembly.h"
 #include "stream.h"
 #include "lexer.h"
@@ -172,19 +178,26 @@ typedef enum OperandKind {
     OPERAND_REGISTER,
     OPERAND_IMMEDIATE,
     OPERAND_GLOBAL_VAR,
+    OPERAND_SIBD_ADDR,  // An address when loaded into registers
     OPERAND_DEREF_ADDR, // Pointer has been dereferenced, but still holding on to address until necessary
     OPERAND_PROC,
 } OperandKind;
+
+typedef struct SIBDAddr {
+    Register base_reg;
+    Register index_reg;
+    int scale;
+    u64 disp;
+} SIBDAddr;
 
 struct Operand {
     OperandKind kind;
     Type* type;
 
-    s32 displacement;
-
     union {
         int offset;
         Register reg;
+        SIBDAddr addr;
         Scalar imm;
         const char* var;
         const char* proc;
@@ -288,6 +301,13 @@ static int ntz(uint32_t x)
     return n - (x & 1);
 }
 
+static void swap_operands(Operand* dst, Operand* src)
+{
+    Operand tmp = *dst;
+    *dst = *src;
+    *src = tmp;
+}
+
 static void operand_from_sym(Operand* operand, Symbol* sym)
 {
     switch (sym->kind)
@@ -360,6 +380,58 @@ static size_t imm_to_str(char* buf, size_t len, Type* type, Scalar imm)
     }
 
     return 0;
+}
+
+static size_t SIBD_addr_str(char* buf, size_t len, Operand* operand)
+{
+    SIBDAddr addr = operand->addr;
+    const char* mem_label = mem_size_label[operand->type->size];
+    bool has_base = addr.base_reg < REG_COUNT;
+    bool has_index = addr.scale && (addr.index_reg < REG_COUNT);
+    bool has_disp = addr.disp != 0;
+
+    size_t ret_size = 0;
+
+    assert(has_base || has_index);
+
+    // TODO: THIS IS SO UGLY. Good thing this entire code will be re-written when I generate
+    // a linear IR between resolver and backend.
+    if (has_base)
+    {
+        const char* base_reg_name = reg_names[8][addr.base_reg];
+
+        if (has_index)
+        {
+            const char* index_reg_name = reg_names[8][addr.index_reg];
+
+            if (has_disp)
+                ret_size = snprintf(buf, len, "%s [%s + %d*%s + %d]",
+                                    mem_label, base_reg_name, addr.scale, index_reg_name, (s32)addr.disp);
+            else
+                ret_size = snprintf(buf, len, "%s [%s + %d*%s]",
+                                    mem_label, base_reg_name, addr.scale, index_reg_name);
+        }
+        else
+        {
+            if (has_disp)
+                ret_size = snprintf(buf, len, "%s [%s + %d]", mem_label, base_reg_name, (s32)addr.disp);
+            else
+                ret_size = snprintf(buf, len, "%s [%s]", mem_label, base_reg_name);
+        }
+    }
+    else
+    {
+        const char* index_reg_name = reg_names[8][addr.index_reg];
+
+        if (has_disp)
+            ret_size = snprintf(buf, len, "%s [%d*%s + %d]",
+                                mem_label, addr.scale, index_reg_name, (s32)addr.disp);
+        else
+            ret_size = snprintf(buf, len, "%s [%d*%s]",
+                                mem_label, addr.scale, index_reg_name);
+    }
+
+    return ret_size;
 }
 
 static size_t instr_op_str(char* buf, size_t len, Operand* op)
@@ -475,8 +547,21 @@ static void emit_data_value(Type* type, Scalar scalar)
 
 static void free_operand(Operand* operand)
 {
-    if ((operand->kind == OPERAND_REGISTER) || (operand->kind == OPERAND_DEREF_ADDR))
+    if (operand->kind == OPERAND_REGISTER)
+    {
         free_reg(operand->reg);
+    }
+    else if ((operand->kind == OPERAND_DEREF_ADDR) || (operand->kind == OPERAND_SIBD_ADDR))
+    {
+        Register base_reg = operand->addr.base_reg;
+        Register index_reg = operand->addr.index_reg;
+
+        if (base_reg < REG_COUNT)
+            free_reg(base_reg);
+
+        if (index_reg < REG_COUNT)
+            free_reg(index_reg);
+    }
 }
 
 static void execute_deref(Operand* operand)
@@ -484,24 +569,81 @@ static void execute_deref(Operand* operand)
     assert(operand->kind == OPERAND_DEREF_ADDR);
 
     // The operand currently holds the address it is supposed to derefence.
-    // This function executes the dereference into the same register that held the address.
-    const char* dst_reg_name = reg_names[operand->type->size][operand->reg];
-    const char* base_reg_name = reg_names[8][operand->reg];
-    const char* mem_label = mem_size_label[operand->type->size];
+    // This function executes the dereference into the one of the registers that held the address.
+    SIBDAddr addr = operand->addr;
 
-    if (operand->displacement)
-        emit_text("    mov %s, %s [%s + %d]", dst_reg_name, mem_label, base_reg_name, operand->displacement);
-    else
-        emit_text("    mov %s, %s [%s]", dst_reg_name, mem_label, base_reg_name);
+    bool has_base = addr.base_reg < REG_COUNT;
+    bool has_index = addr.scale && (addr.index_reg < REG_COUNT);
+
+    assert(has_base || has_index);
+
+    Register dst_reg = has_base ? addr.base_reg : addr.index_reg;
+    const char* dst_reg_name = reg_names[operand->type->size][dst_reg];
+    char addr_op_str[64];
+
+    SIBD_addr_str(addr_op_str, sizeof(addr_op_str), operand);
+    emit_text("    mov %s, %s", dst_reg_name, addr_op_str);
 
     operand->kind = OPERAND_REGISTER;
-    operand->displacement = 0;
+    operand->reg = dst_reg;
+
+    if (has_base && has_index)
+        free_reg(addr.index_reg);
+}
+
+static void execute_lea(Operand* operand)
+{
+    assert(operand->kind == OPERAND_SIBD_ADDR);
+
+    // The operand currently holds a memory address.
+    // This function executes the "load-effective-address" call into the one of the registers that held the address.
+    SIBDAddr addr = operand->addr;
+
+    bool has_base = addr.base_reg < REG_COUNT;
+    bool has_index = addr.scale && (addr.index_reg < REG_COUNT);
+    bool has_disp = addr.disp != 0;
+    Register dst_reg;
+
+    assert(has_base || has_index);
+
+    if (has_base && !has_index && !has_disp)
+    {
+        // No need to emit any instructions. Just keep address in base register.
+        dst_reg = operand->addr.base_reg;
+    }
+    else
+    {
+        dst_reg = has_base ? addr.base_reg : addr.index_reg;
+        const char* dst_reg_name = reg_names[operand->type->size][dst_reg];
+        char addr_op_str[64];
+
+        SIBD_addr_str(addr_op_str, sizeof(addr_op_str), operand);
+        emit_text("    lea %s, %s", dst_reg_name, addr_op_str);
+
+        if (has_base && has_index)
+            free_reg(addr.index_reg);
+    }
+
+    operand->kind = OPERAND_REGISTER;
+    operand->reg = dst_reg;
 }
 
 static void ensure_execute_deref(Operand* operand)
 {
     if (operand->kind == OPERAND_DEREF_ADDR)
         execute_deref(operand);
+}
+
+static void ensure_execute_lea(Operand* operand)
+{
+    if (operand->kind == OPERAND_SIBD_ADDR)
+        execute_lea(operand);
+}
+
+static void commit_indirections(Operand* operand)
+{
+    ensure_execute_deref(operand);
+    ensure_execute_lea(operand);
 }
 
 static void emit_operand_to_reg(Operand* operand, Register reg, size_t reg_size)
@@ -537,19 +679,40 @@ static void emit_operand_to_reg(Operand* operand, Register reg, size_t reg_size)
     }
 }
 
-static void ensure_operand_in_reg(Operand* operand)
+static void ensure_operand_in_reg(Operand* operand, bool commit_ptr)
 {
+    if (commit_ptr && (operand->kind == OPERAND_SIBD_ADDR))
+    {
+        execute_lea(operand);
+    }
     if (operand->kind == OPERAND_DEREF_ADDR)
     {
         execute_deref(operand);
     }
     else if (operand->kind != OPERAND_REGISTER)
     {
-        Register reg = next_reg();
-        emit_operand_to_reg(operand, reg, operand->type->size);
+        if (!commit_ptr && (operand->type->kind == TYPE_PTR))
+        {
+            if (operand->kind != OPERAND_SIBD_ADDR)
+            {
+                Register base_reg = next_reg();
+                emit_operand_to_reg(operand, base_reg, operand->type->size);
 
-        operand->kind = OPERAND_REGISTER;
-        operand->reg = reg;
+                operand->kind = OPERAND_SIBD_ADDR;
+                operand->addr.base_reg = base_reg;
+                operand->addr.index_reg = REG_INVALID;
+                operand->addr.scale = 0;
+                operand->addr.disp = 0;
+            }
+        }
+        else
+        {
+            Register reg = next_reg();
+            emit_operand_to_reg(operand, reg, operand->type->size);
+
+            operand->kind = OPERAND_REGISTER;
+            operand->reg = reg;
+        }
     }
 }
 
@@ -570,7 +733,7 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
         }
         else
         {
-            ensure_operand_in_reg(rhs_op);
+            ensure_operand_in_reg(rhs_op, true);
             emit_text("    mov %s [rbp + %d], %s", mem_size_label[var_size], var_offset,
                       reg_names[rhs_op->type->size][rhs_op->reg]);
         }
@@ -588,29 +751,23 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
         }
         else
         {
-            ensure_operand_in_reg(rhs_op);
+            ensure_operand_in_reg(rhs_op, true);
             emit_text("    mov %s [rel %s], %s", mem_size_label[var_size], var_name,
                       reg_names[rhs_op->type->size][rhs_op->reg]);
         }
     }
     else if (var_op->kind == OPERAND_DEREF_ADDR)
     {
+        char var_op_str[64];
         char rhs_op_str[64];
 
         if (rhs_op->kind != OPERAND_IMMEDIATE)
-            ensure_operand_in_reg(rhs_op);
+            ensure_operand_in_reg(rhs_op, true);
 
         instr_op_str(rhs_op_str, sizeof(rhs_op_str), rhs_op);
+        SIBD_addr_str(var_op_str, sizeof(var_op_str), var_op);
 
-        if (rhs_op->displacement)
-        {
-            emit_text("    mov %s [%s + %d], %s", mem_size_label[var_size], reg_names[8][var_op->reg],
-                      var_op->displacement, rhs_op_str);
-        }
-        else
-        {
-            emit_text("    mov %s [%s], %s", mem_size_label[var_size], reg_names[8][var_op->reg], rhs_op_str);
-        }
+        emit_text("    mov %s, %s", var_op_str, rhs_op_str);
     }
     else
     {
@@ -621,8 +778,13 @@ static void emit_var_assign(Operand* var_op, Operand* rhs_op)
 
 static void emit_int_cast(Operand* src, Type* dst_type, Operand* dst)
 {
-    assert(src->kind != OPERAND_IMMEDIATE);
+    commit_indirections(src);
 
+    assert(src->kind != OPERAND_IMMEDIATE);
+    assert(src->kind != OPERAND_DEREF_ADDR);
+    assert(src->kind != OPERAND_SIBD_ADDR);
+
+    Register dst_reg;
     Type* src_type = src->type;
 
     if (src_type->size >= dst_type->size)
@@ -630,10 +792,7 @@ static void emit_int_cast(Operand* src, Type* dst_type, Operand* dst)
         // If src is already in a register, don't do anything. Just steal it for the dst operand.
         if (src->kind == OPERAND_REGISTER)
         {
-            dst->kind = OPERAND_REGISTER;
-            dst->type = dst_type;
-            dst->reg = src->reg;
-
+            dst_reg = src->reg;
             src->kind = OPERAND_NONE;
         }
         // Otherwise, move source operand to a new register. Assign the new register to the
@@ -644,14 +803,10 @@ static void emit_int_cast(Operand* src, Type* dst_type, Operand* dst)
             instr_op_str(src_op_str, sizeof(src_op_str), src);
 
             // Allocate register for the result.
-            Register dst_reg = next_reg();
+            dst_reg = next_reg();
 
             // Move src into dst register (same size as src though).
             emit_text("    mov %s, %s", reg_names[src_type->size][dst_reg], src_op_str);
-
-            dst->kind = OPERAND_REGISTER;
-            dst->type = dst_type;
-            dst->reg = dst_reg;
         }
     }
     else
@@ -662,7 +817,7 @@ static void emit_int_cast(Operand* src, Type* dst_type, Operand* dst)
         instr_op_str(src_op_str, sizeof(src_op_str), src);
 
         // Allocate register for the result.
-        Register dst_reg = next_reg();
+        dst_reg = next_reg();
         const char* dst_reg_name = reg_names[dst_type->size][dst_reg];
 
         // If src_type is 32bit, use movsxd or mov for signed and unsigned, respectively.
@@ -684,57 +839,59 @@ static void emit_int_cast(Operand* src, Type* dst_type, Operand* dst)
             else
                 emit_text("    movzx %s, %s", dst_reg_name, src_op_str);
         }
+    }
 
+    dst->type = dst_type;
+
+    if (dst_type->kind == TYPE_PTR)
+    {
+        dst->kind = OPERAND_SIBD_ADDR;
+        dst->addr.base_reg = dst_reg;
+    }
+    else
+    {
         dst->kind = OPERAND_REGISTER;
-        dst->type = dst_type;
         dst->reg = dst_reg;
     }
 }
 
-static void emit_binary_op(const char* op_inst, Operand* src, Operand* dst)
+typedef enum PtrIntOp {
+    PTR_INT_ADD,
+    PTR_INT_SUB,
+} PtrIntOp;
+
+static void emit_ptr_int_op(Operand *ptr_op, Operand* int_op, PtrIntOp op)
 {
-    ensure_operand_in_reg(dst);
+    u64 base_size = ptr_op->type->as_ptr.base->size;
+    ensure_operand_in_reg(ptr_op, false);
 
-    const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
-    char src_op_str[64]; // TODO: Will overflow for large global variable names. This is temporary.
-
-    ensure_execute_deref(src);
-    instr_op_str(src_op_str, sizeof(src_op_str), src);
-    emit_text("    %s %s, %s", op_inst, dst_reg_name, src_op_str);
-}
-
-static void emit_add(Operand* src, Operand* dst)
-{
-    assert(src->type == dst->type);
-    assert(!(dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE));
-
-    if (dst->kind == OPERAND_IMMEDIATE)
+    if (int_op->kind == OPERAND_IMMEDIATE)
     {
-        // Add into the src register.
-        char imm_str[32];
-
-        imm_to_str(imm_str, sizeof(imm_str), dst->type, dst->imm);
-        ensure_operand_in_reg(src);
-        emit_text("    add %s, %s", reg_names[src->type->size][src->reg], imm_str);
-
-        // Steal src operand's register.
-        dst->kind = OPERAND_REGISTER;
-        dst->type = src->type;
-        dst->reg = src->reg;
-        src->kind = OPERAND_NONE;
+        if (op == PTR_INT_ADD)
+            ptr_op->addr.disp += base_size * int_op->imm.as_int._u64;
+        else
+            ptr_op->addr.disp -= base_size * int_op->imm.as_int._u64;
     }
     else
     {
-        emit_binary_op("add", src, dst);
+        if (ptr_op->addr.scale)
+        {
+            char int_op_str[64];
+            const char* add_op = (op == PTR_INT_ADD) ? "add" : "sub";
+
+            ensure_execute_deref(int_op);
+            instr_op_str(int_op_str, sizeof(int_op_str), int_op);
+            emit_text("    %s %s, %s", add_op, reg_names[8][ptr_op->addr.index_reg], int_op_str);
+        }
+        else
+        {
+            ensure_operand_in_reg(int_op, true);
+            ptr_op->addr.scale = base_size;
+            ptr_op->addr.index_reg = int_op->reg;
+
+            int_op->kind = OPERAND_NONE;
+        }
     }
-}
-
-static void emit_sub(Operand* src, Operand* dst)
-{
-    assert(src->type == dst->type);
-    assert(!(dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE));
-
-    emit_binary_op("sub", src, dst);
 }
 
 static void emit_binary_cmp(TokenKind cmp_op, Operand* src, Operand* dst)
@@ -742,21 +899,21 @@ static void emit_binary_cmp(TokenKind cmp_op, Operand* src, Operand* dst)
     assert(src->type == dst->type);
     assert(!(dst->kind == OPERAND_IMMEDIATE && src->kind == OPERAND_IMMEDIATE));
 
-    ensure_operand_in_reg(dst);
+    ensure_operand_in_reg(dst, true);
 
     const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
     const char* dst_reg_byte_name = reg_names[1][dst->reg];
     const char* setcc_name = setcc_from_op[cmp_op];
     char src_op_str[64];
 
-    ensure_execute_deref(src);
+    commit_indirections(src);
     instr_op_str(src_op_str, sizeof(src_op_str), src);
     emit_text("    cmp %s, %s", dst_reg_name, src_op_str);
     emit_text("    %s %s", setcc_name, dst_reg_byte_name);
     emit_text("    movzx %s, %s", dst_reg_name, dst_reg_byte_name);
 }
 
-static void gen_expr_binary(ExprBinary* expr, Operand* dest)
+static void gen_expr_binary(ExprBinary* expr, Operand* dst)
 {
     Operand src = {0};
 
@@ -764,17 +921,104 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
     {
         case TKN_PLUS:
         {
-            gen_expr(expr->left, dest);
+            gen_expr(expr->left, dst);
             gen_expr(expr->right, &src);
-            emit_add(&src, dest);
+
+            bool dst_is_ptr = dst->type->kind == TYPE_PTR;
+            bool src_is_ptr = src.type->kind == TYPE_PTR;
+
+            if (dst_is_ptr)
+            {
+                emit_ptr_int_op(dst, &src, PTR_INT_ADD);
+            }
+            else if (src_is_ptr)
+            {
+                emit_ptr_int_op(&src, dst, PTR_INT_SUB);
+                swap_operands(dst, &src);
+            }
+            else
+            {
+                assert(src.type == dst->type);
+                assert(!(dst->kind == OPERAND_IMMEDIATE && src.kind == OPERAND_IMMEDIATE));
+
+                if (dst->kind == OPERAND_IMMEDIATE)
+                {
+                    // Add into the src register.
+                    char imm_str[32];
+
+                    imm_to_str(imm_str, sizeof(imm_str), dst->type, dst->imm);
+                    ensure_operand_in_reg(&src, true);
+                    emit_text("    add %s, %s", reg_names[src.type->size][src.reg], imm_str);
+
+                    // Steal src operand's register.
+                    dst->kind = OPERAND_REGISTER;
+                    dst->type = src.type;
+                    dst->reg = src.reg;
+                    src.kind = OPERAND_NONE;
+                }
+                else
+                {
+                    ensure_operand_in_reg(dst, true);
+
+                    const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
+                    char src_op_str[64];
+
+                    ensure_execute_deref(&src);
+                    instr_op_str(src_op_str, sizeof(src_op_str), &src);
+                    emit_text("    add %s, %s", dst_reg_name, src_op_str);
+                }
+            }
+
             free_operand(&src);
             break;
         }
         case TKN_MINUS:
         {
-            gen_expr(expr->left, dest);
+            gen_expr(expr->left, dst);
             gen_expr(expr->right, &src);
-            emit_sub(&src, dest);
+
+            bool dst_is_ptr = dst->type->kind == TYPE_PTR;
+            bool src_is_ptr = src.type->kind == TYPE_PTR;
+
+            // ptr - int => ptr
+            if (dst_is_ptr && !src_is_ptr)
+            {
+                emit_ptr_int_op(dst, &src, PTR_INT_SUB);
+            }
+            // ptr - ptr => s64
+            else if (dst_is_ptr && src_is_ptr)
+            {
+                Type* result_type = expr->super.type;
+                u64 base_size = dst->type->as_ptr.base->size;
+                s32 base_size_log2 = (s32)clp2(base_size);
+                char src_op_str[64];
+                const char* dst_reg_name = reg_names[result_type->size][dst->reg];
+
+                ensure_operand_in_reg(dst, true);
+                ensure_execute_lea(&src);
+                instr_op_str(src_op_str, sizeof(src_op_str), &src);
+                emit_text("    sub %s, %s", dst_reg_name, src_op_str);
+
+                if (base_size_log2)
+                    emit_text("    sar %s, %d", dst_reg_name, base_size_log2);
+
+                dst->type = result_type;
+            }
+            // int - int => int
+            else
+            {
+                assert(src.type == dst->type);
+                assert(!(dst->kind == OPERAND_IMMEDIATE && src.kind == OPERAND_IMMEDIATE));
+                ensure_operand_in_reg(dst, true);
+
+                const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
+                char src_op_str[64];
+
+                ensure_execute_deref(&src);
+                instr_op_str(src_op_str, sizeof(src_op_str), &src);
+                emit_text("    sub %s, %s", dst_reg_name, src_op_str);
+            }
+
             free_operand(&src);
             break;
         }
@@ -785,9 +1029,9 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
         case TKN_LT:
         case TKN_LTEQ:
         {
-            gen_expr(expr->left, dest);
+            gen_expr(expr->left, dst);
             gen_expr(expr->right, &src);
-            emit_binary_cmp(expr->op, &src, dest);
+            emit_binary_cmp(expr->op, &src, dst);
             free_operand(&src);
             break;
         }
@@ -825,7 +1069,7 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             // Generate the left expression and compare it to zero.
             // If can short-cicuit, jmp to end label.
             gen_expr(expr->left, &src);
-            ensure_execute_deref(&src);
+            commit_indirections(&src);
             instr_op_str(op_str, sizeof(op_str), &src);
             emit_text("    cmp %s, 0", op_str);
             emit_text("    %s %s.end.%u", jmpcc_instr, jmp_sub_label, cmp_id);
@@ -834,7 +1078,7 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             // Generate the right expression and compare it to zero.
             // Use setne instruction to set the final value of the result register (zero extend).
             gen_expr(expr->right, &src);
-            ensure_execute_deref(&src);
+            commit_indirections(&src);
             instr_op_str(op_str, sizeof(op_str), &src);
             emit_text("    cmp %s, 0", op_str);
             emit_text("    setne %s", result_reg_byte_name);
@@ -844,9 +1088,9 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dest)
             // This is the end label.
             emit_text("    %s.end.%u:", jmp_sub_label, cmp_id);
 
-            dest->kind = OPERAND_REGISTER;
-            dest->type = expr->super.type;
-            dest->reg = result_reg;
+            dst->kind = OPERAND_REGISTER;
+            dst->type = expr->super.type;
+            dst->reg = result_reg;
             break;
         }
         default:
@@ -870,6 +1114,7 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
             char op_str[64];
 
             gen_expr(expr->expr, dst);
+            ensure_execute_deref(dst);
             instr_op_str(op_str, sizeof(op_str), dst);
             emit_text("    neg %s", op_str);
             break;
@@ -879,6 +1124,7 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
             char op_str[64];
 
             gen_expr(expr->expr, dst);
+            ensure_execute_deref(dst);
             instr_op_str(op_str, sizeof(op_str), dst);
             emit_text("    not %s", op_str);
             break;
@@ -886,7 +1132,7 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
         case TKN_NOT: // Logical not
         {
             gen_expr(expr->expr, dst);
-            ensure_operand_in_reg(dst);
+            ensure_operand_in_reg(dst, true);
 
             const char* dst_reg_name = reg_names[dst->type->size][dst->reg];
             const char* dst_reg_byte_name = reg_names[1][dst->reg];
@@ -899,7 +1145,7 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
         case TKN_ASTERISK:
         {
             gen_expr(expr->expr, dst);
-            ensure_operand_in_reg(dst);
+            ensure_operand_in_reg(dst, false);
 
             dst->kind = OPERAND_DEREF_ADDR;
             dst->type = expr->super.type;
@@ -912,11 +1158,8 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
 
             if (dst->kind == OPERAND_DEREF_ADDR)
             {
-                dst->kind = OPERAND_REGISTER;
+                dst->kind = OPERAND_SIBD_ADDR;
                 dst->type = expr->super.type;
-                //dst->displacement = 0;
-                // TODO: Will addr be in a reg??
-                // dst->reg is already filled out and holds the original addr.
             }
             else
             {
@@ -929,10 +1172,12 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
                 instr_op_str(op_str, sizeof(op_str), dst);
                 emit_text("    lea %s, %s", result_reg_name, op_str);
 
-                dst->kind = OPERAND_REGISTER;
+                dst->kind = OPERAND_SIBD_ADDR;
                 dst->type = expr->super.type;
-                dst->reg = result_reg;
-                dst->displacement = 0;
+                dst->addr.base_reg = result_reg;
+                dst->addr.disp = 0;
+                dst->addr.scale = 0;
+                dst->addr.index_reg = REG_INVALID;
             }
 
             break;
@@ -1031,6 +1276,7 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
 
             // TODO: Optimization: pass preferred reg to gen_expr
             gen_expr(call_arg->expr, &arg_ops[arg_index]);
+            commit_indirections(&arg_ops[arg_index]);
 
             if (arg_ops[arg_index].kind == OPERAND_REGISTER)
             {
@@ -1073,7 +1319,7 @@ static void gen_expr_call(ExprCall* ecall, Operand* dest)
         else
         {
             assert(proc_op.kind == OPERAND_FRAME_OFFSET || proc_op.kind == OPERAND_GLOBAL_VAR);
-            ensure_operand_in_reg(&proc_op);
+            ensure_operand_in_reg(&proc_op, true);
 
             emit_text("    call %s", reg_names[proc_op.type->size][proc_op.reg]);
         }
@@ -1167,7 +1413,7 @@ static void gen_stmt_return(StmtReturn* sreturn)
     Operand operand = {0};
 
     gen_expr(sreturn->expr, &operand);
-    ensure_operand_in_reg(&operand);
+    ensure_operand_in_reg(&operand, true);
 
     if (operand.reg != RAX)
     {
@@ -1194,6 +1440,7 @@ static void gen_stmt_expr(StmtExpr* sexpr)
     Operand operand = {0};
 
     gen_expr(sexpr->expr, &operand);
+    commit_indirections(&operand);
 
     free_operand(&operand);
 }
@@ -1290,7 +1537,7 @@ static void gen_stmt_if(StmtIf* stmt)
         Operand cond_op = {0};
 
         gen_expr(cond_expr, &cond_op);
-        ensure_operand_in_reg(&cond_op);
+        ensure_operand_in_reg(&cond_op, true);
         emit_text("    cmp %s, 0", reg_names[cond_op.type->size][cond_op.reg]);
         free_operand(&cond_op);
 
@@ -1343,7 +1590,7 @@ static void gen_stmt_while(StmtWhile* stmt)
         Operand cond_op = {0};
 
         gen_expr(cond_expr, &cond_op);
-        ensure_operand_in_reg(&cond_op);
+        ensure_operand_in_reg(&cond_op, true);
         emit_text("    cmp %s, 0", reg_names[cond_op.type->size][cond_op.reg]);
         free_operand(&cond_op);
 
@@ -1380,7 +1627,7 @@ static void gen_stmt_do_while(StmtDoWhile* stmt)
         Operand cond_op = {0};
 
         gen_expr(cond_expr, &cond_op);
-        ensure_operand_in_reg(&cond_op);
+        ensure_operand_in_reg(&cond_op, true);
         emit_text("    cmp %s, 0", reg_names[cond_op.type->size][cond_op.reg]);
         free_operand(&cond_op);
         emit_text("    jne dowhile.top.%d", while_id);
