@@ -863,6 +863,7 @@ typedef enum PtrIntOp {
 static void emit_ptr_int_op(Operand *ptr_op, Operand* int_op, PtrIntOp op)
 {
     u64 base_size = ptr_op->type->as_ptr.base->size;
+
     ensure_operand_in_reg(ptr_op, false);
 
     if (int_op->kind == OPERAND_IMMEDIATE)
@@ -886,6 +887,10 @@ static void emit_ptr_int_op(Operand *ptr_op, Operand* int_op, PtrIntOp op)
         else
         {
             ensure_operand_in_reg(int_op, true);
+
+            if (op == PTR_INT_SUB)
+                emit_text("    neg %s", reg_names[int_op->type->size][int_op->reg]);
+
             ptr_op->addr.scale = base_size;
             ptr_op->addr.index_reg = int_op->reg;
 
@@ -933,7 +938,7 @@ static void gen_expr_binary(ExprBinary* expr, Operand* dst)
             }
             else if (src_is_ptr)
             {
-                emit_ptr_int_op(&src, dst, PTR_INT_SUB);
+                emit_ptr_int_op(&src, dst, PTR_INT_ADD);
                 swap_operands(dst, &src);
             }
             else
