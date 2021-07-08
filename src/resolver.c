@@ -1155,8 +1155,6 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
                 return false;
             }
 
-            // TODO: Cast array-type to pointer? Or just let backend handle arrays and ptrs individually?
-
             dst_op.type = src_op.type->as_ptr.base;
             dst_op.is_lvalue = true;
             dst_op.is_const = false;
@@ -1170,6 +1168,48 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
     expr->is_lvalue = dst_op.is_lvalue;
     expr->is_const = dst_op.is_const;
     expr->const_val = dst_op.const_val;
+
+    return true;
+}
+
+static bool resolve_expr_index(Resolver* resolver, Expr* expr)
+{
+    ExprIndex* eindex = (ExprIndex*)expr;
+
+    // Resolve array expression
+    if (!resolve_expr(resolver, eindex->array))
+        return false;
+
+    ExprOperand array_op = OP_FROM_EXPR(eindex->array);
+    eop_decay(resolver, &array_op);
+
+    if (array_op.type->kind != TYPE_PTR)
+    {
+        resolver_on_error(resolver, "Cannot index non-pointer or non-array type `%s`", type_name(eindex->array->type));
+        return false;
+    }
+
+    // Resolve array index expression
+    if (!resolve_expr(resolver, eindex->index))
+        return false;
+
+    ExprOperand index_op = OP_FROM_EXPR(eindex->index);
+
+    if (!convert_eop(&index_op, type_s64))
+    {
+        resolver_on_error(resolver, "Array index of type `%s` cannot be converted to an integer",
+                          type_name(eindex->index->type));
+        return false;
+    }
+
+    // Cast array and index expressions if necessary.
+    eindex->array = try_wrap_cast_expr(resolver, &array_op, eindex->array);
+    eindex->index = try_wrap_cast_expr(resolver, &index_op, eindex->index);
+
+    // Set overall expression type and attributes.
+    expr->type = array_op.type->as_ptr.base;
+    expr->is_lvalue = true;
+    expr->is_const = false;
 
     return true;
 }
@@ -1326,6 +1366,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr)
             return resolve_expr_binary(resolver, expr);
         case CST_ExprUnary:
             return resolve_expr_unary(resolver, expr);
+        case CST_ExprIndex:
+            return resolve_expr_index(resolver, expr);
         case CST_ExprCall:
             return resolve_expr_call(resolver, expr);
         case CST_ExprCast:
@@ -1379,6 +1421,45 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 return NULL;
 
             return type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, base_type);
+        }
+        case CST_TypeSpecArray:
+        {
+            TypeSpecArray* ts = (TypeSpecArray*)typespec;
+            Type* base_type = resolve_typespec(resolver, ts->base);
+
+            if (!base_type)
+                return NULL;
+
+            if (base_type->size == 0)
+            {
+                resolver_on_error(resolver, "Array element type must have non-zero size");
+                return NULL;
+            }
+
+            if(!resolve_expr(resolver, ts->len))
+                return NULL;
+
+            if (!ts->len->is_const)
+            {
+                resolver_on_error(resolver, "Array length must be a compile-time constant");
+                return NULL;
+            }
+
+            if (ts->len->type->kind != TYPE_INTEGER)
+            {
+                resolver_on_error(resolver, "Array length must be an integer");
+                return NULL;
+            }
+
+            ExprOperand eop = OP_FROM_CONST(ts->len->type, ts->len->const_val);
+            cast_eop(&eop, type_s32);
+            s32 len = eop.const_val.as_int._s32;
+
+            if (len <= 0) {
+                resolver_on_error(resolver, "Array length must be a positive, non-zero integer");
+            }
+
+            return type_array(resolver->ast_mem, &resolver->type_cache->arrays, base_type, len);
         }
         case CST_TypeSpecProc:
         {

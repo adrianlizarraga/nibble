@@ -127,6 +127,7 @@ typedef enum Keyword {
 
 typedef struct TypeCache {
     HMap ptrs;
+    HMap arrays;
     HMap procs;
 } TypeCache;
 

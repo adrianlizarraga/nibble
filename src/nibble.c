@@ -195,6 +195,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->str_lit_map = hmap(6, NULL);
     nibble->ident_map = hmap(8, NULL);
     nibble->type_cache.ptrs = hmap(6, NULL);
+    nibble->type_cache.arrays = hmap(6, NULL);
     nibble->type_cache.procs = hmap(6, NULL);
 
     if (!init_keywords())
@@ -293,6 +294,8 @@ void nibble_cleanup(void)
                 nibble->str_lit_map.cap, nibble->str_lit_map.cap * sizeof(HMapEntry));
     ftprint_out("type_ptr cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.ptrs.len,
                 nibble->type_cache.ptrs.cap, nibble->type_cache.ptrs.cap * sizeof(HMapEntry));
+    ftprint_out("type_array cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.arrays.len,
+                nibble->type_cache.arrays.cap, nibble->type_cache.arrays.cap * sizeof(HMapEntry));
     ftprint_out("type_proc cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.procs.len,
                 nibble->type_cache.procs.cap, nibble->type_cache.procs.cap * sizeof(HMapEntry));
 #endif
@@ -301,6 +304,7 @@ void nibble_cleanup(void)
     hmap_destroy(&nibble->ident_map);
     hmap_destroy(&nibble->type_cache.ptrs);
     hmap_destroy(&nibble->type_cache.procs);
+    hmap_destroy(&nibble->type_cache.arrays);
     allocator_destroy(&nibble->tmp_mem);
     allocator_destroy(&nibble->ast_mem);
 

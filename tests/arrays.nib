@@ -1,0 +1,20 @@
+proc main() => int
+{
+    var a: [4] int;
+
+    a[0] = 0;
+    a[1] = 1;
+    a[2] = 2;
+    a[3] = 3;
+
+    //var p: ^int = ^a[1];
+    //var b: = *^a[1];
+    var c : int = 2;
+
+    //return a[3] + *p; // Returns 4
+    //return a[3] + b; // Returns 4
+    //return a[3] + p[-1]; // Returns 3 (3 - 0)
+    return a[3] + a[c]; // 3 + a[2] = 5
+    //return a[3] + a[b]; // 3 + a[1] = 4
+}
+

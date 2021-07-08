@@ -5,8 +5,8 @@
 // This entire file will be burned and recreated.
 //
 #include "gen_assembly.h"
-#include "stream.h"
 #include "lexer.h"
+#include "stream.h"
 
 typedef struct Generator Generator;
 typedef struct Operand Operand;
@@ -405,11 +405,10 @@ static size_t SIBD_addr_str(char* buf, size_t len, Operand* operand)
             const char* index_reg_name = reg_names[8][addr.index_reg];
 
             if (has_disp)
-                ret_size = snprintf(buf, len, "%s [%s + %d*%s + %d]",
-                                    mem_label, base_reg_name, addr.scale, index_reg_name, (s32)addr.disp);
+                ret_size = snprintf(buf, len, "%s [%s + %d*%s + %d]", mem_label, base_reg_name, addr.scale,
+                                    index_reg_name, (s32)addr.disp);
             else
-                ret_size = snprintf(buf, len, "%s [%s + %d*%s]",
-                                    mem_label, base_reg_name, addr.scale, index_reg_name);
+                ret_size = snprintf(buf, len, "%s [%s + %d*%s]", mem_label, base_reg_name, addr.scale, index_reg_name);
         }
         else
         {
@@ -424,11 +423,9 @@ static size_t SIBD_addr_str(char* buf, size_t len, Operand* operand)
         const char* index_reg_name = reg_names[8][addr.index_reg];
 
         if (has_disp)
-            ret_size = snprintf(buf, len, "%s [%d*%s + %d]",
-                                mem_label, addr.scale, index_reg_name, (s32)addr.disp);
+            ret_size = snprintf(buf, len, "%s [%d*%s + %d]", mem_label, addr.scale, index_reg_name, (s32)addr.disp);
         else
-            ret_size = snprintf(buf, len, "%s [%d*%s]",
-                                mem_label, addr.scale, index_reg_name);
+            ret_size = snprintf(buf, len, "%s [%d*%s]", mem_label, addr.scale, index_reg_name);
     }
 
     return ret_size;
@@ -540,7 +537,7 @@ static void emit_data_value(Type* type, Scalar scalar)
     }
     else
     {
-        ftprint_err("Cannot gen NASM data regions for non-int type: %s", type_name(type));
+        ftprint_err("Cannot gen NASM data regions for non-int type: %s\n", type_name(type));
         assert(0);
     }
 }
@@ -556,10 +553,10 @@ static void free_operand(Operand* operand)
         Register base_reg = operand->addr.base_reg;
         Register index_reg = operand->addr.index_reg;
 
-        if (base_reg < REG_COUNT)
+        if (base_reg < REG_COUNT && base_reg != RBP)
             free_reg(base_reg);
 
-        if (index_reg < REG_COUNT)
+        if (index_reg < REG_COUNT && index_reg != RBP)
             free_reg(index_reg);
     }
 }
@@ -578,6 +575,10 @@ static void execute_deref(Operand* operand)
     assert(has_base || has_index);
 
     Register dst_reg = has_base ? addr.base_reg : addr.index_reg;
+
+    if (dst_reg == RBP)
+        dst_reg = next_reg();
+
     const char* dst_reg_name = reg_names[operand->type->size][dst_reg];
     char addr_op_str[64];
 
@@ -587,7 +588,10 @@ static void execute_deref(Operand* operand)
     operand->kind = OPERAND_REGISTER;
     operand->reg = dst_reg;
 
-    if (has_base && has_index)
+    if (has_base && (addr.base_reg != dst_reg) && (addr.base_reg != RBP))
+        free_reg(addr.base_reg);
+
+    if (has_index && (addr.index_reg != dst_reg) && (addr.index_reg != RBP))
         free_reg(addr.index_reg);
 }
 
@@ -614,13 +618,20 @@ static void execute_lea(Operand* operand)
     else
     {
         dst_reg = has_base ? addr.base_reg : addr.index_reg;
+
+        if (dst_reg == RBP)
+            dst_reg = next_reg();
+
         const char* dst_reg_name = reg_names[operand->type->size][dst_reg];
         char addr_op_str[64];
 
         SIBD_addr_str(addr_op_str, sizeof(addr_op_str), operand);
         emit_text("    lea %s, %s", dst_reg_name, addr_op_str);
 
-        if (has_base && has_index)
+        if (has_base && (addr.base_reg != dst_reg) && (addr.base_reg != RBP))
+            free_reg(addr.base_reg);
+
+        if (has_index && (addr.index_reg != dst_reg) && (addr.index_reg != RBP))
             free_reg(addr.index_reg);
     }
 
@@ -860,7 +871,7 @@ typedef enum PtrIntOp {
     PTR_INT_SUB,
 } PtrIntOp;
 
-static void emit_ptr_int_op(Operand *ptr_op, Operand* int_op, PtrIntOp op)
+static void emit_ptr_int_op(Operand* ptr_op, Operand* int_op, PtrIntOp op)
 {
     u64 base_size = ptr_op->type->as_ptr.base->size;
 
@@ -1193,22 +1204,65 @@ static void gen_expr_unary(ExprUnary* expr, Operand* dst)
     }
 }
 
+static void gen_expr_index(ExprIndex* eindex, Operand* dst)
+{
+    Operand src = {0};
+
+    gen_expr(eindex->array, dst);
+    gen_expr(eindex->index, &src);
+
+    assert(dst->type->kind == TYPE_PTR);
+
+    emit_ptr_int_op(dst, &src, PTR_INT_ADD);
+
+    dst->kind = OPERAND_DEREF_ADDR;
+    dst->type = eindex->super.type;
+
+    free_operand(&src);
+}
+
 static void gen_expr_cast(ExprCast* ecast, Operand* dest)
 {
     Type* from_type = ecast->expr->type;
     Type* to_type = ecast->super.type;
 
-    assert(from_type != to_type);
-    assert(from_type->size != to_type->size);
-
     // TODO: Support floats.
     assert(from_type->kind != TYPE_FLOAT);
     assert(to_type->kind != TYPE_FLOAT);
+    assert(from_type != to_type);
 
     Operand src = {0};
-
     gen_expr(ecast->expr, &src);
-    emit_int_cast(&src, to_type, dest);
+
+    if (src.type->kind == TYPE_ARRAY && to_type->kind == TYPE_PTR)
+    {
+        dest->kind = OPERAND_SIBD_ADDR;
+        dest->type = to_type;
+
+        if (src.kind == OPERAND_FRAME_OFFSET)
+        {
+            dest->addr.base_reg = RBP;
+            dest->addr.disp = src.offset;
+            dest->addr.scale = 0;
+        }
+        else
+        {
+            assert(src.kind == OPERAND_GLOBAL_VAR);
+            Register base_reg = next_reg();
+
+            emit_text("    lea %s, [rel %s]", reg_names[8][base_reg], src.var);
+
+            dest->addr.base_reg = base_reg;
+            dest->addr.disp = 0;
+            dest->addr.scale = 0;
+        }
+    }
+    else
+    {
+        assert(from_type->size != to_type->size);
+        emit_int_cast(&src, to_type, dest);
+    }
+
     free_operand(&src);
 }
 
@@ -1405,6 +1459,9 @@ static void gen_expr(Expr* expr, Operand* dest)
             break;
         case CST_ExprUnary:
             gen_expr_unary((ExprUnary*)expr, dest);
+            break;
+        case CST_ExprIndex:
+            gen_expr_index((ExprIndex*)expr, dest);
             break;
         default:
             ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);
@@ -1964,7 +2021,16 @@ static void gen_global_scope(Scope* scope)
 
             emit_data("ALIGN %d", sym->type->align);
             emit_data("%s: ", sym->name);
-            emit_data_value(sym->type, dvar->init->const_val);
+
+            if (dvar->init)
+            {
+                emit_data_value(sym->type, dvar->init->const_val);
+            }
+            else
+            {
+                Scalar zero_val = {0};
+                emit_data_value(sym->type, zero_val);
+            }
         }
 
         it = it->next;

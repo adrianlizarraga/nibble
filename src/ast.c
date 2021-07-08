@@ -709,6 +709,14 @@ Type* type_unsigned_int(Type* type_int)
     return NULL;
 }
 
+Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type)
+{
+    if (type->kind == TYPE_ARRAY)
+        return type_ptr(allocator, type_ptr_cache, type->as_array.base);
+
+    return type;
+}
+
 static Type* type_alloc(Allocator* allocator, TypeKind kind)
 {
     Type* type = alloc_type(allocator, Type, true);
@@ -736,18 +744,41 @@ Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base)
     return type;
 }
 
-Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type)
-{
-    if (type->kind == TYPE_ARRAY)
-        return type_ptr(allocator, type_ptr_cache, type->as_array.base);
-
-    return type;
-}
-
 typedef struct CachedType {
     Type* type;
     struct CachedType* next;
 } CachedType;
+
+Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len)
+{
+    u64 key = hash_mix_uint64(hash_ptr(base), len);
+    u64* pval = hmap_get(type_array_cache, key);
+    CachedType* cached = pval ? (void*)*pval : NULL;
+
+    // Return cached type if it exists.
+    for (CachedType* it = cached; it != NULL; it = it->next)
+    {
+        Type* type = it->type;
+
+        if ((type->as_array.len == len) && (type->as_array.base == base))
+            return type;
+    }
+
+    // Create a new type, cache it, and return it.
+    Type* type = type_alloc(allocator, TYPE_ARRAY);
+    type->size = base->size * len;
+    type->align = base->align;
+    type->as_array.base = base;
+    type->as_array.len = len;
+
+    CachedType* new_cached = alloc_type(allocator, CachedType, true);
+    new_cached->type = type;
+    new_cached->next = cached;
+
+    hmap_put(type_array_cache, key, PTR_UINT(new_cached));
+
+    return type;
+}
 
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret)
 {
@@ -756,7 +787,7 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
     uint64_t* pval = hmap_get(type_proc_cache, key);
     CachedType* cached = pval ? (void*)*pval : NULL;
 
-    // Return cached type, if it exists.
+    // Return cached type if it exists.
     for (CachedType* it = cached; it != NULL; it = it->next)
     {
         Type* type = it->type;
