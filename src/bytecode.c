@@ -77,6 +77,7 @@ const char* IR_reg_names[IR_REG_COUNT] = {
     [IR_ARG_REG5] = "IR_ARG_REG5",
     [IR_RET_REG0] = "IR_RET_REG0",
     [IR_RET_REG1] = "IR_RET_REG1",
+    [IR_FP_REG] = "IR_FP_REG",
 };
 
 IR_RegID IR_arg_regs[IR_NUM_ARG_REGS] = {
@@ -106,17 +107,17 @@ static bool IR_is_reg_set(u32 reg_mask, IR_RegID reg)
     return reg_mask & (1 << reg);
 }
 
-void IR_free_reg(IR_Builder* builder, IR_RegID reg)
+static void IR_free_reg(IR_Builder* builder, IR_RegID reg)
 {
     IR_set_reg(&builder->free_regs, reg);
 }
 
-void IR_alloc_reg(IR_Builder* builder, IR_RegID reg)
+static void IR_alloc_reg(IR_Builder* builder, IR_RegID reg)
 {
     IR_unset_reg(&builder->free_regs, reg);
 }
 
-bool IR_try_alloc_reg(IR_Builder* builder, IR_RegID reg)
+static bool IR_try_alloc_reg(IR_Builder* builder, IR_RegID reg)
 {
     bool is_free = IR_is_reg_set(builder->free_regs, reg);
 
@@ -126,7 +127,7 @@ bool IR_try_alloc_reg(IR_Builder* builder, IR_RegID reg)
     return is_free;
 }
 
-u32 IR_init_free_regs(IR_Builder* builder)
+static u32 IR_init_free_regs(IR_Builder* builder)
 {
     for (size_t i = 0; i < IR_NUM_TMP_REGS; i += 1)
         IR_free_reg(builder, IR_tmp_regs[i]);
@@ -134,7 +135,7 @@ u32 IR_init_free_regs(IR_Builder* builder)
     return builder->free_regs;
 }
 
-IR_RegID IR_next_reg(IR_Builder* builder)
+static IR_RegID IR_next_reg(IR_Builder* builder)
 {
     IR_RegID reg = IR_REG_INVALID;
     int bit_index = ntz(builder->free_regs);
@@ -143,124 +144,376 @@ IR_RegID IR_next_reg(IR_Builder* builder)
 
     reg = (IR_RegID)bit_index;
 
-    IR_alloc_reg(reg);
+    IR_alloc_reg(builder, reg);
 
     return reg;
 }
 
-void IR_free_op(IR_Operand* op)
+static void IR_free_operand_regs(IR_Builder* builder, IR_Operand* operand)
 {
-    if (op->kind == IR_OPERAND_REG)
-        IR_free_reg(op->_reg.reg);
+    if (operand->kind == IR_OPERAND_REG)
+    {
+        IR_free_reg(builder, operand->reg);
+    }
+    else if ((operand->kind == IR_OPERAND_DEREF_ADDR) || (operand->kind == IR_OPERAND_SIBD_ADDR))
+    {
+        Register base_reg = operand->addr.base_reg;
+        Register index_reg = operand->addr.index_reg;
+
+        if (base_reg < IR_REG_COUNT && base_reg != IR_FP_REG)
+            IR_free_reg(builder, base_reg);
+
+        if (index_reg < IR_REG_COUNT && index_reg != IR_FP_REG)
+            IR_free_reg(builder, index_reg);
+    }
 }
 
-void IR_emit_op_to_reg(IR_Operand* src_op, IR_RegID reg, IR_Operand* dst_op)
+static void IR_execute_deref(IR_Builder* builder, IR_Operand* operand)
 {
-    switch (src_op->kind)
+    assert(operand->kind == IR_OPERAND_DEREF_ADDR);
+
+    // The operand currently holds the address it is supposed to derefence.
+    // This function executes the dereference into the one of the registers that held the address.
+    SIBDAddr addr = operand->addr;
+
+    bool has_base = addr.base_reg < IR_REG_COUNT;
+    bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
+
+    assert(has_base || has_index);
+
+    Register dst_reg = has_base ? addr.base_reg : addr.index_reg;
+
+    if (dst_reg == IR_FP_REG)
+        dst_reg = IR_next_reg(builder);
+
+    IR_emit_load_var(builder, dst_reg, operand);
+
+    operand->kind = IR_OPERAND_REG;
+    operand->reg = dst_reg;
+
+    if (has_base && (addr.base_reg != dst_reg) && (addr.base_reg != IR_FP_REG))
+        IR_free_reg(builder, addr.base_reg);
+
+    if (has_index && (addr.index_reg != dst_reg) && (addr.index_reg != IR_FP_REG))
+        IR_free_reg(builder, addr.index_reg);
+}
+
+static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
+{
+    assert(operand->kind == IR_OPERAND_SIBD_ADDR);
+
+    // The operand currently holds a memory address.
+    // This function executes the "load-effective-address" call into the one of the registers that held the address.
+    SIBDAddr addr = operand->addr;
+
+    bool has_base = addr.base_reg < IR_REG_COUNT;
+    bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
+    bool has_disp = addr.disp != 0;
+    Register dst_reg;
+
+    assert(has_base || has_index);
+
+    if (has_base && !has_index && !has_disp)
+    {
+        // No need to emit any instructions. Just keep address in base register.
+        dst_reg = operand->addr.base_reg;
+    }
+    else
+    {
+        dst_reg = has_base ? addr.base_reg : addr.index_reg;
+
+        if (dst_reg == IR_FP_REG)
+            dst_reg = next_reg(builder);
+
+        IR_emit_load_addr(builder, dst_reg, operand);
+
+        if (has_base && (addr.base_reg != dst_reg) && (addr.base_reg != IR_FP_REG))
+            IR_free_reg(builder, addr.base_reg);
+
+        if (has_index && (addr.index_reg != dst_reg) && (addr.index_reg != IR_FP_REG))
+            IR_free_reg(builder, addr.index_reg);
+    }
+
+    operand->kind = IR_OPERAND_REG;
+    operand->reg = dst_reg;
+}
+
+static void IR_ensure_execute_deref(IR_Builder* builder, IR_Operand* operand)
+{
+    if (operand->kind == IR_OPERAND_DEREF_ADDR)
+        IR_execute_deref(builder, operand);
+}
+
+static void IR_ensure_execute_lea(IR_Builder* builder, IR_Operand* operand)
+{
+    if (operand->kind == IR_OPERAND_SIBD_ADDR)
+        IR_execute_lea(builder, operand);
+}
+
+static void IR_commit_indirections(IR_Builder* builder, IR_Operand* operand)
+{
+    IR_ensure_execute_deref(builder, operand);
+    IR_ensure_execute_lea(builder, operand);
+}
+
+static void IR_emit_operand_to_reg(IR_Builder* builder, IR_Operand* operand, Register reg, size_t reg_size)
+{
+    switch (operand->kind)
     {
         case IR_OPERAND_IMM:
-        {
-            dst_op->kind = IR_OPERAND_REG;
-            dst_op->flags &= ~IR_OPERAND_IS_L_VALUE;
-            dst_op->_reg.reg = reg;
-            dst_op->_reg.type = src_op->_imm.type;
-
-            IR_push_instr(builder, IR_OPCODE_LOADI, *src_op, *dst_op);
-
+            IR_emit_load_imm(builder, operand->type, reg, operand->imm);
             break;
-        }
         case IR_OPERAND_VAR:
-        {
-            dst_op->kind = IR_OPERAND_REG;
-            dst_op->flags &= ~IR_OPERAND_IS_L_VALUE;
-            dst_op->_reg.reg = reg;
-            dst_op->_reg.type = src_op->_var.type;
-
-            IR_push_instr(builder, IR_OPCODE_LOAD, *src_op, *dst_op);
-
+            IR_emit_load_var(builder, operand->type, reg, operand->sym);
             break;
-        }
         case IR_OPERAND_REG:
-        {
-            if (src_op->_reg.reg != reg)
-            {
-                dst_op->kind = IR_OPERAND_REG;
-                dst_op->flags &= ~IR_OPERAND_IS_L_VALUE;
-                dst_op->_reg.reg = reg;
-                dst_op->_reg.type = src_op->_reg.type;
-
-                IR_push_instr(builder, IR_OPCODE_R2R, *src_op, *dst_op);
-            }
+            if (operand->reg != reg)
+                IR_emit_r2r(builder, operand->type, reg, operand->reg);
 
             break;
-        }
         default:
-            ftprint_err("INTERNAL ERROR: Unexpected operand type %d\n", src_op->kind);
+            ftprint_err("INTERNAL ERROR: Unexpected operand type %d\n", operand->kind);
             assert(0);
             break;
     }
 }
 
-void IR_ensure_op_in_reg(IR_Builder* builder, IR_Operand* op)
+static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, bool commit_ptr)
 {
-    if (op->kind != IR_OPERAND_REG)
+    if (commit_ptr && (operand->kind == IR_OPERAND_SIBD_ADDR))
     {
-        IR_RegID reg = IR_next_reg(builder);
-        IR_Operand dst_op = {0};
+        IR_execute_lea(builder, operand);
+    }
+    if (operand->kind == IR_OPERAND_DEREF_ADDR)
+    {
+        IR_execute_deref(builder, operand);
+    }
+    else if (operand->kind != IR_OPERAND_REG)
+    {
+        if (!commit_ptr && (operand->type->kind == TYPE_PTR))
+        {
+            if (operand->kind != IR_OPERAND_SIBD_ADDR)
+            {
+                Register base_reg = IR_next_reg(builder);
+                IR_emit_operand_to_reg(builder, operand, base_reg, operand->type->size);
 
-        IR_emit_op_to_reg(op, reg, &dst_op);
+                operand->kind = IR_OPERAND_SIBD_ADDR;
+                operand->addr.base_reg = base_reg;
+                operand->addr.index_reg = IR_REG_INVALID;
+                operand->addr.scale = 0;
+                operand->addr.disp = 0;
+            }
+        }
+        else
+        {
+            Register reg = IR_next_reg(builder);
+            IR_emit_operand_to_reg(builder, operand, reg, operand->type->size);
 
-        *op = dst_op;
+            operand->kind = IR_OPERAND_REG;
+            operand->reg = reg;
+        }
     }
 }
+//////////////////////////////////////////////////////
+//
+//
+//
+//////////////////////////////////////////////////////
 
-IR_Instr* IR_push_instr(IR_Builder* builder, IR_Opcode opcode, IR_Operand* src_op, IR_Operand* dst_op)
+void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operand* dst)
 {
-    IR_Instr* instr = IR_new_instr(builder->arena, opcode, *src_op, *dst_op);
+    Symbol* sym = lookup_symbol(builder->curr_scope, eident->name);
 
-    IR_add_bucket_instr(builder->instr_bucket, instr);
-
-    return instr;
-}
-
-static void IR_emit_binary_instr(IR_Builder* builder, IR_Opcode opcode, IR_Operand* src_op, IR_Operand* dst_op)
-{
-    IR_ensure_op_in_reg(dst_op);
-    IR_push_instr(builder, opcode, src_op, dst_op);
-}
-
-void IR_emit_add(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op)
-{
-    if (dst_op->kind == IR_OPERAND_IMM && src_op->kind == IR_OPERAND_IMM)
+    if (sym->kind == SYMBOL_VAR)
     {
-        dst_op->_imm.as_int._s32 += src_op->_imm.as_int._s32;
+        dst->kind = IR_OPERAND_VAR;
+        dst->type = sym->type;
+        dst->sym = sym;
     }
-    else if (dst_op->kind == IR_OPERAND_IMM)
+    else if (sym->kind == SYMBOL_PROC)
     {
-        // Add into the src register, so flip src and dst operands.
-        IR_emit_binary_instr(builder, IR_OPCODE_ADD, dst_op, src_op);
-
-        // Steal src operand's register.
-        dst_op->kind = IR_OPERAND_REG;
-        dst_op->flags &= ~IR_OPERAND_IS_L_VALUE;
-        dst_op->_reg = src_op->_reg;
-
-        src_op->kind = IR_OPERAND_NONE;
+        dst->kind = IR_OPERAND_PROC;
+        dst->type = sym->type;
+        dst->sym = sym;
     }
     else
     {
-        IR_emit_binary_instr(IR_OPCODE_ADD, src_op, dst_op);
+        ftprint_err("INTERNAL ERROR: Unexpected symbol kind %d during code generation for ident expr\n", sym->kind);
+        assert(0);
     }
 }
 
-void IR_emit_sub(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op)
+void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
 {
-    if (dst_op->kind == IR_OPERAND_IMM && src_op->kind == IR_OPERAND_IMM)
+    u64 base_size = ptr_op->type->as_ptr.base->size;
+
+    IR_ensure_operand_in_reg(builder, ptr_op, false);
+
+    if (int_op->kind == IR_OPERAND_IMM)
     {
-        dst_op->_imm.as_int._s32 -= src_op->_imm.as_int._s32;
+        if (add)
+            ptr_op->addr.disp += base_size * int_op->imm.as_int._u64;
+        else
+            ptr_op->addr.disp -= base_size * int_op->imm.as_int._u64;
     }
     else
     {
-        IR_emit_binary_instr(IR_OPCODE_SUB, src_op, dst_op);
+        if (ptr_op->addr.scale)
+        {
+            IR_Operand index_op = {.kind = IR_OPERAND_REG, .type = type_u64, .reg = ptr_op->addr.index_reg};
+
+            IR_ensure_execute_deref(builder, int_op);
+
+            if (add)
+                IR_emit_add(builder, &index_op, &index_op, int_op);
+            else
+                IR_emit_sub(builder, &index_op, &index_op, int_op);
+        }
+        else
+        {
+            IR_ensure_operand_in_reg(builder, int_op, true);
+            
+            if (!add)
+                IR_emit_neg(builder, int_op, int_op);
+
+            ptr_op->addr.scale = base_size;
+            ptr_op->addr.index_reg = int_op->reg;
+
+            int_op->kind = IR_OPERAND_NONE; // Steal register.
+        }
+    }
+
+    *dst = *ptr_op;
+    ptr_op->kind = IR_OPERAND_NONE; // Steal registers
+}
+
+void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operand* dst)
+{
+    IR_Operand left = {0};
+    IR_Operand right = {0};
+
+    switch (expr->op)
+    {
+        case TKN_PLUS:
+        {
+            IR_emit_expr(builder, expr->left, &left);
+            IR_emit_expr(builder, expr->right, &right);
+
+            bool left_is_ptr = left.type->kind == TYPE_PTR;
+            bool right_is_ptr = right.type->kind == TYPE_PTR;
+
+            if (left_is_ptr)
+            {
+                IR_emit_ptr_int_add(builder, dst, &left, &right, true);
+            }
+            else if (right_is_ptr)
+            {
+                IR_emit_ptr_int_add(builder, dst, &right, &left, true);
+            }
+            else
+            {
+                assert(left.type == right.type);
+                assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
+
+                dst->kind = IR_OPERAND_REG;
+                dst->type = left.type;
+                dst->reg = IR_next_reg(builder);
+
+                IR_ensure_execute_deref(builder, &left);
+                IR_ensure_execute_deref(builder, &right);
+                IR_emit_add(builder, dst, &left, &right);
+            }
+
+            IR_free_operand_regs(builder, &left);
+            IR_free_operand_regs(builder, &right);
+            break;
+        }
+        case TKN_MINUS:
+        {
+            IR_emit_expr(builder, expr->left, &left);
+            IR_emit_expr(builder, expr->right, &right);
+
+            bool left_is_ptr = left.type->kind == TYPE_PTR;
+            bool right_is_ptr = right.type->kind == TYPE_PTR;
+
+            // ptr - int => ptr
+            if (left_is_ptr && !right_is_ptr)
+            {
+                IR_emit_ptr_int_add(builder, dst, &left, &right, false);
+            }
+            // ptr - ptr => s64
+            else if (left_is_ptr && right_is_ptr)
+            {
+                Type* result_type = expr->super.type;
+                u64 base_size = left.type->as_ptr.base->size;
+                s32 base_size_log2 = (s32)clp2(base_size);
+
+                dst->kind = IR_OPERAND_REG;
+                dst->type = result_type;
+                dst->reg = IR_next_reg(builder);
+
+                IR_ensure_execute_lea(builder, &left);
+                IR_ensure_execute_lea(builder, &right);
+                IR_emit_sub(builder, dst, &left, &right);
+
+                if (base_size_log2)
+                    IR_emit_rshift(builder, dst, dst, base_size_log2);
+            }
+            // int - int => int
+            else
+            {
+                assert(left.type == right.type);
+                assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
+
+                dst->kind = IR_OPERAND_REG;
+                dst->type = left.type;
+                dst->reg = IR_next_reg(builder);
+
+                IR_ensure_execute_deref(builder, &left);
+                IR_ensure_execute_deref(builder, &right);
+                IR_emit_sub(builder, dst, &left, &right);
+            }
+
+            IR_free_operand_regs(builder, &left);
+            IR_free_operand_regs(builder, &right);
+            break;
+        }
     }
 }
+
+void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
+{
+    if (expr->is_const)
+    {
+        dst->kind = kind = IR_OPERAND_IMM;
+        dst->type = expr->type;
+        dst->imm = expr->const_val;
+    }
+
+    switch (expr->kind)
+    {
+        case CST_ExprIdent:
+            IR_emit_expr_ident(builder, (ExprIdent*)expr, dst);
+            break;
+        case CST_ExprCall:
+            IR_emit_expr_call(builder, (ExprCall*)expr, dst);
+            break;
+        case CST_ExprCast:
+            IR_emit_expr_cast(builder, (ExprCast*)expr, dst);
+            break;
+        case CST_ExprBinary:
+            IR_emit_expr_binary(builder, (ExprBinary*)expr, dst);
+            break;
+        case CST_ExprUnary:
+            IR_emit_expr_unary(builder, (ExprUnary*)expr, dst);
+            break;
+        case CST_ExprIndex:
+            IR_emit_expr_index(builder, (ExprIndex*)expr, dst);
+            break;
+        default:
+            ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);
+            assert(0);
+            break;
+    }
+}
+

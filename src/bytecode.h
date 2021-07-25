@@ -6,132 +6,108 @@
 #define IR_INSTRS_PER_BUCKET 64
 #define IR_PROCS_PER_BUCKET 16
 
+typedef struct IR_InstrArg IR_InstrArg;
 typedef struct IR_Instr IR_Instr;
-typedef struct IR_Operand IR_Operand;
 typedef struct IR_Builder IR_Builder;
 
-typedef enum IR_OpCode {
-    IR_OPCODE_NONE = 0,
-    IR_OPCODE_ADD,
-    IR_OPCODE_SUB,
-    IR_OPCODE_MULT,
-    IR_OPCODE_DIV,
+typedef enum IR_InstrKind {
+    IR_INSTR_NONE = 0,
 
-    IR_OPCODE_LSHIFT,
-    IR_OPCODE_RSHIFT,
+    // Binary instructions.
+    IR_INSTR_ADD,
+    IR_INSTR_SUB,
+    IR_INSTR_MULT,
+    IR_INSTR_UDIV,
+    IR_INSTR_SDIV,
+    IR_INSTR_UMOD,
+    IR_INSTR_SMOD,
 
-    IR_OPCODE_AND,
-    IR_OPCODE_OR,
-    IR_OPCODE_XOR,
+    // Binary bitwise instructions.
+    IR_INSTR_SHL,
+    IR_INSTR_SHR,
+    IR_INSTR_SAR,
+    IR_INSTR_AND,
+    IR_INSTR_OR,
+    IR_INSTR_XOR,
 
-    IR_OPCODE_LOAD,  // Load var (when used in expr)
-    IR_OPCODE_LOADI, // Load imm to register
-    IR_OPCODE_R2R,   // Copy register
+    // Unary instructions.
+    IR_INSTR_NEG,
+    IR_INSTR_NOT,
 
-    IR_OPCODE_STORE, // Store var (when assigned)
+    IR_INSTR_LADDR,
+    IR_INSTR_LIMM,
 
-    IR_OPCODE_JMP,  // Jump to label
-    IR_OPCODE_JMPR, // Jump to register
+    // Memory instructions
+    IR_INSTR_LOAD,
+    IR_INSTR_STORE,
 
-    // Comparison style that sets a global flag
-    // One comparison instruction, and multiple conditional jump instructions
-    // that read a flag.
-    IR_OPCODE_CMP,
-    IR_OPCODE_CJMP_LT,
-    IR_OPCODE_CJMP_LE,
-    IR_OPCODE_CJMP_EQ,
-    IR_OPCODE_CJMP_GE,
-    IR_OPCODE_CJMP_GT,
-    IR_OPCODE_CJMP_NE,
+    // Conversion instructions
+    IR_INSTR_TRUNC,
+    IR_INSTR_ZEXT,
+    IR_INSTR_SEXT,
+    IR_INSTR_PTR_TO_INT,
+    IR_INSTR_INT_TO_PTR,
+    IR_INSTR_BITCAST,
+
+    IR_INSTR_JMP,  // Jump to label
 
     // Comparison style (no flags) that uses registers.
     // Multiple comparison instructions that set a result register to true/false.
     // One conditional jump instruction that takes an input register and two labels.
-    IR_OPCODE_CJMP,
-    IR_OPCODE_CMP_LT,
-    IR_OPCODE_CMP_LE,
-    IR_OPCODE_CMP_EQ,
-    IR_OPCODE_CMP_GE,
-    IR_OPCODE_CMP_GT,
-    IR_OPCODE_CMP_NE,
+    IR_INSTR_CJMP,
+    IR_INSTR_CMP_ULT,
+    IR_INSTR_CMP_SLT,
+    IR_INSTR_CMP_ULE,
+    IR_INSTR_CMP_SLE,
+    IR_INSTR_CMP_EQ,
+    IR_INSTR_CMP_UGE,
+    IR_INSTR_CMP_SGE,
+    IR_INSTR_CMP_UGT,
+    IR_INSTR_CMP_SGT,
+    IR_INSTR_CMP_NE,
 
-    IR_OPCODE_CALL,
-    IR_OPCODE_CALLR,
-} IR_OpCode;
+    IR_INSTR_RET,
+    IR_INSTR_ARG, // Set argument
+    IR_INSTR_CALL,
+} IR_InstrKind;
 
-typedef enum IR_OperandKind {
-    IR_OPERAND_NONE,
-    IR_OPERAND_IMM,
-    IR_OPERAND_REG,
-    IR_OPERAND_VAR,
-    IR_OPERAND_PROC,
-    IR_OPERAND_LABEL,
-} IR_OperandKind;
+typedef enum IR_Type {
+    IR_TYPE_VOID,
+    IR_TYPE_INT8,
+    IR_TYPE_INT16,
+    IR_TYPE_INT32,
+    IR_TYPE_INT64,
+    IR_TYPE_F32,
+    IR_TYPE_F64,
+    IR_TYPE_PTR,
+} IR_Type;
 
-#define IR_REG_ID_MASK 0x00FFFFFFFFFFFFFF
-#define IR_REG_BYTE_SIZE(r) (((r) >> 56) & 0xFF)
-#define IR_REG_ID(r) ((r) & IR_REG_ID_MASK)
+typedef enum IR_InstrArgKind {
+    IR_ARG_REG,
+    IR_ARG_IMM,
+} IR_InstrArgKind;
 
-enum IR_OperandFlag {
-    IR_OPERAND_IS_L_VALUE = 0x1,
-};
-
-struct IR_Operand {
-    IR_OperandKind kind;
-    u32 flags;
-
+typedef struct IR_InstrArg {
+    IR_InstrArgKind kind;
     union {
         struct {
-            Type* type;
-            Scalar value;
-        } _imm;
-        struct {
-            Type* type;
-            u64 reg;   // Top 8 bits for reg size. Bottom 7 bytes for reg id
-        } _reg;
-        Symbol* _var;
-        Symbol* _proc;
-        u64 _label;
+            s32 reg0;
+            s32 reg1;
+        };
+        Scalar imm;
     };
-};
+} IR_InstrArg;
 
 struct IR_Instr {
-    IR_OpCode opcode;
-    IR_Operand operand_s;
-    IR_Operand operand_d;
+    s16 kind;
+    s16 option; // Can be a type (add), a scale (lea), or arg index
+    s32 r;      // Typically the result register
+    IR_InstrArg a;
+    IR_InstrArg b;
 };
-
-#define IR_NUM_ARG_REGS 6
-#define IR_NUM_TMP_REGS 6
-#define IR_NUM_RET_REGS 2
-
-typedef enum IR_RegID {
-    IR_REG0 = 0,
-    IR_REG1,
-    IR_REG2,
-    IR_REG3,
-    IR_REG4,
-    IR_REG5,
-    IR_ARG_REG0,
-    IR_ARG_REG1,
-    IR_ARG_REG2,
-    IR_ARG_REG3,
-    IR_ARG_REG4,
-    IR_ARG_REG5,
-    IR_RET_REG0,
-    IR_RET_REG1,
-    IR_REG_COUNT,
-    IR_REG_INVALID = IR_REG_COUNT
-} IR_RegID;
-
-extern const char* IR_reg_names[IR_REG_COUNT];
-extern IR_RegID IR_tmp_regs[IR_NUM_TMP_REGS];
-extern IR_RegID IR_arg_regs[IR_NUM_ARG_REGS];
-extern IR_RegID IR_ret_regs[IR_NUM_RET_REGS];
 
 struct IR_Builder {
     BucketList* instrs;
-    u32 free_regs;
     Allocator* arena;
 };
 
