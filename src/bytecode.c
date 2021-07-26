@@ -187,7 +187,7 @@ void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operand* dst)
     }
 }
 
-void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
+void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
 {
     u64 base_size = ptr_op->type->as_ptr.base->size;
 
@@ -237,6 +237,8 @@ void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* ptr_op, IR_Operand* in
             ptr_op->addr.index_reg = int_op->reg;
         }
     }
+
+    *dst = *ptr_op;
 }
 
 void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operand* dst)
@@ -271,8 +273,8 @@ void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operand* dst)
                 dst->type = left.type;
                 dst->reg = IR_next_reg(builder);
 
-                IR_ensure_execute_deref(builder, &left);
-                IR_ensure_execute_deref(builder, &right);
+                IR_ensure_operand_in_reg(builder, &left, true);
+                IR_ensure_operand_in_reg(builder, &right, true);
                 IR_emit_add(builder, dst, &left, &right);
             }
 
