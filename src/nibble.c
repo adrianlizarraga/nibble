@@ -3,6 +3,7 @@
 #include "hash_map.h"
 #include "parser.h"
 #include "gen_assembly.h"
+#include "bytecode.h"
 
 typedef struct NibbleCtx {
     Allocator gen_mem;

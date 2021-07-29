@@ -674,7 +674,7 @@ struct Symbol {
 
     // TODO: Cleanup this struct.
     // NOTE: For SYMBOL_VAR
-    s64 offset;
+    s32 offset;
 };
 
 Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);

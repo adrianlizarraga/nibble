@@ -1,13 +1,14 @@
 #ifndef NIBBLE_IR_H
 #define NIBBLE_IR_H
-#include "ast.h"
 #include "stream.h"
 
 #define IR_INSTRS_PER_BUCKET 64
 #define IR_PROCS_PER_BUCKET 16
 
+typedef struct IR_SIBDAddr IR_SIBDAddr;
 typedef struct IR_InstrArg IR_InstrArg;
 typedef struct IR_Instr IR_Instr;
+typedef struct IR_Proc IR_Proc;
 typedef struct IR_Builder IR_Builder;
 
 typedef enum IR_InstrKind {
@@ -34,13 +35,13 @@ typedef enum IR_InstrKind {
     IR_INSTR_NEG,
     IR_INSTR_NOT,
 
-    IR_INSTR_LADDR,
+    IR_INSTR_LADDR,     // Load an address computation into a register.
+    IR_INSTR_LADDR_VAR, // Load a variable's address into a register.
     IR_INSTR_LIMM,
 
     // Memory instructions
     IR_INSTR_LOAD,
     IR_INSTR_STORE,
-    IR_INSTR_ALLOCA,
 
     // Conversion instructions
     IR_INSTR_TRUNC,
@@ -83,6 +84,13 @@ typedef enum IR_Type {
     IR_TYPE_PTR,
 } IR_Type;
 
+typedef u32 IR_Reg;
+
+enum IR_VarFlag {
+    IR_VAR_IS_LOCAL = 0x1,
+    IR_VAR_IS_ARG = 0x2,
+};
+
 typedef enum IR_InstrArgKind {
     IR_ARG_REG,
     IR_ARG_IMM,
@@ -92,32 +100,62 @@ typedef struct IR_InstrArg {
     IR_InstrArgKind kind;
     union {
         struct {
-            s32 reg0;
-            s32 reg1;
+            IR_Reg reg0;
+            IR_Reg reg1;
         };
         Scalar imm;
     };
 } IR_InstrArg;
 
 struct IR_Instr {
-    s16 kind;
-    s16 option; // Can be a type (add), a scale (lea), or arg index
-    s32 r;      // Typically the result register
+    u16 kind;
+
+    // Optional values vary per instruction kind.
+    union {
+        u8 bytes[2];
+        u16 val;
+    } option;
+
+    // Result register
+    IR_Reg r;
+
+    // First input (register/immediate).
     IR_InstrArg a;
+
+    // Second input (register/immediate).
     IR_InstrArg b;
 };
 
-struct IR_Builder {
-    BucketList* instrs;
-    Allocator* arena;
-    s32 num_regs;
+struct IR_Proc {
+    BucketList* instrs;    
+    IR_Reg num_regs;
 };
 
-IR_Instr* IR_new_instr(Allocator* arena, IR_InstrKind kind, s16 option, s32 r, IR_InstrArg a, IR_InstrArg b);
-IR_Instr** IR_get_bucket_instr(BucketList* bucket_list, size_t index);
-IR_Instr** IR_add_bucket_instr(BucketList* bucket_list, Allocator* arena, IR_Instr* instr);
+struct IR_Builder {
+    Allocator* arena;
+    BucketList* procs;
+    IR_Proc* curr_proc;
+    Scope* curr_scope;
+};
 
-void IR_emit_add(IR_Builder* builder, IR_Type type, IR_InstrArg a, IR_InstrArg b);
-void IR_emit_sub(IR_Builder* builder, IR_Type type, IR_InstrArg a, IR_InstrArg b);
+struct IR_SIBDAddr {
+    IR_Reg base_reg;
+    IR_Reg index_reg;
+    u64 disp;
+    u8 scale;
+};
+
+IR_Instr* IR_new_instr(Allocator* arena, IR_InstrKind kind);
+IR_Instr** IR_get_instr(IR_Builder* builder, size_t index);
+IR_Instr** IR_add_instr(IR_Builder* builder, IR_Instr* instr);
+IR_Proc** IR_get_proc(IR_Builder* builder, size_t index);
+
+void IR_emit_instr_add(IR_Builder* builer, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b);
+void IR_emit_instr_sub(IR_Builder* builer, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b);
+void IR_emit_instr_neg(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg a);
+void IR_emit_instr_load(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_SIBDAddr addr);
+void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst_reg, IR_SIBDAddr addr);
+void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, u32 index, bool is_local, bool is_arg);
+void IR_emit_instr_shr(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Reg src_reg, u8 shift_bits);
 
 #endif
