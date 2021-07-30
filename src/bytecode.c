@@ -129,19 +129,13 @@ void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst_reg, IR_SIBDAddr addr)
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, u32 index, bool is_local, bool is_arg)
+void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, u32 index, bool is_local)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR_VAR);
     instr->r = dst_reg;
-    instr->option.val = 0;
+    instr->option.val = IR_VAR_IS_LOCAL;
     instr->a.kind = IR_ARG_IMM;
     instr->a.imm.as_int._u32 = index;
-
-    if (is_local)
-        instr->option.val |= IR_VAR_IS_LOCAL;
-
-    if (is_arg)
-        instr->option.val |= IR_VAR_IS_ARG;
 
     IR_add_instr(builder, instr);
 }

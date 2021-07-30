@@ -8,7 +8,9 @@
 typedef struct IR_SIBDAddr IR_SIBDAddr;
 typedef struct IR_InstrArg IR_InstrArg;
 typedef struct IR_Instr IR_Instr;
+typedef struct IR_Var IR_Var;
 typedef struct IR_Proc IR_Proc;
+typedef struct IR_Module IR_Module;
 typedef struct IR_Builder IR_Builder;
 
 typedef enum IR_InstrKind {
@@ -86,11 +88,6 @@ typedef enum IR_Type {
 
 typedef u32 IR_Reg;
 
-enum IR_VarFlag {
-    IR_VAR_IS_LOCAL = 0x1,
-    IR_VAR_IS_ARG = 0x2,
-};
-
 typedef enum IR_InstrArgKind {
     IR_ARG_REG,
     IR_ARG_IMM,
@@ -126,9 +123,34 @@ struct IR_Instr {
     IR_InstrArg b;
 };
 
+enum IR_VarFlag {
+    IR_VAR_IS_LOCAL = 0x1,
+    IR_VAR_IS_ARG = 0x2,
+};
+
+struct IR_Var {
+    Symbol* sym;
+    u32 flags;
+    IR_Reg reg; // Reg that holds address to var.
+
+    // Used by backends to store this variable's location.
+    s32 loc;
+};
+
 struct IR_Proc {
+    size_t num_params;
+    size_t num_vars;
+    IR_Var** vars;
     BucketList* instrs;    
     IR_Reg num_regs;
+};
+
+struct IR_Module {
+    size_t num_vars;
+    IR_Var** vars;
+
+    size_t num_procs;
+    IR_Proc** procs;
 };
 
 struct IR_Builder {
