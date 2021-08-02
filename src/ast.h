@@ -652,7 +652,7 @@ typedef enum SymbolKind {
     SYMBOL_CONST,
     SYMBOL_PROC,
     SYMBOL_TYPE,
-    SYMBOL_PACKAGE,
+    SYMBOL_KIND_COUNT,
 } SymbolKind;
 
 typedef enum SymbolStatus {
@@ -690,6 +690,8 @@ struct Scope {
 
     HMap sym_table;
     List sym_list;
+
+    u32 sym_kind_counts[SYMBOL_KIND_COUNT];
 
     ListNode lnode;
 };

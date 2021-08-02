@@ -276,6 +276,10 @@ void nibble_compile(const char* input_file, const char* output_file)
         return;
     }
 
+    ftprint_out("\tglobal vars: %u\n\tglobal procs: %u\n",
+                nibble->global_scope.sym_kind_counts[SYMBOL_VAR],
+                nibble->global_scope.sym_kind_counts[SYMBOL_PROC]);
+
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////

@@ -90,6 +90,8 @@ static void add_scope_symbol(Scope* scope, Symbol* sym)
 {
     hmap_put(&scope->sym_table, PTR_UINT(sym->name), PTR_UINT(sym));
     list_add_last(&scope->sym_list, &sym->lnode);
+
+    scope->sym_kind_counts[sym->kind] += 1;
 }
 
 static void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, const char** name)

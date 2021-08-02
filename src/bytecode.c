@@ -46,11 +46,6 @@ static IR_Type IR_get_type(Type* type)
     return ir_type;
 }
 
-IR_Proc** IR_get_proc(IR_Builder* builder, size_t index)
-{
-    return (IR_Proc**)bucket_list_get_elem(builder->procs, index);
-}
-
 IR_Instr** IR_get_instr(IR_Builder* builder, size_t index)
 {
     return (IR_Instr**)bucket_list_get_elem(builder->curr_proc->instrs, index);
@@ -133,9 +128,12 @@ void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, u32 index, boo
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR_VAR);
     instr->r = dst_reg;
-    instr->option.val = IR_VAR_IS_LOCAL;
+    instr->option.val = 0;
     instr->a.kind = IR_ARG_IMM;
     instr->a.imm.as_int._u32 = index;
+
+    if (is_local)
+        instr->option.val |= IR_VAR_IS_LOCAL;
 
     IR_add_instr(builder, instr);
 }
@@ -574,17 +572,19 @@ bool IR_build_proc(IR_Builder* builder, Symbol* sym)
     return true;
 }
 
-bool IR_build_module(IR_Builder* builder, Allocator* arena, Scope* global_scope)
+IR_Module* IR_build_module(Allocator* arena, Scope* global_scope)
 {
-    builder->arena = arena;
-    builder->curr_proc = NULL;
-    builder->procs = new_bucket_list(arena, 16);
+    IR_Module* module = alloc_type(arena, IR_Module, true);
 
-    if (!builder->procs)
-        return false;
+    if (!module)
+        return NULL;
 
-    // Set builder's current scope to the global scope.
-    builder->curr_scope = global_scope;
+    IR_Builder builder = {
+        .arena = arena,
+        .curr_proc = NULL,
+        .curr_scope = global_scope,
+        .module = module
+    };
 
     // Iterate through all procedures and generate IR.
     List* head = &global_scope->sym_list;
@@ -595,10 +595,10 @@ bool IR_build_module(IR_Builder* builder, Allocator* arena, Scope* global_scope)
         Symbol* sym = list_entry(it, Symbol, lnode);
 
         if (sym->kind == SYMBOL_PROC)
-            IR_build_proc(builder, sym);
+            IR_build_proc(&builder, sym);
 
         it = it->next;
     }
 
-    return true;
+    return module;
 }
