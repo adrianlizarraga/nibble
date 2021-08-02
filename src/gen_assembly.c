@@ -318,7 +318,7 @@ static void operand_from_sym(Operand* operand, Symbol* sym)
             {
                 operand->kind = OPERAND_FRAME_OFFSET;
                 operand->type = sym->type;
-                operand->offset = sym->offset;
+                operand->offset = sym->as_var.offset;
             }
             else
             {
@@ -1276,7 +1276,7 @@ static void gen_expr_ident(ExprIdent* eident, Operand* dest)
         {
             dest->kind = OPERAND_FRAME_OFFSET;
             dest->type = sym->type;
-            dest->offset = sym->offset;
+            dest->offset = sym->as_var.offset;
         }
         else
         {
@@ -1748,7 +1748,7 @@ static size_t compute_scope_var_offsets(Scope* scope, size_t offset)
             {
                 stack_size += sym->type->size;
                 stack_size = ALIGN_UP(stack_size, sym->type->align);
-                sym->offset = -stack_size;
+                sym->as_var.offset = -stack_size;
             }
 
             it = it->next;
@@ -1832,16 +1832,16 @@ static size_t compute_proc_var_offsets(DeclProc* dproc)
 
                 stack_size += arg_size;
                 stack_size = ALIGN_UP(stack_size, arg_align);
-                sym->offset = -stack_size;
+                sym->as_var.offset = -stack_size;
 
-                emit_text("    mov %s [rbp + %d], %s", mem_size_label[arg_size], sym->offset,
+                emit_text("    mov %s [rbp + %d], %s", mem_size_label[arg_size], sym->as_var.offset,
                           reg_names[arg_size][arg_reg]);
 
                 arg_index += 1;
             }
             else
             {
-                sym->offset = stack_arg_offset;
+                sym->as_var.offset = stack_arg_offset;
                 stack_arg_offset += arg_size;
                 stack_arg_offset = ALIGN_UP(stack_arg_offset, arg_align);
             }
@@ -1851,7 +1851,7 @@ static size_t compute_proc_var_offsets(DeclProc* dproc)
         {
             stack_size += sym->type->size;
             stack_size = ALIGN_UP(stack_size, sym->type->align);
-            sym->offset = -stack_size;
+            sym->as_var.offset = -stack_size;
         }
 
         it = it->next;
@@ -1890,9 +1890,9 @@ static void set_sym_offset(Symbol* sym)
     *frame_size += sym->type->size;
     *frame_size = ALIGN_UP(*frame_size, sym->type->align);
 
-    // sym->offset = -(*frame_size);
+    // sym->as_var.offset = -(*frame_size);
     int offset = -(int)(*frame_size);
-    assert(sym->offset == offset);
+    assert(sym->as_var.offset == offset);
 
     if (*frame_size > *max_frame_size)
         *max_frame_size = *frame_size;

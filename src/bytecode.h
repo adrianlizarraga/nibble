@@ -1,6 +1,7 @@
 #ifndef NIBBLE_IR_H
 #define NIBBLE_IR_H
 #include "stream.h"
+#include "ast.h"
 
 #define IR_INSTRS_PER_BUCKET 64
 #define IR_PROCS_PER_BUCKET 16
@@ -8,8 +9,6 @@
 typedef struct IR_SIBDAddr IR_SIBDAddr;
 typedef struct IR_InstrArg IR_InstrArg;
 typedef struct IR_Instr IR_Instr;
-typedef struct IR_Var IR_Var;
-typedef struct IR_Proc IR_Proc;
 typedef struct IR_Module IR_Module;
 typedef struct IR_Builder IR_Builder;
 
@@ -86,7 +85,6 @@ typedef enum IR_Type {
     IR_TYPE_PTR,
 } IR_Type;
 
-typedef u32 IR_Reg;
 
 typedef enum IR_InstrArgKind {
     IR_ARG_REG,
@@ -125,38 +123,20 @@ struct IR_Instr {
 
 enum IR_VarFlag {
     IR_VAR_IS_LOCAL = 0x1,
-    IR_VAR_IS_ARG = 0x2,
-};
-
-struct IR_Var {
-    Symbol* sym;
-    u32 flags;
-    IR_Reg reg; // Reg that holds address to var.
-
-    // Used by backends to store this variable's location.
-    s32 loc;
-};
-
-struct IR_Proc {
-    size_t num_params;
-    size_t num_vars;
-    IR_Var** vars;
-    BucketList* instrs;    
-    IR_Reg num_regs;
 };
 
 struct IR_Module {
-    size_t num_vars;
-    IR_Var** vars;
-
-    size_t num_procs;
-    IR_Proc** procs;
+    u32 num_vars;
+    u32 num_procs;
+    Symbol** vars;
+    Symbol** procs;
 };
 
 struct IR_Builder {
     Allocator* arena;
+    Allocator* tmp_arena;
     IR_Module* module;
-    IR_Proc* curr_proc;
+    Symbol* curr_proc;
     Scope* curr_scope;
 };
 

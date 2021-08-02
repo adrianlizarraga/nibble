@@ -17,6 +17,8 @@ typedef struct Stmt Stmt;
 
 typedef struct Type Type;
 typedef struct Symbol Symbol;
+typedef struct SymbolVar SymbolVar;
+typedef struct SymbolProc SymbolProc;
 typedef struct Scope Scope;
 
 ///////////////////////////////
@@ -661,20 +663,41 @@ typedef enum SymbolStatus {
     SYMBOL_STATUS_RESOLVED,
 } SymbolStatus;
 
+typedef u32 IR_Reg;
+
+struct SymbolVar {
+    bool is_arg;
+
+    // Reg that holds addr to var
+    IR_Reg reg;
+
+    // Used by backends to store this var's
+    // location in the stack.
+    s32 offset;
+};
+
+struct SymbolProc {
+    IR_Reg num_regs;
+    u32 min_stack_size;
+    u32 num_vars;
+    Symbol** vars;
+    BucketList* instrs;
+};
+
 struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
-    const char* name;
-    bool is_local;
-    List lnode;
 
-    // TODO: Move into union or subclass.
+    bool is_local;
+    const char* name;
     Decl* decl;
     Type* type;
+    List lnode;
 
-    // TODO: Cleanup this struct.
-    // NOTE: For SYMBOL_VAR
-    s32 offset;
+    union {
+        SymbolVar as_var;
+        SymbolProc as_proc;
+    };
 };
 
 Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);

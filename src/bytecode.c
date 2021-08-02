@@ -48,12 +48,12 @@ static IR_Type IR_get_type(Type* type)
 
 IR_Instr** IR_get_instr(IR_Builder* builder, size_t index)
 {
-    return (IR_Instr**)bucket_list_get_elem(builder->curr_proc->instrs, index);
+    return (IR_Instr**)bucket_list_get_elem(builder->curr_proc->as_proc.instrs, index);
 }
 
 IR_Instr** IR_add_instr(IR_Builder* builder, IR_Instr* instr)
 {
-    return (IR_Instr**)bucket_list_add_elem(builder->curr_proc->instrs, instr);
+    return (IR_Instr**)bucket_list_add_elem(builder->curr_proc->as_proc.instrs, instr);
 }
 
 IR_Instr* IR_new_instr(Allocator* arena, IR_InstrKind kind)
@@ -181,8 +181,8 @@ typedef struct IR_Operand {
 
 static IR_Reg IR_next_reg(IR_Builder* builder)
 {
-    builder->curr_proc->num_regs += 1;
-    return builder->curr_proc->num_regs;
+    builder->curr_proc->as_proc.num_regs += 1;
+    return builder->curr_proc->as_proc.num_regs;
 }
 
 static void IR_execute_deref(IR_Builder* builder, IR_Operand* operand)
@@ -246,9 +246,9 @@ static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, b
         {
             if (operand->kind != IR_OPERAND_SIBD_ADDR)
             {
-                // Assume sym->offset is a register that contains the result from an
+                // Assume sym->as_var.reg is a register that contains the result from an
                 // alloca instruction (i.e., contains an address to the var).
-                IR_SIBDAddr var_addr = {.base_reg = operand->sym->offset};
+                IR_SIBDAddr var_addr = {.base_reg = operand->sym->as_var.reg};
                 IR_Reg base_reg = IR_next_reg(builder);
                 IR_emit_instr_load(builder, IR_get_type(operand->type), base_reg, var_addr);
 
@@ -261,7 +261,7 @@ static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, b
         }
         else
         {
-            IR_SIBDAddr var_addr = {.base_reg = operand->sym->offset};
+            IR_SIBDAddr var_addr = {.base_reg = operand->sym->as_var.reg};
             IR_Reg reg = IR_next_reg(builder);
             IR_emit_instr_load(builder, IR_get_type(operand->type), reg, var_addr);
 
@@ -286,9 +286,9 @@ void IR_arg_from_operand(IR_Builder* builder, IR_InstrArg* arg, IR_Operand* op)
             break;
         case IR_OPERAND_VAR:
         {
-            // Assume sym->offset is a register that contains the result from an
+            // Assume sym->as_var.reg is a register that contains the result from an
             // alloca instruction (i.e., contains an address to the var).
-            IR_SIBDAddr addr = {.base_reg = op->sym->offset};
+            IR_SIBDAddr addr = {.base_reg = op->sym->as_var.reg};
             IR_Reg result_reg = IR_next_reg(builder);
             IR_emit_instr_load(builder, IR_get_type(op->type), result_reg, addr);
 
@@ -560,6 +560,13 @@ void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
     }
 }
 
+static void IR_assign_proc_var_offsets(IR_Builder* builder, Symbol* proc_sym)
+{
+    u32 stack_size = 0;
+    u32 arg_index = 0;
+    
+}
+
 bool IR_build_proc(IR_Builder* builder, Symbol* sym)
 {
     DeclProc* dproc = (DeclProc*)sym->decl;
@@ -567,12 +574,13 @@ bool IR_build_proc(IR_Builder* builder, Symbol* sym)
     // Set procedure as the current scope.
     builder->curr_scope = dproc->scope;
 
-    
+    IR_assign_proc_var_offsets(sym);
+
     
     return true;
 }
 
-IR_Module* IR_build_module(Allocator* arena, Scope* global_scope)
+IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope)
 {
     IR_Module* module = alloc_type(arena, IR_Module, true);
 
@@ -581,12 +589,24 @@ IR_Module* IR_build_module(Allocator* arena, Scope* global_scope)
 
     IR_Builder builder = {
         .arena = arena,
+        .tmp_arena = .tmp_arena,
         .curr_proc = NULL,
         .curr_scope = global_scope,
         .module = module
     };
 
-    // Iterate through all procedures and generate IR.
+    // Create global IR vars/procs arrays.
+    module->num_vars = global_scope->sym_kind_counts[SYMBOL_VAR];
+    module->vars = alloc_array(arena, Symbol*, module->num_vars, false);
+
+    module->num_procs = global_scope->sym_kind_counts[SYMBOL_PROC];
+    module->procs = alloc_array(arena, Symbol*, module->num_procs, false);
+
+    // Iterate through all global declarations and create IR structures for 
+    // global variables and procedures.
+    size_t var_index = 0;
+    size_t proc_index = 0;
+
     List* head = &global_scope->sym_list;
     List* it = head->next;
 
@@ -594,10 +614,27 @@ IR_Module* IR_build_module(Allocator* arena, Scope* global_scope)
     {
         Symbol* sym = list_entry(it, Symbol, lnode);
 
-        if (sym->kind == SYMBOL_PROC)
-            IR_build_proc(&builder, sym);
+        if (sym->kind == SYMBOL_VAR)
+        {
+            module->vars[var_index] = sym;
+            var_index += 1;
+        }
+        else if (sym->kind == SYMBOL_PROC)
+        {
+            module->procs[proc_index] = sym;
+            proc_index += 1;
+        }
 
         it = it->next;
+    }
+
+    assert(var_index == module->num_vars);
+    assert(proc_index == module->num_procs);
+
+    // Iterate through all procedures and generate IR instructions.
+    for (size_t i = 0; i < module->num_procs; i += 1)
+    {
+        IR_build_proc(&builder, module->procs[i]);
     }
 
     return module;
