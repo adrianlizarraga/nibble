@@ -3,6 +3,7 @@
 #include "stream.h"
 #include "ast.h"
 
+#define IR_STACK_ALIGN 16
 #define IR_INSTRS_PER_BUCKET 64
 #define IR_PROCS_PER_BUCKET 16
 
@@ -84,7 +85,6 @@ typedef enum IR_Type {
     IR_TYPE_F64,
     IR_TYPE_PTR,
 } IR_Type;
-
 
 typedef enum IR_InstrArgKind {
     IR_ARG_REG,
