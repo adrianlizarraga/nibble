@@ -124,16 +124,12 @@ void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst_reg, IR_SIBDAddr addr)
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, u32 index, bool is_local)
+void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, Symbol* sym)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR_VAR);
     instr->r = dst_reg;
-    instr->option.val = 0;
     instr->a.kind = IR_ARG_IMM;
-    instr->a.imm.as_int._u32 = index;
-
-    if (is_local)
-        instr->option.val |= IR_VAR_IS_LOCAL;
+    instr->a.imm.as_ptr = sym;
 
     IR_add_instr(builder, instr);
 }
@@ -147,6 +143,15 @@ void IR_emit_instr_shr(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Reg
     instr->a.reg0 = src_reg;
     instr->b.kind = IR_ARG_IMM;
     instr->b.imm.as_int._u8 = shift_bits;
+
+    IR_add_instr(builder, instr);
+}
+
+void IR_emit_instr_ret(IR_Builder* builder, IR_Type type, IR_InstrArg ret_arg)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_RET);
+    instr->option.bytes[0] = type;
+    instr->a = ret_arg;
 
     IR_add_instr(builder, instr);
 }
@@ -228,6 +233,14 @@ static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
     operand->reg = dst_reg;
 }
 
+static void IR_commit_indirections(IR_Builder* builder, IR_Operand* operand)
+{
+    if (operand->kind == IR_OPERAND_DEREF_ADDR)
+        IR_execute_deref(builder, operand);
+    else if (operand->kind == IR_OPERAND_SIBD_ADDR)
+        IR_execute_lea(builder, operand);
+}
+
 static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, bool commit_ptr)
 {
     if (commit_ptr && (operand->kind == IR_OPERAND_SIBD_ADDR))
@@ -269,6 +282,24 @@ static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, b
             operand->reg = reg;
         }
     }
+}
+
+static IR_SIBDAddr IR_get_var_addr(IR_Builder* builder, Symbol* sym)
+{
+    assert(sym->kind == SYMBOL_VAR);
+
+    IR_SIBDAddr var_addr = {0};
+
+    if (!sym->as_var.reg)
+    {
+        sym->as_var.reg = IR_next_reg(builder);
+
+        IR_emit_instr_laddr_var(builder, sym->as_var.reg, sym);
+    }
+
+    var_addr.base_reg = sym->as_var.reg;
+
+    return var_addr;
 }
 
 void IR_arg_from_operand(IR_Builder* builder, IR_InstrArg* arg, IR_Operand* op)
@@ -559,6 +590,114 @@ void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
             break;
     }
 }
+// Forward declare
+static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt);
+
+static void IR_push_scope(IR_Builder* builder, Scope* scope)
+{
+    builder->curr_scope = scope;
+}
+
+static void IR_pop_scope(IR_Builder* builder)
+{
+    builder->curr_scope = builder->curr_scope->parent;
+}
+
+static void IR_emit_block(builder, StmtBlock* sblock)
+{
+    IR_push_scope(builder, sblock->scope);
+    IR_emit_stmt_block_body(builder, &sblock->stmts);
+    IR_pop_scope(builder);
+
+}
+
+static void IR_emit_stmt_return(IR_Builder* builder, StmtReturn* sret)
+{
+    IR_Operand expr_op = {0};
+    IR_emit_expr(builder, sret->expr, &expr_op);
+
+    IR_InstrArg arg = {0};
+    IR_arg_from_operand(builder, &arg, &expr_op);
+
+    // TODO: This currently assumes that return value fits in a register!
+    IR_emit_instr_ret(builder, IR_get_type(expr_op.type), arg);
+}
+
+static void IR_emit_stmt_expr(IR_Builder* builder, StmtExpr* sexpr)
+{
+    IR_Operand expr_op = {0};
+    IR_emit_expr(builder, sexpr->expr, &expr_op);
+    IR_commit_indirections(builder, &expr_op);
+}
+
+static void IR_emit_stmt_expr_assign(IR_Builder* builder, StmtExprAssign* stmt)
+{
+    switch (stmt->op_assign)
+    {
+        case TKN_ASSIGN:
+        {
+            IR_Operand loperand = {0};
+            IR_Operand roperand = {0};
+
+            IR_emit_expr(builder, stmt->left, &loperand);
+            IR_emit_expr(builder, stmt->right, &roperand);
+
+            IR_emit_assign(&lopernad, &roperand);
+        }
+        default:
+            assert(!"Unsupported assignment operator in IR generation");
+            break;
+    }
+}
+
+static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt)
+{
+    switch (stmt->kind)
+    {
+        case CST_StmtBlock:
+            IR_emit_stmt_block(builder, (StmtBlock*)stmt);
+            break;
+        case CST_StmtReturn:
+            IR_emit_stmt_return(builder, (StmtReturn*)stmt);
+            break;
+        case CST_StmtDecl:
+            IR_emit_stmt_decl(builder, (StmtDecl*)stmt);
+            break;
+        case CST_StmtExpr:
+            IR_emit_stmt_expr(builder, (StmtExpr*)stmt);
+            break;
+        case CST_StmtExprAssign:
+            IR_emit_stmt_expr_assign(builder, (StmtExprAssign*)stmt);
+            break;
+        case CST_StmtIf:
+            IR_emit_stmt_if(builder, (StmtIf*)stmt);
+            break;
+        case CST_StmtWhile:
+            IR_emit_stmt_while(builder, (StmtWhile*)stmt);
+            break;
+        case CST_StmtDoWhile:
+            IR_emit_stmt_do_while(builder, (StmtDoWhile*)stmt);
+            break;
+        default:
+            break;
+    }
+}
+
+static void IR_emit_stmt_block_body(IR_Builder* builder, List* stmts)
+{
+    List* head = stmts;
+    List* it = head->next;
+
+    while (it != head)
+    {
+        Stmt* s = list_entry(it, Stmt, lnode);
+
+        IR_emit_stmt(builder, s);
+
+        it = it->next;
+    }
+}
+
 static u32 IR_assign_scope_var_offsets(Symbol*** proc_vars, Scope* scope, u32 offset)
 {
     u32 stack_size = 0;
@@ -650,9 +789,16 @@ bool IR_build_proc(IR_Builder* builder, Symbol* sym)
     DeclProc* dproc = (DeclProc*)sym->decl;
 
     // Set procedure as the current scope.
-    builder->curr_scope = dproc->scope;
+    IR_push_scope(builder, dproc->scope);
+    builder->curr_proc = sym;
 
+    // Assign stack offsets to params and local vars.
     IR_assign_proc_var_offsets(sym);
+
+    IR_emit_stmt_block_body(builder, &dproc->stmts);
+
+    IR_pop_scope(builder);
+    builder->curr_proc = NULL;
     
     return true;
 }

@@ -72,7 +72,7 @@ typedef enum IR_InstrKind {
 
     IR_INSTR_RET,
     IR_INSTR_ARG, // Set argument
-    IR_INSTR_CALL,
+    IR_INSTR_CALL, // Pushes a "Call Record" into a stack of call records.
 } IR_InstrKind;
 
 typedef enum IR_Type {
