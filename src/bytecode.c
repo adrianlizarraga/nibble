@@ -96,14 +96,29 @@ void IR_emit_instr_neg(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Ins
     IR_add_instr(builder, instr);
 }
 
+void IR_emit_instr_store(IR_Builder* builder, IR_Type type, IR_SIBDAddr dst_addr, IR_InstrArg src_arg)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_STORE);
+    instr->a.kind = IR_ARG_REG;
+    instr->a.reg0 = dst_addr.base_reg;
+    instr->a.reg1 = dst_addr.index_reg;
+    instr->option.bytes[0] = type;
+    instr->option.bytes[1] = dst_addr.scale;
+    instr->b = src_arg;
+
+    IR_add_instr(builder, instr);
+}
+
 void IR_emit_instr_load(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_SIBDAddr addr)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LOAD);
     instr->r = dst_reg;
+    instr->a.kind = IR_ARG_REG;
     instr->a.reg0 = addr.base_reg;
     instr->a.reg1 = addr.index_reg;
     instr->option.bytes[0] = type;
     instr->option.bytes[1] = addr.scale;
+    instr->b.kind = IR_ARG_IMM;
     instr->b.imm.as_int._u64 = addr.disp;
 
     IR_add_instr(builder, instr);
@@ -356,29 +371,32 @@ void IR_next_reg_operand(IR_Builder* builder, IR_Operand* dst, Type* type)
 //      Traverse AST to emit IR.
 //
 //////////////////////////////////////////////////////
+static void IR_operand_from_sym(IR_Operand* op, Symbol* sym)
+{
+    if (sym->kind == SYMBOL_VAR)
+    {
+        op->kind = IR_OPERAND_VAR;
+        op->type = sym->type;
+        op->sym = sym;
+    }
+    else if (sym->kind == SYMBOL_PROC)
+    {
+        op->kind = IR_OPERAND_PROC;
+        op->type = sym->type;
+        op->sym = sym;
+    }
+    else
+    {
+        assert(0);
+    }
+}
+
 void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst);
 
 void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operand* dst)
 {
     Symbol* sym = lookup_symbol(builder->curr_scope, eident->name);
-
-    if (sym->kind == SYMBOL_VAR)
-    {
-        dst->kind = IR_OPERAND_VAR;
-        dst->type = sym->type;
-        dst->sym = sym;
-    }
-    else if (sym->kind == SYMBOL_PROC)
-    {
-        dst->kind = IR_OPERAND_PROC;
-        dst->type = sym->type;
-        dst->sym = sym;
-    }
-    else
-    {
-        ftprint_err("INTERNAL ERROR: Unexpected symbol kind %d during code generation for ident expr\n", sym->kind);
-        assert(0);
-    }
+    IR_operand_from_sym(dst, sym);
 }
 
 void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
@@ -603,6 +621,32 @@ static void IR_pop_scope(IR_Builder* builder)
     builder->curr_scope = builder->curr_scope->parent;
 }
 
+static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs)
+{
+    IR_SIBDAddr lhs_addr = {0};
+
+    switch (lhs->kind)
+    {
+        case IR_OPERAND_VAR:
+        {
+            lhs_addr = IR_get_var_addr(builder, lhs->sym);
+            break;
+        }
+        case IR_OPERAND_DEREF_ADDR:
+        {
+            lhs_addr = lhs->addr;
+            break;
+        }
+        default:
+            assert(0);
+            break;
+    }
+
+    IR_InstrArg rhs_arg = {0};
+    IR_arg_from_operand(builder, &rhs_arg, rhs);
+    IR_emit_instr_store(builder, IR_get_type(lhs->sym->type), lhs_addr, rhs_arg);
+}
+
 static void IR_emit_block(builder, StmtBlock* sblock)
 {
     IR_push_scope(builder, sblock->scope);
@@ -642,11 +686,31 @@ static void IR_emit_stmt_expr_assign(IR_Builder* builder, StmtExprAssign* stmt)
             IR_emit_expr(builder, stmt->left, &loperand);
             IR_emit_expr(builder, stmt->right, &roperand);
 
-            IR_emit_assign(&lopernad, &roperand);
+            IR_emit_assign(builder, &lopernad, &roperand);
         }
         default:
             assert(!"Unsupported assignment operator in IR generation");
             break;
+    }
+}
+
+static void IR_emit_stmt_decl(IR_Builder* builder, StmtDecl* sdecl)
+{
+    assert(sdecl->decl->kind == CST_DeclVar);
+
+    DeclVar* dvar = (DeclVar*)sdecl->decl;
+    Symbol* sym = lookup_symbol(builder->curr_scope, dvar->name);
+    IR_SIBDAddr var_addr = IR_get_var_addr(builder, sym); // NOTE: Call will preemptively 
+                                                          // store the variable's address in a register.
+
+    if (dvar->init)
+    {
+        IR_Operand rhs_op = {0};
+        IR_Operand lhs_op = {0};
+
+        IR_emit_expr(builder, dvar->init, &rhs_op);
+        IR_operand_from_sym(&lhs_op, sym);
+        IR_emit_assign(builder, &lhs_op, &rhs_op);
     }
 }
 
