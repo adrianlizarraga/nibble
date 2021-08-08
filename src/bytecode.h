@@ -147,16 +147,6 @@ struct IR_SIBDAddr {
     u8 scale;
 };
 
-IR_Instr* IR_new_instr(Allocator* arena, IR_InstrKind kind);
-IR_Instr** IR_get_instr(IR_Builder* builder, size_t index);
-IR_Instr** IR_add_instr(IR_Builder* builder, IR_Instr* instr);
-
-void IR_emit_instr_add(IR_Builder* builer, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b);
-void IR_emit_instr_sub(IR_Builder* builer, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b);
-void IR_emit_instr_neg(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg a);
-void IR_emit_instr_load(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_SIBDAddr addr);
-void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst_reg, IR_SIBDAddr addr);
-void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, u32 index, bool is_local);
-void IR_emit_instr_shr(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Reg src_reg, u8 shift_bits);
+IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope);
 
 #endif

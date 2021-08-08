@@ -1,5 +1,5 @@
-#include "bytecode.h"
 #include "ast.h"
+#include "bytecode.h"
 #include "stream.h"
 
 //////////////////////////////////////////////////////
@@ -8,14 +8,9 @@
 //
 //////////////////////////////////////////////////////
 static IR_Type ir_int_types[] = {
-    [INTEGER_U8] = IR_TYPE_INT8,
-    [INTEGER_S8] = IR_TYPE_INT8,
-    [INTEGER_U16] = IR_TYPE_INT16,
-    [INTEGER_S16] = IR_TYPE_INT16,
-    [INTEGER_U32] = IR_TYPE_INT32,
-    [INTEGER_S32] = IR_TYPE_INT32,
-    [INTEGER_U64] = IR_TYPE_INT64,
-    [INTEGER_S64] = IR_TYPE_INT64,
+    [INTEGER_U8] = IR_TYPE_INT8,   [INTEGER_S8] = IR_TYPE_INT8,   [INTEGER_U16] = IR_TYPE_INT16,
+    [INTEGER_S16] = IR_TYPE_INT16, [INTEGER_U32] = IR_TYPE_INT32, [INTEGER_S32] = IR_TYPE_INT32,
+    [INTEGER_U64] = IR_TYPE_INT64, [INTEGER_S64] = IR_TYPE_INT64,
 };
 
 static IR_Type ir_float_types[] = {
@@ -46,17 +41,12 @@ static IR_Type IR_get_type(Type* type)
     return ir_type;
 }
 
-IR_Instr** IR_get_instr(IR_Builder* builder, size_t index)
+static void IR_add_instr(IR_Builder* builder, IR_Instr* instr)
 {
-    return (IR_Instr**)bucket_list_get_elem(builder->curr_proc->as_proc.instrs, index);
+    array_push(builder->curr_proc->as_proc.instrs, instr);
 }
 
-IR_Instr** IR_add_instr(IR_Builder* builder, IR_Instr* instr)
-{
-    return (IR_Instr**)bucket_list_add_elem(builder->curr_proc->as_proc.instrs, instr);
-}
-
-IR_Instr* IR_new_instr(Allocator* arena, IR_InstrKind kind)
+static IR_Instr* IR_new_instr(Allocator* arena, IR_InstrKind kind)
 {
     IR_Instr* instr = alloc_type(arena, IR_Instr, true);
     instr->kind = kind;
@@ -64,9 +54,9 @@ IR_Instr* IR_new_instr(Allocator* arena, IR_InstrKind kind)
     return instr;
 }
 
-void IR_emit_instr_add(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b)
+static void IR_emit_instr_add(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b)
 {
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_ADD); 
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_ADD);
     instr->option.bytes[0] = type;
     instr->r = dst_reg;
     instr->a = a;
@@ -75,9 +65,9 @@ void IR_emit_instr_add(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Ins
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_sub(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b)
+static void IR_emit_instr_sub(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b)
 {
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SUB); 
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SUB);
     instr->option.bytes[0] = type;
     instr->r = dst_reg;
     instr->a = a;
@@ -86,9 +76,9 @@ void IR_emit_instr_sub(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Ins
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_neg(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg src)
+static void IR_emit_instr_neg(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg src)
 {
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_NEG); 
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_NEG);
     instr->option.bytes[0] = type;
     instr->r = dst_reg;
     instr->a = src;
@@ -96,7 +86,7 @@ void IR_emit_instr_neg(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Ins
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_store(IR_Builder* builder, IR_Type type, IR_SIBDAddr dst_addr, IR_InstrArg src_arg)
+static void IR_emit_instr_store(IR_Builder* builder, IR_Type type, IR_SIBDAddr dst_addr, IR_InstrArg src_arg)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_STORE);
     instr->a.kind = IR_ARG_REG;
@@ -109,7 +99,7 @@ void IR_emit_instr_store(IR_Builder* builder, IR_Type type, IR_SIBDAddr dst_addr
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_load(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_SIBDAddr addr)
+static void IR_emit_instr_load(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_SIBDAddr addr)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LOAD);
     instr->r = dst_reg;
@@ -124,7 +114,7 @@ void IR_emit_instr_load(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_SI
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst_reg, IR_SIBDAddr addr)
+static void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst_reg, IR_SIBDAddr addr)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
     instr->r = dst_reg;
@@ -139,7 +129,7 @@ void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst_reg, IR_SIBDAddr addr)
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, Symbol* sym)
+static void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, Symbol* sym)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR_VAR);
     instr->r = dst_reg;
@@ -149,7 +139,7 @@ void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, Symbol* sym)
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_shr(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Reg src_reg, u8 shift_bits)
+static void IR_emit_instr_shr(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Reg src_reg, u8 shift_bits)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SHR);
     instr->option.bytes[0] = type;
@@ -162,13 +152,63 @@ void IR_emit_instr_shr(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Reg
     IR_add_instr(builder, instr);
 }
 
-void IR_emit_instr_ret(IR_Builder* builder, IR_Type type, IR_InstrArg ret_arg)
+static void IR_emit_instr_ret(IR_Builder* builder, IR_Type type, IR_InstrArg ret_arg)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_RET);
     instr->option.bytes[0] = type;
     instr->a = ret_arg;
 
     IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_cmp(IR_Builder* builder, IR_InstrKind cmp_kind, IR_Type type, IR_Reg dst_reg, IR_InstrArg a,
+                              IR_InstrArg b)
+{
+    assert(cmp_kind >= IR_INSTR_CMP_ULT && cmp_kind <= IR_INSTR_CMP_NE);
+
+    IR_Instr* instr = IR_new_instr(builder->arena, cmp_kind);
+    instr->option.bytes[0] = type;
+    instr->r = dst_reg;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, instr);
+}
+
+static IR_Instr* IR_emit_instr_cjmp(IR_Builder* builder, IR_Reg cond_reg, u32 jmp_target)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CJMP);
+    instr->a.kind = IR_ARG_REG;
+    instr->a.reg0 = cond_reg;
+    instr->b.kind = IR_ARG_IMM;
+    instr->b.imm.as_int._u32 = jmp_target;
+
+    IR_add_instr(builder, instr);
+
+    return instr;
+}
+
+static IR_Instr* IR_emit_instr_jmp(IR_Builder* builder, u32 jmp_target)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_JMP);
+    instr->b.kind = IR_ARG_IMM;
+    instr->b.imm.as_int._u32 = jmp_target;
+
+    IR_add_instr(builder, instr);
+
+    return instr;
+}
+
+static void IR_patch_jmp_instr(IR_Instr* jmp_instr, u32 jmp_target)
+{
+    assert(jmp_instr->kind == IR_INSTR_CJMP || jmp_instr->kind == IR_INSTR_JMP);
+
+    jmp_instr->b.imm.as_int._u32 = (u32)jmp_target;
+}
+
+static u32 IR_get_jmp_target(IR_Builder* builder)
+{
+    return (u32)array_len(builder->curr_proc->as_proc.instrs);
 }
 
 //////////////////////////////////////////////////////
@@ -211,7 +251,7 @@ static void IR_execute_deref(IR_Builder* builder, IR_Operand* operand)
 
     IR_Reg dst_reg = IR_next_reg(builder);
 
-    IR_emit_instr_load(builder, IR_get_type(operand->type), dst_reg,  operand->addr);
+    IR_emit_instr_load(builder, IR_get_type(operand->type), dst_reg, operand->addr);
 
     operand->kind = IR_OPERAND_REG;
     operand->reg = dst_reg;
@@ -317,7 +357,7 @@ static IR_SIBDAddr IR_get_var_addr(IR_Builder* builder, Symbol* sym)
     return var_addr;
 }
 
-void IR_arg_from_operand(IR_Builder* builder, IR_InstrArg* arg, IR_Operand* op)
+static void IR_arg_from_operand(IR_Builder* builder, IR_InstrArg* arg, IR_Operand* op)
 {
     switch (op->kind)
     {
@@ -359,7 +399,7 @@ void IR_arg_from_operand(IR_Builder* builder, IR_InstrArg* arg, IR_Operand* op)
     }
 }
 
-void IR_next_reg_operand(IR_Builder* builder, IR_Operand* dst, Type* type)
+static void IR_next_reg_operand(IR_Builder* builder, IR_Operand* dst, Type* type)
 {
     dst->kind = IR_OPERAND_REG;
     dst->type = type;
@@ -391,19 +431,19 @@ static void IR_operand_from_sym(IR_Operand* op, Symbol* sym)
     }
 }
 
-void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst);
+static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst);
 
-void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operand* dst)
+static void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operand* dst)
 {
     Symbol* sym = lookup_symbol(builder->curr_scope, eident->name);
     IR_operand_from_sym(dst, sym);
 }
 
-void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
+static void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
 {
     u64 base_size = ptr_op->type->as_ptr.base->size;
 
-    // TODO: Replace the following with a call to just load ptr to reg and 
+    // TODO: Replace the following with a call to just load ptr to reg and
     // get rid of boolean argument in IR_ensure_operand_in_reg()
     IR_ensure_operand_in_reg(builder, ptr_op, false);
 
@@ -434,7 +474,7 @@ void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand* ptr_o
         else
         {
             IR_ensure_operand_in_reg(builder, int_op, true);
-            
+
             if (!add)
             {
                 IR_Reg index_reg = IR_next_reg(builder);
@@ -454,7 +494,7 @@ void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand* ptr_o
     *dst = *ptr_op;
 }
 
-void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operand* dst)
+static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operand* dst)
 {
     IR_Operand left = {0};
     IR_Operand right = {0};
@@ -551,7 +591,7 @@ void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operand* dst)
     }
 }
 
-void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand* dst)
+static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand* dst)
 {
     switch (expr->op)
     {
@@ -573,13 +613,15 @@ void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand* dst)
     }
 }
 
-void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
+static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
 {
     if (expr->is_const)
     {
         dst->kind = IR_OPERAND_IMM;
         dst->type = expr->type;
         dst->imm = expr->const_val;
+
+        return;
     }
 
     switch (expr->kind)
@@ -588,10 +630,10 @@ void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
             IR_emit_expr_ident(builder, (ExprIdent*)expr, dst);
             break;
         case CST_ExprCall:
-            //IR_emit_expr_call(builder, (ExprCall*)expr, dst);
+            // IR_emit_expr_call(builder, (ExprCall*)expr, dst);
             break;
         case CST_ExprCast:
-            //IR_emit_expr_cast(builder, (ExprCast*)expr, dst);
+            // IR_emit_expr_cast(builder, (ExprCast*)expr, dst);
             break;
         case CST_ExprBinary:
             IR_emit_expr_binary(builder, (ExprBinary*)expr, dst);
@@ -600,7 +642,7 @@ void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
             IR_emit_expr_unary(builder, (ExprUnary*)expr, dst);
             break;
         case CST_ExprIndex:
-            //IR_emit_expr_index(builder, (ExprIndex*)expr, dst);
+            // IR_emit_expr_index(builder, (ExprIndex*)expr, dst);
             break;
         default:
             ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);
@@ -608,6 +650,7 @@ void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
             break;
     }
 }
+
 // Forward declare
 static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt);
 
@@ -647,12 +690,26 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
     IR_emit_instr_store(builder, IR_get_type(lhs->sym->type), lhs_addr, rhs_arg);
 }
 
-static void IR_emit_block(builder, StmtBlock* sblock)
+static void IR_emit_stmt_block_body(IR_Builder* builder, List* stmts)
+{
+    List* head = stmts;
+    List* it = head->next;
+
+    while (it != head)
+    {
+        Stmt* s = list_entry(it, Stmt, lnode);
+
+        IR_emit_stmt(builder, s);
+
+        it = it->next;
+    }
+}
+
+static void IR_emit_stmt_block(IR_Builder* builder, StmtBlock* sblock)
 {
     IR_push_scope(builder, sblock->scope);
     IR_emit_stmt_block_body(builder, &sblock->stmts);
     IR_pop_scope(builder);
-
 }
 
 static void IR_emit_stmt_return(IR_Builder* builder, StmtReturn* sret)
@@ -680,13 +737,15 @@ static void IR_emit_stmt_expr_assign(IR_Builder* builder, StmtExprAssign* stmt)
     {
         case TKN_ASSIGN:
         {
-            IR_Operand loperand = {0};
-            IR_Operand roperand = {0};
+            IR_Operand lhs_op = {0};
+            IR_Operand rhs_op = {0};
 
-            IR_emit_expr(builder, stmt->left, &loperand);
-            IR_emit_expr(builder, stmt->right, &roperand);
+            IR_emit_expr(builder, stmt->left, &lhs_op);
+            IR_emit_expr(builder, stmt->right, &rhs_op);
 
-            IR_emit_assign(builder, &lopernad, &roperand);
+            IR_emit_assign(builder, &lhs_op, &rhs_op);
+
+            break;
         }
         default:
             assert(!"Unsupported assignment operator in IR generation");
@@ -700,8 +759,8 @@ static void IR_emit_stmt_decl(IR_Builder* builder, StmtDecl* sdecl)
 
     DeclVar* dvar = (DeclVar*)sdecl->decl;
     Symbol* sym = lookup_symbol(builder->curr_scope, dvar->name);
-    IR_SIBDAddr var_addr = IR_get_var_addr(builder, sym); // NOTE: Call will preemptively 
-                                                          // store the variable's address in a register.
+    IR_get_var_addr(builder, sym); // NOTE: Call will preemptively
+                                   // store the variable's address in a register.
 
     if (dvar->init)
     {
@@ -711,6 +770,163 @@ static void IR_emit_stmt_decl(IR_Builder* builder, StmtDecl* sdecl)
         IR_emit_expr(builder, dvar->init, &rhs_op);
         IR_operand_from_sym(&lhs_op, sym);
         IR_emit_assign(builder, &lhs_op, &rhs_op);
+    }
+}
+
+static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
+{
+    Expr* cond_expr = stmt->if_blk.cond;
+    Stmt* if_body = stmt->if_blk.body;
+    Stmt* else_body = stmt->else_blk.body;
+
+    // If expr is a compile-time constant, do not generate the unneeded branch!!
+    if (cond_expr->is_const)
+    {
+        bool cond_val = cond_expr->const_val.as_int._u64 != 0;
+
+        if (cond_val)
+            IR_emit_stmt(builder, if_body);
+        else
+            IR_emit_stmt(builder, else_body);
+    }
+    else
+    {
+        IR_Operand cond_op = {0};
+        IR_InstrArg cond_arg = {0};
+        IR_InstrArg zero_arg = {.kind = IR_ARG_IMM, .imm.as_int._u64 = 0};
+
+        IR_emit_expr(builder, cond_expr, &cond_op);
+        IR_arg_from_operand(builder, &cond_arg, &cond_op);
+
+        // Compare condition expression to zero and store result in a register.
+        IR_Reg cmp_result_reg = IR_next_reg(builder);
+        IR_emit_instr_cmp(builder, IR_INSTR_CMP_EQ, IR_get_type(cond_op.type), cmp_result_reg, cond_arg, zero_arg);
+
+        // Emit conditional jump without a jump target. The jump target will be filled in below.
+        IR_Instr* cjmp_instr = IR_emit_instr_cjmp(builder, cmp_result_reg, 0);
+
+        // Emit instructions for if-block body.
+        IR_emit_stmt(builder, if_body);
+
+        if (else_body)
+        {
+            // Code path from if-block needs to jump to the end.
+            // The jump target is patched below.
+            IR_Instr* jmp_instr = IR_emit_instr_jmp(builder, 0);
+
+            // Patch conditional jmp instruction to jump here if the condition is false.
+            IR_patch_jmp_instr(cjmp_instr, IR_get_jmp_target(builder));
+
+            // Emit instructions for else-block body.
+            IR_emit_stmt(builder, else_body);
+
+            // Patch jmp instruction to jump to the end of the else-block.
+            IR_patch_jmp_instr(jmp_instr, IR_get_jmp_target(builder));
+        }
+        else
+        {
+            IR_patch_jmp_instr(cjmp_instr, IR_get_jmp_target(builder));
+        }
+    }
+}
+
+static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
+{
+    Expr* cond_expr = stmt->cond;
+    Stmt* body = stmt->body;
+
+    if (cond_expr->is_const)
+    {
+        bool cond_val = cond_expr->const_val.as_int._u64 != 0;
+
+        // Emit infinite loop
+        if (cond_val)
+        {
+            u32 loop_top = IR_get_jmp_target(builder);
+
+            // Emit loop body statements.
+            IR_emit_stmt(builder, body);
+
+            // Jump back to the top of the loop.
+            IR_emit_instr_jmp(builder, loop_top);
+        }
+    }
+    else
+    {
+        // Emit jmp instruction to the loop's condition check. Target adddress
+        // will be patched.
+        IR_Instr* jmp_instr = IR_emit_instr_jmp(builder, 0);
+
+        // Save the current instruction index to enable jumps to the top of the loop.
+        u32 loop_top = IR_get_jmp_target(builder);
+
+        // Emit instructions for the loop body.
+        IR_emit_stmt(builder, body);
+
+        // Patch initial jmp instruction with the location of the condition check.
+        u32 loop_cond_check = IR_get_jmp_target(builder);
+        IR_patch_jmp_instr(jmp_instr, loop_cond_check);
+
+        IR_Operand cond_op = {0};
+        IR_InstrArg cond_arg = {0};
+        IR_InstrArg zero_arg = {.kind = IR_ARG_IMM, .imm.as_int._u64 = 0};
+
+        // Emit condition expression.
+        IR_emit_expr(builder, cond_expr, &cond_op);
+        IR_arg_from_operand(builder, &cond_arg, &cond_op);
+
+        // Compare condition expression to zero and store result in a register.
+        IR_Reg cmp_result_reg = IR_next_reg(builder);
+        IR_emit_instr_cmp(builder, IR_INSTR_CMP_NE, IR_get_type(cond_op.type), cmp_result_reg, cond_arg, zero_arg);
+
+        // Emit conditional jump to the top of the loop.
+        IR_emit_instr_cjmp(builder, cmp_result_reg, loop_top);
+    }
+}
+
+static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
+{
+    Expr* cond_expr = stmt->cond;
+    Stmt* body = stmt->body;
+
+    if (cond_expr->is_const)
+    {
+        bool cond_val = cond_expr->const_val.as_int._u64 != 0;
+
+        // Emit infinite loop
+        if (cond_val)
+        {
+            u32 loop_top = IR_get_jmp_target(builder);
+
+            // Emit loop body statements.
+            IR_emit_stmt(builder, body);
+
+            // Jump back to the top of the loop.
+            IR_emit_instr_jmp(builder, loop_top);
+        }
+    }
+    else
+    {
+        // Save the current instruction index to enable jumps to the top of the loop.
+        u32 loop_top = IR_get_jmp_target(builder);
+
+        // Emit instructions for the loop body.
+        IR_emit_stmt(builder, body);
+
+        IR_Operand cond_op = {0};
+        IR_InstrArg cond_arg = {0};
+        IR_InstrArg zero_arg = {.kind = IR_ARG_IMM, .imm.as_int._u64 = 0};
+
+        // Emit condition expression.
+        IR_emit_expr(builder, cond_expr, &cond_op);
+        IR_arg_from_operand(builder, &cond_arg, &cond_op);
+
+        // Compare condition expression to zero and store result in a register.
+        IR_Reg cmp_result_reg = IR_next_reg(builder);
+        IR_emit_instr_cmp(builder, IR_INSTR_CMP_NE, IR_get_type(cond_op.type), cmp_result_reg, cond_arg, zero_arg);
+
+        // Emit conditional jump to the top of the loop.
+        IR_emit_instr_cjmp(builder, cmp_result_reg, loop_top);
     }
 }
 
@@ -747,24 +963,9 @@ static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt)
     }
 }
 
-static void IR_emit_stmt_block_body(IR_Builder* builder, List* stmts)
-{
-    List* head = stmts;
-    List* it = head->next;
-
-    while (it != head)
-    {
-        Stmt* s = list_entry(it, Stmt, lnode);
-
-        IR_emit_stmt(builder, s);
-
-        it = it->next;
-    }
-}
-
 static u32 IR_assign_scope_var_offsets(Symbol*** proc_vars, Scope* scope, u32 offset)
 {
-    u32 stack_size = 0;
+    u32 stack_size = offset;
 
     //
     // Sum sizes of local variables declared in this scope.
@@ -829,7 +1030,7 @@ static void IR_assign_proc_var_offsets(IR_Builder* builder, Symbol* proc_sym)
     {
         // Create temporary array that will hold all args and local variables that belong to
         // this procedure. This includes variables declared in nested scopes.
-        Symbol** proc_vars = array_create(builder->tmp_arena, Symbol*, num_params << 1);
+        Symbol** proc_vars = array_create(builder->tmp_arena, Symbol*, dproc->num_params << 1);
 
         // Recursively assign a stack offset to each local variable (including proc arguments).
         // Variables declared in sibling scopes will be assigned to overlapping stack offsets
@@ -848,7 +1049,7 @@ static void IR_assign_proc_var_offsets(IR_Builder* builder, Symbol* proc_sym)
     allocator_restore_state(arena_state);
 }
 
-bool IR_build_proc(IR_Builder* builder, Symbol* sym)
+static bool IR_build_proc(IR_Builder* builder, Symbol* sym)
 {
     DeclProc* dproc = (DeclProc*)sym->decl;
 
@@ -857,13 +1058,14 @@ bool IR_build_proc(IR_Builder* builder, Symbol* sym)
     builder->curr_proc = sym;
 
     // Assign stack offsets to params and local vars.
-    IR_assign_proc_var_offsets(sym);
+    IR_assign_proc_var_offsets(builder, sym);
 
+    sym->as_proc.instrs = array_create(builder->arena, IR_Instr*, 32);
     IR_emit_stmt_block_body(builder, &dproc->stmts);
 
     IR_pop_scope(builder);
     builder->curr_proc = NULL;
-    
+
     return true;
 }
 
@@ -875,12 +1077,7 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
         return NULL;
 
     IR_Builder builder = {
-        .arena = arena,
-        .tmp_arena = .tmp_arena,
-        .curr_proc = NULL,
-        .curr_scope = global_scope,
-        .module = module
-    };
+        .arena = arena, .tmp_arena = tmp_arena, .curr_proc = NULL, .curr_scope = global_scope, .module = module};
 
     // Create global IR vars/procs arrays.
     module->num_vars = global_scope->sym_kind_counts[SYMBOL_VAR];
@@ -889,7 +1086,7 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
     module->num_procs = global_scope->sym_kind_counts[SYMBOL_PROC];
     module->procs = alloc_array(arena, Symbol*, module->num_procs, false);
 
-    // Iterate through all global declarations and create IR structures for 
+    // Iterate through all global declarations and create IR structures for
     // global variables and procedures.
     size_t var_index = 0;
     size_t proc_index = 0;

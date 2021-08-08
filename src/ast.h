@@ -681,7 +681,8 @@ struct SymbolProc {
     u32 min_stack_size;
     u32 num_vars;
     Symbol** vars;
-    BucketList* instrs;
+
+    struct IR_Instr** instrs; // NOTE: stretchy buf
 };
 
 struct Symbol {
