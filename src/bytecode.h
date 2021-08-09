@@ -87,6 +87,7 @@ typedef enum IR_Type {
 } IR_Type;
 
 typedef enum IR_InstrArgKind {
+    IR_ARG_NONE,
     IR_ARG_REG,
     IR_ARG_IMM,
 } IR_InstrArgKind;

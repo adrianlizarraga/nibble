@@ -95,6 +95,7 @@ static void IR_emit_instr_store(IR_Builder* builder, IR_Type type, IR_SIBDAddr d
     instr->option.bytes[0] = type;
     instr->option.bytes[1] = dst_addr.scale;
     instr->b = src_arg;
+    // TODO: MISSING IMMEDIATE OFFSET!!! The src should just be a reg
 
     IR_add_instr(builder, instr);
 }
