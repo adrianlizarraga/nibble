@@ -1,46 +1,13 @@
 #include "ast.h"
 #include "bytecode.h"
 #include "stream.h"
+#include "print_ir.h"
 
 //////////////////////////////////////////////////////
 //
 //         Create IR instructions
 //
 //////////////////////////////////////////////////////
-static IR_Type ir_int_types[] = {
-    [INTEGER_U8] = IR_TYPE_INT8,   [INTEGER_S8] = IR_TYPE_INT8,   [INTEGER_U16] = IR_TYPE_INT16,
-    [INTEGER_S16] = IR_TYPE_INT16, [INTEGER_U32] = IR_TYPE_INT32, [INTEGER_S32] = IR_TYPE_INT32,
-    [INTEGER_U64] = IR_TYPE_INT64, [INTEGER_S64] = IR_TYPE_INT64,
-};
-
-static IR_Type ir_float_types[] = {
-    [FLOAT_F64] = IR_TYPE_F64,
-    [FLOAT_F32] = IR_TYPE_F32,
-};
-
-static IR_Type IR_get_type(Type* type)
-{
-    IR_Type ir_type = IR_TYPE_VOID;
-
-    switch (type->kind)
-    {
-        case TYPE_INTEGER:
-            ir_type = ir_int_types[type->as_integer.kind];
-            break;
-        case TYPE_PTR:
-            ir_type = IR_TYPE_PTR;
-            break;
-        case TYPE_FLOAT:
-            ir_type = ir_float_types[type->as_float.kind];
-            break;
-        default:
-            assert(0);
-            break;
-    }
-
-    return ir_type;
-}
-
 static void IR_add_instr(IR_Builder* builder, IR_Instr* instr)
 {
     array_push(builder->curr_proc->as_proc.instrs, instr);
@@ -54,124 +21,96 @@ static IR_Instr* IR_new_instr(Allocator* arena, IR_InstrKind kind)
     return instr;
 }
 
-static void IR_emit_instr_add(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b)
+static void IR_emit_instr_add(IR_Builder* builder, Type* type, IR_Reg out_reg, IR_InstrArg arg1, IR_InstrArg arg2)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_ADD);
-    instr->option.bytes[0] = type;
-    instr->r = dst_reg;
-    instr->a = a;
-    instr->b = b;
+    instr->_add.type = type;
+    instr->_add.out_reg = out_reg;
+    instr->_add.arg1 = arg1;
+    instr->_add.arg2 = arg2;
 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_sub(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg a, IR_InstrArg b)
+static void IR_emit_instr_sub(IR_Builder* builder, Type* type, IR_Reg out_reg, IR_InstrArg arg1, IR_InstrArg arg2)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SUB);
-    instr->option.bytes[0] = type;
-    instr->r = dst_reg;
-    instr->a = a;
-    instr->b = b;
+    instr->_sub.type = type;
+    instr->_sub.out_reg = out_reg;
+    instr->_sub.arg1 = arg1;
+    instr->_sub.arg2 = arg2;
 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_neg(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_InstrArg src)
-{
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_NEG);
-    instr->option.bytes[0] = type;
-    instr->r = dst_reg;
-    instr->a = src;
-
-    IR_add_instr(builder, instr);
-}
-
-static void IR_emit_instr_store(IR_Builder* builder, IR_Type type, IR_SIBDAddr dst_addr, IR_InstrArg src_arg)
-{
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_STORE);
-    instr->a.kind = IR_ARG_REG;
-    instr->a.reg0 = dst_addr.base_reg;
-    instr->a.reg1 = dst_addr.index_reg;
-    instr->option.bytes[0] = type;
-    instr->option.bytes[1] = dst_addr.scale;
-    instr->b = src_arg;
-    // TODO: MISSING IMMEDIATE OFFSET!!! The src should just be a reg
-
-    IR_add_instr(builder, instr);
-}
-
-static void IR_emit_instr_load(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_SIBDAddr addr)
-{
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LOAD);
-    instr->r = dst_reg;
-    instr->a.kind = IR_ARG_REG;
-    instr->a.reg0 = addr.base_reg;
-    instr->a.reg1 = addr.index_reg;
-    instr->option.bytes[0] = type;
-    instr->option.bytes[1] = addr.scale;
-    instr->b.kind = IR_ARG_IMM;
-    instr->b.imm.as_int._u64 = addr.disp;
-
-    IR_add_instr(builder, instr);
-}
-
-static void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst_reg, IR_SIBDAddr addr)
-{
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
-    instr->r = dst_reg;
-    instr->a.kind = IR_ARG_REG;
-    instr->a.reg0 = addr.base_reg;
-    instr->a.reg1 = addr.index_reg;
-    instr->option.bytes[0] = IR_TYPE_PTR;
-    instr->option.bytes[1] = addr.scale;
-    instr->b.kind = IR_ARG_IMM;
-    instr->b.imm.as_int._u64 = addr.disp;
-
-    IR_add_instr(builder, instr);
-}
-
-static void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst_reg, Symbol* sym)
-{
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR_VAR);
-    instr->r = dst_reg;
-    instr->a.kind = IR_ARG_IMM;
-    instr->a.imm.as_ptr = sym;
-
-    IR_add_instr(builder, instr);
-}
-
-static void IR_emit_instr_shr(IR_Builder* builder, IR_Type type, IR_Reg dst_reg, IR_Reg src_reg, u8 shift_bits)
+static void IR_emit_instr_shr(IR_Builder* builder, Type* type, IR_Reg out_reg, IR_InstrArg arg1, IR_InstrArg arg2)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SHR);
-    instr->option.bytes[0] = type;
-    instr->r = dst_reg;
-    instr->a.kind = IR_ARG_REG;
-    instr->a.reg0 = src_reg;
-    instr->b.kind = IR_ARG_IMM;
-    instr->b.imm.as_int._u8 = shift_bits;
+    instr->_shr.type = type;
+    instr->_shr.out_reg = out_reg;
+    instr->_shr.arg1 = arg1;
+    instr->_shr.arg2 = arg2;
 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_ret(IR_Builder* builder, IR_Type type, IR_InstrArg ret_arg)
+static void IR_emit_instr_store(IR_Builder* builder, Type* type, IR_SIBDAddr addr, IR_InstrArg arg)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_STORE);
+    instr->_store.type = type;
+    instr->_store.addr = addr;
+    instr->_store.arg = arg;
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_load(IR_Builder* builder, Type* type, IR_Reg out_reg, IR_SIBDAddr addr)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LOAD);
+    instr->_load.type = type;
+    instr->_load.out_reg = out_reg;
+    instr->_load.addr = addr;
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_laddr(IR_Builder* builder, Type* type, IR_Reg out_reg, IR_SIBDAddr addr)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
+    instr->_laddr.type = type;
+    instr->_laddr.out_reg = out_reg;
+    instr->_laddr.addr = addr;
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg out_reg, Symbol* sym)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR_VAR);
+    instr->_laddr_var.out_reg = out_reg;
+    instr->_laddr_var.sym = sym;
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_ret(IR_Builder* builder, Type* type, IR_InstrArg ret_arg)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_RET);
-    instr->option.bytes[0] = type;
-    instr->a = ret_arg;
+    instr->_ret.type = type;
+    instr->_ret.ret_arg = ret_arg;
 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_cmp(IR_Builder* builder, IR_InstrKind cmp_kind, IR_Type type, IR_Reg dst_reg, IR_InstrArg a,
-                              IR_InstrArg b)
+static void IR_emit_instr_cmp(IR_Builder* builder, IR_ConditionKind cmp_kind, Type* type, IR_Reg out_reg, IR_InstrArg arg1,
+                              IR_InstrArg arg2)
 {
-    assert(cmp_kind >= IR_INSTR_CMP_ULT && cmp_kind <= IR_INSTR_CMP_NE);
-
-    IR_Instr* instr = IR_new_instr(builder->arena, cmp_kind);
-    instr->option.bytes[0] = type;
-    instr->r = dst_reg;
-    instr->a = a;
-    instr->b = b;
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CMP);
+    instr->_cmp.kind = cmp_kind;
+    instr->_cmp.type = type;
+    instr->_cmp.out_reg = out_reg;
+    instr->_cmp.arg1 = arg1;
+    instr->_cmp.arg2 = arg2;
 
     IR_add_instr(builder, instr);
 }
@@ -179,10 +118,8 @@ static void IR_emit_instr_cmp(IR_Builder* builder, IR_InstrKind cmp_kind, IR_Typ
 static IR_Instr* IR_emit_instr_cjmp(IR_Builder* builder, IR_Reg cond_reg, u32 jmp_target)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CJMP);
-    instr->a.kind = IR_ARG_REG;
-    instr->a.reg0 = cond_reg;
-    instr->b.kind = IR_ARG_IMM;
-    instr->b.imm.as_int._u32 = jmp_target;
+    instr->_cjmp.cond_reg = cond_reg;
+    instr->_cjmp.jmp_target = jmp_target;
 
     IR_add_instr(builder, instr);
 
@@ -192,8 +129,7 @@ static IR_Instr* IR_emit_instr_cjmp(IR_Builder* builder, IR_Reg cond_reg, u32 jm
 static IR_Instr* IR_emit_instr_jmp(IR_Builder* builder, u32 jmp_target)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_JMP);
-    instr->b.kind = IR_ARG_IMM;
-    instr->b.imm.as_int._u32 = jmp_target;
+    instr->_jmp.jmp_target = jmp_target;
 
     IR_add_instr(builder, instr);
 
@@ -202,9 +138,18 @@ static IR_Instr* IR_emit_instr_jmp(IR_Builder* builder, u32 jmp_target)
 
 static void IR_patch_jmp_instr(IR_Instr* jmp_instr, u32 jmp_target)
 {
-    assert(jmp_instr->kind == IR_INSTR_CJMP || jmp_instr->kind == IR_INSTR_JMP);
-
-    jmp_instr->b.imm.as_int._u32 = (u32)jmp_target;
+    switch (jmp_instr->kind)
+    {
+        case IR_INSTR_JMP:
+            jmp_instr->_jmp.jmp_target = jmp_target;
+            break;
+        case IR_INSTR_CJMP:
+            jmp_instr->_cjmp.jmp_target = jmp_target;
+            break;
+        default:
+            assert(0);
+            break;
+    }
 }
 
 static u32 IR_get_jmp_target(IR_Builder* builder)
@@ -250,12 +195,12 @@ static void IR_execute_deref(IR_Builder* builder, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEREF_ADDR);
 
-    IR_Reg dst_reg = IR_next_reg(builder);
+    IR_Reg out_reg = IR_next_reg(builder);
 
-    IR_emit_instr_load(builder, IR_get_type(operand->type), dst_reg, operand->addr);
+    IR_emit_instr_load(builder, operand->type, out_reg, operand->addr);
 
     operand->kind = IR_OPERAND_REG;
-    operand->reg = dst_reg;
+    operand->reg = out_reg;
 }
 
 static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
@@ -282,7 +227,7 @@ static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
     {
         IR_Reg dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_laddr(builder, dst_reg, addr);
+        IR_emit_instr_laddr(builder, operand->type, dst_reg, addr);
     }
 
     operand->kind = IR_OPERAND_REG;
@@ -319,7 +264,7 @@ static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, b
                 // alloca instruction (i.e., contains an address to the var).
                 IR_SIBDAddr var_addr = {.base_reg = operand->sym->as_var.reg};
                 IR_Reg base_reg = IR_next_reg(builder);
-                IR_emit_instr_load(builder, IR_get_type(operand->type), base_reg, var_addr);
+                IR_emit_instr_load(builder, operand->type, base_reg, var_addr);
 
                 operand->kind = IR_OPERAND_SIBD_ADDR;
                 operand->addr.base_reg = base_reg;
@@ -332,7 +277,7 @@ static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, b
         {
             IR_SIBDAddr var_addr = {.base_reg = operand->sym->as_var.reg};
             IR_Reg reg = IR_next_reg(builder);
-            IR_emit_instr_load(builder, IR_get_type(operand->type), reg, var_addr);
+            IR_emit_instr_load(builder, operand->type, reg, var_addr);
 
             operand->kind = IR_OPERAND_REG;
             operand->reg = reg;
@@ -368,31 +313,28 @@ static void IR_arg_from_operand(IR_Builder* builder, IR_InstrArg* arg, IR_Operan
             break;
         case IR_OPERAND_REG:
             arg->kind = IR_ARG_REG;
-            arg->reg0 = op->reg;
-            arg->reg1 = 0;
+            arg->reg = op->reg;
             break;
         case IR_OPERAND_VAR:
         {
             // Assume sym->as_var.reg is a register that contains the result from an
             // alloca instruction (i.e., contains an address to the var).
             IR_SIBDAddr addr = {.base_reg = op->sym->as_var.reg};
-            IR_Reg result_reg = IR_next_reg(builder);
-            IR_emit_instr_load(builder, IR_get_type(op->type), result_reg, addr);
+            IR_Reg out_reg = IR_next_reg(builder);
+            IR_emit_instr_load(builder, op->type, out_reg, addr);
 
             op->kind = IR_OPERAND_REG;
-            op->reg = result_reg;
+            op->reg = out_reg;
 
             arg->kind = IR_ARG_REG;
-            arg->reg0 = result_reg;
-            arg->reg1 = 0;
+            arg->reg = out_reg;
             break;
         }
         case IR_OPERAND_DEREF_ADDR:
             IR_execute_deref(builder, op);
 
             arg->kind = IR_ARG_REG;
-            arg->reg0 = op->reg;
-            arg->reg1 = 0;
+            arg->reg = op->reg;
             break;
         default:
             assert(!0);
@@ -460,15 +402,15 @@ static void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand
         if (ptr_op->addr.scale)
         {
             IR_Reg index_reg = IR_next_reg(builder);
-            IR_InstrArg a = {.kind = IR_ARG_REG, .reg0 = ptr_op->addr.index_reg};
+            IR_InstrArg a = {.kind = IR_ARG_REG, .reg = ptr_op->addr.index_reg};
             IR_InstrArg b = {0};
 
             IR_arg_from_operand(builder, &b, int_op);
 
             if (add)
-                IR_emit_instr_add(builder, IR_TYPE_INT64, index_reg, a, b);
+                IR_emit_instr_add(builder, type_s64, index_reg, a, b);
             else
-                IR_emit_instr_sub(builder, IR_TYPE_INT64, index_reg, a, b);
+                IR_emit_instr_sub(builder, type_s64, index_reg, a, b);
 
             ptr_op->addr.index_reg = index_reg;
         }
@@ -479,10 +421,10 @@ static void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand
             if (!add)
             {
                 IR_Reg index_reg = IR_next_reg(builder);
-                IR_Type type = IR_get_type(int_op->type);
-                IR_InstrArg a = {.kind = IR_ARG_REG, .reg0 = int_op->reg};
+                IR_InstrArg zero = {.kind = IR_ARG_IMM, .imm.as_int._u64 = 0};
+                IR_InstrArg arg = {.kind = IR_ARG_REG, .reg = int_op->reg};
 
-                IR_emit_instr_neg(builder, type, index_reg, a);
+                IR_emit_instr_sub(builder, int_op->type, index_reg, zero, arg);
 
                 int_op->reg = index_reg;
             }
@@ -529,7 +471,7 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
                 IR_arg_from_operand(builder, &a, &left);
                 IR_arg_from_operand(builder, &b, &right);
                 IR_next_reg_operand(builder, dst, left.type);
-                IR_emit_instr_add(builder, IR_get_type(dst->type), dst->reg, a, b);
+                IR_emit_instr_add(builder, dst->type, dst->reg, a, b);
             }
             break;
         }
@@ -550,7 +492,6 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
             else if (left_is_ptr && right_is_ptr)
             {
                 Type* result_type = expr->super.type;
-                IR_Type result_ir_type = IR_get_type(result_type);
                 u64 base_size = left.type->as_ptr.base->size;
                 u32 base_size_log2 = (u32)clp2(base_size);
 
@@ -560,14 +501,17 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
                 IR_arg_from_operand(builder, &a, &left);
                 IR_arg_from_operand(builder, &b, &right);
                 IR_next_reg_operand(builder, dst, result_type);
-                IR_emit_instr_sub(builder, result_ir_type, dst->reg, a, b);
+                IR_emit_instr_sub(builder, result_type, dst->reg, a, b);
 
                 if (base_size_log2)
                 {
-                    IR_Reg dst_reg = IR_next_reg(builder);
-                    IR_emit_instr_shr(builder, result_ir_type, dst_reg, dst->reg, (u8)base_size_log2);
+                    IR_InstrArg arg1 = {.kind = IR_ARG_REG, .reg = dst->reg};
+                    IR_InstrArg shift_amount = {.kind = IR_ARG_IMM, .imm.as_int._u32 = base_size_log2};
+                    IR_Reg new_dst_reg = IR_next_reg(builder);
 
-                    dst->reg = dst_reg;
+                    IR_emit_instr_shr(builder, result_type, new_dst_reg, arg1, shift_amount);
+
+                    dst->reg = new_dst_reg;
                 }
             }
             // int - int => int
@@ -582,7 +526,7 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
                 IR_arg_from_operand(builder, &a, &left);
                 IR_arg_from_operand(builder, &b, &right);
                 IR_next_reg_operand(builder, dst, left.type);
-                IR_emit_instr_sub(builder, IR_get_type(dst->type), dst->reg, a, b);
+                IR_emit_instr_sub(builder, dst->type, dst->reg, a, b);
             }
             break;
         }
@@ -601,11 +545,12 @@ static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand*
             Type* result_type = expr->super.type;
             IR_Operand inner_op = {0};
             IR_InstrArg inner_arg = {0};
+            IR_InstrArg zero = {.kind = IR_ARG_IMM, .imm.as_int._u64 = 0};
 
             IR_emit_expr(builder, expr->expr, &inner_op);
             IR_arg_from_operand(builder, &inner_arg, &inner_op);
             IR_next_reg_operand(builder, dst, result_type);
-            IR_emit_instr_neg(builder, IR_get_type(result_type), dst->reg, inner_arg);
+            IR_emit_instr_sub(builder, result_type, dst->reg, zero, inner_arg);
             break;
         }
         default:
@@ -688,7 +633,7 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
 
     IR_InstrArg rhs_arg = {0};
     IR_arg_from_operand(builder, &rhs_arg, rhs);
-    IR_emit_instr_store(builder, IR_get_type(lhs->sym->type), lhs_addr, rhs_arg);
+    IR_emit_instr_store(builder, lhs->sym->type, lhs_addr, rhs_arg);
 }
 
 static void IR_emit_stmt_block_body(IR_Builder* builder, List* stmts)
@@ -722,7 +667,7 @@ static void IR_emit_stmt_return(IR_Builder* builder, StmtReturn* sret)
     IR_arg_from_operand(builder, &arg, &expr_op);
 
     // TODO: This currently assumes that return value fits in a register!
-    IR_emit_instr_ret(builder, IR_get_type(expr_op.type), arg);
+    IR_emit_instr_ret(builder, expr_op.type, arg);
 }
 
 static void IR_emit_stmt_expr(IR_Builder* builder, StmtExpr* sexpr)
@@ -801,7 +746,7 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
 
         // Compare condition expression to zero and store result in a register.
         IR_Reg cmp_result_reg = IR_next_reg(builder);
-        IR_emit_instr_cmp(builder, IR_INSTR_CMP_EQ, IR_get_type(cond_op.type), cmp_result_reg, cond_arg, zero_arg);
+        IR_emit_instr_cmp(builder, IR_COND_EQ, cond_op.type, cmp_result_reg, cond_arg, zero_arg);
 
         // Emit conditional jump without a jump target. The jump target will be filled in below.
         IR_Instr* cjmp_instr = IR_emit_instr_cjmp(builder, cmp_result_reg, 0);
@@ -878,7 +823,7 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
 
         // Compare condition expression to zero and store result in a register.
         IR_Reg cmp_result_reg = IR_next_reg(builder);
-        IR_emit_instr_cmp(builder, IR_INSTR_CMP_NE, IR_get_type(cond_op.type), cmp_result_reg, cond_arg, zero_arg);
+        IR_emit_instr_cmp(builder, IR_COND_NEQ, cond_op.type, cmp_result_reg, cond_arg, zero_arg);
 
         // Emit conditional jump to the top of the loop.
         IR_emit_instr_cjmp(builder, cmp_result_reg, loop_top);
@@ -924,7 +869,7 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
 
         // Compare condition expression to zero and store result in a register.
         IR_Reg cmp_result_reg = IR_next_reg(builder);
-        IR_emit_instr_cmp(builder, IR_INSTR_CMP_NE, IR_get_type(cond_op.type), cmp_result_reg, cond_arg, zero_arg);
+        IR_emit_instr_cmp(builder, IR_COND_NEQ, cond_op.type, cmp_result_reg, cond_arg, zero_arg);
 
         // Emit conditional jump to the top of the loop.
         IR_emit_instr_cjmp(builder, cmp_result_reg, loop_top);
@@ -1066,6 +1011,10 @@ static bool IR_build_proc(IR_Builder* builder, Symbol* sym)
 
     IR_pop_scope(builder);
     builder->curr_proc = NULL;
+
+#ifndef NDEBUG
+    IR_print_out_proc(builder->tmp_arena, sym);
+#endif
 
     return true;
 }

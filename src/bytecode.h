@@ -13,6 +13,17 @@ typedef struct IR_Instr IR_Instr;
 typedef struct IR_Module IR_Module;
 typedef struct IR_Builder IR_Builder;
 
+typedef struct IR_InstrBinary IR_InstrBinary;
+typedef struct IR_InstrUnary IR_InstrUnary;
+typedef struct IR_InstrStore IR_InstrStore;
+typedef struct IR_InstrLoad IR_InstrLoad;
+typedef struct IR_InstrLAddr IR_InstrLAddr;
+typedef struct IR_InstrLAddrVar IR_InstrLAddrVar;
+typedef struct IR_InstrRet IR_InstrRet;
+typedef struct IR_InstrCmp IR_InstrCmp;
+typedef struct IR_InstrCJmp IR_InstrCJmp;
+typedef struct IR_InstrJmp IR_InstrJmp;
+
 typedef enum IR_InstrKind {
     IR_INSTR_NONE = 0,
 
@@ -34,7 +45,6 @@ typedef enum IR_InstrKind {
     IR_INSTR_XOR,
 
     // Unary instructions.
-    IR_INSTR_NEG,
     IR_INSTR_NOT,
 
     IR_INSTR_LADDR,     // Load an address computation into a register.
@@ -59,32 +69,12 @@ typedef enum IR_InstrKind {
     // Multiple comparison instructions that set a result register to true/false.
     // One conditional jump instruction that takes an input register and two labels.
     IR_INSTR_CJMP,
-    IR_INSTR_CMP_ULT,
-    IR_INSTR_CMP_SLT,
-    IR_INSTR_CMP_ULE,
-    IR_INSTR_CMP_SLE,
-    IR_INSTR_CMP_EQ,
-    IR_INSTR_CMP_UGE,
-    IR_INSTR_CMP_SGE,
-    IR_INSTR_CMP_UGT,
-    IR_INSTR_CMP_SGT,
-    IR_INSTR_CMP_NE,
+    IR_INSTR_CMP,
 
     IR_INSTR_RET,
     IR_INSTR_ARG, // Set argument
     IR_INSTR_CALL, // Pushes a "Call Record" into a stack of call records.
 } IR_InstrKind;
-
-typedef enum IR_Type {
-    IR_TYPE_VOID,
-    IR_TYPE_INT8,
-    IR_TYPE_INT16,
-    IR_TYPE_INT32,
-    IR_TYPE_INT64,
-    IR_TYPE_F32,
-    IR_TYPE_F64,
-    IR_TYPE_PTR,
-} IR_Type;
 
 typedef enum IR_InstrArgKind {
     IR_ARG_NONE,
@@ -95,35 +85,101 @@ typedef enum IR_InstrArgKind {
 typedef struct IR_InstrArg {
     IR_InstrArgKind kind;
     union {
-        struct {
-            IR_Reg reg0;
-            IR_Reg reg1;
-        };
+        IR_Reg reg;
         Scalar imm;
     };
 } IR_InstrArg;
 
-struct IR_Instr {
-    u16 kind;
-
-    // Optional values vary per instruction kind.
-    union {
-        u8 bytes[2];
-        u16 val;
-    } option;
-
-    // Result register
-    IR_Reg r;
-
-    // First input (register/immediate).
-    IR_InstrArg a;
-
-    // Second input (register/immediate).
-    IR_InstrArg b;
+struct IR_SIBDAddr {
+    IR_Reg base_reg;
+    IR_Reg index_reg;
+    u64 disp;
+    u8 scale;
 };
 
-enum IR_VarFlag {
-    IR_VAR_IS_LOCAL = 0x1,
+struct IR_InstrBinary {
+    Type* type;
+    IR_Reg out_reg;
+    IR_InstrArg arg1;
+    IR_InstrArg arg2;
+};
+
+struct IR_InstrUnary {
+    Type* type;
+    IR_Reg out_reg;
+    IR_InstrArg arg;
+};
+
+struct IR_InstrStore {
+    Type* type;
+    IR_SIBDAddr addr;
+    IR_InstrArg arg;
+};
+
+struct IR_InstrLoad {
+    Type* type;
+    IR_Reg out_reg;
+    IR_SIBDAddr addr;
+};
+
+struct IR_InstrLAddr {
+    Type* type;
+    IR_Reg out_reg;
+    IR_SIBDAddr addr;
+};
+
+struct IR_InstrLAddrVar {
+    IR_Reg out_reg;
+    Symbol* sym;
+};
+
+struct IR_InstrRet {
+    Type* type;
+    IR_InstrArg ret_arg;
+};
+
+typedef enum IR_ConditionKind {
+    IR_COND_U_LT,
+    IR_COND_S_LT,
+    IR_COND_U_LTEQ,
+    IR_COND_S_LTEQ,
+    IR_COND_EQ,
+    IR_COND_NEQ,
+} IR_ConditionKind;
+
+struct IR_InstrCmp {
+    IR_ConditionKind kind;
+    Type* type;
+    IR_Reg out_reg;
+    IR_InstrArg arg1;
+    IR_InstrArg arg2;
+};
+
+struct IR_InstrCJmp {
+    u32 jmp_target;
+    IR_Reg cond_reg;
+};
+
+struct IR_InstrJmp {
+    u32 jmp_target;
+};
+
+struct IR_Instr {
+    IR_InstrKind kind;
+
+    union {
+        IR_InstrBinary _add;
+        IR_InstrBinary _sub;
+        IR_InstrBinary _shr;
+        IR_InstrStore _store;
+        IR_InstrLoad _load;
+        IR_InstrLAddr _laddr;
+        IR_InstrLAddrVar _laddr_var;
+        IR_InstrRet _ret;
+        IR_InstrCmp _cmp;
+        IR_InstrCJmp _cjmp;
+        IR_InstrJmp _jmp;
+    };
 };
 
 struct IR_Module {
@@ -139,13 +195,6 @@ struct IR_Builder {
     IR_Module* module;
     Symbol* curr_proc;
     Scope* curr_scope;
-};
-
-struct IR_SIBDAddr {
-    IR_Reg base_reg;
-    IR_Reg index_reg;
-    u64 disp;
-    u8 scale;
 };
 
 IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope);

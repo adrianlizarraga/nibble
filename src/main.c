@@ -22,6 +22,7 @@
 #include "parser.c"
 #include "resolver.c"
 #include "bytecode.c"
+#include "print_ir.c"
 #include "gen_assembly.c"
 #include "nibble.c"
 
