@@ -19,6 +19,7 @@ typedef struct IR_InstrStore IR_InstrStore;
 typedef struct IR_InstrLoad IR_InstrLoad;
 typedef struct IR_InstrLAddr IR_InstrLAddr;
 typedef struct IR_InstrLAddrVar IR_InstrLAddrVar;
+typedef struct IR_InstrConvert IR_InstrConvert;
 typedef struct IR_InstrRet IR_InstrRet;
 typedef struct IR_InstrCmp IR_InstrCmp;
 typedef struct IR_InstrCJmp IR_InstrCJmp;
@@ -59,9 +60,6 @@ typedef enum IR_InstrKind {
     IR_INSTR_TRUNC,
     IR_INSTR_ZEXT,
     IR_INSTR_SEXT,
-    IR_INSTR_PTR_TO_INT,
-    IR_INSTR_INT_TO_PTR,
-    IR_INSTR_BITCAST,
 
     IR_INSTR_JMP,  // Jump to label
 
@@ -138,6 +136,13 @@ struct IR_InstrRet {
     IR_InstrArg ret_arg;
 };
 
+struct IR_InstrConvert {
+    IR_Reg out_reg;
+    Type* dst_type;
+    Type* src_type;
+    IR_InstrArg src_arg;
+};
+
 typedef enum IR_ConditionKind {
     IR_COND_U_LT,
     IR_COND_S_LT,
@@ -179,6 +184,9 @@ struct IR_Instr {
         IR_InstrCmp _cmp;
         IR_InstrCJmp _cjmp;
         IR_InstrJmp _jmp;
+        IR_InstrConvert _trunc;
+        IR_InstrConvert _zext;
+        IR_InstrConvert _sext;
     };
 };
 

@@ -172,6 +172,33 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
             ftprint_char_array(&dstr, false, "ret <%s> %s", type_name(instr->_ret.type), IR_print_arg(arena, &instr->_ret.ret_arg));
             break;
         }
+        case IR_INSTR_TRUNC:
+        {
+            ftprint_char_array(&dstr, false, "%s = trunc <%s> %s to <%s>",
+                               IR_print_reg(arena, instr->_trunc.out_reg),
+                               type_name(instr->_trunc.src_type),
+                               IR_print_arg(arena, &instr->_trunc.src_arg),
+                               type_name(instr->_trunc.dst_type));
+            break;
+        }
+        case IR_INSTR_ZEXT:
+        {
+            ftprint_char_array(&dstr, false, "%s = zext <%s> %s to <%s>",
+                               IR_print_reg(arena, instr->_zext.out_reg),
+                               type_name(instr->_zext.src_type),
+                               IR_print_arg(arena, &instr->_zext.src_arg),
+                               type_name(instr->_zext.dst_type));
+            break;
+        }
+        case IR_INSTR_SEXT:
+        {
+            ftprint_char_array(&dstr, false, "%s = sext <%s> %s to <%s>",
+                               IR_print_reg(arena, instr->_sext.out_reg),
+                               type_name(instr->_sext.src_type),
+                               IR_print_arg(arena, &instr->_sext.src_arg),
+                               type_name(instr->_sext.dst_type));
+            break;
+        }
         case IR_INSTR_CMP:
         {
             ftprint_char_array(&dstr, false, "%s = cmp_%s <%s> %s, %s",
