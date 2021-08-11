@@ -836,14 +836,25 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
             // Generate the right expression and compare it to zero.
             // Use setne instruction to set the final value of the result register (zero extend).
             IR_emit_expr(builder, expr->right, &right);
-            IR_commit_indirections(builder, &right);
 
-            IR_OpRM right_arg = IR_oprm_from_op(builder, &right);
-            IR_emit_instr_cmp(builder, right.type, right_arg, zero_arg);
+            if (right.kind == IR_OPERAND_DEFERRED_CMP)
+            {
+                IR_execute_deferred_cmp(builder, &right);
 
-            IR_OpRM dst_arg = {.kind = IR_OP_REG, .reg = result_reg};
-            IR_emit_instr_setcc(builder, IR_COND_NEQ, dst_arg);
-            IR_emit_instr_zext(builder, result_type, result_reg, type_u8, dst_arg);
+                IR_OpRI right_arg = {.kind = IR_OP_REG, .reg = right.reg};
+                IR_emit_instr_mov(builder, result_type, result_reg, right_arg);
+            }
+            else
+            {
+                IR_commit_indirections(builder, &right);
+
+                IR_OpRM right_arg = IR_oprm_from_op(builder, &right);
+                IR_emit_instr_cmp(builder, right.type, right_arg, zero_arg);
+
+                IR_OpRM dst_arg = {.kind = IR_OP_REG, .reg = result_reg};
+                IR_emit_instr_setcc(builder, IR_COND_NEQ, dst_arg);
+                IR_emit_instr_zext(builder, result_type, result_reg, type_u8, dst_arg);
+            }
 
             IR_try_free_op_reg(builder, &right);
 
