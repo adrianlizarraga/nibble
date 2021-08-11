@@ -647,6 +647,7 @@ Type* type_unsigned_int(Type* type_int);
 ///////////////////////////////
 //       Symbols
 //////////////////////////////
+typedef u8 IR_Reg;
 
 typedef enum SymbolKind {
     SYMBOL_NONE,
@@ -663,13 +664,8 @@ typedef enum SymbolStatus {
     SYMBOL_STATUS_RESOLVED,
 } SymbolStatus;
 
-typedef u32 IR_Reg;
-
 struct SymbolVar {
     bool is_arg;
-
-    // Reg that holds addr to var
-    IR_Reg reg;
 
     // Used by backends to store this var's
     // location in the stack.
