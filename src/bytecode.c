@@ -60,6 +60,15 @@ static void IR_emit_instr_neg(IR_Builder* builder, Type* type, IR_OpRM dst)
     IR_add_instr(builder, instr);
 }
 
+static void IR_emit_instr_not(IR_Builder* builder, Type* type, IR_OpRM dst)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_NOT);
+    instr->_not.type = type;
+    instr->_not.dst = dst;
+
+    IR_add_instr(builder, instr);
+}
+
 static void IR_emit_instr_mov(IR_Builder* builder, Type* type, IR_Reg dst, IR_OpRI src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MOV);
@@ -639,7 +648,7 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
             }
             else if (right_is_ptr)
             {
-                assert(result_type == left.type);
+                assert(result_type == right.type);
                 IR_emit_ptr_int_add(builder, dst, &right, &left, true);
             }
             else
@@ -885,17 +894,99 @@ static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand*
         case TKN_MINUS: // Two's compliment negation.
         {
             IR_emit_expr(builder, expr->expr, dst);
+            IR_ensure_operand_in_reg(builder, dst, true);
 
             assert(dst->type == result_type);
 
-            IR_OpRM arg = IR_oprm_from_op(builder, dst);
+            IR_OpRM arg = {.kind = IR_OP_REG, .reg = dst->reg};
             IR_emit_instr_neg(builder, result_type, arg);
+            break;
+        }
+        case TKN_NEG: // Bitwise not
+        {
+
+            IR_emit_expr(builder, expr->expr, dst);
+            IR_ensure_operand_in_reg(builder, dst, true);
+
+            assert(dst->type == result_type);
+
+            IR_OpRM arg = {.kind = IR_OP_REG, .reg = dst->reg};
+            IR_emit_instr_not(builder, result_type, arg);
+            break;
+        }
+        case TKN_NOT: // Logical not
+        {
+            IR_emit_expr(builder, expr->expr, dst);
+            IR_ensure_operand_in_reg(builder, dst, true);
+
+            assert(dst->type == result_type);
+
+            IR_OpRM dst_arg = {.kind = IR_OP_REG, .reg = dst->reg};
+            IR_OpRMI zero_arg = {.kind = IR_OP_IMM, .imm.as_int._u64 = 0};
+
+            IR_emit_instr_cmp(builder, result_type, dst_arg, zero_arg);
+
+            dst->kind = IR_OPERAND_DEFERRED_CMP;
+            dst->cmp.cond = IR_COND_EQ;
+            dst->cmp.setcc_dst = dst_arg;
+            dst->cmp.zext_dst = dst->reg;
+            break;
+        }
+        case TKN_ASTERISK:
+        {
+            IR_emit_expr(builder, expr->expr, dst);
+            IR_ensure_operand_in_reg(builder, dst, false);
+
+            dst->kind = IR_OPERAND_DEREF_ADDR;
+            dst->type = result_type;
+            break;
+        }
+        case TKN_CARET: // Address-of operator
+        {
+            IR_emit_expr(builder, expr->expr, dst);
+
+            if (dst->kind == IR_OPERAND_DEREF_ADDR)
+            {
+                dst->kind = IR_OPERAND_SIBD_ADDR;
+                dst->type = result_type;
+            }
+            else
+            {
+                assert(dst->kind == IR_OPERAND_VAR);
+
+                IR_Reg result_reg = IR_next_reg(builder);
+
+                IR_emit_instr_laddr_var(builder, result_reg, dst->sym);
+
+                dst->kind = IR_OPERAND_SIBD_ADDR;
+                dst->type = result_type;
+                dst->addr.base_reg = result_reg;
+                dst->addr.disp = 0;
+                dst->addr.scale = 0;
+                dst->addr.index_reg = 0;
+            }
             break;
         }
         default:
             assert(0);
             break;
     }
+}
+
+static void IR_emit_expr_index(IR_Builder* builder, ExprIndex* expr_index, IR_Operand* dst)
+{
+    IR_Operand array_op = {0};
+    IR_Operand index_op = {0};
+
+    IR_emit_expr(builder, expr_index->array, &array_op);
+    IR_emit_expr(builder, expr_index->index, &index_op);
+
+    assert(array_op.type->kind == TYPE_PTR);
+
+    IR_emit_ptr_int_add(builder, dst, &array_op, &index_op, true);
+
+    dst->kind = IR_OPERAND_DEREF_ADDR;
+    dst->type = expr_index->super.type;
 }
 
 static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op)
@@ -1049,7 +1140,7 @@ static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
             IR_emit_expr_unary(builder, (ExprUnary*)expr, dst);
             break;
         case CST_ExprIndex:
-            // IR_emit_expr_index(builder, (ExprIndex*)expr, dst);
+            IR_emit_expr_index(builder, (ExprIndex*)expr, dst);
             break;
         default:
             ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);
@@ -1377,7 +1468,7 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
         {
             // If a deferred comparison was performed, just jmp using the
             // deferred comparison's intended condition code.
-            // This prevent unnecessary cmp instructions from being emitted.
+            // This prevents unnecessary cmp + setcc instructions from being emitted.
             IR_emit_instr_jmpcc(builder, cond_op.cmp.cond, loop_top);
         }
         else

@@ -213,6 +213,7 @@ struct IR_Instr {
         IR_InstrBinary _sub;
         IR_InstrBinary _shr;
         IR_InstrUnary _neg;
+        IR_InstrUnary _not;
         IR_InstrMov _mov;
         IR_InstrLoad _load;
         IR_InstrStore _store;
