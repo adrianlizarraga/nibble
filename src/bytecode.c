@@ -1,7 +1,7 @@
 #include "ast.h"
 #include "bytecode.h"
-#include "stream.h"
 #include "print_ir.h"
+#include "stream.h"
 
 //////////////////////////////////////////////////////
 //
@@ -225,7 +225,7 @@ static void IR_emit_instr_sext(IR_Builder* builder, Type* dst_type, IR_Reg dst, 
     IR_add_instr(builder, instr);
 }
 
-static void IR_patch_jmp_instr(IR_Instr* jmp_instr, u32 jmp_target)
+static void IR_patch_jmp_target(IR_Instr* jmp_instr, u32 jmp_target)
 {
     switch (jmp_instr->kind)
     {
@@ -253,15 +253,9 @@ static u32 IR_get_jmp_target(IR_Builder* builder)
 //////////////////////////////////////////////////////
 
 static const IR_ConditionKind ir_opposite_cond[] = {
-    [IR_COND_U_LT] = IR_COND_U_GTEQ,
-    [IR_COND_S_LT] = IR_COND_S_GTEQ,
-    [IR_COND_U_LTEQ] = IR_COND_U_GT,
-    [IR_COND_S_LTEQ] = IR_COND_S_GT,
-    [IR_COND_U_GT] = IR_COND_U_LTEQ,
-    [IR_COND_S_GT] = IR_COND_S_LTEQ,
-    [IR_COND_U_GTEQ] = IR_COND_U_LT,
-    [IR_COND_S_GTEQ] = IR_COND_S_LT,
-    [IR_COND_EQ] = IR_COND_NEQ,
+    [IR_COND_U_LT] = IR_COND_U_GTEQ, [IR_COND_S_LT] = IR_COND_S_GTEQ, [IR_COND_U_LTEQ] = IR_COND_U_GT,
+    [IR_COND_S_LTEQ] = IR_COND_S_GT, [IR_COND_U_GT] = IR_COND_U_LTEQ, [IR_COND_S_GT] = IR_COND_S_LTEQ,
+    [IR_COND_U_GTEQ] = IR_COND_U_LT, [IR_COND_S_GTEQ] = IR_COND_S_LT, [IR_COND_EQ] = IR_COND_NEQ,
     [IR_COND_NEQ] = IR_COND_EQ,
 };
 
@@ -276,10 +270,15 @@ typedef enum IR_OperandKind {
     IR_OPERAND_PROC,
 } IR_OperandKind;
 
-typedef struct IR_DeferredCmp {
+typedef struct IR_DeferredJmpcc {
     IR_ConditionKind cond;
-    IR_OpRM setcc_dst;
-    IR_Reg zext_dst;
+    bool result;
+    IR_Instr* jmp;
+} IR_DeferredJmpcc;
+
+typedef struct IR_DeferredCmp {
+    IR_DeferredJmpcc* sc_jmps; // Array of short-circuit jumps
+    IR_DeferredJmpcc final_jmp;
 } IR_DeferredCmp;
 
 typedef struct IR_Operand {
@@ -338,11 +337,60 @@ static void IR_execute_deferred_cmp(IR_Builder* builder, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEFERRED_CMP);
 
-    IR_emit_instr_setcc(builder, operand->cmp.cond, operand->cmp.setcc_dst);
-    IR_emit_instr_zext(builder, operand->type, operand->cmp.zext_dst, type_u8, operand->cmp.setcc_dst);
+    IR_DeferredCmp* def_cmp = &operand->cmp;
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    size_t num_sc_jmps = array_len(def_cmp->sc_jmps);
+    bool has_final_jmp = def_cmp->final_jmp.jmp != NULL;
+
+    if (!num_sc_jmps && !has_final_jmp)
+    {
+        IR_OpRM dst_arg = {.kind = IR_OP_REG, .reg = dst_reg};
+        IR_emit_instr_setcc(builder, def_cmp->final_jmp.cond, dst_arg);
+        IR_emit_instr_zext(builder, operand->type, dst_reg, type_u8, dst_arg);
+    }
+    else
+    {
+        IR_OpRI zero = {.kind = IR_OP_IMM, .imm.as_int._u64 = 0};
+        IR_OpRI one = {.kind = IR_OP_IMM, .imm.as_int._u64 = 1};
+
+        // Patch short-circuit jumps that jump to the "true" control path.
+        for (size_t i = 0; i < array_len(def_cmp->sc_jmps); i += 1)
+        {
+            IR_DeferredJmpcc* def_jmp = &def_cmp->sc_jmps[i];
+
+            if (def_jmp->result && def_jmp->jmp)
+            {
+                IR_patch_jmp_target(def_jmp->jmp, IR_get_jmp_target(builder));
+            }
+        }
+
+        // This is the "true" control path. Move the literal 1 into destination register.
+        IR_emit_instr_mov(builder, operand->type, dst_reg, one);
+
+        // Patch short-circuit jumps that jump to the "false" control path.
+        for (size_t i = 0; i < array_len(def_cmp->sc_jmps); i += 1)
+        {
+            IR_DeferredJmpcc* def_jmp = &def_cmp->sc_jmps[i];
+
+            if (!def_jmp->result && def_jmp->jmp)
+                IR_patch_jmp_target(def_jmp->jmp, IR_get_jmp_target(builder));
+        }
+
+        // Patch final jmp so that it jumps to "false" control path.
+        IR_Instr* final_jmp = def_cmp->final_jmp.jmp;
+
+        if (def_cmp->final_jmp.result)
+            final_jmp->_jmpcc.cond = ir_opposite_cond[final_jmp->_jmpcc.cond];
+
+        IR_patch_jmp_target(def_cmp->final_jmp.jmp, IR_get_jmp_target(builder));
+
+        // This is the "false" control path. Move the literal 0 into destination register.
+        IR_emit_instr_mov(builder, operand->type, dst_reg, zero);
+    }
 
     operand->kind = IR_OPERAND_REG;
-    operand->reg = operand->cmp.zext_dst;
+    operand->reg = dst_reg;
 }
 
 static void IR_execute_deref(IR_Builder* builder, IR_Operand* operand)
@@ -606,23 +654,190 @@ static void IR_emit_binary_cmp(IR_Builder* builder, IR_ConditionKind cond_kind, 
 {
     assert(left_op->type == right_op->type);
 
-    IR_ensure_operand_in_reg(builder, left_op, true);
+    IR_commit_indirections(builder, left_op);
 
-    IR_OpRM dst_arg = {.kind = IR_OP_REG, .reg = left_op->reg};
-    IR_OpRMI src_arg = IR_oprmi_from_op(builder, right_op);
+    IR_OpRM left_arg;
+    IR_OpRMI right_arg = IR_oprmi_from_op(builder, right_op);
 
-    IR_emit_instr_cmp(builder, left_op->type, dst_arg, src_arg);
-    //IR_emit_instr_setcc(builder, cond_kind, dst_arg);
-    //IR_emit_instr_zext(builder, dst_type, left_op->reg, type_u8, dst_arg);
-    //*dst_op = *left_op;
+    if (right_arg.kind != IR_OP_MEM)
+    {
+        left_arg = IR_oprm_from_op(builder, left_op);
+    }
+    else
+    {
+        IR_ensure_operand_in_reg(builder, left_op, true);
+        left_arg = (IR_OpRM){.kind = IR_OP_REG, .reg = left_op->reg};
+    }
+
+    IR_emit_instr_cmp(builder, left_op->type, left_arg, right_arg);
 
     dst_op->type = dst_type;
     dst_op->kind = IR_OPERAND_DEFERRED_CMP;
-    dst_op->cmp.cond = cond_kind;
-    dst_op->cmp.setcc_dst = dst_arg;
-    dst_op->cmp.zext_dst = left_op->reg;
+    dst_op->cmp.final_jmp.cond = cond_kind;
+    dst_op->cmp.final_jmp.result = true;
+    dst_op->cmp.final_jmp.jmp = NULL;
+    dst_op->cmp.sc_jmps = NULL;
 
+    IR_try_free_op_reg(builder, left_op);
     IR_try_free_op_reg(builder, right_op);
+}
+
+static void IR_emit_short_circuit_cmp(IR_Builder* builder, IR_Operand* dst_op, ExprBinary* expr)
+{
+    IR_OpRMI zero_arg = {.kind = IR_OP_IMM, .imm.as_int._u64 = 0};
+
+    //
+    // NOTE: This procedure will create a deferred comparison containing an array of short-circuit jumps and one final
+    // jump. If the left and right subexpressions are themselves deferred comparisons, then they will be merged into
+    // this parent expression's deferred comparison. Otherwise, subexpressions that are not deferred comparisons will be
+    // compared to zero and converted to either a short-circuit jump (left subexpression) or a final jump (right
+    // subexpression).
+    //
+
+    dst_op->kind = IR_OPERAND_DEFERRED_CMP;
+    dst_op->type = expr->super.type;
+
+    IR_Operand left_op = {0};
+    IR_Operand right_op = {0};
+
+    bool short_circuit_val;
+    IR_ConditionKind short_circuit_cond;
+
+    if (expr->op == TKN_LOGIC_AND)
+    {
+        short_circuit_val = false;
+        short_circuit_cond = IR_COND_EQ;
+    }
+    else
+    {
+        assert(expr->op == TKN_LOGIC_OR);
+        short_circuit_val = true;
+        short_circuit_cond = IR_COND_NEQ;
+    }
+
+    // Emit instructions for the left expression.
+    IR_emit_expr(builder, expr->left, &left_op);
+
+    // If the left subexpression is a deferred comparison, merge into this deferred comparison result.
+    //
+    // Short-circuit jumps from the left subexpression with the same "short-circuit value" are kept as-is.
+    //
+    // Short-circuit jumps from the left subexpression with the opposite "short-circuit value" are patched
+    // with the current instruction index as the jump target and removed. This ensures that short-circuit jumps
+    // with the opposite "short-circuit value" are compared to the right subexpression.
+    //
+    // The left subexpression's final jump is added as a short-circuit jump.
+    if (left_op.kind == IR_OPERAND_DEFERRED_CMP)
+    {
+        size_t i = 0;
+        size_t num_sc_jmps = array_len(left_op.cmp.sc_jmps);
+
+        dst_op->cmp.sc_jmps = left_op.cmp.sc_jmps; // Steal the backing dynamic array.
+
+        // Patch and remove short-circuit jumps with the opposite "short-circuit value".
+        while (i < num_sc_jmps)
+        {
+            IR_DeferredJmpcc* def_jmpcc = &dst_op->cmp.sc_jmps[i];
+
+            if (def_jmpcc->result != short_circuit_val)
+            {
+                IR_patch_jmp_target(def_jmpcc->jmp, IR_get_jmp_target(builder));
+
+                array_remove_swap((dst_op->cmp.sc_jmps), i);
+                num_sc_jmps -= 1;
+            }
+            else
+            {
+                i += 1;
+            }
+        }
+
+        // Convert left expression's final jmp to a short-circuit jmp.
+        IR_DeferredJmpcc def_jmpcc = left_op.cmp.final_jmp;
+
+        if (def_jmpcc.result != short_circuit_val)
+        {
+            def_jmpcc.cond = ir_opposite_cond[def_jmpcc.cond];
+            def_jmpcc.result = short_circuit_val;
+
+            if (def_jmpcc.jmp)
+                def_jmpcc.jmp->_jmpcc.cond = def_jmpcc.cond;
+        }
+
+        if (!def_jmpcc.jmp)
+            def_jmpcc.jmp = IR_emit_instr_jmpcc(builder, def_jmpcc.cond, 0);
+
+        array_push(dst_op->cmp.sc_jmps, def_jmpcc);
+    }
+
+    // The left subexpression is some computation (not a deferred comparison). Compare the left subexpression to zero
+    // and create a short-circuit jmp.
+    else
+    {
+        IR_commit_indirections(builder, &left_op);
+
+        IR_OpRM left_arg = IR_oprm_from_op(builder, &left_op);
+        IR_emit_instr_cmp(builder, left_op.type, left_arg, zero_arg);
+
+        dst_op->cmp.sc_jmps = array_create(builder->tmp_arena, IR_DeferredJmpcc, 4);
+
+        IR_DeferredJmpcc sc_jmp = {
+            .result = short_circuit_val,
+            .jmp = IR_emit_instr_jmpcc(builder, short_circuit_cond, 0),
+            .cond = short_circuit_cond,
+        };
+
+        array_push(dst_op->cmp.sc_jmps, sc_jmp);
+        IR_try_free_op_reg(builder, &left_op);
+    }
+
+    // Emit instructions for the right expression.
+    IR_emit_expr(builder, expr->right, &right_op);
+
+    // If the right subexpression is a deferred comparison, merge into this deferred comparison result.
+    // The right subexpression's short-circuit jumps are kept as-is.
+    // The right subexpression's final jump is converted to a final jump to the "false" control path.
+    if (right_op.kind == IR_OPERAND_DEFERRED_CMP)
+    {
+        size_t num_sc_jmps = array_len(right_op.cmp.sc_jmps);
+
+        // Just add all short-circuit jumps.
+        for (size_t i = 0; i < num_sc_jmps; i += 1)
+        {
+            IR_DeferredJmpcc* def_jmpcc = &right_op.cmp.sc_jmps[i];
+            array_push(dst_op->cmp.sc_jmps, *def_jmpcc);
+        }
+
+        // Convert right expression's final jmp into a final jmp to "false" path.
+        dst_op->cmp.final_jmp = right_op.cmp.final_jmp;
+
+        if (dst_op->cmp.final_jmp.result)
+        {
+            dst_op->cmp.final_jmp.cond = ir_opposite_cond[dst_op->cmp.final_jmp.cond];
+            dst_op->cmp.final_jmp.result = false;
+
+            if (dst_op->cmp.final_jmp.jmp)
+                dst_op->cmp.final_jmp.jmp->_jmpcc.cond = dst_op->cmp.final_jmp.cond;
+        }
+
+        if (!dst_op->cmp.final_jmp.jmp)
+            dst_op->cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, dst_op->cmp.final_jmp.cond, 0);
+    }
+    // The right subexpression is some computation (not a deferred comparison). Compare the right subexpression to zero
+    // and create a final jump.
+    else
+    {
+        IR_commit_indirections(builder, &right_op);
+
+        IR_OpRM right_arg = IR_oprm_from_op(builder, &right_op);
+        IR_emit_instr_cmp(builder, right_op.type, right_arg, zero_arg);
+
+        dst_op->cmp.final_jmp.result = false;
+        dst_op->cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, IR_COND_EQ, 0);
+        dst_op->cmp.final_jmp.cond = IR_COND_EQ;
+
+        IR_try_free_op_reg(builder, &right_op);
+    }
 }
 
 static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operand* dst)
@@ -794,84 +1009,7 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
         case TKN_LOGIC_AND:
         case TKN_LOGIC_OR:
         {
-            s32 short_circuit_val;
-            IR_ConditionKind short_circuit_cond;
-            IR_OpRMI zero_arg = {.kind = IR_OP_IMM, .imm.as_int._u64 = 0};
-
-            if (expr->op == TKN_LOGIC_AND)
-            {
-                short_circuit_val = 0;
-                short_circuit_cond = IR_COND_EQ;
-            }
-            else
-            {
-                short_circuit_val = 1;
-                short_circuit_cond = IR_COND_NEQ;
-            }
-
-            // Get a register for the result.
-            // Initialize it with the "short circuit value". This is the value to which
-            // the expression evaluates when short-circuiting ocurrs.
-            IR_Reg result_reg = IR_next_reg(builder);
-            IR_OpRI short_circuit_arg = {.kind = IR_OP_IMM, .imm.as_int._s32 = short_circuit_val};
-
-            IR_emit_instr_mov(builder, result_type, result_reg, short_circuit_arg);
-
-            // Generate the left expression and compare it to zero.
-            // If can short-circuit, jmp to end label.
-            IR_emit_expr(builder, expr->left, &left);
-
-            IR_Instr* jmpcc_instr;
-
-            if (left.kind == IR_OPERAND_DEFERRED_CMP)
-            {
-                // For logical AND, early exit occurs when the false (or opposite) comparison result occurs.
-                IR_ConditionKind jmp_cond = expr->op == TKN_LOGIC_AND ? ir_opposite_cond[left.cmp.cond] : left.cmp.cond;
-
-                jmpcc_instr = IR_emit_instr_jmpcc(builder, jmp_cond, 0);
-            }
-            else
-            {
-                IR_commit_indirections(builder, &left);
-
-                IR_OpRM left_arg = IR_oprm_from_op(builder, &left);
-                IR_emit_instr_cmp(builder, left.type, left_arg, zero_arg);
-
-                jmpcc_instr = IR_emit_instr_jmpcc(builder, short_circuit_cond, 0);
-            }
-
-            IR_try_free_op_reg(builder, &left);
-
-            // Generate the right expression and compare it to zero.
-            // Use setne instruction to set the final value of the result register (zero extend).
-            IR_emit_expr(builder, expr->right, &right);
-
-            if (right.kind == IR_OPERAND_DEFERRED_CMP)
-            {
-                IR_execute_deferred_cmp(builder, &right);
-
-                IR_OpRI right_arg = {.kind = IR_OP_REG, .reg = right.reg};
-                IR_emit_instr_mov(builder, result_type, result_reg, right_arg);
-            }
-            else
-            {
-                IR_commit_indirections(builder, &right);
-
-                IR_OpRM right_arg = IR_oprm_from_op(builder, &right);
-                IR_emit_instr_cmp(builder, right.type, right_arg, zero_arg);
-
-                IR_OpRM dst_arg = {.kind = IR_OP_REG, .reg = result_reg};
-                IR_emit_instr_setcc(builder, IR_COND_NEQ, dst_arg);
-                IR_emit_instr_zext(builder, result_type, result_reg, type_u8, dst_arg);
-            }
-
-            IR_try_free_op_reg(builder, &right);
-
-            IR_patch_jmp_instr(jmpcc_instr, IR_get_jmp_target(builder));
-
-            dst->kind = IR_OPERAND_REG;
-            dst->type = result_type;
-            dst->reg = result_reg;
+            IR_emit_short_circuit_cmp(builder, dst, expr);
             break;
         }
         default:
@@ -916,20 +1054,49 @@ static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand*
         }
         case TKN_NOT: // Logical not
         {
-            IR_emit_expr(builder, expr->expr, dst);
-            IR_ensure_operand_in_reg(builder, dst, true);
-
-            assert(dst->type == result_type);
-
-            IR_OpRM dst_arg = {.kind = IR_OP_REG, .reg = dst->reg};
-            IR_OpRMI zero_arg = {.kind = IR_OP_IMM, .imm.as_int._u64 = 0};
-
-            IR_emit_instr_cmp(builder, result_type, dst_arg, zero_arg);
-
             dst->kind = IR_OPERAND_DEFERRED_CMP;
-            dst->cmp.cond = IR_COND_EQ;
-            dst->cmp.setcc_dst = dst_arg;
-            dst->cmp.zext_dst = dst->reg;
+            dst->type = result_type;
+
+            IR_Operand inner_op = {0};
+            IR_emit_expr(builder, expr->expr, &inner_op);
+
+            if (inner_op.kind == IR_OPERAND_DEFERRED_CMP)
+            {
+                // Reverse control paths for all jumps.
+                // That is, if a jmp instruction jumps to the "true" path, make it jump to the "false" path, and vice
+                // versa.
+                size_t num_sc_jmps = array_len(inner_op.cmp.sc_jmps);
+
+                dst->cmp.sc_jmps = inner_op.cmp.sc_jmps;
+
+                for (size_t i = 0; i < num_sc_jmps; i += 1)
+                {
+                    IR_DeferredJmpcc* def_jmpcc = &inner_op.cmp.sc_jmps[i];
+                    def_jmpcc->result = !(def_jmpcc->result);
+                }
+
+                dst->cmp.final_jmp = inner_op.cmp.final_jmp;
+                dst->cmp.final_jmp.result = !inner_op.cmp.final_jmp.result;
+            }
+            else
+            {
+                IR_commit_indirections(builder, &inner_op);
+
+                assert(inner_op.type == result_type);
+
+                IR_OpRM dst_arg = IR_oprm_from_op(builder, &inner_op);
+                IR_OpRMI zero_arg = {.kind = IR_OP_IMM, .imm.as_int._u64 = 0};
+
+                IR_emit_instr_cmp(builder, result_type, dst_arg, zero_arg);
+
+                dst->cmp.final_jmp.cond = IR_COND_EQ;
+                dst->cmp.final_jmp.result = true;
+                dst->cmp.sc_jmps = NULL;
+                dst->cmp.final_jmp.jmp = NULL;
+
+                IR_try_free_op_reg(builder, &inner_op);
+            }
+
             break;
         }
         case TKN_ASTERISK:
@@ -1310,17 +1477,29 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
     }
     else
     {
+        AllocatorState mem_state = allocator_get_state(builder->tmp_arena);
         IR_Operand cond_op = {0};
         IR_emit_expr(builder, cond_expr, &cond_op);
 
-        IR_Instr* jmpcc_instr;
+        IR_Instr* jmpcc_instr = NULL;
 
         if (cond_op.kind == IR_OPERAND_DEFERRED_CMP)
         {
             // If a deferred comparison was performed, just jmp using the
             // deferred comparison's intended condition code.
             // This prevents unnecessary cmp instructions from being emitted.
-            jmpcc_instr = IR_emit_instr_jmpcc(builder, cond_op.cmp.cond, 0);
+            // jmpcc_instr = IR_emit_instr_jmpcc(builder, cond_op.cmp.cond, 0);
+
+            // Patch all short-circuit jmps to "true" control path.
+            size_t num_sc_jmps = array_len(cond_op.cmp.sc_jmps);
+
+            for (size_t i = 0; i < num_sc_jmps; i += 1)
+            {
+                IR_DeferredJmpcc* def_jmpcc = &cond_op.cmp.sc_jmps[i];
+
+                if (def_jmpcc->result)
+                    IR_patch_jmp_target(def_jmpcc->jmp, IR_get_jmp_target(builder));
+            }
         }
         else
         {
@@ -1335,9 +1514,9 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
 
             // Emit conditional jump without a jump target. The jump target will be filled in below.
             jmpcc_instr = IR_emit_instr_jmpcc(builder, IR_COND_EQ, 0);
-        }
 
-        IR_free_op_reg(builder, &cond_op);
+            IR_free_op_reg(builder, &cond_op);
+        }
 
         // Emit instructions for if-block body.
         IR_emit_stmt(builder, if_body);
@@ -1349,21 +1528,69 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
             IR_Instr* jmp_instr = IR_emit_instr_jmp(builder, 0);
 
             // Patch conditional jmp instruction to jump here if the condition is false.
-            IR_patch_jmp_instr(jmpcc_instr, IR_get_jmp_target(builder));
+            if (cond_op.kind == IR_OPERAND_DEFERRED_CMP)
+            {
+                // Patch all short-circuit jmps to "false" control path.
+                size_t num_sc_jmps = array_len(cond_op.cmp.sc_jmps);
+
+                for (size_t i = 0; i < num_sc_jmps; i += 1)
+                {
+                    IR_DeferredJmpcc* def_jmpcc = &cond_op.cmp.sc_jmps[i];
+
+                    if (!def_jmpcc->result)
+                        IR_patch_jmp_target(def_jmpcc->jmp, IR_get_jmp_target(builder));
+                }
+
+                // Patch final jmp to "false" control path.
+                if (cond_op.cmp.final_jmp.result)
+                    cond_op.cmp.final_jmp.jmp->_jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
+
+                IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, IR_get_jmp_target(builder));
+            }
+            else
+            {
+                IR_patch_jmp_target(jmpcc_instr, IR_get_jmp_target(builder));
+            }
 
             // Emit instructions for else-block body.
             IR_emit_stmt(builder, else_body);
 
             // Patch jmp instruction to jump to the end of the else-block.
-            IR_patch_jmp_instr(jmp_instr, IR_get_jmp_target(builder));
+            IR_patch_jmp_target(jmp_instr, IR_get_jmp_target(builder));
         }
         else
         {
-            IR_patch_jmp_instr(jmpcc_instr, IR_get_jmp_target(builder));
+            // Patch conditional jmp instruction to jump here if the condition is false.
+            if (cond_op.kind == IR_OPERAND_DEFERRED_CMP)
+            {
+                // Patch all short-circuit jmps to "false" control path.
+                size_t num_sc_jmps = array_len(cond_op.cmp.sc_jmps);
+
+                for (size_t i = 0; i < num_sc_jmps; i += 1)
+                {
+                    IR_DeferredJmpcc* def_jmpcc = &cond_op.cmp.sc_jmps[i];
+
+                    if (!def_jmpcc->result)
+                        IR_patch_jmp_target(def_jmpcc->jmp, IR_get_jmp_target(builder));
+                }
+
+                // Patch final jmp to "false" control path.
+                if (cond_op.cmp.final_jmp.result)
+                    cond_op.cmp.final_jmp.jmp->_jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
+
+                IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, IR_get_jmp_target(builder));
+            }
+            else
+            {
+                IR_patch_jmp_target(jmpcc_instr, IR_get_jmp_target(builder));
+            }
         }
+
+        allocator_restore_state(mem_state);
     }
 }
 
+/*
 static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
 {
     Expr* cond_expr = stmt->cond;
@@ -1399,7 +1626,7 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
 
         // Patch initial jmp instruction with the location of the condition check.
         u32 loop_cond_check = IR_get_jmp_target(builder);
-        IR_patch_jmp_instr(jmp_instr, loop_cond_check);
+        IR_patch_jmp_target(jmp_instr, loop_cond_check);
 
         // Emit condition expression.
         IR_Operand cond_op = {0};
@@ -1430,7 +1657,8 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
 
     }
 }
-
+*/
+/*
 static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
 {
     Expr* cond_expr = stmt->cond;
@@ -1488,7 +1716,7 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
         IR_free_op_reg(builder, &cond_op);
     }
 }
-
+*/
 static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt)
 {
     switch (stmt->kind)
@@ -1512,10 +1740,10 @@ static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt)
             IR_emit_stmt_if(builder, (StmtIf*)stmt);
             break;
         case CST_StmtWhile:
-            IR_emit_stmt_while(builder, (StmtWhile*)stmt);
+            // IR_emit_stmt_while(builder, (StmtWhile*)stmt);
             break;
         case CST_StmtDoWhile:
-            IR_emit_stmt_do_while(builder, (StmtDoWhile*)stmt);
+            // IR_emit_stmt_do_while(builder, (StmtDoWhile*)stmt);
             break;
         default:
             break;
@@ -1620,7 +1848,10 @@ static bool IR_build_proc(IR_Builder* builder, Symbol* sym)
     IR_assign_proc_var_offsets(builder, sym);
 
     sym->as_proc.instrs = array_create(builder->arena, IR_Instr*, 32);
+
+    AllocatorState tmp_mem_state = allocator_get_state(builder->tmp_arena);
     IR_emit_stmt_block_body(builder, &dproc->stmts);
+    allocator_restore_state(tmp_mem_state);
 
     IR_pop_scope(builder);
     builder->curr_proc = NULL;
