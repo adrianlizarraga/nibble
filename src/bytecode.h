@@ -9,7 +9,6 @@
 
 typedef struct IR_Instr IR_Instr;
 typedef struct IR_Module IR_Module;
-typedef struct IR_Builder IR_Builder;
 
 typedef struct IR_SIBDAddr IR_SIBDAddr;
 typedef struct IR_MemAddr IR_MemAddr;
@@ -234,14 +233,6 @@ struct IR_Module {
     u32 num_procs;
     Symbol** vars;
     Symbol** procs;
-};
-
-struct IR_Builder {
-    Allocator* arena;
-    Allocator* tmp_arena;
-    IR_Module* module;
-    Symbol* curr_proc;
-    Scope* curr_scope;
 };
 
 IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope);
