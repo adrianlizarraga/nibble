@@ -647,7 +647,6 @@ Type* type_unsigned_int(Type* type_int);
 ///////////////////////////////
 //       Symbols
 //////////////////////////////
-typedef u8 IR_Reg;
 
 typedef enum SymbolKind {
     SYMBOL_NONE,
@@ -673,7 +672,6 @@ struct SymbolVar {
 };
 
 struct SymbolProc {
-    IR_Reg num_regs;
     u32 min_stack_size;
     u32 num_vars;
     Symbol** vars;

@@ -56,7 +56,112 @@ typedef struct IR_Builder {
     Scope* curr_scope;
 
     IR_DeferredJmpcc* sc_jmp_freelist;
+    u32 free_regs;
 } IR_Builder;
+
+
+//  Calculates the number of trailing zeros (bitscan).
+//  ntz() from Hacker's Delight 2nd edition, pg 108
+static int num_trailing_zeros(u32 x)
+{
+    if (x == 0)
+        return 32;
+
+    int n = 1;
+
+    // Binary search:
+    // Check for all zeros in right half of x. If all zeros, increment count and shift right.
+    if ((x & 0x0000FFFF) == 0)
+    {
+        n += 16;
+        x = x >> 16;
+    }
+
+    if ((x & 0x000000FF) == 0)
+    {
+        n += 8;
+        x = x >> 8;
+    }
+
+    if ((x & 0x0000000F) == 0)
+    {
+        n += 4;
+        x = x >> 4;
+    }
+
+    if ((x & 0x00000003) == 0)
+    {
+        n += 2;
+        x = x >> 2;
+    }
+
+    return n - (x & 1);
+}
+
+static void IR_set_reg(u32* reg_mask, IR_Reg reg)
+{
+    *reg_mask |= (1 << reg);
+}
+
+static void IR_unset_reg(u32* reg_mask, IR_Reg reg)
+{
+    *reg_mask &= ~(1 << reg);
+}
+
+static bool IR_is_reg_set(u32 reg_mask, IR_Reg reg)
+{
+    return reg_mask & (1 << reg);
+}
+
+static void IR_free_reg(IR_Builder* builder, IR_Reg reg)
+{
+    assert(reg < IR_REG_COUNT);
+    assert(!IR_is_reg_set(builder->free_regs, reg));
+    IR_set_reg(&builder->free_regs, reg);
+}
+
+static void IR_alloc_reg(IR_Builder* builder, IR_Reg reg)
+{
+    assert(reg < IR_REG_COUNT);
+    assert(IR_is_reg_set(builder->free_regs, reg));
+    IR_unset_reg(&builder->free_regs, reg);
+}
+
+static IR_Reg IR_next_reg(IR_Builder* builder)
+{
+    int bit_index = num_trailing_zeros(builder->free_regs);
+    IR_Reg reg = (IR_Reg)bit_index;
+
+    IR_alloc_reg(builder, reg);
+
+    return reg;
+}
+
+static void IR_try_free_op_reg(IR_Builder* builder, IR_Operand* op)
+{
+    switch (op->kind)
+    {
+        case IR_OPERAND_REG:
+            IR_free_reg(builder, op->reg);
+            break;
+        case IR_OPERAND_DEREF_ADDR:
+        case IR_OPERAND_SIBD_ADDR:
+        {
+            IR_Reg base_reg = op->addr.base_reg;
+            IR_Reg index_reg = op->addr.index_reg;
+
+            if (base_reg < IR_REG_COUNT)
+                IR_free_reg(builder, base_reg);
+
+            if (index_reg < IR_REG_COUNT)
+                IR_free_reg(builder, index_reg);
+
+            break;
+        }
+        default:
+            break;
+    }
+}
 
 //////////////////////////////////////////////////////
 //
@@ -397,45 +502,6 @@ static void IR_copy_sc_jmp(IR_Builder* builder, IR_DeferredJmpcc* dst_jmp, IR_De
         dst_jmp->jmp = IR_emit_instr_jmpcc(builder, dst_jmp->cond, 0);
 }
 
-static IR_Reg IR_next_reg(IR_Builder* builder)
-{
-    // TODO: Register allocation.
-    builder->curr_proc->as_proc.num_regs += 1;
-    return builder->curr_proc->as_proc.num_regs;
-}
-
-static void IR_free_op_reg(IR_Builder* builder, IR_Operand* op)
-{
-    // TODO: Register de-allocation
-    (void)builder;
-    (void)op;
-}
-
-static void IR_try_free_op_reg(IR_Builder* builder, IR_Operand* op)
-{
-    // TODO: Register de-allocation
-    (void)builder;
-    (void)op;
-}
-
-/*
-static IR_MemAddr IR_get_var_addr(IR_Builder* builder, Symbol* sym)
-{
-    assert(sym->kind == SYMBOL_VAR);
-
-    IR_MemAddr var_addr = {.kind = IR_MEM_ADDR_SYM, .sym = sym};
-
-    return var_addr;
-}
-
-static IR_MemAddr IR_get_ptr_addr(IR_Builder* builder, IR_SIBDAddr addr)
-{
-    IR_MemAddr mem_addr = {.kind = IR_MEM_ADDR_SIBD, .sibd = addr};
-
-    return mem_addr;
-}
-*/
-
 static void IR_execute_deferred_cmp(IR_Builder* builder, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEFERRED_CMP);
@@ -494,12 +560,26 @@ static void IR_execute_deref(IR_Builder* builder, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEREF_ADDR);
 
-    IR_Reg dst_reg = IR_next_reg(builder);
+    // The operand currently holds the address it is supposed to derefence.
+    // This function executes the dereference into the one of the registers that held the address.
+    IR_SIBDAddr addr = operand->addr;
 
-    IR_emit_instr_load_ptr(builder, operand->type, dst_reg, operand->addr);
+    bool has_base = addr.base_reg < IR_REG_COUNT;
+    bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
+
+    assert(has_base || has_index);
+
+    IR_Reg dst_reg = has_base ? addr.base_reg : addr.index_reg;
+
+    IR_emit_instr_load_ptr(builder, operand->type, dst_reg, addr);
 
     operand->kind = IR_OPERAND_REG;
     operand->reg = dst_reg;
+
+    if (has_base && (addr.base_reg != dst_reg))
+        IR_free_reg(builder, addr.base_reg);
+    if (has_index && (addr.index_reg != dst_reg))
+        IR_free_reg(builder, addr.index_reg);
 }
 
 static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
@@ -510,8 +590,8 @@ static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
     // This function executes the "load-effective-address" call into the one of the registers that held the address.
     IR_SIBDAddr addr = operand->addr;
 
-    bool has_base = addr.base_reg > 0;
-    bool has_index = addr.scale && (addr.index_reg > 0);
+    bool has_base = addr.base_reg < IR_REG_COUNT;
+    bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
     bool has_disp = addr.disp != 0;
     IR_Reg dst_reg;
 
@@ -524,9 +604,14 @@ static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
     }
     else
     {
-        IR_Reg dst_reg = IR_next_reg(builder);
+        dst_reg = has_base ? addr.base_reg : addr.index_reg;
 
         IR_emit_instr_laddr_ptr(builder, dst_reg, addr);
+
+        if (has_base && (addr.base_reg != dst_reg))
+            IR_free_reg(builder, addr.base_reg);
+        if (has_index && (addr.index_reg != dst_reg))
+            IR_free_reg(builder, addr.index_reg);
     }
 
     operand->kind = IR_OPERAND_REG;
@@ -568,7 +653,7 @@ static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, b
 
                 operand->kind = IR_OPERAND_SIBD_ADDR;
                 operand->addr.base_reg = base_reg;
-                operand->addr.index_reg = 0;
+                operand->addr.index_reg = IR_REG_COUNT;
                 operand->addr.scale = 0;
                 operand->addr.disp = 0;
             }
@@ -1186,9 +1271,9 @@ static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand*
                 dst->kind = IR_OPERAND_SIBD_ADDR;
                 dst->type = result_type;
                 dst->addr.base_reg = result_reg;
+                dst->addr.index_reg = IR_REG_COUNT;
                 dst->addr.disp = 0;
                 dst->addr.scale = 0;
-                dst->addr.index_reg = 0;
             }
             break;
         }
@@ -1225,7 +1310,7 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
     // We need the src expression to be a concrete value.
     IR_commit_indirections(builder, src_op);
 
-    IR_Reg dst_reg = 0;
+    IR_Reg dst_reg = IR_REG_COUNT;
 
     if (src_op->type->size == dst_op->type->size)
     {
@@ -1253,7 +1338,7 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
             IR_OpRM src_arg = {.kind = IR_OP_REG, .reg = src_op->reg};
             IR_emit_instr_trunc(builder, dst_op->type, dst_reg, src_op->type, src_arg);
 
-            IR_free_op_reg(builder, src_op);
+            IR_try_free_op_reg(builder, src_op);
         }
         else
         {
@@ -1280,7 +1365,7 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
             else
                 IR_emit_instr_zext(builder, dst_op->type, dst_reg, src_op->type, src_arg);
 
-            IR_free_op_reg(builder, src_op);
+            IR_try_free_op_reg(builder, src_op);
         }
         else
         {
@@ -1297,6 +1382,9 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
     {
         dst_op->kind = IR_OPERAND_SIBD_ADDR;
         dst_op->addr.base_reg = dst_reg;
+        dst_op->addr.index_reg = IR_REG_COUNT;
+        dst_op->addr.scale = 0;
+        dst_op->addr.disp = 0;
     }
     else
     {
@@ -1327,6 +1415,7 @@ static void IR_emit_expr_cast(IR_Builder* builder, ExprCast* expr_cast, IR_Opera
 
         dst_op->kind = IR_OPERAND_SIBD_ADDR;
         dst_op->addr.base_reg = dst_reg;
+        dst_op->addr.index_reg = IR_REG_COUNT;
         dst_op->addr.disp = 0;
         dst_op->addr.scale = 0;
     }
@@ -1461,7 +1550,7 @@ static void IR_emit_stmt_return(IR_Builder* builder, StmtReturn* sret)
 
     IR_emit_instr_ret(builder, expr_op.type, expr_op.reg);
 
-    IR_free_op_reg(builder, &expr_op);
+    IR_try_free_op_reg(builder, &expr_op);
 }
 
 static void IR_emit_stmt_expr(IR_Builder* builder, StmtExpr* sexpr)
@@ -1568,7 +1657,7 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
             // Emit conditional jump without a jump target. The jump target will be filled in below.
             jmpcc_false = IR_emit_instr_jmpcc(builder, IR_COND_EQ, 0);
 
-            IR_free_op_reg(builder, &cond_op);
+            IR_try_free_op_reg(builder, &cond_op);
         }
 
         // Emit instructions for if-block body.
@@ -1706,7 +1795,7 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
             // Emit conditional jump to the top of the loop.
             IR_emit_instr_jmpcc(builder, IR_COND_NEQ, loop_top);
 
-            IR_free_op_reg(builder, &cond_op);
+            IR_try_free_op_reg(builder, &cond_op);
         }
     }
 }
@@ -1777,7 +1866,7 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
             IR_emit_instr_jmpcc(builder, IR_COND_NEQ, loop_top);
         }
 
-        IR_free_op_reg(builder, &cond_op);
+        IR_try_free_op_reg(builder, &cond_op);
     }
 }
 
@@ -1914,6 +2003,7 @@ static bool IR_build_proc(IR_Builder* builder, Symbol* sym)
     sym->as_proc.instrs = array_create(builder->arena, IR_Instr*, 32);
 
     IR_emit_stmt_block_body(builder, &dproc->stmts);
+    assert(builder->free_regs == (u32)-1);
 
     IR_pop_scope(builder);
     builder->curr_proc = NULL;
@@ -1933,7 +2023,7 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
         return NULL;
 
     IR_Builder builder = {
-        .arena = arena, .tmp_arena = tmp_arena, .curr_proc = NULL, .curr_scope = global_scope, .module = module};
+        .arena = arena, .tmp_arena = tmp_arena, .curr_proc = NULL, .curr_scope = global_scope, .module = module, .free_regs = -1};
 
     // Create global IR vars/procs arrays.
     module->num_vars = global_scope->sym_kind_counts[SYMBOL_VAR];

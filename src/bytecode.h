@@ -6,6 +6,7 @@
 #define IR_STACK_ALIGN 16
 #define IR_INSTRS_PER_BUCKET 64
 #define IR_PROCS_PER_BUCKET 16
+#define IR_REG_COUNT 32
 
 typedef struct IR_Instr IR_Instr;
 typedef struct IR_Module IR_Module;
@@ -28,6 +29,8 @@ typedef struct IR_InstrCmp IR_InstrCmp;
 typedef struct IR_InstrJmpCC IR_InstrJmpCC;
 typedef struct IR_InstrJmp IR_InstrJmp;
 typedef struct IR_InstrSetCC IR_InstrSetCC;
+
+typedef u8 IR_Reg;
 
 typedef enum IR_InstrKind {
     IR_INSTR_NONE = 0,

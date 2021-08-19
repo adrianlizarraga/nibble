@@ -45,8 +45,8 @@ static char* IR_print_mem(Allocator* arena, IR_MemAddr* mem_addr)
     else
     {
         IR_SIBDAddr addr = mem_addr->sibd;
-        bool has_base = addr.base_reg != 0;
-        bool has_index = addr.scale && (addr.index_reg != 0);
+        bool has_base = addr.base_reg < IR_REG_COUNT;
+        bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
         bool has_disp = addr.disp != 0;
 
         assert(has_base || has_index);
