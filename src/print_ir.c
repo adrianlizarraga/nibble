@@ -17,9 +17,18 @@ static char* IR_print_imm(Allocator* arena, Scalar imm)
 
 static char* IR_print_reg(Allocator* arena, IR_Reg reg)
 {
-    char* dstr = array_create(arena, char, 8);
+    char* dstr = NULL;
 
-    ftprint_char_array(&dstr, true, "r%d", reg);
+    if (reg < IR_REG_COUNT)
+    {
+        dstr = array_create(arena, char, 8);
+        ftprint_char_array(&dstr, true, "r%d", reg);
+    }
+    else
+    {
+        dstr = array_create(arena, char, 2);
+        array_push(dstr, '\0');
+    }
 
     return dstr;
 }

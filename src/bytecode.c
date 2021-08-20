@@ -1758,6 +1758,10 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
                 if (it->result)
                     IR_patch_jmp_target(it->jmp, IR_get_jmp_target(builder));
             }
+
+            // Create a jump to the "false" path if it doesn't yet exist.
+            if (!cond_op.cmp.final_jmp.jmp)
+                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, 0);
         }
         // If the condition is some computation, compare the condition to zero and create a conditional
         // jump to the "false" path.
@@ -1783,9 +1787,9 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
 
         if (else_body)
         {
-            // Code path from if-block needs to jump to the end.
-            // The jump target is patched below.
-            IR_Instr* jmp_instr = IR_emit_instr_jmp(builder, 0);
+            // Code path from if-block needs to jump over the else block. However, this is not necessary if 
+            // all code paths within the if-block return.
+            IR_Instr* jmp_end_instr = if_body->returns ? NULL : IR_emit_instr_jmp(builder, 0);
 
             // Patch conditional jmp instruction(s) to jump to the else-block when the condition is false.
             if (cond_op.kind == IR_OPERAND_DEFERRED_CMP)
@@ -1812,7 +1816,8 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
             IR_emit_stmt(builder, else_body);
 
             // Patch jmp instruction that jumps to the end of the else-block.
-            IR_patch_jmp_target(jmp_instr, IR_get_jmp_target(builder));
+            if (jmp_end_instr)
+                IR_patch_jmp_target(jmp_end_instr, IR_get_jmp_target(builder));
         }
         else
         {
@@ -1894,11 +1899,16 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
                     IR_patch_jmp_target(it->jmp, loop_bottom);
             }
 
-            // Patch final jmp to the "true" control path.
+            // Path final jump to the top of the loop (create one if jump does not exist).
+            if (cond_op.cmp.final_jmp.jmp)
+                IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
+            else
+                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, loop_top);
+
+            // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
                 cond_op.cmp.final_jmp.jmp->_jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
 
-            IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
         }
         else
         {
@@ -1964,11 +1974,16 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
                     IR_patch_jmp_target(it->jmp, loop_bottom);
             }
 
-            // Patch final jmp to the "true" control path.
+            // Path final jump to the top of the loop (create one if jump does not exist).
+            if (cond_op.cmp.final_jmp.jmp)
+                IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
+            else
+                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, loop_top);
+
+            // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
                 cond_op.cmp.final_jmp.jmp->_jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
 
-            IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
         }
         else
         {
@@ -2122,6 +2137,15 @@ static bool IR_build_proc(IR_Builder* builder, Symbol* sym)
 
     IR_emit_stmt_block_body(builder, &dproc->stmts);
     assert(builder->free_regs == (u32)-1);
+
+    // If proc doesn't have explicit returns, add one at the end.
+    // NOTE: This should only apply to procs that return void. The resolver
+    // will catch other cases.
+    if (!dproc->returns)
+    {
+        assert(sym->type->as_proc.ret == type_void);
+        IR_emit_instr_ret(builder, type_void, IR_REG_COUNT);
+    }
 
     IR_pop_scope(builder);
     builder->curr_proc = NULL;

@@ -59,6 +59,7 @@ enum ResolveStmtInFlags {
 static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
 static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
 static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* ret_type, unsigned flags);
+static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
 static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
 static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
 static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type* ret_type, unsigned flags);
@@ -1718,6 +1719,8 @@ static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym)
 
     pop_scope(resolver);
 
+    dproc->returns = returns;
+
     if ((ret_type != type_void) && !returns && success)
     {
         resolver_on_error(resolver, "Not all code paths in procedure `%s` return a value", dproc->name);
@@ -1861,6 +1864,28 @@ static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_typ
     return ret;
 }
 
+static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
+{
+    StmtDoWhile* swhile = (StmtDoWhile*)stmt;
+
+    // Resolve condition expression.
+    if (!resolve_cond_expr(resolver, swhile->cond))
+        return 0;
+
+    // Resolve loop body.
+    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type,
+                                flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
+
+    // Report an error if the do-while loop always returns before the condition check.
+    if (ret & RESOLVE_STMT_RETURNS)
+    {
+        resolver_on_error(resolver, "All paths in do-while loop's body return");
+        ret &= ~RESOLVE_STMT_SUCCESS;
+    }
+
+    return ret;
+}
+
 static void eop_decay(Resolver* resolver, ExprOperand* eop)
 {
     eop->type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, eop->type);
@@ -1942,116 +1967,132 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 
 static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
+    unsigned ret = 0;
     bool break_allowed = flags & RESOLVE_STMT_BREAK_ALLOWED;
     bool continue_allowed = flags & RESOLVE_STMT_CONTINUE_ALLOWED;
 
     switch (stmt->kind)
     {
         case CST_StmtNoOp:
-            return RESOLVE_STMT_SUCCESS;
+        {
+            ret = RESOLVE_STMT_SUCCESS;
+            break;
+        }
         case CST_StmtReturn:
         {
+            ret = RESOLVE_STMT_RETURNS;
             StmtReturn* sret = (StmtReturn*)stmt;
 
             if (!sret->expr && (ret_type != type_void))
             {
-                resolver_on_error(resolver, "Return statement is missing a return value of type `%s`",
-                                  type_name(ret_type));
-                return RESOLVE_STMT_RETURNS;
+                resolver_on_error(resolver, "Return statement is missing a return value of type `%s`", type_name(ret_type));
+                break;
             }
 
             if (sret->expr)
             {
                 if (!resolve_expr(resolver, sret->expr))
-                    return RESOLVE_STMT_RETURNS;
+                    break;
 
                 ExprOperand ret_eop = OP_FROM_EXPR(sret->expr);
-
                 eop_decay(resolver, &ret_eop);
 
                 if (!convert_eop(&ret_eop, ret_type))
                 {
                     resolver_on_error(resolver, "Invalid return type. Wanted `%s`, but got `%s`", type_name(ret_type),
                                       type_name(ret_eop.type));
-                    return RESOLVE_STMT_RETURNS;
+                    break;
                 }
 
                 sret->expr = try_wrap_cast_expr(resolver, &ret_eop, sret->expr);
             }
 
-            return RESOLVE_STMT_SUCCESS | RESOLVE_STMT_RETURNS;
+            ret |= RESOLVE_STMT_SUCCESS;
+            break;
         }
         case CST_StmtBreak:
-            if (!break_allowed)
-            {
+        {
+            if (break_allowed)
+                ret = RESOLVE_STMT_SUCCESS;
+            else
                 resolver_on_error(resolver, "Illegal break statement");
-                return 0;
-            }
 
-            return RESOLVE_STMT_SUCCESS;
+            break;
+        }
         case CST_StmtContinue:
-            if (!continue_allowed)
-            {
+        {
+            if (continue_allowed)
+                ret = RESOLVE_STMT_SUCCESS;
+            else
                 resolver_on_error(resolver, "Illegal continue statement");
-                return 0;
-            }
 
-            return RESOLVE_STMT_SUCCESS;
+            break;
+        }
         case CST_StmtIf:
-            return resolve_stmt_if(resolver, stmt, ret_type, flags);
+        {
+            ret = resolve_stmt_if(resolver, stmt, ret_type, flags);
+            break;
+        }
         case CST_StmtWhile:
+        {
+            ret = resolve_stmt_while(resolver, stmt, ret_type, flags);
+            break;
+        }
         case CST_StmtDoWhile:
-            return resolve_stmt_while(resolver, stmt, ret_type, flags);
+        {
+            ret = resolve_stmt_do_while(resolver, stmt, ret_type, flags);
+            break;
+        }
         case CST_StmtExpr:
         {
             StmtExpr* sexpr = (StmtExpr*)stmt;
 
-            if (!resolve_expr(resolver, sexpr->expr))
-                return 0;
+            if (resolve_expr(resolver, sexpr->expr))
+                ret = RESOLVE_STMT_SUCCESS;
 
-            return RESOLVE_STMT_SUCCESS;
+            break;
         }
         case CST_StmtExprAssign:
-            return resolve_stmt_expr_assign(resolver, stmt);
+        {
+            ret = resolve_stmt_expr_assign(resolver, stmt);
+            break;
+        }
         case CST_StmtDecl:
         {
             StmtDecl* sdecl = (StmtDecl*)stmt;
             Decl* decl = sdecl->decl;
             Scope* scope = resolver->curr_scope;
 
-            switch (decl->kind)
+            if (decl->kind == CST_DeclVar)
             {
-                case CST_DeclVar:
-                {
-                    DeclVar* dvar = (DeclVar*)decl;
-                    Symbol* sym = add_unresolved_symbol(resolver, scope, SYMBOL_VAR, dvar->name, decl);
+                DeclVar* dvar = (DeclVar*)decl;
+                Symbol* sym = add_unresolved_symbol(resolver, scope, SYMBOL_VAR, dvar->name, decl);
 
-                    if (!sym)
-                    {
-                        resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name);
-                        return 0;
-                    }
-
-                    if (!resolve_decl_var(resolver, sym))
-                        return 0;
-
-                    break;
-                }
-                default:
-                    // TODO: Support other declaration kinds.
-                    resolver_on_error(resolver, "Only variable and type declarations are supported inside procedures");
-                    return 0;
+                if (!sym)
+                    resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name);
+                else if (resolve_decl_var(resolver, sym))
+                    ret = RESOLVE_STMT_SUCCESS;
+            }
+            else
+            {
+                // TODO: Support other declaration kinds.
+                resolver_on_error(resolver, "Only variable and type declarations are supported inside procedures");
             }
 
-            return RESOLVE_STMT_SUCCESS;
+            break;
         }
         case CST_StmtBlock:
-            return resolve_stmt_block(resolver, stmt, ret_type, flags);
+        {
+            ret = resolve_stmt_block(resolver, stmt, ret_type, flags);
+            break;
+        }
         default:
             break;
     }
 
-    return 0;
+    stmt->returns = ret & RESOLVE_STMT_RETURNS;
+
+    return ret;
 }
 
 static bool resolve_symbol(Resolver* resolver, Symbol* sym)
