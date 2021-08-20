@@ -1785,62 +1785,39 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
         // Emit instructions for if-block body.
         IR_emit_stmt(builder, if_body);
 
+        // Code path from if-block needs to jump over the else block. However, this jump instruction is only necessary
+        // if a non-empty else block exists and if not all code paths within the if-block return.
+        IR_Instr* jmp_end_instr = else_body && !if_body->returns ? IR_emit_instr_jmp(builder, 0) : NULL;
+
+        // Patch conditional jmp instruction(s) that jump over the if-block when the condition is false.
+        if (cond_op.kind == IR_OPERAND_DEFERRED_CMP)
+        {
+            // Patch the jump target for all short-circuit jmps that jump to the "false" control path.
+            for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next)
+            {
+                if (!it->result)
+                    IR_patch_jmp_target(it->jmp, IR_get_jmp_target(builder));
+            }
+
+            // Patch final jmp to "false" control path.
+            if (cond_op.cmp.final_jmp.result)
+                cond_op.cmp.final_jmp.jmp->_jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
+
+            IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, IR_get_jmp_target(builder));
+        }
+        else
+        {
+            IR_patch_jmp_target(jmpcc_false, IR_get_jmp_target(builder));
+        }
+
         if (else_body)
         {
-            // Code path from if-block needs to jump over the else block. However, this is not necessary if 
-            // all code paths within the if-block return.
-            IR_Instr* jmp_end_instr = if_body->returns ? NULL : IR_emit_instr_jmp(builder, 0);
-
-            // Patch conditional jmp instruction(s) to jump to the else-block when the condition is false.
-            if (cond_op.kind == IR_OPERAND_DEFERRED_CMP)
-            {
-                // Patch the jump target for all short-circuit jmps that jump to the "false" control path.
-                for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next)
-                {
-                    if (!it->result)
-                        IR_patch_jmp_target(it->jmp, IR_get_jmp_target(builder));
-                }
-
-                // Patch final jmp to the "false" control path.
-                if (cond_op.cmp.final_jmp.result)
-                    cond_op.cmp.final_jmp.jmp->_jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
-
-                IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, IR_get_jmp_target(builder));
-            }
-            else
-            {
-                IR_patch_jmp_target(jmpcc_false, IR_get_jmp_target(builder));
-            }
-
             // Emit instructions for else-block body.
             IR_emit_stmt(builder, else_body);
 
             // Patch jmp instruction that jumps to the end of the else-block.
             if (jmp_end_instr)
                 IR_patch_jmp_target(jmp_end_instr, IR_get_jmp_target(builder));
-        }
-        else
-        {
-            // Patch conditional jmp instruction(s) to jump after the if-block when the condition is false.
-            if (cond_op.kind == IR_OPERAND_DEFERRED_CMP)
-            {
-                // Patch the jump target for all short-circuit jmps that jump to the "false" control path.
-                for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next)
-                {
-                    if (!it->result)
-                        IR_patch_jmp_target(it->jmp, IR_get_jmp_target(builder));
-                }
-
-                // Patch final jmp to "false" control path.
-                if (cond_op.cmp.final_jmp.result)
-                    cond_op.cmp.final_jmp.jmp->_jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
-
-                IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, IR_get_jmp_target(builder));
-            }
-            else
-            {
-                IR_patch_jmp_target(jmpcc_false, IR_get_jmp_target(builder));
-            }
         }
     }
 }
@@ -1908,7 +1885,6 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
             // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
                 cond_op.cmp.final_jmp.jmp->_jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
-
         }
         else
         {
@@ -1983,7 +1959,6 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
             // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
                 cond_op.cmp.final_jmp.jmp->_jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
-
         }
         else
         {
