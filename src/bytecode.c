@@ -59,7 +59,6 @@ typedef struct IR_Builder {
     u32 free_regs;
 } IR_Builder;
 
-
 //  Calculates the number of trailing zeros (bitscan).
 //  ntz() from Hacker's Delight 2nd edition, pg 108
 static int num_trailing_zeros(u32 x)
@@ -385,6 +384,19 @@ static void IR_emit_instr_sext(IR_Builder* builder, Type* dst_type, IR_Reg dst, 
     IR_add_instr(builder, instr);
 }
 
+static void IR_emit_instr_call(IR_Builder* builder, Type* proc_type, IR_OpRM proc_loc, IR_Reg dst, u32 num_args,
+                               IR_InstrCallArg* args)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CALL);
+    instr->_call.proc_type = proc_type;
+    instr->_call.proc_loc = proc_loc;
+    instr->_call.dst = dst;
+    instr->_call.num_args = num_args;
+    instr->_call.args = args; // TODO: Copy????
+
+    IR_add_instr(builder, instr);
+}
+
 static void IR_patch_jmp_target(IR_Instr* jmp_instr, u32 jmp_target)
 {
     switch (jmp_instr->kind)
@@ -431,10 +443,13 @@ static void IR_new_deferred_sc_jmp(IR_Builder* builder, IR_DeferredCmp* cmp, IR_
 
     // Add node to the end of the linked-list.
     new_node->next = NULL;
-    cmp->last_sc_jmp = new_node;
 
-    if (!cmp->first_sc_jmp)
+    if (cmp->last_sc_jmp)
+        cmp->last_sc_jmp->next = new_node;
+    else
         cmp->first_sc_jmp = new_node;
+
+    cmp->last_sc_jmp = new_node;
 
     // Initialize data.
     new_node->cond = cond;
@@ -657,6 +672,16 @@ static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, b
                 operand->addr.scale = 0;
                 operand->addr.disp = 0;
             }
+        }
+        else if (operand->kind == IR_OPERAND_IMM)
+        {
+            IR_Reg reg = IR_next_reg(builder);
+            IR_OpRI imm_arg = {.kind = IR_OP_IMM, .imm = operand->imm};
+
+            IR_emit_instr_mov(builder, operand->type, reg, imm_arg);
+
+            operand->kind = IR_OPERAND_REG;
+            operand->reg = reg;
         }
         else
         {
@@ -1425,6 +1450,99 @@ static void IR_emit_expr_cast(IR_Builder* builder, ExprCast* expr_cast, IR_Opera
     }
 }
 
+static bool IR_type_fits_in_reg(Type* type)
+{
+    return type->size <= PTR_SIZE;
+}
+
+static void IR_emit_expr_call(IR_Builder* builder, ExprCall* expr_call, IR_Operand* dst_op)
+{
+    u32 num_args = (u32)expr_call->num_args;
+    IR_InstrCallArg* args = alloc_array(builder->arena, IR_InstrCallArg, num_args, false);
+
+    // Emit instructions for each argument expression and collect the resulting expression values
+    // into an `args` array.
+    u32 arg_index = 0;
+    List* head = &expr_call->args;
+    List* it = head->next;
+
+    while (it != head)
+    {
+        ProcCallArg* ast_arg = list_entry(it, ProcCallArg, lnode);
+        IR_Operand arg_op = {0};
+
+        IR_emit_expr(builder, ast_arg->expr, &arg_op);
+
+        if (IR_type_fits_in_reg(arg_op.type))
+        {
+            IR_ensure_operand_in_reg(builder, &arg_op, true);
+
+            args[arg_index].type = arg_op.type;
+            args[arg_index].loc.kind = IR_OP_REG;
+            args[arg_index].loc.reg = arg_op.reg;
+        }
+        else
+        {
+            // TODO: Support struct types
+            assert(0);
+        }
+
+        IR_try_free_op_reg(builder, &arg_op);
+
+        arg_index += 1;
+        it = it->next;
+    }
+
+    // Emit instructions for the procedure pointer/name.
+    IR_Operand proc_op = {0};
+    IR_OpRM proc_loc = {0};
+
+    IR_emit_expr(builder, expr_call->proc, &proc_op);
+
+    if (proc_op.kind == IR_OPERAND_PROC)
+    {
+        proc_loc.kind = IR_OP_MEM;
+        proc_loc.mem.kind = IR_MEM_ADDR_SYM;
+        proc_loc.mem.sym = proc_op.sym;
+    }
+    else
+    {
+        IR_ensure_operand_in_reg(builder, &proc_op, true);
+        proc_loc.kind = IR_OP_REG;
+        proc_loc.reg = proc_op.reg;
+    }
+
+    // Allocate a return value register if procedure returns a value.
+    Type* ret_type = expr_call->super.type;
+
+    if (ret_type != type_void)
+    {
+        if (IR_type_fits_in_reg(ret_type))
+        {
+            dst_op->kind = IR_OPERAND_REG;
+            dst_op->type = ret_type;
+            dst_op->reg = IR_next_reg(builder);
+        }
+        else
+        {
+            // TODO: Support returning structs
+            assert(0);
+        }
+    }
+    else
+    {
+        dst_op->kind = IR_OPERAND_NONE;
+        dst_op->type = type_void;
+        dst_op->reg = IR_REG_COUNT;
+    }
+
+    // Emit call instruction.
+    IR_emit_instr_call(builder, proc_op.type, proc_loc, dst_op->reg, num_args, args);
+
+    // Clean up
+    IR_try_free_op_reg(builder, &proc_op);
+}
+
 static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
 {
     if (expr->is_const)
@@ -1442,7 +1560,7 @@ static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
             IR_emit_expr_ident(builder, (ExprIdent*)expr, dst);
             break;
         case CST_ExprCall:
-            // IR_emit_expr_call(builder, (ExprCall*)expr, dst);
+            IR_emit_expr_call(builder, (ExprCall*)expr, dst);
             break;
         case CST_ExprCast:
             IR_emit_expr_cast(builder, (ExprCast*)expr, dst);
@@ -2022,8 +2140,12 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
     if (!module)
         return NULL;
 
-    IR_Builder builder = {
-        .arena = arena, .tmp_arena = tmp_arena, .curr_proc = NULL, .curr_scope = global_scope, .module = module, .free_regs = -1};
+    IR_Builder builder = {.arena = arena,
+                          .tmp_arena = tmp_arena,
+                          .curr_proc = NULL,
+                          .curr_scope = global_scope,
+                          .module = module,
+                          .free_regs = -1};
 
     // Create global IR vars/procs arrays.
     module->num_vars = global_scope->sym_kind_counts[SYMBOL_VAR];

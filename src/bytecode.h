@@ -29,6 +29,7 @@ typedef struct IR_InstrCmp IR_InstrCmp;
 typedef struct IR_InstrJmpCC IR_InstrJmpCC;
 typedef struct IR_InstrJmp IR_InstrJmp;
 typedef struct IR_InstrSetCC IR_InstrSetCC;
+typedef struct IR_InstrCall IR_InstrCall;
 
 typedef u8 IR_Reg;
 
@@ -72,7 +73,6 @@ typedef enum IR_InstrKind {
     IR_INSTR_SETCC, // Set a byte on condition
 
     IR_INSTR_RET,
-    IR_INSTR_ARG, // Set argument
     IR_INSTR_CALL, // Pushes a "Call Record" into a stack of call records.
 } IR_InstrKind;
 
@@ -207,6 +207,19 @@ struct IR_InstrSetCC {
     IR_OpRM dst;
 };
 
+typedef struct IR_InstrCallArg {
+    Type* type;
+    IR_OpRM loc;
+} IR_InstrCallArg;
+
+struct IR_InstrCall {
+    Type* proc_type;
+    IR_OpRM proc_loc; // Register for pointer to proc; Memory (symbol) for direct call.
+    IR_Reg dst;
+    u32 num_args;
+    IR_InstrCallArg* args;
+};
+
 struct IR_Instr {
     IR_InstrKind kind;
 
@@ -228,6 +241,7 @@ struct IR_Instr {
         IR_InstrConvert _trunc;
         IR_InstrConvert _zext;
         IR_InstrConvert _sext;
+        IR_InstrCall _call;
     };
 };
 
