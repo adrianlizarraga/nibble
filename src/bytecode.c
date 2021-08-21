@@ -1747,8 +1747,8 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
 
         IR_Instr* jmpcc_false = NULL;
 
-        // If the condition is a chain of deferred comparisons, first patch the jump targets
-        // for all short-circuit jumps that jump to the "true" path, which corresponds to the
+        // If the condition is a chain of deferred comparisons, patch the jump targets
+        // for all short-circuit jumps that jump to the "true" path to the
         // current instruction index.
         if (cond_op.kind == IR_OPERAND_DEFERRED_CMP)
         {
@@ -2097,7 +2097,7 @@ static void IR_assign_proc_var_offsets(IR_Builder* builder, Symbol* proc_sym)
     allocator_restore_state(arena_state);
 }
 
-static bool IR_build_proc(IR_Builder* builder, Symbol* sym)
+static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 {
     DeclProc* dproc = (DeclProc*)sym->decl;
 
@@ -2128,8 +2128,6 @@ static bool IR_build_proc(IR_Builder* builder, Symbol* sym)
 #ifndef NDEBUG
     IR_print_out_proc(builder->tmp_arena, sym);
 #endif
-
-    return true;
 }
 
 IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope)
