@@ -666,18 +666,12 @@ typedef enum SymbolStatus {
 } SymbolStatus;
 
 struct SymbolVar {
-    bool is_arg;
-
     // Used by backends to store this var's
     // location in the stack.
     s32 offset;
 };
 
 struct SymbolProc {
-    u32 min_stack_size;
-    u32 num_vars;
-    Symbol** vars;
-
     struct IR_Instr** instrs; // NOTE: stretchy buf
 };
 

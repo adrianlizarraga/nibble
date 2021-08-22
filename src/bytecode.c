@@ -2011,92 +2011,6 @@ static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt)
     }
 }
 
-static u32 IR_assign_scope_var_offsets(Symbol*** proc_vars, Scope* scope, u32 offset)
-{
-    u32 stack_size = offset;
-
-    //
-    // Sum sizes of local variables declared in this scope.
-    //
-    {
-        List* head = &scope->sym_list;
-        List* it = head->next;
-
-        while (it != head)
-        {
-            Symbol* sym = list_entry(it, Symbol, lnode);
-
-            if (sym->kind == SYMBOL_VAR)
-            {
-                Type* var_type = sym->type;
-                size_t var_size = var_type->size;
-                size_t var_align = var_type->align;
-
-                stack_size += var_size;
-                stack_size = ALIGN_UP(stack_size, var_align);
-                sym->as_var.offset = -stack_size;
-
-                array_push(*proc_vars, sym);
-            }
-
-            it = it->next;
-        }
-    }
-
-    //
-    // Recursively compute stack sizes for child scopes. Take the largest.
-    //
-    {
-        List* head = &scope->children;
-        List* it = head->next;
-        size_t child_offset = stack_size;
-
-        while (it != head)
-        {
-            Scope* child_scope = list_entry(it, Scope, lnode);
-            u32 child_size = IR_assign_scope_var_offsets(proc_vars, child_scope, child_offset);
-
-            if (child_size > stack_size)
-                stack_size = child_size;
-
-            it = it->next;
-        }
-    }
-
-    return ALIGN_UP(stack_size, IR_STACK_ALIGN);
-}
-
-static void IR_assign_proc_var_offsets(IR_Builder* builder, Symbol* proc_sym)
-{
-    u32 stack_size = 0;
-    DeclProc* dproc = (DeclProc*)proc_sym->decl;
-    Scope* scope = dproc->scope;
-
-    // Save allocator state so that the temporary arena's state can
-    // be restored after building the temporary args array.
-    AllocatorState arena_state = allocator_get_state(builder->tmp_arena);
-    {
-        // Create temporary array that will hold all args and local variables that belong to
-        // this procedure. This includes variables declared in nested scopes.
-        Symbol** proc_vars = array_create(builder->tmp_arena, Symbol*, dproc->num_params << 1);
-
-        // Recursively assign a stack offset to each local variable (including proc arguments).
-        // Variables declared in sibling scopes will be assigned to overlapping stack offsets
-        // to use "less" stack space.
-        stack_size = IR_assign_scope_var_offsets(&proc_vars, scope, stack_size);
-
-        // Save the computed stack size and the vars array into the procedure symbol.
-        u32 num_vars = (u32)array_len(proc_vars);
-
-        proc_sym->as_proc.min_stack_size = ALIGN_UP(stack_size, IR_STACK_ALIGN);
-        proc_sym->as_proc.num_vars = num_vars;
-        proc_sym->as_proc.vars = alloc_array(builder->arena, Symbol*, num_vars, false);
-
-        memcpy(proc_sym->as_proc.vars, proc_vars, num_vars * sizeof(Symbol*));
-    }
-    allocator_restore_state(arena_state);
-}
-
 static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 {
     DeclProc* dproc = (DeclProc*)sym->decl;
@@ -2104,9 +2018,6 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
     // Set procedure as the current scope.
     IR_push_scope(builder, dproc->scope);
     builder->curr_proc = sym;
-
-    // Assign stack offsets to params and local vars.
-    IR_assign_proc_var_offsets(builder, sym);
 
     sym->as_proc.instrs = array_create(builder->arena, IR_Instr*, 32);
 
