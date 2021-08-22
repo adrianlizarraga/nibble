@@ -303,14 +303,168 @@ static size_t X64_assign_proc_stack_offsets(DeclProc* dproc)
     return ALIGN_UP(stack_size, 16);
 }
 
-static char* X64_print_rm(X64_Generator* generator, IR_OpRM rm, Type* type)
+static char* X64_print_imm(X64_Generator* generator, Scalar imm, Type* type)
+{
+    char* dstr = array_create(generator->tmp_mem, char, 8);
+
+    if (type->kind == TYPE_INTEGER)
+    {
+        switch (type->as_integer.kind)
+        {
+            case INTEGER_U8:
+                ftprint_char_array(&dstr, false, "%u", imm.as_int._u8);
+                break;
+            case INTEGER_S8:
+                ftprint_char_array(&dstr, false, "%d", imm.as_int._s8);
+                break;
+            case INTEGER_U16:
+                ftprint_char_array(&dstr, false, "%u", imm.as_int._u16);
+                break;
+            case INTEGER_S16:
+                ftprint_char_array(&dstr, false, "%d", imm.as_int._s16);
+                break;
+            case INTEGER_U32:
+                ftprint_char_array(&dstr, false, "%u", imm.as_int._u32);
+                break;
+            case INTEGER_S32:
+                ftprint_char_array(&dstr, false, "%d", imm.as_int._s32);
+                break;
+            case INTEGER_U64:
+                ftprint_char_array(&dstr, false, "%lu", imm.as_int._u64);
+                break;
+            case INTEGER_S64:
+                ftprint_char_array(&dstr, false, "%ld", imm.as_int._s64);
+                break;
+            default:
+                assert(0);
+                break;
+        }
+    }
+    else if (type->kind == TYPE_PTR)
+    {
+        ftprint_char_array(&dstr, false, "%lu", imm.as_int._u64);
+    }
+    else if (type->kind == TYPE_FLOAT)
+    {
+        assert(0);
+    }
+    else
+    {
+        assert(0);
+    }
+
+    array_push(dstr, '\0');
+
+    return dstr;
+}
+
+static char* X64_print_reg(X64_Generator* generator, IR_Reg ir_reg, Type* type)
+{
+    char* dstr = array_create(generator->tmp_mem, char, 8);
+    size_t size = type->size;
+
+    // Get mapped value for this IR reg.
+    X64_Operand* op = &generator->op_map[ir_reg];
+
+    switch (op->kind)
+    {
+        case X64_OPERAND_REG:
+            assert(op->reg < X64_REG_COUNT);
+            ftprint_char_array(&dstr, false, "%s", x64_reg_names[size][op->reg]);
+            break;
+        case X64_OPERAND_FRAME_OFFSET:
+            ftprint_char_array(&dstr, false, "%s [rbp + %d]", x64_mem_size_label[size], op->offset);
+            break;
+        default:
+            assert(0);
+            break;
+    }
+
+    array_push(dstr, '\0');
+
+    return dstr;
+}
+
+static char* X64_print_mem(X64_Generator* generator, IR_MemAddr* mem_addr, Type* type)
+{
+    char* dstr = array_create(generator->tmp_mem, char, 16);
+    size_t size = type->size;
+
+    if (mem_addr->kind == IR_MEM_ADDR_SYM)
+    {
+        Symbol* sym = mem_addr->sym;
+
+        if (sym->is_local)
+            ftprint_char_array(&dstr, false, "%s [rbp + %d]", x64_mem_size_label[size], sym->offset);
+        else
+            ftprint_char_array(&dstr, false, "%s [rel %s]", x64_mem_size_label[size], sym->name);
+    }
+    else
+    {
+        IR_SIBDAddr addr = mem_addr->sibd;
+        bool has_base = addr.base_reg < IR_REG_COUNT;
+        bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
+        bool has_disp = addr.disp != 0;
+
+        assert(has_base || has_index);
+
+        if (has_base)
+        {
+            char* base_reg_name = IR_print_reg(arena, addr.base_reg);
+
+            if (has_index)
+            {
+                char* index_reg_name = IR_print_reg(arena, addr.index_reg);
+
+                if (has_disp)
+                    ftprint_char_array(&dstr, false, "%s + %d*%s + %d", base_reg_name, addr.scale, index_reg_name,
+                                       (s32)addr.disp);
+                else
+                    ftprint_char_array(&dstr, false, "%s + %d*%s", base_reg_name, addr.scale, index_reg_name);
+            }
+            else
+            {
+                if (has_disp)
+                    ftprint_char_array(&dstr, false, "%s + %d", base_reg_name, (s32)addr.disp);
+                else
+                    ftprint_char_array(&dstr, false, "%s", base_reg_name);
+            }
+        }
+        else
+        {
+            char* index_reg_name = IR_print_reg(arena, addr.index_reg);
+
+            if (has_disp)
+                ftprint_char_array(&dstr, false, "%d*%s + %d", addr.scale, index_reg_name, (s32)addr.disp);
+            else
+                ftprint_char_array(&dstr, false, "%d*%s", addr.scale, index_reg_name);
+        }
+    }
+}
+
+static char* X64_print_rm(X64_Generator* generator, IR_OpRM* rm, Type* type)
 {
     switch (rm.kind)
     {
         case IR_OP_REG:
-            return X64_print_reg(arena, rm.reg);
+            return X64_print_reg(generator, rm->reg, type);
         case IR_OP_MEM:
-            return X64_print_mem(arena, rm.mem);
+            return X64_print_mem(generator, rm->mem, type);
+        default:
+            return NULL;
+    }
+}
+
+static char* X64_print_rmi(X64_Generator* generator, IR_OpRMI* rmi, Type* type)
+{
+    switch (rm.kind)
+    {
+        case IR_OP_REG:
+            return X64_print_reg(generator, rmi->reg, type);
+        case IR_OP_MEM:
+            return X64_print_mem(generator, rmi->mem, type);
+        case IR_OP_IMM:
+            return X64_print_imm(generator, rmi->imm, type);
         default:
             return NULL;
     }
@@ -325,8 +479,8 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, IR_Instr* i
         case IR_INSTR_ADD:
         {
             X64_emit_text(generator, "    add %s, %s",
-                          X64_print_rm(generator, instr->_add.dst, instr->_add.type),
-                          X64_print_rmi(generator, instr->_add.src, instr->_add.type));
+                          X64_print_rm(generator, &instr->_add.dst, instr->_add.type),
+                          X64_print_rmi(generator, &instr->_add.src, instr->_add.type));
             break;
         }
     }
