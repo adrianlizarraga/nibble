@@ -155,6 +155,7 @@ struct IR_InstrStore {
 
 struct IR_InstrLAddr {
     IR_Reg dst;
+    Type* type; // Type of the thing we would be loading. Not necessary??
     IR_MemAddr mem;
 };
 
@@ -218,6 +219,7 @@ struct IR_InstrCall {
 
 struct IR_Instr {
     IR_InstrKind kind;
+    bool is_jmp_target;
 
     union {
         IR_InstrBinary _add;

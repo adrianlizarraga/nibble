@@ -55,6 +55,7 @@ typedef struct IR_Builder {
     Symbol* curr_proc;
     Scope* curr_scope;
 
+    bool next_instr_is_jmp_target;
     IR_DeferredJmpcc* sc_jmp_freelist;
     u32 free_regs;
 } IR_Builder;
@@ -169,6 +170,12 @@ static void IR_try_free_op_reg(IR_Builder* builder, IR_Operand* op)
 //////////////////////////////////////////////////////
 static void IR_add_instr(IR_Builder* builder, IR_Instr* instr)
 {
+    if (builder->next_instr_is_jmp_target)
+    {
+        instr->is_jmp_target = true;
+        builder->next_instr_is_jmp_target = false;
+    }
+
     array_push(builder->curr_proc->as_proc.instrs, instr);
 }
 
@@ -268,10 +275,11 @@ static void IR_emit_instr_store(IR_Builder* builder, Type* type, IR_MemAddr dst,
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst, IR_MemAddr addr)
+static void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst, Type* type, IR_MemAddr addr)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
     instr->_laddr.dst = dst;
+    instr->_laddr.type = type;
     instr->_laddr.mem = addr;
 
     IR_add_instr(builder, instr);
@@ -390,6 +398,7 @@ static void IR_patch_jmp_target(IR_Instr* jmp_instr, u32 jmp_target)
 
 static u32 IR_get_jmp_target(IR_Builder* builder)
 {
+    builder->next_instr_is_jmp_target = true;
     return (u32)array_len(builder->curr_proc->as_proc.instrs);
 }
 
@@ -609,7 +618,7 @@ static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
         else
             dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_laddr(builder, dst_reg, addr);
+        IR_emit_instr_laddr(builder, dst_reg, operand->type, addr);
 
         if (has_base_reg && (base_reg != dst_reg))
             IR_free_reg(builder, base_reg);
@@ -1283,7 +1292,7 @@ static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand*
                 IR_Reg result_reg = IR_next_reg(builder);
                 IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = dst->sym};
 
-                IR_emit_instr_laddr(builder, result_reg, var_addr);
+                IR_emit_instr_laddr(builder, result_reg, dst->type, var_addr);
 
                 dst->kind = IR_OPERAND_MEM_ADDR;
                 dst->type = result_type;
@@ -1440,7 +1449,7 @@ static void IR_emit_expr_cast(IR_Builder* builder, ExprCast* expr_cast, IR_Opera
         {
             IR_Reg dst_reg = IR_next_reg(builder);
             IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = src_op.sym};
-            IR_emit_instr_laddr(builder, dst_reg, var_addr);
+            IR_emit_instr_laddr(builder, dst_reg, src_op.type, var_addr);
 
             dst_op->addr.base_kind = IR_MEM_BASE_REG;
             dst_op->addr.base.reg = dst_reg;
