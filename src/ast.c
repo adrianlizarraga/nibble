@@ -590,6 +590,7 @@ Type* type_llong;
 Type* type_ullong;
 Type* type_ssize;
 Type* type_usize;
+Type* type_ptr_void;
 
 size_t PTR_SIZE = 8;
 size_t PTR_ALIGN = 8;
@@ -827,7 +828,7 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
     return type;
 }
 
-void init_builtin_types(OS target_os, Arch target_arch)
+void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, TypeCache* type_cache)
 {
     bool invalid_os_arch = false;
 
@@ -938,6 +939,8 @@ void init_builtin_types(OS target_os, Arch target_arch)
         type_ssize = type_llong;
         type_usize = type_ullong;
     }
+
+    type_ptr_void = type_ptr(ast_mem, &type_cache->ptrs, type_void);
 }
 
 //////////////////////////////

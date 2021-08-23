@@ -14,7 +14,7 @@ typedef enum IR_OperandKind {
     IR_OPERAND_NONE,
     IR_OPERAND_IMM,
     IR_OPERAND_REG,
-    IR_OPERAND_SIBD_ADDR,
+    IR_OPERAND_MEM_ADDR,
     IR_OPERAND_DEREF_ADDR,
     IR_OPERAND_DEFERRED_CMP,
     IR_OPERAND_VAR,
@@ -42,7 +42,7 @@ typedef struct IR_Operand {
     union {
         Scalar imm;
         IR_Reg reg;
-        IR_SIBDAddr addr;
+        IR_MemAddr addr;
         Symbol* sym;
         IR_DeferredCmp cmp;
     };
@@ -144,9 +144,9 @@ static void IR_try_free_op_reg(IR_Builder* builder, IR_Operand* op)
             IR_free_reg(builder, op->reg);
             break;
         case IR_OPERAND_DEREF_ADDR:
-        case IR_OPERAND_SIBD_ADDR:
+        case IR_OPERAND_MEM_ADDR:
         {
-            IR_Reg base_reg = op->addr.base_reg;
+            IR_Reg base_reg = op->addr.base_kind == IR_MEM_BASE_REG ? op->addr.base.reg : IR_REG_COUNT;
             IR_Reg index_reg = op->addr.index_reg;
 
             if (base_reg < IR_REG_COUNT)
@@ -210,6 +210,16 @@ static void IR_emit_instr_shr(IR_Builder* builder, Type* type, IR_OpRM dst, IR_O
     IR_add_instr(builder, instr);
 }
 
+static void IR_emit_instr_sar(IR_Builder* builder, Type* type, IR_OpRM dst, IR_OpRMI src)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SAR);
+    instr->_sar.type = type;
+    instr->_sar.dst = dst;
+    instr->_sar.src = src;
+
+    IR_add_instr(builder, instr);
+}
+
 static void IR_emit_instr_neg(IR_Builder* builder, Type* type, IR_OpRM dst)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_NEG);
@@ -238,66 +248,31 @@ static void IR_emit_instr_mov(IR_Builder* builder, Type* type, IR_Reg dst, IR_Op
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_load_ptr(IR_Builder* builder, Type* type, IR_Reg dst, IR_SIBDAddr src)
+static void IR_emit_instr_load(IR_Builder* builder, Type* type, IR_Reg dst, IR_MemAddr src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LOAD);
     instr->_load.type = type;
     instr->_load.dst = dst;
-    instr->_load.src.kind = IR_MEM_ADDR_SIBD;
-    instr->_load.src.sibd = src;
+    instr->_load.src = src;
 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_load_var(IR_Builder* builder, Type* type, IR_Reg dst, Symbol* sym)
-{
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LOAD);
-    instr->_load.type = type;
-    instr->_load.dst = dst;
-    instr->_load.src.kind = IR_MEM_ADDR_SYM;
-    instr->_load.src.sym = sym;
-
-    IR_add_instr(builder, instr);
-}
-
-static void IR_emit_instr_store_ptr(IR_Builder* builder, Type* type, IR_SIBDAddr dst, IR_OpRI src)
+static void IR_emit_instr_store(IR_Builder* builder, Type* type, IR_MemAddr dst, IR_OpRI src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_STORE);
     instr->_store.type = type;
-    instr->_store.dst.kind = IR_MEM_ADDR_SIBD;
-    instr->_store.dst.sibd = dst;
+    instr->_store.dst = dst;
     instr->_store.src = src;
 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_store_var(IR_Builder* builder, Type* type, Symbol* dst, IR_OpRI src)
-{
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_STORE);
-    instr->_store.type = type;
-    instr->_store.dst.kind = IR_MEM_ADDR_SYM;
-    instr->_store.dst.sym = dst;
-    instr->_store.src = src;
-
-    IR_add_instr(builder, instr);
-}
-
-static void IR_emit_instr_laddr_ptr(IR_Builder* builder, IR_Reg dst, IR_SIBDAddr addr)
+static void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst, IR_MemAddr addr)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
     instr->_laddr.dst = dst;
-    instr->_laddr.mem.kind = IR_MEM_ADDR_SIBD;
-    instr->_laddr.mem.sibd = addr;
-
-    IR_add_instr(builder, instr);
-}
-
-static void IR_emit_instr_laddr_var(IR_Builder* builder, IR_Reg dst, Symbol* sym)
-{
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
-    instr->_laddr.dst = dst;
-    instr->_laddr.mem.kind = IR_MEM_ADDR_SYM;
-    instr->_laddr.mem.sym = sym;
+    instr->_laddr.mem = addr;
 
     IR_add_instr(builder, instr);
 }
@@ -577,56 +552,69 @@ static void IR_execute_deref(IR_Builder* builder, IR_Operand* operand)
 
     // The operand currently holds the address it is supposed to derefence.
     // This function executes the dereference into the one of the registers that held the address.
-    IR_SIBDAddr addr = operand->addr;
+    IR_MemAddr addr = operand->addr;
+    IR_Reg base_reg = addr.base_kind == IR_MEM_BASE_REG ? addr.base.reg : IR_REG_COUNT;
+    IR_Reg index_reg = addr.scale ? addr.index_reg : IR_REG_COUNT;
 
-    bool has_base = addr.base_reg < IR_REG_COUNT;
-    bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
+    bool has_base_reg = base_reg < IR_REG_COUNT;
+    bool has_index_reg = addr.index_reg < IR_REG_COUNT;
 
-    assert(has_base || has_index);
+    IR_Reg dst_reg;
 
-    IR_Reg dst_reg = has_base ? addr.base_reg : addr.index_reg;
+    if (has_base_reg)
+        dst_reg = base_reg;
+    else if (has_index_reg)
+        dst_reg = index_reg;
+    else
+        dst_reg = IR_next_reg(builder);
 
-    IR_emit_instr_load_ptr(builder, operand->type, dst_reg, addr);
+    IR_emit_instr_load(builder, operand->type, dst_reg, addr);
 
     operand->kind = IR_OPERAND_REG;
     operand->reg = dst_reg;
 
-    if (has_base && (addr.base_reg != dst_reg))
-        IR_free_reg(builder, addr.base_reg);
-    if (has_index && (addr.index_reg != dst_reg))
-        IR_free_reg(builder, addr.index_reg);
+    if (has_base_reg && (base_reg != dst_reg))
+        IR_free_reg(builder, base_reg);
+    if (has_index_reg && (index_reg != dst_reg))
+        IR_free_reg(builder, index_reg);
 }
 
 static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
 {
-    assert(operand->kind == IR_OPERAND_SIBD_ADDR);
+    assert(operand->kind == IR_OPERAND_MEM_ADDR);
 
     // The operand currently holds a memory address.
     // This function executes the "load-effective-address" call into the one of the registers that held the address.
-    IR_SIBDAddr addr = operand->addr;
+    IR_MemAddr addr = operand->addr;
+    IR_Reg base_reg = addr.base_kind == IR_MEM_BASE_REG ? addr.base.reg : IR_REG_COUNT;
+    IR_Reg index_reg = addr.scale ? addr.index_reg : IR_REG_COUNT;
 
-    bool has_base = addr.base_reg < IR_REG_COUNT;
-    bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
+    bool has_base_reg = base_reg < IR_REG_COUNT;
+    bool has_index_reg = addr.index_reg < IR_REG_COUNT;
     bool has_disp = addr.disp != 0;
+
     IR_Reg dst_reg;
 
-    assert(has_base || has_index);
-
-    if (has_base && !has_index && !has_disp)
+    if (has_base_reg && !has_index_reg && !has_disp)
     {
         // No need to emit any instructions. Just keep address in base register.
-        dst_reg = operand->addr.base_reg;
+        dst_reg = base_reg;
     }
     else
     {
-        dst_reg = has_base ? addr.base_reg : addr.index_reg;
+        if (has_base_reg)
+            dst_reg = base_reg;
+        else if (has_index_reg)
+            dst_reg = index_reg;
+        else
+            dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_laddr_ptr(builder, dst_reg, addr);
+        IR_emit_instr_laddr(builder, dst_reg, addr);
 
-        if (has_base && (addr.base_reg != dst_reg))
-            IR_free_reg(builder, addr.base_reg);
-        if (has_index && (addr.index_reg != dst_reg))
-            IR_free_reg(builder, addr.index_reg);
+        if (has_base_reg && (base_reg != dst_reg))
+            IR_free_reg(builder, base_reg);
+        if (has_index_reg && (index_reg != dst_reg))
+            IR_free_reg(builder, index_reg);
     }
 
     operand->kind = IR_OPERAND_REG;
@@ -637,7 +625,7 @@ static void IR_commit_indirections(IR_Builder* builder, IR_Operand* operand)
 {
     if (operand->kind == IR_OPERAND_DEREF_ADDR)
         IR_execute_deref(builder, operand);
-    else if (operand->kind == IR_OPERAND_SIBD_ADDR)
+    else if (operand->kind == IR_OPERAND_MEM_ADDR)
         IR_execute_lea(builder, operand);
     else if (operand->kind == IR_OPERAND_DEFERRED_CMP)
         IR_execute_deferred_cmp(builder, operand);
@@ -645,7 +633,7 @@ static void IR_commit_indirections(IR_Builder* builder, IR_Operand* operand)
 
 static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, bool commit_ptr)
 {
-    if (commit_ptr && (operand->kind == IR_OPERAND_SIBD_ADDR))
+    if (commit_ptr && (operand->kind == IR_OPERAND_MEM_ADDR))
     {
         IR_execute_lea(builder, operand);
     }
@@ -661,13 +649,15 @@ static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, b
     {
         if (!commit_ptr && (operand->type->kind == TYPE_PTR))
         {
-            if (operand->kind != IR_OPERAND_SIBD_ADDR)
+            if (operand->kind != IR_OPERAND_MEM_ADDR)
             {
                 IR_Reg base_reg = IR_next_reg(builder);
-                IR_emit_instr_load_var(builder, operand->type, base_reg, operand->sym);
+                IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = operand->sym};
+                IR_emit_instr_load(builder, operand->type, base_reg, var_addr);
 
-                operand->kind = IR_OPERAND_SIBD_ADDR;
-                operand->addr.base_reg = base_reg;
+                operand->kind = IR_OPERAND_MEM_ADDR;
+                operand->addr.base_kind = IR_MEM_BASE_REG;
+                operand->addr.base.reg = base_reg;
                 operand->addr.index_reg = IR_REG_COUNT;
                 operand->addr.scale = 0;
                 operand->addr.disp = 0;
@@ -686,7 +676,8 @@ static void IR_ensure_operand_in_reg(IR_Builder* builder, IR_Operand* operand, b
         else
         {
             IR_Reg reg = IR_next_reg(builder);
-            IR_emit_instr_load_var(builder, operand->type, reg, operand->sym);
+            IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = operand->sym};
+            IR_emit_instr_load(builder, operand->type, reg, var_addr);
 
             operand->kind = IR_OPERAND_REG;
             operand->reg = reg;
@@ -711,8 +702,8 @@ static IR_OpRM IR_oprm_from_op(IR_Builder* builder, IR_Operand* op)
             break;
         case IR_OPERAND_VAR:
             arg.kind = IR_OP_MEM;
-            arg.mem.kind = IR_MEM_ADDR_SYM;
-            arg.mem.sym = op->sym;
+            arg.mem.base_kind = IR_MEM_BASE_SYM;
+            arg.mem.base.sym = op->sym;
             break;
         case IR_OPERAND_DEREF_ADDR:
             IR_execute_deref(builder, op);
@@ -724,7 +715,7 @@ static IR_OpRM IR_oprm_from_op(IR_Builder* builder, IR_Operand* op)
             arg.kind = IR_OP_REG;
             arg.reg = op->reg;
             break;
-        case IR_OPERAND_SIBD_ADDR:
+        case IR_OPERAND_MEM_ADDR:
             IR_execute_lea(builder, op);
             arg.kind = IR_OP_REG;
             arg.reg = op->reg;
@@ -752,8 +743,8 @@ static IR_OpRMI IR_oprmi_from_op(IR_Builder* builder, IR_Operand* op)
             break;
         case IR_OPERAND_VAR:
             arg.kind = IR_OP_MEM;
-            arg.mem.kind = IR_MEM_ADDR_SYM;
-            arg.mem.sym = op->sym;
+            arg.mem.base_kind = IR_MEM_BASE_SYM;
+            arg.mem.base.sym = op->sym;
             break;
         case IR_OPERAND_DEREF_ADDR:
             IR_execute_deref(builder, op);
@@ -765,7 +756,7 @@ static IR_OpRMI IR_oprmi_from_op(IR_Builder* builder, IR_Operand* op)
             arg.kind = IR_OP_REG;
             arg.reg = op->reg;
             break;
-        case IR_OPERAND_SIBD_ADDR:
+        case IR_OPERAND_MEM_ADDR:
             IR_execute_lea(builder, op);
             arg.kind = IR_OP_REG;
             arg.reg = op->reg;
@@ -1098,7 +1089,7 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
                 if (base_size_log2)
                 {
                     IR_OpRMI shift_arg = {.kind = IR_OP_IMM, .imm.as_int._u32 = base_size_log2};
-                    IR_emit_instr_shr(builder, result_type, dst_arg, shift_arg);
+                    IR_emit_instr_sar(builder, result_type, dst_arg, shift_arg);
                 }
 
                 *dst = left;
@@ -1282,7 +1273,7 @@ static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand*
 
             if (dst->kind == IR_OPERAND_DEREF_ADDR)
             {
-                dst->kind = IR_OPERAND_SIBD_ADDR;
+                dst->kind = IR_OPERAND_MEM_ADDR;
                 dst->type = result_type;
             }
             else
@@ -1290,12 +1281,14 @@ static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand*
                 assert(dst->kind == IR_OPERAND_VAR);
 
                 IR_Reg result_reg = IR_next_reg(builder);
+                IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = dst->sym};
 
-                IR_emit_instr_laddr_var(builder, result_reg, dst->sym);
+                IR_emit_instr_laddr(builder, result_reg, var_addr);
 
-                dst->kind = IR_OPERAND_SIBD_ADDR;
+                dst->kind = IR_OPERAND_MEM_ADDR;
                 dst->type = result_type;
-                dst->addr.base_reg = result_reg;
+                dst->addr.base_kind = IR_MEM_BASE_REG;
+                dst->addr.base.reg = result_reg;
                 dst->addr.index_reg = IR_REG_COUNT;
                 dst->addr.disp = 0;
                 dst->addr.scale = 0;
@@ -1350,7 +1343,8 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
             assert(src_op->kind == IR_OPERAND_VAR);
 
             dst_reg = IR_next_reg(builder);
-            IR_emit_instr_load_var(builder, src_op->type, dst_reg, src_op->sym);
+            IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = src_op->sym};
+            IR_emit_instr_load(builder, src_op->type, dst_reg, var_addr);
         }
     }
     // Truncate from larger type to smaller type.
@@ -1369,7 +1363,7 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
         {
             assert(src_op->kind == IR_OPERAND_VAR);
 
-            IR_OpRM src_arg = {.kind = IR_OP_MEM, .mem = {.kind = IR_MEM_ADDR_SYM, .sym = src_op->sym}};
+            IR_OpRM src_arg = {.kind = IR_OP_MEM, .mem = {.base_kind = IR_MEM_BASE_SYM, .base.sym = src_op->sym}};
             IR_emit_instr_trunc(builder, dst_op->type, dst_reg, src_op->type, src_arg);
         }
     }
@@ -1394,7 +1388,7 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
         }
         else
         {
-            IR_OpRM src_arg = {.kind = IR_OP_MEM, .mem = {.kind = IR_MEM_ADDR_SYM, .sym = src_op->sym}};
+            IR_OpRM src_arg = {.kind = IR_OP_MEM, .mem = {.base_kind = IR_MEM_BASE_SYM, .base.sym = src_op->sym}};
 
             if (src_signed)
                 IR_emit_instr_sext(builder, dst_op->type, dst_reg, src_op->type, src_arg);
@@ -1405,8 +1399,9 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
 
     if (dst_op->type->kind == TYPE_PTR)
     {
-        dst_op->kind = IR_OPERAND_SIBD_ADDR;
-        dst_op->addr.base_reg = dst_reg;
+        dst_op->kind = IR_OPERAND_MEM_ADDR;
+        dst_op->addr.base_kind = IR_MEM_BASE_REG;
+        dst_op->addr.base.reg = dst_reg;
         dst_op->addr.index_reg = IR_REG_COUNT;
         dst_op->addr.scale = 0;
         dst_op->addr.disp = 0;
@@ -1435,11 +1430,23 @@ static void IR_emit_expr_cast(IR_Builder* builder, ExprCast* expr_cast, IR_Opera
     if (src_op.type->kind == TYPE_ARRAY && dst_op->type->kind == TYPE_PTR)
     {
         assert(src_op.kind == IR_OPERAND_VAR);
-        IR_Reg dst_reg = IR_next_reg(builder);
-        IR_emit_instr_laddr_var(builder, dst_reg, src_op.sym);
 
-        dst_op->kind = IR_OPERAND_SIBD_ADDR;
-        dst_op->addr.base_reg = dst_reg;
+        if (src_op.sym->is_local)
+        {
+            dst_op->addr.base_kind = IR_MEM_BASE_SYM;
+            dst_op->addr.base.sym = src_op.sym;
+        }
+        else
+        {
+            IR_Reg dst_reg = IR_next_reg(builder);
+            IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = src_op.sym};
+            IR_emit_instr_laddr(builder, dst_reg, var_addr);
+
+            dst_op->addr.base_kind = IR_MEM_BASE_REG;
+            dst_op->addr.base.reg = dst_reg;
+        }
+
+        dst_op->kind = IR_OPERAND_MEM_ADDR;
         dst_op->addr.index_reg = IR_REG_COUNT;
         dst_op->addr.disp = 0;
         dst_op->addr.scale = 0;
@@ -1502,8 +1509,8 @@ static void IR_emit_expr_call(IR_Builder* builder, ExprCall* expr_call, IR_Opera
     if (proc_op.kind == IR_OPERAND_PROC)
     {
         proc_loc.kind = IR_OP_MEM;
-        proc_loc.mem.kind = IR_MEM_ADDR_SYM;
-        proc_loc.mem.sym = proc_op.sym;
+        proc_loc.mem.base_kind = IR_MEM_BASE_SYM;
+        proc_loc.mem.base.sym = proc_op.sym;
     }
     else
     {
@@ -1603,14 +1610,16 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
             if (rhs->kind == IR_OPERAND_IMM)
             {
                 IR_OpRI rhs_arg = {.kind = IR_OP_IMM, .imm = rhs->imm};
-                IR_emit_instr_store_var(builder, lhs->type, lhs->sym, rhs_arg);
+                IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = lhs->sym};
+                IR_emit_instr_store(builder, lhs->type, var_addr, rhs_arg);
             }
             else
             {
                 IR_ensure_operand_in_reg(builder, rhs, true);
 
                 IR_OpRI rhs_arg = {.kind = IR_OP_REG, .reg = rhs->reg};
-                IR_emit_instr_store_var(builder, lhs->type, lhs->sym, rhs_arg);
+                IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = lhs->sym};
+                IR_emit_instr_store(builder, lhs->type, var_addr, rhs_arg);
             }
 
             break;
@@ -1620,14 +1629,14 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
             if (rhs->kind == IR_OPERAND_IMM)
             {
                 IR_OpRI rhs_arg = {.kind = IR_OP_IMM, .imm = rhs->imm};
-                IR_emit_instr_store_ptr(builder, lhs->type, lhs->addr, rhs_arg);
+                IR_emit_instr_store(builder, lhs->type, lhs->addr, rhs_arg);
             }
             else
             {
                 IR_ensure_operand_in_reg(builder, rhs, true);
 
                 IR_OpRI rhs_arg = {.kind = IR_OP_REG, .reg = rhs->reg};
-                IR_emit_instr_store_ptr(builder, lhs->type, lhs->addr, rhs_arg);
+                IR_emit_instr_store(builder, lhs->type, lhs->addr, rhs_arg);
             }
 
             break;

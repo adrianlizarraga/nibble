@@ -33,60 +33,53 @@ static char* IR_print_reg(Allocator* arena, IR_Reg reg)
     return dstr;
 }
 
-static char* IR_print_mem(Allocator* arena, IR_MemAddr* mem_addr)
+static char* IR_print_mem(Allocator* arena, IR_MemAddr* addr)
 {
     char* dstr = array_create(arena, char, 16);
 
-    if (mem_addr->kind == IR_MEM_ADDR_SYM)
-    {
-        Symbol* sym = mem_addr->sym;
-        const char* meta = sym->is_local ? "local" : "global";
+    bool has_base = addr->base_kind != IR_MEM_BASE_NONE;
+    bool has_index = addr->scale && (addr->index_reg < IR_REG_COUNT);
+    bool has_disp = addr->disp != 0;
 
-        ftprint_char_array(&dstr, false, "%s %s", meta, sym->name);
+    assert(has_base || has_index);
+
+    ftprint_char_array(&dstr, false, "[");
+
+    if (has_base)
+    {
+        if (addr->base_kind == IR_MEM_BASE_REG)
+            ftprint_char_array(&dstr, false, "%s", IR_print_reg(arena, addr->base.reg));
+        else
+            ftprint_char_array(&dstr, false, "%s %s",
+                               (addr->base.sym->is_local ? "local" : "global"),
+                               addr->base.sym->name);
+
+        if (has_index)
+        {
+            char* index_reg_name = IR_print_reg(arena, addr->index_reg);
+
+            if (has_disp)
+                ftprint_char_array(&dstr, false, " + %d*%s + %d", addr->scale, index_reg_name,
+                                   (s32)addr->disp);
+            else
+                ftprint_char_array(&dstr, false, " + %d*%s", addr->scale, index_reg_name);
+        }
+        else if (has_disp)
+        {
+            ftprint_char_array(&dstr, false, " + %d", (s32)addr->disp);
+        }
     }
     else
     {
-        IR_SIBDAddr addr = mem_addr->sibd;
-        bool has_base = addr.base_reg < IR_REG_COUNT;
-        bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
-        bool has_disp = addr.disp != 0;
+        char* index_reg_name = IR_print_reg(arena, addr->index_reg);
 
-        assert(has_base || has_index);
-
-        if (has_base)
-        {
-            char* base_reg_name = IR_print_reg(arena, addr.base_reg);
-
-            if (has_index)
-            {
-                char* index_reg_name = IR_print_reg(arena, addr.index_reg);
-
-                if (has_disp)
-                    ftprint_char_array(&dstr, false, "%s + %d*%s + %d", base_reg_name, addr.scale, index_reg_name,
-                                       (s32)addr.disp);
-                else
-                    ftprint_char_array(&dstr, false, "%s + %d*%s", base_reg_name, addr.scale, index_reg_name);
-            }
-            else
-            {
-                if (has_disp)
-                    ftprint_char_array(&dstr, false, "%s + %d", base_reg_name, (s32)addr.disp);
-                else
-                    ftprint_char_array(&dstr, false, "%s", base_reg_name);
-            }
-        }
+        if (has_disp)
+            ftprint_char_array(&dstr, false, "%d*%s + %d", addr->scale, index_reg_name, (s32)addr->disp);
         else
-        {
-            char* index_reg_name = IR_print_reg(arena, addr.index_reg);
-
-            if (has_disp)
-                ftprint_char_array(&dstr, false, "%d*%s + %d", addr.scale, index_reg_name, (s32)addr.disp);
-            else
-                ftprint_char_array(&dstr, false, "%d*%s", addr.scale, index_reg_name);
-        }
+            ftprint_char_array(&dstr, false, "%d*%s", addr->scale, index_reg_name);
     }
 
-    array_push(dstr, '\0');
+    ftprint_char_array(&dstr, true, "]");
 
     return dstr;
 }
@@ -156,40 +149,28 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
                                IR_print_op_rm(arena, &instr->_shr.dst), IR_print_op_rmi(arena, &instr->_shr.src));
             break;
         }
+        case IR_INSTR_SAR:
+        {
+            ftprint_char_array(&dstr, false, "sar <%s> %s, %s", type_name(instr->_sar.type),
+                               IR_print_op_rm(arena, &instr->_sar.dst), IR_print_op_rmi(arena, &instr->_sar.src));
+            break;
+        }
         case IR_INSTR_NEG:
         {
             ftprint_char_array(&dstr, false, "neg <%s> %s", type_name(instr->_neg.type),
                                IR_print_op_rm(arena, &instr->_neg.dst));
             break;
         }
+        case IR_INSTR_NOT:
+        {
+            ftprint_char_array(&dstr, false, "not <%s> %s", type_name(instr->_not.type),
+                               IR_print_op_rm(arena, &instr->_not.dst));
+            break;
+        }
         case IR_INSTR_MOV:
         {
             ftprint_char_array(&dstr, false, "mov <%s> %s, %s", type_name(instr->_mov.type),
                                IR_print_reg(arena, instr->_mov.dst), IR_print_op_ri(arena, &instr->_mov.src));
-            break;
-        }
-        case IR_INSTR_STORE:
-        {
-            ftprint_char_array(&dstr, false, "store <%s> [%s], %s", type_name(instr->_store.type),
-                               IR_print_mem(arena, &instr->_store.dst), IR_print_op_ri(arena, &instr->_store.src));
-            break;
-        }
-        case IR_INSTR_LOAD:
-        {
-            ftprint_char_array(&dstr, false, "load <%s> %s, [%s]", type_name(instr->_load.type),
-                               IR_print_reg(arena, instr->_load.dst), IR_print_mem(arena, &instr->_load.src));
-            break;
-        }
-        case IR_INSTR_LADDR:
-        {
-            ftprint_char_array(&dstr, false, "laddr %s, [%s]", IR_print_reg(arena, instr->_laddr.dst),
-                               IR_print_mem(arena, &instr->_laddr.mem));
-            break;
-        }
-        case IR_INSTR_RET:
-        {
-            ftprint_char_array(&dstr, false, "ret <%s> %s", type_name(instr->_ret.type),
-                               IR_print_reg(arena, instr->_ret.src));
             break;
         }
         case IR_INSTR_TRUNC:
@@ -211,6 +192,30 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
             ftprint_char_array(&dstr, false, "sext <%s> %s, <%s> %s", type_name(instr->_sext.dst_type),
                                IR_print_reg(arena, instr->_sext.dst), type_name(instr->_sext.src_type),
                                IR_print_op_rm(arena, &instr->_sext.src));
+            break;
+        }
+        case IR_INSTR_STORE:
+        {
+            ftprint_char_array(&dstr, false, "store <%s> %s, %s", type_name(instr->_store.type),
+                               IR_print_mem(arena, &instr->_store.dst), IR_print_op_ri(arena, &instr->_store.src));
+            break;
+        }
+        case IR_INSTR_LOAD:
+        {
+            ftprint_char_array(&dstr, false, "load <%s> %s, %s", type_name(instr->_load.type),
+                               IR_print_reg(arena, instr->_load.dst), IR_print_mem(arena, &instr->_load.src));
+            break;
+        }
+        case IR_INSTR_LADDR:
+        {
+            ftprint_char_array(&dstr, false, "laddr %s, %s", IR_print_reg(arena, instr->_laddr.dst),
+                               IR_print_mem(arena, &instr->_laddr.mem));
+            break;
+        }
+        case IR_INSTR_RET:
+        {
+            ftprint_char_array(&dstr, false, "ret <%s> %s", type_name(instr->_ret.type),
+                               IR_print_reg(arena, instr->_ret.src));
             break;
         }
         case IR_INSTR_CMP:

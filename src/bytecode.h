@@ -11,7 +11,6 @@
 typedef struct IR_Instr IR_Instr;
 typedef struct IR_Module IR_Module;
 
-typedef struct IR_SIBDAddr IR_SIBDAddr;
 typedef struct IR_MemAddr IR_MemAddr;
 typedef struct IR_OpRMI IR_OpRMI;
 typedef struct IR_OpRM IR_OpRM;
@@ -76,25 +75,22 @@ typedef enum IR_InstrKind {
     IR_INSTR_CALL, // Pushes a "Call Record" into a stack of call records.
 } IR_InstrKind;
 
-struct IR_SIBDAddr {
-    IR_Reg base_reg;
+typedef enum IR_MemBaseKind {
+    IR_MEM_BASE_NONE = 0,
+    IR_MEM_BASE_REG,
+    IR_MEM_BASE_SYM,
+} IR_MemBaseKind;
+
+struct IR_MemAddr {
+    IR_MemBaseKind base_kind;
+    union {
+        IR_Reg reg;
+        Symbol* sym;
+    } base;
+
     IR_Reg index_reg;
     u8 scale;
     u32 disp;
-};
-
-typedef enum IR_MemAddrKind {
-    IR_MEM_ADDR_SIBD,
-    IR_MEM_ADDR_SYM,
-} IR_MemAddrKind;
-
-struct IR_MemAddr {
-    IR_MemAddrKind kind;
-
-    union {
-        IR_SIBDAddr sibd;
-        Symbol* sym;
-    };
 };
 
 typedef enum IR_OpKind {
@@ -227,6 +223,7 @@ struct IR_Instr {
         IR_InstrBinary _add;
         IR_InstrBinary _sub;
         IR_InstrBinary _shr;
+        IR_InstrBinary _sar;
         IR_InstrUnary _neg;
         IR_InstrUnary _not;
         IR_InstrMov _mov;

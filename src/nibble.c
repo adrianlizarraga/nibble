@@ -203,7 +203,7 @@ bool nibble_init(OS target_os, Arch target_arch)
         return false;
 
     init_scope_lists(&nibble->global_scope);
-    init_builtin_types(target_os, target_arch);
+    init_builtin_types(target_os, target_arch, &nibble->ast_mem, &nibble->type_cache);
 
     return true;
 }

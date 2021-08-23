@@ -626,13 +626,14 @@ extern Type* type_llong;
 extern Type* type_ullong;
 extern Type* type_ssize;
 extern Type* type_usize;
+extern Type* type_ptr_void;
 
 extern size_t PTR_SIZE;
 extern size_t PTR_ALIGN;
 
 extern int type_integer_ranks[];
 
-void init_builtin_types(OS target_os, Arch target_arch);
+void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, TypeCache* type_cache);
 const char* type_name(Type* type);
 bool type_is_integer_like(Type* type);
 bool type_is_arithmetic(Type* type);

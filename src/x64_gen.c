@@ -24,6 +24,85 @@ typedef enum X64_Reg {
     X64_REG_COUNT,
 } X64_Reg;
 
+static const char* x64_reg_names[MAX_OP_BYTE_SIZE + 1][X64_REG_COUNT] = {
+    [1] =
+        {
+            [RAX] = "al",
+            [RCX] = "cl",
+            [RDX] = "dl",
+            [RBX] = "bl",
+            [RSP] = "spl",
+            [RBP] = "bpl",
+            [RSI] = "sil",
+            [RDI] = "dil",
+            [R8] = "r8b",
+            [R9] = "r9b",
+            [R10] = "r10b",
+            [R11] = "r11b",
+            [R12] = "r12b",
+            [R13] = "r13b",
+            [R14] = "r14b",
+            [R15] = "r15b",
+        },
+    [2] =
+        {
+            [RAX] = "ax",
+            [RCX] = "cx",
+            [RDX] = "dx",
+            [RBX] = "bx",
+            [RSP] = "sp",
+            [RBP] = "bp",
+            [RSI] = "si",
+            [RDI] = "di",
+            [R8] = "r8w",
+            [R9] = "r9w",
+            [R10] = "r10w",
+            [R11] = "r11w",
+            [R12] = "r12w",
+            [R13] = "r13w",
+            [R14] = "r14w",
+            [R15] = "r15w",
+        },
+    [4] =
+        {
+            [RAX] = "eax",
+            [RCX] = "ecx",
+            [RDX] = "edx",
+            [RBX] = "ebx",
+            [RSP] = "esp",
+            [RBP] = "ebp",
+            [RSI] = "esi",
+            [RDI] = "edi",
+            [R8] = "r8d",
+            [R9] = "r9d",
+            [R10] = "r10d",
+            [R11] = "r11d",
+            [R12] = "r12d",
+            [R13] = "r13d",
+            [R14] = "r14d",
+            [R15] = "r15d",
+        },
+    [8] =
+        {
+            [RAX] = "rax",
+            [RCX] = "rcx",
+            [RDX] = "rdx",
+            [RBX] = "rbx",
+            [RSP] = "rsp",
+            [RBP] = "rbp",
+            [RSI] = "rsi",
+            [RDI] = "rdi",
+            [R8] = "r8",
+            [R9] = "r9",
+            [R10] = "r10",
+            [R11] = "r11",
+            [R12] = "r12",
+            [R13] = "r13",
+            [R14] = "r14",
+            [R15] = "r15",
+        },
+};
+
 // TODO: Leaf procedures should prefer to use caller-saved regs, and
 // non-leaf procedures should prefer to use callee-save regs.
 // SO, resolver should mark leaf procedures while resolving.
@@ -31,21 +110,6 @@ static X64_Reg x64_scratch_regs[] = {
     X64_R10, X64_R11, X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9, X64_RAX, // NOTE: Caller saved
     X64_R12, X64_R13, X64_R14, X64_R15, X64_RBX,                   // NOTE: Callee saved
 };
-
-typedef enum X64_OperandKind {
-    X64_OPERAND_NONE,
-    X64_OPERAND_REG,
-    X64_OPERAND_FRAME_OFFSET,
-} X64_OperandKind;
-
-typedef struct X64_Operand {
-    X64_OperandKind kind;
-
-    union {
-        X64_Reg reg;
-        s32 offset;
-    };
-} X64_Operand;
 
 typedef struct X64_ProcState {
     Symbol* sym;
@@ -67,7 +131,7 @@ typedef struct X64_Generator {
     BucketList* text_lines;
     BucketList* data_lines;
 
-    X64_Operand op_map[IR_REG_COUNT];
+    X64_Reg reg_map[IR_REG_COUNT];
 
     Allocator* gen_mem;
     Allocator* tmp_mem;
@@ -101,6 +165,9 @@ static unsigned X64_init_free_regs(X64_Generator* generator)
 
     for (size_t i = 0; i < num_scratch_regs; i += 1)
         X64_free_reg(generator, scratch_regs[i]);
+
+    for (u32 i = 0; i < IR_REG_COUNT; i += 1)
+        generator->reg_map[i] = X64_REG_COUNT;
 }
 
 static char** X64_emit_line(BucketList* sstream, Allocator* gen_mem, Allocator* tmp_mem, const char* format, ...)
@@ -358,88 +425,83 @@ static char* X64_print_imm(X64_Generator* generator, Scalar imm, Type* type)
     return dstr;
 }
 
-static char* X64_print_reg(X64_Generator* generator, IR_Reg ir_reg, Type* type)
+static const char* X64_print_reg(X64_Generator* generator, IR_Reg ir_reg, Type* type)
 {
-    char* dstr = array_create(generator->tmp_mem, char, 8);
     size_t size = type->size;
 
-    // Get mapped value for this IR reg.
-    X64_Operand* op = &generator->op_map[ir_reg];
+    X64_Reg x64_reg = generator->reg_map[ir_reg];
 
-    switch (op->kind)
-    {
-        case X64_OPERAND_REG:
-            assert(op->reg < X64_REG_COUNT);
-            ftprint_char_array(&dstr, false, "%s", x64_reg_names[size][op->reg]);
-            break;
-        case X64_OPERAND_FRAME_OFFSET:
-            ftprint_char_array(&dstr, false, "%s [rbp + %d]", x64_mem_size_label[size], op->offset);
-            break;
-        default:
-            assert(0);
-            break;
-    }
+    assert(x64_reg < X64_REG_COUNT);
 
-    array_push(dstr, '\0');
-
-    return dstr;
+    return x64_reg_names[size][x64_reg];
 }
 
-static char* X64_print_mem(X64_Generator* generator, IR_MemAddr* mem_addr, Type* type)
+static char* X64_print_mem(X64_Generator* generator, IR_MemAddr* addr, Type* type)
 {
     char* dstr = array_create(generator->tmp_mem, char, 16);
     size_t size = type->size;
+    const char* mem_label = x64_mem_size_label[size];
+    bool has_base = addr->base_kind != IR_MEM_BASE_NONE;
+    bool has_index = addr->scale && (addr->index_reg < IR_REG_COUNT);
 
-    if (mem_addr->kind == IR_MEM_ADDR_SYM)
+    assert(has_base || has_index);
+
+    if (has_base)
     {
-        Symbol* sym = mem_addr->sym;
+        X64_Reg base_reg;
+        s32 disp = 0;
 
-        if (sym->is_local)
-            ftprint_char_array(&dstr, false, "%s [rbp + %d]", x64_mem_size_label[size], sym->offset);
+        if (addr->base_kind == IR_MEM_BASE_SYM)
+        {
+            Symbol* sym = addr->base.sym;
+
+            // Early exit for global variable addresses.
+            if (!sym->is_local)
+            {
+                ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, sym->name);
+                return dstr;
+            }
+
+            disp += addr->base.sym->offset;
+            base_reg = X64_RBP;
+        }
         else
-            ftprint_char_array(&dstr, false, "%s [rel %s]", x64_mem_size_label[size], sym->name);
+        {
+            base_reg = generator->reg_map[addr->base.reg];
+        }
+
+        bool has_disp = disp != 0;
+        const char* base_reg_name = x64_reg_names[MAX_OP_BYTE_SIZE][base_reg];
+
+        if (has_index)
+        {
+            const char* index_reg_name = X64_print_reg(arena, addr->index_reg);
+
+            if (has_disp)
+                ftprint_char_array(&dstr, false, "%s [%s + %d*%s + %d]", mem_label, base_reg_name, addr->scale, index_reg_name,
+                                   (s32)addr->disp);
+            else
+                ftprint_char_array(&dstr, false, "%s [%s + %d*%s]", mem_label, base_reg_name, addr->scale, index_reg_name);
+        }
+        else
+        {
+            if (has_disp)
+                ftprint_char_array(&dstr, false, "%s [%s + %d]", mem_label, base_reg_name, (s32)addr->disp);
+            else
+                ftprint_char_array(&dstr, false, "%s [%s]", mem_label, base_reg_name);
+        }
     }
     else
     {
-        IR_SIBDAddr addr = mem_addr->sibd;
-        bool has_base = addr.base_reg < IR_REG_COUNT;
-        bool has_index = addr.scale && (addr.index_reg < IR_REG_COUNT);
-        bool has_disp = addr.disp != 0;
+        const char* index_reg_name = X64_print_reg(arena, addr->index_reg);
 
-        assert(has_base || has_index);
-
-        if (has_base)
-        {
-            char* base_reg_name = IR_print_reg(arena, addr.base_reg);
-
-            if (has_index)
-            {
-                char* index_reg_name = IR_print_reg(arena, addr.index_reg);
-
-                if (has_disp)
-                    ftprint_char_array(&dstr, false, "%s + %d*%s + %d", base_reg_name, addr.scale, index_reg_name,
-                                       (s32)addr.disp);
-                else
-                    ftprint_char_array(&dstr, false, "%s + %d*%s", base_reg_name, addr.scale, index_reg_name);
-            }
-            else
-            {
-                if (has_disp)
-                    ftprint_char_array(&dstr, false, "%s + %d", base_reg_name, (s32)addr.disp);
-                else
-                    ftprint_char_array(&dstr, false, "%s", base_reg_name);
-            }
-        }
+        if (addr->disp)
+            ftprint_char_array(&dstr, false, "%s [%d*%s + %d]", mem_label, addr->scale, index_reg_name, (s32)addr->disp);
         else
-        {
-            char* index_reg_name = IR_print_reg(arena, addr.index_reg);
-
-            if (has_disp)
-                ftprint_char_array(&dstr, false, "%d*%s + %d", addr.scale, index_reg_name, (s32)addr.disp);
-            else
-                ftprint_char_array(&dstr, false, "%d*%s", addr.scale, index_reg_name);
-        }
+            ftprint_char_array(&dstr, false, "%s [%d*%s]", mem_label, addr->scale, index_reg_name);
     }
+
+    array_push(dstr, '\0');
 }
 
 static char* X64_print_rm(X64_Generator* generator, IR_OpRM* rm, Type* type)
@@ -470,6 +532,19 @@ static char* X64_print_rmi(X64_Generator* generator, IR_OpRMI* rmi, Type* type)
     }
 }
 
+static char* X64_print_ri(X64_Generator* generator, IR_OpRI* ri, Type* type)
+{
+    switch (rm.kind)
+    {
+        case IR_OP_REG:
+            return X64_print_reg(generator, rmi->reg, type);
+        case IR_OP_IMM:
+            return X64_print_imm(generator, rmi->imm, type);
+        default:
+            return NULL;
+    }
+}
+
 static void X64_gen_instr(X64_Generator* generator, u32 instr_index, IR_Instr* instr)
 {
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
@@ -481,6 +556,90 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, IR_Instr* i
             X64_emit_text(generator, "    add %s, %s",
                           X64_print_rm(generator, &instr->_add.dst, instr->_add.type),
                           X64_print_rmi(generator, &instr->_add.src, instr->_add.type));
+            break;
+        }
+        case IR_INSTR_SUB:
+        {
+            X64_emit_text(generator, "    sub %s, %s",
+                          X64_print_rm(generator, &instr->_sub.dst, instr->_sub.type),
+                          X64_print_rmi(generator, &instr->_sub.src, instr->_sub.type));
+            break;
+        }
+        case IR_INSTR_SHR:
+        {
+            X64_emit_text(generator, "    shr %s, %s",
+                          X64_print_rm(generator, &instr->_shr.dst, instr->_shr.type),
+                          X64_print_rmi(generator, &instr->_shr.src, instr->_shr.type));
+            break;
+        }
+        case IR_INSTR_SAR:
+        {
+            X64_emit_text(generator, "    sar %s, %s",
+                          X64_print_rm(generator, &instr->_sar.dst, instr->_sar.type),
+                          X64_print_rmi(generator, &instr->_sar.src, instr->_sar.type));
+            break;
+        }
+        case IR_INSTR_NEG:
+        {
+            X64_emit_text(generator, "    neg %s", X64_print_rm(generator, &instr->_neg.dst, instr->_neg.type));
+            break;
+        }
+        case IR_INSTR_NOT:
+        {
+            X64_emit_text(generator, "    not %s", X64_print_rm(generator, &instr->_not.dst, instr->_not.type));
+            break;
+        }
+        case IR_INSTR_MOV:
+        {
+
+            X64_emit_text(generator, "    mov %s, %s",
+                          X64_print_reg(generator, instr->_mov.dst, instr->_mov.type),
+                          X64_print_ri(generator, instr->_mov.src, instr->_mov.type));
+            break;
+        }
+        case IR_INSTR_TRUNC:
+        {
+            X64_emit_text(generator, "    mov %s, %s",
+                          X64_print_reg(generator, instr->_trunc.dst, instr->_trunc.dst_type),
+                          X64_print_rm(generator, instr->_trunc.src, instr->_trunc.src_type));
+            break;
+        }
+        case IR_INSTR_ZEXT:
+        {
+            X64_emit_text(generator, "    movzx %s, %s",
+                          X64_print_reg(generator, instr->_zext.dst, instr->_zext.dst_type),
+                          X64_print_rm(generator, instr->_zext.src, instr->_zext.src_type));
+            break;
+        }
+        case IR_INSTR_SEXT:
+        {
+            X64_emit_text(generator, "    movsx %s, %s",
+                          X64_print_reg(generator, instr->_sext.dst, instr->_sext.dst_type),
+                          X64_print_rm(generator, instr->_sext.src, instr->_sext.src_type));
+            break;
+        }
+        case IR_INSTR_STORE:
+        {
+
+            X64_emit_text(generator, "    mov %s, %s",
+                          X64_print_mem(generator, instr->_store.dst, instr->_store.type),
+                          X64_print_ri(generator, instr->_store.src, instr->_store.type));
+            break;
+        }
+        case IR_INSTR_LOAD:
+        {
+
+            X64_emit_text(generator, "    mov %s, %s",
+                          X64_print_reg(generator, instr->_load.dst, instr->_load.type),
+                          X64_print_mem(generator, instr->_load.src, instr->_load.type));
+            break;
+        }
+        case IR_INSTR_LADDR:
+        {
+
+            X64_emit_text(generator, "    lea %s, %s",
+                          X64_print_reg(generator, instr->_laddr.dst, type_ptr_void),
+                          X64_print_mem(generator, instr->_laddr.mem, type_ptr_void));
             break;
         }
     }
