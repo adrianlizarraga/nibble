@@ -13,18 +13,18 @@ typedef struct Operand Operand;
 typedef struct ProcState ProcState;
 
 typedef enum Register {
-    RAX = 0,
-    RCX,
-    RDX,
+    RAX = 0, // CS
+    RCX,     // CS
+    RDX,     // CS
     RBX,
     RSP,
     RBP,
-    RSI,
-    RDI,
-    R8,
-    R9,
-    R10,
-    R11,
+    RSI,     // CS
+    RDI,     // CS
+    R8,      // CS
+    R9,      // CS
+    R10,     // CS
+    R11,     // CS
     R12,
     R13,
     R14,

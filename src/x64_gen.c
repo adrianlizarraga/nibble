@@ -111,16 +111,16 @@ static X64_Reg x64_scratch_regs[] = {
     X64_R12, X64_R13, X64_R14, X64_R15, X64_RBX,                   // NOTE: Callee saved
 };
 
+// Bit is 1 for caller saved registers: RAX, RCX, RDX, _, _, _, RSI, RDI, R8, R9, R10, R11, _, _, _, _
+static const u32 x64_caller_saved_reg_mask = 0x0FC7;
+
 typedef struct X64_ProcState {
     Symbol* sym;
 
     // NOTE: Bit is 1 if corresponding reg has been used at all within procedure.
     // This is used to generate push/pop instructions to save/restore reg values
     // across procedure calls.
-    u32 used_callee_regs;
-
-    // NOTE: Bit is 1 if corresponding reg is currently in use by an expression value.
-    u32 free_regs;
+    u32 used_regs;
 
     // NOTE: Bit is 1 if corresponding instruction is a jump target.
     u64* jmp_tgts;
@@ -130,8 +130,6 @@ typedef struct X64_ProcState {
 typedef struct X64_Generator {
     BucketList* text_lines;
     BucketList* data_lines;
-
-    X64_Reg reg_map[IR_REG_COUNT];
 
     Allocator* gen_mem;
     Allocator* tmp_mem;
@@ -152,22 +150,38 @@ static bool X64_is_reg_set(u32 reg_mask, X64_Reg reg)
     return reg_mask & (1 << reg);
 }
 
-static void X64_free_reg(X64_Generator* generator, X64_Reg reg)
+static bool X64_is_reg_used(X64_Generator* generator, X64_Reg x64_reg)
 {
-    assert(reg < X64_REG_COUNT);
-    assert(!X64_is_reg_set(generator->curr_proc.free_regs, reg));
-    X64_set_reg(&generator->curr_proc.free_regs, reg);
+    return X64_is_reg_set(generator->curr_proc.used_regs, x64_reg);
 }
 
-static unsigned X64_init_free_regs(X64_Generator* generator)
+static bool X64_is_reg_caller_saved(X64_Reg x64_reg)
 {
-    size_t num_scratch_regs = sizeof(x64_scratch_regs) / sizeof(X64_Reg);
+    return X64_is_reg_set(x64_caller_saved_reg_mask, x64_reg);
+}
 
-    for (size_t i = 0; i < num_scratch_regs; i += 1)
-        X64_free_reg(generator, scratch_regs[i]);
+static bool X64_is_reg_callee_saved(X64_Reg x64_reg)
+{
+    return !X64_is_reg_set(x64_caller_saved_reg_mask, x64_reg);
+}
 
-    for (u32 i = 0; i < IR_REG_COUNT; i += 1)
-        generator->reg_map[i] = X64_REG_COUNT;
+static X64_Reg X64_get_reg(X64_Generator* generator, X64_Reg x64_reg)
+{
+    X64_set_reg(&generator->curr_proc.used_regs, x64_reg);
+
+    return x64_reg;
+}
+
+static X64_Reg X64_convert_reg(X64_Generator* generator, IR_Reg ir_reg)
+{
+    assert(ir_reg < IR_REG_COUNT);
+    assert(ir_reg < X64_REG_COUNT);
+
+    X64_Reg x64_reg = x64_scratch_regs[ir_reg];
+
+    X64_set_reg(&generator->curr_proc.used_regs, x64_reg);
+
+    return x64_reg;
 }
 
 static char** X64_emit_line(BucketList* sstream, Allocator* gen_mem, Allocator* tmp_mem, const char* format, ...)
@@ -324,8 +338,8 @@ static size_t X64_assign_proc_stack_offsets(DeclProc* dproc)
                 stack_size = ALIGN_UP(stack_size, arg_align);
                 sym->as_var.offset = -stack_size;
 
-                emit_text("    mov %s [rbp + %d], %s", mem_size_label[arg_size], sym->as_var.offset,
-                          reg_names[arg_size][arg_reg]);
+                emit_text("    mov %s [rbp + %d], %s", x64_mem_size_label[arg_size], sym->as_var.offset,
+                          x64_reg_names[arg_size][arg_reg]);
 
                 arg_index += 1;
             }
@@ -429,9 +443,7 @@ static const char* X64_print_reg(X64_Generator* generator, IR_Reg ir_reg, Type* 
 {
     size_t size = type->size;
 
-    X64_Reg x64_reg = generator->reg_map[ir_reg];
-
-    assert(x64_reg < X64_REG_COUNT);
+    X64_Reg x64_reg = X64_convert_reg(generator, ir_reg);
 
     return x64_reg_names[size][x64_reg];
 }
@@ -467,7 +479,7 @@ static char* X64_print_mem(X64_Generator* generator, IR_MemAddr* addr, Type* typ
         }
         else
         {
-            base_reg = generator->reg_map[addr->base.reg];
+            base_reg = X64_convert_reg(generator, addr->base.reg);
         }
 
         bool has_disp = disp != 0;
@@ -642,6 +654,24 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, IR_Instr* i
                           X64_print_mem(generator, instr->_laddr.mem, type_ptr_void));
             break;
         }
+        case IR_INSTR_RET:
+        {
+            Type* ret_type = instr->_ret.type;
+            X64_Reg x64_reg = X64_convert_reg(generator, instr->_ret.src);
+
+            if (x64_reg != X64_RAX)
+            {
+                // TODO: Dont know if spilling is necessary!
+                X64_emit_text(generator, "    mov %s, %s",
+                              x64_reg_names[ret_type->size][X64_RAX],
+                              x64_reg_names[ret_type->size][x64_reg]);
+
+                X64_get_reg(generator, X64_RAX);
+            }
+
+            X64_emit_text(generator, "    jmp end.%s", generator->curr_proc.sym->name);
+            break;
+        }
     }
 
     allocator_restore_state(mem_state);
@@ -650,8 +680,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, IR_Instr* i
 static void X64_gen_proc(X64_Generator* generator, Symbol* sym)
 {
     generator->curr_proc.sym = sym;
-    generator->curr_proc.used_callee_regs = 0;
-    X64_init_free_regs(generator);
+    generator->curr_proc.used_regs = 0;
 
     X64_emit_text(generator, "");
     X64_emit_text(generator, "SECTION .text");
@@ -691,17 +720,18 @@ static void X64_gen_proc(X64_Generator* generator, Symbol* sym)
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
     {
         char* tmp_line = array_create(generator->tmp_mem, char, INIT_LINE_LEN);
+        u32 used_regs = generator->curr_proc.used_regs;
 
         for (uint32_t r = 0; r < X64_REG_COUNT; r += 1)
         {
             X64_Reg reg = (X64_Reg)r;
+            bool is_used = X64_is_reg_set(used_regs, reg);
+            bool is_callee_saved = !(x64_caller_saved_reg_mask & (1 << reg));
 
-            if (X64_is_reg_set(generator->curr_proc.used_callee_regs, reg))
+            if (is_used && is_callee_saved)
             {
                 ftprint_char_array(&tmp_line, false, "    push %s\n", reg_names[8][reg]);
-
                 X64_emit_text(generator, "    pop %s", reg_names[8][reg]);
-                X64_unset_reg(&generator->curr_proc.used_callee_regs, reg);
             }
         }
 
