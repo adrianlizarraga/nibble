@@ -84,178 +84,217 @@ static char* IR_print_mem(Allocator* arena, IR_MemAddr* addr)
     return dstr;
 }
 
-static char* IR_print_op_rm(Allocator* arena, IR_OpRM* op)
-{
-    switch (op->kind)
-    {
-        case IR_OP_REG:
-            return IR_print_reg(arena, op->reg);
-        case IR_OP_MEM:
-            return IR_print_mem(arena, &op->mem);
-        default:
-            return NULL;
-    }
-}
-
-static char* IR_print_op_rmi(Allocator* arena, IR_OpRMI* op)
-{
-    switch (op->kind)
-    {
-        case IR_OP_REG:
-            return IR_print_reg(arena, op->reg);
-        case IR_OP_MEM:
-            return IR_print_mem(arena, &op->mem);
-        case IR_OP_IMM:
-            return IR_print_imm(arena, op->imm);
-        default:
-            return NULL;
-    }
-}
-
-static char* IR_print_op_ri(Allocator* arena, IR_OpRI* op)
-{
-    switch (op->kind)
-    {
-        case IR_OP_REG:
-            return IR_print_reg(arena, op->reg);
-        case IR_OP_IMM:
-            return IR_print_imm(arena, op->imm);
-        default:
-            return NULL;
-    }
-}
-
 char* IR_print_instr(Allocator* arena, IR_Instr* instr)
 {
     char* dstr = array_create(arena, char, 16);
 
     switch (instr->kind)
     {
-        case IR_INSTR_ADD:
+        case IR_INSTR_ADD_R_R:
         {
-            ftprint_char_array(&dstr, false, "add <%s> %s, %s", type_name(instr->_add.type),
-                               IR_print_op_rm(arena, &instr->_add.dst), IR_print_op_rmi(arena, &instr->_add.src));
+            ftprint_char_array(&dstr, false, "add <%s> %s, %s", type_name(instr->add_r_r.type),
+                               IR_print_reg(arena, instr->add_r_r.dst), IR_print_reg(arena, instr->add_r_r.src));
             break;
         }
-        case IR_INSTR_SUB:
+        case IR_INSTR_ADD_R_M:
         {
-            ftprint_char_array(&dstr, false, "sub <%s> %s, %s", type_name(instr->_sub.type),
-                               IR_print_op_rm(arena, &instr->_sub.dst), IR_print_op_rmi(arena, &instr->_sub.src));
+            ftprint_char_array(&dstr, false, "add <%s> %s, %s", type_name(instr->add_r_m.type),
+                               IR_print_reg(arena, instr->add_r_m.dst), IR_print_mem(arena, &instr->add_r_m.src));
             break;
         }
-        case IR_INSTR_SHR:
+        case IR_INSTR_ADD_R_I:
         {
-            ftprint_char_array(&dstr, false, "shr <%s> %s, %s", type_name(instr->_shr.type),
-                               IR_print_op_rm(arena, &instr->_shr.dst), IR_print_op_rmi(arena, &instr->_shr.src));
+            ftprint_char_array(&dstr, false, "add <%s> %s, %s", type_name(instr->add_r_i.type),
+                               IR_print_reg(arena, instr->add_r_i.dst), IR_print_imm(arena, instr->add_r_i.src));
             break;
         }
-        case IR_INSTR_SAR:
+        case IR_INSTR_SUB_R_R:
         {
-            ftprint_char_array(&dstr, false, "sar <%s> %s, %s", type_name(instr->_sar.type),
-                               IR_print_op_rm(arena, &instr->_sar.dst), IR_print_op_rmi(arena, &instr->_sar.src));
+            ftprint_char_array(&dstr, false, "sub <%s> %s, %s", type_name(instr->sub_r_r.type),
+                               IR_print_reg(arena, instr->sub_r_r.dst), IR_print_reg(arena, instr->sub_r_r.src));
+            break;
+        }
+        case IR_INSTR_SUB_R_M:
+        {
+            ftprint_char_array(&dstr, false, "sub <%s> %s, %s", type_name(instr->sub_r_m.type),
+                               IR_print_reg(arena, instr->sub_r_m.dst), IR_print_mem(arena, &instr->sub_r_m.src));
+            break;
+        }
+        case IR_INSTR_SUB_R_I:
+        {
+            ftprint_char_array(&dstr, false, "sub <%s> %s, %s", type_name(instr->sub_r_i.type),
+                               IR_print_reg(arena, instr->sub_r_i.dst), IR_print_imm(arena, instr->sub_r_i.src));
+            break;
+        }
+        case IR_INSTR_SAR_R_R:
+        {
+            ftprint_char_array(&dstr, false, "sar <%s> %s, %s", type_name(instr->sar_r_r.type),
+                               IR_print_reg(arena, instr->sar_r_r.dst), IR_print_reg(arena, instr->sar_r_r.src));
+            break;
+        }
+        case IR_INSTR_SAR_R_M:
+        {
+            ftprint_char_array(&dstr, false, "sar <%s> %s, %s", type_name(instr->sar_r_m.type),
+                               IR_print_reg(arena, instr->sar_r_m.dst), IR_print_mem(arena, &instr->sar_r_m.src));
+            break;
+        }
+        case IR_INSTR_SAR_R_I:
+        {
+            ftprint_char_array(&dstr, false, "sar <%s> %s, %s", type_name(instr->sar_r_i.type),
+                               IR_print_reg(arena, instr->sar_r_i.dst), IR_print_imm(arena, instr->sar_r_i.src));
             break;
         }
         case IR_INSTR_NEG:
         {
-            ftprint_char_array(&dstr, false, "neg <%s> %s", type_name(instr->_neg.type),
-                               IR_print_op_rm(arena, &instr->_neg.dst));
+            ftprint_char_array(&dstr, false, "neg <%s> %s", type_name(instr->neg.type),
+                               IR_print_reg(arena, instr->neg.dst));
             break;
         }
         case IR_INSTR_NOT:
         {
-            ftprint_char_array(&dstr, false, "not <%s> %s", type_name(instr->_not.type),
-                               IR_print_op_rm(arena, &instr->_not.dst));
+            ftprint_char_array(&dstr, false, "not <%s> %s", type_name(instr->not.type),
+                               IR_print_reg(arena, instr->not.dst));
             break;
         }
-        case IR_INSTR_MOV:
+        case IR_INSTR_LIMM:
         {
-            ftprint_char_array(&dstr, false, "mov <%s> %s, %s", type_name(instr->_mov.type),
-                               IR_print_reg(arena, instr->_mov.dst), IR_print_op_ri(arena, &instr->_mov.src));
-            break;
-        }
-        case IR_INSTR_TRUNC:
-        {
-            ftprint_char_array(&dstr, false, "trunc <%s> %s, <%s> %s", type_name(instr->_trunc.dst_type),
-                               IR_print_reg(arena, instr->_trunc.dst), type_name(instr->_trunc.src_type),
-                               IR_print_op_rm(arena, &instr->_trunc.src));
-            break;
-        }
-        case IR_INSTR_ZEXT:
-        {
-            ftprint_char_array(&dstr, false, "zext <%s> %s, <%s> %s", type_name(instr->_zext.dst_type),
-                               IR_print_reg(arena, instr->_zext.dst), type_name(instr->_zext.src_type),
-                               IR_print_op_rm(arena, &instr->_zext.src));
-            break;
-        }
-        case IR_INSTR_SEXT:
-        {
-            ftprint_char_array(&dstr, false, "sext <%s> %s, <%s> %s", type_name(instr->_sext.dst_type),
-                               IR_print_reg(arena, instr->_sext.dst), type_name(instr->_sext.src_type),
-                               IR_print_op_rm(arena, &instr->_sext.src));
-            break;
-        }
-        case IR_INSTR_STORE:
-        {
-            ftprint_char_array(&dstr, false, "store <%s> %s, %s", type_name(instr->_store.type),
-                               IR_print_mem(arena, &instr->_store.dst), IR_print_op_ri(arena, &instr->_store.src));
-            break;
-        }
-        case IR_INSTR_LOAD:
-        {
-            ftprint_char_array(&dstr, false, "load <%s> %s, %s", type_name(instr->_load.type),
-                               IR_print_reg(arena, instr->_load.dst), IR_print_mem(arena, &instr->_load.src));
+            ftprint_char_array(&dstr, false, "limm <%s> %s, %s", type_name(instr->limm.type),
+                               IR_print_reg(arena, instr->limm.dst), IR_print_imm(arena, instr->limm.src));
             break;
         }
         case IR_INSTR_LADDR:
         {
-            ftprint_char_array(&dstr, false, "laddr %s, %s", IR_print_reg(arena, instr->_laddr.dst),
-                               IR_print_mem(arena, &instr->_laddr.mem));
+            ftprint_char_array(&dstr, false, "laddr %s, %s", IR_print_reg(arena, instr->laddr.dst),
+                               IR_print_mem(arena, &instr->laddr.mem));
             break;
         }
-        case IR_INSTR_RET:
+        case IR_INSTR_TRUNC_R_R:
         {
-            ftprint_char_array(&dstr, false, "ret <%s> %s", type_name(instr->_ret.type),
-                               IR_print_reg(arena, instr->_ret.src));
+            ftprint_char_array(&dstr, false, "trunc <%s> %s, <%s> %s", type_name(instr->trunc_r_r.dst_type),
+                               IR_print_reg(arena, instr->trunc_r_r.dst), type_name(instr->trunc_r_r.src_type),
+                               IR_print_reg(arena, instr->trunc_r_r.src));
             break;
         }
-        case IR_INSTR_CMP:
+        case IR_INSTR_TRUNC_R_M:
         {
-            ftprint_char_array(&dstr, false, "cmp <%s> %s, %s", type_name(instr->_cmp.type),
-                               IR_print_op_rm(arena, &instr->_cmp.op1), IR_print_op_rmi(arena, &instr->_cmp.op2));
+            ftprint_char_array(&dstr, false, "trunc <%s> %s, <%s> %s", type_name(instr->trunc_r_m.dst_type),
+                               IR_print_reg(arena, instr->trunc_r_m.dst), type_name(instr->trunc_r_m.src_type),
+                               IR_print_mem(arena, &instr->trunc_r_m.src));
             break;
         }
-        case IR_INSTR_JMPCC:
+        case IR_INSTR_ZEXT_R_R:
         {
-            ftprint_char_array(&dstr, false, "jmp_%s %u", ir_cond_names[instr->_jmpcc.cond], instr->_jmpcc.jmp_target);
+            ftprint_char_array(&dstr, false, "zext <%s> %s, <%s> %s", type_name(instr->zext_r_r.dst_type),
+                               IR_print_reg(arena, instr->zext_r_r.dst), type_name(instr->zext_r_r.src_type),
+                               IR_print_reg(arena, instr->zext_r_r.src));
             break;
         }
-        case IR_INSTR_SETCC:
+        case IR_INSTR_ZEXT_R_M:
         {
-            ftprint_char_array(&dstr, false, "set_%s %s", ir_cond_names[instr->_setcc.cond],
-                               IR_print_op_rm(arena, &instr->_setcc.dst));
+            ftprint_char_array(&dstr, false, "zext <%s> %s, <%s> %s", type_name(instr->zext_r_m.dst_type),
+                               IR_print_reg(arena, instr->zext_r_m.dst), type_name(instr->zext_r_m.src_type),
+                               IR_print_mem(arena, &instr->zext_r_m.src));
+            break;
+        }
+        case IR_INSTR_SEXT_R_R:
+        {
+            ftprint_char_array(&dstr, false, "sext <%s> %s, <%s> %s", type_name(instr->sext_r_r.dst_type),
+                               IR_print_reg(arena, instr->sext_r_r.dst), type_name(instr->sext_r_r.src_type),
+                               IR_print_reg(arena, instr->sext_r_r.src));
+            break;
+        }
+        case IR_INSTR_SEXT_R_M:
+        {
+            ftprint_char_array(&dstr, false, "sext <%s> %s, <%s> %s", type_name(instr->sext_r_m.dst_type),
+                               IR_print_reg(arena, instr->sext_r_m.dst), type_name(instr->sext_r_m.src_type),
+                               IR_print_mem(arena, &instr->sext_r_m.src));
+            break;
+        }
+        case IR_INSTR_LOAD:
+        {
+            ftprint_char_array(&dstr, false, "load <%s> %s, %s", type_name(instr->load.type),
+                               IR_print_reg(arena, instr->load.dst), IR_print_mem(arena, &instr->load.src));
+            break;
+        }
+        case IR_INSTR_STORE_R:
+        {
+            ftprint_char_array(&dstr, false, "store <%s> %s, %s", type_name(instr->store_r.type),
+                               IR_print_mem(arena, &instr->store_r.dst), IR_print_reg(arena, instr->store_r.src));
+            break;
+        }
+        case IR_INSTR_STORE_I:
+        {
+            ftprint_char_array(&dstr, false, "store <%s> %s, %s", type_name(instr->store_i.type),
+                               IR_print_mem(arena, &instr->store_i.dst), IR_print_imm(arena, instr->store_i.src));
+            break;
+        }
+        case IR_INSTR_CMP_R_R:
+        {
+            ftprint_char_array(&dstr, false, "cmp <%s> %s, %s", type_name(instr->cmp_r_r.type),
+                               IR_print_reg(arena, instr->cmp_r_r.op1), IR_print_reg(arena, instr->cmp_r_r.op2));
+            break;
+        }
+        case IR_INSTR_CMP_R_M:
+        {
+            ftprint_char_array(&dstr, false, "cmp <%s> %s, %s", type_name(instr->cmp_r_m.type),
+                               IR_print_reg(arena, instr->cmp_r_m.op1), IR_print_mem(arena, &instr->cmp_r_m.op2));
+            break;
+        }
+        case IR_INSTR_CMP_R_I:
+        {
+            ftprint_char_array(&dstr, false, "cmp <%s> %s, %s", type_name(instr->cmp_r_i.type),
+                               IR_print_reg(arena, instr->cmp_r_i.op1), IR_print_imm(arena, instr->cmp_r_i.op2));
+            break;
+        }
+        case IR_INSTR_CMP_M_R:
+        {
+            ftprint_char_array(&dstr, false, "cmp <%s> %s, %s", type_name(instr->cmp_m_r.type),
+                               IR_print_mem(arena, &instr->cmp_m_r.op1), IR_print_reg(arena, instr->cmp_m_r.op2));
+            break;
+        }
+        case IR_INSTR_CMP_M_I:
+        {
+            ftprint_char_array(&dstr, false, "cmp <%s> %s, %s", type_name(instr->cmp_m_i.type),
+                               IR_print_mem(arena, &instr->cmp_m_i.op1), IR_print_imm(arena, instr->cmp_m_i.op2));
             break;
         }
         case IR_INSTR_JMP:
         {
-            ftprint_char_array(&dstr, false, "jmp %u", instr->_jmp.jmp_target);
+            ftprint_char_array(&dstr, false, "jmp %u", instr->jmp.jmp_target);
+            break;
+        }
+        case IR_INSTR_JMPCC:
+        {
+            ftprint_char_array(&dstr, false, "jmp_%s %u", ir_cond_names[instr->jmpcc.cond], instr->jmpcc.jmp_target);
+            break;
+        }
+        case IR_INSTR_SETCC:
+        {
+            ftprint_char_array(&dstr, false, "set_%s %s", ir_cond_names[instr->setcc.cond], IR_print_reg(arena, instr->setcc.dst));
+            break;
+        }
+        case IR_INSTR_RET:
+        {
+            ftprint_char_array(&dstr, false, "ret <%s> %s", type_name(instr->ret.type),
+                               IR_print_reg(arena, instr->ret.src));
             break;
         }
         case IR_INSTR_CALL:
         {
-            Type* proc_type = instr->_call.proc_type;
+            Type* proc_type = instr->call.proc_type;
 
             ftprint_char_array(&dstr, false, "call ");
 
             if (proc_type->as_proc.ret != type_void)
             {
                 ftprint_char_array(&dstr, false, "<%s> %s, ", type_name(proc_type->as_proc.ret),
-                                   IR_print_reg(arena, instr->_call.dst));
+                                   IR_print_reg(arena, instr->call.dst));
             }
 
-            ftprint_char_array(&dstr, false, "%s (", IR_print_op_rm(arena, &instr->_call.proc_loc));
+            ftprint_char_array(&dstr, false, "%s (", instr->call.proc_loc);
 
-            u32 num_args = instr->_call.num_args;
-            IR_InstrCallArg* args = instr->_call.args;
+            u32 num_args = instr->call.num_args;
+            IR_InstrCallArg* args = instr->call.args;
 
             if (num_args)
             {
@@ -263,7 +302,7 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
                 {
                     IR_InstrCallArg* arg = args + i;
 
-                    ftprint_char_array(&dstr, false, "<%s> %s", type_name(arg->type), IR_print_op_rm(arena, &arg->loc));
+                    ftprint_char_array(&dstr, false, "<%s> %s", type_name(arg->type), IR_print_reg(arena, arg->loc));
 
                     if (i != num_args - 1)
                         ftprint_char_array(&dstr, false, ", ");

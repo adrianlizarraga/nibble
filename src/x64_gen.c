@@ -541,47 +541,6 @@ static char* X64_print_mem(X64_Generator* generator, IR_MemAddr* addr, Type* typ
     return dstr;
 }
 
-static char* X64_print_rm(X64_Generator* generator, IR_OpRM* rm, Type* type)
-{
-    switch (rm->kind)
-    {
-        case IR_OP_REG:
-            return X64_print_reg(generator, rm->reg, type);
-        case IR_OP_MEM:
-            return X64_print_mem(generator, &rm->mem, type);
-        default:
-            return NULL;
-    }
-}
-
-static char* X64_print_rmi(X64_Generator* generator, IR_OpRMI* rmi, Type* type)
-{
-    switch (rmi->kind)
-    {
-        case IR_OP_REG:
-            return X64_print_reg(generator, rmi->reg, type);
-        case IR_OP_MEM:
-            return X64_print_mem(generator, &rmi->mem, type);
-        case IR_OP_IMM:
-            return X64_print_imm(generator, rmi->imm, type);
-        default:
-            return NULL;
-    }
-}
-
-static char* X64_print_ri(X64_Generator* generator, IR_OpRI* ri, Type* type)
-{
-    switch (ri->kind)
-    {
-        case IR_OP_REG:
-            return X64_print_reg(generator, ri->reg, type);
-        case IR_OP_IMM:
-            return X64_print_imm(generator, ri->imm, type);
-        default:
-            return NULL;
-    }
-}
-
 static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_last_instr, IR_Instr* instr)
 {
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
@@ -591,98 +550,258 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
 
     switch (instr->kind)
     {
-        case IR_INSTR_ADD:
+        case IR_INSTR_ADD_R_R:
         {
-            X64_emit_text(generator, "    add %s, %s", X64_print_rm(generator, &instr->_add.dst, instr->_add.type),
-                          X64_print_rmi(generator, &instr->_add.src, instr->_add.type));
+            Type* type = instr->add_r_r.type;
+
+            X64_emit_text(generator, "    add %s, %s", 
+                          X64_print_reg(generator, instr->add_r_r.dst, type),
+                          X64_print_reg(generator, instr->add_r_r.src, type));
             break;
         }
-        case IR_INSTR_SUB:
+        case IR_INSTR_ADD_R_M:
         {
-            X64_emit_text(generator, "    sub %s, %s", X64_print_rm(generator, &instr->_sub.dst, instr->_sub.type),
-                          X64_print_rmi(generator, &instr->_sub.src, instr->_sub.type));
+            Type* type = instr->add_r_m.type;
+
+            X64_emit_text(generator, "    add %s, %s", 
+                          X64_print_reg(generator, instr->add_r_m.dst, type),
+                          X64_print_mem(generator, &instr->add_r_m.src, type));
             break;
         }
-        case IR_INSTR_SHR:
+        case IR_INSTR_ADD_R_I:
         {
-            X64_emit_text(generator, "    shr %s, %s", X64_print_rm(generator, &instr->_shr.dst, instr->_shr.type),
-                          X64_print_rmi(generator, &instr->_shr.src, instr->_shr.type));
+            Type* type = instr->add_r_i.type;
+
+            X64_emit_text(generator, "    add %s, %s", 
+                          X64_print_reg(generator, instr->add_r_i.dst, type),
+                          X64_print_imm(generator, instr->add_r_i.src, type));
             break;
         }
-        case IR_INSTR_SAR:
+        case IR_INSTR_SUB_R_R:
         {
-            X64_emit_text(generator, "    sar %s, %s", X64_print_rm(generator, &instr->_sar.dst, instr->_sar.type),
-                          X64_print_rmi(generator, &instr->_sar.src, instr->_sar.type));
+            Type* type = instr->sub_r_r.type;
+
+            X64_emit_text(generator, "    sub %s, %s", 
+                          X64_print_reg(generator, instr->sub_r_r.dst, type),
+                          X64_print_reg(generator, instr->sub_r_r.src, type));
+            break;
+        }
+        case IR_INSTR_SUB_R_M:
+        {
+            Type* type = instr->sub_r_m.type;
+
+            X64_emit_text(generator, "    sub %s, %s", 
+                          X64_print_reg(generator, instr->sub_r_m.dst, type),
+                          X64_print_mem(generator, &instr->sub_r_m.src, type));
+            break;
+        }
+        case IR_INSTR_SUB_R_I:
+        {
+            Type* type = instr->sub_r_i.type;
+
+            X64_emit_text(generator, "    sub %s, %s", 
+                          X64_print_reg(generator, instr->sub_r_i.dst, type),
+                          X64_print_imm(generator, instr->sub_r_i.src, type));
+            break;
+        }
+        case IR_INSTR_SAR_R_R:
+        {
+            Type* type = instr->sar_r_r.type;
+
+            X64_emit_text(generator, "    sar %s, %s", X64_print_reg(generator, instr->sar_r_r.dst, type),
+                          X64_print_reg(generator, instr->sar_r_r.src, type));
+            break;
+        }
+        case IR_INSTR_SAR_R_M:
+        {
+            Type* type = instr->sar_r_m.type;
+
+            X64_emit_text(generator, "    sar %s, %s", X64_print_reg(generator, instr->sar_r_m.dst, type),
+                          X64_print_mem(generator, &instr->sar_r_m.src, type));
+            break;
+        }
+        case IR_INSTR_SAR_R_I:
+        {
+            Type* type = instr->sar_r_r.type;
+
+            X64_emit_text(generator, "    sar %s, %s", X64_print_reg(generator, instr->sar_r_i.dst, type),
+                          X64_print_imm(generator, instr->sar_r_i.src, type));
             break;
         }
         case IR_INSTR_NEG:
         {
-            X64_emit_text(generator, "    neg %s", X64_print_rm(generator, &instr->_neg.dst, instr->_neg.type));
+            X64_emit_text(generator, "    neg %s", X64_print_reg(generator, instr->neg.dst, instr->neg.type));
             break;
         }
         case IR_INSTR_NOT:
         {
-            X64_emit_text(generator, "    not %s", X64_print_rm(generator, &instr->_not.dst, instr->_not.type));
+            X64_emit_text(generator, "    not %s", X64_print_reg(generator, instr->not.dst, instr->not.type));
             break;
         }
-        case IR_INSTR_MOV:
+        case IR_INSTR_LIMM:
         {
+            Type* type = instr->limm.type;
 
-            X64_emit_text(generator, "    mov %s, %s", X64_print_reg(generator, instr->_mov.dst, instr->_mov.type),
-                          X64_print_ri(generator, &instr->_mov.src, instr->_mov.type));
-            break;
-        }
-        case IR_INSTR_TRUNC:
-        {
-            X64_emit_text(generator, "    mov %s, %s",
-                          X64_print_reg(generator, instr->_trunc.dst, instr->_trunc.dst_type),
-                          X64_print_rm(generator, &instr->_trunc.src, instr->_trunc.src_type));
-            break;
-        }
-        case IR_INSTR_ZEXT:
-        {
-            X64_emit_text(generator, "    movzx %s, %s",
-                          X64_print_reg(generator, instr->_zext.dst, instr->_zext.dst_type),
-                          X64_print_rm(generator, &instr->_zext.src, instr->_zext.src_type));
-            break;
-        }
-        case IR_INSTR_SEXT:
-        {
-            const char* movsx = instr->_sext.src_type->size >= type_u32->size ? "movsxd" : "movsx";
-
-            X64_emit_text(generator, "    %s %s, %s", movsx,
-                          X64_print_reg(generator, instr->_sext.dst, instr->_sext.dst_type),
-                          X64_print_rm(generator, &instr->_sext.src, instr->_sext.src_type));
-            break;
-        }
-        case IR_INSTR_STORE:
-        {
-
-            X64_emit_text(generator, "    mov %s, %s", X64_print_mem(generator, &instr->_store.dst, instr->_store.type),
-                          X64_print_ri(generator, &instr->_store.src, instr->_store.type));
-            break;
-        }
-        case IR_INSTR_LOAD:
-        {
-
-            X64_emit_text(generator, "    mov %s, %s", X64_print_reg(generator, instr->_load.dst, instr->_load.type),
-                          X64_print_mem(generator, &instr->_load.src, instr->_load.type));
+            X64_emit_text(generator, "    mov %s, %s", X64_print_reg(generator, instr->limm.dst, type),
+                          X64_print_imm(generator, instr->limm.src, type));
             break;
         }
         case IR_INSTR_LADDR:
         {
 
-            X64_emit_text(generator, "    lea %s, %s", X64_print_reg(generator, instr->_laddr.dst, type_ptr_void),
-                          X64_print_mem(generator, &instr->_laddr.mem, instr->_laddr.type));
+            X64_emit_text(generator, "    lea %s, %s", X64_print_reg(generator, instr->laddr.dst, type_ptr_void),
+                          X64_print_mem(generator, &instr->laddr.mem, instr->laddr.type));
+            break;
+        }
+        case IR_INSTR_TRUNC_R_R:
+        {
+            Type* dst_type = instr->trunc_r_r.dst_type;
+            Type* src_type = instr->trunc_r_r.src_type;
+
+            X64_emit_text(generator, "    mov %s, %s",
+                          X64_print_reg(generator, instr->trunc_r_r.dst, dst_type),
+                          X64_print_reg(generator, instr->trunc_r_r.src, src_type));
+            break;
+        }
+        case IR_INSTR_TRUNC_R_M:
+        {
+            Type* dst_type = instr->trunc_r_m.dst_type;
+            Type* src_type = instr->trunc_r_m.src_type;
+
+            X64_emit_text(generator, "    mov %s, %s",
+                          X64_print_reg(generator, instr->trunc_r_m.dst, dst_type),
+                          X64_print_mem(generator, &instr->trunc_r_m.src, src_type));
+            break;
+        }
+        case IR_INSTR_ZEXT_R_R:
+        {
+            Type* dst_type = instr->zext_r_r.dst_type;
+            Type* src_type = instr->zext_r_r.src_type;
+
+            X64_emit_text(generator, "    movzx %s, %s",
+                          X64_print_reg(generator, instr->zext_r_r.dst, dst_type),
+                          X64_print_reg(generator, instr->zext_r_r.src, src_type));
+            break;
+        }
+        case IR_INSTR_ZEXT_R_M:
+        {
+            Type* dst_type = instr->zext_r_m.dst_type;
+            Type* src_type = instr->zext_r_m.src_type;
+
+            X64_emit_text(generator, "    movzx %s, %s",
+                          X64_print_reg(generator, instr->zext_r_m.dst, dst_type),
+                          X64_print_mem(generator, &instr->zext_r_m.src, src_type));
+            break;
+        }
+        case IR_INSTR_SEXT_R_R:
+        {
+            Type* dst_type = instr->sext_r_r.dst_type;
+            Type* src_type = instr->sext_r_r.src_type;
+            const char* movsx = src_type->size >= type_u32->size ? "movsxd" : "movsx";
+
+            X64_emit_text(generator, "    %s %s, %s", movsx,
+                          X64_print_reg(generator, instr->sext_r_r.dst, dst_type),
+                          X64_print_reg(generator, instr->sext_r_r.src, src_type));
+            break;
+        }
+        case IR_INSTR_SEXT_R_M:
+        {
+            Type* dst_type = instr->sext_r_m.dst_type;
+            Type* src_type = instr->sext_r_m.src_type;
+            const char* movsx = src_type->size >= type_u32->size ? "movsxd" : "movsx";
+
+            X64_emit_text(generator, "    %s %s, %s", movsx,
+                          X64_print_reg(generator, instr->sext_r_m.dst, dst_type),
+                          X64_print_mem(generator, &instr->sext_r_m.src, src_type));
+            break;
+        }
+        case IR_INSTR_LOAD:
+        {
+            Type* type = instr->load.type;
+
+            X64_emit_text(generator, "    mov %s, %s", X64_print_reg(generator, instr->load.dst, type),
+                          X64_print_mem(generator, &instr->load.src, type));
+            break;
+        }
+        case IR_INSTR_STORE_R:
+        {
+            Type* type = instr->store_r.type;
+
+            X64_emit_text(generator, "    mov %s, %s", X64_print_mem(generator, &instr->store_r.dst, type),
+                          X64_print_reg(generator, instr->store_r.src, type));
+            break;
+        }
+        case IR_INSTR_STORE_I:
+        {
+            Type* type = instr->store_i.type;
+
+            X64_emit_text(generator, "    mov %s, %s", X64_print_mem(generator, &instr->store_i.dst, type),
+                          X64_print_imm(generator, instr->store_i.src, type));
+            break;
+        }
+        case IR_INSTR_CMP_R_R:
+        {
+            Type* type = instr->cmp_r_r.type;
+
+            X64_emit_text(generator, "    cmp %s, %s", X64_print_reg(generator, instr->cmp_r_r.op1, type),
+                          X64_print_reg(generator, instr->cmp_r_r.op2, type));
+            break;
+        }
+        case IR_INSTR_CMP_R_M:
+        {
+            Type* type = instr->cmp_r_m.type;
+
+            X64_emit_text(generator, "    cmp %s, %s", X64_print_reg(generator, instr->cmp_r_m.op1, type),
+                          X64_print_mem(generator, &instr->cmp_r_m.op2, type));
+            break;
+        }
+        case IR_INSTR_CMP_R_I:
+        {
+            Type* type = instr->cmp_r_i.type;
+
+            X64_emit_text(generator, "    cmp %s, %s", X64_print_reg(generator, instr->cmp_r_i.op1, type),
+                          X64_print_imm(generator, instr->cmp_r_i.op2, type));
+            break;
+        }
+        case IR_INSTR_CMP_M_R:
+        {
+            Type* type = instr->cmp_m_r.type;
+
+            X64_emit_text(generator, "    cmp %s, %s", X64_print_mem(generator, &instr->cmp_m_r.op1, type),
+                          X64_print_reg(generator, instr->cmp_m_r.op2, type));
+            break;
+        }
+        case IR_INSTR_CMP_M_I:
+        {
+            Type* type = instr->cmp_m_i.type;
+
+            X64_emit_text(generator, "    cmp %s, %s", X64_print_mem(generator, &instr->cmp_m_i.op1, type),
+                          X64_print_imm(generator, instr->cmp_m_i.op2, type));
+            break;
+        }
+        case IR_INSTR_JMP:
+        {
+            X64_emit_text(generator, "    jmp L.%u", instr->jmp.jmp_target);
+            break;
+        }
+        case IR_INSTR_JMPCC:
+        {
+            X64_emit_text(generator, "    j%s L.%u", x64_condition_codes[instr->jmpcc.cond], instr->jmpcc.jmp_target);
+            break;
+        }
+        case IR_INSTR_SETCC:
+        {
+            X64_emit_text(generator, "    set%s %s", x64_condition_codes[instr->setcc.cond],
+                          X64_print_reg(generator, instr->setcc.dst, type_u8));
             break;
         }
         case IR_INSTR_RET:
         {
-            Type* ret_type = instr->_ret.type;
+            Type* ret_type = instr->ret.type;
 
             if (ret_type != type_void)
             {
-                X64_Reg x64_reg = X64_convert_reg(generator, instr->_ret.src);
+                X64_Reg x64_reg = X64_convert_reg(generator, instr->ret.src);
 
                 if (x64_reg != X64_RAX)
                 {
@@ -696,28 +815,6 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
             if (!is_last_instr)
                 X64_emit_text(generator, "    jmp end.%s", generator->curr_proc.sym->name);
 
-            break;
-        }
-        case IR_INSTR_CMP:
-        {
-            X64_emit_text(generator, "    cmp %s, %s", X64_print_rm(generator, &instr->_cmp.op1, instr->_cmp.type),
-                          X64_print_rmi(generator, &instr->_cmp.op2, instr->_cmp.type));
-            break;
-        }
-        case IR_INSTR_JMPCC:
-        {
-            X64_emit_text(generator, "    j%s L.%u", x64_condition_codes[instr->_jmpcc.cond], instr->_jmpcc.jmp_target);
-            break;
-        }
-        case IR_INSTR_SETCC:
-        {
-            X64_emit_text(generator, "    set%s %s", x64_condition_codes[instr->_setcc.cond],
-                          X64_print_rm(generator, &instr->_setcc.dst, type_u8));
-            break;
-        }
-        case IR_INSTR_JMP:
-        {
-            X64_emit_text(generator, "    jmp L.%u", instr->_jmp.jmp_target);
             break;
         }
         default:
