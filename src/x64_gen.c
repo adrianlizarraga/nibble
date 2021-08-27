@@ -124,13 +124,31 @@ static const char* x64_condition_codes[] = {
     [IR_COND_EQ] = "e",   [IR_COND_NEQ] = "ne",
 };
 
+static X64_Reg x64_arg_regs[] = {X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9};
+
+typedef enum X64_VRegLocKind {
+    X64_VREG_LOC_UNASSIGNED = 0,
+    X64_VREG_LOC_REG,
+    X64_VREG_LOC_STACK,
+} X64_VRegLocKind;
+
+typedef struct X64_VRegLoc {
+    X64_VRegLocKind kind;
+
+    union {
+        X64_Reg reg;
+        s32 offset;
+    };
+} X64_VRegLoc;
+
 typedef struct X64_ProcState {
     Symbol* sym;
 
-    // NOTE: Bit is 1 if corresponding reg has been used at all within procedure.
-    // This is used to generate push/pop instructions to save/restore reg values
-    // across procedure calls.
-    u32 used_regs;
+    u32 num_vregs;
+    X64_VRegLoc* vreg_map;
+
+    u32 used_callee_regs;
+    u32 free_regs;
 } X64_ProcState;
 
 typedef struct X64_Generator {
@@ -158,11 +176,6 @@ static bool X64_is_reg_set(u32 reg_mask, X64_Reg reg)
     return reg_mask & (1 << reg);
 }
 
-static bool X64_is_reg_used(X64_Generator* generator, X64_Reg x64_reg)
-{
-    return X64_is_reg_set(generator->curr_proc.used_regs, x64_reg);
-}
-
 static bool X64_is_reg_caller_saved(X64_Reg x64_reg)
 {
     return X64_is_reg_set(x64_caller_saved_reg_mask, x64_reg);
@@ -173,23 +186,69 @@ static bool X64_is_reg_callee_saved(X64_Reg x64_reg)
     return !X64_is_reg_set(x64_caller_saved_reg_mask, x64_reg);
 }
 
-static X64_Reg X64_get_reg(X64_Generator* generator, X64_Reg x64_reg)
+static bool X64_is_reg_free(X64_Generator* generator, X64_Reg reg)
 {
-    X64_set_reg(&generator->curr_proc.used_regs, x64_reg);
-
-    return x64_reg;
+    return X64_is_reg_set(generator->curr_proc.free_regs, reg);
 }
 
-static X64_Reg X64_convert_reg(X64_Generator* generator, IR_Reg ir_reg)
+static void X64_free_reg(X64_Generator* generator, X64_Reg reg)
 {
-    assert(ir_reg < IR_REG_COUNT);
-    assert(ir_reg < X64_REG_COUNT);
+    X64_set_reg(&generator->curr_proc.free_regs, reg);
+}
 
-    X64_Reg x64_reg = x64_scratch_regs[ir_reg];
+static void X64_alloc_reg(X64_Generator* generator, X64_Reg reg)
+{
+    X64_unset_reg(&generator->curr_proc.free_regs, reg);
 
-    X64_set_reg(&generator->curr_proc.used_regs, x64_reg);
+    if (X64_is_reg_callee_saved(reg))
+    {
+        X64_set_reg(&generator->curr_proc.used_callee_regs, reg);
+    }
+}
 
-    return x64_reg;
+static X64_Reg X64_next_reg(X64_Generator* generator, bool is_arg, u32 arg_index)
+{
+    // Try to allocate an argument register if available.
+    if (is_arg)
+    {
+        X64_Reg arg_reg = x64_arg_regs[arg_index];
+
+        if (X64_is_reg_free(generator, arg_reg))
+        {
+            X64_alloc_reg(generator, arg_reg);
+            return arg_reg;
+        }
+    }
+
+    // Otherwise, allocate the first available scratch register.
+    X64_Reg reg = X64_REG_COUNT;
+    u32 num_regs = ARRAY_LEN(x64_scratch_regs);
+
+    for (u32 i = 0; i < num_regs; i += 1)
+    {
+        if (X64_is_reg_free(generator, x64_scratch_regs[i]))
+        {
+            reg = x64_scratch_regs[i];
+            break;
+        }
+    }
+
+    assert(reg != X64_REG_COUNT);
+    X64_alloc_reg(generator, reg);
+
+    return reg;
+}
+
+static void X64_init_regs(X64_Generator* generator)
+{
+    u32 num_regs = ARRAY_LEN(x64_scratch_regs);
+
+    for (u32 i = 0; i < num_regs; i += 1)
+    {
+        X64_free_reg(generator, x64_scratch_regs[i]);
+    }
+
+    generator->curr_proc.used_callee_regs = 0;
 }
 
 static char** X64_emit_line(BucketList* sstream, Allocator* gen_mem, Allocator* tmp_mem, const char* format,
@@ -269,6 +328,153 @@ static void X64_fill_line(X64_Generator* gen, char** line, const char* format, .
         *line = mem_dup(gen->gen_mem, tmp_line, size + 1, DEFAULT_ALIGN);
     }
     allocator_restore_state(mem_state);
+}
+
+typedef struct X64_VRegInterval {
+    LifetimeInterval interval;
+    u32 index;
+
+    struct X64_VRegInterval* next;
+    struct X64_VRegInterval* prev;
+} X64_VRegInterval;
+
+typedef struct X64_VRegIntervalList {
+    X64_VRegInterval sentinel;
+    u32 count;
+    Allocator* arena;
+} X64_VRegIntervalList;
+
+static void X64_vreg_interval_list_rm(X64_VRegIntervalList* list, X64_VRegInterval* node)
+{
+    assert(node != &list->sentinel);
+
+    X64_VRegInterval* prev = node->prev;
+    X64_VRegInterval* next = node->next;
+
+    prev->next = next;
+    next->prev = prev;
+
+    node->next = node->prev = NULL;
+
+    list->count -= 1;
+}
+
+static void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInterval* interval, u32 index)
+{
+    X64_VRegInterval* new_node = alloc_type(list->arena, X64_VRegInterval, true);
+    new_node->interval = *interval;
+    new_node->index = index;
+
+    // Insert sorted by increasing end point.
+
+    X64_VRegInterval* head = &list->sentinel;
+    X64_VRegInterval* it = head->next;
+    
+    while (it != head)
+    {
+        if (new_node->interval.end < it->interval.end)
+        {
+            break;
+        }
+
+        it = it->next;
+    }
+
+    // Insert before `it`
+    X64_VRegInterval* prev = it->prev;
+
+    prev->next = new_node;
+    new_node->prev = prev;
+    new_node->next = it;
+    it->prev = new_node;
+
+    list->count += 1;
+}
+
+static u32 X64_linear_scan_reg_alloc(X64_Generator* generator, u32 offset)
+{
+    u32 num_x64_regs = ARRAY_LEN(x64_scratch_regs);
+    X64_VRegLoc* vreg_map = generator->curr_proc.vreg_map;
+
+    X64_VRegIntervalList active = {.arena = generator->tmp_mem};
+    active.sentinel.next = &active.sentinel;
+    active.sentinel.prev = &active.sentinel;
+
+    LifetimeInterval* intervals = generator->curr_proc.sym->as_proc.reg_intervals;
+    size_t num_intervals = array_len(generator->curr_proc.sym->as_proc.reg_intervals);
+
+    for (size_t i = 0; i < num_intervals; i += 1)
+    {
+        LifetimeInterval* interval = intervals + i;
+
+        // Expire old intervals
+        {
+            X64_VRegInterval* head = &active.sentinel;
+            X64_VRegInterval* it = head->next;
+
+            while (it != head)
+            {
+                X64_VRegInterval* next = it->next;
+
+                if (it->interval.end >= interval->start)
+                {
+                    break;
+                }
+
+                // This active interval ends before the current interval.
+                //
+                // Remove active interval from active list and free its register.
+                X64_vreg_interval_list_rm(&active, it);
+                
+                X64_VRegLoc* loc = vreg_map + it->index;
+
+                if (loc->kind == X64_VREG_LOC_REG)
+                {
+                    X64_free_reg(generator, loc->reg);
+                }
+
+                it = next;
+            }
+        }
+
+        // Check if need to spill
+        if (active.count == num_x64_regs)
+        {
+            X64_VRegInterval* last_active = active.sentinel.prev;
+
+            // Spill interval that ends the latest
+            if (last_active->interval.end > interval->end)
+            {
+                // Steal last_active's register.
+                vreg_map[i].kind = X64_VREG_LOC_REG;
+                vreg_map[i].reg = vreg_map[last_active->index].reg;
+
+                // Spill the last active interval.
+                vreg_map[last_active->index].kind = X64_VREG_LOC_STACK;
+                vreg_map[last_active->index].offset = offset;
+                offset += X64_MAX_INT_REG_SIZE;
+
+                X64_vreg_interval_list_rm(&active, last_active);
+                X64_vreg_interval_list_add(&active, interval, i);
+            }
+            else
+            {
+                vreg_map[i].kind = X64_VREG_LOC_STACK;
+                vreg_map[i].offset = offset;
+                offset += X64_MAX_INT_REG_SIZE;
+            }
+        }
+        else
+        {
+            // Allocate next free reg
+            vreg_map[i].kind = X64_VREG_LOC_REG;
+            vreg_map[i].reg = X64_next_reg(generator, interval->is_arg, interval->arg_index);
+
+            X64_vreg_interval_list_add(&active, interval, i);
+        }
+    }
+
+    return offset;
 }
 
 static size_t X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* scope, size_t offset)
@@ -458,10 +664,19 @@ static char* X64_print_imm(X64_Generator* generator, Scalar imm, Type* type)
     return dstr;
 }
 
+static X64_Reg X64_get_reg(X64_Generator* generator, IR_Reg ir_reg)
+{
+    X64_VRegLoc reg_loc = generator->curr_proc.vreg_map[ir_reg];
+
+    assert(reg_loc.kind == X64_VREG_LOC_REG);
+
+    return reg_loc.reg;
+}
+
 static char* X64_print_reg(X64_Generator* generator, IR_Reg ir_reg, Type* type)
 {
     size_t size = type->size;
-    X64_Reg x64_reg = X64_convert_reg(generator, ir_reg);
+    X64_Reg x64_reg = X64_get_reg(generator, ir_reg);
     char* dstr = array_create(generator->tmp_mem, char, 8);
 
     ftprint_char_array(&dstr, true, "%s", x64_reg_names[size][x64_reg]);
@@ -500,7 +715,7 @@ static char* X64_print_mem(X64_Generator* generator, IR_MemAddr* addr, Type* typ
         }
         else
         {
-            base_reg = X64_convert_reg(generator, addr->base.reg);
+            base_reg = X64_get_reg(generator, addr->base.reg);
         }
 
         bool has_disp = disp != 0;
@@ -801,7 +1016,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
 
             if (ret_type != type_void)
             {
-                X64_Reg x64_reg = X64_convert_reg(generator, instr->ret.src);
+                X64_Reg x64_reg = X64_get_reg(generator, instr->ret.src);
 
                 if (x64_reg != X64_RAX)
                 {
@@ -828,7 +1043,10 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
 static void X64_gen_proc(X64_Generator* generator, Symbol* sym)
 {
     generator->curr_proc.sym = sym;
-    generator->curr_proc.used_regs = 0;
+
+    X64_init_regs(generator);
+
+    AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
     X64_emit_text(generator, "");
     X64_emit_text(generator, "SECTION .text");
@@ -842,6 +1060,30 @@ static void X64_gen_proc(X64_Generator* generator, Symbol* sym)
     char** sub_rsp_inst = X64_emit_text(generator, NULL);
 
     u32 stack_size = X64_assign_proc_stack_offsets(generator, (DeclProc*)sym->decl); // NOTE: Spills argument registers.
+
+    // Register allocation.
+    generator->curr_proc.num_vregs = array_len(sym->as_proc.reg_intervals);
+    generator->curr_proc.vreg_map = alloc_array(generator->tmp_mem, X64_VRegLoc, generator->curr_proc.num_vregs, true);
+
+    stack_size = X64_linear_scan_reg_alloc(generator, stack_size);
+
+#ifndef NDEBUG
+    ftprint_out("Register allocation for %s:\n", sym->name);
+    for (u32 i = 0; i < generator->curr_proc.num_vregs; i += 1)
+    {
+        X64_VRegLoc* loc = generator->curr_proc.vreg_map + i;
+
+        if (loc->kind == X64_VREG_LOC_REG)
+        {
+            ftprint_out("\tr%u -> %s\n", i, x64_reg_names[8][loc->reg]);
+        }
+        else
+        {
+            assert(loc->kind == X64_VREG_LOC_STACK);
+            ftprint_out("\tr%u -> RBP - %d\n", i, loc->offset);
+        }
+    }
+#endif
 
     if (stack_size)
         X64_fill_line(generator, sub_rsp_inst, "    sub rsp, %u", stack_size);
@@ -859,32 +1101,30 @@ static void X64_gen_proc(X64_Generator* generator, Symbol* sym)
     X64_emit_text(generator, "    end.%s:", sym->name);
 
     // Save/Restore callee-saved registers.
-    AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
+    char* tmp_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
+
+    for (uint32_t r = 0; r < X64_REG_COUNT; r += 1)
     {
-        char* tmp_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
+        X64_Reg reg = (X64_Reg)r;
 
-        for (uint32_t r = 0; r < X64_REG_COUNT; r += 1)
+        if (X64_is_reg_set(generator->curr_proc.used_callee_regs, reg))
         {
-            X64_Reg reg = (X64_Reg)r;
-
-            if (X64_is_reg_used(generator, reg) && X64_is_reg_callee_saved(reg))
-            {
-                ftprint_char_array(&tmp_line, false, "    push %s\n", reg_names[X64_MAX_INT_REG_SIZE][reg]);
-                X64_emit_text(generator, "    pop %s", reg_names[X64_MAX_INT_REG_SIZE][reg]);
-            }
+            ftprint_char_array(&tmp_line, false, "    push %s\n", reg_names[X64_MAX_INT_REG_SIZE][reg]);
+            X64_emit_text(generator, "    pop %s", reg_names[X64_MAX_INT_REG_SIZE][reg]);
         }
-
-        array_push(tmp_line, '\0');
-
-        *save_regs_inst = mem_dup(generator->gen_mem, tmp_line, array_len(tmp_line), DEFAULT_ALIGN);
     }
-    allocator_restore_state(mem_state);
+
+    array_push(tmp_line, '\0');
+
+    *save_regs_inst = mem_dup(generator->gen_mem, tmp_line, array_len(tmp_line), DEFAULT_ALIGN);
 
     if (stack_size)
         X64_emit_text(generator, "    mov rsp, rbp");
 
     X64_emit_text(generator, "    pop rbp");
     X64_emit_text(generator, "    ret");
+
+    allocator_restore_state(mem_state);
 }
 
 bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, IR_Module* module, const char* output_file)
