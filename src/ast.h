@@ -672,8 +672,16 @@ struct SymbolVar {
     s32 offset;
 };
 
+typedef struct LifetimeInterval {
+    u32 start;
+    u32 end;
+    bool is_arg;
+    u32 arg_index;
+} LifetimeInterval;
+
 struct SymbolProc {
     struct IR_Instr** instrs; // NOTE: stretchy buf
+    LifetimeInterval* reg_intervals;
 };
 
 struct Symbol {

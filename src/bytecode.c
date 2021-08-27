@@ -63,81 +63,30 @@ typedef struct IR_Builder {
 static const Scalar ir_zero_imm = {.as_int._u64 = 0};
 static const Scalar ir_one_imm = {.as_int._u64 = 1};
 
-//  Calculates the number of trailing zeros (bitscan).
-//  ntz() from Hacker's Delight 2nd edition, pg 108
-static int num_trailing_zeros(u32 x)
-{
-    if (x == 0)
-        return 32;
-
-    int n = 1;
-
-    // Binary search:
-    // Check for all zeros in right half of x. If all zeros, increment count and shift right.
-    if ((x & 0x0000FFFF) == 0)
-    {
-        n += 16;
-        x = x >> 16;
-    }
-
-    if ((x & 0x000000FF) == 0)
-    {
-        n += 8;
-        x = x >> 8;
-    }
-
-    if ((x & 0x0000000F) == 0)
-    {
-        n += 4;
-        x = x >> 4;
-    }
-
-    if ((x & 0x00000003) == 0)
-    {
-        n += 2;
-        x = x >> 2;
-    }
-
-    return n - (x & 1);
-}
-
-static void IR_set_reg(u32* reg_mask, IR_Reg reg)
-{
-    *reg_mask |= (1 << reg);
-}
-
-static void IR_unset_reg(u32* reg_mask, IR_Reg reg)
-{
-    *reg_mask &= ~(1 << reg);
-}
-
-static bool IR_is_reg_set(u32 reg_mask, IR_Reg reg)
-{
-    return reg_mask & (1 << reg);
-}
-
 static void IR_free_reg(IR_Builder* builder, IR_Reg reg)
 {
-    assert(reg < IR_REG_COUNT);
-    assert(!IR_is_reg_set(builder->free_regs, reg));
-    IR_set_reg(&builder->free_regs, reg);
-}
+    Symbol* sym = builder->curr_proc;
+    LifetimeInterval* interval = &sym->as_proc.reg_intervals[reg];
 
-static void IR_alloc_reg(IR_Builder* builder, IR_Reg reg)
-{
-    assert(reg < IR_REG_COUNT);
-    assert(IR_is_reg_set(builder->free_regs, reg));
-    IR_unset_reg(&builder->free_regs, reg);
+    interval->end = array_len(sym->as_proc.instrs) - 1;
 }
 
 static IR_Reg IR_next_reg(IR_Builder* builder)
 {
-    int bit_index = num_trailing_zeros(builder->free_regs);
-    IR_Reg reg = (IR_Reg)bit_index;
+    Symbol* sym = builder->curr_proc;
+    LifetimeInterval interval = {.start = array_len(sym->as_proc.instrs)};
+    array_push(sym->as_proc.reg_intervals, interval);
 
-    IR_alloc_reg(builder, reg);
+    return array_len(sym->as_proc.reg_intervals) - 1;
+}
 
-    return reg;
+static void IR_mark_reg_as_arg(IR_Builder* builder, IR_Reg reg, u32 arg_index)
+{
+    Symbol* sym = builder->curr_proc;
+    LifetimeInterval* interval = &sym->as_proc.reg_intervals[reg];
+
+    interval->is_arg = true;
+    interval->arg_index = arg_index;
 }
 
 static void IR_try_free_op_reg(IR_Builder* builder, IR_Operand* op)
@@ -1720,6 +1669,7 @@ static IR_InstrCallArg* IR_setup_call_args(IR_Builder* builder, ExprCall* expr_c
         if (IR_type_fits_in_reg(arg_op.type))
         {
             IR_op_to_r(builder, &arg_op, true);
+            IR_mark_reg_as_arg(builder, arg_op.reg, arg_index);
 
             assert(arg_index < num_args);
             args[arg_index].type = arg_op.type;
@@ -2260,6 +2210,7 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
     builder->curr_proc = sym;
 
     sym->as_proc.instrs = array_create(builder->arena, IR_Instr*, 32);
+    sym->as_proc.reg_intervals = array_create(builder->arena, LifetimeInterval, 16);
 
     IR_emit_stmt_block_body(builder, &dproc->stmts);
     assert(builder->free_regs == (u32)-1);
@@ -2278,6 +2229,17 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 
 #ifndef NDEBUG
     IR_print_out_proc(builder->tmp_arena, sym);
+
+    ftprint_out("Lifetime intervals:\n");
+    LifetimeInterval* intervals = sym->as_proc.reg_intervals;
+    u32 num_intervals = array_len(intervals);
+    for (u32 i = 0; i < num_intervals; i += 1)
+    {
+        if (intervals[i].is_arg)
+            ftprint_out("\t%u | %u -> %u (arg: %u)\n", i, intervals[i].start, intervals[i].end, intervals[i].arg_index);
+        else
+            ftprint_out("\t%u | %u -> %u\n", i, intervals[i].start, intervals[i].end);
+    }
 #endif
 }
 

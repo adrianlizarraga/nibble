@@ -6,9 +6,9 @@
 #define IR_STACK_ALIGN 16
 #define IR_INSTRS_PER_BUCKET 64
 #define IR_PROCS_PER_BUCKET 16
-#define IR_REG_COUNT 32
+#define IR_REG_COUNT 0xFFFFFFFF
 
-typedef u8 IR_Reg;
+typedef u32 IR_Reg;
 
 typedef enum IR_InstrKind {
     IR_INSTR_NONE = 0,
