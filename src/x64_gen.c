@@ -391,6 +391,7 @@ static void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInter
     list->count += 1;
 }
 
+// Linear scan register allocation from Poletto et al (1999)
 static u32 X64_linear_scan_reg_alloc(X64_Generator* generator, u32 offset)
 {
     u32 num_x64_regs = ARRAY_LEN(x64_scratch_regs);
@@ -664,13 +665,13 @@ static char* X64_print_imm(X64_Generator* generator, Scalar imm, Type* type)
     return dstr;
 }
 
-static X64_Reg X64_get_reg(X64_Generator* generator, IR_Reg ir_reg)
+static X64_Reg X64_get_ir_reg_loc(X64_Generator* generator, IR_Reg ir_reg)
 {
     X64_VRegLoc reg_loc = generator->curr_proc.vreg_map[ir_reg];
 
-    assert(reg_loc.kind == X64_VREG_LOC_REG);
+    assert(reg_loc.kind != X64_VREG_LOC_UNASSIGNED);
 
-    return reg_loc.reg;
+    return reg_loc;
 }
 
 static char* X64_print_reg(X64_Generator* generator, IR_Reg ir_reg, Type* type)
@@ -756,6 +757,69 @@ static char* X64_print_mem(X64_Generator* generator, IR_MemAddr* addr, Type* typ
     return dstr;
 }
 
+static void X64_emit_binary_instr(X64_Generator* generator, const char* instr, Type* type, X64_VRegLoc dst_loc, X64_VRegLoc src_loc)
+{
+    switch (dst_loc.kind)
+    {
+        case X64_VREG_LOC_REG:
+        {
+            switch (src_loc.kind)
+            {
+                case X64_VREG_LOC_REG:
+                    X64_emit_text(generator, "    %s %s, %s", instr,
+                                  X64_print_reg(dst_loc.reg, type),
+                                  X64_print_reg(src_loc.reg, type));
+                    break;
+                case X64_VREG_LOC_STACK:
+                    X64_emit_text(generator, "    %s %s, %s", instr,
+                                  X64_print_reg(dst_loc.reg, type),
+                                  X64_print_stack_offset(src_loc.offset, type));
+                    break;
+                default:
+                    assert(0);
+                    break;
+            }
+            break;
+        }
+        case X64_VREG_LOC_STACK:
+        {
+            switch (src_loc.kind)
+            {
+                case X64_VREG_LOC_REG:
+                    X64_emit_text(generator, "    %s %s, %s", instr,
+                                  X64_print_stack_offset(dst_loc.offset, type),
+                                  X64_print_reg(src_loc.reg, type));
+                    break;
+                case X64_VREG_LOC_STACK:
+                    char* dst_op_str = X64_print_stack_offset(dst_loc.offset, type);
+
+                    // Save the contents of a temporary register into the stack.
+                    X64_emit_text(generator, "    push rax");
+
+                    // Load dst into the temporary register, 
+                    X64_emit_text(generator, "    mov rax, %s", dst_op_str);
+
+                    // Execute the instruction using the temporary register as the destination.
+                    X64_emit_text(generator, "    %s rax, %s", instr, X64_print_stack_offset(src_loc.offset, type));
+
+                    // Store the result of the instruction (contents of temporary register) into dst.
+                    X64_emit_text(generator, "    mov %s, rax", dst_op_str);
+
+                    // Restore the contents of the temporary register from the stack.
+                    X64_emit_text(generator, "    pop rax");
+                    break;
+                default:
+                    assert(0);
+                    break;
+            }
+            break;
+        }
+        default:
+            assert(0);
+            break;
+    }
+}
+
 static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_last_instr, IR_Instr* instr)
 {
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
@@ -768,7 +832,10 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
         case IR_INSTR_ADD_R_R:
         {
             Type* type = instr->add_r_r.type;
+            //X64_VRegLoc dst_loc = X64_get_vreg_loc(generator, instr->add_r_r.dst);
+            //X64_VRegLoc src_loc = X64_get_vreg_loc(generator, instr->add_r_r.src);
 
+            //X64_emit_binary_instr(generator, "add", type, dst_loc, src_loc);
             X64_emit_text(generator, "    add %s, %s", 
                           X64_print_reg(generator, instr->add_r_r.dst, type),
                           X64_print_reg(generator, instr->add_r_r.src, type));
