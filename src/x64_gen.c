@@ -143,6 +143,7 @@ typedef struct X64_VRegLoc {
 
 typedef struct X64_ProcState {
     Symbol* sym;
+    u32 id;
 
     u32 num_vregs;
     X64_VRegLoc* vreg_map;
@@ -191,6 +192,11 @@ static bool X64_is_reg_free(X64_Generator* generator, X64_Reg reg)
     return X64_is_reg_set(generator->curr_proc.free_regs, reg);
 }
 
+static bool X64_is_reg_used(X64_Generator* generator, X64_Reg reg)
+{
+    return !X64_is_reg_set(generator->curr_proc.free_regs, reg);
+}
+
 static void X64_free_reg(X64_Generator* generator, X64_Reg reg)
 {
     X64_set_reg(&generator->curr_proc.free_regs, reg);
@@ -233,8 +239,10 @@ static X64_Reg X64_next_reg(X64_Generator* generator, bool is_arg, u32 arg_index
         }
     }
 
-    assert(reg != X64_REG_COUNT);
-    X64_alloc_reg(generator, reg);
+    if (reg != X64_REG_COUNT);
+    {
+        X64_alloc_reg(generator, reg);
+    }
 
     return reg;
 }
@@ -285,6 +293,11 @@ static char** X64_emit_text(X64_Generator* gen, const char* format, ...)
     va_end(vargs);
 
     return line;
+}
+
+static void X64_emit_label(X64_Generator* generator, u32 instr_index)
+{
+    X64_emit_text(generator, "    L.%u.%u:", generator->curr_proc.id, instr_index);
 }
 
 static char* X64_print_imm(X64_Generator* generator, Scalar imm, Type* type);
@@ -665,7 +678,7 @@ static char* X64_print_imm(X64_Generator* generator, Scalar imm, Type* type)
     return dstr;
 }
 
-static X64_Reg X64_get_ir_reg_loc(X64_Generator* generator, IR_Reg ir_reg)
+static X64_Reg X64_vreg_loc(X64_Generator* generator, IR_Reg ir_reg)
 {
     X64_VRegLoc reg_loc = generator->curr_proc.vreg_map[ir_reg];
 
@@ -757,7 +770,7 @@ static char* X64_print_mem(X64_Generator* generator, IR_MemAddr* addr, Type* typ
     return dstr;
 }
 
-static void X64_emit_binary_instr(X64_Generator* generator, const char* instr, Type* type, X64_VRegLoc dst_loc, X64_VRegLoc src_loc)
+static void X64_emit_binary_rr_instr(X64_Generator* generator, const char* instr, Type* type, X64_VRegLoc dst_loc, X64_VRegLoc src_loc)
 {
     switch (dst_loc.kind)
     {
@@ -791,22 +804,25 @@ static void X64_emit_binary_instr(X64_Generator* generator, const char* instr, T
                                   X64_print_reg(src_loc.reg, type));
                     break;
                 case X64_VREG_LOC_STACK:
-                    char* dst_op_str = X64_print_stack_offset(dst_loc.offset, type);
+                    const char* dst_op_str = X64_print_stack_offset(dst_loc.offset, type);
+                    const char* src_op_str = X64_print_stack_offset(src_loc.offset, type);
+                    const char* tmp_reg_str = X64_print_reg(X64_RAX, type);
 
                     // Save the contents of a temporary register into the stack.
-                    X64_emit_text(generator, "    push rax");
+                    X64_emit_text(generator, "    push %s", tmp_reg_str);
 
                     // Load dst into the temporary register, 
-                    X64_emit_text(generator, "    mov rax, %s", dst_op_str);
+                    X64_emit_text(generator, "    mov %s, %s", tmp_reg_str, dst_op_str);
 
                     // Execute the instruction using the temporary register as the destination.
-                    X64_emit_text(generator, "    %s rax, %s", instr, X64_print_stack_offset(src_loc.offset, type));
+                    X64_emit_text(generator, "    %s %s, %s", instr, tmp_reg_str, src_op_str);
 
                     // Store the result of the instruction (contents of temporary register) into dst.
-                    X64_emit_text(generator, "    mov %s, rax", dst_op_str);
+                    X64_emit_text(generator, "    mov %s, %s", dst_op_str, tmp_reg_str);
 
-                    // Restore the contents of the temporary register from the stack.
-                    X64_emit_text(generator, "    pop rax");
+                    // Restore the contents of the temporary register.
+                    X64_emit_text(generator, "    pop %s", tmp_reg_str);
+
                     break;
                 default:
                     assert(0);
@@ -825,20 +841,20 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
     if (instr->is_jmp_target)
-        X64_emit_text(generator, "  L.%u:", instr_index);
+        X64_emit_label(generator, instr_index);
 
     switch (instr->kind)
     {
         case IR_INSTR_ADD_R_R:
         {
             Type* type = instr->add_r_r.type;
-            //X64_VRegLoc dst_loc = X64_get_vreg_loc(generator, instr->add_r_r.dst);
-            //X64_VRegLoc src_loc = X64_get_vreg_loc(generator, instr->add_r_r.src);
+            X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->add_r_r.dst);
+            X64_VRegLoc src_loc = X64_vreg_loc(generator, instr->add_r_r.src);
 
-            //X64_emit_binary_instr(generator, "add", type, dst_loc, src_loc);
-            X64_emit_text(generator, "    add %s, %s", 
+            X64_emit_binary_rr_instr(generator, "add", type, dst_loc, src_loc);
+            /*X64_emit_text(generator, "    add %s, %s", 
                           X64_print_reg(generator, instr->add_r_r.dst, type),
-                          X64_print_reg(generator, instr->add_r_r.src, type));
+                          X64_print_reg(generator, instr->add_r_r.src, type));*/
             break;
         }
         case IR_INSTR_ADD_R_M:
@@ -1107,9 +1123,10 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
     allocator_restore_state(mem_state);
 }
 
-static void X64_gen_proc(X64_Generator* generator, Symbol* sym)
+static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 {
     generator->curr_proc.sym = sym;
+    generator->curr_proc.id = proc_id;
 
     X64_init_regs(generator);
 
@@ -1239,7 +1256,7 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, IR_Module* module, c
 
     for (u32 i = 0; i < num_procs; i += 1)
     {
-        X64_gen_proc(&generator, module->procs[i]);
+        X64_gen_proc(&generator, i, module->procs[i]);
     }
 
     // Output assembly to file.
