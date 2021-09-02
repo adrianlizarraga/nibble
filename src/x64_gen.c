@@ -3,6 +3,7 @@
 
 #define X64_INIT_LINE_LEN 128
 #define X64_MAX_INT_REG_SIZE 8
+#define X64_STACK_ALIGN 16
 
 typedef enum X64_Reg {
     X64_RAX = 0,
@@ -527,7 +528,7 @@ static u32 X64_linear_scan_reg_alloc(X64_Generator* generator, u32 offset)
         }
     }
 
-    return offset;
+    return ALIGN_UP(offset, X64_STACK_ALIGN);
 }
 
 typedef struct X64_TmpReg {
@@ -661,7 +662,7 @@ static size_t X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* sc
         }
     }
 
-    return ALIGN_UP(stack_size, 16);
+    return ALIGN_UP(stack_size, X64_STACK_ALIGN);
 }
 
 static size_t X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* dproc)
@@ -744,7 +745,7 @@ static size_t X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* 
         }
     }
 
-    return ALIGN_UP(stack_size, 16);
+    return ALIGN_UP(stack_size, X64_STACK_ALIGN);
 }
 
 static char* X64_print_mem(X64_RegGroup* group, IR_MemAddr* addr, u32 size)
