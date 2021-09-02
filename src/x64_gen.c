@@ -770,6 +770,48 @@ static char* X64_print_mem(X64_Generator* generator, IR_MemAddr* addr, Type* typ
     return dstr;
 }
 
+typedef struct X64_RegState {
+    X64_Reg reg;
+    bool restore;
+} X64_RegState;
+
+static X64_RegState X64_begin_reg(X64_Generator* generation, IR_Reg vreg)
+{
+    X64_RegState state = {0};
+    X64_VRegLoc vreg_loc = X64_vreg_loc(generator, vreg);
+
+    if (vreg_loc.kind == X64_VREG_LOC_STACK)
+    {
+        
+    }
+    else
+    {
+        assert(vreg_loc.kind == X64_VREG_LOC_REG);
+        state.reg = vreg_loc.reg;
+        state.restore = false;
+    }
+}
+
+static void X64_emit_binary_rm_instr(X64_Generator* generator, const char* instr, Type* type, X64_VRegLoc dst_loc, IR_MemAddr* vaddr)
+{
+    switch (dst_loc.kind)
+    {
+        case X64_VREG_LOC_REG:
+        {
+            X64_RegState base_reg = X64_begin_reg(generator, vaddr->base_reg);
+            x64_RegState index_reg = X64_begin_reg(generator, vaddr->index_reg);
+
+            X64_end_reg(generator, base_reg);
+            X64_end_reg(generator, index_reg);
+            break;
+        }
+        case X64_VREG_LOC_STACK:
+        {
+            break;
+        }
+    }
+}
+
 static void X64_emit_binary_rr_instr(X64_Generator* generator, const char* instr, Type* type, X64_VRegLoc dst_loc, X64_VRegLoc src_loc)
 {
     switch (dst_loc.kind)
