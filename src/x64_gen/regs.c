@@ -10,11 +10,10 @@ X64_Reg x64_arg_regs[] = {X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9};
 
 bool X64_is_reg_caller_saved(X64_Reg reg)
 {
-    return u32_is_bit_set(X64_CALLER_SAVED_REG_MASK, reg);    
+    return u32_is_bit_set(X64_CALLER_SAVED_REG_MASK, reg);
 }
 
 bool X64_is_reg_callee_saved(X64_Reg reg)
 {
-    return !u32_is_bit_set(X64_CALLER_SAVED_REG_MASK, reg);    
+    return !u32_is_bit_set(X64_CALLER_SAVED_REG_MASK, reg);
 }
-

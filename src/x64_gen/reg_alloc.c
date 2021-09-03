@@ -99,7 +99,7 @@ static void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInter
 
     X64_VRegInterval* head = &list->sentinel;
     X64_VRegInterval* it = head->next;
-    
+
     while (it != head)
     {
         if (new_node->interval.end < it->interval.end)
@@ -121,8 +121,8 @@ static void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInter
     list->count += 1;
 }
 
-X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, LifetimeInterval* vreg_intervals, X64_VRegLoc* vreg_locs,
-                                             u32 init_stack_offset)
+X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, LifetimeInterval* vreg_intervals,
+                                             X64_VRegLoc* vreg_locs, u32 init_stack_offset)
 {
     X64_RegAllocResult result = {.stack_offset = init_stack_offset};
     X64_init_free_regs(&result.free_regs);
@@ -155,7 +155,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, Li
                 //
                 // Remove active interval from active list and free its register.
                 X64_vreg_interval_list_rm(&active, it);
-                
+
                 X64_VRegLoc* loc = vreg_locs + it->index;
 
                 if (loc->kind == X64_VREG_LOC_REG)
@@ -198,7 +198,8 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, Li
         {
             // Allocate next free reg
             vreg_locs[i].kind = X64_VREG_LOC_REG;
-            vreg_locs[i].reg = X64_next_reg(&result.free_regs, &result.used_callee_regs, interval->is_arg, interval->arg_index);
+            vreg_locs[i].reg =
+                X64_next_reg(&result.free_regs, &result.used_callee_regs, interval->is_arg, interval->arg_index);
 
             X64_vreg_interval_list_add(&active, interval, i);
         }
