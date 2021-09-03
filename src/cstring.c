@@ -111,3 +111,18 @@ const char escaped_to_char[256] = {
     ['t'] = '\t', ['v'] = '\v', ['\\'] = '\\', ['\''] = '\'', ['"'] = '"',  ['?'] = '?',
 };
 
+void u32_set_bit(u32* mask, u8 bit)
+{
+    *mask |= (1 << bit);
+}
+
+void u32_unset_bit(u32* mask, u8 bit)
+{
+    *mask &= ~(1 << bit);
+}
+
+bool u32_is_bit_set(u32 mask, u8 bit)
+{
+    return mask & (1 << bit);
+}
+

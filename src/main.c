@@ -24,7 +24,7 @@
 #include "bytecode.c"
 #include "print_ir.c"
 #include "gen_assembly.c"
-#include "x64_gen.c"
+#include "x64_gen/gen.c"
 #include "nibble.c"
 
 void print_usage(FILE* fd, const char* program_name)

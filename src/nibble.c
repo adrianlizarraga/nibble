@@ -192,7 +192,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->target_arch = target_arch;
     nibble->gen_mem = bootstrap;
     nibble->ast_mem = allocator_create(16384);
-    nibble->tmp_mem = allocator_create(512);
+    nibble->tmp_mem = allocator_create(4096);
     nibble->errors = byte_stream_create(&nibble->gen_mem);
     nibble->str_lit_map = hmap(6, NULL);
     nibble->ident_map = hmap(8, NULL);

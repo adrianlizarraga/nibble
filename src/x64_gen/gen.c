@@ -1,29 +1,10 @@
 #include "stream.h"
 #include "x64_gen.h"
 
-#define X64_INIT_LINE_LEN 128
-#define X64_MAX_INT_REG_SIZE 8
-#define X64_STACK_ALIGN 16
+#include "x64_gen/regs.c"
+#include "x64_gen/reg_alloc.c"
 
-typedef enum X64_Reg {
-    X64_RAX = 0,
-    X64_RCX,
-    X64_RDX,
-    X64_RBX,
-    X64_RSP,
-    X64_RBP,
-    X64_RSI,
-    X64_RDI,
-    X64_R8,
-    X64_R9,
-    X64_R10,
-    X64_R11,
-    X64_R12,
-    X64_R13,
-    X64_R14,
-    X64_R15,
-    X64_REG_COUNT,
-} X64_Reg;
+#define X64_INIT_LINE_LEN 128
 
 static const char* x64_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUNT] = {
     [1] =
@@ -104,17 +85,6 @@ static const char* x64_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUNT] = {
         },
 };
 
-// TODO: Leaf procedures should prefer to use caller-saved regs, and
-// non-leaf procedures should prefer to use callee-save regs.
-// SO, resolver should mark leaf procedures while resolving.
-static X64_Reg x64_scratch_regs[] = {
-    X64_R10, X64_R11, X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9, X64_RAX, // NOTE: Caller saved
-    X64_R12, X64_R13, X64_R14, X64_R15, X64_RBX,                                   // NOTE: Callee saved
-};
-
-// Bit is 1 for caller saved registers: RAX, RCX, RDX, _, _, _, RSI, RDI, R8, R9, R10, R11, _, _, _, _
-static const u32 x64_caller_saved_reg_mask = 0x0FC7;
-
 static const char* x64_mem_size_label[X64_MAX_INT_REG_SIZE + 1] = {
     [1] = "byte", [2] = "word", [4] = "dword", [8] = "qword"};
 static const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "db", [2] = "dw", [4] = "dd", [8] = "dq"};
@@ -125,32 +95,10 @@ static const char* x64_condition_codes[] = {
     [IR_COND_EQ] = "e",   [IR_COND_NEQ] = "ne",
 };
 
-static X64_Reg x64_arg_regs[] = {X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9};
-
-typedef enum X64_VRegLocKind {
-    X64_VREG_LOC_UNASSIGNED = 0,
-    X64_VREG_LOC_REG,
-    X64_VREG_LOC_STACK,
-} X64_VRegLocKind;
-
-typedef struct X64_VRegLoc {
-    X64_VRegLocKind kind;
-
-    union {
-        X64_Reg reg;
-        s32 offset;
-    };
-} X64_VRegLoc;
-
 typedef struct X64_ProcState {
     Symbol* sym;
     u32 id;
-
-    u32 num_vregs;
     X64_VRegLoc* vreg_map;
-
-    u32 used_callee_regs;
-    u32 free_regs;
 } X64_ProcState;
 
 typedef struct X64_Generator {
@@ -162,103 +110,6 @@ typedef struct X64_Generator {
     Allocator* gen_mem;
     Allocator* tmp_mem;
 } X64_Generator;
-
-static void X64_set_reg(u32* reg_mask, X64_Reg reg)
-{
-    *reg_mask |= (1 << reg);
-}
-
-static void X64_unset_reg(u32* reg_mask, X64_Reg reg)
-{
-    *reg_mask &= ~(1 << reg);
-}
-
-static bool X64_is_reg_set(u32 reg_mask, X64_Reg reg)
-{
-    return reg_mask & (1 << reg);
-}
-
-static bool X64_is_reg_caller_saved(X64_Reg x64_reg)
-{
-    return X64_is_reg_set(x64_caller_saved_reg_mask, x64_reg);
-}
-
-static bool X64_is_reg_callee_saved(X64_Reg x64_reg)
-{
-    return !X64_is_reg_set(x64_caller_saved_reg_mask, x64_reg);
-}
-
-static bool X64_is_reg_free(X64_Generator* generator, X64_Reg reg)
-{
-    return X64_is_reg_set(generator->curr_proc.free_regs, reg);
-}
-
-static bool X64_is_reg_used(X64_Generator* generator, X64_Reg reg)
-{
-    return !X64_is_reg_set(generator->curr_proc.free_regs, reg);
-}
-
-static void X64_free_reg(X64_Generator* generator, X64_Reg reg)
-{
-    X64_set_reg(&generator->curr_proc.free_regs, reg);
-}
-
-static void X64_alloc_reg(X64_Generator* generator, X64_Reg reg)
-{
-    X64_unset_reg(&generator->curr_proc.free_regs, reg);
-
-    if (X64_is_reg_callee_saved(reg))
-    {
-        X64_set_reg(&generator->curr_proc.used_callee_regs, reg);
-    }
-}
-
-static X64_Reg X64_next_reg(X64_Generator* generator, bool is_arg, u32 arg_index)
-{
-    // Try to allocate an argument register if available.
-    if (is_arg)
-    {
-        X64_Reg arg_reg = x64_arg_regs[arg_index];
-
-        if (X64_is_reg_free(generator, arg_reg))
-        {
-            X64_alloc_reg(generator, arg_reg);
-            return arg_reg;
-        }
-    }
-
-    // Otherwise, allocate the first available scratch register.
-    X64_Reg reg = X64_REG_COUNT;
-    u32 num_regs = ARRAY_LEN(x64_scratch_regs);
-
-    for (u32 i = 0; i < num_regs; i += 1)
-    {
-        if (X64_is_reg_free(generator, x64_scratch_regs[i]))
-        {
-            reg = x64_scratch_regs[i];
-            break;
-        }
-    }
-
-    if (reg != X64_REG_COUNT)
-    {
-        X64_alloc_reg(generator, reg);
-    }
-
-    return reg;
-}
-
-static void X64_init_regs(X64_Generator* generator)
-{
-    u32 num_regs = ARRAY_LEN(x64_scratch_regs);
-
-    for (u32 i = 0; i < num_regs; i += 1)
-    {
-        X64_free_reg(generator, x64_scratch_regs[i]);
-    }
-
-    generator->curr_proc.used_callee_regs = 0;
-}
 
 static X64_VRegLoc X64_vreg_loc(X64_Generator* generator, IR_Reg ir_reg)
 {
@@ -381,154 +232,6 @@ static void X64_fill_line(X64_Generator* gen, char** line, const char* format, .
     va_end(vargs);
 
     *line = mem_dup(gen->gen_mem, tmp_line, size + 1, DEFAULT_ALIGN);
-}
-
-typedef struct X64_VRegInterval {
-    LifetimeInterval interval;
-    u32 index;
-
-    struct X64_VRegInterval* next;
-    struct X64_VRegInterval* prev;
-} X64_VRegInterval;
-
-typedef struct X64_VRegIntervalList {
-    X64_VRegInterval sentinel;
-    u32 count;
-    Allocator* arena;
-} X64_VRegIntervalList;
-
-static void X64_vreg_interval_list_rm(X64_VRegIntervalList* list, X64_VRegInterval* node)
-{
-    assert(node != &list->sentinel);
-
-    X64_VRegInterval* prev = node->prev;
-    X64_VRegInterval* next = node->next;
-
-    prev->next = next;
-    next->prev = prev;
-
-    node->next = node->prev = NULL;
-
-    list->count -= 1;
-}
-
-static void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInterval* interval, u32 index)
-{
-    X64_VRegInterval* new_node = alloc_type(list->arena, X64_VRegInterval, true);
-    new_node->interval = *interval;
-    new_node->index = index;
-
-    // Insert sorted by increasing end point.
-
-    X64_VRegInterval* head = &list->sentinel;
-    X64_VRegInterval* it = head->next;
-    
-    while (it != head)
-    {
-        if (new_node->interval.end < it->interval.end)
-        {
-            break;
-        }
-
-        it = it->next;
-    }
-
-    // Insert before `it`
-    X64_VRegInterval* prev = it->prev;
-
-    prev->next = new_node;
-    new_node->prev = prev;
-    new_node->next = it;
-    it->prev = new_node;
-
-    list->count += 1;
-}
-
-// Linear scan register allocation from Poletto et al (1999)
-static u32 X64_linear_scan_reg_alloc(X64_Generator* generator, u32 offset)
-{
-    u32 num_x64_regs = ARRAY_LEN(x64_scratch_regs);
-    X64_VRegLoc* vreg_map = generator->curr_proc.vreg_map;
-
-    X64_VRegIntervalList active = {.arena = generator->tmp_mem};
-    active.sentinel.next = &active.sentinel;
-    active.sentinel.prev = &active.sentinel;
-
-    LifetimeInterval* intervals = generator->curr_proc.sym->as_proc.reg_intervals;
-    size_t num_intervals = array_len(generator->curr_proc.sym->as_proc.reg_intervals);
-
-    for (size_t i = 0; i < num_intervals; i += 1)
-    {
-        LifetimeInterval* interval = intervals + i;
-
-        // Expire old intervals
-        {
-            X64_VRegInterval* head = &active.sentinel;
-            X64_VRegInterval* it = head->next;
-
-            while (it != head)
-            {
-                X64_VRegInterval* next = it->next;
-
-                if (it->interval.end >= interval->start)
-                {
-                    break;
-                }
-
-                // This active interval ends before the current interval.
-                //
-                // Remove active interval from active list and free its register.
-                X64_vreg_interval_list_rm(&active, it);
-                
-                X64_VRegLoc* loc = vreg_map + it->index;
-
-                if (loc->kind == X64_VREG_LOC_REG)
-                {
-                    X64_free_reg(generator, loc->reg);
-                }
-
-                it = next;
-            }
-        }
-
-        // Check if need to spill
-        if (active.count == num_x64_regs)
-        {
-            X64_VRegInterval* last_active = active.sentinel.prev;
-
-            // Spill interval that ends the latest
-            if (last_active->interval.end > interval->end)
-            {
-                // Steal last_active's register.
-                vreg_map[i].kind = X64_VREG_LOC_REG;
-                vreg_map[i].reg = vreg_map[last_active->index].reg;
-
-                // Spill the last active interval.
-                vreg_map[last_active->index].kind = X64_VREG_LOC_STACK;
-                vreg_map[last_active->index].offset = offset;
-                offset += X64_MAX_INT_REG_SIZE;
-
-                X64_vreg_interval_list_rm(&active, last_active);
-                X64_vreg_interval_list_add(&active, interval, i);
-            }
-            else
-            {
-                vreg_map[i].kind = X64_VREG_LOC_STACK;
-                vreg_map[i].offset = offset;
-                offset += X64_MAX_INT_REG_SIZE;
-            }
-        }
-        else
-        {
-            // Allocate next free reg
-            vreg_map[i].kind = X64_VREG_LOC_REG;
-            vreg_map[i].reg = X64_next_reg(generator, interval->is_arg, interval->arg_index);
-
-            X64_vreg_interval_list_add(&active, interval, i);
-        }
-    }
-
-    return ALIGN_UP(offset, X64_STACK_ALIGN);
 }
 
 typedef struct X64_TmpReg {
@@ -1265,8 +968,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     generator->curr_proc.sym = sym;
     generator->curr_proc.id = proc_id;
 
-    X64_init_regs(generator);
-
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
     X64_emit_text(generator, "");
@@ -1283,16 +984,24 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     u32 stack_size = X64_assign_proc_stack_offsets(generator, (DeclProc*)sym->decl); // NOTE: Spills argument registers.
 
     // Register allocation.
-    generator->curr_proc.num_vregs = array_len(sym->as_proc.reg_intervals);
-    generator->curr_proc.vreg_map = alloc_array(generator->tmp_mem, X64_VRegLoc, generator->curr_proc.num_vregs, true);
+    LifetimeInterval* vreg_intervals = sym->as_proc.reg_intervals;
+    u32 num_vregs = array_len(vreg_intervals);
+    X64_VRegLoc* vreg_locs = alloc_array(generator->tmp_mem, X64_VRegLoc, num_vregs, true);
 
-    stack_size = X64_linear_scan_reg_alloc(generator, stack_size);
+    X64_RegAllocResult reg_alloc = X64_linear_scan_reg_alloc(generator->tmp_mem,
+                                                             num_vregs,
+                                                             vreg_intervals,
+                                                             vreg_locs,
+                                                             stack_size);
+    
+    stack_size = reg_alloc.stack_offset;
+    generator->curr_proc.vreg_map = vreg_locs;
 
 #ifndef NDEBUG
     ftprint_out("Register allocation for %s:\n", sym->name);
-    for (u32 i = 0; i < generator->curr_proc.num_vregs; i += 1)
+    for (u32 i = 0; i < num_vregs; i += 1)
     {
-        X64_VRegLoc* loc = generator->curr_proc.vreg_map + i;
+        X64_VRegLoc* loc = vreg_locs + i;
 
         if (loc->kind == X64_VREG_LOC_REG)
         {
@@ -1328,7 +1037,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     {
         X64_Reg reg = (X64_Reg)r;
 
-        if (X64_is_reg_set(generator->curr_proc.used_callee_regs, reg))
+        if (u32_is_bit_set(reg_alloc.used_callee_regs, reg))
         {
             ftprint_char_array(&tmp_line, false, "    push %s\n", reg_names[X64_MAX_INT_REG_SIZE][reg]);
             X64_emit_text(generator, "    pop %s", reg_names[X64_MAX_INT_REG_SIZE][reg]);
@@ -1374,6 +1083,33 @@ static void X64_gen_global_vars(X64_Generator* generator, u32 num_vars, Symbol**
     allocator_restore_state(mem_state);
 }
 
+static void X64_write_output_file(X64_Generator* generator, FILE* out_fd)
+{
+    ftprint_file(out_fd, false, "; Generated by the Nibble compiler.\n\n");
+
+    for (Bucket* bucket = generator->data_lines->first; bucket; bucket = bucket->next)
+    {
+        for (size_t i = 0; i < bucket->count; i += 1)
+        {
+            const char* str = (const char*)bucket->elems[i];
+
+            if (str)
+                ftprint_file(out_fd, false, "%s\n", str);
+        }
+    }
+
+    for (Bucket* bucket = generator->text_lines->first; bucket; bucket = bucket->next)
+    {
+        for (size_t i = 0; i < bucket->count; i += 1)
+        {
+            const char* str = (const char*)bucket->elems[i];
+
+            if (str)
+                ftprint_file(out_fd, false, "%s\n", str);
+        }
+    }
+}
+
 bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, IR_Module* module, const char* output_file)
 {
     FILE* out_fd = fopen(output_file, "w");
@@ -1402,29 +1138,7 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, IR_Module* module, c
     }
 
     // Output assembly to file.
-    ftprint_file(out_fd, false, "; Generated by the Nibble compiler.\n\n");
-
-    for (Bucket* bucket = generator.data_lines->first; bucket; bucket = bucket->next)
-    {
-        for (size_t i = 0; i < bucket->count; i += 1)
-        {
-            const char* str = (const char*)bucket->elems[i];
-
-            if (str)
-                ftprint_file(out_fd, false, "%s\n", str);
-        }
-    }
-
-    for (Bucket* bucket = generator.text_lines->first; bucket; bucket = bucket->next)
-    {
-        for (size_t i = 0; i < bucket->count; i += 1)
-        {
-            const char* str = (const char*)bucket->elems[i];
-
-            if (str)
-                ftprint_file(out_fd, false, "%s\n", str);
-        }
-    }
+    X64_write_output_file(&generator, out_fd);
 
     fclose(out_fd);
 
