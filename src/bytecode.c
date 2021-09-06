@@ -1000,7 +1000,8 @@ static void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand
         {
             IR_op_to_r(builder, int_op, true);
 
-            if (!add) IR_emit_instr_neg(builder, int_op->type, int_op->reg);
+            if (!add)
+                IR_emit_instr_neg(builder, int_op->type, int_op->reg);
 
             ptr_op->addr.scale = base_size;
             ptr_op->addr.index_reg = int_op->reg;
@@ -1747,6 +1748,10 @@ static void IR_emit_expr_call(IR_Builder* builder, ExprCall* expr_call, IR_Opera
         IR_cleanup_call_args(builder, num_args, args);
         IR_free_reg(builder, proc_op.reg);
     }
+
+    // Mark current procedure as non-leaf. This probably doesn't belong here, but I will probably delete/replace all of
+    // this code.
+    builder->curr_proc->as_proc.is_nonleaf = true;
 }
 
 static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)

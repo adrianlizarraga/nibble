@@ -682,6 +682,7 @@ typedef struct LifetimeInterval {
 struct SymbolProc {
     struct IR_Instr** instrs; // NOTE: stretchy buf
     LifetimeInterval* reg_intervals;
+    bool is_nonleaf;
 };
 
 struct Symbol {

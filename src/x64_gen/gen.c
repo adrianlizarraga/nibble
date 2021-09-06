@@ -99,6 +99,9 @@ typedef struct X64_ProcState {
     Symbol* sym;
     u32 id;
     X64_VRegLoc* vreg_map;
+
+    X64_Reg* scratch_regs;
+    u32 num_scratch_regs;
 } X64_ProcState;
 
 typedef struct X64_Generator {
@@ -273,21 +276,24 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, IR_Reg vreg, u32 size, bool stor
 
     // This virtual register was spilled during allocation, so use a temporary physical register which will have
     // to be restored later.
+
+    X64_Generator* generator = group->generator;
+    u32 num_scratch_regs = generator->curr_proc.num_scratch_regs;
+    X64_Reg* scratch_regs = generator->curr_proc.scratch_regs;
+
     assert(vreg_loc.kind == X64_VREG_LOC_STACK);
-    assert(group->num_tmp_regs < ARRAY_LEN(x64_scratch_regs));
+    assert(group->num_tmp_regs < num_scratch_regs);
 
     Allocator* tmp_mem = group->generator->tmp_mem;
 
     X64_TmpReg* tmp_reg = alloc_type(tmp_mem, X64_TmpReg, true);
-    tmp_reg->reg = x64_scratch_regs[group->num_tmp_regs++]; // Use the next scratch register.
+    tmp_reg->reg = scratch_regs[group->num_tmp_regs++]; // Use the next scratch register.
     tmp_reg->offset = vreg_loc.offset;
     tmp_reg->size = size;
     tmp_reg->store = store;
 
-    const char* tmp_reg_str = x64_reg_names[size][tmp_reg->reg];
-
-    X64_emit_text(group->generator, "    push %s", tmp_reg_str); // Save scratch register into stack.
-    X64_emit_text(group->generator, "    mov %s, %s", tmp_reg_str,
+    X64_emit_text(group->generator, "    push %s", x64_reg_names[X64_MAX_INT_REG_SIZE][tmp_reg->reg]);
+    X64_emit_text(group->generator, "    mov %s, %s", x64_reg_names[size][tmp_reg->reg],
                   X64_print_stack_offset(tmp_mem, vreg_loc.offset, size));
 
     // Add scratch register to the list (stack) of regs in group.
@@ -295,6 +301,22 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, IR_Reg vreg, u32 size, bool stor
     group->first_tmp_reg = tmp_reg;
 
     return tmp_reg->reg;
+}
+
+static void X64_push_reg(X64_RegGroup* group, X64_Reg reg)
+{
+    assert(reg != X64_REG_COUNT);
+
+    Allocator* tmp_mem = group->generator->tmp_mem;
+
+    X64_TmpReg* tmp_reg = alloc_type(tmp_mem, X64_TmpReg, true);
+    tmp_reg->reg = reg;
+
+    X64_emit_text(group->generator, "    push %s", x64_reg_names[X64_MAX_INT_REG_SIZE][tmp_reg->reg]);
+
+    // Add scratch register to the list (stack) of regs in group.
+    tmp_reg->next = group->first_tmp_reg;
+    group->first_tmp_reg = tmp_reg;
 }
 
 static void X64_end_reg_group(X64_RegGroup* group)
@@ -309,15 +331,13 @@ static void X64_end_reg_group(X64_RegGroup* group)
 
     while (it)
     {
-        const char* tmp_reg_str = x64_reg_names[it->size][it->reg];
-
         if (it->store)
         {
             X64_emit_text(generator, "    mov %s, %s", X64_print_stack_offset(generator->tmp_mem, it->offset, it->size),
-                          tmp_reg_str);
+                          x64_reg_names[it->size][it->reg]);
         }
 
-        X64_emit_text(generator, "    pop %s", tmp_reg_str);
+        X64_emit_text(generator, "    pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][it->reg]);
         it = it->next;
     }
 }
@@ -661,7 +681,7 @@ static void X64_emit_mi_instr(X64_Generator* generator, const char* instr, u32 o
     X64_end_reg_group(&tmp_group);
 }
 
-static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_last_instr, IR_Instr* instr)
+static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_index, bool is_last_instr, IR_Instr* instr)
 {
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
@@ -949,6 +969,79 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
 
             break;
         }
+        case IR_INSTR_CALL:
+        {
+            u32 num_args = instr->call.num_args;
+            IR_InstrCallArg* args = instr->call.args;
+
+            X64_RegGroup group = X64_begin_reg_group(generator);
+
+            // TODO: Push non-arg caller-saved registers used across procedure call.
+            X64_save_clobbered_regs(&group, num_args, args, live_regs);
+
+            u32 num_arg_regs = ARRAY_LEN(x64_arg_regs);
+            u32 num_stack_args = 0;
+
+            for (u32 arg_index = num_args; arg_index-- > 0; arg_index -= 1)
+            {
+                IR_InstrCallArg* arg = args + arg_index;
+                u32 arg_size = (u32)arg->type->size;
+
+                assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
+
+                if (arg_index >= num_arg_regs)
+                {
+                    num_stack_args += 1;
+                }
+                else
+                {
+                    // Pass argument via argument register.
+                    X64_VRegLoc arg_loc = X64_vreg_loc(generator, arg->loc);
+                    X64_Reg arg_reg = x64_arg_regs[arg_index];
+
+                    // Check if argument is already in the appropriate register.
+                    if ((arg_loc.kind == X64_VREG_LOC_REG) && (arg_loc.reg == arg_reg))
+                    {
+                        // Check if the argument will be needed across the procedure call.
+                        bool preserve = u32_is_bit_set(live_regs, arg_reg);
+
+                        if (preserve)
+                        {
+                            X64_push_reg(&group, arg_reg);
+                        }
+                    }
+                    else
+                    {
+                        // Move argument into the appropriate register.
+                        
+                        if (arg_loc.kind == X64_VREG_LOC_STACK)
+                        {
+                            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][arg_reg],
+                                          X64_print_stack_offset(generator->tmp_mem, arg_loc.offset, arg_size));
+                        }
+                        else
+                        {
+                            assert(arg_loc.kind == X64_VREG_LOC_REG);
+
+                            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][arg_reg],
+                                          x64_reg_names[arg_size][arg_loc.reg]);
+
+                            // Check if the original argument register will be needed across the procedure AND if it is
+                            // a caller-saved register.
+                            bool is_caller_saved = X64_is_reg_caller_saved(arg_loc.reg);
+                            bool preserve = u32_is_bit_set(live_regs, arg_loc.reg);
+
+                            if (is_caller_saved && preserve)
+                            {
+                                X64_push_reg(&group, arg_loc.reg);
+                            }
+                        }
+                    }
+                }
+            }
+
+            break;
+        }
         default:
             assert(0);
             break;
@@ -961,6 +1054,18 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 {
     generator->curr_proc.sym = sym;
     generator->curr_proc.id = proc_id;
+
+    // Set different scratch register order for leaf vs nonleaf procedures.
+    if (sym->as_proc.is_nonleaf)
+    {
+        generator->curr_proc.scratch_regs = x64_nonleaf_scratch_regs;
+        generator->curr_proc.num_scratch_regs = ARRAY_LEN(x64_nonleaf_scratch_regs);
+    }
+    else
+    {
+        generator->curr_proc.scratch_regs = x64_leaf_scratch_regs;
+        generator->curr_proc.num_scratch_regs = ARRAY_LEN(x64_leaf_scratch_regs);
+    }
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
@@ -983,7 +1088,10 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     X64_VRegLoc* vreg_locs = alloc_array(generator->tmp_mem, X64_VRegLoc, num_vregs, true);
 
     X64_RegAllocResult reg_alloc =
-        X64_linear_scan_reg_alloc(generator->tmp_mem, num_vregs, vreg_intervals, vreg_locs, stack_size);
+        X64_linear_scan_reg_alloc(generator->tmp_mem, num_vregs, vreg_intervals, vreg_locs,
+                                  generator->curr_proc.num_scratch_regs,
+                                  generator->curr_proc.scratch_regs,
+                                  stack_size);
 
     stack_size = reg_alloc.stack_offset;
     generator->curr_proc.vreg_map = vreg_locs;
@@ -1013,9 +1121,60 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     IR_Instr** instrs = sym->as_proc.instrs;
     size_t num_instrs = array_len(instrs);
 
-    for (size_t i = 0; i < num_instrs; i += 1)
+    X64_VRegIntervalList active = {.arena = generator->tmp_mem};
+    active.sentinel.next = &active.sentinel;
+    active.sentinel.prev = &active.sentinel;
+    u32 live_regs = 0;
+    u32 first_interval = 0;
+
+    for (size_t instr_index = 0; instr_index < num_instrs; instr_index += 1)
     {
-        X64_gen_instr(generator, i, i == num_instrs - 1, instrs[i]);
+        // Expire old intervals
+        X64_VRegInterval* head = &active.sentinel;
+        X64_VRegInterval* it = head->next;
+
+        while (it != head)
+        {
+            X64_VRegInterval* next = it->next;
+
+            // This comparison uses > instead of >= so that registers that are NOT
+            // specified by the used_caller_regs mask are guaranteed to NOT be used after this instruction.
+            // This information is used by call instructions to determine if arguments in caller-saved registers
+            // need to be preserved across procedure calls.
+            if (it->interval.end > instr_index)
+                break;
+
+            X64_vreg_interval_list_rm(&active, it);
+
+            X64_VRegLoc* loc = vreg_locs + it->index;
+
+            if (loc->kind == X64_VREG_LOC_REG)
+                u32_unset_bit(&live_regs, loc->reg);
+
+            it = next;
+        }
+
+        // Add new active intervals.
+        for (u32 j = first_interval; j < num_vregs; j += 1)
+        {
+            LifetimeInterval* interval = vreg_intervals + j;
+
+            if (instr_index < interval->start)
+            {
+                first_interval = j;
+                break;
+            }
+
+            X64_vreg_interval_list_add(&active, interval, j);
+            
+            X64_VRegLoc* loc = vreg_locs + j;
+
+            if (loc->kind == X64_VREG_LOC_REG)
+                u32_set_bit(&live_regs, loc->reg);
+        }
+
+        // Generate x64 instructions
+        X64_gen_instr(generator, live_regs, instr_index, instr_index == num_instrs - 1, instrs[instr_index]);
     }
 
     // End label

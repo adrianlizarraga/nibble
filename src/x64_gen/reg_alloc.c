@@ -1,19 +1,5 @@
 #include "x64_gen/reg_alloc.h"
 
-typedef struct X64_VRegInterval {
-    LifetimeInterval interval;
-    u32 index;
-
-    struct X64_VRegInterval* next;
-    struct X64_VRegInterval* prev;
-} X64_VRegInterval;
-
-typedef struct X64_VRegIntervalList {
-    X64_VRegInterval sentinel;
-    u32 count;
-    Allocator* arena;
-} X64_VRegIntervalList;
-
 static void X64_free_reg(u32* free_regs, X64_Reg reg)
 {
     u32_set_bit(free_regs, (u8)reg);
@@ -29,9 +15,10 @@ static void X64_alloc_reg(u32* free_regs, u32* used_callee_regs, X64_Reg reg)
     }
 }
 
-static X64_Reg X64_next_reg(u32* free_regs, u32* used_callee_regs, bool is_arg, u32 arg_index)
+static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* free_regs, u32* used_callee_regs)
 {
     // Try to allocate an argument register if available.
+    /*
     if (is_arg)
     {
         X64_Reg arg_reg = x64_arg_regs[arg_index];
@@ -42,12 +29,12 @@ static X64_Reg X64_next_reg(u32* free_regs, u32* used_callee_regs, bool is_arg, 
             return arg_reg;
         }
     }
+    */
 
     // Otherwise, allocate the first available scratch register.
     X64_Reg reg = X64_REG_COUNT;
-    u32 num_regs = ARRAY_LEN(x64_scratch_regs);
 
-    for (u32 i = 0; i < num_regs; i += 1)
+    for (u32 i = 0; i < num_x64_regs; i += 1)
     {
         if (u32_is_bit_set(*free_regs, (u8)x64_scratch_regs[i]))
         {
@@ -64,17 +51,15 @@ static X64_Reg X64_next_reg(u32* free_regs, u32* used_callee_regs, bool is_arg, 
     return reg;
 }
 
-static void X64_init_free_regs(u32* free_regs)
+static void X64_init_free_regs(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* free_regs)
 {
-    u32 num_regs = ARRAY_LEN(x64_scratch_regs);
-
-    for (u32 i = 0; i < num_regs; i += 1)
+    for (u32 i = 0; i < num_x64_regs; i += 1)
     {
         X64_free_reg(free_regs, x64_scratch_regs[i]);
     }
 }
 
-static void X64_vreg_interval_list_rm(X64_VRegIntervalList* list, X64_VRegInterval* node)
+void X64_vreg_interval_list_rm(X64_VRegIntervalList* list, X64_VRegInterval* node)
 {
     assert(node != &list->sentinel);
 
@@ -89,7 +74,7 @@ static void X64_vreg_interval_list_rm(X64_VRegIntervalList* list, X64_VRegInterv
     list->count -= 1;
 }
 
-static void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInterval* interval, u32 index)
+void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInterval* interval, u32 index)
 {
     X64_VRegInterval* new_node = alloc_type(list->arena, X64_VRegInterval, true);
     new_node->interval = *interval;
@@ -122,16 +107,15 @@ static void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInter
 }
 
 X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, LifetimeInterval* vreg_intervals,
-                                             X64_VRegLoc* vreg_locs, u32 init_stack_offset)
+                                             X64_VRegLoc* vreg_locs, u32 num_x64_regs, X64_Reg* x64_scratch_regs,
+                                             u32 init_stack_offset)
 {
     X64_RegAllocResult result = {.stack_offset = init_stack_offset};
-    X64_init_free_regs(&result.free_regs);
+    X64_init_free_regs(num_x64_regs, x64_scratch_regs, &result.free_regs);
 
     X64_VRegIntervalList active = {.arena = arena};
     active.sentinel.next = &active.sentinel;
     active.sentinel.prev = &active.sentinel;
-
-    const u32 num_x64_regs = ARRAY_LEN(x64_scratch_regs);
 
     for (size_t i = 0; i < num_vregs; i += 1)
     {
@@ -199,7 +183,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, Li
             // Allocate next free reg
             vreg_locs[i].kind = X64_VREG_LOC_REG;
             vreg_locs[i].reg =
-                X64_next_reg(&result.free_regs, &result.used_callee_regs, interval->is_arg, interval->arg_index);
+                X64_next_reg(num_x64_regs, x64_scratch_regs, &result.free_regs, &result.used_callee_regs);
 
             X64_vreg_interval_list_add(&active, interval, i);
         }
