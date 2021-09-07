@@ -16,8 +16,20 @@ static void X64_alloc_reg(u32* free_regs, u32* used_callee_regs, X64_Reg reg)
 }
 
 static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* free_regs, u32* used_callee_regs,
-                            bool is_arg, u32 arg_index)
+                            bool is_ret, bool is_arg, u32 arg_index)
 {
+    // Try to allocate RAX if this is a return value.
+    if (is_ret)
+    {
+        X64_Reg ret_reg = X64_RAX;
+
+        if (u32_is_bit_set(*free_regs, (u8)ret_reg))
+        {
+            X64_alloc_reg(free_regs, used_callee_regs, ret_reg);
+            return ret_reg;
+        }
+    }
+
     // Try to allocate an argument register if available.
     if (is_arg && (arg_index < X64_NUM_ARG_REGS))
     {
@@ -191,7 +203,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, Li
             // We want to prevent arguments that should be passed via the stack from being assigned an argument register.
             // Refer to the logic for emitting X64 call instructions for more info.
             X64_Reg reg = X64_next_reg(num_x64_regs, x64_scratch_regs, &result.free_regs, &result.used_callee_regs,
-                                       interval->is_arg, interval->arg_index);
+                                       interval->is_ret, interval->is_arg, interval->arg_index);
 
             if (reg != X64_REG_COUNT)
             {

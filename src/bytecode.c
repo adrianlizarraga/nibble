@@ -89,6 +89,14 @@ static void IR_mark_reg_as_arg(IR_Builder* builder, IR_Reg reg, u32 arg_index)
     interval->arg_index = arg_index;
 }
 
+static void IR_mark_reg_as_ret(IR_Builder* builder, IR_Reg reg)
+{
+    Symbol* sym = builder->curr_proc;
+    LifetimeInterval* interval = &sym->as_proc.reg_intervals[reg];
+
+    interval->is_ret = true;
+}
+
 static void IR_try_free_op_reg(IR_Builder* builder, IR_Operand* op)
 {
     switch (op->kind)
@@ -1873,6 +1881,7 @@ static void IR_emit_stmt_return(IR_Builder* builder, StmtReturn* sret)
 
     IR_emit_instr_ret(builder, expr_op.type, expr_op.reg);
 
+    IR_mark_reg_as_ret(builder, expr_op.reg);
     IR_free_reg(builder, expr_op.reg);
 }
 

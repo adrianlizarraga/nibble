@@ -675,6 +675,7 @@ struct SymbolVar {
 typedef struct LifetimeInterval {
     u32 start;
     u32 end;
+    bool is_ret;
     bool is_arg;
     u32 arg_index;
 } LifetimeInterval;
