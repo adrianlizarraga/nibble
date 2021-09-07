@@ -2,7 +2,6 @@
 #include "cstring.h"
 #include "hash_map.h"
 #include "parser.h"
-#include "gen_assembly.h"
 #include "bytecode.h"
 #include "x64_gen.h"
 
@@ -290,11 +289,8 @@ void nibble_compile(const char* input_file, const char* output_file)
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
-    ftprint_out("4. Generating (old) NASM assembly output: %s ...\n", output_file);
-    gen_nasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
-
-    ftprint_out("5. Generating (new) NASM assembly output: out_new.s ...\n");
-    x64_gen_module(&nibble->gen_mem, &nibble->tmp_mem, module, "out_new.s");
+    ftprint_out("4. Generating NASM assembly output: %s ...\n", output_file);
+    x64_gen_module(&nibble->gen_mem, &nibble->tmp_mem, module, output_file);
 }
 
 void nibble_cleanup(void)

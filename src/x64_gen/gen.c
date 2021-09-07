@@ -425,12 +425,12 @@ static size_t X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* 
             Type* arg_type = sym->type;
             size_t arg_size = arg_type->size;
             size_t arg_align = arg_type->align;
-            bool arg_in_reg = (arg_index < ARRAY_LEN(arg_regs)) && (arg_size <= X64_MAX_INT_REG_SIZE);
+            bool arg_in_reg = (arg_index < X64_NUM_ARG_REGS) && (arg_size <= X64_MAX_INT_REG_SIZE);
 
             // Spill argument register onto the stack.
             if (arg_in_reg)
             {
-                Register arg_reg = arg_regs[arg_index];
+                X64_Reg arg_reg = x64_arg_regs[arg_index];
 
                 stack_size += arg_size;
                 stack_size = ALIGN_UP(stack_size, arg_align);
@@ -1412,8 +1412,8 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg))
         {
-            ftprint_char_array(&tmp_line, false, "    push %s\n", reg_names[X64_MAX_INT_REG_SIZE][reg]);
-            X64_emit_text(generator, "    pop %s", reg_names[X64_MAX_INT_REG_SIZE][reg]);
+            ftprint_char_array(&tmp_line, false, "    push %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
+            X64_emit_text(generator, "    pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
         }
     }
 

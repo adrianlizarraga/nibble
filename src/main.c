@@ -23,7 +23,6 @@
 #include "resolver.c"
 #include "bytecode.c"
 #include "print_ir.c"
-#include "gen_assembly.c"
 #include "x64_gen/gen.c"
 #include "nibble.c"
 

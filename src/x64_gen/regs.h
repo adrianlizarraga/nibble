@@ -35,7 +35,7 @@ typedef enum X64_Reg {
 
 extern X64_Reg x64_leaf_scratch_regs[];
 extern X64_Reg x64_nonleaf_scratch_regs[];
-extern X64_Reg x64_arg_regs[];
+extern X64_Reg x64_arg_regs[X64_NUM_ARG_REGS];
 
 bool X64_is_reg_caller_saved(X64_Reg reg);
 bool X64_is_reg_callee_saved(X64_Reg reg);
