@@ -241,8 +241,7 @@ typedef struct IR_InstrCallArg {
 } IR_InstrCallArg;
 
 typedef struct IR_InstrCall {
-    Type* proc_type;
-    Symbol* proc_loc;
+    Symbol* sym;
     IR_Reg dst;
     u32 num_args;
     IR_InstrCallArg* args;

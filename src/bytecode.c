@@ -526,12 +526,10 @@ static void IR_emit_instr_ret(IR_Builder* builder, Type* type, IR_Reg src)
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_call(IR_Builder* builder, Type* proc_type, Symbol* proc_loc, IR_Reg dst, u32 num_args,
-                               IR_InstrCallArg* args)
+static void IR_emit_instr_call(IR_Builder* builder, Symbol* sym, IR_Reg dst, u32 num_args, IR_InstrCallArg* args)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CALL);
-    instr->call.proc_type = proc_type;
-    instr->call.proc_loc = proc_loc;
+    instr->call.sym = sym;
     instr->call.dst = dst;
     instr->call.num_args = num_args;
     instr->call.args = args;
@@ -1736,7 +1734,7 @@ static void IR_emit_expr_call(IR_Builder* builder, ExprCall* expr_call, IR_Opera
     {
         // Direct procedure call.
         IR_setup_call_ret(builder, expr_call, dst_op);
-        IR_emit_instr_call(builder, proc_op.type, proc_op.sym, dst_op->reg, num_args, args);
+        IR_emit_instr_call(builder, proc_op.sym, dst_op->reg, num_args, args);
         IR_cleanup_call_args(builder, num_args, args);
     }
     else

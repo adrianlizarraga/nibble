@@ -281,7 +281,7 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
         }
         case IR_INSTR_CALL:
         {
-            Type* proc_type = instr->call.proc_type;
+            Type* proc_type = instr->call.sym->type;
 
             ftprint_char_array(&dstr, false, "call ");
 
@@ -291,7 +291,7 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
                                    IR_print_reg(arena, instr->call.dst));
             }
 
-            ftprint_char_array(&dstr, false, "%s (", instr->call.proc_loc);
+            ftprint_char_array(&dstr, false, "%s (", instr->call.sym->name);
 
             u32 num_args = instr->call.num_args;
             IR_InstrCallArg* args = instr->call.args;

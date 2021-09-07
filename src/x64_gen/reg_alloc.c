@@ -15,11 +15,11 @@ static void X64_alloc_reg(u32* free_regs, u32* used_callee_regs, X64_Reg reg)
     }
 }
 
-static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* free_regs, u32* used_callee_regs)
+static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* free_regs, u32* used_callee_regs,
+                            bool is_arg, u32 arg_index)
 {
     // Try to allocate an argument register if available.
-    /*
-    if (is_arg)
+    if (is_arg && (arg_index < X64_NUM_ARG_REGS))
     {
         X64_Reg arg_reg = x64_arg_regs[arg_index];
 
@@ -29,9 +29,8 @@ static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* fr
             return arg_reg;
         }
     }
-    */
 
-    // Otherwise, allocate the first available scratch register.
+    // Get the first available scratch register.
     X64_Reg reg = X64_REG_COUNT;
 
     for (u32 i = 0; i < num_x64_regs; i += 1)
@@ -41,6 +40,12 @@ static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* fr
             reg = x64_scratch_regs[i];
             break;
         }
+    }
+
+    // Do not assign an argument register to an argument that should be passed via the stack.
+    if (is_arg && (arg_index >= X64_NUM_ARG_REGS) && u32_is_bit_set(X64_ARG_REG_MASK, reg))
+    {
+        reg = X64_REG_COUNT;
     }
 
     if (reg != X64_REG_COUNT)
@@ -180,12 +185,28 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, Li
         }
         else
         {
-            // Allocate next free reg
-            vreg_locs[i].kind = X64_VREG_LOC_REG;
-            vreg_locs[i].reg =
-                X64_next_reg(num_x64_regs, x64_scratch_regs, &result.free_regs, &result.used_callee_regs);
+            // Try to allocate the next free reg. This will only fail if this interval corresponds to a procedure call argument
+            // AND 1) the argument should be passed via the stack and 2) we can only assign an X64 argument register.
+            //
+            // We want to prevent arguments that should be passed via the stack from being assigned an argument register.
+            // Refer to the logic for emitting X64 call instructions for more info.
+            X64_Reg reg = X64_next_reg(num_x64_regs, x64_scratch_regs, &result.free_regs, &result.used_callee_regs,
+                                       interval->is_arg, interval->arg_index);
 
-            X64_vreg_interval_list_add(&active, interval, i);
+            if (reg != X64_REG_COUNT)
+            {
+                vreg_locs[i].kind = X64_VREG_LOC_REG;
+                vreg_locs[i].reg = reg;
+
+                X64_vreg_interval_list_add(&active, interval, i);
+            }
+            else
+            {
+                // This is a call argument that we refused to assign to a free register.
+                vreg_locs[i].kind = X64_VREG_LOC_STACK;
+                vreg_locs[i].offset = result.stack_offset;
+                result.stack_offset += X64_MAX_INT_REG_SIZE;
+            }
         }
     }
 
