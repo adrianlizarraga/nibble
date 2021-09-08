@@ -325,6 +325,8 @@ static void X64_push_reg(X64_RegGroup* group, X64_Reg reg)
     // Add scratch register to the list (stack) of regs in group.
     tmp_reg->next = group->first_tmp_reg;
     group->first_tmp_reg = tmp_reg;
+
+    group->num_tmp_regs += 1;
 }
 
 static void X64_end_reg_group(X64_RegGroup* group)
