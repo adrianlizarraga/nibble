@@ -9,7 +9,7 @@ static void X64_alloc_reg(u32* free_regs, u32* used_callee_regs, X64_Reg reg)
 {
     u32_unset_bit(free_regs, (u8)reg);
 
-    if (X64_is_reg_callee_saved(reg))
+    if (X64_is_callee_saved_reg(reg))
     {
         u32_set_bit(used_callee_regs, (u8)reg);
     }
@@ -31,9 +31,9 @@ static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* fr
     }
 
     // Try to allocate an argument register if available.
-    if (is_arg && (arg_index < X64_NUM_ARG_REGS))
+    if (is_arg && (arg_index < x64_target.num_arg_regs))
     {
-        X64_Reg arg_reg = x64_arg_regs[arg_index];
+        X64_Reg arg_reg = x64_target.arg_regs[arg_index];
 
         if (u32_is_bit_set(*free_regs, (u8)arg_reg))
         {
@@ -55,7 +55,7 @@ static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* fr
     }
 
     // Do not assign an argument register to an argument that should be passed via the stack.
-    if (is_arg && (arg_index >= X64_NUM_ARG_REGS) && u32_is_bit_set(X64_ARG_REG_MASK, reg))
+    if (is_arg && (arg_index >= x64_target.num_arg_regs) && u32_is_bit_set(x64_target.arg_reg_mask, reg))
     {
         reg = X64_REG_COUNT;
     }

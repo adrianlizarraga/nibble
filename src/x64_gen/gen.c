@@ -1,5 +1,5 @@
 #include "stream.h"
-#include "x64_gen.h"
+#include "x64_gen/gen.h"
 
 #include "x64_gen/regs.c"
 #include "x64_gen/reg_alloc.c"
@@ -427,12 +427,12 @@ static size_t X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* 
             Type* arg_type = sym->type;
             size_t arg_size = arg_type->size;
             size_t arg_align = arg_type->align;
-            bool arg_in_reg = (arg_index < X64_NUM_ARG_REGS) && (arg_size <= X64_MAX_INT_REG_SIZE);
+            bool arg_in_reg = (arg_index < x64_target.num_arg_regs) && (arg_size <= X64_MAX_INT_REG_SIZE);
 
             // Spill argument register onto the stack.
             if (arg_in_reg)
             {
-                X64_Reg arg_reg = x64_arg_regs[arg_index];
+                X64_Reg arg_reg = x64_target.arg_regs[arg_index];
 
                 stack_size += arg_size;
                 stack_size = ALIGN_UP(stack_size, arg_align);
@@ -996,7 +996,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
             for (u32 r = 0; r < X64_REG_COUNT; r += 1)
             {
                 X64_Reg reg = (X64_Reg)r;
-                bool is_caller_saved = X64_is_reg_caller_saved(reg);
+                bool is_caller_saved = X64_is_caller_saved_reg(reg);
                 bool preserve = u32_is_bit_set(live_regs, reg);
 
                 if (is_caller_saved && preserve)
@@ -1021,7 +1021,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
 
                 assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
 
-                if (i >= X64_NUM_ARG_REGS)
+                if (i >= x64_target.num_arg_regs)
                 {
                     arg_info->in_reg = false;
                     stack_args_size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
@@ -1034,7 +1034,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
 
                 if (arg_loc.kind == X64_VREG_LOC_REG)
                 {
-                    bool is_caller_saved = X64_is_reg_caller_saved(arg_loc.reg);
+                    bool is_caller_saved = X64_is_caller_saved_reg(arg_loc.reg);
                     bool needed_after_call = u32_is_bit_set(live_regs, arg_loc.reg);
 
                     arg_info_map[arg_loc.reg] = arg_info;
@@ -1068,7 +1068,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
                     u32 arg_size = (u32)arg_info->arg->type->size;
 
                     // This is the X64 register that must contain this argument.
-                    X64_Reg arg_reg = x64_arg_regs[arg_info->reg_index];
+                    X64_Reg arg_reg = x64_target.arg_regs[arg_info->reg_index];
 
                     // Check if argument is already in the appropriate register.
                     if ((arg_info->loc.kind == X64_VREG_LOC_REG) && (arg_info->loc.reg == arg_reg))
@@ -1270,16 +1270,18 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     generator->curr_proc.sym = sym;
     generator->curr_proc.id = proc_id;
 
+    bool is_nonleaf = sym->as_proc.is_nonleaf;
+
     // Set different scratch register order for leaf vs nonleaf procedures.
-    if (sym->as_proc.is_nonleaf)
+    if (is_nonleaf)
     {
-        generator->curr_proc.scratch_regs = x64_nonleaf_scratch_regs;
-        generator->curr_proc.num_scratch_regs = ARRAY_LEN(x64_nonleaf_scratch_regs);
+        generator->curr_proc.scratch_regs = x64_target.nonleaf_scratch_regs;
+        generator->curr_proc.num_scratch_regs = x64_target.num_nonleaf_scratch_regs;
     }
     else
     {
-        generator->curr_proc.scratch_regs = x64_leaf_scratch_regs;
-        generator->curr_proc.num_scratch_regs = ARRAY_LEN(x64_leaf_scratch_regs);
+        generator->curr_proc.scratch_regs = x64_target.leaf_scratch_regs;
+        generator->curr_proc.num_scratch_regs = x64_target.num_leaf_scratch_regs;
     }
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
@@ -1309,8 +1311,8 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     stack_size = reg_alloc.stack_offset;
     generator->curr_proc.vreg_map = vreg_locs;
 
-#ifndef NDEBUG
-    ftprint_out("Register allocation for %s:\n", sym->name);
+#if 0
+    ftprint_out("Register allocation for %s (%s):\n", sym->name, is_nonleaf ? "nonleaf": "leaf");
     for (u32 i = 0; i < num_vregs; i += 1)
     {
         X64_VRegLoc* loc = vreg_locs + i;

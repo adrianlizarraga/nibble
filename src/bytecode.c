@@ -2239,7 +2239,7 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
     IR_pop_scope(builder);
     builder->curr_proc = NULL;
 
-#ifndef NDEBUG
+#if 0
     IR_print_out_proc(builder->tmp_arena, sym);
 
     ftprint_out("Lifetime intervals:\n");

@@ -5,13 +5,6 @@
 #define X64_MAX_INT_REG_SIZE 8
 #define X64_STACK_ALIGN 16
 #define X64_STACK_WORD_SIZE 8
-#define X64_NUM_ARG_REGS 6
-
-// Bit is 1 for caller saved registers: RAX, RCX, RDX, _, _, _, RSI, RDI, R8, R9, R10, R11, _, _, _, _
-#define X64_CALLER_SAVED_REG_MASK 0x0FC7
-
-// Bit is 1 for arg registers: _, RCX, RDX, _, _, _, RSI, RDI, R8, R9, _, _, _, _, _, _
-#define X64_ARG_REG_MASK 0x03C6
 
 typedef enum X64_Reg {
     X64_RAX = 0,
@@ -33,12 +26,28 @@ typedef enum X64_Reg {
     X64_REG_COUNT,
 } X64_Reg;
 
-extern X64_Reg x64_leaf_scratch_regs[];
-extern X64_Reg x64_nonleaf_scratch_regs[];
-extern X64_Reg x64_arg_regs[X64_NUM_ARG_REGS];
+typedef struct X64_Target {
+    u32 num_arg_regs;
+    X64_Reg* arg_regs;
 
-bool X64_is_reg_caller_saved(X64_Reg reg);
-bool X64_is_reg_callee_saved(X64_Reg reg);
+    u32 num_leaf_scratch_regs;
+    X64_Reg* leaf_scratch_regs;
+
+    u32 num_nonleaf_scratch_regs;
+    X64_Reg* nonleaf_scratch_regs;
+
+    u32 caller_saved_reg_mask;
+    u32 arg_reg_mask;
+
+    OS os;
+} X64_Target;
+
+extern X64_Target x64_target;
+
+bool init_x64_target(OS target_os);
+bool X64_is_caller_saved_reg(X64_Reg reg);
+bool X64_is_callee_saved_reg(X64_Reg reg);
+bool X64_is_arg_reg(X64_Reg reg);
 
 // Data structures used to track the "location" of a virtual IR register.
 // A virtual register could be assigned to a physical register, or could be assigned

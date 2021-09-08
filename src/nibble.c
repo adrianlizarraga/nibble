@@ -3,7 +3,7 @@
 #include "hash_map.h"
 #include "parser.h"
 #include "bytecode.h"
-#include "x64_gen.h"
+#include "code_gen.h"
 
 typedef struct NibbleCtx {
     Allocator gen_mem;
@@ -205,6 +205,9 @@ bool nibble_init(OS target_os, Arch target_arch)
     init_scope_lists(&nibble->global_scope);
     init_builtin_types(target_os, target_arch, &nibble->ast_mem, &nibble->type_cache);
 
+    if (!init_code_gen(target_os, target_arch))
+        return false;
+
     return true;
 }
 
@@ -290,7 +293,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     //          Gen NASM output
     //////////////////////////////////////////
     ftprint_out("4. Generating NASM assembly output: %s ...\n", output_file);
-    x64_gen_module(&nibble->gen_mem, &nibble->tmp_mem, module, output_file);
+    gen_module(&nibble->gen_mem, &nibble->tmp_mem, module, output_file);
 }
 
 void nibble_cleanup(void)
