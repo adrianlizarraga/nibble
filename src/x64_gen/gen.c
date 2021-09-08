@@ -1086,10 +1086,11 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
                             assert(other_arg_info->loc.kind == X64_VREG_LOC_REG);
                             assert(other_arg_info->loc.reg == arg_reg);
                             assert(!other_arg_info->save_on_swap);
+                            X64_VRegLoc this_loc = arg_info->loc;
 
                             if (arg_info->loc.kind == X64_VREG_LOC_REG)
                             {
-                                // Swap registers without using a temporary register (xor trick).
+                                // Exchange register contents.
 
                                 if (arg_info->save_on_swap)
                                 {
@@ -1097,28 +1098,15 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
                                     arg_info->save_on_swap = false;
                                 }
 
-                                X64_Reg this_reg = arg_info->loc.reg;
-                                X64_VRegLoc this_loc = arg_info->loc;
-
-                                // a = a ^ b;
-                                X64_emit_text(generator, "    xor %s, %s",
-                                              x64_reg_names[X64_MAX_INT_REG_SIZE][this_reg],
-                                              x64_reg_names[X64_MAX_INT_REG_SIZE][arg_reg]);
-
-                                // b = b ^ a; sets b equal to a
-                                X64_emit_text(generator, "    xor %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][arg_reg],
-                                              x64_reg_names[X64_MAX_INT_REG_SIZE][this_reg]);
-
-                                // a = a ^ b; sets a equal to b
-                                X64_emit_text(generator, "    xor %s, %s",
-                                              x64_reg_names[X64_MAX_INT_REG_SIZE][this_reg],
+                                // Exchange the entire register.
+                                X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][this_loc.reg],
                                               x64_reg_names[X64_MAX_INT_REG_SIZE][arg_reg]);
 
                                 arg_info->loc = other_arg_info->loc;
                                 arg_info_map[arg_reg] = arg_info;
 
                                 other_arg_info->loc = this_loc;
-                                arg_info_map[this_reg] = other_arg_info;
+                                arg_info_map[this_loc.reg] = other_arg_info;
                             }
                             else
                             {
