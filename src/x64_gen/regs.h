@@ -6,6 +6,8 @@
 #define X64_STACK_ALIGN 16
 #define X64_STACK_WORD_SIZE 8
 
+#define X64_WINDOWS_SHADOW_SPACE 32
+
 typedef enum X64_Reg {
     X64_RAX = 0,
     X64_RCX,

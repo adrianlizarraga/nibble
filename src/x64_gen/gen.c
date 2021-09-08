@@ -1021,6 +1021,9 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
 
                 assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
 
+                // TODO: This will differ for windows/linux once we have other types (floats, structs, unions).
+                // On windows, only 4 register arguments (of any type) can be used.
+                // On linux, a proc can use up to 6 int regs and 8 xmm registers.
                 if (i >= x64_target.num_arg_regs)
                 {
                     arg_info->in_reg = false;
@@ -1151,13 +1154,20 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
                 }
             }
 
+            u32 stack_offset = 0;
+
+            // Create shadow/home space for windows.
+            if (x64_target.os == OS_WIN32)
+            {
+                stack_args_size += X64_WINDOWS_SHADOW_SPACE;
+                stack_offset = X64_WINDOWS_SHADOW_SPACE;
+            }
+
             // Push stack arguments (if any)
             if (stack_args_size)
             {
                 // Make room in the stack for arguments
                 X64_emit_text(generator, "    sub rsp, %d", stack_args_size);
-
-                u32 stack_offset = 0;
 
                 for (u32 i = 0; i < num_args; i += 1)
                 {
