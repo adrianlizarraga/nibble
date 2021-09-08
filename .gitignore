@@ -40,3 +40,11 @@ compile_flags.txt
 .clangd/
 .ccls
 tags
+
+# Windows vs
+.vs/
+CppProperties.json
+*.sln
+*.vcxproj
+*.vcxproj.*
+x64/

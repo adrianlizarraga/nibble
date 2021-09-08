@@ -136,6 +136,8 @@ void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const
 
     if (elem)
         *bucket_elem = mem_dup(arena, elem, size, align);
+    else
+        *bucket_elem = NULL;
 
     bucket->count += 1;
     bucket_list->num_elems += 1;

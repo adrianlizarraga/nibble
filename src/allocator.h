@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DEFAULT_ALIGN alignof(max_align_t)
+#define DEFAULT_ALIGN alignof(long double)
 
 typedef struct Allocator {
     size_t id;
