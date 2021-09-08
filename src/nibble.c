@@ -2,7 +2,8 @@
 #include "cstring.h"
 #include "hash_map.h"
 #include "parser.h"
-#include "gen_assembly.h"
+#include "bytecode.h"
+#include "x64_gen.h"
 
 typedef struct NibbleCtx {
     Allocator gen_mem;
@@ -190,7 +191,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->target_arch = target_arch;
     nibble->gen_mem = bootstrap;
     nibble->ast_mem = allocator_create(16384);
-    nibble->tmp_mem = allocator_create(512);
+    nibble->tmp_mem = allocator_create(4096);
     nibble->errors = byte_stream_create(&nibble->gen_mem);
     nibble->str_lit_map = hmap(6, NULL);
     nibble->ident_map = hmap(8, NULL);
@@ -202,7 +203,7 @@ bool nibble_init(OS target_os, Arch target_arch)
         return false;
 
     init_scope_lists(&nibble->global_scope);
-    init_builtin_types(target_os, target_arch);
+    init_builtin_types(target_os, target_arch, &nibble->ast_mem, &nibble->type_cache);
 
     return true;
 }
@@ -275,11 +276,21 @@ void nibble_compile(const char* input_file, const char* output_file)
         return;
     }
 
+    ftprint_out("\tglobal vars: %u\n\tglobal procs: %u\n",
+                nibble->global_scope.sym_kind_counts[SYMBOL_VAR],
+                nibble->global_scope.sym_kind_counts[SYMBOL_PROC]);
+
+    //////////////////////////////////////////
+    //          Gen NASM output
+    //////////////////////////////////////////
+    ftprint_out("4. Generating IR bytecode\n");
+    IR_Module* module = IR_build_module(&nibble->ast_mem, &nibble->tmp_mem, &nibble->global_scope);
+
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
     ftprint_out("4. Generating NASM assembly output: %s ...\n", output_file);
-    gen_nasm(&nibble->gen_mem, &nibble->tmp_mem, &nibble->global_scope, output_file);
+    x64_gen_module(&nibble->gen_mem, &nibble->tmp_mem, module, output_file);
 }
 
 void nibble_cleanup(void)

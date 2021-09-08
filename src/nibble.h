@@ -95,6 +95,7 @@ typedef struct Scalar {
     union {
         Float   as_float;
         Integer as_int;
+        void* as_ptr;
     };
 } Scalar;
 

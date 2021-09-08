@@ -17,6 +17,8 @@ typedef struct Stmt Stmt;
 
 typedef struct Type Type;
 typedef struct Symbol Symbol;
+typedef struct SymbolVar SymbolVar;
+typedef struct SymbolProc SymbolProc;
 typedef struct Scope Scope;
 
 ///////////////////////////////
@@ -293,6 +295,7 @@ typedef enum StmtKind {
 struct Stmt {
     StmtKind kind;
     ProgRange range;
+    bool returns; // True if all control paths within this block return from proc.
     ListNode lnode;
 };
 
@@ -486,6 +489,7 @@ typedef struct DeclProc {
 
     u32 num_params;
     u32 num_decls;
+    bool returns;
 
     List params;
     List stmts;
@@ -622,13 +626,14 @@ extern Type* type_llong;
 extern Type* type_ullong;
 extern Type* type_ssize;
 extern Type* type_usize;
+extern Type* type_ptr_void;
 
 extern size_t PTR_SIZE;
 extern size_t PTR_ALIGN;
 
 extern int type_integer_ranks[];
 
-void init_builtin_types(OS target_os, Arch target_arch);
+void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, TypeCache* type_cache);
 const char* type_name(Type* type);
 bool type_is_integer_like(Type* type);
 bool type_is_arithmetic(Type* type);
@@ -652,7 +657,7 @@ typedef enum SymbolKind {
     SYMBOL_CONST,
     SYMBOL_PROC,
     SYMBOL_TYPE,
-    SYMBOL_PACKAGE,
+    SYMBOL_KIND_COUNT,
 } SymbolKind;
 
 typedef enum SymbolStatus {
@@ -661,20 +666,40 @@ typedef enum SymbolStatus {
     SYMBOL_STATUS_RESOLVED,
 } SymbolStatus;
 
+struct SymbolVar {
+    // Used by backends to store this var's
+    // location in the stack.
+    s32 offset;
+};
+
+typedef struct LifetimeInterval {
+    u32 start;
+    u32 end;
+    bool is_ret;
+    bool is_arg;
+    u32 arg_index;
+} LifetimeInterval;
+
+struct SymbolProc {
+    struct IR_Instr** instrs; // NOTE: stretchy buf
+    LifetimeInterval* reg_intervals;
+    bool is_nonleaf;
+};
+
 struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
-    const char* name;
-    bool is_local;
-    List lnode;
 
-    // TODO: Move into union or subclass.
+    bool is_local;
+    const char* name;
     Decl* decl;
     Type* type;
+    List lnode;
 
-    // TODO: Cleanup this struct.
-    // NOTE: For SYMBOL_VAR
-    s64 offset;
+    union {
+        SymbolVar as_var;
+        SymbolProc as_proc;
+    };
 };
 
 Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);
@@ -690,6 +715,8 @@ struct Scope {
 
     HMap sym_table;
     List sym_list;
+
+    u32 sym_kind_counts[SYMBOL_KIND_COUNT];
 
     ListNode lnode;
 };

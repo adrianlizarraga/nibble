@@ -1,155 +1,347 @@
 #ifndef NIBBLE_IR_H
 #define NIBBLE_IR_H
-#include "ast.h"
 #include "stream.h"
+#include "ast.h"
 
+#define IR_STACK_ALIGN 16
 #define IR_INSTRS_PER_BUCKET 64
 #define IR_PROCS_PER_BUCKET 16
+#define IR_REG_COUNT 0xFFFFFFFF
 
-typedef struct IR_Instr IR_Instr;
-typedef struct IR_Operand IR_Operand;
-typedef struct IR_Builder IR_Builder;
+typedef u32 IR_Reg;
 
-typedef enum IR_OpCode {
-    IR_OPCODE_NONE = 0,
-    IR_OPCODE_ADD,
-    IR_OPCODE_SUB,
-    IR_OPCODE_MULT,
-    IR_OPCODE_DIV,
+typedef enum IR_InstrKind {
+    IR_INSTR_NONE = 0,
 
-    IR_OPCODE_LSHIFT,
-    IR_OPCODE_RSHIFT,
+    // Addition
+    IR_INSTR_ADD_R_R,
+    IR_INSTR_ADD_R_M,
+    IR_INSTR_ADD_R_I,
 
-    IR_OPCODE_AND,
-    IR_OPCODE_OR,
-    IR_OPCODE_XOR,
+    // Subtraction
+    IR_INSTR_SUB_R_R,
+    IR_INSTR_SUB_R_M,
+    IR_INSTR_SUB_R_I,
 
-    IR_OPCODE_LOAD,  // Load var (when used in expr)
-    IR_OPCODE_LOADI, // Load imm to register
-    IR_OPCODE_R2R,   // Copy register
+    // TODO: MULT
+    // TODO: Unsigned/Signed DIV and MOD
 
-    IR_OPCODE_STORE, // Store var (when assigned)
+    // Arithmetic shift right
+    IR_INSTR_SAR_R_R,
+    IR_INSTR_SAR_R_M,
+    IR_INSTR_SAR_R_I,
 
-    IR_OPCODE_JMP,  // Jump to label
-    IR_OPCODE_JMPR, // Jump to register
+    // Bitwise NOT
+    IR_INSTR_NOT,
 
-    // Comparison style that sets a global flag
-    // One comparison instruction, and multiple conditional jump instructions
-    // that read a flag.
-    IR_OPCODE_CMP,
-    IR_OPCODE_CJMP_LT,
-    IR_OPCODE_CJMP_LE,
-    IR_OPCODE_CJMP_EQ,
-    IR_OPCODE_CJMP_GE,
-    IR_OPCODE_CJMP_GT,
-    IR_OPCODE_CJMP_NE,
+    // Two's complement negation.
+    IR_INSTR_NEG,
 
-    // Comparison style (no flags) that uses registers.
-    // Multiple comparison instructions that set a result register to true/false.
-    // One conditional jump instruction that takes an input register and two labels.
-    IR_OPCODE_CJMP,
-    IR_OPCODE_CMP_LT,
-    IR_OPCODE_CMP_LE,
-    IR_OPCODE_CMP_EQ,
-    IR_OPCODE_CMP_GE,
-    IR_OPCODE_CMP_GT,
-    IR_OPCODE_CMP_NE,
+    // Load immediate into register.
+    IR_INSTR_LIMM,
 
-    IR_OPCODE_CALL,
-    IR_OPCODE_CALLR,
-} IR_OpCode;
+    // Truncate
+    IR_INSTR_TRUNC_R_R,
+    IR_INSTR_TRUNC_R_M,
 
-typedef enum IR_OperandKind {
-    IR_OPERAND_NONE,
-    IR_OPERAND_IMM,
-    IR_OPERAND_REG,
-    IR_OPERAND_VAR,
-    IR_OPERAND_PROC,
-    IR_OPERAND_LABEL,
-} IR_OperandKind;
+    // Zero-extend
+    IR_INSTR_ZEXT_R_R,
+    IR_INSTR_ZEXT_R_M,
 
-#define IR_REG_ID_MASK 0x00FFFFFFFFFFFFFF
-#define IR_REG_BYTE_SIZE(r) (((r) >> 56) & 0xFF)
-#define IR_REG_ID(r) ((r) & IR_REG_ID_MASK)
+    // Sign-extend
+    IR_INSTR_SEXT_R_R,
+    IR_INSTR_SEXT_R_M,
 
-enum IR_OperandFlag {
-    IR_OPERAND_IS_L_VALUE = 0x1,
-};
+    // Load an address computation into a register.
+    IR_INSTR_LADDR,
 
-struct IR_Operand {
-    IR_OperandKind kind;
-    u32 flags;
+    // Load contents of memory into register.
+    IR_INSTR_LOAD,
+
+    // Store into memory.
+    IR_INSTR_STORE_R,
+    IR_INSTR_STORE_I,
+
+    // Compare two values and set condition flags
+    IR_INSTR_CMP_R_R,
+    IR_INSTR_CMP_R_M,
+    IR_INSTR_CMP_R_I,
+    IR_INSTR_CMP_M_R,
+    IR_INSTR_CMP_M_I,
+
+    // Jump to instruction index
+    IR_INSTR_JMP,
+
+    // Jump to instruction index based on condition
+    IR_INSTR_JMPCC,
+
+    // Set a byte (0 or 1) based on condition
+    IR_INSTR_SETCC,
+
+    // Return value in specifed register
+    IR_INSTR_RET,
+
+    // Call a procedure directly
+    IR_INSTR_CALL,
+
+    // Call a procedure indirectly (register has procedure address)
+    IR_INSTR_CALL_R,
+} IR_InstrKind;
+
+typedef enum IR_MemBaseKind {
+    IR_MEM_BASE_NONE = 0,
+    IR_MEM_BASE_REG,
+    IR_MEM_BASE_SYM,
+} IR_MemBaseKind;
+
+typedef struct IR_MemAddr {
+    IR_MemBaseKind base_kind;
+    union {
+        IR_Reg reg;
+        Symbol* sym;
+    } base;
+
+    IR_Reg index_reg;
+    u8 scale;
+    u32 disp;
+} IR_MemAddr;
+
+typedef struct IR_InstrBinary_R_R {
+    Type* type;
+    IR_Reg dst;
+    IR_Reg src;
+} IR_InstrBinary_R_R;
+
+typedef struct IR_InstrBinary_R_M {
+    Type* type;
+    IR_Reg dst;
+    IR_MemAddr src;
+} IR_InstrBinary_R_M;
+
+typedef struct IR_InstrBinary_R_I {
+    Type* type;
+    IR_Reg dst;
+    Scalar src;
+} IR_InstrBinary_R_I;
+
+typedef struct IR_InstrUnary {
+    Type* type;
+    IR_Reg dst;
+} IR_InstrUnary;
+
+typedef struct IR_InstrLImm {
+    Type* type;
+    IR_Reg dst;
+    Scalar src;
+} IR_InstrLImm;
+
+typedef struct IR_InstrLoad {
+    Type* type;
+    IR_Reg dst;
+    IR_MemAddr src;
+} IR_InstrLoad;
+
+typedef struct IR_InstrStore_R {
+    Type* type;
+    IR_MemAddr dst;
+    IR_Reg src;
+} IR_InstrStore_R;
+
+typedef struct IR_InstrStore_I {
+    Type* type;
+    IR_MemAddr dst;
+    Scalar src;
+} IR_InstrStore_I;
+
+typedef struct IR_InstrLAddr {
+    IR_Reg dst;
+    Type* type; // Type of the thing we would be loading. Not necessary??
+    IR_MemAddr mem;
+} IR_InstrLAddr;
+
+typedef struct IR_InstrRet {
+    Type* type;
+    IR_Reg src;
+} IR_InstrRet;
+
+typedef struct IR_InstrConvert_R_R {
+    Type* dst_type;
+    Type* src_type;
+    IR_Reg dst;
+    IR_Reg src;
+} IR_InstrConvert_R_R;
+
+typedef struct IR_InstrConvert_R_M {
+    Type* dst_type;
+    Type* src_type;
+    IR_Reg dst;
+    IR_MemAddr src;
+} IR_InstrConvert_R_M;
+
+typedef struct IR_InstrCmp_R_R {
+    Type* type;
+    IR_Reg op1;
+    IR_Reg op2;
+} IR_InstrCmp_R_R;
+
+typedef struct IR_InstrCmp_R_M {
+    Type* type;
+    IR_Reg op1;
+    IR_MemAddr op2;
+} IR_InstrCmp_R_M;
+
+typedef struct IR_InstrCmp_R_I {
+    Type* type;
+    IR_Reg op1;
+    Scalar op2;
+} IR_InstrCmp_R_I;
+
+typedef struct IR_InstrCmp_M_R {
+    Type* type;
+    IR_MemAddr op1;
+    IR_Reg op2;
+} IR_InstrCmp_M_R;
+
+typedef struct IR_InstrCmp_M_I {
+    Type* type;
+    IR_MemAddr op1;
+    Scalar op2;
+} IR_InstrCmp_M_I;
+
+typedef enum IR_ConditionKind {
+    IR_COND_U_LT,
+    IR_COND_S_LT,
+    IR_COND_U_LTEQ,
+    IR_COND_S_LTEQ,
+    IR_COND_U_GT,
+    IR_COND_S_GT,
+    IR_COND_U_GTEQ,
+    IR_COND_S_GTEQ,
+    IR_COND_EQ,
+    IR_COND_NEQ,
+} IR_ConditionKind;
+
+typedef struct IR_InstrJmpCC {
+    u32 jmp_target;
+    IR_ConditionKind cond;
+} IR_InstrJmpCC;
+
+typedef struct IR_InstrJmp {
+    u32 jmp_target;
+} IR_InstrJmp;
+
+typedef struct IR_InstrSetCC {
+    IR_ConditionKind cond;
+    IR_Reg dst;
+} IR_InstrSetCC;
+
+typedef struct IR_InstrCallArg {
+    Type* type;
+    IR_Reg loc; // TODO: Support stack args
+} IR_InstrCallArg;
+
+typedef struct IR_InstrCall {
+    Symbol* sym;
+    IR_Reg dst;
+    u32 num_args;
+    IR_InstrCallArg* args;
+} IR_InstrCall;
+
+typedef struct IR_InstrCall_R {
+    Type* proc_type;
+    IR_Reg proc_loc;
+    IR_Reg dst;
+    u32 num_args;
+    IR_InstrCallArg* args;
+} IR_InstrCall_R;
+
+typedef struct IR_Instr {
+    IR_InstrKind kind;
+    bool is_jmp_target;
 
     union {
-        struct {
-            Type* type;
-            Scalar value;
-        } _imm;
-        struct {
-            Type* type;
-            u64 reg;   // Top 8 bits for reg size. Bottom 7 bytes for reg id
-        } _reg;
-        Symbol* _var;
-        Symbol* _proc;
-        u64 _label;
+        // Addition
+        IR_InstrBinary_R_R add_r_r;
+        IR_InstrBinary_R_M add_r_m;
+        IR_InstrBinary_R_I add_r_i;
+
+        // Subtraction
+        IR_InstrBinary_R_R sub_r_r;
+        IR_InstrBinary_R_M sub_r_m;
+        IR_InstrBinary_R_I sub_r_i;
+
+        // Arithmetic shift right
+        IR_InstrBinary_R_R sar_r_r;
+        IR_InstrBinary_R_M sar_r_m;
+        IR_InstrBinary_R_I sar_r_i;
+
+        // Two's complement negation
+        IR_InstrUnary neg;
+
+        // Bitwise NOT
+        IR_InstrUnary not;
+
+        // Load immediate into register
+        IR_InstrLImm limm;
+
+        // Load an address computation into register
+        IR_InstrLAddr laddr;
+
+        // Truncate integer
+        IR_InstrConvert_R_R trunc_r_r;
+        IR_InstrConvert_R_M trunc_r_m;
+
+        // Zero-extend integer
+        IR_InstrConvert_R_R zext_r_r;
+        IR_InstrConvert_R_M zext_r_m;
+
+        // Sign-extend integer
+        IR_InstrConvert_R_R sext_r_r;
+        IR_InstrConvert_R_M sext_r_m;
+
+        // Load contents of memory into register
+        IR_InstrLoad load;
+
+        // Store register contents into memory
+        IR_InstrStore_R store_r;
+
+        // Store immediate into memory
+        IR_InstrStore_I store_i;
+
+        // Compare two values and set condition flags
+        IR_InstrCmp_R_R cmp_r_r;
+        IR_InstrCmp_R_M cmp_r_m;
+        IR_InstrCmp_R_I cmp_r_i;
+        IR_InstrCmp_M_R cmp_m_r;
+        IR_InstrCmp_M_I cmp_m_i;
+
+        // Jump to instruction index
+        IR_InstrJmp jmp;
+
+        // Jump to instruction index based on condition
+        IR_InstrJmpCC jmpcc;
+
+        // Set a byte (1 or 0) based on condition
+        IR_InstrSetCC setcc;
+
+        // Return value in specified register
+        IR_InstrRet ret;
+
+        // Call a procedure directly
+        IR_InstrCall call;
+
+        // Call a procedure indirectly (register contains procedure address)
+        IR_InstrCall_R call_r;
     };
-};
+} IR_Instr;
 
-struct IR_Instr {
-    IR_OpCode opcode;
-    IR_Operand operand_s;
-    IR_Operand operand_d;
-};
+typedef struct IR_Module {
+    u32 num_vars;
+    u32 num_procs;
+    Symbol** vars;
+    Symbol** procs;
+} IR_Module;
 
-#define IR_NUM_ARG_REGS 6
-#define IR_NUM_TMP_REGS 6
-#define IR_NUM_RET_REGS 2
+IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope);
 
-typedef enum IR_RegID {
-    IR_REG0 = 0,
-    IR_REG1,
-    IR_REG2,
-    IR_REG3,
-    IR_REG4,
-    IR_REG5,
-    IR_ARG_REG0,
-    IR_ARG_REG1,
-    IR_ARG_REG2,
-    IR_ARG_REG3,
-    IR_ARG_REG4,
-    IR_ARG_REG5,
-    IR_RET_REG0,
-    IR_RET_REG1,
-    IR_REG_COUNT,
-    IR_REG_INVALID = IR_REG_COUNT
-} IR_RegID;
-
-extern const char* IR_reg_names[IR_REG_COUNT];
-extern IR_RegID IR_tmp_regs[IR_NUM_TMP_REGS];
-extern IR_RegID IR_arg_regs[IR_NUM_ARG_REGS];
-extern IR_RegID IR_ret_regs[IR_NUM_RET_REGS];
-
-struct IR_Builder {
-    BucketList* instrs;
-    u32 free_regs;
-    Allocator* arena;
-};
-
-IR_Instr* IR_new_instr(Allocator* arena, IR_OpCode opcode, IR_Operand op_s, IR_Operand op_d);
-IR_Instr** IR_get_bucket_instr(BucketList* bucket_list, size_t index);
-IR_Instr** IR_add_bucket_instr(BucketList* bucket_list, Allocator* arena, IR_Instr* instr);
-
-u32 IR_init_free_regs(IR_Builder* builder);
-IR_Instr* IR_push_instr(IR_Builder* builder, IR_Opcode opcode, IR_Operand* src_op, IR_Operand* dst_op);
-
-void IR_emit_add(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op);
-void IR_emit_sub(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op);
-void IR_free_op(IR_Operand* op);
-
-void IR_ensure_op_in_reg(IR_Builder* builder, IR_Operand* op);
-void IR_emit_op_to_reg(IR_Operand* src_op, IR_RegID reg, IR_Operand* dst_op);
-IR_RegID IR_next_reg(IR_Builder* builder);
-void IR_free_reg(IR_Builder* builder, IR_RegID reg);
-void IR_alloc_reg(IR_Builder* builder, IR_RegID reg);
-bool IR_try_alloc_reg(IR_Builder* builder, IR_RegID reg);
 #endif
