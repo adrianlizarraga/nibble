@@ -249,7 +249,7 @@ static void X64_fill_line(X64_Generator* gen, char** line, const char* format, .
 typedef struct X64_TmpReg {
     X64_Reg reg;
     s32 offset;
-    u32 size;
+    u64 size;
     bool store;
     struct X64_TmpReg* next;
 } X64_TmpReg;
@@ -353,8 +353,8 @@ static void X64_end_reg_group(X64_RegGroup* group)
 }
 
 typedef struct X64_StackArgsInfo {
-    u32 args_size;
-    u32 args_offset;
+    u64 args_size;
+    u64 args_offset;
 } X64_StackArgsInfo;
 
 static X64_StackArgsInfo X64_linux_preprocess_call_args(X64_Generator* generator, u32 live_regs, u32 num_args, IR_InstrCallArg* args,
@@ -367,7 +367,7 @@ static X64_StackArgsInfo X64_linux_preprocess_call_args(X64_Generator* generator
     for (u32 i = 0; i < num_args; i += 1)
     {
         IR_InstrCallArg* arg = args + i;
-        u32 arg_size = arg->type->size;
+        u64 arg_size = arg->type->size;
         X64_VRegLoc arg_loc = X64_vreg_loc(generator, arg->loc);
         X64_ArgInfo* arg_info = arg_infos + i;
 
@@ -409,7 +409,7 @@ static X64_StackArgsInfo X64_windows_preprocess_call_args(X64_Generator* generat
     for (u32 i = 0; i < num_args; i += 1)
     {
         IR_InstrCallArg* arg = args + i;
-        u32 arg_size = arg->type->size;
+        u64 arg_size = arg->type->size;
         X64_VRegLoc arg_loc = X64_vreg_loc(generator, arg->loc);
         X64_ArgInfo* arg_info = arg_infos + i;
 
@@ -477,7 +477,7 @@ static void X64_place_args_in_regs(X64_RegGroup* save_reg_group, u32 num_args, X
                 continue;
             }
 
-            u32 arg_size = (u32)arg_info->arg->type->size;
+            u64 arg_size = arg_info->arg->type->size;
 
             // This is the X64 register that must contain this argument.
             X64_Reg arg_reg = x64_target.arg_regs[arg_info->reg_index];
@@ -566,8 +566,8 @@ static void X64_place_args_in_regs(X64_RegGroup* save_reg_group, u32 num_args, X
 
 static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo stack_args_info, u32 num_args, X64_ArgInfo* arg_infos)
 {
-    u32 stack_offset = stack_args_info.args_offset;
-    u32 stack_args_size = stack_args_info.args_size;
+    u64 stack_offset = stack_args_info.args_offset;
+    u64 stack_args_size = stack_args_info.args_size;
 
     // Push stack arguments (if any)
     if (stack_args_size)
@@ -585,7 +585,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
                 continue;
             }
 
-            u32 arg_size = (u32)arg_info->arg->type->size;
+            u64 arg_size = arg_info->arg->type->size;
 
             if (arg_info->loc.kind == X64_VREG_LOC_STACK)
             {
@@ -613,9 +613,134 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
     }
 }
 
-static size_t X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* scope, size_t offset)
+typedef struct X64_StackParamsInfo {
+    u64 stack_spill_size; // Spill size below rsp
+    List* local_var_iter; // Iterator pointing to the first local variable (if any) of the proc
+} X64_StackParamsInfo;
+
+static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, DeclProc* dproc, X64_StackParamsInfo* stack_params_info)
 {
-    size_t stack_size = offset;
+    u64 stack_spill_size = 0;
+    u32 index = 0;
+    u32 arg_reg_index = 0;
+    u64 stack_arg_offset = 0x10;
+
+    Scope* scope = dproc->scope;
+    List* head = &scope->sym_list;
+    List* it = head->next;
+
+    while (it != head)
+    {
+        // Only process params. Local variables are not processed here.
+        // TODO: Support varargs
+        if (index >= dproc->num_params)
+            break;
+
+        Symbol* sym = list_entry(it, Symbol, lnode);
+
+        // Assign stack offsets to procedure params.
+        assert(sym->kind == SYMBOL_VAR);
+
+        Type* arg_type = sym->type;
+        u64 arg_size = arg_type->size;
+        u64 arg_align = arg_type->align;
+        bool arg_in_reg = (arg_reg_index < x64_target.num_arg_regs) && (arg_size <= X64_MAX_INT_REG_SIZE);
+
+        // Spill argument register below rsp
+        if (arg_in_reg)
+        {
+            X64_Reg arg_reg = x64_target.arg_regs[arg_reg_index];
+
+            stack_spill_size += arg_size;
+            stack_spill_size = ALIGN_UP(stack_spill_size, arg_align);
+            sym->as_var.offset = -stack_spill_size;
+
+            X64_emit_text(generator, "    mov %s [rbp + %d], %s", x64_mem_size_label[arg_size], sym->as_var.offset,
+                          x64_reg_names[arg_size][arg_reg]);
+
+            arg_reg_index += 1;
+        }
+        else
+        {
+            sym->as_var.offset = stack_arg_offset;
+            stack_arg_offset += arg_size;
+            stack_arg_offset = ALIGN_UP(stack_arg_offset, arg_align);
+            stack_arg_offset = ALIGN_UP(stack_arg_offset, X64_STACK_WORD_SIZE);
+        }
+
+        index += 1;
+        it = it->next;
+    }
+
+    stack_params_info->stack_spill_size = stack_spill_size;
+    stack_params_info->local_var_iter = it;
+}
+
+static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, DeclProc* dproc, X64_StackParamsInfo* stack_params_info)
+{
+    u32 index = 0;
+    u64 stack_arg_offset = 0x10;
+
+    Scope* scope = dproc->scope;
+    List* head = &scope->sym_list;
+    List* it = head->next;
+
+    while (it != head)
+    {
+        // Only process params. Local variables are not processed here.
+        // TODO: Support varargs
+        if (index >= dproc->num_params)
+            break;
+
+        Symbol* sym = list_entry(it, Symbol, lnode);
+
+        // Assign stack offsets to procedure params.
+        assert(sym->kind == SYMBOL_VAR);
+
+        Type* arg_type = sym->type;
+        u64 arg_size = arg_type->size;
+        u64 arg_align = arg_type->align;
+        bool arg_in_reg = (index < x64_target.num_arg_regs) && (arg_size <= X64_MAX_INT_REG_SIZE);
+
+        sym->as_var.offset = stack_arg_offset;
+        stack_arg_offset += arg_size;
+        stack_arg_offset = ALIGN_UP(stack_arg_offset, arg_align);
+        stack_arg_offset = ALIGN_UP(stack_arg_offset, X64_STACK_WORD_SIZE);
+
+        // Spill argument register to the shadow space (32 bytes above return address)
+        // Only the first four arguments can be in a register.
+        if (arg_in_reg)
+        {
+            X64_Reg arg_reg = x64_target.arg_regs[index];
+
+            X64_emit_text(generator, "    mov %s [rbp + %d], %s", x64_mem_size_label[arg_size], sym->as_var.offset,
+                          x64_reg_names[arg_size][arg_reg]);
+        }
+
+        index += 1;
+        it = it->next;
+    }
+
+    stack_params_info->stack_spill_size = 0; // Did not spill below rsp; all args are above return address
+    stack_params_info->local_var_iter = it;
+}
+
+static void X64_assign_proc_param_offsets(X64_Generator* generator, DeclProc* dproc, X64_StackParamsInfo* stack_params_info)
+{
+    if (x64_target.os == OS_LINUX)
+    {
+        X64_linux_assign_proc_param_offsets(generator, dproc, stack_params_info);
+    }
+    else
+    {
+        assert(x64_target.os == OS_WIN32);
+        X64_windows_assign_proc_param_offsets(generator, dproc, stack_params_info);
+    }
+}
+
+static u64 X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* scope, u64 offset)
+{
+    u64 stack_size = offset;
 
     //
     // Sum sizes of local variables declared in this scope.
@@ -645,12 +770,12 @@ static size_t X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* sc
     {
         List* head = &scope->children;
         List* it = head->next;
-        size_t child_offset = stack_size;
+        u64 child_offset = stack_size;
 
         while (it != head)
         {
             Scope* child_scope = list_entry(it, Scope, lnode);
-            size_t child_size = X64_assign_scope_stack_offsets(generator, child_scope, child_offset);
+            u64 child_size = X64_assign_scope_stack_offsets(generator, child_scope, child_offset);
 
             if (child_size > stack_size)
                 stack_size = child_size;
@@ -662,84 +787,56 @@ static size_t X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* sc
     return ALIGN_UP(stack_size, X64_STACK_ALIGN);
 }
 
-static size_t X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* dproc)
+static u64 X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* dproc)
 {
-    //
-    // Sum sizes of local variables declared in this scope.
-    //
-
-    size_t stack_size = 0;
-    unsigned arg_index = 0;
-    unsigned stack_arg_offset = 0x10;
-
-    if (x64_target.os == OS_WIN32)
-    {
-        stack_arg_offset += X64_WINDOWS_SHADOW_SPACE;
-    }
-
     Scope* scope = dproc->scope;
-    List* head = &scope->sym_list;
-    List* it = head->next;
 
-    while (it != head)
+    //
+    // Spill procedure params into the stack (assign stack offsets to params).
+    //
+
+    X64_StackParamsInfo stack_params_info = {0};
+    X64_assign_proc_param_offsets(generator, dproc, &stack_params_info);
+
+    u64 stack_size = stack_params_info.stack_spill_size;
+
+    //
+    // Assign stack offsets to local variables declared in the procedure's top scope.
+    //
+
     {
-        Symbol* sym = list_entry(it, Symbol, lnode);
+        List* it = stack_params_info.local_var_iter;
+        List* head = &scope->sym_list;
 
-        // Assign stack offsets to procedure params.
-        if (arg_index < dproc->num_params)
+        while (it != head)
         {
-            assert(sym->kind == SYMBOL_VAR);
+            Symbol* sym = list_entry(it, Symbol, lnode);
 
-            Type* arg_type = sym->type;
-            size_t arg_size = arg_type->size;
-            size_t arg_align = arg_type->align;
-            bool arg_in_reg = (arg_index < x64_target.num_arg_regs) && (arg_size <= X64_MAX_INT_REG_SIZE);
-
-            // Spill argument register onto the stack.
-            if (arg_in_reg)
+            // Assign stack offsets to local variables in procedure.
+            if (sym->kind == SYMBOL_VAR)
             {
-                X64_Reg arg_reg = x64_target.arg_regs[arg_index];
-
-                stack_size += arg_size;
-                stack_size = ALIGN_UP(stack_size, arg_align);
+                stack_size += sym->type->size;
+                stack_size = ALIGN_UP(stack_size, sym->type->align);
                 sym->as_var.offset = -stack_size;
-
-                X64_emit_text(generator, "    mov %s [rbp + %d], %s", x64_mem_size_label[arg_size], sym->as_var.offset,
-                              x64_reg_names[arg_size][arg_reg]);
-
-                arg_index += 1;
             }
-            else
-            {
-                sym->as_var.offset = stack_arg_offset;
-                stack_arg_offset += arg_size;
-                stack_arg_offset = ALIGN_UP(stack_arg_offset, arg_align);
-                stack_arg_offset = ALIGN_UP(stack_arg_offset, X64_STACK_WORD_SIZE);
-            }
-        }
-        // Assign stack offsets to local variables in procedure.
-        else if (sym->kind == SYMBOL_VAR)
-        {
-            stack_size += sym->type->size;
-            stack_size = ALIGN_UP(stack_size, sym->type->align);
-            sym->as_var.offset = -stack_size;
-        }
 
-        it = it->next;
+            it = it->next;
+        }
     }
 
     //
     // Recursively compute stack sizes for child scopes. Take the largest.
     //
+
     {
         List* head = &scope->children;
         List* it = head->next;
-        size_t child_offset = stack_size;
+        u64 child_offset = stack_size;
 
         while (it != head)
         {
             Scope* child_scope = list_entry(it, Scope, lnode);
-            size_t child_size = X64_assign_scope_stack_offsets(generator, child_scope, child_offset);
+            u32 child_size = X64_assign_scope_stack_offsets(generator, child_scope, child_offset);
 
             if (child_size > stack_size)
                 stack_size = child_size;
@@ -1288,14 +1385,14 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
             X64_place_args_in_stack(generator, stack_args_info, num_args, arg_infos);
 
             // Align stack before call.
-            u32 total_stack_size = stack_args_info.args_size + group.num_tmp_regs * X64_MAX_INT_REG_SIZE;
-            u32 align_stack_size = 0;
+            u64 total_stack_size = stack_args_info.args_size + group.num_tmp_regs * X64_MAX_INT_REG_SIZE;
+            u64 align_stack_size = 0;
 
             if (total_stack_size & (X64_STACK_ALIGN - 1))
             {
                 align_stack_size = X64_STACK_WORD_SIZE;
 
-                X64_fill_line(generator, rsp_align_instr, "    sub rsp, %u", align_stack_size);
+                X64_fill_line(generator, rsp_align_instr, "    sub rsp, %lu", align_stack_size);
                 total_stack_size += align_stack_size;
             }
 
