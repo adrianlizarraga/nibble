@@ -352,6 +352,267 @@ static void X64_end_reg_group(X64_RegGroup* group)
     }
 }
 
+typedef struct X64_StackArgsInfo {
+    u32 args_size;
+    u32 args_offset;
+} X64_StackArgsInfo;
+
+static X64_StackArgsInfo X64_linux_preprocess_call_args(X64_Generator* generator, u32 live_regs, u32 num_args, IR_InstrCallArg* args,
+                                                        X64_ArgInfo* arg_infos, X64_ArgInfo** arg_info_map)
+{
+    X64_StackArgsInfo stack_info = {0};
+    u32 arg_reg_index = 0;
+
+    // Create info structs (for each arg) that we can use to swap argument registers around.
+    for (u32 i = 0; i < num_args; i += 1)
+    {
+        IR_InstrCallArg* arg = args + i;
+        u32 arg_size = arg->type->size;
+        X64_VRegLoc arg_loc = X64_vreg_loc(generator, arg->loc);
+        X64_ArgInfo* arg_info = arg_infos + i;
+
+        assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
+
+        if (arg_reg_index >= x64_target.num_arg_regs)
+        {
+            arg_info->in_reg = false;
+            stack_info.args_size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
+        }
+        else
+        {
+            arg_info->in_reg = true;
+            arg_info->reg_index = arg_reg_index++;
+        }
+
+        if (arg_loc.kind == X64_VREG_LOC_REG)
+        {
+            bool is_caller_saved = X64_is_caller_saved_reg(arg_loc.reg);
+            bool needed_after_call = u32_is_bit_set(live_regs, arg_loc.reg);
+
+            arg_info_map[arg_loc.reg] = arg_info;
+            arg_info->save_on_swap = needed_after_call && !is_caller_saved;
+        }
+
+        arg_info->arg = arg;
+        arg_info->loc = arg_loc;
+    }
+
+    return stack_info;
+}
+
+static X64_StackArgsInfo X64_windows_preprocess_call_args(X64_Generator* generator, u32 live_regs, u32 num_args, IR_InstrCallArg* args,
+                                                          X64_ArgInfo* arg_infos, X64_ArgInfo** arg_info_map)
+{
+    X64_StackArgsInfo stack_info = {.args_size = X64_WINDOWS_SHADOW_SPACE, .args_offset = X64_WINDOWS_SHADOW_SPACE};
+
+    // Create info structs (for each arg) that we can use to swap argument registers around.
+    for (u32 i = 0; i < num_args; i += 1)
+    {
+        IR_InstrCallArg* arg = args + i;
+        u32 arg_size = arg->type->size;
+        X64_VRegLoc arg_loc = X64_vreg_loc(generator, arg->loc);
+        X64_ArgInfo* arg_info = arg_infos + i;
+
+        assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
+
+        if (i >= x64_target.num_arg_regs)
+        {
+            arg_info->in_reg = false;
+            stack_info.args_size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
+        }
+        else
+        {
+            arg_info->in_reg = true;
+            arg_info->reg_index = i;
+        }
+
+        if (arg_loc.kind == X64_VREG_LOC_REG)
+        {
+            bool is_caller_saved = X64_is_caller_saved_reg(arg_loc.reg);
+            bool needed_after_call = u32_is_bit_set(live_regs, arg_loc.reg);
+
+            arg_info_map[arg_loc.reg] = arg_info;
+            arg_info->save_on_swap = needed_after_call && !is_caller_saved;
+        }
+
+        arg_info->arg = arg;
+        arg_info->loc = arg_loc;
+    }
+
+    return stack_info;
+}
+
+static X64_StackArgsInfo X64_preprocess_call_args(X64_Generator* generator, u32 live_regs, u32 num_args, IR_InstrCallArg* args,
+                                                  X64_ArgInfo* arg_infos, X64_ArgInfo** arg_info_map)
+{
+    if (x64_target.os == OS_LINUX)
+    {
+        return X64_linux_preprocess_call_args(generator, live_regs, num_args, args, arg_infos, arg_info_map);
+    }
+
+    return X64_windows_preprocess_call_args(generator, live_regs, num_args, args, arg_infos, arg_info_map);
+}
+
+static void X64_place_args_in_regs(X64_RegGroup* save_reg_group, u32 num_args, X64_ArgInfo* arg_infos, X64_ArgInfo** arg_info_map)
+{
+    X64_Generator* generator = save_reg_group->generator;
+
+    // Move arguments that should be in registers into the appropriate X64 registers.
+    bool keep_going = true;
+
+    while (keep_going)
+    {
+        // NOTE: :IMPORTANT: This loops inifinitely if a stack argument is initially assigned an argument
+        // register! The register allocator MUST NOT assign an X64 argument register to an argument that will be
+        // passed via the stack.
+        keep_going = false;
+
+        for (u32 i = 0; i < num_args; i += 1)
+        {
+            X64_ArgInfo* arg_info = arg_infos + i;
+
+            if (!arg_info->in_reg)
+            {
+                // Skip stack args.
+                continue;
+            }
+
+            u32 arg_size = (u32)arg_info->arg->type->size;
+
+            // This is the X64 register that must contain this argument.
+            X64_Reg arg_reg = x64_target.arg_regs[arg_info->reg_index];
+
+            // Check if argument is already in the appropriate register.
+            if ((arg_info->loc.kind == X64_VREG_LOC_REG) && (arg_info->loc.reg == arg_reg))
+            {
+                // Do nothing.
+                // NOTE: Has already been saved if needed across call.
+            }
+            else
+            {
+                // Move argument into the appropriate register.
+
+                // Need to check if arg_reg is used by another argument.
+                X64_ArgInfo* other_arg_info = arg_info_map[arg_reg];
+
+                if (other_arg_info)
+                {
+                    assert(other_arg_info->loc.kind == X64_VREG_LOC_REG);
+                    assert(other_arg_info->loc.reg == arg_reg);
+                    assert(!other_arg_info->save_on_swap);
+                    X64_VRegLoc this_loc = arg_info->loc;
+
+                    if (arg_info->loc.kind == X64_VREG_LOC_REG)
+                    {
+                        // Exchange register contents.
+
+                        if (arg_info->save_on_swap)
+                        {
+                            X64_push_reg(save_reg_group, arg_info->loc.reg);
+                            arg_info->save_on_swap = false;
+                        }
+
+                        // Exchange the entire register.
+                        X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][this_loc.reg],
+                                      x64_reg_names[X64_MAX_INT_REG_SIZE][arg_reg]);
+
+                        arg_info->loc = other_arg_info->loc;
+                        arg_info_map[arg_reg] = arg_info;
+
+                        other_arg_info->loc = this_loc;
+                        arg_info_map[this_loc.reg] = other_arg_info;
+                    }
+                    else
+                    {
+                        assert(arg_info->loc.kind == X64_VREG_LOC_STACK);
+
+                        // Will place in the next pass.
+                        keep_going = true;
+                    }
+                }
+                else
+                {
+                    // Just move into register.
+
+                    if (arg_info->loc.kind == X64_VREG_LOC_STACK)
+                    {
+                        X64_emit_text(
+                            generator, "    mov %s, %s", x64_reg_names[arg_size][arg_reg],
+                            X64_print_stack_offset(generator->tmp_mem, arg_info->loc.offset, arg_size));
+
+                        arg_info->loc.kind = X64_VREG_LOC_REG;
+                        arg_info->loc.reg = arg_reg;
+                        arg_info_map[arg_reg] = arg_info;
+                    }
+                    else
+                    {
+                        assert(arg_info->loc.kind == X64_VREG_LOC_REG);
+                        X64_Reg this_reg = arg_info->loc.reg;
+
+                        X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][arg_reg],
+                                      x64_reg_names[arg_size][this_reg]);
+
+                        arg_info->loc.reg = arg_reg;
+                        arg_info_map[arg_reg] = arg_info;
+
+                        // Null out the original register in the map in case it is needed by another arg.
+                        arg_info_map[this_reg] = NULL;
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo stack_args_info, u32 num_args, X64_ArgInfo* arg_infos)
+{
+    u32 stack_offset = stack_args_info.args_offset;
+    u32 stack_args_size = stack_args_info.args_size;
+
+    // Push stack arguments (if any)
+    if (stack_args_size)
+    {
+        // Make room in the stack for arguments
+        X64_emit_text(generator, "    sub rsp, %d", stack_args_size);
+
+        for (u32 i = 0; i < num_args; i += 1)
+        {
+            X64_ArgInfo* arg_info = arg_infos + i;
+
+            if (arg_info->in_reg)
+            {
+                // Skip register args.
+                continue;
+            }
+
+            u32 arg_size = (u32)arg_info->arg->type->size;
+
+            if (arg_info->loc.kind == X64_VREG_LOC_STACK)
+            {
+                // Move into RAX.
+                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][X64_RAX],
+                              X64_print_stack_offset(generator->tmp_mem, arg_info->loc.offset, arg_size));
+
+                // Move RAX into stack slot.
+                X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size],
+                              stack_offset, x64_reg_names[arg_size][X64_RAX]);
+            }
+            else
+            {
+                assert(arg_info->loc.kind == X64_VREG_LOC_REG);
+
+                // Move into stack slot.
+                X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size],
+                              stack_offset, x64_reg_names[arg_size][arg_info->loc.reg]);
+            }
+
+            stack_offset += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
+        }
+
+        assert(stack_offset == stack_args_size);
+    }
+}
+
 static size_t X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* scope, size_t offset)
 {
     size_t stack_size = offset;
@@ -996,6 +1257,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
             // See: https://godbolt.org/z/cM9Encdsc
             char** rsp_align_instr = X64_emit_text(generator, NULL);
 
+            // Group used to track the registers that we are saving in the stack before the call.
             X64_RegGroup group = X64_begin_reg_group(generator);
 
             // Save caller-saved registers that are needed after the procedure call.
@@ -1011,209 +1273,22 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
                 }
             }
 
-            u32 stack_args_size = 0;
-            u32 arg_reg_index = 0;
-
+            // Pre-process call arguments: 
+            //   - Determine which arguments will be passed via registers and which will be passed via the stack.
+            //   - |arg_infos| is an array of |num_args| elements. Each element has information on where the corresponding
+            //     argument will be passed, and if the argument should be saved on the stack if it needs to be swapped.
+            //   - |arg_info_map| maps an x64 register to the arg_info element that currently occupies it.
             X64_ArgInfo* arg_infos = alloc_array(generator->tmp_mem, X64_ArgInfo, num_args, true);
             X64_ArgInfo* arg_info_map[X64_REG_COUNT] = {0};
+            X64_StackArgsInfo stack_args_info = X64_preprocess_call_args(generator, live_regs, num_args, args,
+                                                                         arg_infos, arg_info_map);
 
-            // Create info structs (for each arg) that we can use to swap argument registers around.
-            for (u32 i = 0; i < num_args; i += 1)
-            {
-                IR_InstrCallArg* arg = args + i;
-                u32 arg_size = arg->type->size;
-                X64_VRegLoc arg_loc = X64_vreg_loc(generator, arg->loc);
-                X64_ArgInfo* arg_info = arg_infos + i;
+            // Place arguments in the appropriate locations.
+            X64_place_args_in_regs(&group, num_args, arg_infos, arg_info_map); // Will save swapped callee-saved regs in the stack
+            X64_place_args_in_stack(generator, stack_args_info, num_args, arg_infos);
 
-                assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
-
-                // TODO: This will differ for windows/linux once we have other types (floats, structs, unions).
-                // On windows, only 4 register arguments (of any type) can be used.
-                // On linux, a proc can use up to 6 int regs and 8 xmm registers.
-                if (i >= x64_target.num_arg_regs)
-                {
-                    arg_info->in_reg = false;
-                    stack_args_size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
-                }
-                else
-                {
-                    arg_info->in_reg = true;
-                    arg_info->reg_index = arg_reg_index++;
-                }
-
-                if (arg_loc.kind == X64_VREG_LOC_REG)
-                {
-                    bool is_caller_saved = X64_is_caller_saved_reg(arg_loc.reg);
-                    bool needed_after_call = u32_is_bit_set(live_regs, arg_loc.reg);
-
-                    arg_info_map[arg_loc.reg] = arg_info;
-                    arg_info->save_on_swap = needed_after_call && !is_caller_saved;
-                }
-
-                arg_info->arg = arg;
-                arg_info->loc = arg_loc;
-            }
-
-            // Move arguments that should be in registers into the appropriate X64 registers.
-            bool keep_going = true;
-
-            while (keep_going)
-            {
-                // NOTE: :IMPORTANT: This loops inifinitely if a stack argument is initially assigned an argument
-                // register! The register allocator MUST NOT assign an X64 argument register to an argument that will be
-                // passed via the stack.
-                keep_going = false;
-
-                for (u32 i = 0; i < num_args; i += 1)
-                {
-                    X64_ArgInfo* arg_info = arg_infos + i;
-
-                    if (!arg_info->in_reg)
-                    {
-                        // Skip stack args.
-                        continue;
-                    }
-
-                    u32 arg_size = (u32)arg_info->arg->type->size;
-
-                    // This is the X64 register that must contain this argument.
-                    X64_Reg arg_reg = x64_target.arg_regs[arg_info->reg_index];
-
-                    // Check if argument is already in the appropriate register.
-                    if ((arg_info->loc.kind == X64_VREG_LOC_REG) && (arg_info->loc.reg == arg_reg))
-                    {
-                        // Do nothing.
-                        // NOTE: Has already been saved if needed across call.
-                    }
-                    else
-                    {
-                        // Move argument into the appropriate register.
-
-                        // Need to check if arg_reg is used by another argument.
-                        X64_ArgInfo* other_arg_info = arg_info_map[arg_reg];
-
-                        if (other_arg_info)
-                        {
-                            assert(other_arg_info->loc.kind == X64_VREG_LOC_REG);
-                            assert(other_arg_info->loc.reg == arg_reg);
-                            assert(!other_arg_info->save_on_swap);
-                            X64_VRegLoc this_loc = arg_info->loc;
-
-                            if (arg_info->loc.kind == X64_VREG_LOC_REG)
-                            {
-                                // Exchange register contents.
-
-                                if (arg_info->save_on_swap)
-                                {
-                                    X64_push_reg(&group, arg_info->loc.reg);
-                                    arg_info->save_on_swap = false;
-                                }
-
-                                // Exchange the entire register.
-                                X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][this_loc.reg],
-                                              x64_reg_names[X64_MAX_INT_REG_SIZE][arg_reg]);
-
-                                arg_info->loc = other_arg_info->loc;
-                                arg_info_map[arg_reg] = arg_info;
-
-                                other_arg_info->loc = this_loc;
-                                arg_info_map[this_loc.reg] = other_arg_info;
-                            }
-                            else
-                            {
-                                assert(arg_info->loc.kind == X64_VREG_LOC_STACK);
-
-                                // Will place in the next pass.
-                                keep_going = true;
-                            }
-                        }
-                        else
-                        {
-                            // Just move into register.
-
-                            if (arg_info->loc.kind == X64_VREG_LOC_STACK)
-                            {
-                                X64_emit_text(
-                                    generator, "    mov %s, %s", x64_reg_names[arg_size][arg_reg],
-                                    X64_print_stack_offset(generator->tmp_mem, arg_info->loc.offset, arg_size));
-
-                                arg_info->loc.kind = X64_VREG_LOC_REG;
-                                arg_info->loc.reg = arg_reg;
-                                arg_info_map[arg_reg] = arg_info;
-                            }
-                            else
-                            {
-                                assert(arg_info->loc.kind == X64_VREG_LOC_REG);
-                                X64_Reg this_reg = arg_info->loc.reg;
-
-                                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][arg_reg],
-                                              x64_reg_names[arg_size][this_reg]);
-
-                                arg_info->loc.reg = arg_reg;
-                                arg_info_map[arg_reg] = arg_info;
-
-                                // Null out the original register in the map in case it is needed by another arg.
-                                arg_info_map[this_reg] = NULL;
-                            }
-                        }
-                    }
-                }
-            }
-
-            u32 stack_offset = 0;
-
-            // Create shadow/home space for windows.
-            if (x64_target.os == OS_WIN32)
-            {
-                stack_args_size += X64_WINDOWS_SHADOW_SPACE;
-                stack_offset = X64_WINDOWS_SHADOW_SPACE;
-            }
-
-            // Push stack arguments (if any)
-            if (stack_args_size)
-            {
-                // Make room in the stack for arguments
-                X64_emit_text(generator, "    sub rsp, %d", stack_args_size);
-
-                for (u32 i = 0; i < num_args; i += 1)
-                {
-                    X64_ArgInfo* arg_info = arg_infos + i;
-
-                    if (arg_info->in_reg)
-                    {
-                        // Skip register args.
-                        continue;
-                    }
-
-                    u32 arg_size = (u32)arg_info->arg->type->size;
-
-                    if (arg_info->loc.kind == X64_VREG_LOC_STACK)
-                    {
-                        // Move into RAX.
-                        X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][X64_RAX],
-                                      X64_print_stack_offset(generator->tmp_mem, arg_info->loc.offset, arg_size));
-
-                        // Move RAX into stack slot.
-                        X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size],
-                                      stack_offset, x64_reg_names[arg_size][X64_RAX]);
-                    }
-                    else
-                    {
-                        assert(arg_info->loc.kind == X64_VREG_LOC_REG);
-
-                        // Move into stack slot.
-                        X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size],
-                                      stack_offset, x64_reg_names[arg_size][arg_info->loc.reg]);
-                    }
-
-                    stack_offset += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
-                }
-
-                assert(stack_offset == stack_args_size);
-            }
-
-            // Patch initial stack pointer alignment instruction.
-            u32 total_stack_size = stack_args_size + group.num_tmp_regs * X64_MAX_INT_REG_SIZE;
+            // Align stack before call.
+            u32 total_stack_size = stack_args_info.args_size + group.num_tmp_regs * X64_MAX_INT_REG_SIZE;
             u32 align_stack_size = 0;
 
             if (total_stack_size & (X64_STACK_ALIGN - 1))
@@ -1257,9 +1332,9 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
             }
 
             // Clean up stack args
-            if (stack_args_size)
+            if (stack_args_info.args_size)
             {
-                X64_emit_text(generator, "    add rsp, %u", stack_args_size);
+                X64_emit_text(generator, "    add rsp, %u", stack_args_info.args_size);
             }
 
             // Restore saved registers.
