@@ -411,6 +411,11 @@ static size_t X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* 
     unsigned arg_index = 0;
     unsigned stack_arg_offset = 0x10;
 
+    if (x64_target.os == OS_WIN32)
+    {
+        stack_arg_offset += X64_WINDOWS_SHADOW_SPACE;
+    }
+
     Scope* scope = dproc->scope;
     List* head = &scope->sym_list;
     List* it = head->next;
@@ -448,6 +453,7 @@ static size_t X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* 
                 sym->as_var.offset = stack_arg_offset;
                 stack_arg_offset += arg_size;
                 stack_arg_offset = ALIGN_UP(stack_arg_offset, arg_align);
+                stack_arg_offset = ALIGN_UP(stack_arg_offset, X64_STACK_WORD_SIZE);
             }
         }
         // Assign stack offsets to local variables in procedure.

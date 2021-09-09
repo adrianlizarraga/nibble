@@ -3,6 +3,13 @@
 ; nasm -f elf64 -F dwarf out.asm
 ; ld -o out -dynamic-linker /lib/ld-linux-x86-64.so.2 /usr/lib/crt1.o /usr/lib/crti.o -lc out.o /usr/lib/crtn.o
 ; ld -o out -dynamic-linker /lib64/ld-linux-x86-64.so.2 /usr/lib/x86_64-linux-gnu/crt1.o /usr/lib/x86_64-linux-gnu/crti.o -lc out.o /usr/lib/x86_64-linux-gnu/crtn.o
+; Use echo $? to see exit code
+;
+; Windows:
+; nasm.exe -f win64 -o out.obj out.s
+; link.exe .\out.obj /subsystem:console /entry:main /out:out.exe
+; Use $LASTEXITCODE to see exit code
+;
 ; See:
 ; https://stackoverflow.com/questions/3577922/how-to-link-a-gas-assembly-program-that-uses-the-c-standard-library-with-ld-with
 ; https://en.wikipedia.org/wiki/X86_assembly_language#Syntax
