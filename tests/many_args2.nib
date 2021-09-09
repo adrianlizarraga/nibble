@@ -1,0 +1,14 @@
+proc add(a:int, b:int, c:int, d:int, e:int, f:int, g:int) => int
+{
+    return a + b - c + d - e + f - g;
+}
+
+proc add2(a:int, b:int, c:int, d:int, e:int, f:int, g:int) => int
+{
+    // (1 + 2 - 3 + 4 - 5 + 6 - 7) + (8 + 6 - 5 + 4 - 3 + 2 - 2) = -2 + 10 = 8
+    return add(a, b, c, d, e, f, g) + add(g + 1, f, e, d, c, b, a + 1);
+}
+
+proc main() => int {
+    return add2(1, 2, 3, 4, 5, 6, 7);
+}
