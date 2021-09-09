@@ -566,7 +566,6 @@ static void X64_place_args_in_regs(X64_RegGroup* save_reg_group, u32 num_args, X
 
 static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo stack_args_info, u32 num_args, X64_ArgInfo* arg_infos)
 {
-    u64 stack_offset = stack_args_info.args_offset;
     u64 stack_args_size = stack_args_info.args_size;
 
     // Push stack arguments (if any)
@@ -575,15 +574,40 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
         // Make room in the stack for arguments
         X64_emit_text(generator, "    sub rsp, %d", stack_args_size);
 
+        // 1st pass: Move args that are currently in registers into their stack slots.
+        // This ensures that we can freely use RAX as a temporary register in the second pass.
+        u64 stack_offset = stack_args_info.args_offset;
+
         for (u32 i = 0; i < num_args; i += 1)
         {
             X64_ArgInfo* arg_info = arg_infos + i;
 
             if (arg_info->in_reg)
+                continue; // Skip register args
+
+            u64 arg_size = arg_info->arg->type->size;
+
+            if (arg_info->loc.kind == X64_VREG_LOC_REG)
             {
-                // Skip register args.
-                continue;
+                // Move directly into stack slot.
+                X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size],
+                              stack_offset, x64_reg_names[arg_size][arg_info->loc.reg]);
             }
+
+            stack_offset += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
+        }
+
+        assert(stack_offset == stack_args_size);
+
+        // 2nd pass: Move args that are currently spilled into their stack slots.
+        stack_offset = stack_args_info.args_offset;
+
+        for (u32 i = 0; i < num_args; i += 1)
+        {
+            X64_ArgInfo* arg_info = arg_infos + i;
+
+            if (arg_info->in_reg)
+                continue; // Skip register args
 
             u64 arg_size = arg_info->arg->type->size;
 
@@ -596,14 +620,6 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
                 // Move RAX into stack slot.
                 X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size],
                               stack_offset, x64_reg_names[arg_size][X64_RAX]);
-            }
-            else
-            {
-                assert(arg_info->loc.kind == X64_VREG_LOC_REG);
-
-                // Move into stack slot.
-                X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size],
-                              stack_offset, x64_reg_names[arg_size][arg_info->loc.reg]);
             }
 
             stack_offset += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
