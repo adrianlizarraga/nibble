@@ -1355,6 +1355,105 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
     return true;
 }
 
+static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+{
+    assert(type->kind == TYPE_ARRAY);
+
+    if (type->as_array.base == type_void)
+    {
+        resolver_on_error(resolver, "Cannot declare an array of `void` elements");
+        return false;
+    }
+
+    Type* elem_type = type->as_array.base;
+    size_t array_len = type->as_array.len;
+    size_t elem_index = 0;
+    bool is_const = true;
+
+    // Iterate through each initializer
+    List* head = &expr->initzers;
+    List* it = head->next;
+
+    while (it != head)
+    {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        Designator designator = initzer->designator;
+
+        // Cannot use a name designator.
+        if (designator.kind == DESIGNATOR_NAME)
+        {
+            resolver_on_error(resolver, "Cannot use a name designator (`%s`) for an array compound literal",
+                              designator.name);
+            return false;
+        }
+        
+        // Index designator must be within array's bounds.
+        if (designator.kind == DESIGNATOR_INDEX)
+        {
+            // TODO: Implement: resolve index expressions, check bounds, etc.
+            assert(0);
+        }
+
+        if (elem_index >= array_len)
+        {
+            resolver_on_error(resolver, "Array initializer index (`%llu`) is out of bounds (`%llu`)", elem_index, array_len);
+            return false;
+        }
+
+        if (!resolve_expr(resolver, initzer->init))
+            return false;
+
+        ExprOperand init_op = OP_FROM_EXPR(initzer->init);
+
+        // Initializer expression should be convertible to the element type.
+        if (!convert_eop(&init_op, elem_type))
+        {
+            resolver_on_error(resolver, "Array initializer of type `%s` cannot be converted to `%s`",
+                              type_name(initzer->init->type), type_name(elem_type));
+            return false;
+        }
+
+        // If initializer expression is convertible to the element type, create a new AST node that makes the conversion explicit.
+        initzer->init = try_wrap_cast_expr(resolver, &init_op, initzer->init);
+
+        // Keep track of constness.
+        is_const &= init_op.is_const;
+
+        if (designator.kind != DESIGNATOR_INDEX)
+            elem_index += 1;
+
+        it = it->next;
+    }
+
+    // TODO: HMMMMMM.... there's a difference between an array initializer (not lvalue) and a compound literal (lvalue),
+    // but the syntax is ambiguous.
+    expr->super.type = type;
+    expr->super.is_lvalue = false; // TODO: Consider allowing this to be an l-value like in C
+    expr->super.is_const = is_const; 
+
+    return true;
+}
+
+static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr)
+{
+    bool ret = false;
+
+    // For now, assume the type is provided explicitly.
+    // TODO: Pass expected_type into this procedure.
+    assert(expr->typespec);
+
+    Type* type = resolve_typespec(resolver, expr->typespec);
+
+    // For now, only allow array types.
+    // TODO: Support struct types
+    if (type->kind == TYPE_ARRAY)
+        ret = resolve_expr_array_compound_lit(resolver, expr, type);
+    else
+        resolver_on_error(resolver, "Invalid compound literal type `%s`", type_name(type));
+
+    return ret;
+}
+
 static bool resolve_expr(Resolver* resolver, Expr* expr)
 {
     //(void)expected_type; // TODO: Necessary when resolving compound initializers
@@ -1375,6 +1474,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr)
             return resolve_expr_call(resolver, expr);
         case CST_ExprCast:
             return resolve_expr_cast(resolver, expr);
+        case CST_ExprCompoundLit:
+            return resolve_expr_compound_lit(resolver, (ExprCompoundLit*)expr);
         default:
             ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
             assert(0);
