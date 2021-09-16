@@ -14,8 +14,7 @@ void byte_stream_destroy(ByteStream* stream)
 {
     ByteStreamChunk* chunk = stream->first;
 
-    while (chunk)
-    {
+    while (chunk) {
         ByteStreamChunk* next = chunk->next;
         mem_free(stream->allocator, chunk);
         chunk = next;
@@ -26,13 +25,11 @@ void byte_stream_destroy(ByteStream* stream)
 
 void add_byte_stream_chunk(ByteStream* stream, const char* buf, size_t size)
 {
-    if (stream)
-    {
+    if (stream) {
         size_t chunk_size = offsetof(ByteStreamChunk, buf) + size;
         ByteStreamChunk* chunk = mem_allocate(stream->allocator, chunk_size, DEFAULT_ALIGN, false);
 
-        if (chunk)
-        {
+        if (chunk) {
             memcpy(chunk->buf, buf, size);
             chunk->size = size;
             chunk->next = NULL;
@@ -76,8 +73,7 @@ void** bucket_list_get_elem(BucketList* bucket_list, size_t index)
 
     Bucket* bucket = bucket_list->first;
 
-    while (bucket)
-    {
+    while (bucket) {
         if (index < bucket->count)
             return bucket->elems + index;
 
@@ -98,8 +94,7 @@ void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index)
     size_t bucket_index = index / elems_per_bucket;
     Bucket* bucket = bucket_list->first;
 
-    for (u64 i = 0; i < bucket_index; i += 1)
-    {
+    for (u64 i = 0; i < bucket_index; i += 1) {
         index -= elems_per_bucket;
         bucket = bucket->next;
     }

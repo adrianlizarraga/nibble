@@ -10,8 +10,7 @@ bool init_code_gen(OS target_os, Arch target_arch)
     if (target_arch != ARCH_X64)
         return false;
 
-    if (init_x64_target(target_os))
-    {
+    if (init_x64_target(target_os)) {
         target_gen_module = x64_gen_module;
         return true;
     }

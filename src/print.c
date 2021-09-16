@@ -46,19 +46,16 @@ static size_t ascii_to_i64(const char* str, int64_t* out_value)
 {
     size_t i = 0;
 
-    if (str)
-    {
+    if (str) {
         int64_t result = 0;
         bool is_negative = false;
 
-        if (str[0] == '-')
-        {
+        if (str[0] == '-') {
             is_negative = true;
             ++i;
         }
 
-        while (str[i] && is_dec_digit(str[i]))
-        {
+        while (str[i] && is_dec_digit(str[i])) {
             result = (10 * result) + (str[i] - '0');
             ++i;
         }
@@ -90,13 +87,11 @@ static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned lo
     // Write the value into the temporary buffer in reverse order.
     char base_10_digit = uppercase_flag ? 'A' : 'a';
 
-    do
-    {
+    do {
         char digit = (char)(value % base);
         char base_digit = '0';
 
-        if (digit >= 10)
-        {
+        if (digit >= 10) {
             base_digit = base_10_digit - 10;
         }
 
@@ -117,28 +112,23 @@ static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned lo
 
     tot_len += zero_pad;
 
-    if (print_base)
-    {
+    if (print_base) {
         tot_len += 1;
 
         if (base != 8)
             tot_len += 1;
     }
-    else if (print_sign)
-    {
+    else if (print_sign) {
         tot_len += 1;
     }
 
-    if (width_flag && (width > tot_len))
-    {
+    if (width_flag && (width > tot_len)) {
         uint64_t pad = width - tot_len;
 
-        if (left_just_flag)
-        {
+        if (left_just_flag) {
             space_pad += pad;
         }
-        else
-        {
+        else {
             if (zero_pad_flag)
                 zero_pad += pad;
             else
@@ -147,28 +137,23 @@ static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned lo
     }
 
     // Print width space padding for right justified numbers
-    if (!left_just_flag)
-    {
+    if (!left_just_flag) {
         while (space_pad--)
             put_char_wrapper(dest, ' ');
     }
 
     // Print base or sign.
-    if (print_base)
-    {
+    if (print_base) {
         put_char_wrapper(dest, '0');
 
-        if (base == 2)
-        {
+        if (base == 2) {
             put_char_wrapper(dest, 'b');
         }
-        else if (base == 16)
-        {
+        else if (base == 16) {
             put_char_wrapper(dest, (uppercase_flag) ? 'X' : 'x');
         }
     }
-    else if (print_sign)
-    {
+    else if (print_sign) {
         put_char_wrapper(dest, (negative) ? '-' : '+');
     }
 
@@ -181,8 +166,7 @@ static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned lo
         put_char_wrapper(dest, temp_buf[len]);
 
     // Print space padding for left justified numbers
-    if (left_just_flag)
-    {
+    if (left_just_flag) {
         while (space_pad--)
             put_char_wrapper(dest, ' ');
     }
@@ -216,8 +200,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     /////////////////////////////////////
     // Handle NaN, Inf, -Inf
     ////////////////////////////////////
-    if (value != value)
-    {
+    if (value != value) {
         const char* nan = "nan";
 
         for (size_t i = 0; i < cstr_len(nan); ++i)
@@ -225,8 +208,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
 
         return;
     }
-    else if (value > DBL_MAX)
-    {
+    else if (value > DBL_MAX) {
         bool plus = (flags & FORMAT_FLAG_FORCE_SIGN);
         const char* inf = (plus) ? "+inf" : "inf";
 
@@ -235,8 +217,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
 
         return;
     }
-    else if (value < -DBL_MAX)
-    {
+    else if (value < -DBL_MAX) {
         const char* inf = "-inf";
 
         for (size_t i = 0; i < cstr_len(inf); ++i)
@@ -248,8 +229,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     // Make positive
     bool negative = false;
 
-    if (value < 0)
-    {
+    if (value < 0) {
         negative = true;
         value = 0.0 - value;
     }
@@ -273,34 +253,29 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     ////////////////////////////
     int64_t integral = (int64_t)value;
 
-    if (precision > 0)
-    {
+    if (precision > 0) {
         double frac_dbl = (value - integral) * powers10[prec_index];
         int64_t fractional = (int64_t)frac_dbl;
         double leftover = frac_dbl - fractional;
 
         // Round up leftover decimal places (past the precision amount).
-        if (leftover > 0.5)
-        {
+        if (leftover > 0.5) {
             ++fractional;
 
             // Rollover (EX: If value is 0.99 and precision is 1 -> result should
             // be 1.0)
-            if (fractional >= powers10[prec_index])
-            {
+            if (fractional >= powers10[prec_index]) {
                 fractional = 0;
                 ++integral;
             }
         }
         // Exactly 0.5... round up to even
-        else if ((leftover == 0.5) && ((fractional == 0) || (fractional & 1)))
-        {
+        else if ((leftover == 0.5) && ((fractional == 0) || (fractional & 1))) {
             ++fractional;
 
             // Rollover (EX: If value is 0.95 and precision is 1 -> result should
             // be 1.0)
-            if (fractional >= powers10[prec_index])
-            {
+            if (fractional >= powers10[prec_index]) {
                 fractional = 0;
                 ++integral;
             }
@@ -309,8 +284,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
         uint64_t remaining = prec_index;
 
         // Add fractional part to the char buffer in reverse order.
-        do
-        {
+        do {
             --remaining;
 
             char digit = (char)(fractional % 10);
@@ -343,8 +317,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     // Print integral part
     ////////////////////////////
 
-    do
-    {
+    do {
         char digit = (char)(integral % 10);
 
         temp_buf[len++] = '0' + digit;
@@ -365,8 +338,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
         width_pad = width - tot_len;
 
     // Print width padding for right-justified numbers.
-    if (!left_just_flag)
-    {
+    if (!left_just_flag) {
         char c = zero_pad_flag ? '0' : ' ';
 
         while (width_pad--)
@@ -386,8 +358,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
         put_char_wrapper(dest, '0');
 
     // Print width padding for left-justified numbers.
-    if (left_just_flag)
-    {
+    if (left_just_flag) {
         while (width_pad--)
             put_char_wrapper(dest, ' ');
     }
@@ -405,12 +376,10 @@ size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list ar
     uint64_t precision = 0;
     uint32_t width = 0;
 
-    while (*format)
-    {
+    while (*format) {
         // Handle a format specifier.
         // %[.precision][length]specifier
-        if (*format == '%')
-        {
+        if (*format == '%') {
             ++format;
 
             // Reset flags
@@ -418,60 +387,44 @@ size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list ar
 
             // Parse flags sub-specifier
             bool parsing = true;
-            while (parsing)
-            {
-                switch (*format)
-                {
-                    case '-':
-                    {
-                        flags |= FORMAT_FLAG_LEFT_JUSTIFIED;
-                        ++format;
-                    }
-                    break;
-                    case '+':
-                    {
-                        flags |= FORMAT_FLAG_FORCE_SIGN;
-                        ++format;
-                    }
-                    break;
-                    case ' ':
-                    {
-                        flags |= FORMAT_FLAG_SPACE_SIGN;
-                        ++format;
-                    }
-                    break;
-                    case '#':
-                    {
-                        flags |= FORMAT_FLAG_HASH;
-                        ++format;
-                    }
-                    break;
-                    case '0':
-                    {
-                        flags |= FORMAT_FLAG_ZERO_PAD;
-                        ++format;
-                    }
-                    break;
-                    default:
-                    {
-                        parsing = false;
-                    }
-                    break;
+            while (parsing) {
+                switch (*format) {
+                case '-': {
+                    flags |= FORMAT_FLAG_LEFT_JUSTIFIED;
+                    ++format;
+                } break;
+                case '+': {
+                    flags |= FORMAT_FLAG_FORCE_SIGN;
+                    ++format;
+                } break;
+                case ' ': {
+                    flags |= FORMAT_FLAG_SPACE_SIGN;
+                    ++format;
+                } break;
+                case '#': {
+                    flags |= FORMAT_FLAG_HASH;
+                    ++format;
+                } break;
+                case '0': {
+                    flags |= FORMAT_FLAG_ZERO_PAD;
+                    ++format;
+                } break;
+                default: {
+                    parsing = false;
+                } break;
                 }
             }
 
             // Process width sub-specifier
             width = 0;
-            if (is_dec_digit(*format))
-            {
+            if (is_dec_digit(*format)) {
                 int64_t w = 0;
                 format += ascii_to_i64(format, &w);
                 flags |= FORMAT_FLAG_WIDTH;
 
                 width = w < 0 ? 0 : (uint32_t)w;
             }
-            else if (*format == '*')
-            {
+            else if (*format == '*') {
                 int w = va_arg(args, int);
 
                 width = w < 0 ? 0 : (uint32_t)w;
@@ -480,20 +433,17 @@ size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list ar
 
             // Process precision sub-specifier
             precision = 0;
-            if (*format == '.')
-            {
+            if (*format == '.') {
                 ++format;
                 flags |= FORMAT_FLAG_PRECISION;
 
-                if (is_dec_digit(*format))
-                {
+                if (is_dec_digit(*format)) {
                     int64_t p = 0;
 
                     format += ascii_to_i64(format, &p);
                     precision = p < 0 ? 0 - p : p;
                 }
-                else if (*format == '*')
-                {
+                else if (*format == '*') {
                     const int p = va_arg(args, int);
 
                     precision = p < 0 ? 0 - p : p;
@@ -502,252 +452,206 @@ size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list ar
             }
 
             // Process length sub-specifier
-            switch (*format)
-            {
-                case 'l':
-                {
-                    flags |= FORMAT_FLAG_LONG;
-                    ++format;
+            switch (*format) {
+            case 'l': {
+                flags |= FORMAT_FLAG_LONG;
+                ++format;
 
-                    if (*format == 'l')
-                    {
-                        flags &= ~FORMAT_FLAG_LONG;
-                        flags |= FORMAT_FLAG_LONG_LONG;
-                        ++format;
-                    }
-                }
-                break;
-                case 'h':
-                {
-                    flags |= FORMAT_FLAG_SHORT;
+                if (*format == 'l') {
+                    flags &= ~FORMAT_FLAG_LONG;
+                    flags |= FORMAT_FLAG_LONG_LONG;
                     ++format;
-
-                    if (*format == 'h')
-                    {
-                        flags &= ~FORMAT_FLAG_SHORT;
-                        flags |= FORMAT_FLAG_CHAR;
-                        ++format;
-                    }
                 }
+            } break;
+            case 'h': {
+                flags |= FORMAT_FLAG_SHORT;
+                ++format;
+
+                if (*format == 'h') {
+                    flags &= ~FORMAT_FLAG_SHORT;
+                    flags |= FORMAT_FLAG_CHAR;
+                    ++format;
+                }
+            } break;
+            default:
                 break;
-                default:
-                    break;
             }
 
             // Evaluate arg
-            switch (*format)
-            {
-                case 'd':
-                case 'i':
-                case 'u':
-                case 'x':
-                case 'X':
-                case 'o':
-                case 'b':
-                {
-                    uint64_t base = 10;
+            switch (*format) {
+            case 'd':
+            case 'i':
+            case 'u':
+            case 'x':
+            case 'X':
+            case 'o':
+            case 'b': {
+                uint64_t base = 10;
 
-                    // Figure out the base
-                    if (*format == 'x')
-                    {
-                        base = 16;
-                    }
-                    else if (*format == 'X')
-                    {
-                        base = 16;
-                        flags |= FORMAT_FLAG_UPPERCASE;
-                    }
-                    else if (*format == 'o')
-                    {
-                        base = 8;
-                    }
-                    else if (*format == 'b')
-                    {
-                        base = 2;
-                    }
-
-                    // Print signed numbers
-                    if (*format == 'd' || *format == 'i')
-                    {
-                        if (flags & FORMAT_FLAG_LONG_LONG)
-                        {
-                            long long value = va_arg(args, long long);
-
-                            ftprint_int(&state, value, base, precision, width, flags);
-                        }
-                        else if (flags & FORMAT_FLAG_LONG)
-                        {
-                            long value = va_arg(args, long);
-
-                            ftprint_int(&state, value, base, precision, width, flags);
-                        }
-                        else if (flags & FORMAT_FLAG_SHORT)
-                        {
-                            short value = va_arg(args, int);
-
-                            ftprint_int(&state, value, base, precision, width, flags);
-                        }
-                        else if (flags & FORMAT_FLAG_CHAR)
-                        {
-                            char value = va_arg(args, int);
-
-                            ftprint_int(&state, value, base, precision, width, flags);
-                        }
-                        else
-                        {
-                            int value = va_arg(args, int);
-
-                            ftprint_int(&state, value, base, precision, width, flags);
-                        }
-                    }
-
-                    // Unsigned numbers
-                    else
-                    {
-                        if (flags & FORMAT_FLAG_LONG_LONG)
-                        {
-                            print_uint(&state, va_arg(args, unsigned long long), base, precision, width, flags);
-                        }
-                        else if (flags & FORMAT_FLAG_LONG)
-                        {
-                            print_uint(&state, va_arg(args, unsigned long), base, precision, width, flags);
-                        }
-                        else if (flags & FORMAT_FLAG_SHORT)
-                        {
-                            unsigned short value = va_arg(args, unsigned int);
-
-                            print_uint(&state, value, base, precision, width, flags);
-                        }
-                        else if (flags & FORMAT_FLAG_CHAR)
-                        {
-                            unsigned char value = va_arg(args, int);
-
-                            print_uint(&state, value, base, precision, width, flags);
-                        }
-                        else
-                        {
-                            print_uint(&state, va_arg(args, unsigned int), base, precision, width, flags);
-                        }
-                    }
-                    ++format;
-                    break;
+                // Figure out the base
+                if (*format == 'x') {
+                    base = 16;
+                }
+                else if (*format == 'X') {
+                    base = 16;
+                    flags |= FORMAT_FLAG_UPPERCASE;
+                }
+                else if (*format == 'o') {
+                    base = 8;
+                }
+                else if (*format == 'b') {
+                    base = 2;
                 }
 
-                // Print a floating-point number
-                case 'f':
-                case 'F':
-                {
-                    if (*format == 'F')
-                    {
-                        flags |= FORMAT_FLAG_UPPERCASE;
-                    }
+                // Print signed numbers
+                if (*format == 'd' || *format == 'i') {
+                    if (flags & FORMAT_FLAG_LONG_LONG) {
+                        long long value = va_arg(args, long long);
 
-                    ftprint_float(&state, va_arg(args, double), precision, width, flags);
-                    ++format;
+                        ftprint_int(&state, value, base, precision, width, flags);
+                    }
+                    else if (flags & FORMAT_FLAG_LONG) {
+                        long value = va_arg(args, long);
+
+                        ftprint_int(&state, value, base, precision, width, flags);
+                    }
+                    else if (flags & FORMAT_FLAG_SHORT) {
+                        short value = va_arg(args, int);
+
+                        ftprint_int(&state, value, base, precision, width, flags);
+                    }
+                    else if (flags & FORMAT_FLAG_CHAR) {
+                        char value = va_arg(args, int);
+
+                        ftprint_int(&state, value, base, precision, width, flags);
+                    }
+                    else {
+                        int value = va_arg(args, int);
+
+                        ftprint_int(&state, value, base, precision, width, flags);
+                    }
                 }
+
+                // Unsigned numbers
+                else {
+                    if (flags & FORMAT_FLAG_LONG_LONG) {
+                        print_uint(&state, va_arg(args, unsigned long long), base, precision, width, flags);
+                    }
+                    else if (flags & FORMAT_FLAG_LONG) {
+                        print_uint(&state, va_arg(args, unsigned long), base, precision, width, flags);
+                    }
+                    else if (flags & FORMAT_FLAG_SHORT) {
+                        unsigned short value = va_arg(args, unsigned int);
+
+                        print_uint(&state, value, base, precision, width, flags);
+                    }
+                    else if (flags & FORMAT_FLAG_CHAR) {
+                        unsigned char value = va_arg(args, int);
+
+                        print_uint(&state, value, base, precision, width, flags);
+                    }
+                    else {
+                        print_uint(&state, va_arg(args, unsigned int), base, precision, width, flags);
+                    }
+                }
+                ++format;
                 break;
+            }
 
-                // Print a character.
-                case 'c':
-                {
-                    uint32_t str_len = 1;
-
-                    // Pad with spaces if width specified, is right-aligned, and width > 1.
-                    if ((flags & FORMAT_FLAG_WIDTH) && !(flags & FORMAT_FLAG_LEFT_JUSTIFIED))
-                    {
-                        while (str_len < width)
-                        {
-                            put_char_wrapper(&state, ' ');
-                            ++str_len;
-                        }
-                    }
-
-                    put_char_wrapper(&state, (char)va_arg(args, int));
-
-                    // Pad with spaces if a width was specified, is left-aligned, and the
-                    // string is smaller than the width.
-                    if ((flags & FORMAT_FLAG_WIDTH) && (flags & FORMAT_FLAG_LEFT_JUSTIFIED))
-                    {
-                        while (str_len < width)
-                        {
-                            put_char_wrapper(&state, ' ');
-                            ++str_len;
-                        }
-                    }
-
-                    ++format;
+            // Print a floating-point number
+            case 'f':
+            case 'F': {
+                if (*format == 'F') {
+                    flags |= FORMAT_FLAG_UPPERCASE;
                 }
-                break;
 
-                // Print a string
-                case 's':
-                {
-                    const char* value = va_arg(args, char*);
-                    bool is_null = !value;
-                    const char null_str[] = "(null)";
-                    uint32_t str_len = is_null ? 0 : cstr_len(value);
+                ftprint_float(&state, va_arg(args, double), precision, width, flags);
+                ++format;
+            } break;
 
-                    if (flags & FORMAT_FLAG_PRECISION)
-                    {
-                        str_len = str_len > precision ? precision : str_len;
+            // Print a character.
+            case 'c': {
+                uint32_t str_len = 1;
+
+                // Pad with spaces if width specified, is right-aligned, and width > 1.
+                if ((flags & FORMAT_FLAG_WIDTH) && !(flags & FORMAT_FLAG_LEFT_JUSTIFIED)) {
+                    while (str_len < width) {
+                        put_char_wrapper(&state, ' ');
+                        ++str_len;
                     }
-
-                    // Pad with spaces if a width was specified, is right-aligned, and the
-                    // string is smaller than the width.
-                    if (!is_null && (flags & FORMAT_FLAG_WIDTH) && !(flags & FORMAT_FLAG_LEFT_JUSTIFIED))
-                    {
-                        while (str_len < width)
-                        {
-                            put_char_wrapper(&state, ' ');
-                            ++str_len;
-                        }
-                    }
-
-                    if (is_null)
-                    {
-                        value = (cstr_len(null_str) > precision) && (flags & FORMAT_FLAG_PRECISION) ? "" : null_str;
-                    }
-
-                    while (*value && (!(flags & FORMAT_FLAG_PRECISION) || (precision > 0)))
-                    {
-                        put_char_wrapper(&state, *value++);
-                        --precision;
-                    }
-
-                    // Pad with spaces if a width was specified, is left-aligned, and the
-                    // string is smaller than the width.
-                    if (!is_null && (flags & FORMAT_FLAG_WIDTH) && (flags & FORMAT_FLAG_LEFT_JUSTIFIED))
-                    {
-                        while (str_len < width)
-                        {
-                            put_char_wrapper(&state, ' ');
-                            ++str_len;
-                        }
-                    }
-
-                    ++format;
                 }
-                break;
 
-                // Nothing printed. A pointer is extracted and the current number of chars
-                // written is stored in the pointed location.
-                case 'n':
-                {
-                    int* p = va_arg(args, int*);
+                put_char_wrapper(&state, (char)va_arg(args, int));
 
-                    *p = state.count;
-                    ++format;
+                // Pad with spaces if a width was specified, is left-aligned, and the
+                // string is smaller than the width.
+                if ((flags & FORMAT_FLAG_WIDTH) && (flags & FORMAT_FLAG_LEFT_JUSTIFIED)) {
+                    while (str_len < width) {
+                        put_char_wrapper(&state, ' ');
+                        ++str_len;
+                    }
                 }
-                break;
-                default:
 
-                    // Unknown specifier NOT SUPPORTED!!!!
-                    put_char_wrapper(&state, *format++);
-                    break;
+                ++format;
+            } break;
+
+            // Print a string
+            case 's': {
+                const char* value = va_arg(args, char*);
+                bool is_null = !value;
+                const char null_str[] = "(null)";
+                uint32_t str_len = is_null ? 0 : cstr_len(value);
+
+                if (flags & FORMAT_FLAG_PRECISION) {
+                    str_len = str_len > precision ? precision : str_len;
+                }
+
+                // Pad with spaces if a width was specified, is right-aligned, and the
+                // string is smaller than the width.
+                if (!is_null && (flags & FORMAT_FLAG_WIDTH) && !(flags & FORMAT_FLAG_LEFT_JUSTIFIED)) {
+                    while (str_len < width) {
+                        put_char_wrapper(&state, ' ');
+                        ++str_len;
+                    }
+                }
+
+                if (is_null) {
+                    value = (cstr_len(null_str) > precision) && (flags & FORMAT_FLAG_PRECISION) ? "" : null_str;
+                }
+
+                while (*value && (!(flags & FORMAT_FLAG_PRECISION) || (precision > 0))) {
+                    put_char_wrapper(&state, *value++);
+                    --precision;
+                }
+
+                // Pad with spaces if a width was specified, is left-aligned, and the
+                // string is smaller than the width.
+                if (!is_null && (flags & FORMAT_FLAG_WIDTH) && (flags & FORMAT_FLAG_LEFT_JUSTIFIED)) {
+                    while (str_len < width) {
+                        put_char_wrapper(&state, ' ');
+                        ++str_len;
+                    }
+                }
+
+                ++format;
+            } break;
+
+            // Nothing printed. A pointer is extracted and the current number of chars
+            // written is stored in the pointed location.
+            case 'n': {
+                int* p = va_arg(args, int*);
+
+                *p = state.count;
+                ++format;
+            } break;
+            default:
+
+                // Unknown specifier NOT SUPPORTED!!!!
+                put_char_wrapper(&state, *format++);
+                break;
             }
         }
-        else
-        {
+        else {
             // Just print the next character in the format string.
             put_char_wrapper(&state, *format++);
         }
@@ -782,8 +686,7 @@ static bool flush_file_buffer(FileBuffer* fb)
 {
     size_t n = fwrite(fb->buf, sizeof(char), fb->index, fb->fd);
 
-    if (n == fb->index)
-    {
+    if (n == fb->index) {
         fb->index -= n;
 
         return true;
@@ -798,20 +701,16 @@ static bool output_to_file(void* data, char character)
     FileBuffer* dest = (FileBuffer*)data;
     bool write_char = character || dest->nullterm;
 
-    if (dest->index < dest->size)
-    {
+    if (dest->index < dest->size) {
         if (write_char)
             dest->buf[dest->index++] = character;
     }
-    else
-    {
-        if (flush_file_buffer(dest))
-        {
+    else {
+        if (flush_file_buffer(dest)) {
             if (write_char)
                 dest->buf[dest->index++] = character;
         }
-        else
-        {
+        else {
             return false;
         }
     }

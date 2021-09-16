@@ -57,14 +57,12 @@ void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, Al
     ArrayHdr* hdr = array ? _array_hdr(array) : 0;
     ArrayHdr* new_hdr = NULL;
 
-    if (hdr)
-    {
+    if (hdr) {
         size_t old_size = sizeof(ArrayHdr) + (elem_size * cap);
 
         new_hdr = mem_reallocate(hdr->allocator, hdr, old_size, alloc_size, align);
     }
-    else
-    {
+    else {
         new_hdr = mem_allocate(allocator, alloc_size, align, false);
         new_hdr->allocator = allocator;
         new_hdr->len = 0;

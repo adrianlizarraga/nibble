@@ -53,19 +53,16 @@ void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
     uintptr_t new_at = aligned_at + size;
 
     // Allocate a new memory block if need more memory.
-    if (new_at > (uintptr_t)allocator->end)
-    {
+    if (new_at > (uintptr_t)allocator->end) {
         size_t block_size = allocator->end - allocator->buffer;
         size_t worst_size = size + align;
 
-        if (block_size < worst_size)
-        {
+        if (block_size < worst_size) {
             block_size = worst_size;
         }
         block_size *= 2;
 
-        if (!alloc_mem_block(allocator, block_size))
-        {
+        if (!alloc_mem_block(allocator, block_size)) {
             return NULL;
         }
 
@@ -108,18 +105,15 @@ void* mem_reallocate(Allocator* allocator, void* ptr, size_t old_size, size_t si
 
 void mem_free(Allocator* allocator, void* ptr)
 {
-    if (!allocator)
-    {
+    if (!allocator) {
         free(ptr);
     }
-    else
-    {
+    else {
         // If ptr is the previous allocation, undo it.
         // Otherwise, do nothing.
         char* pat = allocator->pat;
 
-        if (pat && (uintptr_t)ptr == (uintptr_t)pat)
-        {
+        if (pat && (uintptr_t)ptr == (uintptr_t)pat) {
             allocator->at = pat;
             allocator->pat = NULL;
         }
@@ -145,8 +139,7 @@ void allocator_reset(Allocator* allocator)
     // Free all blocks, except for the last (original), which is "cleared".
     MemBlockFooter* footer = (MemBlockFooter*)allocator->end;
 
-    while (footer->pbuffer)
-    {
+    while (footer->pbuffer) {
         char* pbuffer = footer->pbuffer;
         char* pend = footer->pend;
 
@@ -169,8 +162,7 @@ void allocator_destroy(Allocator* allocator)
     char* buffer = allocator->buffer;
     char* end = allocator->end;
 
-    while (buffer)
-    {
+    while (buffer) {
         MemBlockFooter footer = *(MemBlockFooter*)(end);
 
         free(buffer);
@@ -203,8 +195,7 @@ void allocator_restore_state(AllocatorState state)
     char* buffer = allocator->buffer;
     char* end = allocator->end;
 
-    while (buffer != dest_buffer)
-    {
+    while (buffer != dest_buffer) {
         MemBlockFooter footer = *(MemBlockFooter*)(end);
 
         free(buffer);
@@ -232,8 +223,7 @@ AllocatorStats allocator_stats(Allocator* allocator)
 
     MemBlockFooter* footer = (MemBlockFooter*)allocator->end;
 
-    while (footer->pbuffer)
-    {
+    while (footer->pbuffer) {
         char* buffer = footer->pbuffer;
         char* at = footer->pat;
         char* end = footer->pend;

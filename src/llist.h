@@ -11,9 +11,12 @@ struct List {
     List* next;
 };
 
-#define list_head_create(name) { &(name), &(name) }
+#define list_head_create(name) \
+    {                          \
+        &(name), &(name)       \
+    }
 #define list_entry(ptr, type, member) container_of(ptr, type, member)
-#define container_of(ptr, type, member) ((type*) ((char*)ptr - offsetof(type, member)))
+#define container_of(ptr, type, member) ((type*)((char*)ptr - offsetof(type, member)))
 
 static inline void list_head_init(List* list)
 {

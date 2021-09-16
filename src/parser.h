@@ -37,7 +37,6 @@ bool expect_token(Parser* parser, TokenKind kind, const char* error_prefix);
 bool expect_keyword(Parser* parser, Keyword kw, const char* error_prefix);
 bool skip_after_token(Parser* parser, TokenKind kind);
 
-
 TypeSpec* parse_typespec(Parser* parser);
 Expr* parse_expr(Parser* parser);
 Stmt* parse_stmt(Parser* parser);

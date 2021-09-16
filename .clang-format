@@ -7,30 +7,30 @@ AlignConsecutiveMacros: false
 AlignConsecutiveAssignments: false
 AlignConsecutiveBitFields: false
 AlignConsecutiveDeclarations: false
-AlignEscapedNewlines: Right
+AlignEscapedNewlines: Left
 AlignOperands:   Align
-AlignTrailingComments: true
-AllowAllArgumentsOnNextLine: true
-AllowAllConstructorInitializersOnNextLine: true
-AllowAllParametersOfDeclarationOnNextLine: true
-AllowShortEnumsOnASingleLine: true
+AlignTrailingComments: false
+AllowAllArgumentsOnNextLine: false
+#AllowAllConstructorInitializersOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortEnumsOnASingleLine: false
 AllowShortBlocksOnASingleLine: Never
 AllowShortCaseLabelsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: Empty
-AllowShortLambdasOnASingleLine: All
+#AllowShortLambdasOnASingleLine: All
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
-AlwaysBreakAfterDefinitionReturnType: None
+#AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakAfterReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
-AlwaysBreakTemplateDeclarations: MultiLine
+#AlwaysBreakTemplateDeclarations: MultiLine
 BinPackArguments: true
 BinPackParameters: true
 BreakBeforeBraces: Custom
 BraceWrapping:
-  AfterCaseLabel:  true
+  AfterCaseLabel:  false
   AfterClass:      false
-  AfterControlStatement: Always
+  AfterControlStatement: Never
   AfterEnum:       false
   AfterFunction:   true
   AfterNamespace:  true
@@ -49,11 +49,11 @@ BraceWrapping:
 BreakBeforeBinaryOperators: None
 BreakBeforeInheritanceComma: false
 BreakInheritanceList: BeforeColon
-BreakBeforeTernaryOperators: true
+BreakBeforeTernaryOperators: false
 BreakConstructorInitializersBeforeComma: false
 BreakConstructorInitializers: BeforeColon
 BreakAfterJavaFieldAnnotations: false
-BreakStringLiterals: true
+BreakStringLiterals: false
 ColumnLimit:     120
 CommentPragmas:  '^ IWYU pragma:'
 CompactNamespaces: false
@@ -83,9 +83,9 @@ IncludeCategories:
     SortPriority:    0
 IncludeIsMainRegex: '(Test)?$'
 IncludeIsMainSourceRegex: ''
-IndentCaseLabels: true
+IndentCaseLabels: false
 IndentCaseBlocks: false
-IndentGotoLabels: true
+IndentGotoLabels: false
 IndentPPDirectives: None
 IndentExternBlock: AfterExternBlock
 IndentWidth:     4
@@ -93,7 +93,7 @@ IndentWrappedFunctionNames: false
 InsertTrailingCommas: None
 JavaScriptQuotes: Leave
 JavaScriptWrapImports: true
-KeepEmptyLinesAtTheStartOfBlocks: true
+KeepEmptyLinesAtTheStartOfBlocks: false
 MacroBlockBegin: ''
 MacroBlockEnd:   ''
 MaxEmptyLinesToKeep: 1
@@ -113,11 +113,11 @@ PenaltyExcessCharacter: 1000000
 PenaltyReturnTypeOnItsOwnLine: 60
 PointerAlignment: Left
 ReflowComments:  true
-SortIncludes:    true
+SortIncludes:    false
 SortUsingDeclarations: true
 SpaceAfterCStyleCast: false
 SpaceAfterLogicalNot: false
-SpaceAfterTemplateKeyword: true
+SpaceAfterTemplateKeyword: false
 SpaceBeforeAssignmentOperators: true
 SpaceBeforeCpp11BracedList: false
 SpaceBeforeCtorInitializerColon: true
@@ -129,7 +129,7 @@ SpaceInEmptyParentheses: false
 SpacesBeforeTrailingComments: 1
 SpacesInAngles:  false
 SpacesInConditionalStatement: false
-SpacesInContainerLiterals: true
+SpacesInContainerLiterals: false
 SpacesInCStyleCastParentheses: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false

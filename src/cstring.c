@@ -2,8 +2,7 @@
 
 int cstr_cmp(const char* str1, const char* str2)
 {
-    while ((*str1 == *str2) && *str1 && *str2)
-    {
+    while ((*str1 == *str2) && *str1 && *str2) {
         str1 += 1;
         str2 += 1;
     }
@@ -18,8 +17,7 @@ int cstr_ncmp(const char* str1, const char* str2, size_t num)
 
     num -= 1;
 
-    while ((*str1 == *str2) && *str1 && *str2 && num)
-    {
+    while ((*str1 == *str2) && *str1 && *str2 && num) {
         str1 += 1;
         str2 += 1;
         num -= 1;
@@ -41,8 +39,7 @@ size_t cstr_len(const char* str)
     // Calc length until s pointer is aligned to a 4-byte boundary.
     const uint32_t align_mask = sizeof(uint32_t) - 1;
 
-    while (((uintptr_t)s & align_mask))
-    {
+    while (((uintptr_t)s & align_mask)) {
         if (!*s)
             return s - str;
 
@@ -67,13 +64,10 @@ size_t cstr_len(const char* str)
 
 void cstr_tolower(char* str)
 {
-    if (str)
-    {
-        while (*str)
-        {
+    if (str) {
+        while (*str) {
             // NOTE: A table-based lookup approach would be faster (probably).
-            if (*str >= 'A' && *str <= 'Z')
-            {
+            if (*str >= 'A' && *str <= 'Z') {
                 *str += 'a' - 'A';
             }
 
@@ -125,4 +119,3 @@ bool u32_is_bit_set(u32 mask, u8 bit)
 {
     return mask & (1 << bit);
 }
-

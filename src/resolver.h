@@ -20,7 +20,7 @@ struct Resolver {
     Scope* curr_scope;
 };
 
-void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem,
-                   ByteStream* errors, TypeCache* type_cache, Scope* global_scope);
+void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors,
+                   TypeCache* type_cache, Scope* global_scope);
 bool resolve_global_decls(Resolver* resolver, List* decls);
 #endif

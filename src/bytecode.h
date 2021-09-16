@@ -279,7 +279,7 @@ typedef struct IR_Instr {
         IR_InstrUnary neg;
 
         // Bitwise NOT
-        IR_InstrUnary not;
+        IR_InstrUnary not ;
 
         // Load immediate into register
         IR_InstrLImm limm;
