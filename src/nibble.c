@@ -272,7 +272,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     //          Gen NASM output
     //////////////////////////////////////////
     ftprint_out("4. Generating IR bytecode\n");
-    IR_Module* module = IR_build_module(&nibble->ast_mem, &nibble->tmp_mem, &nibble->global_scope);
+    IR_Module* module = IR_build_module(&nibble->ast_mem, &nibble->tmp_mem, &nibble->global_scope, &nibble->type_cache);
 
     //////////////////////////////////////////
     //          Gen NASM output

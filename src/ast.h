@@ -134,7 +134,7 @@ struct Expr {
     // TODO: Composition of ExprOperand?
     // This would save a lot of unnecessary copying of ExprOperands.
     Type* type;
-    bool is_const;
+    bool is_constexpr;
     bool is_lvalue;
     Scalar const_val;
 };

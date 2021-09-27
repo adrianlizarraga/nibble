@@ -3,17 +3,17 @@
 
 #define OP_FROM_EXPR(e)                                                                                        \
     {                                                                                                          \
-        .type = (e)->type, .is_const = (e)->is_const, .is_lvalue = (e)->is_lvalue, .const_val = (e)->const_val \
+        .type = (e)->type, .is_constexpr = (e)->is_constexpr, .is_lvalue = (e)->is_lvalue, .const_val = (e)->const_val \
     }
 
 #define OP_FROM_CONST(t, s)                                                 \
     {                                                                       \
-        .type = (t), .is_const = true, .is_lvalue = false, .const_val = (s) \
+        .type = (t), .is_constexpr = true, .is_lvalue = false, .const_val = (s) \
     }
 
 typedef struct ExprOperand {
     Type* type;
-    bool is_const;
+    bool is_constexpr;
     bool is_lvalue;
     Scalar const_val;
 } ExprOperand;
@@ -34,7 +34,7 @@ static bool can_cast_eop(ExprOperand* eop, Type* dst_type);
 static void eop_decay(Resolver* resolver, ExprOperand* eop);
 static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr);
 
-static bool resolve_expr(Resolver* resolver, Expr* expr);
+static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
 static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right);
 static void resolve_unary_eop(TokenKind op, ExprOperand* dst, ExprOperand* src);
@@ -270,7 +270,7 @@ static void init_builtin_syms(Resolver* resolver)
             o->const_val.as_int._s64 = (s64)o->const_val.as_int.f; \
             break;                                                 \
         default:                                                   \
-            o->is_const = false;                                   \
+            o->is_constexpr = false;                                   \
             break;                                                 \
         }                                                          \
         break;
@@ -291,9 +291,9 @@ static bool cast_eop(ExprOperand* eop, Type* dst_type)
     // 1) src_type != dst_type
     // 2) types are castable.
 
-    if (eop->is_const) {
+    if (eop->is_constexpr) {
         if (src_type->kind == TYPE_FLOAT) {
-            eop->is_const = dst_type->kind != TYPE_INTEGER;
+            eop->is_constexpr = dst_type->kind != TYPE_INTEGER;
         }
         else {
             if (src_type->kind == TYPE_ENUM)
@@ -320,7 +320,7 @@ static bool cast_eop(ExprOperand* eop, Type* dst_type)
                 CASE_INT_CAST(INTEGER_U64, eop, dst_int_kind, _u64)
                 CASE_INT_CAST(INTEGER_S64, eop, dst_int_kind, _s64)
             default:
-                eop->is_const = false;
+                eop->is_constexpr = false;
                 break;
             }
         }
@@ -347,7 +347,7 @@ static bool eop_is_null_ptr(ExprOperand eop)
 {
     Type* type = eop.type;
 
-    if (eop.is_const && (type->kind == TYPE_INTEGER || type->kind == TYPE_PTR)) {
+    if (eop.is_constexpr && (type->kind == TYPE_INTEGER || type->kind == TYPE_PTR)) {
         cast_eop(&eop, type_u64);
 
         return eop.const_val.as_int._u64 == 0;
@@ -661,7 +661,7 @@ static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Sca
             s64 r = eval_binary_op_s64(op, left_eop.const_val.as_int._s64, right_eop.const_val.as_int._s64);
 
             dst->type = type_s64;
-            dst->is_const = true;
+            dst->is_constexpr = true;
             dst->is_lvalue = false;
             dst->const_val.as_int._s64 = r;
         }
@@ -672,7 +672,7 @@ static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Sca
             u64 r = eval_binary_op_u64(op, left_eop.const_val.as_int._u64, right_eop.const_val.as_int._u64);
 
             dst->type = type_u64;
-            dst->is_const = true;
+            dst->is_constexpr = true;
             dst->is_lvalue = false;
             dst->const_val.as_int._u64 = r;
         }
@@ -695,7 +695,7 @@ static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scal
             cast_eop(&val_eop, type_s64);
 
             dst->type = type_s64;
-            dst->is_const = true;
+            dst->is_constexpr = true;
             dst->is_lvalue = false;
             dst->const_val.as_int._s64 = eval_unary_op_s64(op, val_eop.const_val.as_int._s64);
         }
@@ -703,7 +703,7 @@ static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scal
             cast_eop(&val_eop, type_u64);
 
             dst->type = type_u64;
-            dst->is_const = true;
+            dst->is_constexpr = true;
             dst->is_lvalue = false;
             dst->const_val.as_int._u64 = eval_unary_op_u64(op, val_eop.const_val.as_int._u64);
         }
@@ -724,7 +724,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
 
     // TODO: Take into account literal suffix (e.g., u, ul, etc.)
     expr->type = type_s32;
-    expr->is_const = true;
+    expr->is_constexpr = true;
     expr->is_lvalue = false;
     expr->const_val.as_int._s32 = (int)eint->value;
 
@@ -735,12 +735,12 @@ static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left
 {
     convert_arith_eops(left, right);
 
-    if (left->is_const & right->is_const) {
+    if (left->is_constexpr & right->is_constexpr) {
         eval_const_binary_op(op, dst, left->type, left->const_val, right->const_val);
     }
     else {
         dst->type = left->type;
-        dst->is_const = false;
+        dst->is_constexpr = false;
         dst->is_lvalue = false;
     }
 }
@@ -759,7 +759,7 @@ static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOper
     cast_eop(int_eop, type_u64);
 
     dst->type = ptr->type;
-    dst->is_const = false;
+    dst->is_constexpr = false;
     dst->is_lvalue = false;
 
     return true;
@@ -769,10 +769,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 {
     ExprBinary* ebinary = (ExprBinary*)expr;
 
-    if (!resolve_expr(resolver, ebinary->left))
+    if (!resolve_expr(resolver, ebinary->left, NULL))
         return false;
 
-    if (!resolve_expr(resolver, ebinary->right))
+    if (!resolve_expr(resolver, ebinary->right, NULL))
         return false;
 
     ExprOperand dst_op = {0};
@@ -848,7 +848,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
 
             dst_op.type = type_s64;
-            dst_op.is_const = false;
+            dst_op.is_constexpr = false;
             dst_op.is_lvalue = false;
         }
         else {
@@ -879,12 +879,12 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
 
             dst_op.type = type_s32;
-            dst_op.is_const = false;
+            dst_op.is_constexpr = false;
             dst_op.is_lvalue = false;
         }
         else if ((left_is_ptr && eop_is_null_ptr(right_op)) || (right_is_ptr && eop_is_null_ptr(left_op))) {
             dst_op.type = type_s32;
-            dst_op.is_const = false;
+            dst_op.is_constexpr = false;
             dst_op.is_lvalue = false;
         }
         else {
@@ -916,12 +916,12 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
 
             dst_op.type = left_op.type;
-            dst_op.is_const = false;
+            dst_op.is_constexpr = false;
             dst_op.is_lvalue = false;
         }
         else if ((left_is_ptr && eop_is_null_ptr(right_op)) || (right_is_ptr && eop_is_null_ptr(left_op))) {
             dst_op.type = type_s32;
-            dst_op.is_const = false;
+            dst_op.is_constexpr = false;
             dst_op.is_lvalue = false;
         }
         else {
@@ -935,7 +935,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
     case TKN_LOGIC_AND:
     case TKN_LOGIC_OR:
         if (type_is_scalar(left_op.type) && type_is_scalar(right_op.type)) {
-            if (left_op.is_const && right_op.is_const) {
+            if (left_op.is_constexpr && right_op.is_constexpr) {
                 // NOTE: Only cast const operands to s32 here for convenience.
                 // The generated code does not need the operands to be same size; they only
                 // need to be comparable to 0.
@@ -946,7 +946,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 cast_eop(&right_op, type_u64);
 
                 dst_op.type = type_s32;
-                dst_op.is_const = true;
+                dst_op.is_constexpr = true;
                 dst_op.is_lvalue = false;
 
                 if (ebinary->op == TKN_LOGIC_AND)
@@ -956,7 +956,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
             else {
                 dst_op.type = type_s32;
-                dst_op.is_const = false;
+                dst_op.is_constexpr = false;
                 dst_op.is_lvalue = false;
             }
         }
@@ -977,7 +977,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
     expr->type = dst_op.type;
     expr->is_lvalue = dst_op.is_lvalue;
-    expr->is_const = dst_op.is_const;
+    expr->is_constexpr = dst_op.is_constexpr;
     expr->const_val = dst_op.const_val;
 
     return true;
@@ -987,12 +987,12 @@ static void resolve_unary_eop(TokenKind op, ExprOperand* dst, ExprOperand* src)
 {
     promote_int_eops(src);
 
-    if (src->is_const) {
+    if (src->is_constexpr) {
         eval_const_unary_op(op, dst, src->type, src->const_val);
     }
     else {
         dst->type = src->type;
-        dst->is_const = false;
+        dst->is_constexpr = false;
         dst->is_lvalue = false;
     }
 }
@@ -1001,7 +1001,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
 {
     ExprUnary* eunary = (ExprUnary*)expr;
 
-    if (!resolve_expr(resolver, eunary->expr))
+    if (!resolve_expr(resolver, eunary->expr, NULL))
         return false;
 
     ExprOperand dst_op = {0};
@@ -1050,7 +1050,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
 
         dst_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, src_op.type);
         dst_op.is_lvalue = false;
-        dst_op.is_const = false;
+        dst_op.is_constexpr = false;
         break;
     case TKN_ASTERISK: // NOTE: Dereference operator.
         eop_decay(resolver, &src_op);
@@ -1062,7 +1062,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
 
         dst_op.type = src_op.type->as_ptr.base;
         dst_op.is_lvalue = true;
-        dst_op.is_const = false;
+        dst_op.is_constexpr = false;
         break;
     default:
         resolver_on_error(resolver, "Unary operation type `%d` not supported", eunary->op);
@@ -1071,7 +1071,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
 
     expr->type = dst_op.type;
     expr->is_lvalue = dst_op.is_lvalue;
-    expr->is_const = dst_op.is_const;
+    expr->is_constexpr = dst_op.is_constexpr;
     expr->const_val = dst_op.const_val;
 
     return true;
@@ -1082,7 +1082,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     ExprIndex* eindex = (ExprIndex*)expr;
 
     // Resolve array expression
-    if (!resolve_expr(resolver, eindex->array))
+    if (!resolve_expr(resolver, eindex->array, NULL))
         return false;
 
     ExprOperand array_op = OP_FROM_EXPR(eindex->array);
@@ -1094,7 +1094,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     }
 
     // Resolve array index expression
-    if (!resolve_expr(resolver, eindex->index))
+    if (!resolve_expr(resolver, eindex->index, NULL))
         return false;
 
     ExprOperand index_op = OP_FROM_EXPR(eindex->index);
@@ -1112,7 +1112,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     // Set overall expression type and attributes.
     expr->type = array_op.type->as_ptr.base;
     expr->is_lvalue = true;
-    expr->is_const = false;
+    expr->is_constexpr = false;
 
     return true;
 }
@@ -1131,20 +1131,20 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     case SYMBOL_VAR:
         expr->type = sym->type;
         expr->is_lvalue = true;
-        expr->is_const = false;
+        expr->is_constexpr = false;
 
         return true;
     case SYMBOL_CONST:
         expr->type = sym->type;
         expr->is_lvalue = false;
-        expr->is_const = true;
+        expr->is_constexpr = true;
         expr->const_val = ((DeclConst*)(sym->decl))->init->const_val;
 
         return true;
     case SYMBOL_PROC:
         expr->type = sym->type;
         expr->is_lvalue = false;
-        expr->is_const = false;
+        expr->is_constexpr = false;
 
         return true;
     default:
@@ -1161,7 +1161,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
     ExprCall* ecall = (ExprCall*)expr;
 
     // Resolve procedure expression.
-    if (!resolve_expr(resolver, ecall->proc))
+    if (!resolve_expr(resolver, ecall->proc, NULL))
         return false;
 
     Type* proc_type = ecall->proc->type;
@@ -1189,7 +1189,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
     while (it != head) {
         ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
 
-        if (!resolve_expr(resolver, arg->expr))
+        if (!resolve_expr(resolver, arg->expr, NULL))
             return false;
 
         Type* param_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, params[i]); // TODO: Cast at site?
@@ -1212,7 +1212,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
 
     expr->type = proc_type->as_proc.ret;
     expr->is_lvalue = false;
-    expr->is_const = false;
+    expr->is_constexpr = false;
 
     return true;
 }
@@ -1226,7 +1226,7 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
     if (!cast_type)
         return false;
 
-    if (!resolve_expr(resolver, ecast->expr))
+    if (!resolve_expr(resolver, ecast->expr, NULL))
         return false;
 
     ExprOperand src_eop = OP_FROM_EXPR(ecast->expr);
@@ -1242,7 +1242,7 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
 
     expr->type = src_eop.type;
     expr->is_lvalue = src_eop.is_lvalue;
-    expr->is_const = src_eop.is_const;
+    expr->is_constexpr = src_eop.is_constexpr;
     expr->const_val = src_eop.const_val;
 
     return true;
@@ -1261,7 +1261,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
     size_t array_len = type->as_array.len;
     size_t elem_index = 0;
     bool is_compound_lit = expr->typespec != NULL; // Otherwise, it is an initializer
-    bool all_initzers_const = true;
+    bool all_initzers_constexpr = true;
 
     // Iterate through each initializer
     List* head = &expr->initzers;
@@ -1290,7 +1290,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
             return false;
         }
 
-        if (!resolve_expr(resolver, initzer->init))
+        if (!resolve_expr(resolver, initzer->init, NULL))
             return false;
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
@@ -1307,7 +1307,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
         initzer->init = try_wrap_cast_expr(resolver, &init_op, initzer->init);
 
         // Keep track of constness.
-        all_initzers_const &= init_op.is_const;
+        all_initzers_constexpr &= init_op.is_constexpr;
 
         if (designator.kind != DESIGNATOR_INDEX)
             elem_index += 1;
@@ -1319,37 +1319,45 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
     // but the syntax is ambiguous.
     expr->super.type = type;
     expr->super.is_lvalue = is_compound_lit;
-    expr->super.is_const =
+    expr->super.is_constexpr =
         !is_compound_lit &&
-        all_initzers_const; // || (is_compound_lit && all_initzers_const && type_is_const(type->as_array.base))
+        all_initzers_constexpr; // || (is_compound_lit && all_initzers_constexpr && type_is_const(type->as_array.base))
 
     return true;
 }
 
-static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr)
+static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* expected_type)
 {
-    bool ret = false;
+    Type* type = expected_type;
 
-    // For now, assume the type is provided explicitly.
-    // TODO: Pass expected_type into this procedure.
-    assert(expr->typespec);
+    if (expr->typespec) {
+        type = resolve_typespec(resolver, expr->typespec);
 
-    Type* type = resolve_typespec(resolver, expr->typespec);
+        if (type != expected_type) {
+            resolver_on_error(resolver, "Compound literal type `%s` does not match expected type `%s`", 
+                              type_name(type), type_name(expected_type));
+            return false;
+        }
+    }
+
+    if (!type) {
+        resolver_on_error(resolver, "Unknown type for compound literal");
+        return false;
+    }
 
     // For now, only allow array types.
     // TODO: Support struct types
-    if (type->kind == TYPE_ARRAY)
-        ret = resolve_expr_array_compound_lit(resolver, expr, type);
-    else
-        resolver_on_error(resolver, "Invalid compound literal type `%s`", type_name(type));
+    if (type->kind == TYPE_ARRAY) {
+        return resolve_expr_array_compound_lit(resolver, expr, type);
+    }
 
-    return ret;
+    resolver_on_error(resolver, "Invalid compound literal type `%s`", type_name(type));
+
+    return false;
 }
 
-static bool resolve_expr(Resolver* resolver, Expr* expr)
+static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
 {
-    //(void)expected_type; // TODO: Necessary when resolving compound initializers
-
     switch (expr->kind) {
     case CST_ExprInt:
         return resolve_expr_int(resolver, expr);
@@ -1366,7 +1374,7 @@ static bool resolve_expr(Resolver* resolver, Expr* expr)
     case CST_ExprCast:
         return resolve_expr_cast(resolver, expr);
     case CST_ExprCompoundLit:
-        return resolve_expr_compound_lit(resolver, (ExprCompoundLit*)expr);
+        return resolve_expr_compound_lit(resolver, (ExprCompoundLit*)expr, expected_type);
     default:
         ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
         assert(0);
@@ -1424,10 +1432,10 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             return NULL;
         }
 
-        if (!resolve_expr(resolver, ts->len))
+        if (!resolve_expr(resolver, ts->len, NULL))
             return NULL;
 
-        if (!ts->len->is_const) {
+        if (!ts->len->is_constexpr) {
             resolver_on_error(resolver, "Array length must be a compile-time constant");
             return NULL;
         }
@@ -1513,7 +1521,7 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
             return false;
 
         if (expr) {
-            if (!resolve_expr(resolver, expr))
+            if (!resolve_expr(resolver, expr, declared_type))
                 return false;
 
             ExprOperand right_eop = OP_FROM_EXPR(expr);
@@ -1527,7 +1535,7 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 return false;
             }
 
-            if (global && !right_eop.is_const) {
+            if (global && !right_eop.is_constexpr) {
                 resolver_on_error(resolver, "Global variables must be initialized with a constant value");
                 return false;
             }
@@ -1542,10 +1550,10 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
     else {
         assert(expr); // NOTE: Parser should catch this.
 
-        if (!resolve_expr(resolver, expr))
+        if (!resolve_expr(resolver, expr, NULL))
             return false;
 
-        if (global && !expr->is_const) {
+        if (global && !expr->is_constexpr) {
             resolver_on_error(resolver, "Global variables must be initialized with a constant value");
             return false;
         }
@@ -1568,10 +1576,10 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
     TypeSpec* typespec = decl->typespec;
     Expr* init = decl->init;
 
-    if (!resolve_expr(resolver, init))
+    if (!resolve_expr(resolver, init, NULL))
         return false;
 
-    if (!init->is_const) {
+    if (!init->is_constexpr) {
         resolver_on_error(resolver, "Value for const decl `%s` must be a constant expression", decl->name);
         return false;
     }
@@ -1759,7 +1767,7 @@ static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_typ
 static bool resolve_cond_expr(Resolver* resolver, Expr* expr)
 {
     // Resolve condition expression.
-    if (!resolve_expr(resolver, expr))
+    if (!resolve_expr(resolver, expr, NULL))
         return false;
 
     // Ensure that condition express is a scalar type.
@@ -1852,12 +1860,12 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
     Expr* expr = orig_expr;
 
     if (orig_expr->type != eop->type) {
-        if (expr->is_const) {
-            assert(eop->is_const);
+        if (expr->is_constexpr) {
+            assert(eop->is_constexpr);
             expr->const_val = eop->const_val;
         }
         else {
-            assert(!eop->is_const);
+            assert(!eop->is_constexpr);
             expr = new_expr_cast(resolver->ast_mem, NULL, orig_expr, true, orig_expr->range);
         }
 
@@ -1875,10 +1883,10 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
     Expr* left_expr = sassign->left;
     Expr* right_expr = sassign->right;
 
-    if (!resolve_expr(resolver, left_expr))
+    if (!resolve_expr(resolver, left_expr, NULL))
         return 0;
 
-    if (!resolve_expr(resolver, right_expr))
+    if (!resolve_expr(resolver, right_expr, NULL))
         return 0;
 
     if (!left_expr->is_lvalue) {
@@ -1934,7 +1942,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         }
 
         if (sret->expr) {
-            if (!resolve_expr(resolver, sret->expr))
+            if (!resolve_expr(resolver, sret->expr, ret_type))
                 break;
 
             ExprOperand ret_eop = OP_FROM_EXPR(sret->expr);
@@ -1983,7 +1991,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     case CST_StmtExpr: {
         StmtExpr* sexpr = (StmtExpr*)stmt;
 
-        if (resolve_expr(resolver, sexpr->expr))
+        if (resolve_expr(resolver, sexpr->expr, NULL))
             ret = RESOLVE_STMT_SUCCESS;
 
         break;

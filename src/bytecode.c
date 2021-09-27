@@ -17,6 +17,7 @@ typedef enum IR_OperandKind {
     IR_OPERAND_MEM_ADDR,
     IR_OPERAND_DEREF_ADDR,
     IR_OPERAND_DEFERRED_CMP,
+    IR_OPERAND_ARRAY_INIT,
     IR_OPERAND_VAR,
     IR_OPERAND_PROC,
 } IR_OperandKind;
@@ -35,6 +36,13 @@ typedef struct IR_DeferredCmp {
     IR_DeferredJmpcc final_jmp;
 } IR_DeferredCmp;
 
+typedef struct IR_ArrayMemberInitializer IR_ArrayMemberInitializer;
+
+typedef struct IR_ArrayInitializer {
+    u32 num_initzers;
+    IR_ArrayMemberInitializer* initzers;
+} IR_ArrayInitializer;
+
 typedef struct IR_Operand {
     IR_OperandKind kind;
     Type* type;
@@ -45,12 +53,19 @@ typedef struct IR_Operand {
         IR_MemAddr addr;
         Symbol* sym;
         IR_DeferredCmp cmp;
+        IR_ArrayInitializer array_initzer;
     };
 } IR_Operand;
+
+typedef struct IR_ArrayMemberInitializer {
+    u32 index;
+    IR_Operand op;
+} IR_ArrayMemberInitializer;
 
 typedef struct IR_Builder {
     Allocator* arena;
     Allocator* tmp_arena;
+    TypeCache* type_cache;
     IR_Module* module;
     Symbol* curr_proc;
     Scope* curr_scope;
@@ -1513,41 +1528,50 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
     }
 }
 
+static void IR_decay_array(IR_Builder* builder, IR_Operand* dst, Type* dst_type, IR_Operand* src)
+{
+    assert(src->type->kind == TYPE_ARRAY);
+    assert(dst_type->kind == TYPE_PTR);
+    assert(src->kind == IR_OPERAND_VAR);
+
+    if (src->sym->is_local) {
+        dst->addr.base_kind = IR_MEM_BASE_SYM;
+        dst->addr.base.sym = src->sym;
+    }
+    else {
+        IR_Reg dst_reg = IR_next_reg(builder);
+        IR_emit_instr_laddr_sym(builder, dst_reg, src->type, src->sym);
+
+        dst->addr.base_kind = IR_MEM_BASE_REG;
+        dst->addr.base.reg = dst_reg;
+    }
+
+    dst->type = dst_type;
+    dst->kind = IR_OPERAND_MEM_ADDR;
+    dst->addr.index_reg = IR_REG_COUNT;
+    dst->addr.disp = 0;
+    dst->addr.scale = 0;
+}
+
 static void IR_emit_expr_cast(IR_Builder* builder, ExprCast* expr_cast, IR_Operand* dst_op)
 {
     // Emit instructions for source expression that will be casted.
     IR_Operand src_op = {0};
     IR_emit_expr(builder, expr_cast->expr, &src_op);
 
-    // Fill in the type for the overall cast expression.
-    dst_op->type = expr_cast->super.type;
+    Type* dst_type = expr_cast->super.type;
 
     // TODO: Support floats.
     assert(src_op.type->kind != TYPE_FLOAT);
-    assert(dst_op->type->kind != TYPE_FLOAT);
+    assert(dst_type->kind != TYPE_FLOAT);
     assert(src_op.type != dst_op->type); // Should be prevented by resolver.
 
-    if (src_op.type->kind == TYPE_ARRAY && dst_op->type->kind == TYPE_PTR) {
-        assert(src_op.kind == IR_OPERAND_VAR);
-
-        if (src_op.sym->is_local) {
-            dst_op->addr.base_kind = IR_MEM_BASE_SYM;
-            dst_op->addr.base.sym = src_op.sym;
-        }
-        else {
-            IR_Reg dst_reg = IR_next_reg(builder);
-            IR_emit_instr_laddr_sym(builder, dst_reg, src_op.type, src_op.sym);
-
-            dst_op->addr.base_kind = IR_MEM_BASE_REG;
-            dst_op->addr.base.reg = dst_reg;
-        }
-
-        dst_op->kind = IR_OPERAND_MEM_ADDR;
-        dst_op->addr.index_reg = IR_REG_COUNT;
-        dst_op->addr.disp = 0;
-        dst_op->addr.scale = 0;
+    if (src_op.type->kind == TYPE_ARRAY && dst_type->kind == TYPE_PTR) {
+        IR_decay_array(builder, dst_op, dst_type, &src_op);
     }
     else {
+        dst_op->type = dst_type;
+
         IR_emit_int_cast(builder, &src_op, dst_op);
     }
 }
@@ -1652,9 +1676,41 @@ static void IR_emit_expr_call(IR_Builder* builder, ExprCall* expr_call, IR_Opera
     builder->curr_proc->as_proc.is_nonleaf = true;
 }
 
+static void IR_emit_expr_compound_lit(IR_Builder* builder, ExprCompoundLit* expr, IR_Operand* dst)
+{
+    // TODO: Currently only support array initializers.
+    assert(expr->super.type->kind == TYPE_ARRAY);
+    assert(!expr->typespec);
+
+    u32 initzer_index = 0;
+    IR_ArrayMemberInitializer* ir_initzers = alloc_array(builder->tmp_arena, IR_ArrayMemberInitializer, expr->num_initzers, true);
+
+    List* head = &expr->initzers;
+    List* it = head->next;
+
+    while (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        IR_ArrayMemberInitializer* ir_initzer = ir_initzers + initzer_index;
+
+        // TODO: Support index designator
+        assert(initzer->designator.kind == DESIGNATOR_NONE);
+        ir_initzer->index = initzer_index;
+
+        IR_emit_expr(builder, initzer->init, &ir_initzer->op);
+        
+        initzer_index += 1;
+        it = it->next;
+    }
+
+    dst->kind = IR_OPERAND_ARRAY_INIT;
+    dst->type = expr->super.type;
+    dst->array_initzer.num_initzers = expr->num_initzers;
+    dst->array_initzer.initzers = ir_initzers;
+}
+
 static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
 {
-    if (expr->is_const) {
+    if (expr->is_constexpr && type_is_scalar(expr->type)) {
         dst->kind = IR_OPERAND_IMM;
         dst->type = expr->type;
         dst->imm = expr->const_val;
@@ -1680,6 +1736,9 @@ static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
         break;
     case CST_ExprIndex:
         IR_emit_expr_index(builder, (ExprIndex*)expr, dst);
+        break;
+    case CST_ExprCompoundLit:
+        IR_emit_expr_compound_lit(builder, (ExprCompoundLit*)expr, dst);
         break;
     default:
         ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);
@@ -1709,6 +1768,26 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
 
         if (rhs->kind == IR_OPERAND_IMM) {
             IR_emit_instr_store_i(builder, lhs->type, var_addr, rhs->imm);
+        }
+        else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
+            IR_Operand base_ptr_op = {0};
+            Type* ptr_type = type_decay(builder->arena, &builder->type_cache->ptrs, lhs->sym->type);
+            u64 base_size = ptr_type->as_ptr.base->size;
+
+            // Decay array into pointer to the first elem.
+            IR_decay_array(builder, &base_ptr_op, ptr_type, lhs);
+
+            // For each initializer, compute the pointer to the corresponding element and assign it
+            // the initializer value.
+            for (u64 i = 0; i < rhs->array_initzer.num_initzers; i += 1) {
+                IR_ArrayMemberInitializer* initzer = rhs->array_initzer.initzers + i;
+                IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = ptr_type->as_ptr.base};
+
+                elem_ptr_op.addr = base_ptr_op.addr;
+                elem_ptr_op.addr.disp += base_size * (u64)initzer->index;
+
+                IR_emit_assign(builder, &elem_ptr_op, &initzer->op);
+            }
         }
         else {
             IR_op_to_r(builder, rhs, true);
@@ -1824,7 +1903,7 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
     Stmt* else_body = stmt->else_blk.body;
 
     // If expr is a compile-time constant, do not generate the unneeded branch!!
-    if (cond_expr->is_const) {
+    if (cond_expr->is_constexpr && type_is_scalar(cond_expr->type)) {
         bool cond_val = cond_expr->const_val.as_int._u64 != 0;
 
         if (cond_val)
@@ -1905,7 +1984,7 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
     Expr* cond_expr = stmt->cond;
     Stmt* body = stmt->body;
 
-    if (cond_expr->is_const) {
+    if (cond_expr->is_constexpr && type_is_scalar(cond_expr->type)) {
         bool cond_val = cond_expr->const_val.as_int._u64 != 0;
 
         // Emit infinite loop
@@ -1978,7 +2057,7 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
     Expr* cond_expr = stmt->cond;
     Stmt* body = stmt->body;
 
-    if (cond_expr->is_const) {
+    if (cond_expr->is_constexpr && type_is_scalar(cond_expr->type)) {
         bool cond_val = cond_expr->const_val.as_int._u64 != 0;
 
         // Emit infinite loop
@@ -2111,7 +2190,7 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 #endif
 }
 
-IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope)
+IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope, TypeCache* type_cache)
 {
     IR_Module* module = alloc_type(arena, IR_Module, true);
 
@@ -2120,6 +2199,7 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
 
     IR_Builder builder = {.arena = arena,
                           .tmp_arena = tmp_arena,
+                          .type_cache = type_cache,
                           .curr_proc = NULL,
                           .curr_scope = global_scope,
                           .module = module,

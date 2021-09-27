@@ -342,6 +342,6 @@ typedef struct IR_Module {
     Symbol** procs;
 } IR_Module;
 
-IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope);
+IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope, TypeCache* type_cache);
 
 #endif
