@@ -39,7 +39,7 @@ typedef struct IR_DeferredCmp {
 typedef struct IR_ArrayMemberInitializer IR_ArrayMemberInitializer;
 
 typedef struct IR_ArrayInitializer {
-    u32 num_initzers;
+    u64 num_initzers;
     IR_ArrayMemberInitializer* initzers;
 } IR_ArrayInitializer;
 
@@ -58,7 +58,7 @@ typedef struct IR_Operand {
 } IR_Operand;
 
 typedef struct IR_ArrayMemberInitializer {
-    u32 index;
+    u64 index;
     IR_Operand op;
 } IR_ArrayMemberInitializer;
 
@@ -1683,7 +1683,8 @@ static void IR_emit_expr_compound_lit(IR_Builder* builder, ExprCompoundLit* expr
     assert(!expr->typespec);
 
     u32 initzer_index = 0;
-    IR_ArrayMemberInitializer* ir_initzers = alloc_array(builder->tmp_arena, IR_ArrayMemberInitializer, expr->num_initzers, true);
+    IR_ArrayMemberInitializer* ir_initzers =
+        alloc_array(builder->tmp_arena, IR_ArrayMemberInitializer, expr->num_initzers, true);
 
     List* head = &expr->initzers;
     List* it = head->next;
@@ -1697,7 +1698,7 @@ static void IR_emit_expr_compound_lit(IR_Builder* builder, ExprCompoundLit* expr
         ir_initzer->index = initzer_index;
 
         IR_emit_expr(builder, initzer->init, &ir_initzer->op);
-        
+
         initzer_index += 1;
         it = it->next;
     }
@@ -1760,6 +1761,74 @@ static void IR_pop_scope(IR_Builder* builder)
     builder->curr_scope = builder->curr_scope->parent;
 }
 
+static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs);
+
+static void IR_emit_array_init(IR_Builder* builder, IR_Operand* array_op, IR_Operand* init_op)
+{
+    assert(array_op->kind == IR_OPERAND_VAR);
+    assert(init_op->kind == IR_OPERAND_ARRAY_INIT);
+    assert(array_op->type->kind == TYPE_ARRAY);
+
+    Type* arr_type = array_op->type;
+    Type* ptr_type = type_decay(builder->arena, &builder->type_cache->ptrs, arr_type);
+    Type* elem_type = ptr_type->as_ptr.base;
+
+    // Decay array into pointer to the first elem.
+    IR_Operand base_ptr_op = {0};
+    IR_decay_array(builder, &base_ptr_op, ptr_type, array_op);
+
+    IR_ArrayMemberInitializer* initzers = init_op->array_initzer.initzers;
+    u64 num_initzers = init_op->array_initzer.num_initzers;
+    u64 num_elems = arr_type->as_array.len;
+
+    // Create array of bit flags: 1 bit per element in array.
+    // Bit will be set to 1 if the array element has an initializer.
+    const int num_bits = sizeof(size_t) * 8;
+    size_t num_flags = (num_elems + num_bits - 1) / num_bits;
+    size_t* init_flags = alloc_array(builder->tmp_arena, size_t, num_flags, true);
+
+    // Iterate through initializers and: 1. mark element as having an initializer, 2. initialize element.
+    for (size_t i = 0; i < num_initzers; i += 1) {
+        IR_ArrayMemberInitializer* initzer = initzers + i;
+        size_t elem_index = initzer->index;
+
+        // Mark array element as having an initializer.
+        size_t flag_index = elem_index / num_bits;
+        size_t bit_index = elem_index % num_bits;
+        size_t* flag = init_flags + flag_index;
+
+        *flag |= (1 << bit_index);
+
+        // Initialize array element with value of the initializer.
+        IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_ptr_op.addr};
+        elem_ptr_op.addr.disp += elem_type->size * elem_index;
+
+        IR_emit_assign(builder, &elem_ptr_op, &initzer->op);
+    }
+
+    // For each array element, compute the pointer to the corresponding element and assign it
+    // an default value if not yet initialized.
+    IR_Operand zero_op = {.kind = IR_OPERAND_IMM, .type = elem_type, .imm = ir_zero_imm};
+
+    for (u64 elem_index = 0; elem_index < num_elems; elem_index += 1) {
+        size_t flag_index = elem_index / num_bits;
+        size_t bit_index = elem_index % num_bits;
+
+        // Skip array elements that have been initialized.
+        if (init_flags[flag_index] & (1 << bit_index)) {
+            continue;
+        }
+
+        IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_ptr_op.addr};
+        elem_ptr_op.addr.disp += elem_type->size * elem_index;
+
+        IR_emit_assign(builder, &elem_ptr_op, &zero_op);
+    }
+
+    // TODO: Reduce the number of assignment (mov) instructions by initializing
+    // multiple elements at a time (one machine word's worth).
+}
+
 static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs)
 {
     switch (lhs->kind) {
@@ -1770,24 +1839,7 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
             IR_emit_instr_store_i(builder, lhs->type, var_addr, rhs->imm);
         }
         else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
-            IR_Operand base_ptr_op = {0};
-            Type* ptr_type = type_decay(builder->arena, &builder->type_cache->ptrs, lhs->sym->type);
-            u64 base_size = ptr_type->as_ptr.base->size;
-
-            // Decay array into pointer to the first elem.
-            IR_decay_array(builder, &base_ptr_op, ptr_type, lhs);
-
-            // For each initializer, compute the pointer to the corresponding element and assign it
-            // the initializer value.
-            for (u64 i = 0; i < rhs->array_initzer.num_initzers; i += 1) {
-                IR_ArrayMemberInitializer* initzer = rhs->array_initzer.initzers + i;
-                IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = ptr_type->as_ptr.base};
-
-                elem_ptr_op.addr = base_ptr_op.addr;
-                elem_ptr_op.addr.disp += base_size * (u64)initzer->index;
-
-                IR_emit_assign(builder, &elem_ptr_op, &initzer->op);
-            }
+            IR_emit_array_init(builder, lhs, rhs);
         }
         else {
             IR_op_to_r(builder, rhs, true);

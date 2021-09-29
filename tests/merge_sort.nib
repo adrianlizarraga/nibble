@@ -1,0 +1,71 @@
+proc min(a: int, b: int) => int {
+    var r := a;
+
+    if (b < a) {
+        r = b;
+    }
+
+    return r;
+}
+
+proc merge(a: ^int, l: int, m: int, r: int, b: ^int) {
+    var i := l;
+    var j := m;
+
+    var k := l;
+
+    while (k < r) {
+        if (i < m && (j >= r || a[i] <= a[j])) {
+            b[k] = a[i];
+            i = i + 1;
+        }
+        else {
+            b[k] = a[j];
+            j = j + 1;
+        }
+
+        k = k + 1;
+    }
+
+    // Copy b back into a
+    i = l;
+
+    while (i < r) {
+        a[i] = b[i];
+        i = i + 1;
+    }
+}
+
+proc merge_sort(a: ^int, b: ^int, n : int) {
+    var width := 1;
+
+    while (width < n) {
+        var d := width + width;
+        var i := 0;
+
+        while (i < n) {
+            var m := min(i + width, n);
+            var r := min(i + d, n);
+
+            merge(a, i, m, r, b);
+
+            i = i + d;
+        }
+
+        // Swap.
+        //var t := a;
+        //a = b;
+        //b = t;
+
+        width = d;
+    }
+}
+
+proc main() => int {
+    var a : [6]int = {5, 4, 3, 2, 1, 0};
+    var b : [6]int = {0};
+
+    merge_sort(a, b, 6);
+
+    return a[5];
+}
