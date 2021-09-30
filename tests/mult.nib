@@ -1,0 +1,7 @@
+
+proc main() => int {
+    var a : s32 = -10;
+    var b : u64 = 2;
+
+    return a * b;
+}

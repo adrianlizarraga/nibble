@@ -28,19 +28,22 @@ proc merge(a: ^int, l: int, m: int, r: int, b: ^int) {
     }
 
     // Copy b back into a
+    /*
     i = l;
 
     while (i < r) {
         a[i] = b[i];
         i = i + 1;
     }
+    */
 }
 
-proc merge_sort(a: ^int, b: ^int, n : int) {
+proc merge_sort(a: ^int, b: ^int, n : int) => ^int {
     var width := 1;
 
     while (width < n) {
-        var d := width + width;
+        //var d := width + width;
+        var d := width * 2;
         var i := 0;
 
         while (i < n) {
@@ -53,19 +56,21 @@ proc merge_sort(a: ^int, b: ^int, n : int) {
         }
 
         // Swap.
-        //var t := a;
-        //a = b;
-        //b = t;
+        var t := a;
+        a = b;
+        b = t;
 
         width = d;
     }
+
+    return a;
 }
 
 proc main() => int {
     var a : [6]int = {5, 4, 3, 2, 1, 0};
-    var b : [6]int = {0};
+    var b : [6]int;
 
-    merge_sort(a, b, 6);
+    var c : ^int = merge_sort(a, b, 6);
 
-    return a[5];
+    return c[4] + c[3];
 }

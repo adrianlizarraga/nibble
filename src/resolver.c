@@ -858,6 +858,22 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
         break;
     }
+    case TKN_ASTERISK:
+        if (!type_is_arithmetic(left_op.type)) {
+            resolver_on_error(resolver, "Left operand of binary operator `%s` must be an arithmetic type, not type `%s`",
+                              token_kind_names[ebinary->op], type_name(left_op.type));
+            return false;
+        }
+
+        if (!type_is_arithmetic(right_op.type)) {
+            resolver_on_error(resolver, "Right operand of binary operator `%s` must be an arithmetic type, not type `%s`",
+                              token_kind_names[ebinary->op], type_name(right_op.type));
+            return false;
+        }
+
+        resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
+
+        break;
     case TKN_EQ:
     case TKN_NOTEQ: {
         bool left_is_ptr = (left_op.type->kind == TYPE_PTR);

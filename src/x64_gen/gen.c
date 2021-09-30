@@ -1058,6 +1058,25 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         X64_emit_ri_instr(generator, "sub", size, instr->sub_r_i.dst, size, instr->sub_r_i.src);
         break;
     }
+    case IR_INSTR_MUL_R_R: {
+        u32 size = (u32)instr->mul_r_r.type->size;
+
+        X64_emit_rr_instr(generator, "imul", true, size, instr->mul_r_r.dst, size, instr->mul_r_r.src);
+
+        break;
+    }
+    case IR_INSTR_MUL_R_M: {
+        u32 size = (u32)instr->mul_r_m.type->size;
+
+        X64_emit_rm_instr(generator, "imul", true, size, instr->mul_r_m.dst, size, &instr->mul_r_m.src);
+        break;
+    }
+    case IR_INSTR_MUL_R_I: {
+        u32 size = (u32)instr->mul_r_i.type->size;
+
+        X64_emit_ri_instr(generator, "imul", size, instr->mul_r_i.dst, size, instr->mul_r_i.src);
+        break;
+    }
     case IR_INSTR_SAR_R_R: {
         u32 size = (u32)instr->sar_r_r.type->size;
 
@@ -1117,19 +1136,15 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         break;
     }
     case IR_INSTR_TRUNC_R_R: {
-        Type* dst_type = instr->trunc_r_r.dst_type;
-        Type* src_type = instr->trunc_r_r.src_type;
+        u32 size = (u32)instr->trunc_r_r.dst_type->size;
 
-        X64_emit_rr_instr(generator, "mov", true, dst_type->size, instr->trunc_r_r.dst, src_type->size,
-                          instr->trunc_r_r.src);
+        X64_emit_rr_instr(generator, "mov", true, size, instr->trunc_r_r.dst, size, instr->trunc_r_r.src);
         break;
     }
     case IR_INSTR_TRUNC_R_M: {
-        Type* dst_type = instr->trunc_r_m.dst_type;
-        Type* src_type = instr->trunc_r_m.src_type;
+        u32 size = (u32)instr->trunc_r_r.dst_type->size;
 
-        X64_emit_rm_instr(generator, "mov", true, dst_type->size, instr->trunc_r_m.dst, src_type->size,
-                          &instr->trunc_r_m.src);
+        X64_emit_rm_instr(generator, "mov", true, size, instr->trunc_r_m.dst, size, &instr->trunc_r_m.src);
         break;
     }
     case IR_INSTR_ZEXT_R_R: {

@@ -111,6 +111,21 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
                            IR_print_reg(arena, instr->sub_r_i.dst), IR_print_imm(arena, instr->sub_r_i.src));
         break;
     }
+    case IR_INSTR_MUL_R_R: {
+        ftprint_char_array(&dstr, false, "mul <%s> %s, %s", type_name(instr->mul_r_r.type),
+                           IR_print_reg(arena, instr->mul_r_r.dst), IR_print_reg(arena, instr->mul_r_r.src));
+        break;
+    }
+    case IR_INSTR_MUL_R_M: {
+        ftprint_char_array(&dstr, false, "mul <%s> %s, %s", type_name(instr->mul_r_m.type),
+                           IR_print_reg(arena, instr->mul_r_m.dst), IR_print_mem(arena, &instr->mul_r_m.src));
+        break;
+    }
+    case IR_INSTR_MUL_R_I: {
+        ftprint_char_array(&dstr, false, "mul <%s> %s, %s", type_name(instr->mul_r_i.type),
+                           IR_print_reg(arena, instr->mul_r_i.dst), IR_print_imm(arena, instr->mul_r_i.src));
+        break;
+    }
     case IR_INSTR_SAR_R_R: {
         ftprint_char_array(&dstr, false, "sar <%s> %s, %s", type_name(instr->sar_r_r.type),
                            IR_print_reg(arena, instr->sar_r_r.dst), IR_print_reg(arena, instr->sar_r_r.src));

@@ -245,6 +245,54 @@ static void IR_emit_instr_sub(IR_Builder* builder, Type* type, IR_Reg dst, IR_Op
     IR_add_instr(builder, instr);
 }
 
+static void IR_emit_instr_mul(IR_Builder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
+{
+    IR_Instr* instr = NULL;
+
+    switch (src_op->kind) {
+    case IR_OPERAND_REG:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_R);
+        instr->mul_r_r.type = type;
+        instr->mul_r_r.dst = dst;
+        instr->mul_r_r.src = src_op->reg;
+        break;
+    case IR_OPERAND_MEM_ADDR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr->mul_r_m.type = type;
+        instr->mul_r_m.dst = dst;
+        instr->mul_r_m.src = src_op->addr;
+        break;
+    case IR_OPERAND_VAR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr->mul_r_m.type = type;
+        instr->mul_r_m.dst = dst;
+        instr->mul_r_m.src.base_kind = IR_MEM_BASE_SYM;
+        instr->mul_r_m.src.base.sym = src_op->sym;
+        break;
+    case IR_OPERAND_IMM:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+        instr->mul_r_i.type = type;
+        instr->mul_r_i.dst = dst;
+        instr->mul_r_i.src = src_op->imm;
+        break;
+    default:
+        assert(!0);
+        break;
+    }
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_mul_r_i(IR_Builder* builder, Type* type, IR_Reg dst, Scalar src)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+    instr->mul_r_i.type = type;
+    instr->mul_r_i.dst = dst;
+    instr->mul_r_i.src = src;
+
+    IR_add_instr(builder, instr);
+}
+
 static void IR_emit_instr_sar(IR_Builder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
 {
     IR_Instr* instr = NULL;
@@ -1212,6 +1260,33 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
                 IR_try_free_op_reg(builder, &right);
             }
         }
+        break;
+    }
+    case TKN_ASTERISK: {
+        IR_emit_expr(builder, expr->left, &left);
+        IR_emit_expr(builder, expr->right, &right);
+
+        assert(left.type == right.type);
+        assert(result_type == left.type);
+        assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
+
+        if (left.kind == IR_OPERAND_IMM) {
+            IR_op_to_r(builder, &right, true);
+
+            IR_emit_instr_mul_r_i(builder, result_type, right.reg, left.imm);
+
+            *dst = right;
+        }
+        else {
+            IR_op_to_r(builder, &left, true);
+            IR_op_to_rvi(builder, &right);
+
+            IR_emit_instr_mul(builder, result_type, left.reg, &right);
+
+            *dst = left;
+            IR_try_free_op_reg(builder, &right);
+        }
+
         break;
     }
     case TKN_MINUS: {
@@ -2228,7 +2303,6 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 
 #if 0
     IR_print_out_proc(builder->tmp_arena, sym);
-
     ftprint_out("Lifetime intervals:\n");
     LifetimeInterval* intervals = sym->as_proc.reg_intervals;
     u32 num_intervals = array_len(intervals);

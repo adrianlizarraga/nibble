@@ -23,7 +23,11 @@ typedef enum IR_InstrKind {
     IR_INSTR_SUB_R_M,
     IR_INSTR_SUB_R_I,
 
-    // TODO: MULT
+    // Multiplication
+    IR_INSTR_MUL_R_R,
+    IR_INSTR_MUL_R_M,
+    IR_INSTR_MUL_R_I,
+
     // TODO: Unsigned/Signed DIV and MOD
 
     // Arithmetic shift right
@@ -269,6 +273,11 @@ typedef struct IR_Instr {
         IR_InstrBinary_R_R sub_r_r;
         IR_InstrBinary_R_M sub_r_m;
         IR_InstrBinary_R_I sub_r_i;
+
+        // Multiplication
+        IR_InstrBinary_R_R mul_r_r;
+        IR_InstrBinary_R_M mul_r_m;
+        IR_InstrBinary_R_I mul_r_i;
 
         // Arithmetic shift right
         IR_InstrBinary_R_R sar_r_r;
