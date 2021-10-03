@@ -95,6 +95,8 @@ static const char* x64_condition_codes[] = {
     [IR_COND_EQ] = "e",   [IR_COND_NEQ] = "ne",
 };
 
+static const char* x64_sext_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
+
 typedef struct X64_ArgInfo {
     IR_InstrCallArg* arg;
     X64_VRegLoc loc;
@@ -1014,6 +1016,59 @@ static void X64_emit_mi_instr(X64_Generator* generator, const char* instr, u32 o
     X64_end_reg_group(&tmp_group);
 }
 
+static void X64_emit_div_instr(X64_Generator* generator, const char* instr_name, u32 op_size, X64_VRegLoc dst_loc,
+                               const char* src_op_str, u32 live_regs)
+{
+    // NOTE: Div always divides rax (or _ax:_dx if size >= 2) by its single source operand.
+    // NOTE: Div always stores quotient into _ax.
+    // NOTE: Div stores remainder into _dx if operand size >= 2 bytes, otherwise into ah.
+
+    bool dst_in_reg = dst_loc.kind == X64_VREG_LOC_REG;
+    bool dst_in_rax = dst_in_reg && dst_loc.reg == X64_RAX;
+    bool dst_in_rdx = dst_in_reg && dst_loc.reg == X64_RDX;
+
+    bool uses_rdx = op_size >= 2;
+    bool save_rax = !dst_in_rax && u32_is_bit_set(live_regs, X64_RAX);
+    bool save_rdx = !dst_in_rdx && uses_rdx && u32_is_bit_set(live_regs, X64_RDX);
+
+    if (save_rax) {
+        X64_emit_text(generator, "    push rax");
+    }
+
+    if (save_rdx) {
+        X64_emit_text(generator, "    push rdx");
+    }
+
+    const char* rax_op_str = x64_reg_names[op_size][X64_RAX];
+    const char* dst_op_str = dst_in_reg ? x64_reg_names[op_size][dst_loc.reg] :
+                                          X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, op_size);
+
+    // Move the value stored in the intended destination into rax
+    if (!dst_in_rax) {
+        X64_emit_text(generator, "    mov %s, %s", rax_op_str, dst_op_str);
+    }
+
+    // Sign extend into rdx if necessary.
+    if (uses_rdx) {
+        X64_emit_text(generator, "    %s", x64_sext_into_dx[op_size]);
+    }
+
+    X64_emit_text(generator, "    %s %s", instr_name, src_op_str);
+
+    // Move the result (in rax) into the intended destination.
+    if (!dst_in_rax) {
+        X64_emit_text(generator, "    mov %s, %s", dst_op_str, rax_op_str);
+    }
+
+    if (save_rdx) {
+        X64_emit_text(generator, "    pop rdx");
+    }
+
+    if (save_rax) {
+        X64_emit_text(generator, "    pop rax");
+    }
+}
+
 static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_index, bool is_last_instr, IR_Instr* instr)
 {
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
@@ -1075,6 +1130,80 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         u32 size = (u32)instr->mul_r_i.type->size;
 
         X64_emit_ri_instr(generator, "imul", size, instr->mul_r_i.dst, size, instr->mul_r_i.src);
+        break;
+    }
+    case IR_INSTR_SDIV_R_R:
+    case IR_INSTR_UDIV_R_R: {
+        const char* instr_name = instr->kind == IR_INSTR_SDIV_R_R ? "idiv" : "div";
+        u32 size = (u32)instr->div_r_r.type->size;
+
+        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->div_r_r.dst);
+        X64_VRegLoc src_loc = X64_vreg_loc(generator, instr->div_r_r.src);
+
+        const char* src_op_str = src_loc.kind == X64_VREG_LOC_REG ?
+                                     x64_reg_names[size][src_loc.reg] :
+                                     X64_print_stack_offset(generator->tmp_mem, src_loc.offset, size);
+
+        X64_emit_div_instr(generator, instr_name, size, dst_loc, src_op_str, live_regs);
+
+        break;
+    }
+    case IR_INSTR_SDIV_R_M:
+    case IR_INSTR_UDIV_R_M: {
+        const char* instr_name = instr->kind == IR_INSTR_SDIV_R_M ? "idiv" : "div";
+        u32 size = (u32)instr->div_r_m.type->size;
+
+        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->div_r_m.dst);
+
+        X64_RegGroup src_tmp_group = X64_begin_reg_group(generator);
+        const char* src_op_str = X64_print_mem(&src_tmp_group, &instr->div_r_m.src, size);
+
+        X64_emit_div_instr(generator, instr_name, size, dst_loc, src_op_str, live_regs);
+
+        X64_end_reg_group(&src_tmp_group);
+        break;
+    }
+    case IR_INSTR_SDIV_R_I:
+    case IR_INSTR_UDIV_R_I: {
+        const char* instr_name = instr->kind == IR_INSTR_SDIV_R_I ? "idiv" : "div";
+        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->div_r_i.dst);
+        X64_Reg dst_reg = dst_loc.kind == X64_VREG_LOC_REG ? dst_loc.reg : X64_REG_COUNT;
+
+        // NOTE: Div instructions don't take an immediate operand, so need to move immediate into a register.
+        // NOTE: Div instructions require rax as destination.
+        // NOTE: Div instructions store remainder in rdx if size >= 2
+
+        X64_RegGroup reg_group = X64_begin_reg_group(generator);
+        u32 size = (u32)instr->div_r_i.type->size;
+        X64_Reg imm_reg = X64_REG_COUNT;
+
+        // Try to use a register that is not live, is caller-saved, is not rax, and is not the intended destination reg.
+        for (u32 r = 0; r < X64_REG_COUNT; r += 1) {
+            X64_Reg reg = (X64_Reg)r;
+
+            if (!u32_is_bit_set(live_regs, reg) && X64_is_caller_saved_reg(reg) && (reg != X64_RAX) &&
+                ((size < 2) || (reg != X64_RDX)) && (reg != dst_reg)) {
+                imm_reg = reg;
+                break;
+            }
+        }
+
+        bool need_reg = (imm_reg == X64_REG_COUNT);
+
+        if (need_reg) {
+            X64_push_reg(&reg_group, X64_R9); // Use the last arg register in both linux and windows
+            imm_reg = X64_R9;
+        }
+
+        const char* src_op_str = x64_reg_names[size][imm_reg];
+
+        X64_emit_text(generator, "    mov %s, %s", src_op_str,
+                      X64_print_imm(generator->tmp_mem, instr->div_r_i.src, size));
+
+        X64_emit_div_instr(generator, instr_name, size, dst_loc, src_op_str, live_regs);
+
+        X64_end_reg_group(&reg_group);
+
         break;
     }
     case IR_INSTR_SAR_R_R: {

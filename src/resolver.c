@@ -858,6 +858,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
         break;
     }
+    case TKN_DIV:
     case TKN_ASTERISK:
         if (!type_is_arithmetic(left_op.type)) {
             resolver_on_error(resolver, "Left operand of binary operator `%s` must be an arithmetic type, not type `%s`",
