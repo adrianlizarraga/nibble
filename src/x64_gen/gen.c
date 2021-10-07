@@ -1141,11 +1141,27 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->div_r_r.dst);
         X64_VRegLoc src_loc = X64_vreg_loc(generator, instr->div_r_r.src);
 
-        const char* src_op_str = src_loc.kind == X64_VREG_LOC_REG ?
+        // Swap if the source operand is currently in rax.
+        // Why? Because division writes result into rax.
+        bool swap_ops = (src_loc.kind == X64_VREG_LOC_REG) && (src_loc.reg == X64_RAX);
+
+        if (swap_ops) {
+            const char* src_op_str = x64_reg_names[size][src_loc.reg];
+            const char* dst_op_str = dst_loc.kind == X64_VREG_LOC_REG ?
+                                     x64_reg_names[size][dst_loc.reg] :
+                                     X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, size);
+
+            X64_emit_text(generator, "    xchg %s, %s", dst_op_str, src_op_str);
+            X64_emit_div_instr(generator, instr_name, size, src_loc, dst_op_str, live_regs);
+            X64_emit_text(generator, "    xchg %s, %s", dst_op_str, src_op_str);
+        }
+        else {
+            const char* src_op_str = src_loc.kind == X64_VREG_LOC_REG ?
                                      x64_reg_names[size][src_loc.reg] :
                                      X64_print_stack_offset(generator->tmp_mem, src_loc.offset, size);
 
-        X64_emit_div_instr(generator, instr_name, size, dst_loc, src_op_str, live_regs);
+            X64_emit_div_instr(generator, instr_name, size, dst_loc, src_op_str, live_regs);
+        }
 
         break;
     }
@@ -1158,6 +1174,8 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
 
         X64_RegGroup src_tmp_group = X64_begin_reg_group(generator);
         const char* src_op_str = X64_print_mem(&src_tmp_group, &instr->div_r_m.src, size);
+
+        // TODO: Swap if an addressing register in the source operand uses rax.
 
         X64_emit_div_instr(generator, instr_name, size, dst_loc, src_op_str, live_regs);
 
