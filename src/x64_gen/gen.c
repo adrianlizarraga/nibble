@@ -95,7 +95,7 @@ static const char* x64_condition_codes[] = {
     [IR_COND_EQ] = "e",   [IR_COND_NEQ] = "ne",
 };
 
-static const char* x64_sext_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
+static const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
 
 typedef enum X64_SIBDAddrKind
 {
@@ -1159,12 +1159,12 @@ static void X64_emit_div_instr(X64_Generator* generator, const char* instr_name,
 
     // Sign extend into rdx if necessary.
     if (uses_rdx) {
-        X64_emit_text(generator, "    %s", x64_sext_into_dx[op_size]);
+        X64_emit_text(generator, "    %s", x64_sext_ax_into_dx[op_size]);
     }
 
     X64_emit_text(generator, "    %s %s", instr_name, src_op_str);
 
-    // TODO: This DOES NOT WORK if source is in RAX!!
+    // NOTE: This DOES NOT WORK if source operand uses RAX or RDX.
     // Move the result (in rax) into the intended destination.
     if (!dst_in_rax) {
         X64_emit_text(generator, "    mov %s, %s", dst_op_str, rax_op_str);
