@@ -1250,16 +1250,10 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
 
         X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->div_r_r.dst);
         X64_VRegLoc src_loc = X64_vreg_loc(generator, instr->div_r_r.src);
-        const char* src_op_str = NULL;
-        bool move_src_op = false;
-
-        if (src_loc.kind == X64_VREG_LOC_REG) {
-            src_op_str = x64_reg_names[size][src_loc.reg];
-            move_src_op = (src_loc.reg == X64_RAX) || (src_loc.reg == X64_RDX && uses_rdx);
-        }
-        else {
-            src_op_str = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, size);
-        }
+        bool src_is_reg = src_loc.kind == X64_VREG_LOC_REG;
+        const char* src_op_str = src_is_reg ? x64_reg_names[size][src_loc.reg] :
+                                              X64_print_stack_offset(generator->tmp_mem, src_loc.offset, size);
+        bool move_src_op = src_is_reg && ((src_loc.reg == X64_RAX) || (src_loc.reg == X64_RDX && uses_rdx));
 
         // Swap if the source operand is currently in rax or rdx.
         // Why? Because division writes result into _dx:_ax (if size >= 2 bytes), or ah:al (if 1 byte).
