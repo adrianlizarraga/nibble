@@ -1300,18 +1300,20 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
 
         // May have to assign temporary regs to addressing registers if they are assigned to RAX or RDX.
         if (src_addr.kind == X64_SIBD_ADDR_LOCAL) {
-            u32 banned_regs = (1 << X64_RAX) | (1 << dst_reg) | (1 << base_reg) | (1 << index_reg);
+            u32 banned_regs = (1 << X64_RAX) | (1 << dst_reg);
 
             if (uses_rdx) {
                 banned_regs |= (1 << X64_RDX);
             }
 
             if ((base_reg == X64_RAX) || (base_reg == X64_RDX && uses_rdx)) {
+                banned_regs |= (1 << index_reg);
                 tmp_base_reg = X64_get_tmp_reg(&src_tmp_group, banned_regs, live_regs);
                 src_addr.local.base_reg = tmp_base_reg;
             }
 
             if ((index_reg == X64_RAX) || (index_reg == X64_RDX && uses_rdx)) {
+                banned_regs |= (1 << base_reg) | (1 << tmp_base_reg);
                 tmp_index_reg = X64_get_tmp_reg(&src_tmp_group, banned_regs, live_regs);
                 src_addr.local.index_reg = tmp_index_reg;
             }
