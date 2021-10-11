@@ -1379,21 +1379,199 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         break;
     }
     case IR_INSTR_SAR_R_R: {
-        u32 size = (u32)instr->sar_r_r.type->size;
+        u32 dst_size = (u32)instr->sar_r_r.dst_type->size;
+        u32 src_size = (u32)instr->sar_r_r.src_type->size;
 
-        X64_emit_rr_instr(generator, "sar", true, size, instr->sar_r_r.dst, size, instr->sar_r_r.src);
+        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->sar_r_r.dst);
+        X64_VRegLoc src_loc = X64_vreg_loc(generator, instr->sar_r_r.src);
+
+        bool dst_in_reg = dst_loc.kind == X64_VREG_LOC_REG;
+        bool src_in_reg = src_loc.kind == X64_VREG_LOC_REG;
+
+        if (dst_in_reg && (dst_loc.reg == X64_RCX)) {
+            const char* src_swap_op_str =
+                src_in_reg ? x64_reg_names[X64_MAX_INT_REG_SIZE][src_loc.reg] :
+                             X64_print_stack_offset(generator->tmp_mem, src_loc.offset, X64_MAX_INT_REG_SIZE);
+            // NOTE: This intentially uses src's location and dst's size. Do not edit.
+            const char* dst_op_str = src_in_reg ? x64_reg_names[dst_size][src_loc.reg] :
+                                                  X64_print_stack_offset(generator->tmp_mem, src_loc.offset, dst_size);
+
+            X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][dst_loc.reg],
+                          src_swap_op_str);
+
+            X64_emit_text(generator, "    sar %s, %s", dst_op_str, x64_reg_names[1][X64_RCX]);
+
+            X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][dst_loc.reg],
+                          src_swap_op_str);
+        }
+        else {
+            bool src_in_rcx = src_in_reg && (src_loc.reg == X64_RCX);
+            bool save_rcx = !src_in_rcx && u32_is_bit_set(live_regs, X64_RCX);
+            const char* src_op_str = src_in_reg ? x64_reg_names[src_size][src_loc.reg] :
+                                                  X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size);
+            const char* dst_op_str = dst_in_reg ? x64_reg_names[dst_size][dst_loc.reg] :
+                                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+
+            if (save_rcx) {
+                X64_emit_text(generator, "    push rcx");
+            }
+
+            if (!src_in_rcx) {
+                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[src_size][X64_RCX], src_op_str);
+            }
+
+            X64_emit_text(generator, "    sar %s, %s", dst_op_str, x64_reg_names[1][X64_RCX]);
+
+            if (save_rcx) {
+                X64_emit_text(generator, "    pop rcx");
+            }
+        }
         break;
     }
     case IR_INSTR_SAR_R_M: {
-        u32 size = (u32)instr->sar_r_m.type->size;
+        u32 dst_size = (u32)instr->sar_r_m.dst_type->size;
+        u32 src_size = (u32)instr->sar_r_m.src_type->size;
 
-        X64_emit_rm_instr(generator, "sar", true, size, instr->sar_r_m.dst, size, &instr->sar_r_m.src);
+        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->sar_r_m.dst);
+        bool dst_in_reg = dst_loc.kind == X64_VREG_LOC_REG;
+
+        const char* cl_op_str = x64_reg_names[1][X64_RCX];
+        X64_RegGroup group = X64_begin_reg_group(generator);
+        X64_SIBDAddr addr = X64_get_sibd_addr(&group, &instr->sar_r_m.src);
+
+        if (dst_in_reg && (dst_loc.reg == X64_RCX)) {
+            X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][dst_loc.reg],
+                          X64_print_sibd_addr(generator->tmp_mem, &addr, X64_MAX_INT_REG_SIZE));
+
+            X64_emit_text(generator, "    sar %s, %s", X64_print_sibd_addr(generator->tmp_mem, &addr, dst_size),
+                          cl_op_str);
+
+            X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][dst_loc.reg],
+                          X64_print_sibd_addr(generator->tmp_mem, &addr, X64_MAX_INT_REG_SIZE));
+        }
+        else {
+            const char* dst_op_str = dst_in_reg ? x64_reg_names[dst_size][dst_loc.reg] :
+                                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+
+            if (u32_is_bit_set(live_regs, X64_RCX)) {
+                X64_push_reg(&group, X64_RCX, false);
+            }
+
+            // Move source to cl and then emit sar.
+            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[src_size][X64_RCX],
+                          X64_print_sibd_addr(generator->tmp_mem, &addr, src_size));
+            X64_emit_text(generator, "    sar %s, %s", dst_op_str, cl_op_str);
+        }
+
+        X64_end_reg_group(&group);
         break;
     }
     case IR_INSTR_SAR_R_I: {
-        u32 size = (u32)instr->sar_r_i.type->size;
+        u32 dst_size = (u32)instr->sar_r_i.dst_type->size;
 
-        X64_emit_ri_instr(generator, "sar", size, instr->sar_r_i.dst, size, instr->sar_r_i.src);
+        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->sar_r_i.dst);
+        const char* dst_op_str = (dst_loc.kind == X64_VREG_LOC_REG) ?
+                                     x64_reg_names[dst_size][dst_loc.reg] :
+                                     X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+        X64_emit_text(generator, "    sar %s, %d", dst_op_str, instr->sar_r_i.src.as_int._u8);
+        break;
+    }
+    case IR_INSTR_SHL_R_R: {
+        u32 dst_size = (u32)instr->shl_r_r.dst_type->size;
+        u32 src_size = (u32)instr->shl_r_r.src_type->size;
+
+        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->shl_r_r.dst);
+        X64_VRegLoc src_loc = X64_vreg_loc(generator, instr->shl_r_r.src);
+
+        bool dst_in_reg = dst_loc.kind == X64_VREG_LOC_REG;
+        bool src_in_reg = src_loc.kind == X64_VREG_LOC_REG;
+
+        if (dst_in_reg && (dst_loc.reg == X64_RCX)) {
+            const char* src_swap_op_str =
+                src_in_reg ? x64_reg_names[X64_MAX_INT_REG_SIZE][src_loc.reg] :
+                             X64_print_stack_offset(generator->tmp_mem, src_loc.offset, X64_MAX_INT_REG_SIZE);
+            // NOTE: This intentionally uses src's location and dst's size. Do not edit.
+            const char* dst_op_str = src_in_reg ? x64_reg_names[dst_size][src_loc.reg] :
+                                                  X64_print_stack_offset(generator->tmp_mem, src_loc.offset, dst_size);
+
+            X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][dst_loc.reg],
+                          src_swap_op_str);
+
+            X64_emit_text(generator, "    shl %s, %s", dst_op_str, x64_reg_names[1][X64_RCX]);
+
+            X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][dst_loc.reg],
+                          src_swap_op_str);
+        }
+        else {
+            bool src_in_rcx = src_in_reg && (src_loc.reg == X64_RCX);
+            bool save_rcx = !src_in_rcx && u32_is_bit_set(live_regs, X64_RCX);
+            const char* src_op_str = src_in_reg ? x64_reg_names[src_size][src_loc.reg] :
+                                                  X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size);
+            const char* dst_op_str = dst_in_reg ? x64_reg_names[dst_size][dst_loc.reg] :
+                                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+
+            if (save_rcx) {
+                X64_emit_text(generator, "    push rcx");
+            }
+
+            if (!src_in_rcx) {
+                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[src_size][X64_RCX], src_op_str);
+            }
+
+            X64_emit_text(generator, "    shl %s, %s", dst_op_str, x64_reg_names[1][X64_RCX]);
+
+            if (save_rcx) {
+                X64_emit_text(generator, "    pop rcx");
+            }
+        }
+        break;
+    }
+    case IR_INSTR_SHL_R_M: {
+        u32 dst_size = (u32)instr->shl_r_m.dst_type->size;
+        u32 src_size = (u32)instr->shl_r_m.src_type->size;
+
+        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->shl_r_m.dst);
+        bool dst_in_reg = dst_loc.kind == X64_VREG_LOC_REG;
+
+        const char* cl_op_str = x64_reg_names[1][X64_RCX];
+        X64_RegGroup group = X64_begin_reg_group(generator);
+        X64_SIBDAddr addr = X64_get_sibd_addr(&group, &instr->shl_r_m.src);
+
+        if (dst_in_reg && (dst_loc.reg == X64_RCX)) {
+            X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][dst_loc.reg],
+                          X64_print_sibd_addr(generator->tmp_mem, &addr, X64_MAX_INT_REG_SIZE));
+
+            X64_emit_text(generator, "    shl %s, %s", X64_print_sibd_addr(generator->tmp_mem, &addr, dst_size),
+                          cl_op_str);
+
+            X64_emit_text(generator, "    xchg %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][dst_loc.reg],
+                          X64_print_sibd_addr(generator->tmp_mem, &addr, X64_MAX_INT_REG_SIZE));
+        }
+        else {
+            const char* dst_op_str = dst_in_reg ? x64_reg_names[dst_size][dst_loc.reg] :
+                                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+
+            if (u32_is_bit_set(live_regs, X64_RCX)) {
+                X64_push_reg(&group, X64_RCX, false);
+            }
+
+            // Move source to cl and then emit shl.
+            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[src_size][X64_RCX],
+                          X64_print_sibd_addr(generator->tmp_mem, &addr, src_size));
+            X64_emit_text(generator, "    shl %s, %s", dst_op_str, cl_op_str);
+        }
+
+        X64_end_reg_group(&group);
+        break;
+    }
+    case IR_INSTR_SHL_R_I: {
+        u32 dst_size = (u32)instr->shl_r_i.dst_type->size;
+
+        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->shl_r_i.dst);
+        const char* dst_op_str = (dst_loc.kind == X64_VREG_LOC_REG) ?
+                                     x64_reg_names[dst_size][dst_loc.reg] :
+                                     X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+        X64_emit_text(generator, "    shl %s, %d", dst_op_str, instr->shl_r_i.src.as_int._u8);
         break;
     }
     case IR_INSTR_NEG: {

@@ -45,6 +45,11 @@ typedef enum IR_InstrKind {
     IR_INSTR_SAR_R_M,
     IR_INSTR_SAR_R_I,
 
+    // Shift left
+    IR_INSTR_SHL_R_R,
+    IR_INSTR_SHL_R_M,
+    IR_INSTR_SHL_R_I,
+
     // Bitwise NOT
     IR_INSTR_NOT,
 
@@ -137,6 +142,27 @@ typedef struct IR_InstrBinary_R_I {
     IR_Reg dst;
     Scalar src;
 } IR_InstrBinary_R_I;
+
+typedef struct IR_InstrShift_R_R {
+    Type* dst_type;
+    Type* src_type;
+    IR_Reg dst;
+    IR_Reg src;
+} IR_InstrShift_R_R;
+
+typedef struct IR_InstrShift_R_M {
+    Type* dst_type;
+    Type* src_type;
+    IR_Reg dst;
+    IR_MemAddr src;
+} IR_InstrShift_R_M;
+
+typedef struct IR_InstrShift_R_I {
+    Type* dst_type;
+    Type* src_type;
+    IR_Reg dst;
+    Scalar src;
+} IR_InstrShift_R_I;
 
 typedef struct IR_InstrUnary {
     Type* type;
@@ -295,9 +321,14 @@ typedef struct IR_Instr {
         IR_InstrBinary_R_I div_r_i;
 
         // Arithmetic shift right
-        IR_InstrBinary_R_R sar_r_r;
-        IR_InstrBinary_R_M sar_r_m;
-        IR_InstrBinary_R_I sar_r_i;
+        IR_InstrShift_R_R sar_r_r;
+        IR_InstrShift_R_M sar_r_m;
+        IR_InstrShift_R_I sar_r_i;
+
+        // Shift left
+        IR_InstrShift_R_R shl_r_r;
+        IR_InstrShift_R_M shl_r_m;
+        IR_InstrShift_R_I shl_r_i;
 
         // Two's complement negation
         IR_InstrUnary neg;

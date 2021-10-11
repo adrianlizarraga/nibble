@@ -157,18 +157,39 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
         break;
     }
     case IR_INSTR_SAR_R_R: {
-        ftprint_char_array(&dstr, false, "sar <%s> %s, %s", type_name(instr->sar_r_r.type),
-                           IR_print_reg(arena, instr->sar_r_r.dst), IR_print_reg(arena, instr->sar_r_r.src));
+        ftprint_char_array(&dstr, false, "sar <%s> %s, <%s> %s", type_name(instr->sar_r_r.dst_type),
+                           IR_print_reg(arena, instr->sar_r_r.dst), type_name(instr->sar_r_r.src_type),
+                           IR_print_reg(arena, instr->sar_r_r.src));
         break;
     }
     case IR_INSTR_SAR_R_M: {
-        ftprint_char_array(&dstr, false, "sar <%s> %s, %s", type_name(instr->sar_r_m.type),
-                           IR_print_reg(arena, instr->sar_r_m.dst), IR_print_mem(arena, &instr->sar_r_m.src));
+        ftprint_char_array(&dstr, false, "sar <%s> %s, <%s> %s", type_name(instr->sar_r_m.dst_type),
+                           IR_print_reg(arena, instr->sar_r_m.dst), type_name(instr->sar_r_m.src_type),
+                           IR_print_mem(arena, &instr->sar_r_m.src));
         break;
     }
     case IR_INSTR_SAR_R_I: {
-        ftprint_char_array(&dstr, false, "sar <%s> %s, %s", type_name(instr->sar_r_i.type),
-                           IR_print_reg(arena, instr->sar_r_i.dst), IR_print_imm(arena, instr->sar_r_i.src));
+        ftprint_char_array(&dstr, false, "sar <%s> %s, <%s> %s", type_name(instr->sar_r_i.dst_type),
+                           IR_print_reg(arena, instr->sar_r_i.dst), type_name(instr->sar_r_i.src_type),
+                           IR_print_imm(arena, instr->sar_r_i.src));
+        break;
+    }
+    case IR_INSTR_SHL_R_R: {
+        ftprint_char_array(&dstr, false, "shl <%s> %s, <%s> %s", type_name(instr->shl_r_r.dst_type),
+                           IR_print_reg(arena, instr->shl_r_r.dst), type_name(instr->shl_r_r.src_type),
+                           IR_print_reg(arena, instr->shl_r_r.src));
+        break;
+    }
+    case IR_INSTR_SHL_R_M: {
+        ftprint_char_array(&dstr, false, "shl <%s> %s, <%s> %s", type_name(instr->shl_r_m.dst_type),
+                           IR_print_reg(arena, instr->shl_r_m.dst), type_name(instr->shl_r_m.src_type),
+                           IR_print_mem(arena, &instr->shl_r_m.src));
+        break;
+    }
+    case IR_INSTR_SHL_R_I: {
+        ftprint_char_array(&dstr, false, "shl <%s> %s, <%s> %s", type_name(instr->shl_r_i.dst_type),
+                           IR_print_reg(arena, instr->shl_r_i.dst), type_name(instr->shl_r_i.src_type),
+                           IR_print_imm(arena, instr->shl_r_i.src));
         break;
     }
     case IR_INSTR_NEG: {

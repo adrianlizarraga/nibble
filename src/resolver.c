@@ -735,7 +735,7 @@ static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left
 {
     convert_arith_eops(left, right);
 
-    if (left->is_constexpr & right->is_constexpr) {
+    if (left->is_constexpr && right->is_constexpr) {
         eval_const_binary_op(op, dst, left->type, left->const_val, right->const_val);
     }
     else {
@@ -875,6 +875,34 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
 
         break;
+    case TKN_RSHIFT:
+    case TKN_LSHIFT: {
+        if (left_op.type->kind != TYPE_INTEGER) {
+            resolver_on_error(resolver, "Left operand of binary operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[ebinary->op], type_name(left_op.type));
+            return false;
+        }
+
+        if (right_op.type->kind != TYPE_INTEGER) {
+            resolver_on_error(resolver, "Right operand of binary operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[ebinary->op], type_name(right_op.type));
+            return false;
+        }
+
+        promote_int_eops(&left_op);
+        promote_int_eops(&right_op);
+
+        if (left_op.is_constexpr && right_op.is_constexpr) {
+            eval_const_binary_op(ebinary->op, &dst_op, left_op.type, left_op.const_val, right_op.const_val);
+        }
+        else {
+            dst_op.type = left_op.type;
+            dst_op.is_constexpr = false;
+            dst_op.is_lvalue = false;
+        }
+
+        break;
+    }
     case TKN_EQ:
     case TKN_NOTEQ: {
         bool left_is_ptr = (left_op.type->kind == TYPE_PTR);

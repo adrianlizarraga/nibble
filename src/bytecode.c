@@ -342,33 +342,37 @@ static void IR_emit_instr_div(IR_Builder* builder, Type* type, IR_Reg dst, IR_Op
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_sar(IR_Builder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
+static void IR_emit_instr_sar(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Operand* src_op)
 {
     IR_Instr* instr = NULL;
 
     switch (src_op->kind) {
     case IR_OPERAND_REG:
         instr = IR_new_instr(builder->arena, IR_INSTR_SAR_R_R);
-        instr->sar_r_r.type = type;
+        instr->sar_r_r.dst_type = dst_type;
+        instr->sar_r_r.src_type = src_type;
         instr->sar_r_r.dst = dst;
         instr->sar_r_r.src = src_op->reg;
         break;
     case IR_OPERAND_MEM_ADDR:
         instr = IR_new_instr(builder->arena, IR_INSTR_SAR_R_M);
-        instr->sar_r_m.type = type;
+        instr->sar_r_m.dst_type = dst_type;
+        instr->sar_r_m.src_type = src_type;
         instr->sar_r_m.dst = dst;
         instr->sar_r_m.src = src_op->addr;
         break;
     case IR_OPERAND_VAR:
         instr = IR_new_instr(builder->arena, IR_INSTR_SAR_R_M);
-        instr->sar_r_m.type = type;
+        instr->sar_r_m.dst_type = dst_type;
+        instr->sar_r_m.src_type = src_type;
         instr->sar_r_m.dst = dst;
         instr->sar_r_m.src.base_kind = IR_MEM_BASE_SYM;
         instr->sar_r_m.src.base.sym = src_op->sym;
         break;
     case IR_OPERAND_IMM:
         instr = IR_new_instr(builder->arena, IR_INSTR_SAR_R_I);
-        instr->sar_r_i.type = type;
+        instr->sar_r_i.dst_type = dst_type;
+        instr->sar_r_i.src_type = src_type;
         instr->sar_r_i.dst = dst;
         instr->sar_r_i.src = src_op->imm;
         break;
@@ -380,15 +384,59 @@ static void IR_emit_instr_sar(IR_Builder* builder, Type* type, IR_Reg dst, IR_Op
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_sar_r_i(IR_Builder* builder, Type* type, IR_Reg dst, Scalar src)
+static void IR_emit_instr_sar_r_i(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, Scalar src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SAR_R_I);
-    instr->sar_r_i.type = type;
+    instr->sar_r_i.dst_type = dst_type;
+    instr->sar_r_i.src_type = src_type;
     instr->sar_r_i.dst = dst;
     instr->sar_r_i.src = src;
 
     IR_add_instr(builder, instr);
 }
+
+static void IR_emit_instr_shl(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Operand* src_op)
+{
+    IR_Instr* instr = NULL;
+
+    switch (src_op->kind) {
+    case IR_OPERAND_REG:
+        instr = IR_new_instr(builder->arena, IR_INSTR_SHL_R_R);
+        instr->shl_r_r.dst_type = dst_type;
+        instr->shl_r_r.src_type = src_type;
+        instr->shl_r_r.dst = dst;
+        instr->shl_r_r.src = src_op->reg;
+        break;
+    case IR_OPERAND_MEM_ADDR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_SHL_R_M);
+        instr->shl_r_m.dst_type = dst_type;
+        instr->shl_r_m.src_type = src_type;
+        instr->shl_r_m.dst = dst;
+        instr->shl_r_m.src = src_op->addr;
+        break;
+    case IR_OPERAND_VAR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_SHL_R_M);
+        instr->shl_r_m.dst_type = dst_type;
+        instr->shl_r_m.src_type = src_type;
+        instr->shl_r_m.dst = dst;
+        instr->shl_r_m.src.base_kind = IR_MEM_BASE_SYM;
+        instr->shl_r_m.src.base.sym = src_op->sym;
+        break;
+    case IR_OPERAND_IMM:
+        instr = IR_new_instr(builder->arena, IR_INSTR_SHL_R_I);
+        instr->shl_r_i.dst_type = dst_type;
+        instr->shl_r_i.src_type = src_type;
+        instr->shl_r_i.dst = dst;
+        instr->shl_r_i.src = src_op->imm;
+        break;
+    default:
+        assert(!0);
+        break;
+    }
+
+    IR_add_instr(builder, instr);
+}
+
 static void IR_emit_instr_neg(IR_Builder* builder, Type* type, IR_Reg dst)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_NEG);
@@ -1337,7 +1385,7 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
 
             if (base_size_log2) {
                 Scalar shift_arg = {.as_int._u32 = base_size_log2};
-                IR_emit_instr_sar_r_i(builder, result_type, left.reg, shift_arg);
+                IR_emit_instr_sar_r_i(builder, result_type, left.reg, type_u8, shift_arg);
             }
 
             *dst = left;
@@ -1402,6 +1450,38 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
         *dst = left;
         IR_try_free_op_reg(builder, &right);
 
+        break;
+    }
+    case TKN_RSHIFT: {
+        IR_emit_expr(builder, expr->left, &left);
+        IR_emit_expr(builder, expr->right, &right);
+
+        assert(result_type == left.type);
+        assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
+
+        IR_op_to_r(builder, &left, true);
+        IR_op_to_rvi(builder, &right);
+
+        IR_emit_instr_sar(builder, result_type, left.reg, right.type, &right);
+
+        *dst = left;
+        IR_try_free_op_reg(builder, &right);
+        break;
+    }
+    case TKN_LSHIFT: {
+        IR_emit_expr(builder, expr->left, &left);
+        IR_emit_expr(builder, expr->right, &right);
+
+        assert(result_type == left.type);
+        assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
+
+        IR_op_to_r(builder, &left, true);
+        IR_op_to_rvi(builder, &right);
+
+        IR_emit_instr_shl(builder, result_type, left.reg, right.type, &right);
+
+        *dst = left;
+        IR_try_free_op_reg(builder, &right);
         break;
     }
     case TKN_EQ: {

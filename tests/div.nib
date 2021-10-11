@@ -1,0 +1,20 @@
+proc d1(a: s32) => int {
+    return a / 2;
+}
+
+proc d2(a: u32) => u32 {
+    return a / 2;
+}
+
+proc d3(a: u32) => u32 {
+    return 20 / (a + a);
+}
+
+proc main() => int {
+    var a : s32 = -10;
+    var b : s32 = 10;
+    var c : u32 = 10;
+    var d : u32 = 2;
+
+    return a / b + d1(b) + d2(c) + d3(c) + (c >> 1) + (8 >> d) + (8 >> (d + 1));
+}
