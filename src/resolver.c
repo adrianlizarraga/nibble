@@ -1,13 +1,13 @@
 #include "resolver.h"
 #include "parser.h"
 
-#define OP_FROM_EXPR(e)                                                                                        \
-    {                                                                                                          \
+#define OP_FROM_EXPR(e)                                                                                                \
+    {                                                                                                                  \
         .type = (e)->type, .is_constexpr = (e)->is_constexpr, .is_lvalue = (e)->is_lvalue, .const_val = (e)->const_val \
     }
 
-#define OP_FROM_CONST(t, s)                                                 \
-    {                                                                       \
+#define OP_FROM_CONST(t, s)                                                     \
+    {                                                                           \
         .type = (t), .is_constexpr = true, .is_lvalue = false, .const_val = (s) \
     }
 
@@ -270,7 +270,7 @@ static void init_builtin_syms(Resolver* resolver)
             o->const_val.as_int._s64 = (s64)o->const_val.as_int.f; \
             break;                                                 \
         default:                                                   \
-            o->is_constexpr = false;                                   \
+            o->is_constexpr = false;                               \
             break;                                                 \
         }                                                          \
         break;
@@ -716,17 +716,183 @@ static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scal
     }
 }
 
+static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
+{
+    assert(num_types);
+    Type* type = types[0];
+
+    for (u32 i = 1; i < num_types; i += 1) {
+        if (value > type->as_integer.max) {
+            type = types[i];
+        }
+        else {
+            return type;
+        }
+    }
+
+    return (value > type->as_integer.max) ? NULL : type;
+}
+
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
 {
-    (void)resolver;
-
     ExprInt* eint = (ExprInt*)expr;
+    Type* type = type_ullong;
 
-    // TODO: Take into account literal suffix (e.g., u, ul, etc.)
-    expr->type = type_s32;
+    // Based on integer constant semantics from the C specification (ISO/IEC 9899:TC3)
+    u64 value = eint->token.value;
+    TokenIntRep rep = eint->token.rep;
+    TokenIntSuffix suffix = eint->token.suffix;
+
+    if (rep == TKN_INT_CHAR) {
+        type = type_int;
+    }
+    else if (rep == TKN_INT_DEC) {
+        switch (suffix) {
+        case TKN_INT_SUFFIX_NONE: {
+            Type* types[] = {
+                type_int,
+                type_long,
+                type_llong,
+            };
+
+            type = get_int_lit_type(value, types, ARRAY_LEN(types));
+
+            break;
+        }
+        case TKN_INT_SUFFIX_U: {
+            Type* types[] = {
+                type_uint,
+                type_ulong,
+                type_ullong
+            };
+
+            type = get_int_lit_type(value, types, ARRAY_LEN(types));
+            break;
+        }
+        case TKN_INT_SUFFIX_L: {
+            Type* types[] = {
+                type_long,
+                type_llong,
+            };
+
+            type = get_int_lit_type(value, types, ARRAY_LEN(types));
+            break;
+        }
+        case TKN_INT_SUFFIX_UL: {
+            Type* types[] = {
+                type_ulong,
+                type_ullong
+            };
+
+            type = get_int_lit_type(value, types, ARRAY_LEN(types));
+            break;
+        }
+        case TKN_INT_SUFFIX_LL: {
+            type = type_llong;
+
+            if (value > type->as_integer.max) {
+                type = NULL;
+            }
+            break;
+        }
+        case TKN_INT_SUFFIX_ULL: {
+            type = type_ullong;
+
+            if (value > type->as_integer.max) {
+                type = NULL;
+            }
+            break;
+        }
+        default:
+            assert(0);
+            break;
+        }
+    }
+    else {
+        // NOTE: An integer literal specified in a different base (e.g., hex).
+
+        switch (suffix) {
+        case TKN_INT_SUFFIX_NONE: {
+            Type* types[] = {
+                type_int,
+                type_uint,
+                type_long,
+                type_ulong,
+                type_llong,
+                type_ullong
+            };
+
+            type = get_int_lit_type(value, types, ARRAY_LEN(types));
+
+            break;
+        }
+        case TKN_INT_SUFFIX_U: {
+            Type* types[] = {
+                type_uint,
+                type_ulong,
+                type_ullong
+            };
+
+            type = get_int_lit_type(value, types, ARRAY_LEN(types));
+
+            break;
+        }
+        case TKN_INT_SUFFIX_L: {
+            Type* types[] = {
+                type_long,
+                type_ulong,
+                type_llong,
+                type_ullong
+            };
+
+            type = get_int_lit_type(value, types, ARRAY_LEN(types));
+
+            break;
+        }
+        case TKN_INT_SUFFIX_UL: {
+            Type* types[] = {
+                type_ulong,
+                type_ullong
+            };
+
+            type = get_int_lit_type(value, types, ARRAY_LEN(types));
+
+            break;
+        }
+        case TKN_INT_SUFFIX_LL: {
+            Type* types[] = {
+                type_llong,
+                type_ullong
+            };
+
+            type = get_int_lit_type(value, types, ARRAY_LEN(types));
+
+            break;
+        }
+        case TKN_INT_SUFFIX_ULL: {
+            type = type_ullong;
+
+            if (value > type->as_integer.max) {
+                type = NULL;
+            }
+            break;
+        }
+        default:
+            assert(0);
+            break;
+        }
+    }
+
+    // TODO: Can this ever happen with this jacked-up mixing of host and target types???
+    if (!type) {
+        resolver_on_error(resolver, "Integer literal `%llu` is too large", value);
+        return false;
+    }
+
+    expr->type = type;
     expr->is_constexpr = true;
     expr->is_lvalue = false;
-    expr->const_val.as_int._s32 = (int)eint->value;
+    expr->const_val.as_int._u64 = value;
 
     return true;
 }
@@ -861,13 +1027,15 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
     case TKN_DIV:
     case TKN_ASTERISK:
         if (!type_is_arithmetic(left_op.type)) {
-            resolver_on_error(resolver, "Left operand of binary operator `%s` must be an arithmetic type, not type `%s`",
+            resolver_on_error(resolver,
+                              "Left operand of binary operator `%s` must be an arithmetic type, not type `%s`",
                               token_kind_names[ebinary->op], type_name(left_op.type));
             return false;
         }
 
         if (!type_is_arithmetic(right_op.type)) {
-            resolver_on_error(resolver, "Right operand of binary operator `%s` must be an arithmetic type, not type `%s`",
+            resolver_on_error(resolver,
+                              "Right operand of binary operator `%s` must be an arithmetic type, not type `%s`",
                               token_kind_names[ebinary->op], type_name(right_op.type));
             return false;
         }
@@ -1379,8 +1547,8 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
         type = resolve_typespec(resolver, expr->typespec);
 
         if (type != expected_type) {
-            resolver_on_error(resolver, "Compound literal type `%s` does not match expected type `%s`", 
-                              type_name(type), type_name(expected_type));
+            resolver_on_error(resolver, "Compound literal type `%s` does not match expected type `%s`", type_name(type),
+                              type_name(expected_type));
             return false;
         }
     }

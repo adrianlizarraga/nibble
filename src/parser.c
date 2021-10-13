@@ -615,7 +615,7 @@ static Expr* parse_expr_base(Parser* parser)
     switch (token.kind) {
     case TKN_INT:
         next_token(parser);
-        return new_expr_int(parser->ast_arena, token.as_int.value, token.range);
+        return new_expr_int(parser->ast_arena, token.as_int, token.range);
     case TKN_FLOAT:
         next_token(parser);
         return new_expr_float(parser->ast_arena, token.as_float.kind, token.as_float.value, token.range);

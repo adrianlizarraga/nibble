@@ -163,10 +163,10 @@ ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, const char* nam
     return arg;
 }
 
-Expr* new_expr_int(Allocator* allocator, uint64_t value, ProgRange range)
+Expr* new_expr_int(Allocator* allocator, TokenInt token, ProgRange range)
 {
     ExprInt* expr = new_expr(allocator, ExprInt, range);
-    expr->value = value;
+    expr->token = token;
 
     return (Expr*)expr;
 }
@@ -1149,7 +1149,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case CST_ExprInt: {
             ExprInt* e = (ExprInt*)expr;
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "%lu", e->value);
+            ftprint_char_array(&dstr, false, "%lu", e->token.value);
         } break;
         case CST_ExprFloat: {
             ExprFloat* e = (ExprFloat*)expr;

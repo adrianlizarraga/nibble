@@ -187,7 +187,7 @@ typedef struct ExprField {
 
 typedef struct ExprInt {
     Expr super;
-    uint64_t value;
+    TokenInt token;
 } ExprInt;
 
 typedef struct ExprFloat {
@@ -259,7 +259,7 @@ Expr* new_expr_field(Allocator* allocator, Expr* object, const char* field, Prog
 Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
 Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range);
 ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, const char* name);
-Expr* new_expr_int(Allocator* allocator, uint64_t value, ProgRange range);
+Expr* new_expr_int(Allocator* allocator, TokenInt token, ProgRange range);
 Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
 Expr* new_expr_str(Allocator* allocator, const char* value, ProgRange range);
 Expr* new_expr_ident(Allocator* allocator, const char* name, ProgRange range);
@@ -544,7 +544,7 @@ typedef struct Type Type;
 typedef struct TypeInteger {
     IntegerKind kind;
     bool is_signed;
-    unsigned long long max;
+    u64 max;
 } TypeInteger;
 
 typedef struct TypeFloat {

@@ -86,7 +86,7 @@ typedef enum TokenIntSuffix {
 } TokenIntSuffix;
 
 typedef struct TokenInt {
-    uint64_t value;
+    u64 value;
     TokenIntRep rep;
     TokenIntSuffix suffix;
 } TokenInt;
