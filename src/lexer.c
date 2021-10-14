@@ -362,7 +362,7 @@ static TokenStr scan_string(Lexer* lexer)
     }
 
     array_push(tmp, '\0');
-    tstr.value = intern_str_lit(tmp, array_len(tmp) - 1);
+    tstr.str_lit = intern_str_lit(tmp, array_len(tmp) - 1);
 
     allocator_restore_state(state);
 
@@ -515,7 +515,7 @@ int print_token(Token* token, char* buf, size_t size)
 
         return snprintf(buf, size, "%.3f", token->as_float.value._f64);
     case TKN_STR:
-        return snprintf(buf, size, "\"%s\"", token->as_str.value);
+        return snprintf(buf, size, "\"%s\"", token->as_str.str_lit->str);
     case TKN_IDENT:
         return snprintf(buf, size, "%s", token->as_ident.value);
     case TKN_KW:

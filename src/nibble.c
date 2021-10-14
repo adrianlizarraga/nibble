@@ -237,7 +237,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     //////////////////////////////////////////
     ftprint_out("1. Parsing %s ...\n", input_file);
 
-    const char* path = intern_str_lit(input_file, cstr_len(input_file));
+    const char* path = intern_str_lit(input_file, cstr_len(input_file))->str;
     const char* code = slurp_file(&nibble->gen_mem, path);
     List decls = list_head_create(decls);
 
@@ -311,19 +311,44 @@ void nibble_cleanup(void)
     allocator_destroy(&bootstrap);
 }
 
-const char* intern_str_lit(const char* str, size_t len)
+InternedStrLit* intern_str_lit(const char* str, size_t len)
 {
     Allocator* allocator = &nibble->gen_mem;
     HMap* strmap = &nibble->str_lit_map;
-    const char* interned_str = intern_str(allocator, strmap, str, len);
 
-    if (!interned_str) {
+    uint64_t key = hash_bytes(str, len);
+    uint64_t* pval = hmap_get(strmap, key);
+    InternedStrLit* intern = pval ? (void*)*pval : NULL;
+
+    // Collisions will only occur if identical hash values are produced. Collisions due to
+    // contention for hash map slots will not occur (open addressing).
+    //
+    // Walk the linked list in case of collision.
+    for (InternedStrLit* it = intern; it; it = it->next) {
+        if ((it->len == len) && (cstr_ncmp(it->str, str, len) == 0))
+            return it;
+    }
+
+    // If we got here, need to add this string to the intern table.
+    InternedStrLit* new_intern = mem_allocate(allocator, offsetof(InternedStrLit, str) + len + 1, DEFAULT_ALIGN, false);
+
+    if (!new_intern) {
         // TODO: Handle in a better way.
         ftprint_err("[INTERNAL ERROR]: Out of memory.\n%s:%d\n", __FILE__, __LINE__);
         exit(1);
+        return NULL;
     }
 
-    return interned_str;
+    new_intern->next = intern; // Record collision. If a collision did _NOT_ occur, this will be null.
+    new_intern->id = strmap->len;
+    new_intern->len = len;
+
+    memcpy(new_intern->str, str, len);
+    new_intern->str[len] = '\0';
+
+    hmap_put(strmap, key, (uintptr_t)new_intern);
+
+    return new_intern;
 }
 
 // TODO: Reuse duplicated interning code!

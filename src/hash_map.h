@@ -43,6 +43,4 @@ uint64_t hash_ptr(const void* ptr);
 uint64_t hash_mix_uint64(uint64_t a, uint64_t b);
 uint64_t hash_bytes(const void* buf, size_t len);
 
-const char* intern_str(Allocator* allocator, HMap* strmap, const char* str, size_t len);
-
 #endif

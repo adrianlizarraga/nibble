@@ -198,7 +198,7 @@ typedef struct ExprFloat {
 
 typedef struct ExprStr {
     Expr super;
-    const char* value;
+    InternedStrLit* str_lit;
 } ExprStr;
 
 typedef struct ExprIdent {
@@ -261,7 +261,7 @@ Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* arg
 ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, const char* name);
 Expr* new_expr_int(Allocator* allocator, TokenInt token, ProgRange range);
 Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
-Expr* new_expr_str(Allocator* allocator, const char* value, ProgRange range);
+Expr* new_expr_str(Allocator* allocator, InternedStrLit* str_lit, ProgRange range);
 Expr* new_expr_ident(Allocator* allocator, const char* name, ProgRange range);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
@@ -627,6 +627,7 @@ extern Type* type_ullong;
 extern Type* type_ssize;
 extern Type* type_usize;
 extern Type* type_ptr_void;
+extern Type* type_ptr_char;
 
 extern size_t PTR_SIZE;
 extern size_t PTR_ALIGN;
@@ -642,7 +643,7 @@ bool type_is_ptr_like(Type* type);
 bool type_is_aggregate(Type* type);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
-Type* type_array(Allocator* allocator, HMap* type_ptr_cache, Type* base, size_t len);
+Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len);
 Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
 Type* type_unsigned_int(Type* type_int);

@@ -102,6 +102,13 @@ typedef struct Scalar {
     };
 } Scalar;
 
+typedef struct InternedStrLit {
+    struct InternedStrLit* next;
+    size_t id;
+    size_t len;
+    char str[];
+} InternedStrLit;
+
 typedef enum Keyword {
     KW_VAR = 0,
     KW_CONST,
@@ -137,7 +144,7 @@ typedef struct TypeCache {
 
 extern const char* keywords[KW_COUNT];
 
-const char* intern_str_lit(const char* str, size_t len);
+InternedStrLit* intern_str_lit(const char* str, size_t len);
 const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
 
 bool nibble_init(OS target_os, Arch target_arch);

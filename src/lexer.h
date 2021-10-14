@@ -106,7 +106,7 @@ typedef struct TokenKW {
 } TokenKW;
 
 typedef struct TokenStr {
-    const char* value;
+    InternedStrLit* str_lit;
 } TokenStr;
 
 typedef struct Token {

@@ -621,7 +621,7 @@ static Expr* parse_expr_base(Parser* parser)
         return new_expr_float(parser->ast_arena, token.as_float.kind, token.as_float.value, token.range);
     case TKN_STR:
         next_token(parser);
-        return new_expr_str(parser->ast_arena, token.as_str.value, token.range);
+        return new_expr_str(parser->ast_arena, token.as_str.str_lit, token.range);
     case TKN_LPAREN: {
         next_token(parser);
 

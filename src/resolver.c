@@ -31,7 +31,7 @@ static bool convert_eop(ExprOperand* eop, Type* dst_type);
 static bool eop_is_null_ptr(ExprOperand eop);
 static bool can_convert_eop(ExprOperand* operand, Type* dst_type);
 static bool can_cast_eop(ExprOperand* eop, Type* dst_type);
-static void eop_decay(Resolver* resolver, ExprOperand* eop);
+static bool eop_decay(Resolver* resolver, ExprOperand* eop);
 static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr);
 
 static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
@@ -42,7 +42,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr);
 static bool resolve_expr_unary(Resolver* resolver, Expr* expr);
 static bool resolve_expr_call(Resolver* resolver, Expr* expr);
 static bool resolve_expr_ident(Resolver* resolver, Expr* expr);
-static bool resolve_cond_expr(Resolver* resolver, Expr* expr);
+static bool resolve_cond_expr(Resolver* resolver, Expr* expr, ExprOperand* expr_eop);
 
 static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec);
 
@@ -897,6 +897,15 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     return true;
 }
 
+static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
+{
+    expr->super.type = type_array(resolver->ast_mem, &resolver->type_cache->arrays, type_char, expr->str_lit->len + 1);
+    expr->super.is_constexpr = true;
+    expr->super.is_lvalue = true;
+
+    return true;
+}
+
 static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
 {
     convert_arith_eops(left, right);
@@ -945,8 +954,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
     ExprOperand left_op = OP_FROM_EXPR(ebinary->left);
     ExprOperand right_op = OP_FROM_EXPR(ebinary->right);
 
-    eop_decay(resolver, &left_op);
-    eop_decay(resolver, &right_op);
+    if (!eop_decay(resolver, &left_op))
+        return false;
+
+    if (!eop_decay(resolver, &right_op))
+        return false;
 
     switch (ebinary->op) {
     case TKN_PLUS:
@@ -1223,7 +1235,8 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
     switch (eunary->op) {
     case TKN_PLUS:
     case TKN_MINUS:
-        eop_decay(resolver, &src_op);
+        if (!eop_decay(resolver, &src_op))
+            return false;
 
         if (!type_is_arithmetic(src_op.type)) {
             resolver_on_error(resolver, "Can only use unary +/- with arithmetic types");
@@ -1234,7 +1247,8 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
         break;
     case TKN_NEG:
-        eop_decay(resolver, &src_op);
+        if (!eop_decay(resolver, &src_op))
+            return false;
 
         if (!type_is_integer_like(src_op.type)) {
             resolver_on_error(resolver, "Can only use unary ~ with integer types");
@@ -1245,7 +1259,8 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
         break;
     case TKN_NOT:
-        eop_decay(resolver, &src_op);
+        if (!eop_decay(resolver, &src_op))
+            return false;
 
         if (!type_is_scalar(src_op.type)) {
             resolver_on_error(resolver, "Can only use unary ! with scalar types");
@@ -1266,7 +1281,8 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         dst_op.is_constexpr = false;
         break;
     case TKN_ASTERISK: // NOTE: Dereference operator.
-        eop_decay(resolver, &src_op);
+        if (!eop_decay(resolver, &src_op))
+            return false;
 
         if (src_op.type->kind != TYPE_PTR) {
             resolver_on_error(resolver, "Cannot dereference a non-pointer value.");
@@ -1299,7 +1315,9 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
         return false;
 
     ExprOperand array_op = OP_FROM_EXPR(eindex->array);
-    eop_decay(resolver, &array_op);
+
+    if (!eop_decay(resolver, &array_op))
+        return false;
 
     if (array_op.type->kind != TYPE_PTR) {
         resolver_on_error(resolver, "Cannot index non-pointer or non-array type `%s`", type_name(eindex->array->type));
@@ -1408,7 +1426,8 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         Type* param_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, params[i]); // TODO: Cast at site?
         ExprOperand arg_eop = OP_FROM_EXPR(arg->expr);
 
-        eop_decay(resolver, &arg_eop);
+        if (!eop_decay(resolver, &arg_eop))
+            return false;
 
         if (!convert_eop(&arg_eop, param_type)) {
             resolver_on_error(resolver,
@@ -1443,7 +1462,9 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
         return false;
 
     ExprOperand src_eop = OP_FROM_EXPR(ecast->expr);
-    eop_decay(resolver, &src_eop);
+
+    if (!eop_decay(resolver, &src_eop))
+        return false;
 
     if (!cast_eop(&src_eop, cast_type)) {
         resolver_on_error(resolver, "Cannot cast from type `%s` to type `%s`", type_name(ecast->expr->type),
@@ -1546,7 +1567,7 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
     if (expr->typespec) {
         type = resolve_typespec(resolver, expr->typespec);
 
-        if (type != expected_type) {
+        if (expected_type && type != expected_type) {
             resolver_on_error(resolver, "Compound literal type `%s` does not match expected type `%s`", type_name(type),
                               type_name(expected_type));
             return false;
@@ -1588,6 +1609,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_cast(resolver, expr);
     case CST_ExprCompoundLit:
         return resolve_expr_compound_lit(resolver, (ExprCompoundLit*)expr, expected_type);
+    case CST_ExprStr:
+        return resolve_expr_str(resolver, (ExprStr*)expr);
     default:
         ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
         assert(0);
@@ -1739,8 +1762,8 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 
             ExprOperand right_eop = OP_FROM_EXPR(expr);
 
-            if (declared_type->kind == TYPE_PTR)
-                eop_decay(resolver, &right_eop);
+            if ((declared_type->kind == TYPE_PTR) && !eop_decay(resolver, &right_eop))
+                return false;
 
             if (!convert_eop(&right_eop, declared_type)) {
                 resolver_on_error(resolver, "Incompatible types. Cannot convert `%s` to `%s`",
@@ -1809,8 +1832,8 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 
         ExprOperand init_eop = OP_FROM_EXPR(init);
 
-        if (declared_type->kind == TYPE_PTR)
-            eop_decay(resolver, &init_eop);
+        if ((declared_type->kind == TYPE_PTR) && !eop_decay(resolver, &init_eop))
+            return false;
 
         if (!convert_eop(&init_eop, declared_type)) {
             resolver_on_error(resolver, "Incompatible types. Cannot convert expression of type `%s` to `%s`",
@@ -1977,18 +2000,23 @@ static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_typ
     return ret_success;
 }
 
-static bool resolve_cond_expr(Resolver* resolver, Expr* expr)
+static bool resolve_cond_expr(Resolver* resolver, Expr* expr, ExprOperand* expr_eop)
 {
-    // Resolve condition expression.
     if (!resolve_expr(resolver, expr, NULL))
         return false;
 
-    // Ensure that condition express is a scalar type.
-    Type* cond_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, expr->type);
+    // TODO: THIS IS ERROR-PRONE. Will be buggy when add new fields.
+    expr_eop->type = expr->type;
+    expr_eop->is_constexpr = expr->is_constexpr;
+    expr_eop->is_lvalue = expr->is_lvalue;
+    expr_eop->const_val = expr->const_val;
 
-    if (!type_is_scalar(cond_type)) {
+    if (!eop_decay(resolver, expr_eop))
+        return false;
+
+    if (!type_is_scalar(expr_eop->type)) {
         resolver_on_error(resolver, "Conditional expression must resolve to a scalar type, have type `%s`",
-                          type_name(cond_type));
+                          type_name(expr_eop->type));
         return false;
     }
 
@@ -1997,8 +2025,12 @@ static bool resolve_cond_expr(Resolver* resolver, Expr* expr)
 
 static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type* ret_type, unsigned flags)
 {
-    if (!resolve_cond_expr(resolver, cblock->cond))
+    ExprOperand cond_eop = {0};
+
+    if (!resolve_cond_expr(resolver, cblock->cond, &cond_eop))
         return 0;
+
+    cblock->cond = try_wrap_cast_expr(resolver, &cond_eop, cblock->cond);
 
     return resolve_stmt(resolver, cblock->body, ret_type, flags);
 }
@@ -2025,10 +2057,13 @@ static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, 
 static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     StmtWhile* swhile = (StmtWhile*)stmt;
+    ExprOperand cond_eop = {0};
 
     // Resolve condition expression.
-    if (!resolve_cond_expr(resolver, swhile->cond))
+    if (!resolve_cond_expr(resolver, swhile->cond, &cond_eop))
         return 0;
+
+    swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
 
     // Resolve loop body.
     unsigned ret = resolve_stmt(resolver, swhile->body, ret_type,
@@ -2044,10 +2079,13 @@ static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_typ
 static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     StmtDoWhile* swhile = (StmtDoWhile*)stmt;
+    ExprOperand cond_eop = {0};
 
     // Resolve condition expression.
-    if (!resolve_cond_expr(resolver, swhile->cond))
+    if (!resolve_cond_expr(resolver, swhile->cond, &cond_eop))
         return 0;
+
+    swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
 
     // Resolve loop body.
     unsigned ret = resolve_stmt(resolver, swhile->body, ret_type,
@@ -2062,10 +2100,21 @@ static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_
     return ret;
 }
 
-static void eop_decay(Resolver* resolver, ExprOperand* eop)
+static bool eop_decay(Resolver* resolver, ExprOperand* eop)
 {
-    eop->type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, eop->type);
+    if (eop->type->kind != TYPE_ARRAY) {
+        return true;
+    }
+
+    if (!eop->is_lvalue) {
+        resolver_on_error(resolver, "An array rvalue (e.g., initializer) cannot be converted to a pointer");
+        return false;
+    }
+
+    eop->type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, eop->type->as_array.base);
     eop->is_lvalue = false;
+
+    return true;
 }
 
 static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr)
@@ -2073,7 +2122,7 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
     Expr* expr = orig_expr;
 
     if (orig_expr->type != eop->type) {
-        if (expr->is_constexpr) {
+        if (expr->is_constexpr && type_is_scalar(expr->type)) {
             assert(eop->is_constexpr);
             expr->const_val = eop->const_val;
         }
@@ -2120,8 +2169,8 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 
     ExprOperand right_eop = OP_FROM_EXPR(right_expr);
 
-    if (left_expr->type->kind == TYPE_PTR)
-        eop_decay(resolver, &right_eop);
+    if ((left_expr->type->kind == TYPE_PTR) && !eop_decay(resolver, &right_eop))
+        return false;
 
     if (!convert_eop(&right_eop, left_expr->type)) {
         resolver_on_error(resolver, "Type mismatch in assignment statement: expected type `%s`, but got `%s`",
@@ -2159,7 +2208,9 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
                 break;
 
             ExprOperand ret_eop = OP_FROM_EXPR(sret->expr);
-            eop_decay(resolver, &ret_eop);
+
+            if (!eop_decay(resolver, &ret_eop))
+                return false;
 
             if (!convert_eop(&ret_eop, ret_type)) {
                 resolver_on_error(resolver, "Invalid return type. Wanted `%s`, but got `%s`", type_name(ret_type),

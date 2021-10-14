@@ -180,10 +180,10 @@ Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRan
     return (Expr*)expr;
 }
 
-Expr* new_expr_str(Allocator* allocator, const char* value, ProgRange range)
+Expr* new_expr_str(Allocator* allocator, InternedStrLit* str_lit, ProgRange range)
 {
     ExprStr* expr = new_expr(allocator, ExprStr, range);
-    expr->value = value;
+    expr->str_lit = str_lit;
 
     return (Expr*)expr;
 }
@@ -575,6 +575,7 @@ Type* type_ullong;
 Type* type_ssize;
 Type* type_usize;
 Type* type_ptr_void;
+Type* type_ptr_char;
 
 size_t PTR_SIZE = 8;
 size_t PTR_ALIGN = 8;
@@ -891,6 +892,7 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     }
 
     type_ptr_void = type_ptr(ast_mem, &type_cache->ptrs, type_void);
+    type_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, type_char);
 }
 
 //////////////////////////////
@@ -1163,7 +1165,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case CST_ExprStr: {
             ExprStr* e = (ExprStr*)expr;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "\"%s\"", e->value);
+            ftprint_char_array(&dstr, false, "\"%s\"", e->str_lit->str);
         } break;
         case CST_ExprIdent: {
             ExprIdent* e = (ExprIdent*)expr;
