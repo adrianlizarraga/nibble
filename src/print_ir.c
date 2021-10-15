@@ -1,4 +1,5 @@
 #include "print_ir.h"
+#include "cstring.h"
 
 static const char* ir_cond_names[] = {
     [IR_COND_U_LT] = "u<", [IR_COND_S_LT] = "s<", [IR_COND_U_LTEQ] = "u<=", [IR_COND_S_LTEQ] = "s<=",
@@ -49,8 +50,10 @@ static char* IR_print_mem(Allocator* arena, IR_MemAddr* addr)
         else if (addr->base_kind == IR_MEM_BASE_SYM)
             ftprint_char_array(&dstr, false, "%s %s", (addr->base.sym->is_local ? "local" : "global"),
                                addr->base.sym->name);
-        else
-            ftprint_char_array(&dstr, false, "`%s`", addr->base.str_lit->str); // TODO: Escape chars
+        else {
+            assert(addr->base_kind == IR_MEM_BASE_STR_LIT);
+            ftprint_char_array(&dstr, false, "\"%s\"", cstr_escape(arena, addr->base.str_lit->str, addr->base.str_lit->len, 0));
+        }
 
         if (has_index) {
             char* index_reg_name = IR_print_reg(arena, addr->index_reg);

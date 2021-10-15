@@ -6,10 +6,14 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "allocator.h"
+
 int cstr_cmp(const char* str1, const char* str2);
 int cstr_ncmp(const char* str1, const char* str2, size_t num);
 size_t cstr_len(const char* str);
 void cstr_tolower(char* str);
+
+char* cstr_escape(Allocator* allocator, const char* str, size_t len, char extra_escape);
 
 extern const unsigned char char_props[256];
 extern const unsigned char char_to_biased_digit[256];
@@ -18,6 +22,7 @@ extern const char escaped_to_char[256];
 #define is_whitespace(c) (char_props[(unsigned char)(c)] & 0x01)
 #define is_dec_digit(c) (char_props[(unsigned char)(c)] & 0x02)
 #define is_alphanum(c) (char_props[(unsigned char)(c)] & 0x04)
+#define is_cntrl(c) (char_props[(unsigned char)(c)] & 0x08)
 
 #define unescape_char(c) (escaped_to_char[(unsigned char)(c)])
 #define biased_digit(c) (char_to_biased_digit[(unsigned char)(c)])

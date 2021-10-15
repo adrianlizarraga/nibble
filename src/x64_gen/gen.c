@@ -2030,11 +2030,10 @@ static void X64_gen_global_vars(X64_Generator* generator, u32 num_vars, Symbol**
 
         if (entry->key != HASH_MAP_NULL_KEY) {
             InternedStrLit* str_lit = UINT_PTR(entry->value, InternedStrLit);
+            const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
 
             X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
-
-            // TODO: Escape characters
-            X64_emit_data(generator, "db `%s\\0`", str_lit->str);
+            X64_emit_data(generator, "db `%s\\0`", escaped_str);
         }
     }
 
