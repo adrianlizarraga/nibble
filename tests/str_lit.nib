@@ -8,6 +8,12 @@ proc main() => int
 
     //"Hello"[1] = 'Z'; // Segfaults because literals are stored in readonly memory.
 
-    return first_char("Sailor") + a[1]; // 'S' + 'e' <=> 83 + 101 = 184
+    var s : [6]char = "12345";
+
+    // Cannot initialize array after declaration.
+    //var t : [6]char;
+    //t = "12345";
+
+    return first_char("Sailor\n`") + a[1] - s[4]; // 'S' + 'e' - '5' <=> 83 + 101 - 53 = 131
 }
 

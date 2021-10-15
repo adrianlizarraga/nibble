@@ -2015,6 +2015,8 @@ static void IR_pop_scope(IR_Builder* builder)
 
 static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs);
 
+// Emit code for initializing an array with an initializer.
+//    var a: [11] int = {0, 1, 2, 3};
 static void IR_emit_array_init(IR_Builder* builder, IR_Operand* array_op, IR_Operand* init_op)
 {
     assert(array_op->kind == IR_OPERAND_VAR);
@@ -2081,6 +2083,42 @@ static void IR_emit_array_init(IR_Builder* builder, IR_Operand* array_op, IR_Ope
     // multiple elements at a time (one machine word's worth).
 }
 
+// Emit code for initializing an array with a string literal (is a copy of string literal).
+//    var a: [6] char = "Hello";
+//
+//    Equivalent to:
+//
+//    var a: [6] char = {'H', 'e', 'l', 'l', 'o', '\0'};
+static void IR_emit_array_str_init(IR_Builder* builder, IR_Operand* array_op, IR_Operand* init_op)
+{
+    assert(array_op->kind == IR_OPERAND_VAR);
+    assert(init_op->kind == IR_OPERAND_STR_LIT);
+    assert(array_op->type->kind == TYPE_ARRAY);
+
+    Type* arr_type = array_op->type;
+    Type* ptr_type = type_decay(builder->arena, &builder->type_cache->ptrs, arr_type);
+    Type* elem_type = ptr_type->as_ptr.base;
+    u64 num_elems = arr_type->as_array.len;
+
+    InternedStrLit* str_lit = init_op->str_lit;
+    const char* str = str_lit->str;
+
+    assert((str_lit->len + 1) == num_elems);
+
+    // Decay array into pointer to the first elem.
+    IR_Operand base_ptr_op = {0};
+    IR_decay_array(builder, &base_ptr_op, ptr_type, array_op);
+
+    for (u64 elem_index = 0; elem_index < num_elems; elem_index += 1) {
+        IR_Operand char_op = {.kind = IR_OPERAND_IMM, .type = elem_type, .imm.as_int._u64 = str[elem_index]};
+
+        IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_ptr_op.addr};
+        elem_ptr_op.addr.disp += elem_type->size * elem_index;
+
+        IR_emit_assign(builder, &elem_ptr_op, &char_op);
+    }
+}
+
 static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs)
 {
     switch (lhs->kind) {
@@ -2092,6 +2130,9 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
         }
         else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
             IR_emit_array_init(builder, lhs, rhs);
+        }
+        else if (rhs->kind == IR_OPERAND_STR_LIT) {
+            IR_emit_array_str_init(builder, lhs, rhs);
         }
         else {
             IR_op_to_r(builder, rhs, true);

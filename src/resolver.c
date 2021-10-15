@@ -1771,6 +1771,13 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 return false;
             }
 
+            bool is_valid_array_init = (expr->kind == CST_ExprCompoundLit) || (expr->kind == CST_ExprStr);
+
+            if ((declared_type->kind == TYPE_ARRAY) && !is_valid_array_init) {
+                resolver_on_error(resolver, "Invalid array initializer");
+                return false;
+            }
+
             if (global && !right_eop.is_constexpr) {
                 resolver_on_error(resolver, "Global variables must be initialized with a constant value");
                 return false;
