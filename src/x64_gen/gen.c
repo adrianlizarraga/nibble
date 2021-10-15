@@ -2031,9 +2031,6 @@ static void X64_gen_global_vars(X64_Generator* generator, u32 num_vars, Symbol**
         if (entry->key != HASH_MAP_NULL_KEY) {
             InternedStrLit* str_lit = UINT_PTR(entry->value, InternedStrLit);
 
-            assert(str_lit);
-            assert(str_lit->str);
-
             X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
 
             // TODO: Escape characters
