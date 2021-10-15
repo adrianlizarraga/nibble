@@ -241,15 +241,60 @@ static char** X64_emit_data(X64_Generator* gen, const char* format, ...)
     return line;
 }
 
-static void X64_emit_data_value(X64_Generator* generator, Type* type, Scalar scalar)
+static void X64_emit_global_data(X64_Generator* generator, const char* name, Type* type, Expr* init)
 {
-    if (type->kind == TYPE_INTEGER) {
+    X64_emit_data(generator, "ALIGN %d", type->align);
+    X64_emit_data(generator, "%s: ", name);
+
+    switch (type->kind) {
+    case TYPE_INTEGER: {
+        Scalar val = init ? init->const_val : (Scalar){0};
         X64_emit_data(generator, "%s %s\n", x64_data_size_label[type->size],
-                      X64_print_imm(generator->tmp_mem, scalar, type->size));
+                      X64_print_imm(generator->tmp_mem, val, type->size));
+
+        break;
     }
-    else {
-        ftprint_err("Cannot gen NASM data regions for non-int type: %s\n", type_name(type));
+    case TYPE_ARRAY: {
+        Type* elem_type = type->as_array.base;
+        u64 num_elems = type->as_array.len;
+
+        // Initialize array with zeros
+        if (!init) {
+            Scalar zero_val = {0};
+            char* line = array_create(generator->tmp_mem, char, num_elems << 1);
+
+            ftprint_char_array(&line, false, "%s ", x64_data_size_label[elem_type->size]);
+
+            for (u64 i = 0; i < num_elems; i += 1) {
+                ftprint_char_array(&line, false, "%s", X64_print_imm(generator->tmp_mem, zero_val, elem_type->size));
+
+                if (i == (num_elems - 1)) {
+                    ftprint_char_array(&line, false, "\n");
+                }
+                else {
+                    ftprint_char_array(&line, false, ",");
+                }
+            }
+
+            array_push(line, '\0');
+            X64_emit_data(generator, "%s\n", line);
+        }
+        else if (init->kind == CST_ExprStr) {
+            InternedStrLit* str_lit = ((ExprStr*)init)->str_lit;
+            const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
+
+            X64_emit_data(generator, "%s `%s\\0`\n", x64_data_size_label[elem_type->size], escaped_str);
+        }
+        else {
+            assert(init->kind == CST_ExprCompoundLit);
+            assert(0); // TODO: Implement;
+        }
+        break;
+    }
+    default:
+        ftprint_err("Cannot generate NASM global data value for type: %s\n", type_name(type));
         assert(0);
+        break;
     }
 }
 
@@ -957,7 +1002,11 @@ static X64_SIBDAddr X64_get_sibd_addr(X64_RegGroup* group, IR_MemAddr* vaddr)
 static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 size)
 {
     char* dstr = array_create(allocator, char, 16);
-    const char* mem_label = size <= X64_MAX_INT_REG_SIZE ? x64_mem_size_label[size] : "";
+    const char* mem_label = size <= X64_MAX_INT_REG_SIZE ? x64_mem_size_label[size] : NULL;
+
+    if (!mem_label) {
+        mem_label = "";
+    }
 
     if (addr->kind == X64_SIBD_ADDR_STR_LIT) {
         ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_STR_LIT_PRE, addr->str_lit->id); 
@@ -2042,16 +2091,7 @@ static void X64_gen_global_vars(X64_Generator* generator, u32 num_vars, Symbol**
         Symbol* sym = vars[i];
         DeclVar* dvar = (DeclVar*)sym->decl;
 
-        X64_emit_data(generator, "ALIGN %d", sym->type->align);
-        X64_emit_data(generator, "%s: ", sym->name);
-
-        if (dvar->init) {
-            X64_emit_data_value(generator, sym->type, dvar->init->const_val);
-        }
-        else {
-            Scalar zero_val = {0};
-            X64_emit_data_value(generator, sym->type, zero_val);
-        }
+        X64_emit_global_data(generator, sym->name, sym->type, dvar->init);
     }
     allocator_restore_state(mem_state);
 }
