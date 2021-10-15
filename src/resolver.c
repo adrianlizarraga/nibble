@@ -2127,7 +2127,6 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
             expr->const_val = eop->const_val;
         }
         else {
-            assert(!eop->is_constexpr);
             expr = new_expr_cast(resolver->ast_mem, NULL, orig_expr, true, orig_expr->range);
         }
 

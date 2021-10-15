@@ -278,7 +278,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     //          Gen NASM output
     //////////////////////////////////////////
     ftprint_out("4. Generating NASM assembly output: %s ...\n", output_file);
-    gen_module(&nibble->gen_mem, &nibble->tmp_mem, module, output_file);
+    gen_module(&nibble->gen_mem, &nibble->tmp_mem, module, &nibble->str_lit_map, output_file);
 }
 
 void nibble_cleanup(void)

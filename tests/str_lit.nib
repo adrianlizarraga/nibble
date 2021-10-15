@@ -1,0 +1,13 @@
+proc first_char(str: ^char) => char {
+    return str[0];
+}
+
+proc main() => int
+{
+    var a : ^char = "Hello";
+
+    //"Hello"[1] = 'Z'; // Segfaults because literals are not stored in readonly memory.
+
+    return first_char("Sailor") + a[1]; // 'S' + 'e' <=> 83 + 101 = 184
+}
+

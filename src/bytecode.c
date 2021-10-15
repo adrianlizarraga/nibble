@@ -19,6 +19,7 @@ typedef enum IR_OperandKind {
     IR_OPERAND_DEFERRED_CMP,
     IR_OPERAND_ARRAY_INIT,
     IR_OPERAND_VAR,
+    IR_OPERAND_STR_LIT,
     IR_OPERAND_PROC,
 } IR_OperandKind;
 
@@ -54,6 +55,7 @@ typedef struct IR_Operand {
         Symbol* sym;
         IR_DeferredCmp cmp;
         IR_ArrayInitializer array_initzer;
+        InternedStrLit* str_lit;
     };
 } IR_Operand;
 
@@ -482,6 +484,17 @@ static void IR_emit_instr_laddr_sym(IR_Builder* builder, IR_Reg dst, Type* type,
     instr->laddr.type = type;
     instr->laddr.mem.base_kind = IR_MEM_BASE_SYM;
     instr->laddr.mem.base.sym = sym;
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_laddr_str_lit(IR_Builder* builder, IR_Reg dst, Type* type, InternedStrLit* str_lit)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
+    instr->laddr.dst = dst;
+    instr->laddr.type = type;
+    instr->laddr.mem.base_kind = IR_MEM_BASE_STR_LIT;
+    instr->laddr.mem.base.str_lit = str_lit;
 
     IR_add_instr(builder, instr);
 }
@@ -1754,15 +1767,25 @@ static void IR_decay_array(IR_Builder* builder, IR_Operand* dst, Type* dst_type,
 {
     assert(src->type->kind == TYPE_ARRAY);
     assert(dst_type->kind == TYPE_PTR);
-    assert(src->kind == IR_OPERAND_VAR);
 
-    if (src->sym->is_local) {
-        dst->addr.base_kind = IR_MEM_BASE_SYM;
-        dst->addr.base.sym = src->sym;
+    if (src->kind == IR_OPERAND_VAR) {
+        if (src->sym->is_local) {
+            dst->addr.base_kind = IR_MEM_BASE_SYM;
+            dst->addr.base.sym = src->sym;
+        }
+        else {
+            IR_Reg dst_reg = IR_next_reg(builder);
+            IR_emit_instr_laddr_sym(builder, dst_reg, src->type, src->sym);
+
+            dst->addr.base_kind = IR_MEM_BASE_REG;
+            dst->addr.base.reg = dst_reg;
+        }
     }
     else {
+        assert(src->kind == IR_OPERAND_STR_LIT);
+
         IR_Reg dst_reg = IR_next_reg(builder);
-        IR_emit_instr_laddr_sym(builder, dst_reg, src->type, src->sym);
+        IR_emit_instr_laddr_str_lit(builder, dst_reg, src->type, src->str_lit);
 
         dst->addr.base_kind = IR_MEM_BASE_REG;
         dst->addr.base.reg = dst_reg;
@@ -1781,19 +1804,17 @@ static void IR_emit_expr_cast(IR_Builder* builder, ExprCast* expr_cast, IR_Opera
     IR_Operand src_op = {0};
     IR_emit_expr(builder, expr_cast->expr, &src_op);
 
-    Type* dst_type = expr_cast->super.type;
+    dst_op->type = expr_cast->super.type;
 
     // TODO: Support floats.
     assert(src_op.type->kind != TYPE_FLOAT);
-    assert(dst_type->kind != TYPE_FLOAT);
+    assert(dst_op->type->kind != TYPE_FLOAT);
     assert(src_op.type != dst_op->type); // Should be prevented by resolver.
 
-    if (src_op.type->kind == TYPE_ARRAY && dst_type->kind == TYPE_PTR) {
-        IR_decay_array(builder, dst_op, dst_type, &src_op);
+    if (src_op.type->kind == TYPE_ARRAY && dst_op->type->kind == TYPE_PTR) {
+        IR_decay_array(builder, dst_op, dst_op->type, &src_op);
     }
     else {
-        dst_op->type = dst_type;
-
         IR_emit_int_cast(builder, &src_op, dst_op);
     }
 }
@@ -1963,6 +1984,15 @@ static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
     case CST_ExprCompoundLit:
         IR_emit_expr_compound_lit(builder, (ExprCompoundLit*)expr, dst);
         break;
+    case CST_ExprStr: {
+        ExprStr* expr_str_lit = (ExprStr*)expr;
+
+        dst->kind = IR_OPERAND_STR_LIT;
+        dst->type = expr_str_lit->super.type;
+        dst->str_lit = expr_str_lit->str_lit;
+
+        break;
+    }
     default:
         ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);
         assert(0);
@@ -2157,8 +2187,8 @@ static void IR_emit_stmt_decl(IR_Builder* builder, StmtDecl* sdecl)
     DeclVar* dvar = (DeclVar*)sdecl->decl;
 
     if (dvar->init) {
-        IR_Operand rhs_op;
-        IR_Operand lhs_op;
+        IR_Operand rhs_op = {0};
+        IR_Operand lhs_op = {0};
 
         IR_emit_expr(builder, dvar->init, &rhs_op);
         IR_operand_from_sym(&lhs_op, lookup_symbol(builder->curr_scope, dvar->name));

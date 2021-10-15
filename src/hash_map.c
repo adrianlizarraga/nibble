@@ -4,8 +4,6 @@
 #include <assert.h>
 #include <stdbool.h>
 
-#define HASH_MAP_NULL_KEY 0
-
 // TODO: Use clp2 from Hacker's Delight 2nd edition, pg 62.
 size_t calc_hmap_size(size_t cap)
 {

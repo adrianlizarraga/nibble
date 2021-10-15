@@ -5,6 +5,7 @@
 #include "x64_gen/reg_alloc.c"
 
 #define X64_INIT_LINE_LEN 128
+#define X64_STR_LIT_PRE "__nibble_str_lit_"
 
 static const char* x64_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUNT] = {
     [1] =
@@ -101,6 +102,7 @@ typedef enum X64_SIBDAddrKind
 {
     X64_SIBD_ADDR_GLOBAL,
     X64_SIBD_ADDR_LOCAL,
+    X64_SIBD_ADDR_STR_LIT,
 } X64_SIBDAddrKind;
 
 typedef struct X64_SIBDAddr {
@@ -113,6 +115,7 @@ typedef struct X64_SIBDAddr {
             s32 disp;
             u8 scale;
         } local;
+        InternedStrLit* str_lit;
     };
 } X64_SIBDAddr;
 
@@ -903,6 +906,13 @@ static X64_SIBDAddr X64_get_sibd_addr(X64_RegGroup* group, IR_MemAddr* vaddr)
     assert(has_base || has_index);
 
     if (has_base) {
+        if (vaddr->base_kind == IR_MEM_BASE_STR_LIT) {
+            sibd_addr.kind = X64_SIBD_ADDR_STR_LIT;
+            sibd_addr.str_lit = vaddr->base.str_lit;
+
+            return sibd_addr;
+        }
+
         if (vaddr->base_kind == IR_MEM_BASE_SYM) {
             Symbol* sym = vaddr->base.sym;
 
@@ -947,9 +957,12 @@ static X64_SIBDAddr X64_get_sibd_addr(X64_RegGroup* group, IR_MemAddr* vaddr)
 static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 size)
 {
     char* dstr = array_create(allocator, char, 16);
-    const char* mem_label = x64_mem_size_label[size];
+    const char* mem_label = size <= X64_MAX_INT_REG_SIZE ? x64_mem_size_label[size] : "";
 
-    if (addr->kind == X64_SIBD_ADDR_GLOBAL) {
+    if (addr->kind == X64_SIBD_ADDR_STR_LIT) {
+        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_STR_LIT_PRE, addr->str_lit->id); 
+    }
+    else if (addr->kind == X64_SIBD_ADDR_GLOBAL) {
         ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, addr->global->name);
     }
     else {
@@ -2004,11 +2017,31 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     allocator_restore_state(mem_state);
 }
 
-static void X64_gen_global_vars(X64_Generator* generator, u32 num_vars, Symbol** vars)
+static void X64_gen_global_vars(X64_Generator* generator, u32 num_vars, Symbol** vars, HMap* str_lit_map)
 {
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
-    X64_emit_data(generator, "SECTION .data\n");
 
+    X64_emit_data(generator, "SECTION .rodata\n");
+
+    // Emit static/const string literals
+    // TODO: Iterating through all empty slots in the hash table is slow....
+    for (u64 i = 0; i < str_lit_map->cap; i += 1) {
+        HMapEntry* entry = str_lit_map->entries + i;
+
+        if (entry->key != HASH_MAP_NULL_KEY) {
+            InternedStrLit* str_lit = UINT_PTR(entry->value, InternedStrLit);
+
+            assert(str_lit);
+            assert(str_lit->str);
+
+            X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
+
+            // TODO: Escape characters
+            X64_emit_data(generator, "db `%s\\0`", str_lit->str);
+        }
+    }
+
+    X64_emit_data(generator, "\nSECTION .data\n");
     for (u32 i = 0; i < num_vars; i += 1) {
         Symbol* sym = vars[i];
         DeclVar* dvar = (DeclVar*)sym->decl;
@@ -2050,7 +2083,7 @@ static void X64_write_output_file(X64_Generator* generator, FILE* out_fd)
     }
 }
 
-bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, IR_Module* module, const char* output_file)
+bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, IR_Module* module, HMap* str_lit_map, const char* output_file)
 {
     FILE* out_fd = fopen(output_file, "w");
     if (!out_fd) {
@@ -2066,7 +2099,7 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, IR_Module* module, c
     };
 
     // Generate global variables.
-    X64_gen_global_vars(&generator, module->num_vars, module->vars);
+    X64_gen_global_vars(&generator, module->num_vars, module->vars, str_lit_map);
 
     // Generate instructions for each procedure.
     u32 num_procs = module->num_procs;

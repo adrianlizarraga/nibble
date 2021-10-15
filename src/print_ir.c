@@ -46,9 +46,11 @@ static char* IR_print_mem(Allocator* arena, IR_MemAddr* addr)
     if (has_base) {
         if (addr->base_kind == IR_MEM_BASE_REG)
             ftprint_char_array(&dstr, false, "%s", IR_print_reg(arena, addr->base.reg));
-        else
+        else if (addr->base_kind == IR_MEM_BASE_SYM)
             ftprint_char_array(&dstr, false, "%s %s", (addr->base.sym->is_local ? "local" : "global"),
                                addr->base.sym->name);
+        else
+            ftprint_char_array(&dstr, false, "`%s`", addr->base.str_lit->str); // TODO: Escape chars
 
         if (has_index) {
             char* index_reg_name = IR_print_reg(arena, addr->index_reg);

@@ -7,6 +7,7 @@
 
 #define PTR_UINT(p) ((uintptr_t)((void*)(p)))
 #define UINT_PTR(i, t) (t*)((uintptr_t)(i))
+#define HASH_MAP_NULL_KEY 0
 
 typedef struct HMapEntry {
     uint64_t key;

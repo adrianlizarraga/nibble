@@ -111,6 +111,7 @@ typedef enum IR_MemBaseKind {
     IR_MEM_BASE_NONE = 0,
     IR_MEM_BASE_REG,
     IR_MEM_BASE_SYM,
+    IR_MEM_BASE_STR_LIT,
 } IR_MemBaseKind;
 
 typedef struct IR_MemAddr {
@@ -118,6 +119,7 @@ typedef struct IR_MemAddr {
     union {
         IR_Reg reg;
         Symbol* sym;
+        InternedStrLit* str_lit;
     } base;
 
     IR_Reg index_reg;
