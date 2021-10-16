@@ -1492,8 +1492,8 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
     }
 
     Type* elem_type = type->as_array.base;
-    size_t array_len = type->as_array.len;
-    size_t elem_index = 0;
+    u64 array_len = type->as_array.len;
+    u64 elem_index = 0;
     bool is_compound_lit = expr->typespec != NULL; // Otherwise, it is an initializer
     bool all_initzers_constexpr = true;
 
@@ -1512,15 +1512,22 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
             return false;
         }
 
-        // Index designator must be within array's bounds.
+        // Resolve array index designator expression.
         if (designator.kind == DESIGNATOR_INDEX) {
-            // TODO: Implement: resolve index expressions, check bounds, etc.
-            assert(0);
+            if (!resolve_expr(resolver, designator.index, elem_type))
+                return false;
+
+            if (!designator.index->is_constexpr) {
+                resolver_on_error(resolver, "Array index designator must be a compile-time constant expression");
+                return false;
+            }
+
+            elem_index = designator.index->const_val.as_int._u64;
         }
 
         if (elem_index >= array_len) {
-            resolver_on_error(resolver, "Array initializer index (`%llu`) is out of bounds (`%llu`)", elem_index,
-                              array_len);
+            resolver_on_error(resolver, "Array index designator `%llu` is not within the expected array bounds (`%llu`)",
+                              elem_index, array_len);
             return false;
         }
 
@@ -1543,9 +1550,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
         // Keep track of constness.
         all_initzers_constexpr &= init_op.is_constexpr;
 
-        if (designator.kind != DESIGNATOR_INDEX)
-            elem_index += 1;
-
+        elem_index += 1;
         it = it->next;
     }
 

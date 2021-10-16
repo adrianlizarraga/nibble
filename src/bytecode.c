@@ -1925,23 +1925,33 @@ static void IR_emit_expr_compound_lit(IR_Builder* builder, ExprCompoundLit* expr
     assert(expr->super.type->kind == TYPE_ARRAY);
     assert(!expr->typespec);
 
-    u32 initzer_index = 0;
+    u64 initzer_index = 0;
     IR_ArrayMemberInitializer* ir_initzers =
         alloc_array(builder->tmp_arena, IR_ArrayMemberInitializer, expr->num_initzers, true);
 
     List* head = &expr->initzers;
     List* it = head->next;
+    u64 elem_index = 0;
 
     while (it != head) {
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
         IR_ArrayMemberInitializer* ir_initzer = ir_initzers + initzer_index;
 
-        // TODO: Support index designator
-        assert(initzer->designator.kind == DESIGNATOR_NONE);
-        ir_initzer->index = initzer_index;
+        if (initzer->designator.kind == DESIGNATOR_INDEX) {
+            IR_Operand desig_op = {0};
+            IR_emit_expr(builder, initzer->designator.index, &desig_op);
 
+            assert(desig_op.kind == IR_OPERAND_IMM);
+            elem_index = desig_op.imm.as_int._u64;
+        }
+        else {
+            assert(initzer->designator.kind == DESIGNATOR_NONE);
+        }
+
+        ir_initzer->index = elem_index;
         IR_emit_expr(builder, initzer->init, &ir_initzer->op);
 
+        elem_index += 1;
         initzer_index += 1;
         it = it->next;
     }
