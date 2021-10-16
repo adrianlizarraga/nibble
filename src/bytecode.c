@@ -2117,6 +2117,9 @@ static void IR_emit_array_str_init(IR_Builder* builder, IR_Operand* array_op, IR
 
         IR_emit_assign(builder, &elem_ptr_op, &char_op);
     }
+
+    // TODO: Reduce the number of assignment (mov) instructions by initializing
+    // multiple elements at a time (one machine word's worth).
 }
 
 static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs)

@@ -1,5 +1,7 @@
 var g_s : [6]char = "HELLO";
 var g_a : [4]char;
+var g_b : [3]char = {'3', '4'}; // last element is automatically set to 0
+                                // because this is a global variable.
 
 proc first_char(str: ^char) => char {
     return str[0];
@@ -17,6 +19,7 @@ proc main() => int
     //var t : [6]char;
     //t = "12345";
 
-    return first_char("Sailor\n`") + a[1] - s[4] + g_s[1] - g_a[2]; // 'S' + 'e' - '5' + 'E' - 0 <=> 83 + 101 - 53 + 69 - 0 = 200
+    // 'S' + 'e' - '5' + 'E' - 0 - '4' <=> 83 + 101 - 53 + 69 - 0 - 52 = 148
+    return first_char("Sailor\n`") + a[1] - s[4] + g_s[1] - g_a[2] - g_b[1]; 
 }
 

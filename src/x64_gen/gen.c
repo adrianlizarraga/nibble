@@ -243,15 +243,15 @@ static char** X64_emit_data(X64_Generator* gen, const char* format, ...)
 
 static void X64_emit_global_data(X64_Generator* generator, const char* name, Type* type, Expr* init)
 {
+    Allocator* tmp_mem = generator->tmp_mem;
+
     X64_emit_data(generator, "ALIGN %d", type->align);
     X64_emit_data(generator, "%s: ", name);
 
     switch (type->kind) {
     case TYPE_INTEGER: {
         Scalar val = init ? init->const_val : (Scalar){0};
-        X64_emit_data(generator, "%s %s\n", x64_data_size_label[type->size],
-                      X64_print_imm(generator->tmp_mem, val, type->size));
-
+        X64_emit_data(generator, "%s %s\n", x64_data_size_label[type->size], X64_print_imm(tmp_mem, val, type->size));
         break;
     }
     case TYPE_ARRAY: {
@@ -261,33 +261,72 @@ static void X64_emit_global_data(X64_Generator* generator, const char* name, Typ
         // Initialize array with zeros
         if (!init) {
             Scalar zero_val = {0};
-            char* line = array_create(generator->tmp_mem, char, num_elems << 1);
+            AllocatorState mem_state = allocator_get_state(tmp_mem);
+            char* line = array_create(tmp_mem, char, num_elems << 1);
 
             ftprint_char_array(&line, false, "%s ", x64_data_size_label[elem_type->size]);
 
+            // Print a zero for each element.
             for (u64 i = 0; i < num_elems; i += 1) {
-                ftprint_char_array(&line, false, "%s", X64_print_imm(generator->tmp_mem, zero_val, elem_type->size));
+                char sep = (i == num_elems - 1) ? '\n' : ',';
+                const char* val_str = X64_print_imm(tmp_mem, zero_val, elem_type->size);
 
-                if (i == (num_elems - 1)) {
-                    ftprint_char_array(&line, false, "\n");
-                }
-                else {
-                    ftprint_char_array(&line, false, ",");
-                }
+                ftprint_char_array(&line, false, "%s%c", val_str, sep);
             }
 
             array_push(line, '\0');
             X64_emit_data(generator, "%s\n", line);
+            allocator_restore_state(mem_state);
         }
         else if (init->kind == CST_ExprStr) {
             InternedStrLit* str_lit = ((ExprStr*)init)->str_lit;
-            const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
+            const char* escaped_str = cstr_escape(tmp_mem, str_lit->str, str_lit->len, '`');
 
             X64_emit_data(generator, "%s `%s\\0`\n", x64_data_size_label[elem_type->size], escaped_str);
         }
         else {
             assert(init->kind == CST_ExprCompoundLit);
-            assert(0); // TODO: Implement;
+
+            AllocatorState mem_state = allocator_get_state(tmp_mem);
+            Scalar* init_vals = alloc_array(tmp_mem, Scalar, num_elems, true); // Initialized to zero
+
+            // Iterate through initializers and overwrite appropriate elements in init_vals array with
+            // the specified initializer value.
+            u64 elem_index = 0;
+            List* head = &(((ExprCompoundLit*)init)->initzers);
+            List* it = head->next;
+
+            while (it != head) {
+                assert(elem_index < num_elems);
+                MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+
+                if (initzer->designator.kind == DESIGNATOR_INDEX) {
+                    assert(initzer->designator.index->is_constexpr);
+                    elem_index = initzer->designator.index->const_val.as_int._u64;
+                }
+
+                assert(initzer->init->is_constexpr);
+                init_vals[elem_index].as_int._u64 = initzer->init->const_val.as_int._u64;
+
+                elem_index += 1;
+                it = it->next;
+            }
+
+            // Print an initial value for each element.
+            char* line = array_create(tmp_mem, char, num_elems << 1);
+
+            ftprint_char_array(&line, false, "%s ", x64_data_size_label[elem_type->size]);
+
+            for (u64 i = 0; i < num_elems; i += 1) {
+                char sep = (i == num_elems - 1) ? '\n' : ',';
+                const char* val_str = X64_print_imm(tmp_mem, init_vals[i], elem_type->size);
+
+                ftprint_char_array(&line, false, "%s%c", val_str, sep);
+            }
+
+            array_push(line, '\0');
+            X64_emit_data(generator, "%s\n", line);
+            allocator_restore_state(mem_state);
         }
         break;
     }
