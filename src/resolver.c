@@ -1494,6 +1494,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
     Type* elem_type = type->as_array.base;
     u64 array_len = type->as_array.len;
     u64 elem_index = 0;
+    bool infer_len = array_len == 0;
     bool is_compound_lit = expr->typespec != NULL; // Otherwise, it is an initializer
     bool all_initzers_constexpr = true;
 
@@ -1525,7 +1526,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
             elem_index = designator.index->const_val.as_int._u64;
         }
 
-        if (elem_index >= array_len) {
+        if (!infer_len && elem_index >= array_len) {
             resolver_on_error(resolver, "Array index designator `%llu` is not within the expected array bounds (`%llu`)",
                               elem_index, array_len);
             return false;
@@ -1552,6 +1553,11 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
 
         elem_index += 1;
         it = it->next;
+    }
+
+    if (infer_len) {
+        type = type_array(resolver->ast_mem, &resolver->type_cache->arrays, elem_type, elem_index);
+        ftprint_out("Inferred length %llu\n", elem_index);
     }
 
     // TODO: HMMMMMM.... there's a difference between an array initializer (not lvalue) and a compound literal (lvalue),
@@ -1673,25 +1679,28 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             return NULL;
         }
 
-        if (!resolve_expr(resolver, ts->len, NULL))
-            return NULL;
+        size_t len = 0;
 
-        if (!ts->len->is_constexpr) {
-            resolver_on_error(resolver, "Array length must be a compile-time constant");
-            return NULL;
-        }
+        if (ts->len) {
+            if (!resolve_expr(resolver, ts->len, NULL))
+                return NULL;
 
-        if (ts->len->type->kind != TYPE_INTEGER) {
-            resolver_on_error(resolver, "Array length must be an integer");
-            return NULL;
-        }
+            if (!ts->len->is_constexpr) {
+                resolver_on_error(resolver, "Array length must be a compile-time constant");
+                return NULL;
+            }
 
-        ExprOperand eop = OP_FROM_CONST(ts->len->type, ts->len->const_val);
-        cast_eop(&eop, type_s32);
-        s32 len = eop.const_val.as_int._s32;
+            if (ts->len->type->kind != TYPE_INTEGER) {
+                resolver_on_error(resolver, "Array length must be an integer");
+                return NULL;
+            }
 
-        if (len <= 0) {
-            resolver_on_error(resolver, "Array length must be a positive, non-zero integer");
+            len = (size_t)(ts->len->const_val.as_int._u64);
+
+            if (len == 0) {
+                resolver_on_error(resolver, "Array length must be a positive, non-zero integer");
+                return NULL;
+            }
         }
 
         return type_array(resolver->ast_mem, &resolver->type_cache->arrays, base_type, len);
@@ -1767,10 +1776,14 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 
             ExprOperand right_eop = OP_FROM_EXPR(expr);
 
+            // If assigning an array to a pointer, try to decay the right-hand-side expression.
             if ((declared_type->kind == TYPE_PTR) && !eop_decay(resolver, &right_eop))
                 return false;
 
-            if (!convert_eop(&right_eop, declared_type)) {
+            if ((declared_type->kind == TYPE_ARRAY) && !declared_type->as_array.len) {
+                declared_type = right_eop.type; // Get complete array type (with length) from right-hand-side expression.
+            }
+            else if (!convert_eop(&right_eop, declared_type)) {
                 resolver_on_error(resolver, "Incompatible types. Cannot convert `%s` to `%s`",
                                   type_name(right_eop.type), type_name(declared_type));
                 return false;
@@ -1792,6 +1805,11 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
             type = declared_type;
         }
         else {
+            if ((declared_type->kind == TYPE_ARRAY) && !declared_type->as_array.len) {
+                resolver_on_error(resolver, "Cannot infer the number of elements in array type specification");
+                return false;
+            }
+
             type = declared_type;
         }
     }

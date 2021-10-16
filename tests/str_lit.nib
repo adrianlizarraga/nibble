@@ -1,4 +1,4 @@
-var g_s : [6]char = "HELLO";
+var g_s : []char = "HELLO";
 var g_a : [4]char;
 var g_b : [4]char = {[1] = '1', '4'}; // first and last elements are automatically set to 0
                                       // because this is a global variable.
