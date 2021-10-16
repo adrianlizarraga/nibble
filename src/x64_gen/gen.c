@@ -1038,14 +1038,11 @@ static X64_SIBDAddr X64_get_sibd_addr(X64_RegGroup* group, IR_MemAddr* vaddr)
     return sibd_addr;
 }
 
-static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 size)
+static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 mem_label_size)
 {
+    assert(mem_label_size <= X64_MAX_INT_REG_SIZE);
     char* dstr = array_create(allocator, char, 16);
-    const char* mem_label = size <= X64_MAX_INT_REG_SIZE ? x64_mem_size_label[size] : NULL;
-
-    if (!mem_label) {
-        mem_label = "";
-    }
+    const char* mem_label = mem_label_size ? x64_mem_size_label[mem_label_size] : "";
 
     if (addr->kind == X64_SIBD_ADDR_STR_LIT) {
         ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_STR_LIT_PRE, addr->str_lit->id); 
@@ -1710,9 +1707,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         break;
     }
     case IR_INSTR_LADDR: {
-        u32 size = (u32)instr->laddr.type->size;
-
-        X64_emit_rm_instr(generator, "lea", true, X64_MAX_INT_REG_SIZE, instr->laddr.dst, size, &instr->laddr.mem);
+        X64_emit_rm_instr(generator, "lea", true, X64_MAX_INT_REG_SIZE, instr->laddr.dst, 0, &instr->laddr.mem);
         break;
     }
     case IR_INSTR_TRUNC_R_R: {
