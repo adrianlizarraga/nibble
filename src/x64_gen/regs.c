@@ -51,7 +51,23 @@ static const char* x64_linux_startup_code =
     "    call main                    ; Call program main()\n"
     "    mov edi, eax                 ; Move main's return value into rdi for exit syscall\n"
     "    mov rax, 60                  ; Move id of exit syscall into rax\n"
-    "    syscall                      ; Call exit syscall\n";
+    "    syscall                      ; Call exit syscall\n"
+    "\n"
+    "global _nibble_stdout\n"
+    "_nibble_stdout:\n"
+    "    push rbp \n"
+    "    mov rbp, rsp\n"
+    "\n"
+    "    xchg rdi, rsi ; swap args -> bytes in rsi, count in rdi\n"
+    "    mov rax, 1    ; write syscall\n"
+    "    mov rdx, rdi  ; count in rdx\n"
+    "    mov rdi, 1    ; STDOUT_FILENO in rdi\n"
+    "\n"
+    "    syscall\n"
+    "\n"
+    "    mov rsp, rbp\n"
+    "    pop rbp\n"
+    "    ret\n";
 
 // TODO: https://stackoverflow.com/questions/59474618/hello-world-in-nasm-with-link-exe-and-winapi
 static const char* x64_windows_startup_code =
