@@ -39,6 +39,33 @@ static const u32 x64_windows_caller_saved_reg_mask = 0x0F07;
 // _, RCX, RDX, _, _, _, _, _, R8, R9, _, _, _, _, _, _
 static const u32 x64_windows_arg_reg_mask = 0x0306;
 
+static const char* x64_linux_startup_code =
+    "SECTION .text\n"
+    "global _start\n"
+    "_start:  ; Program entry\n"
+    "    xor rbp, rbp                 ; Mark the end of linked stacked frames\n"
+    "    mov edi, dword [rsp]         ; Store argc into edi\n"
+    "    lea rsi, [rsp + 8]           ; Store argv (address of first char*) into rsi\n"
+    "    lea rdx, [rsp + 8*rdi + 16]  ; Store address of envp into rdx (8-bytes between argvs and envp)\n"
+    "    xor eax, eax                 ; Clear eax (just in case for variadic functions)\n"
+    "    call main                    ; Call program main()\n"
+    "    mov edi, eax                 ; Move main's return value into rdi for exit syscall\n"
+    "    mov rax, 60                  ; Move id of exit syscall into rax\n"
+    "    syscall                      ; Call exit syscall\n";
+
+// TODO: https://stackoverflow.com/questions/59474618/hello-world-in-nasm-with-link-exe-and-winapi
+static const char* x64_windows_startup_code =
+    "SECTION .text\n"
+    "global _start\n"
+    "_start:  ; Program entry\n"
+    "    xor rbp, rbp                 ; Mark the end of linked stacked frames\n"
+    "    ; TODO - GET argc and argv\n"
+    "    xor eax, eax                 ; Clear eax (just in case for variadic functions)\n"
+    "    sub rsp, 32                  ; Shadow space\n"
+    "    call main                    ; Call program main()\n"
+    "    ret\n"
+    "    ; TODO - EXIT\n";
+
 X64_Target x64_target;
 
 bool init_x64_target(OS target_os)
@@ -58,6 +85,8 @@ bool init_x64_target(OS target_os)
 
         x64_target.caller_saved_reg_mask = x64_linux_caller_saved_reg_mask;
         x64_target.arg_reg_mask = x64_linux_arg_reg_mask;
+
+        x64_target.startup_code = x64_linux_startup_code;
         return true;
     case OS_WIN32:
         x64_target.num_arg_regs = ARRAY_LEN(x64_windows_arg_regs);
@@ -71,6 +100,8 @@ bool init_x64_target(OS target_os)
 
         x64_target.caller_saved_reg_mask = x64_windows_caller_saved_reg_mask;
         x64_target.arg_reg_mask = x64_windows_arg_reg_mask;
+
+        x64_target.startup_code = x64_windows_startup_code;
         return true;
     default:
         return false;

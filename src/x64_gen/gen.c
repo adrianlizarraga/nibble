@@ -98,8 +98,7 @@ static const char* x64_condition_codes[] = {
 
 static const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
 
-typedef enum X64_SIBDAddrKind
-{
+typedef enum X64_SIBDAddrKind {
     X64_SIBD_ADDR_GLOBAL,
     X64_SIBD_ADDR_LOCAL,
     X64_SIBD_ADDR_STR_LIT,
@@ -1971,7 +1970,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
     X64_emit_text(generator, "");
-    X64_emit_text(generator, "SECTION .text");
     X64_emit_text(generator, "global %s", sym->name);
     X64_emit_text(generator, "%s:", sym->name);
 
@@ -2142,6 +2140,9 @@ static void X64_write_output_file(X64_Generator* generator, FILE* out_fd)
                 ftprint_file(out_fd, false, "%s\n", str);
         }
     }
+
+    // Write startup code.
+    ftprint_file(out_fd, false, "%s\n\n", x64_target.startup_code);
 
     for (Bucket* bucket = generator->text_lines->first; bucket; bucket = bucket->next) {
         for (size_t i = 0; i < bucket->count; i += 1) {

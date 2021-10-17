@@ -41,6 +41,8 @@ typedef struct X64_Target {
     u32 caller_saved_reg_mask;
     u32 arg_reg_mask;
 
+    const char* startup_code;
+
     OS os;
 } X64_Target;
 
