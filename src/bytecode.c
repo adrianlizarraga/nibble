@@ -2585,15 +2585,18 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
             var_index += 1;
         }
         else if (sym->kind == SYMBOL_PROC) {
-            module->procs[proc_index] = sym;
-            proc_index += 1;
+            DeclProc* decl = (DeclProc*)sym->decl;
+            if (!decl->is_incomplete) {
+                module->procs[proc_index] = sym;
+                proc_index += 1;
+            }
         }
 
         it = it->next;
     }
 
+    module->num_procs = proc_index; // TODO: Should be able to set size correctly beforehand.
     assert(var_index == module->num_vars);
-    assert(proc_index == module->num_procs);
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 

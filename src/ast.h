@@ -494,6 +494,7 @@ typedef struct DeclProc {
     List params;
     List stmts;
 
+    bool is_incomplete; // Procedure does not have a body.
     Scope* scope;
 } DeclProc;
 
@@ -513,7 +514,7 @@ typedef Decl* NewDeclAggregateProc(Allocator* alloc, const char* name, List* fie
 Decl* new_decl_struct(Allocator* allocator, const char* name, List* fields, ProgRange range);
 Decl* new_decl_union(Allocator* allocator, const char* name, List* fields, ProgRange range);
 Decl* new_decl_proc(Allocator* allocator, const char* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, ProgRange range);
+                    u32 num_decls, bool is_incomplete, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 

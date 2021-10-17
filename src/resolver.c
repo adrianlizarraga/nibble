@@ -1968,6 +1968,9 @@ static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_PROC);
 
+    if (((DeclProc*)(sym->decl))->is_incomplete)
+        return true;
+
     if (!resolve_proc_stmts(resolver, sym))
         return false;
 
