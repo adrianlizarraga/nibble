@@ -176,8 +176,8 @@ static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* t
 
 static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKind kind, const char* name, Decl* decl)
 {
-    if (lookup_scope_symbol(scope, name))
-        return NULL;
+    if (lookup_symbol(scope, name))
+        return NULL; // Shadows a symbol in the current scope or a parent scope.
 
     Symbol* sym = new_symbol_decl(resolver->ast_mem, kind, name, decl);
     sym->status = SYMBOL_STATUS_UNRESOLVED;
