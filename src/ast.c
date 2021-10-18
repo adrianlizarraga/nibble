@@ -244,6 +244,15 @@ Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num
     return (Expr*)expr;
 }
 
+Annotation* new_annotation(Allocator* allocator, const char* name, ProgRange range)
+{
+    Annotation* annotation = alloc_type(allocator, Annotation, true);
+    annotation->name = name;
+    annotation->range = range;
+
+    return annotation;
+}
+
 #define new_decl(a, k, r) (k*)new_decl_((a), sizeof(k), alignof(k), CST_##k, (r))
 static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, ProgRange range)
 {

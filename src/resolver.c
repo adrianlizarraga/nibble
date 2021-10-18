@@ -1887,9 +1887,61 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
     return true;
 }
 
+static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
+{
+    bool intrinsic = false;
+    bool foreign = false;
+
+    List* head = &decl->super.annotations;
+    List* it = head->next;
+
+    while (it != head) {
+        Annotation* a = list_entry(it, Annotation, lnode);
+        const char* name = a->name;
+
+        if (name == annotation_names[ANNOTATION_INTRINSIC]) {
+            if (intrinsic) {
+                resolver_on_error(resolver, "Duplicate @intrinsic annotations");
+                return false;
+            }
+
+            intrinsic = true;
+        }
+        else if (name == annotation_names[ANNOTATION_FOREIGN]) {
+            if (foreign) {
+                resolver_on_error(resolver, "Duplicate @foreign annotations");
+                return false;
+            }
+
+            foreign = true;
+        }
+
+        it = it->next;
+    }
+
+    if (intrinsic && !decl->is_incomplete) {
+        resolver_on_error(resolver, "Intrinsic procedure cannot have a body");
+        return false;
+    }
+
+    // TODO: Check against known intrinsic procedures.
+
+    if (foreign && !decl->is_incomplete) {
+        resolver_on_error(resolver, "Foreign procedure cannot have a body");
+        return false;
+    }
+
+    return true;
+}
+
 static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
+
+    if (!resolve_decl_proc_annotations(resolver, decl)) {
+        return false;
+    }
+
     decl->scope = push_scope(resolver, decl->num_params + decl->num_decls);
 
     AllocatorState mem_state = allocator_get_state(resolver->tmp_mem);

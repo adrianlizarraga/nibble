@@ -70,6 +70,8 @@ static StringView keyword_names[KW_COUNT] = {
     [KW_UNDERSCORE] = string_view_lit("_"),
 };
 
+const char* annotation_names[ANNOTATION_COUNT];
+
 static char* slurp_file(Allocator* allocator, const char* filename)
 {
     FILE* fd = fopen(filename, "r");
@@ -126,6 +128,35 @@ static void print_errors(ByteStream* errors)
             chunk = chunk->next;
         }
     }
+}
+
+static bool init_annotations()
+{
+    for (int i = 0; i < ANNOTATION_COUNT; i += 1) {
+        switch (i) {
+        case ANNOTATION_CUSTOM:
+            break;
+        case ANNOTATION_INTRINSIC: {
+            StringView s = string_view_lit("intrinsic");
+            annotation_names[i] = intern_ident(s.str, s.len, NULL, NULL);
+            break;
+        }
+        case ANNOTATION_FOREIGN: {
+            StringView s = string_view_lit("foreign");
+            annotation_names[i] = intern_ident(s.str, s.len, NULL, NULL);
+            break;
+        }
+        case ANNOTATION_PACKED: {
+            StringView s = string_view_lit("packed");
+            annotation_names[i] = intern_ident(s.str, s.len, NULL, NULL);
+            break;
+        }
+        default:
+            return false;
+        }
+    }
+
+    return true;
 }
 
 static bool init_keywords()
@@ -190,6 +221,9 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->type_cache.procs = hmap(6, NULL);
 
     if (!init_keywords())
+        return false;
+
+    if (!init_annotations())
         return false;
 
     init_scope_lists(&nibble->global_scope);

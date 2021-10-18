@@ -136,6 +136,15 @@ typedef enum Keyword {
     KW_COUNT,
 } Keyword;
 
+typedef enum AnnotationKind {
+    ANNOTATION_CUSTOM = 0,
+    ANNOTATION_INTRINSIC,
+    ANNOTATION_FOREIGN,
+    ANNOTATION_PACKED,
+
+    ANNOTATION_COUNT,
+} AnnotationKind;
+
 typedef struct TypeCache {
     HMap ptrs;
     HMap arrays;
@@ -143,6 +152,7 @@ typedef struct TypeCache {
 } TypeCache;
 
 extern const char* keywords[KW_COUNT];
+extern const char* annotation_names[ANNOTATION_COUNT];
 
 InternedStrLit* intern_str_lit(const char* str, size_t len);
 const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);

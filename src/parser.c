@@ -1288,7 +1288,7 @@ static Stmt* parse_stmt_for(Parser* parser)
     Stmt* init = NULL;
 
     if (!match_token(parser, TKN_SEMICOLON)) {
-        if (is_keyword(parser, KW_VAR))
+        if (is_keyword(parser, KW_VAR) || is_token_kind(parser, TKN_AT))
             init = parse_stmt_decl(parser);
         else
             init = parse_stmt_expr(parser, true);
@@ -1509,6 +1509,41 @@ Stmt* parse_stmt(Parser* parser)
 ///////////////////////////////
 //    Parse declarations
 //////////////////////////////
+
+static Annotation* parse_annotation(Parser* parser)
+{
+    assert(is_token_kind(parser, TKN_AT));
+    ProgRange range = {.start = parser->token.range.start};
+
+    next_token(parser);
+
+    if (!expect_token(parser, TKN_IDENT, "Failed to parse annotation")) {
+        return NULL;
+    }
+
+    const char* name = parser->ptoken.as_ident.value;
+    range.end = parser->ptoken.range.end;
+
+    return new_annotation(parser->ast_arena, name, range);
+}
+
+static bool parse_annotations(Parser* parser, List* annotations)
+{
+    list_head_init(annotations);
+
+    while (is_token_kind(parser, TKN_AT)) {
+        Annotation* a = parse_annotation(parser);
+
+        if (!a) {
+            return false;
+        }
+
+        list_add_last(annotations, &a->lnode);
+    }
+
+    return true;
+}
+
 // decl_var = KW_VAR TKN_IDENT ':' type_spec? ('=' expr)? ';'
 //
 // Ex 1: var x : int = 0;
@@ -1841,7 +1876,7 @@ static Decl* parse_decl_const(Parser* parser)
 //      | decl_struct
 //      | decl_union
 //      | decl_proc
-Decl* parse_decl(Parser* parser)
+static Decl* parse_decl_no_annotations(Parser* parser)
 {
     if (is_token_kind(parser, TKN_KW)) {
         switch (parser->token.as_kw.kw) {
@@ -1872,3 +1907,23 @@ Decl* parse_decl(Parser* parser)
 
     return NULL;
 }
+
+Decl* parse_decl(Parser* parser)
+{
+    List annotations = {0};
+
+    if (!parse_annotations(parser, &annotations)) {
+        return NULL;
+    }
+
+    Decl* decl = parse_decl_no_annotations(parser);
+
+    if (!decl) {
+        return NULL;
+    }
+
+    list_replace(&annotations, &decl->annotations);
+
+    return decl;
+}
+

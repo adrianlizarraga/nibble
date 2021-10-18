@@ -23,6 +23,7 @@ typedef enum TokenKind {
     TKN_ARROW,
     TKN_CAST,
     TKN_POUND,
+    TKN_AT,
 
     TKN_STR,
     TKN_IDENT,

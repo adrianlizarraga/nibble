@@ -460,6 +460,7 @@ const char* token_kind_names[] = {
     [TKN_ARROW] = "=>",
     [TKN_CAST] = ":>",
     [TKN_POUND] = "#",
+    [TKN_AT] = "@",
 
     [TKN_STR] = "string literal",
     [TKN_IDENT] = "identifier",
@@ -614,6 +615,10 @@ top:
     case '#':
         lexer->at++;
         token.kind = TKN_POUND;
+        break;
+    case '@':
+        lexer->at++;
+        token.kind = TKN_AT;
         break;
     case '+':
         lexer->at++;

@@ -429,6 +429,12 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 //       Declarations
 //////////////////////////////
 
+typedef struct Annotation {
+    const char* name;
+    ProgRange range;
+    ListNode lnode;
+} Annotation;
+
 typedef enum DeclKind {
     CST_DECL_NONE,
     CST_DeclVar,
@@ -443,6 +449,7 @@ typedef enum DeclKind {
 struct Decl {
     DeclKind kind;
     ProgRange range;
+    List annotations;
     ListNode lnode;
 };
 
@@ -504,6 +511,7 @@ typedef struct DeclTypedef {
     TypeSpec* typespec;
 } DeclTypedef;
 
+Annotation* new_annotation(Allocator* allocator, const char* name, ProgRange range);
 Decl* new_decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
