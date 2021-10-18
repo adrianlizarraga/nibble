@@ -2511,6 +2511,10 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 {
     DeclProc* dproc = (DeclProc*)sym->decl;
 
+    if (dproc->is_incomplete) {
+        return;
+    }
+
     // Set procedure as the current scope.
     IR_push_scope(builder, dproc->scope);
     builder->curr_proc = sym;
@@ -2585,17 +2589,14 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
             var_index += 1;
         }
         else if (sym->kind == SYMBOL_PROC) {
-            DeclProc* decl = (DeclProc*)sym->decl;
-            if (!decl->is_incomplete) {
-                module->procs[proc_index] = sym;
-                proc_index += 1;
-            }
+            module->procs[proc_index] = sym;
+            proc_index += 1;
         }
 
         it = it->next;
     }
 
-    module->num_procs = proc_index; // TODO: Should be able to set size correctly beforehand.
+    assert(proc_index == module->num_procs);
     assert(var_index == module->num_vars);
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);

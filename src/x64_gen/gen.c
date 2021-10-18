@@ -1952,6 +1952,12 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
 
 static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 {
+    DeclProc* decl = (DeclProc*)sym->decl;
+
+    if (decl->is_incomplete) {
+        return;
+    }
+
     generator->curr_proc.sym = sym;
     generator->curr_proc.id = proc_id;
 
@@ -1979,7 +1985,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     char** save_regs_inst = X64_emit_text(generator, NULL);
     char** sub_rsp_inst = X64_emit_text(generator, NULL);
 
-    u32 stack_size = X64_assign_proc_stack_offsets(generator, (DeclProc*)sym->decl); // NOTE: Spills argument registers.
+    u32 stack_size = X64_assign_proc_stack_offsets(generator, decl); // NOTE: Spills argument registers.
 
     // Register allocation.
     LifetimeInterval* vreg_intervals = sym->as_proc.reg_intervals;
