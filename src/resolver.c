@@ -1925,6 +1925,12 @@ static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
     }
 
     // TODO: Check against known intrinsic procedures.
+    // A more efficient way to do this would be to use an InterenedIdentifier type that 
+    // indicates whether an identifier corresponds to an intrinsic.
+    if (intrinsic && (cstr_cmp(decl->name, "_nibble_stdout") != 0)) {
+        resolver_on_error(resolver, "Unknown intrinsic procedure `%s`\n", decl->name);
+        return false;
+    }
 
     if (foreign && !decl->is_incomplete) {
         resolver_on_error(resolver, "Foreign procedure cannot have a body");
