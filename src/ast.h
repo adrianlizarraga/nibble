@@ -489,11 +489,18 @@ typedef struct DeclAggregate {
 typedef DeclAggregate DeclUnion;
 typedef DeclAggregate DeclStruct;
 
+enum ProcFlags {
+    PROC_IS_INCOMPLETE = 0x1,
+    PROC_IS_INTRINSIC = 0x2,
+    PROC_IS_FOREIGN = 0x4,
+};
+
 typedef struct DeclProc {
     Decl super;
     const char* name;
     TypeSpec* ret;
 
+    u32 flags;
     u32 num_params;
     u32 num_decls;
     bool returns;
@@ -501,7 +508,6 @@ typedef struct DeclProc {
     List params;
     List stmts;
 
-    bool is_incomplete; // Procedure does not have a body.
     Scope* scope;
 } DeclProc;
 
@@ -522,7 +528,7 @@ typedef Decl* NewDeclAggregateProc(Allocator* alloc, const char* name, List* fie
 Decl* new_decl_struct(Allocator* allocator, const char* name, List* fields, ProgRange range);
 Decl* new_decl_union(Allocator* allocator, const char* name, List* fields, ProgRange range);
 Decl* new_decl_proc(Allocator* allocator, const char* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, bool is_incomplete, ProgRange range);
+                    u32 num_decls, u32 flags, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 

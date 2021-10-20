@@ -1954,7 +1954,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
 
-    if (decl->is_incomplete) {
+    if (decl->flags & PROC_IS_INCOMPLETE) {
         return;
     }
 

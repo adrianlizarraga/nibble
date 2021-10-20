@@ -343,13 +343,13 @@ AggregateField* new_aggregate_field(Allocator* allocator, const char* name, Type
 }
 
 Decl* new_decl_proc(Allocator* allocator, const char* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, bool is_incomplete, ProgRange range)
+                    u32 num_decls, u32 flags, ProgRange range)
 {
     DeclProc* decl = new_decl(allocator, DeclProc, range);
     decl->name = name;
     decl->ret = ret;
     decl->num_params = num_params;
-    decl->is_incomplete = is_incomplete;
+    decl->flags = flags;
     decl->num_decls = num_decls;
 
     list_replace(params, &decl->params);

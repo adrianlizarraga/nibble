@@ -1889,9 +1889,6 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 
 static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
 {
-    bool intrinsic = false;
-    bool foreign = false;
-
     List* head = &decl->super.annotations;
     List* it = head->next;
 
@@ -1900,26 +1897,30 @@ static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
         const char* name = a->name;
 
         if (name == annotation_names[ANNOTATION_INTRINSIC]) {
-            if (intrinsic) {
+            if (decl->flags & PROC_IS_INTRINSIC) {
                 resolver_on_error(resolver, "Duplicate @intrinsic annotations");
                 return false;
             }
 
-            intrinsic = true;
+            decl->flags |= PROC_IS_INTRINSIC;
         }
         else if (name == annotation_names[ANNOTATION_FOREIGN]) {
-            if (foreign) {
+            if (decl->flags & PROC_IS_FOREIGN) {
                 resolver_on_error(resolver, "Duplicate @foreign annotations");
                 return false;
             }
 
-            foreign = true;
+            decl->flags |= PROC_IS_FOREIGN;
         }
 
         it = it->next;
     }
 
-    if (intrinsic && !decl->is_incomplete) {
+    bool is_incomplete = decl->flags & PROC_IS_INCOMPLETE;
+    bool is_intrinsic = decl->flags & PROC_IS_INTRINSIC;
+    bool is_foreign = decl->flags & PROC_IS_FOREIGN;
+
+    if (is_intrinsic && !is_incomplete) {
         resolver_on_error(resolver, "Intrinsic procedure cannot have a body");
         return false;
     }
@@ -1927,13 +1928,18 @@ static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
     // TODO: Check against known intrinsic procedures.
     // A more efficient way to do this would be to use an InterenedIdentifier type that 
     // indicates whether an identifier corresponds to an intrinsic.
-    if (intrinsic && (cstr_cmp(decl->name, "_nibble_stdout") != 0)) {
+    if (is_intrinsic && (cstr_cmp(decl->name, "_nibble_stdout") != 0)) {
         resolver_on_error(resolver, "Unknown intrinsic procedure `%s`\n", decl->name);
         return false;
     }
 
-    if (foreign && !decl->is_incomplete) {
+    if (is_foreign && !is_incomplete) {
         resolver_on_error(resolver, "Foreign procedure cannot have a body");
+        return false;
+    }
+
+    if (is_foreign && is_intrinsic) {
+        resolver_on_error(resolver, "Procedure cannot be both intrinsic and foreign");
         return false;
     }
 
@@ -2026,7 +2032,7 @@ static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_PROC);
 
-    if (((DeclProc*)(sym->decl))->is_incomplete)
+    if (((DeclProc*)(sym->decl))->flags & PROC_IS_INCOMPLETE)
         return true;
 
     if (!resolve_proc_stmts(resolver, sym))

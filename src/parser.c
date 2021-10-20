@@ -1668,14 +1668,14 @@ static Decl* parse_decl_proc(Parser* parser)
                         if (parse_fill_stmt_block_body(parser, &body, error_prefix)) {
                             range.end = parser->ptoken.range.end;
                             decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
-                                                 body.num_decls, false, range);
+                                                 body.num_decls, 0, range);
                         }
                     }
                     else if (match_token(parser, TKN_SEMICOLON)) {
                         list_head_init(&body.stmts);
                         range.end = parser->ptoken.range.end;
                         decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
-                                             body.num_decls, true, range);
+                                             body.num_decls, PROC_IS_INCOMPLETE, range);
                     }
                     else {
                         parser_unexpected_token(parser, TKN_RBRACE, error_prefix);
