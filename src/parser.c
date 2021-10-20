@@ -91,7 +91,7 @@ bool is_token_prop_kind(Parser* parser, uint8_t props)
 
 bool is_keyword(Parser* parser, Keyword kw)
 {
-    return (parser->token.kind == TKN_KW) && (parser->token.as_kw.kw == kw);
+    return (parser->token.kind == TKN_KW) && (parser->token.as_kw.ident->kw == kw);
 }
 
 bool match_token(Parser* parser, TokenKind kind)
@@ -107,7 +107,7 @@ bool match_token(Parser* parser, TokenKind kind)
 
 bool match_keyword(Parser* parser, Keyword kw)
 {
-    bool matches = (parser->token.kind == TKN_KW) && (parser->token.as_kw.kw == kw);
+    bool matches = (parser->token.kind == TKN_KW) && (parser->token.as_kw.ident->kw == kw);
 
     if (matches) {
         next_token(parser);
@@ -139,7 +139,7 @@ bool expect_token(Parser* parser, TokenKind kind, const char* error_prefix)
 
 bool expect_keyword(Parser* parser, Keyword kw, const char* error_prefix)
 {
-    bool matches = (parser->token.kind == TKN_KW) && (parser->token.as_kw.kw == kw);
+    bool matches = (parser->token.kind == TKN_KW) && (parser->token.as_kw.ident->kw == kw);
 
     if (matches) {
         next_token(parser);
@@ -149,7 +149,7 @@ bool expect_keyword(Parser* parser, Keyword kw, const char* error_prefix)
 
         print_token(&parser->token, tmp, sizeof(tmp));
         parser_on_error(parser, "%s : wanted keyword `%s`, but got token `%s`",
-                        error_prefix ? error_prefix : "Unexpected token", keywords[kw], tmp);
+                        error_prefix ? error_prefix : "Unexpected token", keyword_names[kw], tmp);
     }
 
     return matches;
@@ -176,7 +176,7 @@ static AggregateField* parse_aggregate_field(Parser* parser)
     if (!expect_token(parser, TKN_IDENT, error_prefix))
         return NULL;
 
-    const char* name = parser->ptoken.as_ident.value;
+    Identifier* ident = parser->ptoken.as_ident.ident;
     ProgRange range = {.start = parser->ptoken.range.start};
 
     if (!expect_token(parser, TKN_COLON, error_prefix))
@@ -189,7 +189,7 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return new_aggregate_field(parser->ast_arena, name, typespec, range);
+    return new_aggregate_field(parser->ast_arena, ident, typespec, range);
 }
 
 // aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
@@ -247,7 +247,7 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
             // NOTE: I wish this was truly LL1
             ProgRange range = {.start = typespec->range.start};
             TypeSpecIdent* tident = (TypeSpecIdent*)typespec;
-            const char* name = tident->name;
+            Identifier* name = tident->name;
 
             mem_free(parser->ast_arena, typespec);
 
@@ -328,7 +328,7 @@ static TypeSpec* parse_typespec_ident(Parser* parser)
 
     next_token(parser);
 
-    return new_typespec_ident(parser->ast_arena, token.as_ident.value, token.range);
+    return new_typespec_ident(parser->ast_arena, token.as_ident.ident, token.range);
 }
 
 // typespec_base  = typespec_proc
@@ -342,7 +342,7 @@ static TypeSpec* parse_typespec_base(Parser* parser)
 
     switch (token.kind) {
     case TKN_KW: {
-        switch (token.as_kw.kw) {
+        switch (token.as_kw.ident->kw) {
         case KW_PROC:
             return parse_typespec_proc(parser);
         case KW_STRUCT:
@@ -476,7 +476,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
 
         if (expr && match_token(parser, TKN_ASSIGN)) {
             if (expr->kind == CST_ExprIdent) {
-                const char* name = ((ExprIdent*)expr)->name;
+                Identifier* name = ((ExprIdent*)expr)->name;
 
                 mem_free(parser->ast_arena, expr);
 
@@ -634,7 +634,7 @@ static Expr* parse_expr_base(Parser* parser)
     case TKN_LBRACE:
         return parse_expr_compound_lit(parser);
     case TKN_KW: {
-        switch (token.as_kw.kw) {
+        switch (token.as_kw.ident->kw) {
         case KW_SIZEOF:
             return parse_expr_sizeof(parser);
         case KW_TYPEOF:
@@ -645,7 +645,7 @@ static Expr* parse_expr_base(Parser* parser)
     } break;
     case TKN_IDENT:
         next_token(parser);
-        return new_expr_ident(parser->ast_arena, token.as_ident.value, token.range);
+        return new_expr_ident(parser->ast_arena, token.as_ident.ident, token.range);
     default:
         break;
     }
@@ -667,7 +667,7 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
 
     if (expr && match_token(parser, TKN_ASSIGN)) {
         if (expr->kind == CST_ExprIdent) {
-            const char* name = ((ExprIdent*)expr)->name;
+            Identifier* name = ((ExprIdent*)expr)->name;
 
             mem_free(parser->ast_arena, expr);
 
@@ -702,7 +702,7 @@ static Expr* parse_expr_base_mod(Parser* parser)
             //
 
             if (expect_token(parser, TKN_IDENT, "Failed to parse field access")) {
-                const char* field = parser->ptoken.as_ident.value;
+                const char* field = parser->ptoken.as_ident.ident->str;
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
                 expr = new_expr_field(parser->ast_arena, expr, field, range);
             }
@@ -1370,7 +1370,7 @@ static Stmt* parse_stmt_break(Parser* parser)
     next_token(parser);
 
     if (match_token(parser, TKN_IDENT))
-        label = parser->ptoken.as_ident.value;
+        label = parser->ptoken.as_ident.ident->str;
 
     if (!expect_token(parser, TKN_SEMICOLON, "Failed to parse break statement"))
         return NULL;
@@ -1390,7 +1390,7 @@ static Stmt* parse_stmt_continue(Parser* parser)
     next_token(parser);
 
     if (match_token(parser, TKN_IDENT))
-        label = parser->ptoken.as_ident.value;
+        label = parser->ptoken.as_ident.ident->str;
 
     if (!expect_token(parser, TKN_SEMICOLON, "Failed to parse continue statement"))
         return NULL;
@@ -1413,7 +1413,7 @@ static Stmt* parse_stmt_goto(Parser* parser)
     if (!expect_token(parser, TKN_IDENT, error_prefix))
         return NULL;
 
-    label = parser->ptoken.as_ident.value;
+    label = parser->ptoken.as_ident.ident->str;
 
     if (!expect_token(parser, TKN_SEMICOLON, error_prefix))
         return NULL;
@@ -1435,7 +1435,7 @@ static Stmt* parse_stmt_label(Parser* parser)
     if (!expect_token(parser, TKN_IDENT, error_prefix))
         return NULL;
 
-    const char* label = parser->ptoken.as_ident.value;
+    const char* label = parser->ptoken.as_ident.ident->str;
 
     if (!expect_token(parser, TKN_COLON, error_prefix))
         return NULL;
@@ -1477,7 +1477,7 @@ Stmt* parse_stmt(Parser* parser)
     case TKN_LBRACE:
         return parse_stmt_block(parser);
     case TKN_KW:
-        switch (token.as_kw.kw) {
+        switch (token.as_kw.ident->kw) {
         case KW_IF:
             return parse_stmt_if(parser);
         case KW_WHILE:
@@ -1510,7 +1510,7 @@ Stmt* parse_stmt(Parser* parser)
 //    Parse declarations
 //////////////////////////////
 
-static Annotation* parse_annotation(Parser* parser)
+static DeclAnnotation* parse_annotation(Parser* parser)
 {
     assert(is_token_kind(parser, TKN_AT));
     ProgRange range = {.start = parser->token.range.start};
@@ -1521,7 +1521,7 @@ static Annotation* parse_annotation(Parser* parser)
         return NULL;
     }
 
-    const char* name = parser->ptoken.as_ident.value;
+    Identifier* name = parser->ptoken.as_ident.ident;
     range.end = parser->ptoken.range.end;
 
     return new_annotation(parser->ast_arena, name, range);
@@ -1532,7 +1532,7 @@ static bool parse_annotations(Parser* parser, List* annotations)
     list_head_init(annotations);
 
     while (is_token_kind(parser, TKN_AT)) {
-        Annotation* a = parse_annotation(parser);
+        DeclAnnotation* a = parse_annotation(parser);
 
         if (!a) {
             return false;
@@ -1559,7 +1559,7 @@ static Decl* parse_decl_var(Parser* parser)
     next_token(parser);
 
     if (expect_token(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.as_ident.value;
+        Identifier* name = parser->ptoken.as_ident.ident;
 
         if (expect_token(parser, TKN_COLON, error_prefix)) {
             TypeSpec* typespec = NULL;
@@ -1602,7 +1602,7 @@ static Decl* parse_proc_param(Parser* parser)
     if (!expect_token(parser, TKN_IDENT, error_prefix))
         return NULL;
 
-    const char* name = parser->ptoken.as_ident.value;
+    Identifier* name = parser->ptoken.as_ident.ident;
     ProgRange range = {.start = parser->ptoken.range.start};
 
     if (!expect_token(parser, TKN_COLON, error_prefix))
@@ -1630,7 +1630,7 @@ static Decl* parse_decl_proc(Parser* parser)
     next_token(parser);
 
     if (expect_token(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.as_ident.value;
+        Identifier* name = parser->ptoken.as_ident.ident;
 
         if (expect_token(parser, TKN_LPAREN, error_prefix)) {
             u32 num_params = 0;
@@ -1699,7 +1699,7 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, NewD
     next_token(parser);
 
     if (expect_token(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.as_ident.value;
+        Identifier* name = parser->ptoken.as_ident.ident;
 
         if (expect_token(parser, TKN_LBRACE, error_prefix)) {
             List fields = {0};
@@ -1725,7 +1725,7 @@ static EnumItem* parse_enum_item(Parser* parser)
     EnumItem* item = NULL;
 
     if (expect_token(parser, TKN_IDENT, "Failed to parse enum value")) {
-        const char* name = parser->ptoken.as_ident.value;
+        Identifier* name = parser->ptoken.as_ident.ident;
         Expr* value = NULL;
         bool bad_value = false;
 
@@ -1757,7 +1757,7 @@ static Decl* parse_decl_enum(Parser* parser)
     next_token(parser);
 
     if (expect_token(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.as_ident.value;
+        Identifier* name = parser->ptoken.as_ident.ident;
         TypeSpec* typespec = NULL;
         bool bad_type = false;
 
@@ -1815,7 +1815,7 @@ static Decl* parse_decl_typedef(Parser* parser)
     next_token(parser);
 
     if (expect_token(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.as_ident.value;
+        Identifier* name = parser->ptoken.as_ident.ident;
 
         if (expect_token(parser, TKN_ASSIGN, error_prefix)) {
             TypeSpec* typespec = parse_typespec(parser);
@@ -1844,7 +1844,7 @@ static Decl* parse_decl_const(Parser* parser)
     next_token(parser);
 
     if (expect_token(parser, TKN_IDENT, error_prefix)) {
-        const char* name = parser->ptoken.as_ident.value;
+        Identifier* name = parser->ptoken.as_ident.ident;
 
         if (expect_token(parser, TKN_COLON, error_prefix)) {
             TypeSpec* typespec = NULL;
@@ -1879,7 +1879,7 @@ static Decl* parse_decl_const(Parser* parser)
 static Decl* parse_decl_no_annotations(Parser* parser)
 {
     if (is_token_kind(parser, TKN_KW)) {
-        switch (parser->token.as_kw.kw) {
+        switch (parser->token.as_kw.ident->kw) {
         case KW_CONST:
             return parse_decl_const(parser);
         case KW_TYPEDEF:

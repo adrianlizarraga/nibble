@@ -518,9 +518,9 @@ int print_token(Token* token, char* buf, size_t size)
     case TKN_STR:
         return snprintf(buf, size, "\"%s\"", token->as_str.str_lit->str);
     case TKN_IDENT:
-        return snprintf(buf, size, "%s", token->as_ident.value);
+        return snprintf(buf, size, "%s", token->as_ident.ident->str);
     case TKN_KW:
-        return snprintf(buf, size, "%s", token->as_kw.name);
+        return snprintf(buf, size, "%s", token->as_kw.ident->str);
     default:
         return snprintf(buf, size, "%s", kind_name);
     }
@@ -867,18 +867,15 @@ top:
             lexer->at++;
         } while (is_alphanum(lexer->at[0]));
 
-        bool is_kw = false;
-        Keyword kw = (Keyword)0;
-        const char* interned = intern_ident(start, lexer->at - start, &is_kw, &kw);
+        Identifier* ident = intern_ident(start, lexer->at - start);
 
-        if (is_kw) {
+        if (ident->kind == IDENTIFIER_KEYWORD) {
             token.kind = TKN_KW;
-            token.as_kw.kw = kw;
-            token.as_kw.name = interned;
+            token.as_kw.ident = ident;
         }
         else {
             token.kind = TKN_IDENT;
-            token.as_ident.value = interned;
+            token.as_ident.ident = ident;
         }
 
         break;

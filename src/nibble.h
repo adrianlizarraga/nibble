@@ -102,12 +102,11 @@ typedef struct Scalar {
     };
 } Scalar;
 
-typedef struct InternedStrLit {
-    struct InternedStrLit* next;
-    size_t id;
-    size_t len;
-    char str[];
-} InternedStrLit;
+typedef struct TypeCache {
+    HMap ptrs;
+    HMap arrays;
+    HMap procs;
+} TypeCache;
 
 typedef enum Keyword {
     KW_VAR = 0,
@@ -136,26 +135,53 @@ typedef enum Keyword {
     KW_COUNT,
 } Keyword;
 
-typedef enum AnnotationKind {
+typedef enum Annotation {
     ANNOTATION_CUSTOM = 0,
     ANNOTATION_INTRINSIC,
     ANNOTATION_FOREIGN,
     ANNOTATION_PACKED,
 
     ANNOTATION_COUNT,
-} AnnotationKind;
+} Annotation;
 
-typedef struct TypeCache {
-    HMap ptrs;
-    HMap arrays;
-    HMap procs;
-} TypeCache;
+typedef enum Intrinsic {
+    INTRINSIC_DEBUG_STDOUT,
+    
+    INTRINSIC_COUNT,
+} Intrinsic;
 
-extern const char* keywords[KW_COUNT];
+typedef struct StrLit {
+    struct StrLit* next;
+    size_t id;
+    size_t len;
+    char str[];
+} StrLit;
+
+typedef enum IdentifierKind {
+    IDENTIFIER_NAME,
+    IDENTIFIER_KEYWORD,
+    IDENTIFIER_INTRINSIC,
+} IdentifierKind;
+
+typedef struct Identifier {
+    struct Identifier* next;
+
+    IdentifierKind kind;
+    union {
+        Keyword kw;
+        Intrinsic intrinsic;
+    };
+
+    size_t len;
+    char str[];
+} Identifier;
+
+extern const char* keyword_names[KW_COUNT];
 extern const char* annotation_names[ANNOTATION_COUNT];
+extern const char* intrinsic_names[INTRINSIC_COUNT];
 
-InternedStrLit* intern_str_lit(const char* str, size_t len);
-const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw);
+StrLit* intern_str_lit(const char* str, size_t len);
+Identifier* intern_ident(const char* str, size_t len);
 
 bool nibble_init(OS target_os, Arch target_arch);
 void nibble_compile(const char* input_file, const char* output_file);

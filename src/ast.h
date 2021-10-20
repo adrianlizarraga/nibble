@@ -43,11 +43,11 @@ struct TypeSpec {
 
 typedef struct TypeSpecIdent {
     TypeSpec super;
-    const char* name;
+    Identifier* name;
 } TypeSpecIdent;
 
 typedef struct AggregateField {
-    const char* name;
+    Identifier* name;
     TypeSpec* typespec;
     ProgRange range;
     ListNode lnode;
@@ -63,7 +63,7 @@ typedef TypeSpecAggregate TypeSpecUnion;
 
 typedef struct ProcParam {
     ProgRange range;
-    const char* name;
+    Identifier* name;
     TypeSpec* typespec;
     ListNode lnode;
 } ProcParam;
@@ -91,13 +91,13 @@ typedef struct TypeSpecConst {
     TypeSpec* base;
 } TypeSpecConst;
 
-AggregateField* new_aggregate_field(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
+AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 
-TypeSpec* new_typespec_ident(Allocator* allocator, const char* name, ProgRange range);
+TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* name, ProgRange range);
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
 TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
-ProcParam* new_proc_param(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
+ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range);
 
 typedef TypeSpec* NewTypeSpecAggregateProc(Allocator* alloc, List* fields, ProgRange range);
@@ -162,7 +162,7 @@ typedef struct ExprUnary {
 typedef struct ProcCallArg {
     ProgRange range;
     Expr* expr;
-    const char* name;
+    Identifier* name;
     ListNode lnode;
 } ProcCallArg;
 
@@ -198,12 +198,12 @@ typedef struct ExprFloat {
 
 typedef struct ExprStr {
     Expr super;
-    InternedStrLit* str_lit;
+    StrLit* str_lit;
 } ExprStr;
 
 typedef struct ExprIdent {
     Expr super;
-    const char* name;
+    Identifier* name;
 } ExprIdent;
 
 typedef struct ExprCast {
@@ -233,7 +233,7 @@ typedef struct Designator {
     DesignatorKind kind;
 
     union {
-        const char* name;
+        Identifier* name;
         Expr* index;
     };
 } Designator;
@@ -258,11 +258,11 @@ Expr* new_expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange r
 Expr* new_expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range);
 Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
 Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range);
-ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, const char* name);
+ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, Identifier* name);
 Expr* new_expr_int(Allocator* allocator, TokenInt token, ProgRange range);
 Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
-Expr* new_expr_str(Allocator* allocator, InternedStrLit* str_lit, ProgRange range);
-Expr* new_expr_ident(Allocator* allocator, const char* name, ProgRange range);
+Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
+Expr* new_expr_ident(Allocator* allocator, Identifier* name, ProgRange range);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_typeof(Allocator* allocator, Expr* arg, ProgRange range);
@@ -429,11 +429,11 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 //       Declarations
 //////////////////////////////
 
-typedef struct Annotation {
-    const char* name;
+typedef struct DeclAnnotation {
+    Identifier* ident;
     ProgRange range;
     ListNode lnode;
-} Annotation;
+} DeclAnnotation;
 
 typedef enum DeclKind {
     CST_DECL_NONE,
@@ -455,34 +455,34 @@ struct Decl {
 
 typedef struct DeclVar {
     Decl super;
-    const char* name;
+    Identifier* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclVar;
 
 typedef struct DeclConst {
     Decl super;
-    const char* name;
+    Identifier* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclConst;
 
 typedef struct EnumItem {
-    const char* name;
+    Identifier* name;
     Expr* value;
     ListNode lnode;
 } EnumItem;
 
 typedef struct DeclEnum {
     Decl super;
-    const char* name;
+    Identifier* name;
     TypeSpec* typespec;
     List items;
 } DeclEnum;
 
 typedef struct DeclAggregate {
     Decl super;
-    const char* name;
+    Identifier* name;
     List fields;
 } DeclAggregate;
 
@@ -497,7 +497,7 @@ enum ProcFlags {
 
 typedef struct DeclProc {
     Decl super;
-    const char* name;
+    Identifier* name;
     TypeSpec* ret;
 
     u32 flags;
@@ -513,21 +513,21 @@ typedef struct DeclProc {
 
 typedef struct DeclTypedef {
     Decl super;
-    const char* name;
+    Identifier* name;
     TypeSpec* typespec;
 } DeclTypedef;
 
-Annotation* new_annotation(Allocator* allocator, const char* name, ProgRange range);
-Decl* new_decl_var(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
-Decl* new_decl_const(Allocator* allocator, const char* name, TypeSpec* type, Expr* init, ProgRange range);
-Decl* new_decl_typedef(Allocator* allocator, const char* name, TypeSpec* type, ProgRange range);
-Decl* new_decl_enum(Allocator* allocator, const char* name, TypeSpec* type, List* items, ProgRange range);
-EnumItem* new_enum_item(Allocator* allocator, const char* name, Expr* value);
+DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRange range);
+Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
+Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
+Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
+Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* type, List* items, ProgRange range);
+EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value);
 
-typedef Decl* NewDeclAggregateProc(Allocator* alloc, const char* name, List* fields, ProgRange range);
-Decl* new_decl_struct(Allocator* allocator, const char* name, List* fields, ProgRange range);
-Decl* new_decl_union(Allocator* allocator, const char* name, List* fields, ProgRange range);
-Decl* new_decl_proc(Allocator* allocator, const char* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
+typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fields, ProgRange range);
+Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
+Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
+Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
                     u32 num_decls, u32 flags, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
@@ -588,7 +588,7 @@ typedef struct TypeEnum {
 typedef struct TypeAggregateField {
     Type* type;
     size_t offset;
-    const char* name;
+    Identifier* name;
 } TypeAggregateField;
 
 typedef struct TypeAggregate {
@@ -707,7 +707,7 @@ struct Symbol {
     SymbolStatus status;
 
     bool is_local;
-    const char* name;
+    Identifier* name;
     Decl* decl;
     Type* type;
     List lnode;
@@ -718,8 +718,8 @@ struct Symbol {
     };
 };
 
-Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl);
-Symbol* new_symbol_builtin_type(Allocator* allocator, const char* name, Type* type);
+Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl);
+Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type);
 
 ///////////////////////////////
 //       Scope
@@ -741,6 +741,6 @@ Scope* new_scope(Allocator* allocator, u32 num_syms);
 void init_scope_lists(Scope* scope);
 void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms);
 
-Symbol* lookup_symbol(Scope* curr_scope, const char* name);
-Symbol* lookup_scope_symbol(Scope* scope, const char* name);
+Symbol* lookup_symbol(Scope* curr_scope, Identifier* name);
+Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 #endif

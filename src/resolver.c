@@ -18,7 +18,7 @@ typedef struct ExprOperand {
     Scalar const_val;
 } ExprOperand;
 
-static Symbol* resolve_name(Resolver* resolver, const char* name);
+static Symbol* resolve_name(Resolver* resolver, Identifier* name);
 static bool resolve_symbol(Resolver* resolver, Symbol* sym);
 static bool resolve_decl_var(Resolver* resolver, Symbol* sym);
 static bool resolve_decl_const(Resolver* resolver, Symbol* sym);
@@ -72,7 +72,7 @@ static void add_scope_symbol(Scope* scope, Symbol* sym);
 
 static void init_builtin_syms(Resolver* resolver);
 static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type);
-static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKind kind, const char* name, Decl* decl);
+static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKind kind, Identifier* name, Decl* decl);
 
 static void resolver_on_error(Resolver* resolver, const char* format, ...)
 {
@@ -95,7 +95,7 @@ static void add_scope_symbol(Scope* scope, Symbol* sym)
     scope->sym_kind_counts[sym->kind] += 1;
 }
 
-static void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, const char** name)
+static void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, Identifier** name)
 {
     // TODO: This is ugly.
 
@@ -160,7 +160,7 @@ static void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, const char** nam
 
 static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type)
 {
-    const char* sym_name = intern_ident(name, cstr_len(name), NULL, NULL);
+    Identifier* sym_name = intern_ident(name, cstr_len(name));
 
     if (lookup_scope_symbol(resolver->global_scope, sym_name)) {
         resolver_on_error(resolver, "Duplicate definition of `%s`", sym_name);
@@ -174,7 +174,7 @@ static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* t
     return true;
 }
 
-static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKind kind, const char* name, Decl* decl)
+static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKind kind, Identifier* name, Decl* decl)
 {
     if (lookup_symbol(scope, name))
         return NULL; // Shadows a symbol in the current scope or a parent scope.
@@ -1354,7 +1354,7 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     Symbol* sym = resolve_name(resolver, eident->name);
 
     if (!sym) {
-        resolver_on_error(resolver, "Unknown symbol `%s` in expression", eident->name);
+        resolver_on_error(resolver, "Unknown symbol `%s` in expression", eident->name->str);
         return false;
     }
 
@@ -1383,7 +1383,7 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     }
 
     resolver_on_error(resolver, "Expression identifier `%s` must refer to a var, const, or proc declaration",
-                      eident->name);
+                      eident->name->str);
     return false;
 }
 
@@ -1509,7 +1509,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
         // Cannot use a name designator.
         if (designator.kind == DESIGNATOR_NAME) {
             resolver_on_error(resolver, "Cannot use a name designator (`%s`) for an array compound literal",
-                              designator.name);
+                              designator.name->str);
             return false;
         }
 
@@ -1642,16 +1642,16 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
         // TODO: Support module path
 
-        const char* ident_name = ts->name;
+        Identifier* ident_name = ts->name;
         Symbol* ident_sym = resolve_name(resolver, ident_name);
 
         if (!ident_sym) {
-            resolver_on_error(resolver, "Undefined type `%s`", ident_name);
+            resolver_on_error(resolver, "Undefined type `%s`", ident_name->str);
             return NULL;
         }
 
         if (ident_sym->kind != SYMBOL_TYPE) {
-            resolver_on_error(resolver, "Symbol `%s` is not a type", ident_name);
+            resolver_on_error(resolver, "Symbol `%s` is not a type", ident_name->str);
             return NULL;
         }
 
@@ -1846,7 +1846,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
         return false;
 
     if (!init->is_constexpr) {
-        resolver_on_error(resolver, "Value for const decl `%s` must be a constant expression", decl->name);
+        resolver_on_error(resolver, "Value for const decl `%s` must be a constant expression", decl->name->str);
         return false;
     }
 
@@ -1893,8 +1893,8 @@ static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
     List* it = head->next;
 
     while (it != head) {
-        Annotation* a = list_entry(it, Annotation, lnode);
-        const char* name = a->name;
+        DeclAnnotation* a = list_entry(it, DeclAnnotation, lnode);
+        const char* name = a->ident->str;
 
         if (name == annotation_names[ANNOTATION_INTRINSIC]) {
             if (decl->flags & PROC_IS_INTRINSIC) {
@@ -1925,13 +1925,13 @@ static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
         return false;
     }
 
-    // TODO: Check against known intrinsic procedures.
-    // A more efficient way to do this would be to use an InterenedIdentifier type that 
-    // indicates whether an identifier corresponds to an intrinsic.
-    if (is_intrinsic && (cstr_cmp(decl->name, "_nibble_stdout") != 0)) {
-        resolver_on_error(resolver, "Unknown intrinsic procedure `%s`\n", decl->name);
+    if (is_intrinsic && (decl->name->kind != IDENTIFIER_INTRINSIC)) {
+        resolver_on_error(resolver, "Unknown intrinsic procedure `%s`\n", decl->name->str);
         return false;
     }
+
+    // TODO: Typecheck intrinsic proc type signature? I'm not sure if an intrinsic annotation is even
+    // necessary....
 
     if (is_foreign && !is_incomplete) {
         resolver_on_error(resolver, "Foreign procedure cannot have a body");
@@ -2021,7 +2021,7 @@ static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym)
     dproc->returns = returns;
 
     if ((ret_type != type_void) && !returns && success) {
-        resolver_on_error(resolver, "Not all code paths in procedure `%s` return a value", dproc->name);
+        resolver_on_error(resolver, "Not all code paths in procedure `%s` return a value", dproc->name->str);
         return false;
     }
 
@@ -2370,7 +2370,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
             Symbol* sym = add_unresolved_symbol(resolver, scope, SYMBOL_VAR, dvar->name, decl);
 
             if (!sym)
-                resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name);
+                resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name->str);
             else if (resolve_decl_var(resolver, sym))
                 ret = RESOLVE_STMT_SUCCESS;
         }
@@ -2400,7 +2400,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
         return true;
 
     if (sym->status == SYMBOL_STATUS_RESOLVING) {
-        resolver_on_error(resolver, "Cannot resolve symbol `%s` due to cyclic dependency", sym->name);
+        resolver_on_error(resolver, "Cannot resolve symbol `%s` due to cyclic dependency", sym->name->str);
         return false;
     }
 
@@ -2424,7 +2424,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
     return false;
 }
 
-static Symbol* resolve_name(Resolver* resolver, const char* name)
+static Symbol* resolve_name(Resolver* resolver, Identifier* name)
 {
     Symbol* sym = lookup_symbol(resolver->curr_scope, name);
 
@@ -2446,7 +2446,7 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
     for (List* it = head->next; it != head; it = it->next) {
         Decl* decl = list_entry(it, Decl, lnode);
         SymbolKind kind = SYMBOL_NONE;
-        const char* name = NULL;
+        Identifier* name = NULL;
 
         fill_decl_symbol_info(decl, &kind, &name);
         add_unresolved_symbol(resolver, resolver->global_scope, kind, name, decl);

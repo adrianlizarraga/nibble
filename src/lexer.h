@@ -98,16 +98,15 @@ typedef struct TokenFloat {
 } TokenFloat;
 
 typedef struct TokenIdent {
-    const char* value;
+    Identifier* ident;
 } TokenIdent;
 
 typedef struct TokenKW {
-    const char* name;
-    Keyword kw;
+    Identifier* ident;
 } TokenKW;
 
 typedef struct TokenStr {
-    InternedStrLit* str_lit;
+    StrLit* str_lit;
 } TokenStr;
 
 typedef struct Token {

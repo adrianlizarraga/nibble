@@ -119,7 +119,7 @@ typedef struct IR_MemAddr {
     union {
         IR_Reg reg;
         Symbol* sym;
-        InternedStrLit* str_lit;
+        StrLit* str_lit;
     } base;
 
     IR_Reg index_reg;

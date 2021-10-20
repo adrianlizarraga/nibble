@@ -114,7 +114,7 @@ typedef struct X64_SIBDAddr {
             s32 disp;
             u8 scale;
         } local;
-        InternedStrLit* str_lit;
+        StrLit* str_lit;
     };
 } X64_SIBDAddr;
 
@@ -240,12 +240,12 @@ static char** X64_emit_data(X64_Generator* gen, const char* format, ...)
     return line;
 }
 
-static void X64_emit_global_data(X64_Generator* generator, const char* name, Type* type, Expr* init)
+static void X64_emit_global_data(X64_Generator* generator, Identifier* name, Type* type, Expr* init)
 {
     Allocator* tmp_mem = generator->tmp_mem;
 
     X64_emit_data(generator, "ALIGN %d", type->align);
-    X64_emit_data(generator, "%s: ", name);
+    X64_emit_data(generator, "%s: ", name->str);
 
     switch (type->kind) {
     case TYPE_INTEGER: {
@@ -278,7 +278,7 @@ static void X64_emit_global_data(X64_Generator* generator, const char* name, Typ
             allocator_restore_state(mem_state);
         }
         else if (init->kind == CST_ExprStr) {
-            InternedStrLit* str_lit = ((ExprStr*)init)->str_lit;
+            StrLit* str_lit = ((ExprStr*)init)->str_lit;
             const char* escaped_str = cstr_escape(tmp_mem, str_lit->str, str_lit->len, '`');
 
             X64_emit_data(generator, "%s `%s\\0`\n", x64_data_size_label[elem_type->size], escaped_str);
@@ -1047,7 +1047,7 @@ static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 m
         ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_STR_LIT_PRE, addr->str_lit->id); 
     }
     else if (addr->kind == X64_SIBD_ADDR_GLOBAL) {
-        ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, addr->global->name);
+        ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, addr->global->name->str);
     }
     else {
         assert(addr->kind == X64_SIBD_ADDR_LOCAL);
@@ -1845,7 +1845,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         }
 
         if (!is_last_instr)
-            X64_emit_text(generator, "    jmp end.%s", generator->curr_proc.sym->name);
+            X64_emit_text(generator, "    jmp end.%s", generator->curr_proc.sym->name->str);
 
         break;
     }
@@ -1902,7 +1902,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         // Stack should now be aligned properly for procedure call.
         assert((total_stack_size & (X64_STACK_ALIGN - 1)) == 0);
 
-        X64_emit_text(generator, "    call %s", instr->call.sym->name);
+        X64_emit_text(generator, "    call %s", instr->call.sym->name->str);
 
         // Move return value (if any) to appropriate register.
         Type* ret_type = instr->call.sym->type->as_proc.ret;
@@ -1976,8 +1976,8 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
     X64_emit_text(generator, "");
-    X64_emit_text(generator, "global %s", sym->name);
-    X64_emit_text(generator, "%s:", sym->name);
+    X64_emit_text(generator, "global %s", sym->name->str);
+    X64_emit_text(generator, "%s:", sym->name->str);
 
     X64_emit_text(generator, "    push rbp");
     X64_emit_text(generator, "    mov rbp, rsp");
@@ -2077,7 +2077,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     }
 
     // End label
-    X64_emit_text(generator, "    end.%s:", sym->name);
+    X64_emit_text(generator, "    end.%s:", sym->name->str);
 
     // Save/Restore callee-saved registers.
     char* tmp_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
@@ -2116,7 +2116,7 @@ static void X64_gen_global_vars(X64_Generator* generator, u32 num_vars, Symbol**
         HMapEntry* entry = str_lit_map->entries + i;
 
         if (entry->key != HASH_MAP_NULL_KEY) {
-            InternedStrLit* str_lit = UINT_PTR(entry->value, InternedStrLit);
+            StrLit* str_lit = UINT_PTR(entry->value, StrLit);
             const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
 
             X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);

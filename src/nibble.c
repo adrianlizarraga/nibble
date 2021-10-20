@@ -22,14 +22,6 @@ typedef struct NibbleCtx {
     Arch target_arch;
 } NibbleCtx;
 
-typedef struct InternedIdent {
-    struct InternedIdent* next;
-    size_t len;
-    Keyword kw;
-    bool is_kw;
-    char str[];
-} InternedIdent;
-
 static NibbleCtx* nibble;
 
 const char* os_names[NUM_OS] = {
@@ -43,34 +35,9 @@ const char* arch_names[NUM_ARCH] = {
     [ARCH_X64] = "x64",
 };
 
-const char* keywords[KW_COUNT];
-
-static StringView keyword_names[KW_COUNT] = {
-    [KW_VAR] = string_view_lit("var"),
-    [KW_CONST] = string_view_lit("const"),
-    [KW_ENUM] = string_view_lit("enum"),
-    [KW_UNION] = string_view_lit("union"),
-    [KW_STRUCT] = string_view_lit("struct"),
-    [KW_PROC] = string_view_lit("proc"),
-    [KW_TYPEDEF] = string_view_lit("typedef"),
-    [KW_SIZEOF] = string_view_lit("sizeof"),
-    [KW_TYPEOF] = string_view_lit("typeof"),
-    [KW_LABEL] = string_view_lit("label"),
-    [KW_GOTO] = string_view_lit("goto"),
-    [KW_BREAK] = string_view_lit("break"),
-    [KW_CONTINUE] = string_view_lit("continue"),
-    [KW_RETURN] = string_view_lit("return"),
-    [KW_IF] = string_view_lit("if"),
-    [KW_ELSE] = string_view_lit("else"),
-    [KW_WHILE] = string_view_lit("while"),
-    [KW_DO] = string_view_lit("do"),
-    [KW_FOR] = string_view_lit("for"),
-    [KW_SWITCH] = string_view_lit("switch"),
-    [KW_CASE] = string_view_lit("case"),
-    [KW_UNDERSCORE] = string_view_lit("_"),
-};
-
+const char* keyword_names[KW_COUNT];
 const char* annotation_names[ANNOTATION_COUNT];
+const char* intrinsic_names[INTRINSIC_COUNT];
 
 static char* slurp_file(Allocator* allocator, const char* filename)
 {
@@ -132,28 +99,44 @@ static void print_errors(ByteStream* errors)
 
 static bool init_annotations()
 {
+    static const StringView names[ANNOTATION_COUNT] = {
+        [ANNOTATION_INTRINSIC] = string_view_lit("intrinsic"),
+        [ANNOTATION_FOREIGN] = string_view_lit("foreign"),
+        [ANNOTATION_PACKED] = string_view_lit("packed"),
+    };
+
     for (int i = 0; i < ANNOTATION_COUNT; i += 1) {
-        switch (i) {
-        case ANNOTATION_CUSTOM:
-            break;
-        case ANNOTATION_INTRINSIC: {
-            StringView s = string_view_lit("intrinsic");
-            annotation_names[i] = intern_ident(s.str, s.len, NULL, NULL);
-            break;
-        }
-        case ANNOTATION_FOREIGN: {
-            StringView s = string_view_lit("foreign");
-            annotation_names[i] = intern_ident(s.str, s.len, NULL, NULL);
-            break;
-        }
-        case ANNOTATION_PACKED: {
-            StringView s = string_view_lit("packed");
-            annotation_names[i] = intern_ident(s.str, s.len, NULL, NULL);
-            break;
-        }
-        default:
+        const StringView* str_view = names + i;
+        Identifier* ident = intern_ident(str_view->str, str_view->len);
+
+        if (!ident) {
             return false;
         }
+
+        annotation_names[i] = ident->str;
+    }
+
+    return true;
+}
+
+static bool init_intrinsics()
+{
+    static const StringView names[INTRINSIC_COUNT] = {
+        [INTRINSIC_DEBUG_STDOUT] = string_view_lit("_nibble_stdout"),
+    };
+
+    for (int i = 0; i < INTRINSIC_COUNT; i += 1) {
+        const StringView* str_view = names + i;
+        Identifier* ident = intern_ident(str_view->str, str_view->len);
+
+        if (!ident) {
+            return false;
+        }
+
+        ident->kind = IDENTIFIER_INTRINSIC;
+        ident->intrinsic = (Intrinsic)i;
+
+        intrinsic_names[i] = ident->str;
     }
 
     return true;
@@ -161,44 +144,45 @@ static bool init_annotations()
 
 static bool init_keywords()
 {
-    // Compute the total amount of memory needed to store all interned keywords.
-    // Why? Program needs all keywords to reside in a contigous block of memory to facilitate
-    // determining whether a string is a keyword using simple pointer comparisons.
-    size_t kws_size = 0;
-    for (int i = 0; i < KW_COUNT; ++i) {
-        size_t size = offsetof(InternedIdent, str) + keyword_names[i].len + 1;
+    static const StringView names[KW_COUNT] = {
+        [KW_VAR] = string_view_lit("var"),
+        [KW_CONST] = string_view_lit("const"),
+        [KW_ENUM] = string_view_lit("enum"),
+        [KW_UNION] = string_view_lit("union"),
+        [KW_STRUCT] = string_view_lit("struct"),
+        [KW_PROC] = string_view_lit("proc"),
+        [KW_TYPEDEF] = string_view_lit("typedef"),
+        [KW_SIZEOF] = string_view_lit("sizeof"),
+        [KW_TYPEOF] = string_view_lit("typeof"),
+        [KW_LABEL] = string_view_lit("label"),
+        [KW_GOTO] = string_view_lit("goto"),
+        [KW_BREAK] = string_view_lit("break"),
+        [KW_CONTINUE] = string_view_lit("continue"),
+        [KW_RETURN] = string_view_lit("return"),
+        [KW_IF] = string_view_lit("if"),
+        [KW_ELSE] = string_view_lit("else"),
+        [KW_WHILE] = string_view_lit("while"),
+        [KW_DO] = string_view_lit("do"),
+        [KW_FOR] = string_view_lit("for"),
+        [KW_SWITCH] = string_view_lit("switch"),
+        [KW_CASE] = string_view_lit("case"),
+        [KW_UNDERSCORE] = string_view_lit("_"),
+    };
 
-        kws_size += ALIGN_UP(size, DEFAULT_ALIGN);
+    for (int i = 0; i < KW_COUNT; i += 1) {
+        const StringView* str_view = names + i;
+        Identifier* ident = intern_ident(str_view->str, str_view->len);
+
+        if (!ident) {
+            return false;
+        }
+
+        ident->kind = IDENTIFIER_KEYWORD;
+        ident->kw = (Keyword)i;
+
+        keyword_names[i] = ident->str;
     }
 
-    char* kws_mem = mem_allocate(&nibble->gen_mem, kws_size, DEFAULT_ALIGN, false);
-
-    if (!kws_mem)
-        return false;
-
-    char* kws_mem_ptr = kws_mem;
-
-    for (int i = 0; i < KW_COUNT; ++i) {
-        const char* str = keyword_names[i].str;
-        size_t len = keyword_names[i].len;
-        size_t size = offsetof(InternedIdent, str) + len + 1;
-        InternedIdent* kw = (void*)kws_mem_ptr;
-
-        kw->next = NULL;
-        kw->len = len;
-        kw->is_kw = true;
-        kw->kw = (Keyword)i;
-
-        memcpy(kw->str, str, len);
-        kw->str[len] = '\0';
-
-        hmap_put(&nibble->ident_map, hash_bytes(str, len), (uintptr_t)kw);
-        keywords[i] = kw->str;
-
-        kws_mem_ptr += ALIGN_UP(size, DEFAULT_ALIGN);
-    }
-    assert((size_t)(kws_mem_ptr - kws_mem) == kws_size);
-    assert(nibble->ident_map.len == KW_COUNT);
 
     return true;
 }
@@ -223,8 +207,13 @@ bool nibble_init(OS target_os, Arch target_arch)
     if (!init_keywords())
         return false;
 
+    if (!init_intrinsics())
+        return false;
+
     if (!init_annotations())
         return false;
+
+    assert(nibble->ident_map.len == (KW_COUNT + ANNOTATION_COUNT + INTRINSIC_COUNT));
 
     init_scope_lists(&nibble->global_scope);
     init_builtin_types(target_os, target_arch, &nibble->ast_mem, &nibble->type_cache);
@@ -345,26 +334,26 @@ void nibble_cleanup(void)
     allocator_destroy(&bootstrap);
 }
 
-InternedStrLit* intern_str_lit(const char* str, size_t len)
+StrLit* intern_str_lit(const char* str, size_t len)
 {
     Allocator* allocator = &nibble->gen_mem;
     HMap* strmap = &nibble->str_lit_map;
 
     uint64_t key = hash_bytes(str, len);
     uint64_t* pval = hmap_get(strmap, key);
-    InternedStrLit* intern = pval ? (void*)*pval : NULL;
+    StrLit* intern = pval ? (void*)*pval : NULL;
 
     // Collisions will only occur if identical hash values are produced. Collisions due to
     // contention for hash map slots will not occur (open addressing).
     //
     // Walk the linked list in case of collision.
-    for (InternedStrLit* it = intern; it; it = it->next) {
+    for (StrLit* it = intern; it; it = it->next) {
         if ((it->len == len) && (cstr_ncmp(it->str, str, len) == 0))
             return it;
     }
 
     // If we got here, need to add this string to the intern table.
-    InternedStrLit* new_intern = mem_allocate(allocator, offsetof(InternedStrLit, str) + len + 1, DEFAULT_ALIGN, false);
+    StrLit* new_intern = mem_allocate(allocator, offsetof(StrLit, str) + len + 1, DEFAULT_ALIGN, true);
 
     if (!new_intern) {
         // TODO: Handle in a better way.
@@ -385,58 +374,43 @@ InternedStrLit* intern_str_lit(const char* str, size_t len)
     return new_intern;
 }
 
-// TODO: Reuse duplicated interning code!
-const char* intern_ident(const char* str, size_t len, bool* is_kw, Keyword* kw)
+Identifier* intern_ident(const char* str, size_t len)
 {
     Allocator* allocator = &nibble->gen_mem;
     HMap* strmap = &nibble->ident_map;
     uint64_t key = hash_bytes(str, len);
     uint64_t* pval = hmap_get(strmap, key);
-    InternedIdent* intern = pval ? (void*)*pval : NULL;
+    Identifier* intern = pval ? (void*)*pval : NULL;
 
     // Collisions will only occur if identical hash values are produced. Collisions due to
     // contention for hash map slots will not occur (open addressing).
     //
     // Walk the linked list in case of collision.
-    for (InternedIdent* it = intern; it; it = it->next) {
+    for (Identifier* it = intern; it; it = it->next) {
         if ((it->len == len) && (cstr_ncmp(it->str, str, len) == 0)) {
-            if (is_kw) {
-                *is_kw = it->is_kw;
-
-                if (kw)
-                    *kw = it->kw;
-            }
-
-            return it->str;
+            return it;
         }
     }
 
     // If we got here, need to add this string to the intern table.
-    InternedIdent* new_intern = mem_allocate(allocator, offsetof(InternedIdent, str) + len + 1, DEFAULT_ALIGN, false);
-    if (new_intern) {
-        new_intern->next = intern; // Record collision. If a collision did _NOT_ occur, this will be null.
-        new_intern->len = len;
-        new_intern->is_kw = false;
-        new_intern->kw = (Keyword)0; // TODO: Have an invalid or none keyword type. Just clean this up in some way!
+    Identifier* new_intern = mem_allocate(allocator, offsetof(Identifier, str) + len + 1, DEFAULT_ALIGN, true);
 
-        memcpy(new_intern->str, str, len);
-        new_intern->str[len] = '\0';
-
-        hmap_put(strmap, key, (uintptr_t)new_intern);
-    }
-    else {
-        NIBBLE_FATAL_EXIT("Out of memory: %s:%d", __FILE__, __LINE__);
+    if (!new_intern) {
+        // TODO: Handle in a better way.
+        ftprint_err("[INTERNAL ERROR]: Out of memory.\n%s:%d\n", __FILE__, __LINE__);
+        exit(1);
         return NULL;
     }
 
-    if (is_kw) {
-        *is_kw = new_intern->is_kw;
+    new_intern->next = intern; // Record collision. If a collision did _NOT_ occur, this will be null.
+    new_intern->len = len;
 
-        if (kw)
-            *kw = new_intern->kw;
-    }
+    memcpy(new_intern->str, str, len);
+    new_intern->str[len] = '\0';
 
-    return new_intern->str;
+    hmap_put(strmap, key, (uintptr_t)new_intern);
+
+    return new_intern;
 }
 
 void nibble_fatal_exit(const char* format, ...)

@@ -55,7 +55,7 @@ typedef struct IR_Operand {
         Symbol* sym;
         IR_DeferredCmp cmp;
         IR_ArrayInitializer array_initzer;
-        InternedStrLit* str_lit;
+        StrLit* str_lit;
     };
 } IR_Operand;
 
@@ -488,7 +488,7 @@ static void IR_emit_instr_laddr_sym(IR_Builder* builder, IR_Reg dst, Type* type,
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_laddr_str_lit(IR_Builder* builder, IR_Reg dst, Type* type, InternedStrLit* str_lit)
+static void IR_emit_instr_laddr_str_lit(IR_Builder* builder, IR_Reg dst, Type* type, StrLit* str_lit)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
     instr->laddr.dst = dst;
@@ -2110,7 +2110,7 @@ static void IR_emit_array_str_init(IR_Builder* builder, IR_Operand* array_op, IR
     Type* elem_type = ptr_type->as_ptr.base;
     u64 num_elems = arr_type->as_array.len;
 
-    InternedStrLit* str_lit = init_op->str_lit;
+    StrLit* str_lit = init_op->str_lit;
     const char* str = str_lit->str;
 
     assert((str_lit->len + 1) == num_elems);

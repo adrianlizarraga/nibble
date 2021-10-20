@@ -12,7 +12,7 @@ static TypeSpec* new_typespec_(Allocator* allocator, size_t size, size_t align, 
     return typespec;
 }
 
-TypeSpec* new_typespec_ident(Allocator* allocator, const char* name, ProgRange range)
+TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* name, ProgRange range)
 {
     TypeSpecIdent* typespec = new_typespec(allocator, TypeSpecIdent, range);
     typespec->name = name;
@@ -56,7 +56,7 @@ TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* param
     return (TypeSpec*)typespec;
 }
 
-ProcParam* new_proc_param(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
+ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* typespec, ProgRange range)
 {
     ProcParam* param = alloc_type(allocator, ProcParam, true);
     param->name = name;
@@ -154,7 +154,7 @@ Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* arg
     return (Expr*)expr;
 }
 
-ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, const char* name)
+ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, Identifier* name)
 {
     ProcCallArg* arg = alloc_type(allocator, ProcCallArg, true);
     arg->expr = expr;
@@ -180,7 +180,7 @@ Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRan
     return (Expr*)expr;
 }
 
-Expr* new_expr_str(Allocator* allocator, InternedStrLit* str_lit, ProgRange range)
+Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range)
 {
     ExprStr* expr = new_expr(allocator, ExprStr, range);
     expr->str_lit = str_lit;
@@ -188,7 +188,7 @@ Expr* new_expr_str(Allocator* allocator, InternedStrLit* str_lit, ProgRange rang
     return (Expr*)expr;
 }
 
-Expr* new_expr_ident(Allocator* allocator, const char* name, ProgRange range)
+Expr* new_expr_ident(Allocator* allocator, Identifier* name, ProgRange range)
 {
     ExprIdent* expr = new_expr(allocator, ExprIdent, range);
     expr->name = name;
@@ -244,10 +244,10 @@ Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num
     return (Expr*)expr;
 }
 
-Annotation* new_annotation(Allocator* allocator, const char* name, ProgRange range)
+DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRange range)
 {
-    Annotation* annotation = alloc_type(allocator, Annotation, true);
-    annotation->name = name;
+    DeclAnnotation* annotation = alloc_type(allocator, DeclAnnotation, true);
+    annotation->ident = ident;
     annotation->range = range;
 
     return annotation;
@@ -263,7 +263,7 @@ static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind
     return (Decl*)decl;
 }
 
-Decl* new_decl_var(Allocator* allocator, const char* name, TypeSpec* typespec, Expr* init, ProgRange range)
+Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
     DeclVar* decl = new_decl(allocator, DeclVar, range);
     decl->name = name;
@@ -273,7 +273,7 @@ Decl* new_decl_var(Allocator* allocator, const char* name, TypeSpec* typespec, E
     return (Decl*)decl;
 }
 
-Decl* new_decl_const(Allocator* allocator, const char* name, TypeSpec* typespec, Expr* init, ProgRange range)
+Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
     DeclConst* decl = new_decl(allocator, DeclConst, range);
     decl->name = name;
@@ -283,7 +283,7 @@ Decl* new_decl_const(Allocator* allocator, const char* name, TypeSpec* typespec,
     return (Decl*)decl;
 }
 
-Decl* new_decl_typedef(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
+Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* typespec, ProgRange range)
 {
     DeclTypedef* decl = new_decl(allocator, DeclTypedef, range);
     decl->name = name;
@@ -292,7 +292,7 @@ Decl* new_decl_typedef(Allocator* allocator, const char* name, TypeSpec* typespe
     return (Decl*)decl;
 }
 
-Decl* new_decl_enum(Allocator* allocator, const char* name, TypeSpec* typespec, List* items, ProgRange range)
+Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* typespec, List* items, ProgRange range)
 {
     DeclEnum* decl = new_decl(allocator, DeclEnum, range);
     decl->name = name;
@@ -303,7 +303,7 @@ Decl* new_decl_enum(Allocator* allocator, const char* name, TypeSpec* typespec, 
     return (Decl*)decl;
 }
 
-EnumItem* new_enum_item(Allocator* allocator, const char* name, Expr* value)
+EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value)
 {
     EnumItem* item = alloc_type(allocator, EnumItem, true);
     item->name = name;
@@ -312,7 +312,7 @@ EnumItem* new_enum_item(Allocator* allocator, const char* name, Expr* value)
     return item;
 }
 
-Decl* new_decl_struct(Allocator* allocator, const char* name, List* fields, ProgRange range)
+Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range)
 {
     DeclStruct* decl = new_decl(allocator, DeclStruct, range);
     decl->name = name;
@@ -322,7 +322,7 @@ Decl* new_decl_struct(Allocator* allocator, const char* name, List* fields, Prog
     return (Decl*)decl;
 }
 
-Decl* new_decl_union(Allocator* allocator, const char* name, List* fields, ProgRange range)
+Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range)
 {
     DeclUnion* decl = new_decl(allocator, DeclUnion, range);
     decl->name = name;
@@ -332,7 +332,7 @@ Decl* new_decl_union(Allocator* allocator, const char* name, List* fields, ProgR
     return (Decl*)decl;
 }
 
-AggregateField* new_aggregate_field(Allocator* allocator, const char* name, TypeSpec* typespec, ProgRange range)
+AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, TypeSpec* typespec, ProgRange range)
 {
     AggregateField* field = alloc_type(allocator, AggregateField, true);
     field->name = name;
@@ -342,7 +342,7 @@ AggregateField* new_aggregate_field(Allocator* allocator, const char* name, Type
     return field;
 }
 
-Decl* new_decl_proc(Allocator* allocator, const char* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
+Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
                     u32 num_decls, u32 flags, ProgRange range)
 {
     DeclProc* decl = new_decl(allocator, DeclProc, range);
@@ -909,7 +909,7 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 //     Symbols
 //////////////////////////////
 
-static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, const char* name)
+static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name)
 {
     Symbol* sym = alloc_type(allocator, Symbol, true);
 
@@ -920,7 +920,7 @@ static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus st
     return sym;
 }
 
-Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name, Decl* decl)
+Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl)
 {
     Symbol* sym = new_symbol(allocator, kind, SYMBOL_STATUS_UNRESOLVED, name);
     sym->decl = decl;
@@ -928,7 +928,7 @@ Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, const char* name,
     return sym;
 }
 
-Symbol* new_symbol_builtin_type(Allocator* allocator, const char* name, Type* type)
+Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type)
 {
     Symbol* sym = new_symbol(allocator, SYMBOL_TYPE, SYMBOL_STATUS_RESOLVED, name);
     sym->type = type;
@@ -965,14 +965,14 @@ void init_scope_lists(Scope* scope)
     list_head_init(&scope->sym_list);
 }
 
-Symbol* lookup_scope_symbol(Scope* scope, const char* name)
+Symbol* lookup_scope_symbol(Scope* scope, Identifier* name)
 {
     uint64_t* pval = hmap_get(&scope->sym_table, PTR_UINT(name));
 
     return pval ? (void*)*pval : NULL;
 }
 
-Symbol* lookup_symbol(Scope* curr_scope, const char* name)
+Symbol* lookup_symbol(Scope* curr_scope, Identifier* name)
 {
     for (Scope* scope = curr_scope; scope != NULL; scope = scope->parent) {
         Symbol* sym = lookup_scope_symbol(scope, name);
@@ -1000,7 +1000,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
         case CST_TypeSpecIdent: {
             TypeSpecIdent* t = (TypeSpecIdent*)typespec;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(:ident %s)", t->name);
+            ftprint_char_array(&dstr, false, "(:ident %s)", t->name->str);
         } break;
         case CST_TypeSpecProc: {
             TypeSpecProc* t = (TypeSpecProc*)typespec;
@@ -1017,8 +1017,8 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
                 for (ListNode* it = head->next; it != head; it = it->next) {
                     ProcParam* param = list_entry(it, ProcParam, lnode);
 
-                    if (param->name)
-                        ftprint_char_array(&dstr, false, "(%s %s)", param->name,
+                    if (param->name->str)
+                        ftprint_char_array(&dstr, false, "(%s %s)", param->name->str,
                                            ftprint_typespec(allocator, param->typespec));
                     else
                         ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->typespec));
@@ -1047,7 +1047,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
                 for (ListNode* it = head->next; it != head; it = it->next) {
                     AggregateField* field = list_entry(it, AggregateField, lnode);
 
-                    ftprint_char_array(&dstr, false, "(%s %s)", field->name,
+                    ftprint_char_array(&dstr, false, "(%s %s)", field->name->str,
                                        ftprint_typespec(allocator, field->typespec));
 
                     if (it->next != head)
@@ -1136,7 +1136,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
                     ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
 
                     if (arg->name)
-                        ftprint_char_array(&dstr, false, "%s=", arg->name);
+                        ftprint_char_array(&dstr, false, "%s=", arg->name->str);
 
                     ftprint_char_array(&dstr, false, "%s", ftprint_expr(allocator, arg->expr));
 
@@ -1180,7 +1180,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case CST_ExprIdent: {
             ExprIdent* e = (ExprIdent*)expr;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "%s", e->name);
+            ftprint_char_array(&dstr, false, "%s", e->name->str);
         } break;
         case CST_ExprCast: {
             ExprCast* e = (ExprCast*)expr;
@@ -1468,7 +1468,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclVar: {
             DeclVar* d = (DeclVar*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(var %s", d->name);
+            ftprint_char_array(&dstr, false, "(var %s", d->name->str);
 
             if (d->typespec) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
@@ -1483,7 +1483,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclConst: {
             DeclConst* d = (DeclConst*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(const %s", d->name);
+            ftprint_char_array(&dstr, false, "(const %s", d->name->str);
 
             if (d->typespec) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
@@ -1498,13 +1498,13 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclTypedef: {
             DeclTypedef* d = (DeclTypedef*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(typedef %s %s)", d->name, ftprint_typespec(allocator, d->typespec));
+            ftprint_char_array(&dstr, false, "(typedef %s %s)", d->name->str, ftprint_typespec(allocator, d->typespec));
         } break;
         case CST_DeclEnum: {
             DeclEnum* d = (DeclEnum*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(enum %s", d->name);
+            ftprint_char_array(&dstr, false, "(enum %s", d->name->str);
 
             if (d->typespec)
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
@@ -1517,7 +1517,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 for (List* it = head->next; it != head; it = it->next) {
                     EnumItem* item = list_entry(it, EnumItem, lnode);
 
-                    ftprint_char_array(&dstr, false, "%s", item->name);
+                    ftprint_char_array(&dstr, false, "%s", item->name->str);
 
                     if (item->value)
                         ftprint_char_array(&dstr, false, "=%s", ftprint_expr(allocator, item->value));
@@ -1534,7 +1534,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             DeclAggregate* d = (DeclAggregate*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"), d->name);
+            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"), d->name->str);
 
             if (!list_empty(&d->fields)) {
                 ftprint_char_array(&dstr, false, " ");
@@ -1544,7 +1544,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 for (List* it = head->next; it != head; it = it->next) {
                     AggregateField* field = list_entry(it, AggregateField, lnode);
 
-                    ftprint_char_array(&dstr, false, "(%s %s)", field->name,
+                    ftprint_char_array(&dstr, false, "(%s %s)", field->name->str,
                                        ftprint_typespec(allocator, field->typespec));
 
                     if (it->next != head)
@@ -1558,7 +1558,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             DeclProc* proc = (DeclProc*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(proc %s (", proc->name);
+            ftprint_char_array(&dstr, false, "(proc %s (", proc->name->str);
 
             if (!list_empty(&proc->params)) {
                 List* head = &proc->params;
