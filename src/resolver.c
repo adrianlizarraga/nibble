@@ -897,6 +897,22 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     return true;
 }
 
+static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
+{
+    Type* type = resolve_typespec(resolver, expr->typespec);
+
+    if (!type) {
+        return false;
+    }
+
+    expr->super.type = type_ullong;
+    expr->super.is_constexpr = true;
+    expr->super.is_lvalue = false;
+    expr->super.const_val.as_int._u64 = type->size;
+
+    return true;
+}
+
 static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
 {
     expr->super.type = type_array(resolver->ast_mem, &resolver->type_cache->arrays, type_char, expr->str_lit->len + 1);
@@ -1622,6 +1638,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_compound_lit(resolver, (ExprCompoundLit*)expr, expected_type);
     case CST_ExprStr:
         return resolve_expr_str(resolver, (ExprStr*)expr);
+    case CST_ExprSizeof:
+        return resolve_expr_sizeof(resolver, (ExprSizeof*)expr);
     default:
         ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
         assert(0);
