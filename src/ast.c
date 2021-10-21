@@ -20,6 +20,14 @@ TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* name, ProgRange r
     return (TypeSpec*)typespec;
 }
 
+TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range)
+{
+    TypeSpecTypeof* typespec = new_typespec(allocator, TypeSpecTypeof, range);
+    typespec->expr = expr;
+
+    return (TypeSpec*)typespec;
+}
+
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range)
 {
     TypeSpecPtr* typespec = new_typespec(allocator, TypeSpecPtr, range);
@@ -210,14 +218,6 @@ Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* typespec, ProgRange range)
 {
     ExprSizeof* expr = new_expr(allocator, ExprSizeof, range);
     expr->typespec = typespec;
-
-    return (Expr*)expr;
-}
-
-Expr* new_expr_typeof(Allocator* allocator, Expr* arg, ProgRange range)
-{
-    ExprTypeof* expr = new_expr(allocator, ExprTypeof, range);
-    expr->expr = arg;
 
     return (Expr*)expr;
 }
@@ -1002,6 +1002,11 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(:ident %s)", t->name->str);
         } break;
+        case CST_TypeSpecTypeof: {
+            TypeSpecTypeof* t = (TypeSpecTypeof*)typespec;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(:typeof %s)", ftprint_expr(allocator, t->expr));
+        } break;
         case CST_TypeSpecProc: {
             TypeSpecProc* t = (TypeSpecProc*)typespec;
             dstr = array_create(allocator, char, 32);
@@ -1192,11 +1197,6 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ExprSizeof* e = (ExprSizeof*)expr;
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, e->typespec));
-        } break;
-        case CST_ExprTypeof: {
-            ExprTypeof* e = (ExprTypeof*)expr;
-            dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(typeof %s)", ftprint_expr(allocator, e->expr));
         } break;
         case CST_ExprCompoundLit: {
             ExprCompoundLit* e = (ExprCompoundLit*)expr;

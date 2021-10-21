@@ -34,6 +34,7 @@ typedef enum TypeSpecKind {
     CST_TypeSpecPtr,
     CST_TypeSpecArray,
     CST_TypeSpecConst,
+    CST_TypeSpecTypeof,
 } TypeSpecKind;
 
 struct TypeSpec {
@@ -45,6 +46,11 @@ typedef struct TypeSpecIdent {
     TypeSpec super;
     Identifier* name;
 } TypeSpecIdent;
+
+typedef struct TypeSpecTypeof {
+    TypeSpec super;
+    Expr* expr;
+} TypeSpecTypeof;
 
 typedef struct AggregateField {
     Identifier* name;
@@ -94,6 +100,7 @@ typedef struct TypeSpecConst {
 AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 
 TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* name, ProgRange range);
+TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range);
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
 TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
@@ -123,7 +130,6 @@ typedef enum ExprKind {
     CST_ExprIdent,
     CST_ExprCast,
     CST_ExprSizeof,
-    CST_ExprTypeof,
     CST_ExprCompoundLit,
 } ExprKind;
 
@@ -218,11 +224,6 @@ typedef struct ExprSizeof {
     TypeSpec* typespec;
 } ExprSizeof;
 
-typedef struct ExprTypeof {
-    Expr super;
-    Expr* expr;
-} ExprTypeof;
-
 typedef enum DesignatorKind {
     DESIGNATOR_NONE,
     DESIGNATOR_NAME,
@@ -265,7 +266,6 @@ Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
 Expr* new_expr_ident(Allocator* allocator, Identifier* name, ProgRange range);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
-Expr* new_expr_typeof(Allocator* allocator, Expr* arg, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
 Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range);
 

@@ -331,9 +331,37 @@ static TypeSpec* parse_typespec_ident(Parser* parser)
     return new_typespec_ident(parser->ast_arena, token.as_ident.ident, token.range);
 }
 
+static TypeSpec* parse_typespec_typeof(Parser* parser)
+{
+    assert(is_keyword(parser, KW_TYPEOF));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse typeof expression";
+
+    next_token(parser);
+
+    if (!expect_token(parser, TKN_LPAREN, error_prefix)) {
+        return NULL;
+    }
+
+    Expr* arg = parse_expr(parser);
+
+    if (!arg) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_RPAREN, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return new_typespec_typeof(parser->ast_arena, arg, range);
+}
+
 // typespec_base  = typespec_proc
 //                | typespec_anon_struct
 //                | typespec_anon_union
+//                | typespec_typeof
 //                | typespec_ident
 //                | '(' type_spec ')'
 static TypeSpec* parse_typespec_base(Parser* parser)
@@ -349,6 +377,8 @@ static TypeSpec* parse_typespec_base(Parser* parser)
             return parse_typespec_aggregate(parser, "Failed to parse anonymous struct", new_typespec_struct);
         case KW_UNION:
             return parse_typespec_aggregate(parser, "Failed to parse anonymous union", new_typespec_union);
+        case KW_TYPEOF:
+            return parse_typespec_typeof(parser);
         default:
             break;
         }
@@ -576,38 +606,15 @@ static Expr* parse_expr_sizeof(Parser* parser)
     return expr;
 }
 
-static Expr* parse_expr_typeof(Parser* parser)
-{
-    assert(is_keyword(parser, KW_TYPEOF));
-    Expr* expr = NULL;
-    ProgRange range = {.start = parser->token.range.start};
-    const char* error_prefix = "Failed to parse typeof expression";
-
-    next_token(parser);
-
-    if (expect_token(parser, TKN_LPAREN, error_prefix)) {
-        Expr* arg = parse_expr(parser);
-
-        if (arg && expect_token(parser, TKN_RPAREN, error_prefix)) {
-            range.end = parser->ptoken.range.end;
-            expr = new_expr_typeof(parser->ast_arena, arg, range);
-        }
-    }
-
-    return expr;
-}
-
 // expr_base = TKN_INT
 //           | TKN_FLOAT
 //           | TKN_STR
 //           | TKN_IDENT
 //           | expr_compound_init
 //           | expr_sizeof
-//           | expr_typeof
 //           | '(' expr ')'
 //
 // expr_sizeof = KW_SIZEOF '('type_spec')'
-// expr_typeof = KW_TYPEOF '(' expr ')'
 static Expr* parse_expr_base(Parser* parser)
 {
     Token token = parser->token;
@@ -637,8 +644,6 @@ static Expr* parse_expr_base(Parser* parser)
         switch (token.as_kw.ident->kw) {
         case KW_SIZEOF:
             return parse_expr_sizeof(parser);
-        case KW_TYPEOF:
-            return parse_expr_typeof(parser);
         default:
             break;
         }

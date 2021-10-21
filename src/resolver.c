@@ -1675,6 +1675,14 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
         return ident_sym->type;
     }
+    case CST_TypeSpecTypeof: {
+        TypeSpecTypeof* ts = (TypeSpecTypeof*)typespec;
+
+        if (!resolve_expr(resolver, ts->expr, NULL))
+            return NULL;
+
+        return ts->expr->type;
+    }
     case CST_TypeSpecPtr: {
         TypeSpecPtr* ts = (TypeSpecPtr*)typespec;
         TypeSpec* base_ts = ts->base;
