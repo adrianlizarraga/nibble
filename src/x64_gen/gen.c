@@ -1902,7 +1902,8 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         // Stack should now be aligned properly for procedure call.
         assert((total_stack_size & (X64_STACK_ALIGN - 1)) == 0);
 
-        X64_emit_text(generator, "    call %s", instr->call.sym->name->str);
+        const char* proc_prefix = (instr->call.sym->name->kind == IDENTIFIER_INTRINSIC) ? "_nibble_" : "";
+        X64_emit_text(generator, "    call %s%s", proc_prefix, instr->call.sym->name->str);
 
         // Move return value (if any) to appropriate register.
         Type* ret_type = instr->call.sym->type->as_proc.ret;
@@ -1975,9 +1976,10 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
+    const char* proc_prefix = sym->name->kind == IDENTIFIER_INTRINSIC ? "_nibble_" : "";
     X64_emit_text(generator, "");
-    X64_emit_text(generator, "global %s", sym->name->str);
-    X64_emit_text(generator, "%s:", sym->name->str);
+    X64_emit_text(generator, "global %s%s", proc_prefix, sym->name->str);
+    X64_emit_text(generator, "%s%s:", proc_prefix, sym->name->str);
 
     X64_emit_text(generator, "    push rbp");
     X64_emit_text(generator, "    mov rbp, rsp");

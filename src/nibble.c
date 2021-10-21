@@ -100,7 +100,6 @@ static void print_errors(ByteStream* errors)
 static bool init_annotations()
 {
     static const StringView names[ANNOTATION_COUNT] = {
-        [ANNOTATION_INTRINSIC] = string_view_lit("intrinsic"),
         [ANNOTATION_FOREIGN] = string_view_lit("foreign"),
         [ANNOTATION_PACKED] = string_view_lit("packed"),
     };
@@ -122,7 +121,7 @@ static bool init_annotations()
 static bool init_intrinsics()
 {
     static const StringView names[INTRINSIC_COUNT] = {
-        [INTRINSIC_DEBUG_STDOUT] = string_view_lit("_nibble_stdout"),
+        [INTRINSIC_WRITEOUT] = string_view_lit("#writeout"),
     };
 
     for (int i = 0; i < INTRINSIC_COUNT; i += 1) {
@@ -224,6 +223,9 @@ bool nibble_init(OS target_os, Arch target_arch)
     return true;
 }
 
+static const char* builtin_decls = 
+    "proc #writeout(buf: ^char, size: u64) => int;\n";
+
 static int64_t parse_code(List* decls, const char* code)
 {
     Parser parser = {0};
@@ -235,7 +237,7 @@ static int64_t parse_code(List* decls, const char* code)
     while (!is_token_kind(&parser, TKN_EOF)) {
         Decl* decl = parse_decl(&parser);
 
-        if (!decl)
+        if (!decl || nibble->errors.count)
             return -1;
 
         num_decls += 1;
@@ -264,6 +266,14 @@ void nibble_compile(const char* input_file, const char* output_file)
     const char* code = slurp_file(&nibble->gen_mem, path);
     List decls = list_head_create(decls);
 
+    int64_t num_builtin_decls = parse_code(&decls, builtin_decls);
+
+    if (num_builtin_decls <= 0) {
+        ftprint_err("[ERROR]: Failed to parse builtin code\n");
+        print_errors(&nibble->errors);
+        return;
+    }
+
     int64_t num_decls = parse_code(&decls, code);
 
     if (num_decls <= 0) {
@@ -277,7 +287,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     ftprint_out("2. Type-checking ...\n");
 
     Resolver resolver = {0};
-    size_t num_global_syms = num_decls + 17; // TODO: Update magic 17 to num of builtin types.
+    size_t num_global_syms = num_decls + num_builtin_decls + 17; // TODO: Update magic 17 to num of builtin types.
 
     init_scope_sym_table(&nibble->global_scope, &nibble->ast_mem, num_global_syms * 2);
     init_resolver(&resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors, &nibble->type_cache,

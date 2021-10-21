@@ -3,8 +3,6 @@ var g_a : [4]char;
 var g_b : [4]char = {[1] = '1', '4'}; // first and last elements are automatically set to 0
                                       // because this is a global variable.
 
-proc _nibble_stdout(buf: ^char, size: u64) => int;
-
 proc first_char(str: ^char) => char {
     return str[0];
 }
@@ -21,7 +19,7 @@ proc main() => int
     //var t : [6]char;
     //t = "12345";
 
-    _nibble_stdout(a, 6);
+    #writeout(a, 6);
 
     // 'S' + 'e' - '5' + 'E' - 0 - '4' <=> 83 + 101 - 53 + 69 - 0 - 52 = 148
     return first_char("Sailor\n`") + a[1] - s[4] + g_s[1] - g_a[2] - g_b[2]; 

@@ -1922,15 +1922,7 @@ static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
         DeclAnnotation* a = list_entry(it, DeclAnnotation, lnode);
         const char* name = a->ident->str;
 
-        if (name == annotation_names[ANNOTATION_INTRINSIC]) {
-            if (decl->flags & PROC_IS_INTRINSIC) {
-                resolver_on_error(resolver, "Duplicate @intrinsic annotations");
-                return false;
-            }
-
-            decl->flags |= PROC_IS_INTRINSIC;
-        }
-        else if (name == annotation_names[ANNOTATION_FOREIGN]) {
+        if (name == annotation_names[ANNOTATION_FOREIGN]) {
             if (decl->flags & PROC_IS_FOREIGN) {
                 resolver_on_error(resolver, "Duplicate @foreign annotations");
                 return false;
@@ -1943,29 +1935,10 @@ static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
     }
 
     bool is_incomplete = decl->flags & PROC_IS_INCOMPLETE;
-    bool is_intrinsic = decl->flags & PROC_IS_INTRINSIC;
     bool is_foreign = decl->flags & PROC_IS_FOREIGN;
-
-    if (is_intrinsic && !is_incomplete) {
-        resolver_on_error(resolver, "Intrinsic procedure cannot have a body");
-        return false;
-    }
-
-    if (is_intrinsic && (decl->name->kind != IDENTIFIER_INTRINSIC)) {
-        resolver_on_error(resolver, "Unknown intrinsic procedure `%s`\n", decl->name->str);
-        return false;
-    }
-
-    // TODO: Typecheck intrinsic proc type signature? I'm not sure if an intrinsic annotation is even
-    // necessary....
 
     if (is_foreign && !is_incomplete) {
         resolver_on_error(resolver, "Foreign procedure cannot have a body");
-        return false;
-    }
-
-    if (is_foreign && is_intrinsic) {
-        resolver_on_error(resolver, "Procedure cannot be both intrinsic and foreign");
         return false;
     }
 
@@ -1977,6 +1950,15 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     DeclProc* decl = (DeclProc*)sym->decl;
 
     if (!resolve_decl_proc_annotations(resolver, decl)) {
+        return false;
+    }
+
+    bool is_incomplete = decl->flags & PROC_IS_INCOMPLETE;
+    bool is_foreign = decl->flags & PROC_IS_FOREIGN;
+    bool is_intrinsic = decl->name->kind == IDENTIFIER_INTRINSIC;
+
+    if (is_incomplete && !(is_foreign || is_intrinsic)) {
+        resolver_on_error(resolver, "Procedure must have a body");
         return false;
     }
 

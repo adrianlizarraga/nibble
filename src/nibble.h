@@ -137,7 +137,6 @@ typedef enum Keyword {
 
 typedef enum Annotation {
     ANNOTATION_CUSTOM = 0,
-    ANNOTATION_INTRINSIC,
     ANNOTATION_FOREIGN,
     ANNOTATION_PACKED,
 
@@ -145,7 +144,7 @@ typedef enum Annotation {
 } Annotation;
 
 typedef enum Intrinsic {
-    INTRINSIC_DEBUG_STDOUT,
+    INTRINSIC_WRITEOUT,
     
     INTRINSIC_COUNT,
 } Intrinsic;

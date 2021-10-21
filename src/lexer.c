@@ -459,7 +459,6 @@ const char* token_kind_names[] = {
     [TKN_ELLIPSIS] = "..",
     [TKN_ARROW] = "=>",
     [TKN_CAST] = ":>",
-    [TKN_POUND] = "#",
     [TKN_AT] = "@",
 
     [TKN_STR] = "string literal",
@@ -611,10 +610,6 @@ top:
     case ',':
         lexer->at++;
         token.kind = TKN_COMMA;
-        break;
-    case '#':
-        lexer->at++;
-        token.kind = TKN_POUND;
         break;
     case '@':
         lexer->at++;
@@ -860,7 +855,8 @@ top:
     case 'X':
     case 'Y':
     case 'Z':
-    case '_': {
+    case '_':
+    case '#': {
         const char* start = lexer->at;
 
         do {
@@ -876,6 +872,10 @@ top:
         else {
             token.kind = TKN_IDENT;
             token.as_ident.ident = ident;
+
+            if ((ident->str[0] == '#') && (ident->kind != IDENTIFIER_INTRINSIC)) {
+                lexer_on_error(lexer, "Only intrinsics can begin with a `#` character");
+            }
         }
 
         break;
