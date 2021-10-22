@@ -144,6 +144,7 @@ typedef enum Annotation {
 } Annotation;
 
 typedef enum Intrinsic {
+    INTRINSIC_READIN,
     INTRINSIC_WRITEOUT,
     
     INTRINSIC_COUNT,

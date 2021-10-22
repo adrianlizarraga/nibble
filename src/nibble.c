@@ -118,9 +118,14 @@ static bool init_annotations()
     return true;
 }
 
+static const char* builtin_decls =
+    "proc #writeout(buf: ^char, size: usize) => ssize;\n"
+    "proc #readin(buf: ^char, size: usize) => ssize;\n";
+
 static bool init_intrinsics()
 {
     static const StringView names[INTRINSIC_COUNT] = {
+        [INTRINSIC_READIN] = string_view_lit("#readin"),
         [INTRINSIC_WRITEOUT] = string_view_lit("#writeout"),
     };
 
@@ -222,9 +227,6 @@ bool nibble_init(OS target_os, Arch target_arch)
 
     return true;
 }
-
-static const char* builtin_decls = 
-    "proc #writeout(buf: ^char, size: u64) => int;\n";
 
 static int64_t parse_code(List* decls, const char* code)
 {

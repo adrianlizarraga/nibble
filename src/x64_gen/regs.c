@@ -67,6 +67,21 @@ static const char* x64_linux_startup_code =
     "\n"
     "    mov rsp, rbp\n"
     "    pop rbp\n"
+    "    ret\n\n"
+    "global _nibble_#readin\n"
+    "_nibble_#readin:\n"
+    "    push rbp \n"
+    "    mov rbp, rsp\n"
+    "\n"
+    "    xchg rdi, rsi ; swap args -> bytes in rsi, count in rdi\n"
+    "    mov rax, 0    ; read syscall\n"
+    "    mov rdx, rdi  ; count in rdx\n"
+    "    mov rdi, 0    ; STDIN_FILENO in rdi\n"
+    "\n"
+    "    syscall\n"
+    "\n"
+    "    mov rsp, rbp\n"
+    "    pop rbp\n"
     "    ret\n";
 
 // TODO: https://stackoverflow.com/questions/59474618/hello-world-in-nasm-with-link-exe-and-winapi
