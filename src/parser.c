@@ -1245,6 +1245,11 @@ static Stmt* parse_stmt_expr(Parser* parser, bool terminate)
 {
     Stmt* stmt = NULL;
     Expr* expr = parse_expr(parser);
+
+    if (!expr) {
+        return NULL;
+    }
+
     ProgRange range = {.start = expr->range.start};
     const char* error_prefix = "Failed to parse expression statement";
 

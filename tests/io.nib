@@ -1,0 +1,38 @@
+proc cstr_len(s : ^char) => usize
+{
+    if (!s) {
+        return 0;
+    }
+
+    var count : usize = 0;
+
+    while (*s) {
+        s = s + 1;
+        count = count + 1;
+    }
+
+    return count;
+}
+
+proc main(argc : int, argv : ^^char) => int
+{
+    var i := 0;
+    var ln : char = '\n';
+
+    while (i < argc) {
+        #writeout(argv[i], cstr_len(argv[i]));
+        #writeout(^ln, 1);
+        i = i + 1;
+    }
+
+    var a : []char = "Hello\n";
+    var num_bytes := sizeof(typeof(a));
+
+    #writeout(a, num_bytes);
+
+    num_bytes = #readin(a, num_bytes);
+    #writeout(a, num_bytes);
+
+    return num_bytes;
+}
+
