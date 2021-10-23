@@ -14,8 +14,45 @@ proc cstr_len(s : ^char) => usize
     return count;
 }
 
+proc print_char_val(buf: ^char, size: usize, c: char) => usize
+{
+    var l : usize = 0;
+    var d : int = c;
+
+    do {
+        // TODO: Support % operator
+        //buf[size - 1 - l] = (d % 10) + '0';
+        //d = d / 10;
+
+        var d_next := d / 10;
+        var r := d - (d_next * 10);
+        buf[size - 1 - l] = r + '0';
+        d = d_next;
+
+        l = l + 1;
+    } while (d && l < size);
+
+    return l;
+}
+
+proc print_chars(buf: ^char, size: usize)
+{
+    var tmp : [32]char = {0};
+    var tmp_end : ^char = tmp + 31;
+
+    *tmp_end = '\n';
+
+    var i : usize = 0;
+    while (i < size) {
+        var l := print_char_val(tmp, 31, buf[i]);
+        #writeout(tmp_end - l, l + 1);
+        i = i + 1;
+    }
+}
+
 proc main(argc : int, argv : ^^s16) => int
 {
+    /*
     var i := 0;
     var ln : char = '\n';
 
@@ -26,14 +63,17 @@ proc main(argc : int, argv : ^^s16) => int
         #writeout(^ln, 1);
         i = i + 1;
     }
+    */
 
-    var a : []char = "Hello\n";
-    var num_bytes := sizeof(typeof(a));
+    var buf : [8]char = {0};
+    var num_bytes_read : usize = 0;
 
-    #writeout(a, num_bytes);
-    num_bytes = #readin(a, num_bytes);
-    #writeout(a, num_bytes);
+    // Read user input
+    num_bytes_read = #readin(buf, 8);
 
-    return num_bytes;
+    // Print ASCII value of every read character.
+    print_chars(buf, num_bytes_read);
+
+    return num_bytes_read;
 }
 
