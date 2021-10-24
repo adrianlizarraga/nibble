@@ -1,4 +1,8 @@
 extern GetCommandLineA
+extern LocalFree
+extern GetStdHandle
+extern ReadFile
+extern WriteFile
 extern LocalAlloc
 
 ; proc _nibble_get_win64_cmd_args(argc: ^int) => ^^char;
@@ -27,7 +31,7 @@ _nibble_get_win64_cmd_args:
     jne     .L_win64_args_6
     jmp     .L_win64_args_8
 .L_win64_args_1:
-    movabs  rax, 4294967809
+    mov rax, 4294967809
     mov     edx, r8d
     mov     rcx, rdi
 .L_win64_args_2:
@@ -174,7 +178,7 @@ _nibble_get_win64_cmd_args:
     inc     rsi
     jmp     .L_win64_args_48
 .L_win64_args_43:
-    movabs  rdx, 4294967809
+    mov rdx, 4294967809
 .L_win64_args_44:
     cmp     cl, 32
     ja      .L_win64_args_46
@@ -270,7 +274,7 @@ _nibble_get_win64_cmd_args:
     mov     edx, ebx
     shr     edx, 31
     add     edx, ebx
-    sar     edx
+    sar  edx, 1
     neg     edx
     movsxd  rdx, edx
     test    bl, 1
@@ -317,4 +321,30 @@ _nibble_get_win64_cmd_args:
     pop     rdi
     pop     rsi
     pop     r14
+    ret
+
+global _start
+_start:  ; Program entry
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16 + 32             ; Alloc space for locals and shadow space (for all called funcs)
+                                 ; argc: int (rbp - 4), retval : int (rbp - 8), argv: ^^s16 (rbp - 16)
+
+    lea rcx, [rbp - 4]              ; rcx = ^argc
+    call _nibble_get_win64_cmd_args ; rax = copy of argv
+    mov qword [rbp - 16], rax       ; store argv to free later
+
+    mov rcx, qword [rbp - 4]     ; rcx = argc
+    mov rdx, rax                 ; rdx = argv
+    xor eax, eax                 ; Clear eax (just in case for variadic functions)
+    call main                    ; Call program main()
+    mov dword [rbp - 8], eax     ; store retval
+
+    mov rcx, qword [rbp - 16]    ; rcx = argv
+    call LocalFree               ; free argv
+ 
+    mov eax, dword [rbp - 8]     ; Return retval from main()
+
+    mov rsp, rbp
+    pop rbp
     ret
