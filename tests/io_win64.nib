@@ -50,29 +50,31 @@ proc print_chars(buf: ^char, size: usize)
     }
 }
 
-proc main(argc : int, argv : ^^s16) => int
+proc main(argc : int, argv : ^^char) => int
 {
-    /*
     var i := 0;
     var ln : char = '\n';
 
     while (i < argc) {
-        // TODO: WIll only print first letter of each argv. Need to make argv a ^^char!!!!!!
-        var s : ^char = argv[i] :> ^char;
+        var s : ^char = argv[i];
         #writeout(s, cstr_len(s));
         #writeout(^ln, 1);
         i = i + 1;
     }
-    */
 
     var buf : [8]char = {0};
-    var num_bytes_read : usize = 0;
+    var num_bytes_read : ssize = 0;
 
     // Read user input
     num_bytes_read = #readin(buf, 8);
 
     // Print ASCII value of every read character.
-    print_chars(buf, num_bytes_read);
+    if ( num_bytes_read >= 0) {
+        print_chars(buf, num_bytes_read);
+    }
+    else {
+        #writeout("ERROR\n", 6); 
+    }
 
     return num_bytes_read;
 }
