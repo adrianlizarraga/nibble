@@ -39,7 +39,7 @@ const char* keyword_names[KW_COUNT];
 const char* annotation_names[ANNOTATION_COUNT];
 const char* intrinsic_names[INTRINSIC_COUNT];
 
-static char* slurp_file(Allocator* allocator, const char* filename)
+char* slurp_file(Allocator* allocator, const char* filename)
 {
     FILE* fd = fopen(filename, "r");
     if (!fd) {

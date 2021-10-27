@@ -183,6 +183,8 @@ extern const char* intrinsic_names[INTRINSIC_COUNT];
 StrLit* intern_str_lit(const char* str, size_t len);
 Identifier* intern_ident(const char* str, size_t len);
 
+char* slurp_file(Allocator* allocator, const char* filename);
+
 bool nibble_init(OS target_os, Arch target_arch);
 void nibble_compile(const char* input_file, const char* output_file);
 void nibble_cleanup(void);
