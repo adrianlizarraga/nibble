@@ -508,7 +508,7 @@ int print_token(Token* token, char* buf, size_t size)
 
     switch (token->kind) {
     case TKN_INT:
-        return snprintf(buf, size, "%llu", token->as_int.value);
+        return snprintf(buf, size, "%zu", (size_t)token->as_int.value);
     case TKN_FLOAT:
         if (token->as_float.kind == FLOAT_F32)
             return snprintf(buf, size, "%.3f", token->as_float.value._f32);
