@@ -760,11 +760,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
             break;
         }
         case TKN_INT_SUFFIX_U: {
-            Type* types[] = {
-                type_uint,
-                type_ulong,
-                type_ullong
-            };
+            Type* types[] = {type_uint, type_ulong, type_ullong};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
             break;
@@ -779,10 +775,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
             break;
         }
         case TKN_INT_SUFFIX_UL: {
-            Type* types[] = {
-                type_ulong,
-                type_ullong
-            };
+            Type* types[] = {type_ulong, type_ullong};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
             break;
@@ -813,57 +806,35 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
 
         switch (suffix) {
         case TKN_INT_SUFFIX_NONE: {
-            Type* types[] = {
-                type_int,
-                type_uint,
-                type_long,
-                type_ulong,
-                type_llong,
-                type_ullong
-            };
+            Type* types[] = {type_int, type_uint, type_long, type_ulong, type_llong, type_ullong};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
             break;
         }
         case TKN_INT_SUFFIX_U: {
-            Type* types[] = {
-                type_uint,
-                type_ulong,
-                type_ullong
-            };
+            Type* types[] = {type_uint, type_ulong, type_ullong};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
             break;
         }
         case TKN_INT_SUFFIX_L: {
-            Type* types[] = {
-                type_long,
-                type_ulong,
-                type_llong,
-                type_ullong
-            };
+            Type* types[] = {type_long, type_ulong, type_llong, type_ullong};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
             break;
         }
         case TKN_INT_SUFFIX_UL: {
-            Type* types[] = {
-                type_ulong,
-                type_ullong
-            };
+            Type* types[] = {type_ulong, type_ullong};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
             break;
         }
         case TKN_INT_SUFFIX_LL: {
-            Type* types[] = {
-                type_llong,
-                type_ullong
-            };
+            Type* types[] = {type_llong, type_ullong};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
@@ -1543,7 +1514,8 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
         }
 
         if (!infer_len && elem_index >= array_len) {
-            resolver_on_error(resolver, "Array index designator `%llu` is not within the expected array bounds (`%llu`)",
+            resolver_on_error(resolver,
+                              "Array index designator `%llu` is not within the expected array bounds (`%llu`)",
                               elem_index, array_len);
             return false;
         }
@@ -1807,7 +1779,8 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 return false;
 
             if ((declared_type->kind == TYPE_ARRAY) && !declared_type->as_array.len) {
-                declared_type = right_eop.type; // Get complete array type (with length) from right-hand-side expression.
+                declared_type =
+                    right_eop.type; // Get complete array type (with length) from right-hand-side expression.
             }
             else if (!convert_eop(&right_eop, declared_type)) {
                 resolver_on_error(resolver, "Incompatible types. Cannot convert `%s` to `%s`",
@@ -2287,6 +2260,31 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
     return RESOLVE_STMT_SUCCESS;
 }
 
+static bool resolve_static_assert(Resolver* resolver, StmtStaticAssert* sassert)
+{
+    if (!resolve_expr(resolver, sassert->cond, NULL)) {
+        return false;
+    }
+
+    if (!sassert->cond->is_constexpr) {
+        resolver_on_error(resolver, "#static_assert condition must be a compile-time constant expression");
+        return false;
+    }
+
+    if (sassert->cond->const_val.as_int._u32 == 0) {
+        const char* msg_pre = "static assertion failed";
+
+        if (sassert->msg)
+            resolver_on_error(resolver, "%s: %s", msg_pre, sassert->msg->str);
+        else
+            resolver_on_error(resolver, "%s", msg_pre);
+
+        return false;
+    }
+
+    return true;
+}
+
 static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     unsigned ret = 0;
@@ -2296,6 +2294,12 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     switch (stmt->kind) {
     case CST_StmtNoOp: {
         ret = RESOLVE_STMT_SUCCESS;
+        break;
+    }
+    case CST_StmtStaticAssert: {
+        StmtStaticAssert* sassert = (StmtStaticAssert*)stmt;
+
+        ret = resolve_static_assert(resolver, sassert) ? RESOLVE_STMT_SUCCESS : 0;
         break;
     }
     case CST_StmtReturn: {
@@ -2402,6 +2406,24 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     return ret;
 }
 
+static bool resolve_decl_stmt(Resolver* resolver, DeclStmt* decl)
+{
+    Stmt* stmt = decl->stmt;
+
+    switch (stmt->kind) {
+    case CST_StmtStaticAssert: {
+        return resolve_static_assert(resolver, (StmtStaticAssert*)stmt);
+    }
+    default:
+        // TODO: Human-readable statement kinds
+        resolver_on_error(
+            resolver,
+            "Invalid global statement of kind `%d`. Only compile-time statements are supported at global scope.",
+            stmt->kind);
+        return false;
+    }
+}
+
 static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 {
     if (sym->status == SYMBOL_STATUS_RESOLVED)
@@ -2453,13 +2475,16 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
     // Install decls in global symbol table.
     for (List* it = head->next; it != head; it = it->next) {
         Decl* decl = list_entry(it, Decl, lnode);
-        SymbolKind kind = SYMBOL_NONE;
-        Identifier* name = NULL;
 
-        fill_decl_symbol_info(decl, &kind, &name);
-        add_unresolved_symbol(resolver, resolver->global_scope, kind, name, decl);
+        if (decl->kind != CST_DeclStmt) {
+            SymbolKind kind = SYMBOL_NONE;
+            Identifier* name = NULL;
 
-        num_decls++;
+            fill_decl_symbol_info(decl, &kind, &name);
+            add_unresolved_symbol(resolver, resolver->global_scope, kind, name, decl);
+
+            num_decls++;
+        }
     }
 
     // Resolve declaration "headers". Will not resolve procedure bodies or complete aggregate types.
@@ -2470,6 +2495,16 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
 
         if (!resolve_symbol(resolver, sym))
             return false;
+    }
+
+    // Resolve global statements (e.g., #static_assert)
+    for (List* it = head->next; it != head; it = it->next) {
+        Decl* decl = list_entry(it, Decl, lnode);
+
+        if (decl->kind == CST_DeclStmt) {
+            if (!resolve_decl_stmt(resolver, (DeclStmt*)decl))
+                return false;
+        }
     }
 
     // Resolve declaration "bodies".

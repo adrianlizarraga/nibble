@@ -290,6 +290,7 @@ typedef enum StmtKind {
     CST_StmtExprAssign,
     CST_StmtDecl,
     CST_StmtBlock,
+    CST_StmtStaticAssert,
 } StmtKind;
 
 struct Stmt {
@@ -298,6 +299,12 @@ struct Stmt {
     bool returns; // True if all control paths within this block return from proc.
     ListNode lnode;
 };
+
+typedef struct StmtStaticAssert {
+    Stmt super;
+    Expr* cond;
+    StrLit* msg;
+} StmtStaticAssert;
 
 typedef struct StmtNoOp {
     Stmt super;
@@ -423,6 +430,7 @@ Stmt* new_stmt_goto(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range);
 SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
+Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////
@@ -444,6 +452,7 @@ typedef enum DeclKind {
     CST_DeclStruct,
     CST_DeclProc,
     CST_DeclTypedef,
+    CST_DeclStmt,
 } DeclKind;
 
 struct Decl {
@@ -452,6 +461,15 @@ struct Decl {
     List annotations;
     ListNode lnode;
 };
+
+// TODO: Maybe it is time to ditch the `decl` vs `stmt` distinction, or the very least rework it.
+// Consider just using a single AST node type with flags indicating type (a decl flag).
+//
+// Used for compile-time statements (e.g., #static_assert)
+typedef struct DeclStmt {
+    Decl super;
+    Stmt* stmt;
+} DeclStmt;
 
 typedef struct DeclVar {
     Decl super;
@@ -529,6 +547,7 @@ Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, Prog
 Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
                     u32 num_decls, u32 flags, ProgRange range);
+Decl* new_decl_stmt(Allocator* allocator, Stmt* stmt);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 

@@ -1462,6 +1462,48 @@ static Stmt* parse_stmt_label(Parser* parser)
     return new_stmt_label(parser->ast_arena, label, stmt, range);
 }
 
+// '#static_assert' '(' expr (',' TKN_STR)? ')' ';'
+static Stmt* parse_stmt_static_assert(Parser* parser)
+{
+    assert(is_keyword(parser, KW_STATIC_ASSERT));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse #static_assert";
+
+    next_token(parser);
+
+    if (!expect_token(parser, TKN_LPAREN, error_prefix)) {
+        return NULL;
+    }
+
+    Expr* cond = parse_expr(parser);
+
+    if (!cond) {
+        return NULL;
+    }
+
+    StrLit* msg = NULL;
+
+    if (match_token(parser, TKN_COMMA)) {
+        if (!expect_token(parser, TKN_STR, error_prefix)) {
+            return NULL;
+        }
+
+        msg = parser->ptoken.as_str.str_lit;
+    }
+
+    if (!expect_token(parser, TKN_RPAREN, error_prefix)) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return new_stmt_static_assert(parser->ast_arena, cond, msg, range);
+}
+
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
 //      | ';'
 //      | stmt_while
@@ -1473,6 +1515,7 @@ static Stmt* parse_stmt_label(Parser* parser)
 //      | 'continue' TKN_IDENT? ';'
 //      | 'goto' TKN_IDENT ';'
 //      | 'label' TKN_IDENT ':'
+//      | '#static_assert' '(' expr (',' TKN_STR)? ')' ';'
 //      | stmt_block
 //      | expr ';'
 //      | expr_assign ';'
@@ -1508,6 +1551,8 @@ Stmt* parse_stmt(Parser* parser)
             return parse_stmt_goto(parser);
         case KW_LABEL:
             return parse_stmt_label(parser);
+        case KW_STATIC_ASSERT:
+            return parse_stmt_static_assert(parser);
         default:
             return parse_stmt_decl(parser);
         }
@@ -1889,7 +1934,9 @@ static Decl* parse_decl_const(Parser* parser)
 static Decl* parse_decl_no_annotations(Parser* parser)
 {
     if (is_token_kind(parser, TKN_KW)) {
-        switch (parser->token.as_kw.ident->kw) {
+        Token token = parser->token;
+
+        switch (token.as_kw.ident->kw) {
         case KW_CONST:
             return parse_decl_const(parser);
         case KW_TYPEDEF:
@@ -1904,6 +1951,15 @@ static Decl* parse_decl_no_annotations(Parser* parser)
             return parse_decl_aggregate(parser, "Failed to parse union declaration", new_decl_union);
         case KW_PROC:
             return parse_decl_proc(parser);
+        case KW_STATIC_ASSERT: {
+            Stmt* stmt = parse_stmt_static_assert(parser);
+
+            if (!stmt) {
+                return NULL;
+            }
+
+            return new_decl_stmt(parser->ast_arena, stmt);
+        }
         default:
             break;
         }

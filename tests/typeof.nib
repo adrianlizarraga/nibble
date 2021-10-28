@@ -1,7 +1,12 @@
+#static_assert(#sizeof(int) == 4, "Size of int should be 4");
+
 proc main() => int
 {
     var a : int = 1;
-    var b : typeof(a + 100) = 10;
-    return b + sizeof(typeof(a)) + sizeof(typeof(b)); // 10 + 4 + 4 = 18
+    var b : #typeof(a + 100) = 10;
+
+    #static_assert(#sizeof(#typeof(b)) == 4);
+
+    return b + #sizeof(#typeof(a)) + #sizeof(#typeof(b)); // 10 + 4 + 4 = 18
 }
 

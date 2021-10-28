@@ -1,9 +1,5 @@
-
-@intrinsic
-proc _nibble_stdout(buf: ^char, size: u64) => int;
-
 proc main() => int
 {
-    return sizeof(int) + sizeof(^char) + sizeof([10]char); // 22
+    return #sizeof(int) + #sizeof(^char) + #sizeof([10]char); // 22
 }
 

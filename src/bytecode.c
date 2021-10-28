@@ -2502,7 +2502,12 @@ static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt)
     case CST_StmtDoWhile:
         IR_emit_stmt_do_while(builder, (StmtDoWhile*)stmt);
         break;
+    case CST_StmtStaticAssert:
+        // Do nothing.
+        break;
     default:
+        ftprint_err("Cannot emit bytecode instruction for statement kind `%d`\n", stmt->kind);
+        assert(0);
         break;
     }
 }

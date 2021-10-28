@@ -358,6 +358,14 @@ Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List
     return (Decl*)decl;
 }
 
+Decl* new_decl_stmt(Allocator* allocator, Stmt* stmt)
+{
+    DeclStmt* decl = new_decl(allocator, DeclStmt, stmt->range);
+    decl->stmt = stmt;
+
+    return (Decl*)decl;
+}
+
 #define new_stmt(a, k, r) (k*)new_stmt_((a), sizeof(k), alignof(k), CST_##k, (r))
 static Stmt* new_stmt_(Allocator* allocator, size_t size, size_t align, StmtKind kind, ProgRange range)
 {
@@ -371,6 +379,15 @@ static Stmt* new_stmt_(Allocator* allocator, size_t size, size_t align, StmtKind
 Stmt* new_stmt_noop(Allocator* allocator, ProgRange range)
 {
     StmtNoOp* stmt = new_stmt(allocator, StmtNoOp, range);
+
+    return (Stmt*)stmt;
+}
+
+Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range)
+{
+    StmtStaticAssert* stmt = new_stmt(allocator, StmtStaticAssert, range);
+    stmt->cond = cond;
+    stmt->msg = msg;
 
     return (Stmt*)stmt;
 }
@@ -1441,6 +1458,19 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
             ftprint_char_array(&dstr, false, "(label %s %s)", s->label, ftprint_stmt(allocator, s->target));
         } break;
+        case CST_StmtStaticAssert: {
+            StmtStaticAssert* s = (StmtStaticAssert*)stmt;
+            dstr = array_create(allocator, char, 32);
+
+            ftprint_char_array(&dstr, false, "(#static_assert %s", ftprint_expr(allocator, s->cond));
+
+            if (s->msg) {
+                ftprint_char_array(&dstr, false, " %s)", s->msg->str);
+            }
+            else {
+                ftprint_char_array(&dstr, false, ")");
+            }
+        } break;
         default: {
             ftprint_err("Unknown stmt kind: %d\n", stmt->kind);
             assert(0);
@@ -1579,6 +1609,11 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 ftprint_char_array(&dstr, false, "(stmt-block))");
             else
                 ftprint_char_array(&dstr, false, "(stmt-block %s))", ftprint_stmt_list(allocator, &proc->stmts));
+        } break;
+        case CST_DeclStmt: {
+            DeclStmt* d = (DeclStmt*)decl;
+            dstr = array_create(allocator, char, 32);
+            ftprint_char_array(&dstr, false, "%s", ftprint_stmt(allocator, d->stmt));
         } break;
         default: {
             ftprint_err("Unknown decl kind: %d\n", decl->kind);
