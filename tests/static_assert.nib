@@ -1,0 +1,17 @@
+#static_assert(#sizeof(#typeof(g_a)) == 8, "Size of s64 is 8");
+var g_a : s64 = 10;
+const g_b : s64 = 20;
+
+//#static_assert(g_a == 10); // Must be a compile-time constant expression
+#static_assert(g_b == 20);
+
+proc main() => int
+{
+    var a : int = 1;
+    var b : #typeof(a + 100) = 10;
+
+    #static_assert(#sizeof(#typeof(b)) == #sizeof(#typeof(a)));
+
+    return b + #sizeof(#typeof(a)) + #sizeof(#typeof(b)); // 10 + 4 + 4 = 18
+}
+

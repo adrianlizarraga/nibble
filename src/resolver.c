@@ -2406,24 +2406,6 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     return ret;
 }
 
-static bool resolve_decl_stmt(Resolver* resolver, DeclStmt* decl)
-{
-    Stmt* stmt = decl->stmt;
-
-    switch (stmt->kind) {
-    case CST_StmtStaticAssert: {
-        return resolve_static_assert(resolver, (StmtStaticAssert*)stmt);
-    }
-    default:
-        // TODO: Human-readable statement kinds
-        resolver_on_error(
-            resolver,
-            "Invalid global statement of kind `%d`. Only compile-time statements are supported at global scope.",
-            stmt->kind);
-        return false;
-    }
-}
-
 static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 {
     if (sym->status == SYMBOL_STATUS_RESOLVED)
@@ -2467,23 +2449,21 @@ static Symbol* resolve_name(Resolver* resolver, Identifier* name)
     return sym;
 }
 
-bool resolve_global_decls(Resolver* resolver, List* decls)
+bool resolve_global_stmts(Resolver* resolver, List* stmts)
 {
-    size_t num_decls = 0;
-    List* head = decls;
+    List* head = stmts;
 
     // Install decls in global symbol table.
     for (List* it = head->next; it != head; it = it->next) {
-        Decl* decl = list_entry(it, Decl, lnode);
+        Stmt* stmt = list_entry(it, Stmt, lnode);
 
-        if (decl->kind != CST_DeclStmt) {
+        if (stmt->kind == CST_StmtDecl) {
+            Decl* decl = ((StmtDecl*)stmt)->decl;
             SymbolKind kind = SYMBOL_NONE;
             Identifier* name = NULL;
 
             fill_decl_symbol_info(decl, &kind, &name);
             add_unresolved_symbol(resolver, resolver->global_scope, kind, name, decl);
-
-            num_decls++;
         }
     }
 
@@ -2499,10 +2479,10 @@ bool resolve_global_decls(Resolver* resolver, List* decls)
 
     // Resolve global statements (e.g., #static_assert)
     for (List* it = head->next; it != head; it = it->next) {
-        Decl* decl = list_entry(it, Decl, lnode);
+        Stmt* stmt = list_entry(it, Stmt, lnode);
 
-        if (decl->kind == CST_DeclStmt) {
-            if (!resolve_decl_stmt(resolver, (DeclStmt*)decl))
+        if (stmt->kind != CST_StmtDecl) {
+            if (!(resolve_stmt(resolver, stmt, NULL, 0) & RESOLVE_STMT_SUCCESS))
                 return false;
         }
     }

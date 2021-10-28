@@ -452,7 +452,6 @@ typedef enum DeclKind {
     CST_DeclStruct,
     CST_DeclProc,
     CST_DeclTypedef,
-    CST_DeclStmt,
 } DeclKind;
 
 struct Decl {
@@ -461,15 +460,6 @@ struct Decl {
     List annotations;
     ListNode lnode;
 };
-
-// TODO: Maybe it is time to ditch the `decl` vs `stmt` distinction, or the very least rework it.
-// Consider just using a single AST node type with flags indicating type (a decl flag).
-//
-// Used for compile-time statements (e.g., #static_assert)
-typedef struct DeclStmt {
-    Decl super;
-    Stmt* stmt;
-} DeclStmt;
 
 typedef struct DeclVar {
     Decl super;
@@ -547,7 +537,6 @@ Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, Prog
 Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
                     u32 num_decls, u32 flags, ProgRange range);
-Decl* new_decl_stmt(Allocator* allocator, Stmt* stmt);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 

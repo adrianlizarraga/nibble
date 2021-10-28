@@ -229,7 +229,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     return true;
 }
 
-static int64_t parse_code(List* decls, const char* code)
+static int64_t parse_code(List* stmts, const char* code)
 {
     Parser parser = {0};
     int64_t num_decls = 0;
@@ -238,16 +238,16 @@ static int64_t parse_code(List* decls, const char* code)
     next_token(&parser);
 
     while (!is_token_kind(&parser, TKN_EOF)) {
-        Decl* decl = parse_decl(&parser);
+        Stmt* stmt = parse_global_stmt(&parser);
 
-        if (!decl || nibble->errors.count)
+        if (!stmt || nibble->errors.count)
             return -1;
 
-        num_decls += 1;
-        list_add_last(decls, &decl->lnode);
+        if (stmt->kind == CST_StmtDecl) num_decls += 1;
+        list_add_last(stmts, &stmt->lnode);
 
 #ifdef NIBBLE_PRINT_DECLS
-        ftprint_out("%s\n", ftprint_decl(&nibble->gen_mem, decl));
+        ftprint_out("%s\n", ftprint_stmt(&nibble->gen_mem, stmt));
 #endif
     }
 
@@ -267,9 +267,9 @@ void nibble_compile(const char* input_file, const char* output_file)
 
     const char* path = intern_str_lit(input_file, cstr_len(input_file))->str;
     const char* code = slurp_file(&nibble->gen_mem, path);
-    List decls = list_head_create(decls);
+    List stmts = list_head_create(stmts);
 
-    int64_t num_builtin_decls = parse_code(&decls, builtin_decls);
+    int64_t num_builtin_decls = parse_code(&stmts, builtin_decls);
 
     if (num_builtin_decls <= 0) {
         ftprint_err("[ERROR]: Failed to parse builtin code\n");
@@ -277,7 +277,7 @@ void nibble_compile(const char* input_file, const char* output_file)
         return;
     }
 
-    int64_t num_decls = parse_code(&decls, code);
+    int64_t num_decls = parse_code(&stmts, code);
 
     if (num_decls <= 0) {
         print_errors(&nibble->errors);
@@ -296,7 +296,7 @@ void nibble_compile(const char* input_file, const char* output_file)
     init_resolver(&resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors, &nibble->type_cache,
                   &nibble->global_scope);
 
-    if (!resolve_global_decls(&resolver, &decls)) {
+    if (!resolve_global_stmts(&resolver, &stmts)) {
         print_errors(&nibble->errors);
         return;
     }

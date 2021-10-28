@@ -358,14 +358,6 @@ Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List
     return (Decl*)decl;
 }
 
-Decl* new_decl_stmt(Allocator* allocator, Stmt* stmt)
-{
-    DeclStmt* decl = new_decl(allocator, DeclStmt, stmt->range);
-    decl->stmt = stmt;
-
-    return (Decl*)decl;
-}
-
 #define new_stmt(a, k, r) (k*)new_stmt_((a), sizeof(k), alignof(k), CST_##k, (r))
 static Stmt* new_stmt_(Allocator* allocator, size_t size, size_t align, StmtKind kind, ProgRange range)
 {
@@ -1609,11 +1601,6 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 ftprint_char_array(&dstr, false, "(stmt-block))");
             else
                 ftprint_char_array(&dstr, false, "(stmt-block %s))", ftprint_stmt_list(allocator, &proc->stmts));
-        } break;
-        case CST_DeclStmt: {
-            DeclStmt* d = (DeclStmt*)decl;
-            dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "%s", ftprint_stmt(allocator, d->stmt));
         } break;
         default: {
             ftprint_err("Unknown decl kind: %d\n", decl->kind);

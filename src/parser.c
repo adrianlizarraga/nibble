@@ -1561,6 +1561,29 @@ Stmt* parse_stmt(Parser* parser)
     }
 }
 
+Stmt* parse_global_stmt(Parser* parser)
+{
+    switch (parser->token.kind) {
+    case TKN_KW:
+        switch (parser->token.as_kw.ident->kw) {
+        case KW_STATIC_ASSERT:
+            return parse_stmt_static_assert(parser);
+        default:
+            return parse_stmt_decl(parser);
+        }
+    default:
+        break;
+    }
+
+    char tmp[32];
+
+    print_token(&parser->token, tmp, sizeof(tmp));
+    parser_on_error(parser, "Only declarations or compile-time statements are allowed at global scope."
+                    " Found token `%s`", tmp);
+
+    return NULL;
+}
+
 ///////////////////////////////
 //    Parse declarations
 //////////////////////////////
@@ -1951,15 +1974,6 @@ static Decl* parse_decl_no_annotations(Parser* parser)
             return parse_decl_aggregate(parser, "Failed to parse union declaration", new_decl_union);
         case KW_PROC:
             return parse_decl_proc(parser);
-        case KW_STATIC_ASSERT: {
-            Stmt* stmt = parse_stmt_static_assert(parser);
-
-            if (!stmt) {
-                return NULL;
-            }
-
-            return new_decl_stmt(parser->ast_arena, stmt);
-        }
         default:
             break;
         }

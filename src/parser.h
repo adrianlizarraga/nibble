@@ -41,4 +41,5 @@ TypeSpec* parse_typespec(Parser* parser);
 Expr* parse_expr(Parser* parser);
 Stmt* parse_stmt(Parser* parser);
 Decl* parse_decl(Parser* parser);
+Stmt* parse_global_stmt(Parser* parser);
 #endif
