@@ -260,6 +260,20 @@ static int64_t parse_code(List* stmts, const char* code)
 
 void nibble_compile(const char* input_file, const char* output_file)
 {
+    /*
+    Path p;
+    path_init(&p, &nibble->tmp_mem);
+    path_set(&p, input_file);
+    ftprint_out("Relative path: %s\n", p.str);
+
+    path_abs(&p);
+    ftprint_out("Absolute path: %s\n", p.str);
+    path_free(&p);
+    */
+    DirentIter iter;
+    for (dirent_it_init(&iter, ".", &nibble->tmp_mem); iter.flags & DIRENT_IS_VALID; dirent_it_next(&iter)) {
+        ftprint_out("base: %s, entry: %s\n", iter.base.str, iter.name.str);
+    }
     //////////////////////////////////////////
     //                Parse
     //////////////////////////////////////////

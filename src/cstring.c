@@ -205,6 +205,26 @@ static void path_norm(Path* path)
     }
 }
 
+static void path_ensure_cap(Path* path, size_t cap)
+{
+    if (path->cap >= cap) {
+        return;
+    }
+
+    char* str = alloc_array(path->alloc, char, cap, false);
+
+    for (size_t i = 0; i <= path->len; i += 1) {
+        str[i] = path->str[i];
+    }
+
+    if (path->str != path->_buf) {
+        mem_free(path->alloc, path->str);
+    }
+
+    path->str = str;
+    path->cap = cap;
+}
+
 void path_free(Path* path)
 {
     ASSERT_PATH_INIT(path);
@@ -281,14 +301,7 @@ void path_join(Path* dst, Path* src)
         const size_t _buf_size = sizeof(dst->_buf);
         const size_t cap = len + 1 + (_buf_size >> 2);
 
-        char* str = alloc_array(dst->alloc, char, cap, false);
-
-        for (size_t i = 0; i <= dst->len; i += 1) {
-            str[i] = dst->str[i];
-        }
-
-        dst->str = str;
-        dst->cap = cap;
+        path_ensure_cap(dst, cap);
     }
 
     char* d = dst->str + dst->len;
@@ -316,8 +329,120 @@ bool dirent_it_skip(const char* name)
 }
 
 #ifdef _WIN32
-// TODO
+
+void path_abs(Path* path)
+{
+    ASSERT_PATH_INIT(path);
+
+    Path rel;
+    path_init(&rel, path->alloc);
+    path_set(&rel, path->str);
+
+    _fullpath(path->str, rel.str, path->cap);
+    path->len = cstr_len(path->str);
+
+    path_free(&rel);
+}
+
+void dirent_it_free(DirentIter* it)
+{
+    if (it->flags & DIRENT_IS_VALID) {
+        it->flags &= ~DIRENT_IS_VALID;
+        _findclose((intptr_t)it->os_handle);
+        path_free(&it->base);
+        path_free(&it->name);
+    }
+}
+
+void dirent_it_next(DirentIter* it)
+{
+    if (!(it->flags & DIRENT_IS_VALID)) {
+        return;
+    }
+
+    bool is_dir = false;
+
+    do {
+        struct _finddata_t fileinfo;
+        intptr_t result = _findnext((intptr_t)it->os_handle, &fileinfo);
+
+        if (result != 0) {
+            dirent_it_free(it);
+            return;
+        }
+
+        path_set(&it->name, fileinfo.name);
+
+        is_dir = fileinfo.attrib & _A_SUBDIR;
+    } while (dirent_it_skip(it->name.str));
+
+    if (is_dir) {
+        it->flags |= DIRENT_IS_DIR;
+    }
+}
+
+void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
+{
+    path_init(&it->base, alloc);
+    path_init(&it->name, alloc);
+
+    // Create a temporary `filespec` Path that adds `/*` to the base path.
+    Path filespec;
+    path_init(&filespec, alloc);
+    path_set(&filespec, path_str);
+
+    bool ends_sep = filespec.str[filespec.len - 1] == NIBBLE_PATH_SEP;
+    size_t needed_space = ends_sep ? 1 : 2;
+
+    path_ensure_cap(&filespec, filespec.len + 1 + needed_space);
+
+    if (!ends_sep) {
+        filespec.str[filespec.len++] = '/';
+    }
+
+    filespec.str[filespec.len++] = '*';
+    filespec.str[filespec.len] = '\0';
+
+    // Get the first directory entry.
+    struct _finddata_t fileinfo;
+    intptr_t handle = _findfirst(filespec.str, &fileinfo);
+
+    it->os_handle = (void*)handle;
+
+    if (handle == -1) {
+        it->flags = 0;
+        return;
+    }
+
+    it->flags = DIRENT_IS_VALID;
+    if (fileinfo.attrib & _A_SUBDIR) {
+        it->flags |= DIRENT_IS_DIR;
+    }
+
+    path_set(&it->base, path_str);
+    path_set(&it->name, fileinfo.name);
+
+    if (dirent_it_skip(it->name.str)) {
+        dirent_it_next(it);
+    }
+}
 #else
+
+void path_abs(Path* path)
+{
+    ASSERT_PATH_INIT(path);
+
+    Path rel;
+    path_init(&rel, path->alloc);
+    path_set(&rel, path->str);
+
+    assert(path->cap >= PATH_MAX);
+
+    realpath(rel.str, path->str);
+    path->len = cstr_len(path->str);
+
+    path_free(&rel);
+}
 
 void dirent_it_free(DirentIter* it)
 {
@@ -371,22 +496,6 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
 
     path_set(&it->base, path_str);
     dirent_it_next(it);
-}
-
-void path_abs(Path* path)
-{
-    ASSERT_PATH_INIT(path);
-
-    Path rel;
-    path_init(&rel, path->alloc);
-    path_set(&rel, path->str);
-
-    assert(path->cap >= PATH_MAX);
-
-    realpath(rel.str, path->str);
-    path->len = cstr_len(path->str);
-
-    path_free(&rel);
 }
 
 #endif // _WIN32

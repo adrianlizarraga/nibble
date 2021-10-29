@@ -86,4 +86,9 @@ void path_init(Path* path, Allocator* alloc);
 void path_free(Path* path);
 void path_set(Path* path, const char* src);
 void path_join(Path* dst, Path* src);
+void path_abs(Path* path);
+
+void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
+void dirent_it_next(DirentIter* it);
+void dirent_it_free(DirentIter* it);
 #endif
