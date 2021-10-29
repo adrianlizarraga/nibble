@@ -180,3 +180,211 @@ bool u32_is_bit_set(u32 mask, u8 bit)
 {
     return mask & (1 << bit);
 }
+
+#define NIBBLE_PATH_SEP '/'
+#define WINDOWS_PATH_SEP '\\'
+#define ASSERT_PATH_INIT(p) assert((p)->str && (p)->cap)
+
+static void path_norm(Path* path)
+{
+    ASSERT_PATH_INIT(path);
+    char* p = path->str;
+
+    // Replace `\` with `/`
+    while (*p) {
+        if (*p == WINDOWS_PATH_SEP) {
+            *p = NIBBLE_PATH_SEP;
+        }
+        p += 1;
+    }
+
+    // Remove ending `/` (if not at the beginning of path)
+    if ((p != path->str) && (p[-1] == NIBBLE_PATH_SEP)) {
+        p[-1] = '\0';
+        path->len -= 1;
+    }
+}
+
+void path_free(Path* path)
+{
+    ASSERT_PATH_INIT(path);
+
+    if (path->str != path->_buf) {
+        mem_free(path->alloc, path->str);
+        path->len = 0;
+        path->cap = 0;
+    }
+}
+
+void path_init(Path* path, Allocator* alloc)
+{
+    path->str = path->_buf;
+    path->len = 0;
+    path->cap = sizeof(path->_buf);
+    path->alloc = alloc;
+    path->_buf[0] = 0;
+}
+
+void path_set(Path* path, const char* src)
+{
+    ASSERT_PATH_INIT(path);
+
+    const size_t src_len = cstr_len(src);
+
+    if (src_len >= path->cap) {
+        path_free(path);
+
+        const size_t _buf_size = sizeof(path->_buf);
+        const size_t cap = src_len + 1 + (_buf_size >> 2);
+
+        path->str = alloc_array(path->alloc, char, cap, false);
+        path->cap = cap;
+    }
+
+    // Copy src characters (including null char) into our path.
+    for (size_t i = 0; i <= src_len; i += 1) {
+        path->str[i] = src[i];
+    }
+
+    path->len = src_len;
+
+    path_norm(path);
+}
+
+void path_join(Path* dst, Path* src)
+{
+    ASSERT_PATH_INIT(dst);
+    ASSERT_PATH_INIT(src);
+
+    if (src->len == 0) {
+        return;
+    }
+
+    bool dst_ends_sep = dst->len && (dst->str[dst->len - 1] == NIBBLE_PATH_SEP);
+    bool src_begs_sep = src->str[0] == NIBBLE_PATH_SEP;
+
+    size_t len = dst->len + src->len + 1; // <dst>/<src>
+
+    char* s = src->str;
+
+    if (dst_ends_sep) {
+        len -= 1;
+    }
+
+    if (src_begs_sep) {
+        len -= 1;
+        s += 1;
+    }
+
+    // Allocate a bigger destination buffer if necessary.
+    if (len >= dst->cap) {
+        const size_t _buf_size = sizeof(dst->_buf);
+        const size_t cap = len + 1 + (_buf_size >> 2);
+
+        char* str = alloc_array(dst->alloc, char, cap, false);
+
+        for (size_t i = 0; i <= dst->len; i += 1) {
+            str[i] = dst->str[i];
+        }
+
+        dst->str = str;
+        dst->cap = cap;
+    }
+
+    char* d = dst->str + dst->len;
+
+    if (dst_ends_sep) {
+        d -= 1;
+    }
+
+    // Start appending src to dst
+    *d = '/';
+    d += 1;
+
+    while (*s) {
+        *d = *s;
+        d += 1;
+        s += 1;
+    }
+
+    dst->len = len;
+}
+
+bool dirent_it_skip(const char* name)
+{
+    return (cstr_cmp(name, ".") == 0) || (cstr_cmp(name, "..") == 0);
+}
+
+#ifdef _WIN32
+// TODO
+#else
+
+void dirent_it_free(DirentIter* it)
+{
+    if (it->flags & DIRENT_IS_VALID) {
+        it->flags &= ~DIRENT_IS_VALID;
+        closedir(it->os_handle);
+    }
+}
+
+void dirent_it_next(DirentIter* it)
+{
+    if (!(it->flags & DIRENT_IS_VALID)) {
+        return;
+    }
+
+    bool is_dir = false;
+
+    do {
+        struct dirent* entry = readdir(it->os_handle);
+
+        if (!entry) {
+            dirent_it_free(it);
+            return;
+        }
+
+        path_set(&it->name, entry->d_name);
+
+        is_dir = entry->d_type & DT_DIR;
+    } while (dirent_it_skip(it->name.str));
+
+    if (is_dir) {
+        it->flags |= DIRENT_IS_DIR;
+    }
+}
+
+void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
+{
+    path_init(&it->base, alloc);
+    path_init(&it->name, alloc);
+
+    it->os_handle = opendir(path_str);
+
+    if (!it->os_handle) {
+        it->flags = 0;
+        return;
+    }
+
+    it->flags = DIRENT_IS_VALID;
+
+    path_set(&it->base, path_str);
+    dirent_it_next(it);
+}
+
+void path_abs(Path* path)
+{
+    ASSERT_PATH_INIT(path);
+
+    Path rel;
+    path_init(&rel, path->alloc);
+    path_set(&rel, path->str);
+
+    assert(path->cap >= PATH_MAX);
+
+    realpath(rel.str, path->str);
+    path->len = cstr_len(path->str);
+
+    path_free(&rel);
+}
+
+#endif // _WIN32
