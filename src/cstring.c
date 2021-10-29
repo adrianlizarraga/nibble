@@ -324,6 +324,8 @@ void dirent_it_free(DirentIter* it)
     if (it->flags & DIRENT_IS_VALID) {
         it->flags &= ~DIRENT_IS_VALID;
         closedir(it->os_handle);
+        path_free(&it->base);
+        path_free(&it->name);
     }
 }
 
