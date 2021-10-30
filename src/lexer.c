@@ -454,6 +454,7 @@ const char* token_kind_names[] = {
     [TKN_RBRACKET] = "]",
     [TKN_SEMICOLON] = ";",
     [TKN_COLON] = ":",
+    [TKN_DBL_COLON] = "::",
     [TKN_COMMA] = ",",
     [TKN_DOT] = ".",
     [TKN_ELLIPSIS] = "..",
@@ -604,6 +605,10 @@ top:
         if (lexer->at[0] == '>') {
             lexer->at++;
             token.kind = TKN_CAST;
+        }
+        else if (lexer->at[0] == ':') {
+            lexer->at++;
+            token.kind = TKN_DBL_COLON;
         }
 
         break;

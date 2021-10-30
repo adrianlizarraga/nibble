@@ -159,6 +159,7 @@ static bool init_keywords()
         [KW_SIZEOF] = string_view_lit("#sizeof"),
         [KW_TYPEOF] = string_view_lit("#typeof"),
         [KW_STATIC_ASSERT] = string_view_lit("#static_assert"),
+        [KW_IMPORT] = string_view_lit("import"),
         [KW_LABEL] = string_view_lit("label"),
         [KW_GOTO] = string_view_lit("goto"),
         [KW_BREAK] = string_view_lit("break"),

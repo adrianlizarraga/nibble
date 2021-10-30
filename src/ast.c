@@ -384,6 +384,17 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
+Stmt* new_stmt_import(Allocator* allocator, List* pkg_names, List* import_entities, unsigned flags, ProgRange range)
+{
+    StmtImport* stmt = new_stmt(allocator, StmtImport, range);
+    stmt->flags = flags;
+
+    list_replace(pkg_names, &stmt->pkg_names);
+    list_replace(import_entities, &stmt->import_entities);
+
+    return (Stmt*)stmt;
+}
+
 Stmt* new_stmt_decl(Allocator* allocator, Decl* decl)
 {
     StmtDecl* stmt = new_stmt(allocator, StmtDecl, decl->range);
@@ -1462,6 +1473,50 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             else {
                 ftprint_char_array(&dstr, false, ")");
             }
+        } break;
+        case CST_StmtImport: {
+            StmtImport* s = (StmtImport*)stmt;
+            dstr = array_create(allocator, char, 16);
+
+            ftprint_char_array(&dstr, false, "(import ");
+
+            if (s->flags & STMT_IMPORT_REL) {
+                ftprint_char_array(&dstr, false, "::");
+            }
+
+            // Print package path
+            {
+                List* head = &s->pkg_names;
+                List* it = head->next;
+
+                while (it != head) {
+                    PkgPathName* pname = list_entry(it, PkgPathName, lnode);
+                    const char* suffix = (it->next == head) ? "" : "::";
+
+                    ftprint_char_array(&dstr, false, "%s%s", pname->name->str, suffix);
+                    it = it->next;
+                }
+            }
+
+            // Print imported entities
+            if (!list_empty(&s->import_entities)) {
+                ftprint_char_array(&dstr, false, "{");
+
+                List* head = &s->import_entities;
+                List* it = head->next;
+
+                while (it != head) {
+                    ImportEntity* entity = list_entry(it, ImportEntity, lnode);
+                    const char* suffix = (it->next == head) ? "}" : ", ";
+
+                    ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
+                    it = it->next;
+                }
+            }
+            else {
+                ftprint_char_array(&dstr, false, ")");
+            }
+
         } break;
         default: {
             ftprint_err("Unknown stmt kind: %d\n", stmt->kind);

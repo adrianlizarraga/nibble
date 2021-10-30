@@ -291,6 +291,7 @@ typedef enum StmtKind {
     CST_StmtDecl,
     CST_StmtBlock,
     CST_StmtStaticAssert,
+    CST_StmtImport,
 } StmtKind;
 
 struct Stmt {
@@ -305,6 +306,29 @@ typedef struct StmtStaticAssert {
     Expr* cond;
     StrLit* msg;
 } StmtStaticAssert;
+
+typedef struct PkgPathName {
+    Identifier* name;
+    ListNode lnode;
+} PkgPathName;
+
+typedef struct ImportEntity {
+    Identifier* name;
+    Identifier* rename;
+    ListNode lnode;
+} ImportEntity;
+
+enum StmtImportFlags {
+    STMT_IMPORT_ALL = 1 << 0,
+    STMT_IMPORT_REL = 1 << 1,
+};
+
+typedef struct StmtImport {
+    Stmt super;
+    List pkg_names;
+    List import_entities;
+    unsigned char flags;
+} StmtImport;
 
 typedef struct StmtNoOp {
     Stmt super;
@@ -431,6 +455,7 @@ Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, Prog
 SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
+Stmt* new_stmt_import(Allocator* allocator, List* pkg_names, List* import_entities, unsigned flags, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////

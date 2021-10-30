@@ -2285,6 +2285,27 @@ static bool resolve_static_assert(Resolver* resolver, StmtStaticAssert* sassert)
     return true;
 }
 
+static bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
+{
+
+    switch (stmt->kind) {
+    case CST_StmtStaticAssert: {
+        StmtStaticAssert* sassert = (StmtStaticAssert*)stmt;
+
+        return resolve_static_assert(resolver, sassert);
+    }
+    case CST_StmtImport: {
+        // Do nothing.
+        return true;
+    }
+    default:
+        assert(0);
+        break;
+    }
+
+    return false;
+}
+
 static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     unsigned ret = 0;
@@ -2398,6 +2419,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         break;
     }
     default:
+        assert(0);
         break;
     }
 
@@ -2482,7 +2504,7 @@ bool resolve_global_stmts(Resolver* resolver, List* stmts)
         Stmt* stmt = list_entry(it, Stmt, lnode);
 
         if (stmt->kind != CST_StmtDecl) {
-            if (!(resolve_stmt(resolver, stmt, NULL, 0) & RESOLVE_STMT_SUCCESS))
+            if (!resolve_global_stmt(resolver, stmt))
                 return false;
         }
     }

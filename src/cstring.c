@@ -181,26 +181,15 @@ bool u32_is_bit_set(u32 mask, u8 bit)
     return mask & (1 << bit);
 }
 
-#define NIBBLE_PATH_SEP '/'
-#define WINDOWS_PATH_SEP '\\'
 #define ASSERT_PATH_INIT(p) assert((p)->str && (p)->cap)
 
 static void path_norm(Path* path)
 {
     ASSERT_PATH_INIT(path);
-    char* p = path->str;
-
-    // Replace `\` with `/`
-    while (*p) {
-        if (*p == WINDOWS_PATH_SEP) {
-            *p = NIBBLE_PATH_SEP;
-        }
-        p += 1;
-    }
 
     // Remove ending `/` (if not at the beginning of path)
-    if ((p != path->str) && (p[-1] == NIBBLE_PATH_SEP)) {
-        p[-1] = '\0';
+    if ((path->len > 1) && (path->str[path->len - 1] == NIBBLE_PATH_SEP)) {
+        path->str[path->len - 1] = '\0';
         path->len -= 1;
     }
 }
@@ -311,7 +300,7 @@ void path_join(Path* dst, Path* src)
     }
 
     // Start appending src to dst
-    *d = '/';
+    *d = NIBBLE_PATH_SEP;
     d += 1;
 
     while (*s) {
@@ -323,6 +312,32 @@ void path_join(Path* dst, Path* src)
     dst->len = len;
 }
 
+char* path_filename(Path* path)
+{
+    ASSERT_PATH_INIT(path);
+
+    for (char* p = path->str + path->len; p != path->str; p -= 1) {
+        if (p[-1] == NIBBLE_PATH_SEP) {
+            return p;
+        }
+    }
+
+    return path->str;
+}
+
+char* path_ext(Path* path)
+{
+    ASSERT_PATH_INIT(path);
+
+    for (char* p = path->str + path->len; p != path->str; p -= 1) {
+        if (p[-1] == '.') {
+            return p;
+        }
+    }
+
+    return path->str;
+}
+
 bool dirent_it_skip(const char* name)
 {
     return (cstr_cmp(name, ".") == 0) || (cstr_cmp(name, "..") == 0);
@@ -330,7 +345,7 @@ bool dirent_it_skip(const char* name)
 
 #ifdef _WIN32
 
-void path_abs(Path* path)
+bool path_abs(Path* path)
 {
     ASSERT_PATH_INIT(path);
 
@@ -338,10 +353,21 @@ void path_abs(Path* path)
     path_init(&rel, path->alloc);
     path_set(&rel, path->str);
 
-    _fullpath(path->str, rel.str, path->cap);
-    path->len = cstr_len(path->str);
+    bool success = _fullpath(path->str, rel.str, path->cap) != NULL;
+
+    if (success) {
+        path->len = cstr_len(path->str);
+        path->flags |= PATH_IS_CANONICAL;
+        path->flags &= ~PATH_IS_INVALID;
+    }
+    else {
+        path->len = 0;
+        path->flags |= PATH_IS_INVALID;
+    }
 
     path_free(&rel);
+
+    return success;
 }
 
 void dirent_it_free(DirentIter* it)
@@ -397,7 +423,7 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
     path_ensure_cap(&filespec, filespec.len + 1 + needed_space);
 
     if (!ends_sep) {
-        filespec.str[filespec.len++] = '/';
+        filespec.str[filespec.len++] = NIBBLE_PATH_SEP;
     }
 
     filespec.str[filespec.len++] = '*';
@@ -428,7 +454,7 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
 }
 #else
 
-void path_abs(Path* path)
+bool path_abs(Path* path)
 {
     ASSERT_PATH_INIT(path);
 
@@ -438,10 +464,21 @@ void path_abs(Path* path)
 
     assert(path->cap >= PATH_MAX);
 
-    realpath(rel.str, path->str);
-    path->len = cstr_len(path->str);
+    bool success = realpath(rel.str, path->str) != NULL;
+
+    if (success) {
+        path->len = cstr_len(path->str);
+        path->flags |= PATH_IS_CANONICAL;
+        path->flags &= ~PATH_IS_INVALID;
+    }
+    else {
+        path->len = 0;
+        path->flags |= PATH_IS_INVALID;
+    }
 
     path_free(&rel);
+
+    return success;
 }
 
 void dirent_it_free(DirentIter* it)

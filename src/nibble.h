@@ -119,6 +119,7 @@ typedef enum Keyword {
     KW_SIZEOF,
     KW_TYPEOF,
     KW_STATIC_ASSERT,
+    KW_IMPORT,
     KW_LABEL,
     KW_GOTO,
     KW_BREAK,

@@ -1462,7 +1462,7 @@ static Stmt* parse_stmt_label(Parser* parser)
     return new_stmt_label(parser->ast_arena, label, stmt, range);
 }
 
-// '#static_assert' '(' expr (',' TKN_STR)? ')' ';'
+// stmt_static_assert = '#static_assert' '(' expr (',' TKN_STR)? ')' ';'
 static Stmt* parse_stmt_static_assert(Parser* parser)
 {
     assert(is_keyword(parser, KW_STATIC_ASSERT));
@@ -1504,6 +1504,71 @@ static Stmt* parse_stmt_static_assert(Parser* parser)
     return new_stmt_static_assert(parser->ast_arena, cond, msg, range);
 }
 
+// Just a TKN_IDENT wrapped in a linked-list node
+static PkgPathName* parse_pkg_path_name(Parser* parser, const char* error_prefix)
+{
+    if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+        return NULL;
+    }
+
+    PkgPathName* pname = alloc_type(parser->ast_arena, PkgPathName, true);
+    pname->name = parser->ptoken.as_ident.ident;
+
+    return pname;
+}
+
+// stmt_import = 'import' '::'? TKN_IDENT ('::' TKN_IDENT)* ('{' ('*' | import_entities) '}')? ';'
+// import entities = import_entity (',' import_entity)*
+// import_entity = (TKN_IDENT '=')? TKN_IDENT
+static Stmt* parse_stmt_import(Parser* parser)
+{
+    assert(is_keyword(parser, KW_IMPORT));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse import path";
+
+    unsigned char flags = 0;
+
+    next_token(parser);
+
+    // Path is relative if package name begins with a '::'.
+    if (match_token(parser, TKN_DBL_COLON)) {
+        flags |= STMT_IMPORT_REL;
+    }
+
+    // Parse the package root path name
+    List pkg_names = list_head_create(pkg_names);
+    PkgPathName* root = parse_pkg_path_name(parser, error_prefix);
+
+    if (!root) {
+        return NULL;
+    }
+
+    list_add_last(&pkg_names, &root->lnode);
+
+    // Parse the rest of the package path
+    while (match_token(parser, TKN_DBL_COLON)) {
+        PkgPathName* subname = parse_pkg_path_name(parser, error_prefix);
+
+        if (!subname) {
+            return NULL;
+        }
+
+        list_add_last(&pkg_names, &subname->lnode);
+    }
+
+    // TODO: Parse import entities
+    // TODO: Parse import all entities
+    List import_entities = list_head_create(import_entities);
+
+    if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return new_stmt_import(parser->ast_arena, &pkg_names, &import_entities, flags, range);
+}
+
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
 //      | ';'
 //      | stmt_while
@@ -1515,7 +1580,8 @@ static Stmt* parse_stmt_static_assert(Parser* parser)
 //      | 'continue' TKN_IDENT? ';'
 //      | 'goto' TKN_IDENT ';'
 //      | 'label' TKN_IDENT ':'
-//      | '#static_assert' '(' expr (',' TKN_STR)? ')' ';'
+//      | stmt_static_assert
+//      | stmt_import
 //      | stmt_block
 //      | expr ';'
 //      | expr_assign ';'
@@ -1568,6 +1634,8 @@ Stmt* parse_global_stmt(Parser* parser)
         switch (parser->token.as_kw.ident->kw) {
         case KW_STATIC_ASSERT:
             return parse_stmt_static_assert(parser);
+        case KW_IMPORT:
+            return parse_stmt_import(parser);
         default:
             return parse_stmt_decl(parser);
         }

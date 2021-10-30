@@ -17,6 +17,7 @@ typedef enum TokenKind {
     TKN_RBRACKET,
     TKN_SEMICOLON,
     TKN_COLON,
+    TKN_DBL_COLON,
     TKN_COMMA,
     TKN_DOT,
     TKN_ELLIPSIS,
