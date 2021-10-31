@@ -133,7 +133,7 @@ Expr* new_expr_unary(Allocator* allocator, TokenKind op, Expr* unary_expr, ProgR
     return (Expr*)expr;
 }
 
-Expr* new_expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range)
+Expr* new_expr_field(Allocator* allocator, Expr* object, Identifier* field, ProgRange range)
 {
     ExprField* expr = new_expr(allocator, ExprField, range);
     expr->object = object;
@@ -196,10 +196,12 @@ Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range)
     return (Expr*)expr;
 }
 
-Expr* new_expr_ident(Allocator* allocator, Identifier* name, ProgRange range)
+Expr* new_expr_ident(Allocator* allocator, List* pkg_path, Identifier* name, ProgRange range)
 {
     ExprIdent* expr = new_expr(allocator, ExprIdent, range);
     expr->name = name;
+
+    list_replace(pkg_path, &expr->pkg_path);
 
     return (Expr*)expr;
 }
@@ -1180,8 +1182,8 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         } break;
         case CST_ExprField: {
             ExprField* e = (ExprField*)expr;
-            dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(field %s %s)", ftprint_expr(allocator, e->object), e->field);
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(field %s %s)", ftprint_expr(allocator, e->object), e->field->str);
         } break;
         case CST_ExprInt: {
             ExprInt* e = (ExprInt*)expr;
@@ -1205,6 +1207,20 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case CST_ExprIdent: {
             ExprIdent* e = (ExprIdent*)expr;
             dstr = array_create(allocator, char, 16);
+
+            if (!list_empty(&e->pkg_path)) {
+                List* head = &e->pkg_path;
+                List* it = head->next;
+
+                while (it != head) {
+                    PkgPathName* pname = list_entry(it, PkgPathName, lnode);
+
+                    ftprint_char_array(&dstr, false, "%s::", pname->name->str);
+
+                    it = it->next;
+                }
+            }
+
             ftprint_char_array(&dstr, false, "%s", e->name->str);
         } break;
         case CST_ExprCast: {

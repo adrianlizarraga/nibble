@@ -188,7 +188,7 @@ typedef struct ExprIndex {
 typedef struct ExprField {
     Expr super;
     Expr* object;
-    const char* field;
+    Identifier* field;
 } ExprField;
 
 typedef struct ExprInt {
@@ -209,6 +209,7 @@ typedef struct ExprStr {
 
 typedef struct ExprIdent {
     Expr super;
+    List pkg_path;
     Identifier* name;
 } ExprIdent;
 
@@ -256,14 +257,14 @@ typedef struct ExprCompoundLit {
 Expr* new_expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else_expr);
 Expr* new_expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right);
 Expr* new_expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange range);
-Expr* new_expr_field(Allocator* allocator, Expr* object, const char* field, ProgRange range);
+Expr* new_expr_field(Allocator* allocator, Expr* object, Identifier* field, ProgRange range);
 Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
 Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range);
 ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, Identifier* name);
 Expr* new_expr_int(Allocator* allocator, TokenInt token, ProgRange range);
 Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
 Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
-Expr* new_expr_ident(Allocator* allocator, Identifier* name, ProgRange range);
+Expr* new_expr_ident(Allocator* allocator, List* pkg_path, Identifier* name, ProgRange range);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);

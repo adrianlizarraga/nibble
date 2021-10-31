@@ -606,10 +606,41 @@ static Expr* parse_expr_sizeof(Parser* parser)
     return expr;
 }
 
+// expr_ident = pkg_path? TKN_IDENT
+// pkg_path = (TKN_IDENT '::')+
+static Expr* parse_expr_ident(Parser* parser)
+{
+    assert(is_token_kind(parser, TKN_IDENT));
+    ProgRange range = parser->token.range;
+    List pkg_path = list_head_create(pkg_path);
+
+    Identifier* name = parser->token.as_ident.ident;
+
+    next_token(parser);
+
+    while (match_token(parser, TKN_DBL_COLON)) {
+        PkgPathName* pname = alloc_type(parser->ast_arena, PkgPathName, true);
+        pname->name = name;
+
+        list_add_last(&pkg_path, &pname->lnode); // The name was actually a package path, so add it to the list.
+
+        if (!expect_token(parser, TKN_IDENT, "Failed to parse identifier package path")) {
+            return NULL;
+        }
+
+        Token ptoken = parser->ptoken;
+
+        name = ptoken.as_ident.ident; // Update the identifier name.
+        range.end = ptoken.range.end;
+    }
+
+    return new_expr_ident(parser->ast_arena, &pkg_path, name, range);
+}
+
 // expr_base = TKN_INT
 //           | TKN_FLOAT
 //           | TKN_STR
-//           | TKN_IDENT
+//           | expr_ident
 //           | expr_compound_init
 //           | expr_sizeof
 //           | '(' expr ')'
@@ -648,9 +679,9 @@ static Expr* parse_expr_base(Parser* parser)
             break;
         }
     } break;
-    case TKN_IDENT:
-        next_token(parser);
-        return new_expr_ident(parser->ast_arena, token.as_ident.ident, token.range);
+    case TKN_IDENT: {
+        return parse_expr_ident(parser);
+    }
     default:
         break;
     }
@@ -693,21 +724,21 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
     return arg;
 }
 
-// expr_base_mod = expr_base ('.' IDENTIFIER | '[' expr ']' | '(' proc_call_arg_list* ')' | ':>' typespec)*
+// expr_base_mod = expr_base ('.' TKN_IDENT | '[' expr ']' | '(' proc_call_arg_list* ')' | ':>' typespec)*
 // proc_call_arg_list = proc_call_arg (',' proc_call_arg)*
 static Expr* parse_expr_base_mod(Parser* parser)
 {
     Expr* expr = parse_expr_base(parser);
 
-    while (expr && (is_token_kind(parser, TKN_DOT) || is_token_kind(parser, TKN_LBRACKET) ||
-                    is_token_kind(parser, TKN_LPAREN) || is_token_kind(parser, TKN_CAST))) {
+    while (expr && (is_token_kind(parser, TKN_DOT) || is_token_kind(parser, TKN_LBRACKET) || is_token_kind(parser, TKN_LPAREN) ||
+                    is_token_kind(parser, TKN_CAST))) {
         if (match_token(parser, TKN_DOT)) {
             //
             // Field access.
             //
 
             if (expect_token(parser, TKN_IDENT, "Failed to parse field access")) {
-                const char* field = parser->ptoken.as_ident.ident->str;
+                Identifier* field = parser->ptoken.as_ident.ident;
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
                 expr = new_expr_field(parser->ast_arena, expr, field, range);
             }
