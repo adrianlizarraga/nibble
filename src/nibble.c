@@ -12,11 +12,12 @@ typedef struct NibbleCtx {
 
     HMap ident_map;
     HMap str_lit_map;
+    HMap pkg_map;
 
     ByteStream errors;
 
     TypeCache type_cache;
-    Scope global_scope;
+    BucketList symbols;
 
     OS target_os;
     Arch target_arch;
@@ -206,6 +207,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->errors = byte_stream_create(&nibble->gen_mem);
     nibble->str_lit_map = hmap(6, NULL);
     nibble->ident_map = hmap(8, NULL);
+    nibble->pkg_map = hmap(6, NULL);
     nibble->type_cache.ptrs = hmap(6, NULL);
     nibble->type_cache.arrays = hmap(6, NULL);
     nibble->type_cache.procs = hmap(6, NULL);
@@ -221,13 +223,52 @@ bool nibble_init(OS target_os, Arch target_arch)
 
     assert(nibble->ident_map.len == (KW_COUNT + ANNOTATION_COUNT + INTRINSIC_COUNT));
 
-    init_scope_lists(&nibble->global_scope);
+    bucket_list_init(&nibble->symbols, &nibble->ast_mem, 64);
     init_builtin_types(target_os, target_arch, &nibble->ast_mem, &nibble->type_cache);
 
     if (!init_code_gen(target_os, target_arch))
         return false;
 
     return true;
+}
+
+static Package* get_pkg(NibbleCtx* ctx, StrLit* name)
+{
+    uint64_t* pval = hmap_get(ctx->pkg_map, PTR_UINT(name));
+    Package* pkg = pval ? (void*)*pval : NULL;
+
+    return pkg;
+}
+
+static bool set_pkg_path(NibbleCtx* ctx, Package* pkg)
+{
+    for (int i = 0; i < ctx->num_search_paths; i += 1) {
+        Path* search_path = ctx->search_paths + i;
+
+        path_set(&pkg->path, search_path->str);
+        //path_join(&pkg->path, 
+    }
+}
+
+static Package* import_pkg(NibbleCtx* ctx, const char* pkg_path)
+{
+    StrLit* name = intern_str_lit(pkg_path, cstr_len(pkg_path));
+    Package* pkg = get_package(ctx, name);
+
+    if (!pkg) {
+        pkg = alloc_type(&ctx->ast_mem, Package, false);
+        pkg->name = name;
+        pkg->curr_scope = NULL;
+
+        scope_init(&pkg->global_scope);
+        path_init(&pkg->path, &ctx->ast_mem);
+
+        if (!set_pkg_path(ctx, pkg)) {
+            return NULL;
+        }
+    }
+
+    return pkg;
 }
 
 static int64_t parse_code(List* stmts, const char* code)
@@ -338,6 +379,7 @@ void nibble_cleanup(void)
 
     hmap_destroy(&nibble->str_lit_map);
     hmap_destroy(&nibble->ident_map);
+    hmap_destroy(&nibble->pkg_map);
     hmap_destroy(&nibble->type_cache.ptrs);
     hmap_destroy(&nibble->type_cache.procs);
     hmap_destroy(&nibble->type_cache.arrays);

@@ -190,7 +190,7 @@ static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKin
 
 static void set_scope(Resolver* resolver, Scope* scope)
 {
-    resolver->curr_scope = scope;
+    resolver->curr_pkg->curr_scope = scope;
 }
 
 static Scope* push_scope(Resolver* resolver, size_t num_syms)
@@ -2523,14 +2523,13 @@ bool resolve_global_stmts(Resolver* resolver, List* stmts)
 }
 
 void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors,
-                   TypeCache* type_cache, Scope* global_scope)
+                   TypeCache* type_cache, BucketList* symbols)
 {
     resolver->ast_mem = ast_mem;
     resolver->tmp_mem = tmp_mem;
     resolver->errors = errors;
     resolver->type_cache = type_cache;
-    resolver->global_scope = global_scope;
+    resolver->symbols = symbols;
 
-    set_scope(resolver, global_scope);
-    init_builtin_syms(resolver);
+    //init_builtin_syms(resolver);
 }

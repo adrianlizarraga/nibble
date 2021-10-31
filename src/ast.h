@@ -20,6 +20,7 @@ typedef struct Symbol Symbol;
 typedef struct SymbolVar SymbolVar;
 typedef struct SymbolProc SymbolProc;
 typedef struct Scope Scope;
+typedef struct Package Package;
 
 ///////////////////////////////
 //       Type Specifiers
@@ -707,6 +708,7 @@ typedef enum SymbolKind {
     SYMBOL_CONST,
     SYMBOL_PROC,
     SYMBOL_TYPE,
+    SYMBOL_PKG,
     SYMBOL_KIND_COUNT,
 } SymbolKind;
 
@@ -744,11 +746,13 @@ struct Symbol {
     Identifier* name;
     Decl* decl;
     Type* type;
+    Package* home;
     List lnode;
 
     union {
         SymbolVar as_var;
         SymbolProc as_proc;
+        Package* as_pkg;
     };
 };
 
@@ -771,10 +775,24 @@ struct Scope {
     ListNode lnode;
 };
 
+void scope_init(Scope* scope);
+
 Scope* new_scope(Allocator* allocator, u32 num_syms);
 void init_scope_lists(Scope* scope);
 void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms);
 
 Symbol* lookup_symbol(Scope* curr_scope, Identifier* name);
 Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
+
+///////////////////////////////
+//      Package
+///////////////////////////////
+
+struct Package {
+    StrLit* name;
+    Path path;
+    Scope global_scope;
+    Scope* curr_scope;
+};
+
 #endif

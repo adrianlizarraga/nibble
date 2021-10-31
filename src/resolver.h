@@ -16,11 +16,11 @@ struct Resolver {
     ByteStream* errors;
     TypeCache* type_cache;
 
-    Scope* global_scope;
-    Scope* curr_scope;
+    BucketList* symbols;
+    Package* curr_pkg;
 };
 
 void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors,
-                   TypeCache* type_cache, Scope* global_scope);
+                   TypeCache* type_cache, BucketList* symbols);
 bool resolve_global_stmts(Resolver* resolver, List* stmts);
 #endif

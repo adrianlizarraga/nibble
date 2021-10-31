@@ -962,6 +962,14 @@ Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* ty
 //     Scope
 //////////////////////////////
 
+void scope_init(Scope* scope)
+{
+    memset(scope, 0, sizeof(Scope));
+    
+    list_head_init(&scope->children);
+    list_head_init(&scope->sym_list);
+}
+
 Scope* new_scope(Allocator* allocator, u32 num_syms)
 {
     Scope* scope = alloc_type(allocator, Scope, true);
