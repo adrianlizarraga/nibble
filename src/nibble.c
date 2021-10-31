@@ -234,26 +234,59 @@ bool nibble_init(OS target_os, Arch target_arch)
 
 static Package* get_pkg(NibbleCtx* ctx, StrLit* name)
 {
-    uint64_t* pval = hmap_get(ctx->pkg_map, PTR_UINT(name));
+    uint64_t* pval = hmap_get(&ctx->pkg_map, PTR_UINT(name));
     Package* pkg = pval ? (void*)*pval : NULL;
 
     return pkg;
 }
 
+static void add_pkg(NibbleCtx* ctx, Package* pkg)
+{
+    hmap_put(&ctx->pkg_map, PTR_UINT(pkg->name), PTR_UINT(pkg));
+}
+
 static bool set_pkg_path(NibbleCtx* ctx, Package* pkg)
 {
+    AllocatorState mem_state = allocator_get_state(&ctx->tmp_mem);
+
     for (int i = 0; i < ctx->num_search_paths; i += 1) {
         Path* search_path = ctx->search_paths + i;
 
+        Path rel_path;
+        path_init(&rel_path, &ctx->tmp_mem);
+        path_set(&rel_path, pkg->name->str);
+
         path_set(&pkg->path, search_path->str);
-        //path_join(&pkg->path, 
+        path_join(&pkg->path, &rel_path);
+        
+        DirentIter it;
+        for (dirent_it_init(&it, pkg->path->str, &ctx->tmp_mem);
+             it.flag & DIRENT_IS_VALID;
+             dirent_it_next(&it)) {
+
+            char* ext = path_ext(&it->name);
+
+            if ((ext != it->name->str) && (cstr_cmp(ext, "nib") == 0)) {
+                dirent_it_free(&it);
+                allocator_restore_state(mem_state);
+                return true;
+            }
+        }
     }
+
+    allocator_restore_state(mem_state);
+    return false;
+}
+
+static bool parse_pkg(NibbleCtx* ctx, Package* pkg)
+{
+    return true;
 }
 
 static Package* import_pkg(NibbleCtx* ctx, const char* pkg_path)
 {
     StrLit* name = intern_str_lit(pkg_path, cstr_len(pkg_path));
-    Package* pkg = get_package(ctx, name);
+    Package* pkg = get_pkg(ctx, name);
 
     if (!pkg) {
         pkg = alloc_type(&ctx->ast_mem, Package, false);
@@ -264,6 +297,12 @@ static Package* import_pkg(NibbleCtx* ctx, const char* pkg_path)
         path_init(&pkg->path, &ctx->ast_mem);
 
         if (!set_pkg_path(ctx, pkg)) {
+            return NULL;
+        }
+
+        add_pkg(ctx, pkg);
+        
+        if (!parse_pkg(ctx, pkg)) {
             return NULL;
         }
     }
