@@ -248,34 +248,30 @@ static void add_pkg(NibbleCtx* ctx, Package* pkg)
 static bool set_pkg_path(NibbleCtx* ctx, Package* pkg)
 {
     AllocatorState mem_state = allocator_get_state(&ctx->tmp_mem);
+    bool found = false;
 
     for (int i = 0; i < ctx->num_search_paths; i += 1) {
         Path* search_path = ctx->search_paths + i;
 
-        Path rel_path;
-        path_init(&rel_path, &ctx->tmp_mem);
-        path_set(&rel_path, pkg->name->str);
+        Path full_path;
+        path_init(&full_path, &ctx->tmp_mem);
+        path_set(&full_path, search_path->str);
 
-        path_set(&pkg->path, search_path->str);
-        path_join(&pkg->path, &rel_path);
-        
-        DirentIter it;
-        for (dirent_it_init(&it, pkg->path->str, &ctx->tmp_mem);
-             it.flag & DIRENT_IS_VALID;
-             dirent_it_next(&it)) {
+        Path name_path;
+        path_init(&name_path, &ctx->tmp_mem);
+        path_set(&name_path, pkg->name->str);
 
-            char* ext = path_ext(&it->name);
+        path_join(&full_path, &name_path);
 
-            if ((ext != it->name->str) && (cstr_cmp(ext, "nib") == 0)) {
-                dirent_it_free(&it);
-                allocator_restore_state(mem_state);
-                return true;
-            }
+        if (path_abs(&full_path)) {
+            path_set(&pkg->path, full_path.str);
+            found = true;
+            break;
         }
     }
 
     allocator_restore_state(mem_state);
-    return false;
+    return found;
 }
 
 static bool parse_pkg(NibbleCtx* ctx, Package* pkg)
