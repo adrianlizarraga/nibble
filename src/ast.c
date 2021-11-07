@@ -196,12 +196,11 @@ Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range)
     return (Expr*)expr;
 }
 
-Expr* new_expr_ident(Allocator* allocator, List* pkg_path, Identifier* name, ProgRange range)
+Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range)
 {
     ExprIdent* expr = new_expr(allocator, ExprIdent, range);
+    expr->mod_ns = mod_ns;
     expr->name = name;
-
-    list_replace(pkg_path, &expr->pkg_path);
 
     return (Expr*)expr;
 }
@@ -386,12 +385,12 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
-Stmt* new_stmt_import(Allocator* allocator, List* pkg_names, List* import_entities, unsigned flags, ProgRange range)
+Stmt* new_stmt_import(Allocator* allocator, List* import_entities, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range)
 {
     StmtImport* stmt = new_stmt(allocator, StmtImport, range);
-    stmt->flags = flags;
+    stmt->mod_pathname = mod_pathname;
+    stmt->mod_namespace = mod_namespace;
 
-    list_replace(pkg_names, &stmt->pkg_names);
     list_replace(import_entities, &stmt->import_entities);
 
     return (Stmt*)stmt;
@@ -1504,24 +1503,6 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
             ftprint_char_array(&dstr, false, "(import ");
 
-            if (s->flags & STMT_IMPORT_REL) {
-                ftprint_char_array(&dstr, false, "::");
-            }
-
-            // Print package path
-            {
-                List* head = &s->pkg_names;
-                List* it = head->next;
-
-                while (it != head) {
-                    PkgPathName* pname = list_entry(it, PkgPathName, lnode);
-                    const char* suffix = (it->next == head) ? "" : "::";
-
-                    ftprint_char_array(&dstr, false, "%s%s", pname->name->str, suffix);
-                    it = it->next;
-                }
-            }
-
             // Print imported entities
             if (!list_empty(&s->import_entities)) {
                 ftprint_char_array(&dstr, false, "{");
@@ -1531,11 +1512,17 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
                 while (it != head) {
                     ImportEntity* entity = list_entry(it, ImportEntity, lnode);
-                    const char* suffix = (it->next == head) ? "}" : ", ";
+                    const char* suffix = (it->next == head) ? "} from " : ", ";
 
                     ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
                     it = it->next;
                 }
+            }
+
+            ftprint_char_array(&dstr, false, "\"%s\"", s->mod_pathname->str);
+
+            if (s->mod_namespace) {
+                ftprint_char_array(&dstr, false, " as %s)", s->mod_namespace->str);
             }
             else {
                 ftprint_char_array(&dstr, false, ")");

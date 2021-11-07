@@ -606,25 +606,23 @@ static Expr* parse_expr_sizeof(Parser* parser)
     return expr;
 }
 
-// expr_ident = pkg_path? TKN_IDENT
-// pkg_path = (TKN_IDENT '::')+
+// expr_ident = mod_namespace? TKN_IDENT
+// mod_namespace = (TKN_IDENT '::')
 static Expr* parse_expr_ident(Parser* parser)
 {
     assert(is_token_kind(parser, TKN_IDENT));
     ProgRange range = parser->token.range;
-    List pkg_path = list_head_create(pkg_path);
+    List mod_path = list_head_create(mod_path);
 
     Identifier* name = parser->token.as_ident.ident;
+    Identifier* mod_ns = NULL;
 
     next_token(parser);
 
-    while (match_token(parser, TKN_DBL_COLON)) {
-        PkgPathName* pname = alloc_type(parser->ast_arena, PkgPathName, true);
-        pname->name = name;
+    if (match_token(parser, TKN_DBL_COLON)) {
+        mod_ns = name; // The first identifier was actually a module namespace.
 
-        list_add_last(&pkg_path, &pname->lnode); // The name was actually a package path, so add it to the list.
-
-        if (!expect_token(parser, TKN_IDENT, "Failed to parse identifier package path")) {
+        if (!expect_token(parser, TKN_IDENT, "Failed to parse identifier name after module namespace")) {
             return NULL;
         }
 
@@ -634,7 +632,7 @@ static Expr* parse_expr_ident(Parser* parser)
         range.end = ptoken.range.end;
     }
 
-    return new_expr_ident(parser->ast_arena, &pkg_path, name, range);
+    return new_expr_ident(parser->ast_arena, mod_ns, name, range);
 }
 
 // expr_base = TKN_INT
@@ -1536,60 +1534,68 @@ static Stmt* parse_stmt_static_assert(Parser* parser)
 }
 
 // Just a TKN_IDENT wrapped in a linked-list node
-static PkgPathName* parse_pkg_path_name(Parser* parser, const char* error_prefix)
+static ModPathName* parse_mod_path_name(Parser* parser, const char* error_prefix)
 {
     if (!expect_token(parser, TKN_IDENT, error_prefix)) {
         return NULL;
     }
 
-    PkgPathName* pname = alloc_type(parser->ast_arena, PkgPathName, true);
+    ModPathName* pname = alloc_type(parser->ast_arena, ModPathName, true);
     pname->name = parser->ptoken.as_ident.ident;
 
     return pname;
 }
 
-// stmt_import = 'import' '::'? TKN_IDENT ('::' TKN_IDENT)* ('{' ('*' | import_entities) '}')? ';'
+static bool is_mod_path_relative(const char* path, size_t len)
+{
+    assert(path);
+
+    if (len < 3) {
+        return false;
+    }
+
+    char c0 = path[0];
+    char c1 = path[1];
+    char c2 = path[2];
+
+    return (c0 == '/') || (c0 == '.' && ((c1 == '/') || (c1 == '.' && c2 == '/')));
+}
+
+// stmt_import = 'import' ('{' import_entities '}' 'from' )? TKN_STR ('as' TKN_IDENT)? ';'
 // import entities = import_entity (',' import_entity)*
-// import_entity = (TKN_IDENT '=')? TKN_IDENT
+// import_entity = TKN_IDENT ('as' TKN_IDENT)?
 static Stmt* parse_stmt_import(Parser* parser)
 {
     assert(is_keyword(parser, KW_IMPORT));
     ProgRange range = {.start = parser->token.range.start};
-    const char* error_prefix = "Failed to parse import path";
-
-    unsigned char flags = 0;
+    const char* error_prefix = "Failed to parse import statement";
 
     next_token(parser);
 
-    // Path is relative if package name begins with a '::'.
-    if (match_token(parser, TKN_DBL_COLON)) {
-        flags |= STMT_IMPORT_REL;
-    }
+    // TODO: Parse import entities
+    List import_entities = list_head_create(import_entities);
 
-    // Parse the package root path name
-    List pkg_names = list_head_create(pkg_names);
-    PkgPathName* root = parse_pkg_path_name(parser, error_prefix);
-
-    if (!root) {
+    if (!expect_token(parser, TKN_STR, error_prefix)) {
         return NULL;
     }
 
-    list_add_last(&pkg_names, &root->lnode);
+    StrLit* mod_pathname = parser->ptoken.as_str.str_lit;
 
-    // Parse the rest of the package path
-    while (match_token(parser, TKN_DBL_COLON)) {
-        PkgPathName* subname = parse_pkg_path_name(parser, error_prefix);
+    // TODO: Support non-relative module paths (when support a node_modules-like module repository).
+    if (!is_mod_path_relative(mod_pathname->str, mod_pathname->len)) {
+        parser_on_error(parser, "Module import path must be relative (i.e., starts with `./`, `../`, or `/`)");
+        return NULL;
+    }
 
-        if (!subname) {
+    Identifier* mod_namespace = NULL;
+
+    if (match_keyword(parser, KW_AS)) {
+        if (!expect_token(parser, TKN_IDENT, error_prefix)) {
             return NULL;
         }
 
-        list_add_last(&pkg_names, &subname->lnode);
+        mod_namespace = parser->ptoken.as_ident.ident;
     }
-
-    // TODO: Parse import entities
-    // TODO: Parse import all entities
-    List import_entities = list_head_create(import_entities);
 
     if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
         return NULL;
@@ -1597,7 +1603,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return new_stmt_import(parser->ast_arena, &pkg_names, &import_entities, flags, range);
+    return new_stmt_import(parser->ast_arena, &import_entities, mod_pathname, mod_namespace, range);
 }
 
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?

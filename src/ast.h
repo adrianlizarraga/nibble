@@ -20,7 +20,7 @@ typedef struct Symbol Symbol;
 typedef struct SymbolVar SymbolVar;
 typedef struct SymbolProc SymbolProc;
 typedef struct Scope Scope;
-typedef struct Package Package;
+typedef struct Module Module;
 
 ///////////////////////////////
 //       Type Specifiers
@@ -210,7 +210,7 @@ typedef struct ExprStr {
 
 typedef struct ExprIdent {
     Expr super;
-    List pkg_path;
+    Identifier* mod_ns;
     Identifier* name;
 } ExprIdent;
 
@@ -265,7 +265,7 @@ ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, Identifier* nam
 Expr* new_expr_int(Allocator* allocator, TokenInt token, ProgRange range);
 Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
 Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
-Expr* new_expr_ident(Allocator* allocator, List* pkg_path, Identifier* name, ProgRange range);
+Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
@@ -309,27 +309,17 @@ typedef struct StmtStaticAssert {
     StrLit* msg;
 } StmtStaticAssert;
 
-typedef struct PkgPathName {
-    Identifier* name;
-    ListNode lnode;
-} PkgPathName;
-
-typedef struct ImportEntity {
+typedef struct ImportSymbol {
     Identifier* name;
     Identifier* rename;
     ListNode lnode;
-} ImportEntity;
-
-enum StmtImportFlags {
-    STMT_IMPORT_ALL = 1 << 0,
-    STMT_IMPORT_REL = 1 << 1,
-};
+} ImportSymbol;
 
 typedef struct StmtImport {
     Stmt super;
-    List pkg_names;
     List import_entities;
-    unsigned char flags;
+    StrLit* mod_pathname;
+    Identifier* mod_namespace;
 } StmtImport;
 
 typedef struct StmtNoOp {
@@ -457,7 +447,7 @@ Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, Prog
 SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
-Stmt* new_stmt_import(Allocator* allocator, List* pkg_names, List* import_entities, unsigned flags, ProgRange range);
+Stmt* new_stmt_import(Allocator* allocator, List* import_entities, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 ///////////////////////////////
@@ -746,13 +736,13 @@ struct Symbol {
     Identifier* name;
     Decl* decl;
     Type* type;
-    Package* home;
+    Module* home;
     List lnode;
 
     union {
         SymbolVar as_var;
         SymbolProc as_proc;
-        Package* as_pkg;
+        Module* as_mod;
     };
 };
 
@@ -785,10 +775,10 @@ Symbol* lookup_symbol(Scope* curr_scope, Identifier* name);
 Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 
 ///////////////////////////////
-//      Package
+//      Module
 ///////////////////////////////
 
-struct Package {
+struct Module {
     StrLit* name;
     Path path;
     Scope global_scope;
