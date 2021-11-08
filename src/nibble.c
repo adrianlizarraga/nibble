@@ -1,27 +1,8 @@
 #include "nibble.h"
-#include "cstring.h"
-#include "hash_map.h"
+#include "compiler.h"
 #include "parser.h"
 #include "bytecode.h"
 #include "code_gen.h"
-
-typedef struct NibbleCtx {
-    Allocator gen_mem;
-    Allocator ast_mem;
-    Allocator tmp_mem;
-
-    HMap ident_map;
-    HMap str_lit_map;
-    HMap pkg_map;
-
-    ByteStream errors;
-
-    TypeCache type_cache;
-    BucketList symbols;
-
-    OS target_os;
-    Arch target_arch;
-} NibbleCtx;
 
 static NibbleCtx* nibble;
 
@@ -209,7 +190,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->errors = byte_stream_create(&nibble->gen_mem);
     nibble->str_lit_map = hmap(6, NULL);
     nibble->ident_map = hmap(8, NULL);
-    nibble->pkg_map = hmap(6, NULL);
+    nibble->mod_map = hmap(6, NULL);
     nibble->type_cache.ptrs = hmap(6, NULL);
     nibble->type_cache.arrays = hmap(6, NULL);
     nibble->type_cache.procs = hmap(6, NULL);
@@ -234,17 +215,24 @@ bool nibble_init(OS target_os, Arch target_arch)
     return true;
 }
 
+/*
+static const char* module_get_ospath(NibbleCtx* ctx, Path* ospath, Module* mod)
+{
+    path_set(ospath, ctx->base_ospath.str, ctx->base_ospath.len);
+
+    Path modpath;
+    path_init(&modpath, &ctx->tmp_mem);
+    path_set(&modpath, mod->mod_path->str, mod->mod_path->len);
+
+    path_join(ospath, &modpath);
+}
+
 static Package* get_pkg(NibbleCtx* ctx, StrLit* name)
 {
     uint64_t* pval = hmap_get(&ctx->pkg_map, PTR_UINT(name));
     Package* pkg = pval ? (void*)*pval : NULL;
 
     return pkg;
-}
-
-static void add_pkg(NibbleCtx* ctx, Package* pkg)
-{
-    hmap_put(&ctx->pkg_map, PTR_UINT(pkg->name), PTR_UINT(pkg));
 }
 
 static bool set_pkg_path(NibbleCtx* ctx, Package* pkg)
@@ -307,6 +295,7 @@ static Package* import_pkg(NibbleCtx* ctx, const char* pkg_path)
 
     return pkg;
 }
+*/
 
 static int64_t parse_code(List* stmts, const char* code)
 {
@@ -337,18 +326,61 @@ static int64_t parse_code(List* stmts, const char* code)
     return num_decls;
 }
 
-void nibble_compile(const char* input_file, const char* output_file)
+void nibble_compile(const char* main_file, const char* output_file)
 {
+    //////////////////////////////////////////
+    //      Check main file validity
+    //////////////////////////////////////////
+    static const char nib_ext[] = "nib";
+
+    AllocatorState mem_state = allocator_get_state(&nibble->tmp_mem);
+
+    Path main_path;
+    path_init(&main_path, &nibble->tmp_mem);
+    path_set(&main_path, main_file, cstr_len(main_file));
+    
+    if (!path_abs(&main_path)) {
+        ftprint_err("[ERROR]: Cannot find file `%s`\n", main_file);
+        return;
+    }
+
+    FileKind file_kind = path_kind(&main_path);
+
+    if ((file_kind != FILE_REG) || cstr_cmp(path_ext(&main_path), nib_ext) != 0) {
+        ftprint_err("[ERROR]: Program main file must end in `.nib`\n");
+        return;
+    }
+
+    /////////////////////////////////////////////////////////
+    //      Get main file's module path (e.g., /main.nib)
+    //      and extract the base OS path.
+    /////////////////////////////////////////////////////////
+    const char* filename_ptr = path_filename(&main_path); assert(filename_ptr != main_path.str);
+    const char* base_path_end_ptr = filename_ptr - 1;
+
+    Path* base_ospath = &nibble->base_ospath;
+    path_init(base_ospath, &nibble->gen_mem);
+    path_set(base_ospath, main_path.str, (base_path_end_ptr - main_path.str));
+
+    char* entry_mod_path_buf = array_create(&nibble->tmp_mem, char, ((main_path.str + main_path.len) - base_path_end_ptr) + 1);
+    ftprint_char_array(&entry_mod_path_buf, true, "%c%s", NIBBLE_PATH_SEP, filename_ptr);
+
+    Module* main_mod = alloc_type(&nibble->ast_mem, Module, true);
+    main_mod->mod_path = intern_str_lit(entry_mod_path_buf, cstr_len(entry_mod_path_buf));
+    main_mod->curr_scope = &main_mod->global_scope;
+
+    scope_init(&main_mod->global_scope);
+    hmap_put(&nibble->mod_map, PTR_UINT(main_mod->mod_path), PTR_UINT(main_mod));
+
     //////////////////////////////////////////
     //                Parse
     //////////////////////////////////////////
-    ftprint_out("1. Parsing %s ...\n", input_file);
+    ftprint_out("1. Parsing module %s ...\n", main_mod->mod_path->str);
 
-    const char* path = intern_str_lit(input_file, cstr_len(input_file))->str;
-    const char* code = slurp_file(&nibble->gen_mem, path);
-    List stmts = list_head_create(stmts);
+    const char* code = slurp_file(&nibble->gen_mem, main_path.str);
+    list_head_init(&main_mod->stmts);
 
-    int64_t num_builtin_decls = parse_code(&stmts, builtin_decls);
+    int64_t num_builtin_decls = parse_code(&main_mod->stmts, builtin_decls);
 
     if (num_builtin_decls <= 0) {
         ftprint_err("[ERROR]: Failed to parse builtin code\n");
@@ -356,7 +388,7 @@ void nibble_compile(const char* input_file, const char* output_file)
         return;
     }
 
-    int64_t num_decls = parse_code(&stmts, code);
+    int64_t num_decls = parse_code(&main_mod->stmts, code);
 
     if (num_decls <= 0) {
         print_errors(&nibble->errors);
@@ -371,29 +403,35 @@ void nibble_compile(const char* input_file, const char* output_file)
     Resolver resolver = {0};
     size_t num_global_syms = num_decls + num_builtin_decls + 17; // TODO: Update magic 17 to num of builtin types.
 
-    init_scope_sym_table(&nibble->global_scope, &nibble->ast_mem, num_global_syms * 2);
-    init_resolver(&resolver, &nibble->ast_mem, &nibble->tmp_mem, &nibble->errors, &nibble->type_cache,
-                  &nibble->global_scope);
+    init_scope_sym_table(&main_mod->global_scope, &nibble->ast_mem, num_global_syms * 2);
+    init_resolver(&resolver, nibble, main_mod);
 
-    if (!resolve_global_stmts(&resolver, &stmts)) {
+    if (!resolve_module(&resolver, main_mod)) {
         print_errors(&nibble->errors);
         return;
     }
 
-    ftprint_out("\tglobal vars: %u\n\tglobal procs: %u\n", nibble->global_scope.sym_kind_counts[SYMBOL_VAR],
-                nibble->global_scope.sym_kind_counts[SYMBOL_PROC]);
+    if (!resolve_reachable_sym_defs(&resolver)) {
+        print_errors(&nibble->errors);
+        return;
+    }
+
+    ftprint_out("\tglobal vars: %u\n\tglobal procs: %u\n", nibble->num_vars, nibble->num_procs);
 
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
     ftprint_out("4. Generating IR bytecode\n");
-    IR_Module* module = IR_build_module(&nibble->ast_mem, &nibble->tmp_mem, &nibble->global_scope, &nibble->type_cache);
+    IR_Module* ir_module = IR_build_module(&nibble->ast_mem, &nibble->tmp_mem, &nibble->symbols, nibble->num_vars,
+                                           nibble->num_procs, &nibble->type_cache);
 
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
     ftprint_out("4. Generating NASM assembly output: %s ...\n", output_file);
-    gen_module(&nibble->gen_mem, &nibble->tmp_mem, module, &nibble->str_lit_map, output_file);
+    gen_module(&nibble->gen_mem, &nibble->tmp_mem, ir_module, &nibble->str_lit_map, output_file);
+
+    allocator_restore_state(mem_state);
 }
 
 void nibble_cleanup(void)
@@ -406,6 +444,8 @@ void nibble_cleanup(void)
                 nibble->ident_map.cap, nibble->ident_map.cap * sizeof(HMapEntry));
     ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->str_lit_map.len,
                 nibble->str_lit_map.cap, nibble->str_lit_map.cap * sizeof(HMapEntry));
+    ftprint_out("Module map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->mod_map.len,
+                nibble->mod_map.cap, nibble->mod_map.cap * sizeof(HMapEntry));
     ftprint_out("type_ptr cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.ptrs.len,
                 nibble->type_cache.ptrs.cap, nibble->type_cache.ptrs.cap * sizeof(HMapEntry));
     ftprint_out("type_array cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.arrays.len,
@@ -416,7 +456,7 @@ void nibble_cleanup(void)
 
     hmap_destroy(&nibble->str_lit_map);
     hmap_destroy(&nibble->ident_map);
-    hmap_destroy(&nibble->pkg_map);
+    hmap_destroy(&nibble->mod_map);
     hmap_destroy(&nibble->type_cache.ptrs);
     hmap_destroy(&nibble->type_cache.procs);
     hmap_destroy(&nibble->type_cache.arrays);

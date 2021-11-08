@@ -8,14 +8,18 @@
 
 #ifdef _WIN32
 #include <io.h>
-#define NIBBLE_PATH_SEP '\\'
+#include <fileapi.h>
+#define OS_PATH_SEP '\\'
 #define NIBBLE_MAX_PATH MAX_PATH
 #else
 #include <dirent.h>
 #include <limits.h>
-#define NIBBLE_PATH_SEP '/'
+#include <sys/stat.h>
+#define OS_PATH_SEP '/'
 #define NIBBLE_MAX_PATH PATH_MAX
 #endif
+
+#define NIBBLE_PATH_SEP '/'
 
 #ifndef NIBBLE_MAX_PATH
 #define NIBBLE_MAX_PATH 4096
@@ -86,11 +90,21 @@ typedef struct DirentIter {
     void* os_handle;
 } DirentIter;
 
+typedef enum FileKind {
+    FILE_NONE,
+    FILE_REG,
+    FILE_DIR,
+    FILE_OTHER,
+} FileKind;
+
 void path_init(Path* path, Allocator* alloc);
 void path_free(Path* path);
-void path_set(Path* path, const char* src);
+void path_set(Path* path, const char* src, size_t len);
 void path_join(Path* dst, Path* src);
 bool path_abs(Path* path);
+char* path_filename(Path* path);
+char* path_ext(Path* path);
+FileKind path_kind(Path* path);
 
 void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
 void dirent_it_next(DirentIter* it);

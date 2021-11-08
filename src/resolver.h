@@ -1,26 +1,17 @@
 #ifndef NIBBLE_RESOLVER_H
 #define NIBBLE_RESOLVER_H
-#include "nibble.h"
-#include "allocator.h"
-#include "stream.h"
-#include "llist.h"
-#include "ast.h"
+#include "compiler.h"
 
 #define MAX_LOCAL_SYMS 512
 
 typedef struct Resolver Resolver;
 
 struct Resolver {
-    Allocator* ast_mem;
-    Allocator* tmp_mem;
-    ByteStream* errors;
-    TypeCache* type_cache;
-
-    BucketList* symbols;
-    Package* curr_pkg;
+    NibbleCtx* ctx;
+    Module* curr_mod;
 };
 
-void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors,
-                   TypeCache* type_cache, BucketList* symbols);
-bool resolve_global_stmts(Resolver* resolver, List* stmts);
+void init_resolver(Resolver* resolver, NibbleCtx* ctx, Module* mod);
+bool resolve_module(Resolver* resolver, Module* mod);
+bool resolve_reachable_sym_defs(Resolver* resolver);
 #endif

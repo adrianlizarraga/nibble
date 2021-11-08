@@ -399,6 +399,7 @@ typedef struct IR_Module {
     Symbol** procs;
 } IR_Module;
 
-IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope, TypeCache* type_cache);
+IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, BucketList* symbols, size_t num_vars, size_t num_procs,
+                           TypeCache* type_cache);
 
 #endif

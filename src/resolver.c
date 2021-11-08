@@ -84,7 +84,25 @@ static void resolver_on_error(Resolver* resolver, const char* format, ...)
     size = vsnprintf(buf, MAX_ERROR_LEN, format, vargs) + 1;
     va_end(vargs);
 
-    add_byte_stream_chunk(resolver->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
+    add_byte_stream_chunk(&resolver->ctx->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
+}
+
+static void add_module(Resolver* resolver, Module* mod)
+{
+    hmap_put(&resolver->ctx->mod_map, PTR_UINT(mod->mod_path), PTR_UINT(mod));
+}
+
+static Module* enter_module(Resolver* resolver, Module* mod)
+{
+    Module* old = resolver->curr_mod;
+    resolver->curr_mod = mod;
+
+    return old;
+}
+
+static void exit_module(Resolver* resolver, Module* old_mod)
+{
+    resolver->curr_mod = old_mod;
 }
 
 static void add_scope_symbol(Scope* scope, Symbol* sym)
@@ -162,14 +180,14 @@ static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* t
 {
     Identifier* sym_name = intern_ident(name, cstr_len(name));
 
-    if (lookup_scope_symbol(resolver->global_scope, sym_name)) {
+    if (lookup_scope_symbol(&resolver->curr_mod->global_scope, sym_name)) {
         resolver_on_error(resolver, "Duplicate definition of `%s`", sym_name);
         return false;
     }
 
-    Symbol* sym = new_symbol_builtin_type(resolver->ast_mem, sym_name, type);
+    Symbol* sym = new_symbol_builtin_type(&resolver->ctx->ast_mem, sym_name, type, resolver->curr_mod);
 
-    add_scope_symbol(resolver->global_scope, sym);
+    add_scope_symbol(&resolver->curr_mod->global_scope, sym);
 
     return true;
 }
@@ -179,9 +197,9 @@ static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKin
     if (lookup_symbol(scope, name))
         return NULL; // Shadows a symbol in the current scope or a parent scope.
 
-    Symbol* sym = new_symbol_decl(resolver->ast_mem, kind, name, decl);
+    Symbol* sym = new_symbol_decl(&resolver->ctx->ast_mem, kind, name, decl, resolver->curr_mod);
     sym->status = SYMBOL_STATUS_UNRESOLVED;
-    sym->is_local = (scope != resolver->global_scope);
+    sym->is_local = (scope != &resolver->curr_mod->global_scope);
 
     add_scope_symbol(scope, sym);
 
@@ -190,13 +208,13 @@ static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKin
 
 static void set_scope(Resolver* resolver, Scope* scope)
 {
-    resolver->curr_pkg->curr_scope = scope;
+    resolver->curr_mod->curr_scope = scope;
 }
 
 static Scope* push_scope(Resolver* resolver, size_t num_syms)
 {
-    Scope* prev_scope = resolver->curr_scope;
-    Scope* scope = new_scope(resolver->ast_mem, num_syms + num_syms);
+    Scope* prev_scope = resolver->curr_mod->curr_scope;
+    Scope* scope = new_scope(&resolver->ctx->ast_mem, num_syms + num_syms);
 
     scope->parent = prev_scope;
 
@@ -208,7 +226,9 @@ static Scope* push_scope(Resolver* resolver, size_t num_syms)
 
 static void pop_scope(Resolver* resolver)
 {
-    resolver->curr_scope = resolver->curr_scope->parent;
+    Module* mod = resolver->curr_mod;
+
+    mod->curr_scope = mod->curr_scope->parent;
 }
 
 static void init_builtin_syms(Resolver* resolver)
@@ -886,7 +906,7 @@ static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
 
 static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
 {
-    expr->super.type = type_array(resolver->ast_mem, &resolver->type_cache->arrays, type_char, expr->str_lit->len + 1);
+    expr->super.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, type_char, expr->str_lit->len + 1);
     expr->super.is_constexpr = true;
     expr->super.is_lvalue = true;
 
@@ -911,7 +931,7 @@ static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOper
 {
     // Convert ^void to ^s8
     if (ptr->type->as_ptr.base == type_void) {
-        ptr->type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+        ptr->type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
     }
     // Ensure base pointer type has non-zero size
     else if (ptr->type->as_ptr.base->size == 0) {
@@ -996,14 +1016,14 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             Type* right_base_type = right_op.type->as_ptr.base;
 
             if ((left_base_type == type_void) && (right_base_type == type_void)) {
-                left_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
-                right_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
+                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
             }
             else if ((left_base_type == type_void) && (right_base_type == type_s8)) {
-                left_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
             }
             else if ((left_base_type == type_s8) && (right_base_type == type_void)) {
-                right_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
             }
 
             if (left_op.type != right_op.type) {
@@ -1123,8 +1143,8 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             Type* right_base_type = right_op.type->as_ptr.base;
 
             if (left_base_type != right_base_type) {
-                left_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
-                right_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, type_s8);
+                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
+                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
             }
 
             dst_op.type = left_op.type;
@@ -1263,7 +1283,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
             return false;
         }
 
-        dst_op.type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, src_op.type);
+        dst_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, src_op.type);
         dst_op.is_lvalue = false;
         dst_op.is_constexpr = false;
         break;
@@ -1410,7 +1430,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         if (!resolve_expr(resolver, arg->expr, NULL))
             return false;
 
-        Type* param_type = type_decay(resolver->ast_mem, &resolver->type_cache->ptrs, params[i]); // TODO: Cast at site?
+        Type* param_type = type_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, params[i]); // TODO: Cast at site?
         ExprOperand arg_eop = OP_FROM_EXPR(arg->expr);
 
         if (!eop_decay(resolver, &arg_eop))
@@ -1544,7 +1564,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
     }
 
     if (infer_len) {
-        type = type_array(resolver->ast_mem, &resolver->type_cache->arrays, elem_type, elem_index);
+        type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, elem_type, elem_index);
         ftprint_out("Inferred length %llu\n", elem_index);
     }
 
@@ -1663,7 +1683,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
         if (!base_type)
             return NULL;
 
-        return type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, base_type);
+        return type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, base_type);
     }
     case CST_TypeSpecArray: {
         TypeSpecArray* ts = (TypeSpecArray*)typespec;
@@ -1701,13 +1721,13 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             }
         }
 
-        return type_array(resolver->ast_mem, &resolver->type_cache->arrays, base_type, len);
+        return type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, base_type, len);
     }
     case CST_TypeSpecProc: {
         TypeSpecProc* ts = (TypeSpecProc*)typespec;
 
-        AllocatorState mem_state = allocator_get_state(resolver->tmp_mem);
-        Type** params = array_create(resolver->tmp_mem, Type*, ts->num_params);
+        AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+        Type** params = array_create(&resolver->ctx->tmp_mem, Type*, ts->num_params);
         List* head = &ts->params;
 
         for (List* it = head->next; it != head; it = it->next) {
@@ -1740,7 +1760,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             }
         }
 
-        Type* type = type_proc(resolver->ast_mem, &resolver->type_cache->procs, array_len(params), params, ret);
+        Type* type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret);
         allocator_restore_state(mem_state);
 
         return type;
@@ -1937,8 +1957,8 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 
     decl->scope = push_scope(resolver, decl->num_params + decl->num_decls);
 
-    AllocatorState mem_state = allocator_get_state(resolver->tmp_mem);
-    Type** params = array_create(resolver->tmp_mem, Type*, 16);
+    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+    Type** params = array_create(&resolver->ctx->tmp_mem, Type*, 16);
     List* head = &decl->params;
 
     for (List* it = head->next; it != head; it = it->next) {
@@ -1978,7 +1998,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
             return false;
     }
 
-    sym->type = type_proc(resolver->ast_mem, &resolver->type_cache->procs, array_len(params), params, ret_type);
+    sym->type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type);
     sym->status = SYMBOL_STATUS_RESOLVED;
 
     return true;
@@ -2013,11 +2033,13 @@ static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_PROC);
 
-    if (((DeclProc*)(sym->decl))->flags & PROC_IS_INCOMPLETE)
+    if (((DeclProc*)(sym->decl))->flags & PROC_IS_INCOMPLETE) {
         return true;
+    }
 
-    if (!resolve_proc_stmts(resolver, sym))
+    if (!resolve_proc_stmts(resolver, sym)) {
         return false;
+    }
 
     // TODO: Support local struct/union/enum declarations inside procedures.
     /*
@@ -2189,7 +2211,7 @@ static bool eop_decay(Resolver* resolver, ExprOperand* eop)
         return false;
     }
 
-    eop->type = type_ptr(resolver->ast_mem, &resolver->type_cache->ptrs, eop->type->as_array.base);
+    eop->type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, eop->type->as_array.base);
     eop->is_lvalue = false;
 
     return true;
@@ -2205,7 +2227,7 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
             expr->const_val = eop->const_val;
         }
         else {
-            expr = new_expr_cast(resolver->ast_mem, NULL, orig_expr, true, orig_expr->range);
+            expr = new_expr_cast(&resolver->ctx->ast_mem, NULL, orig_expr, true, orig_expr->range);
         }
 
         expr->type = eop->type;
@@ -2396,7 +2418,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     case CST_StmtDecl: {
         StmtDecl* sdecl = (StmtDecl*)stmt;
         Decl* decl = sdecl->decl;
-        Scope* scope = resolver->curr_scope;
+        Scope* scope = resolver->curr_mod->curr_scope;
 
         if (decl->kind == CST_DeclVar) {
             DeclVar* dvar = (DeclVar*)decl;
@@ -2440,27 +2462,47 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 
     assert(sym->status == SYMBOL_STATUS_UNRESOLVED);
 
+    // Add to bucket of reachable symbols.
+    if (!sym->is_local) {
+        bucket_list_add_elem(&resolver->ctx->symbols, sym);
+
+        if (sym->kind == SYMBOL_VAR)
+            resolver->ctx->num_vars += 1;
+        else if (sym->kind == SYMBOL_PROC)
+            resolver->ctx->num_procs += 1;
+    }
+
+
+    bool success = false;
+    Module* old_mod = enter_module(resolver, sym->home);
+
     sym->status = SYMBOL_STATUS_RESOLVING;
 
     switch (sym->kind) {
     case SYMBOL_VAR:
-        return resolve_decl_var(resolver, sym);
+        success = resolve_decl_var(resolver, sym);
+        resolver->ctx->num_vars += 1;
+        break;
     case SYMBOL_CONST:
-        return resolve_decl_const(resolver, sym);
+        success = resolve_decl_const(resolver, sym);
+        break;
     case SYMBOL_PROC:
-        return resolve_decl_proc(resolver, sym);
+        success = resolve_decl_proc(resolver, sym);
+        break;
     default:
         ftprint_err("Unhandled symbol kind `%d`\n", sym->kind);
         assert(0);
         break;
     }
 
-    return false;
+    exit_module(resolver, old_mod);
+
+    return success;
 }
 
 static Symbol* resolve_name(Resolver* resolver, Identifier* name)
 {
-    Symbol* sym = lookup_symbol(resolver->curr_scope, name);
+    Symbol* sym = lookup_symbol(resolver->curr_mod->curr_scope, name);
 
     if (!sym)
         return NULL;
@@ -2471,9 +2513,10 @@ static Symbol* resolve_name(Resolver* resolver, Identifier* name)
     return sym;
 }
 
-bool resolve_global_stmts(Resolver* resolver, List* stmts)
+static void install_module_decls(Resolver* resolver, Module* mod)
 {
-    List* head = stmts;
+    List* head = &mod->stmts;
+    Scope* mod_scope = &resolver->curr_mod->global_scope;
 
     // Install decls in global symbol table.
     for (List* it = head->next; it != head; it = it->next) {
@@ -2485,21 +2528,30 @@ bool resolve_global_stmts(Resolver* resolver, List* stmts)
             Identifier* name = NULL;
 
             fill_decl_symbol_info(decl, &kind, &name);
-            add_unresolved_symbol(resolver, resolver->global_scope, kind, name, decl);
+            add_unresolved_symbol(resolver, mod_scope, kind, name, decl);
         }
     }
+}
+
+bool resolve_module(Resolver* resolver, Module* mod)
+{
+    Module* old_mod = enter_module(resolver, mod);
 
     // Resolve declaration "headers". Will not resolve procedure bodies or complete aggregate types.
-    List* sym_head = &resolver->global_scope->sym_list;
+    List* sym_head = &mod->global_scope.sym_list;
 
     for (List* it = sym_head->next; it != sym_head; it = it->next) {
         Symbol* sym = list_entry(it, Symbol, lnode);
 
-        if (!resolve_symbol(resolver, sym))
-            return false;
+        if (sym->home == mod) {
+            if (!resolve_symbol(resolver, sym))
+                return false;
+        }
     }
 
     // Resolve global statements (e.g., #static_assert)
+    List* head = &mod->stmts;
+
     for (List* it = head->next; it != head; it = it->next) {
         Stmt* stmt = list_entry(it, Stmt, lnode);
 
@@ -2509,27 +2561,37 @@ bool resolve_global_stmts(Resolver* resolver, List* stmts)
         }
     }
 
-    // Resolve declaration "bodies".
-    for (List* it = sym_head->next; it != sym_head; it = it->next) {
-        Symbol* sym = list_entry(it, Symbol, lnode);
+    exit_module(resolver, old_mod);
+
+    return true;
+}
+
+bool resolve_reachable_sym_defs(Resolver* resolver) {
+    BucketList* symbols = &resolver->ctx->symbols;
+
+    // NOTE: IMPORTANT: symbols->num_elems may increase during iteration if new symbols are encountered
+    // while resolver proc/struct/union bodies.
+    //
+    // Therefore, _DO NOT CACHE_ symbols->num_elems into a local variable.
+    for (size_t i = 0; i < symbols->num_elems; i += 1) {
+        void** sym_ptr = bucket_list_get_elem_packed(symbols, i); assert(sym_ptr);
+        Symbol* sym = (Symbol*)(*sym_ptr);
 
         if (sym->kind == SYMBOL_PROC) {
-            if (!resolve_global_proc_body(resolver, sym))
+            if (!resolve_global_proc_body(resolver, sym)) {
                 return false;
+            }
         }
     }
 
     return true;
 }
 
-void init_resolver(Resolver* resolver, Allocator* ast_mem, Allocator* tmp_mem, ByteStream* errors,
-                   TypeCache* type_cache, BucketList* symbols)
+void init_resolver(Resolver* resolver, NibbleCtx* ctx, Module* mod)
 {
-    resolver->ast_mem = ast_mem;
-    resolver->tmp_mem = tmp_mem;
-    resolver->errors = errors;
-    resolver->type_cache = type_cache;
-    resolver->symbols = symbols;
+    resolver->ctx = ctx;
+    resolver->curr_mod = mod;
 
-    //init_builtin_syms(resolver);
+    init_builtin_syms(resolver);
+    install_module_decls(resolver, mod);
 }

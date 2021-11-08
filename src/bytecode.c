@@ -2556,7 +2556,8 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 #endif
 }
 
-IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope, TypeCache* type_cache)
+IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, BucketList* symbols, size_t num_vars, size_t num_procs,
+                           TypeCache* type_cache)
 {
     IR_Module* module = alloc_type(arena, IR_Module, true);
 
@@ -2567,15 +2568,15 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
                           .tmp_arena = tmp_arena,
                           .type_cache = type_cache,
                           .curr_proc = NULL,
-                          .curr_scope = global_scope,
+                          .curr_scope = NULL,
                           .module = module,
                           .free_regs = -1};
 
     // Create global IR vars/procs arrays.
-    module->num_vars = global_scope->sym_kind_counts[SYMBOL_VAR];
+    module->num_vars = num_vars;
     module->vars = alloc_array(arena, Symbol*, module->num_vars, false);
 
-    module->num_procs = global_scope->sym_kind_counts[SYMBOL_PROC];
+    module->num_procs = num_procs;
     module->procs = alloc_array(arena, Symbol*, module->num_procs, false);
 
     // Iterate through all global declarations and create IR structures for
@@ -2583,11 +2584,9 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
     size_t var_index = 0;
     size_t proc_index = 0;
 
-    List* head = &global_scope->sym_list;
-    List* it = head->next;
-
-    while (it != head) {
-        Symbol* sym = list_entry(it, Symbol, lnode);
+    for (size_t i = 0; i < symbols->num_elems; i += 1) {
+        void** sym_ptr = bucket_list_get_elem_packed(symbols, i); assert(sym_ptr);
+        Symbol* sym = (Symbol*)(*sym_ptr);
 
         if (sym->kind == SYMBOL_VAR) {
             module->vars[var_index] = sym;
@@ -2597,8 +2596,6 @@ IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global
             module->procs[proc_index] = sym;
             proc_index += 1;
         }
-
-        it = it->next;
     }
 
     assert(proc_index == module->num_procs);

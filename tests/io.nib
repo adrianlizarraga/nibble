@@ -26,7 +26,7 @@ proc main(argc : int, argv : ^^char) => int
     }
 
     var a : []char = "Hello\n";
-    var num_bytes := sizeof(typeof(a));
+    var num_bytes := #sizeof(#typeof(a));
 
     #writeout(a, num_bytes);
 

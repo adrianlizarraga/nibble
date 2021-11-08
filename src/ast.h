@@ -317,7 +317,7 @@ typedef struct ImportSymbol {
 
 typedef struct StmtImport {
     Stmt super;
-    List import_entities;
+    List import_syms;
     StrLit* mod_pathname;
     Identifier* mod_namespace;
 } StmtImport;
@@ -746,8 +746,8 @@ struct Symbol {
     };
 };
 
-Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl);
-Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type);
+Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl, Module* home_mod);
+Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type, Module* home_mod);
 
 ///////////////////////////////
 //       Scope
@@ -779,9 +779,11 @@ Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 ///////////////////////////////
 
 struct Module {
-    StrLit* name;
-    Path path;
-    Scope global_scope;
+    StrLit* mod_path;
+
+    List stmts;
+
+    Scope global_scope; // TODO: Rename to `mod_scope`
     Scope* curr_scope;
 };
 

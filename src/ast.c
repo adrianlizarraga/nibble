@@ -385,13 +385,13 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
-Stmt* new_stmt_import(Allocator* allocator, List* import_entities, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range)
+Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range)
 {
     StmtImport* stmt = new_stmt(allocator, StmtImport, range);
     stmt->mod_pathname = mod_pathname;
     stmt->mod_namespace = mod_namespace;
 
-    list_replace(import_entities, &stmt->import_entities);
+    list_replace(import_syms, &stmt->import_syms);
 
     return (Stmt*)stmt;
 }
@@ -930,28 +930,29 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 //     Symbols
 //////////////////////////////
 
-static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name)
+static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod)
 {
     Symbol* sym = alloc_type(allocator, Symbol, true);
 
     sym->kind = kind;
     sym->status = status;
     sym->name = name;
+    sym->home = home_mod;
 
     return sym;
 }
 
-Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl)
+Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl, Module* home_mod)
 {
-    Symbol* sym = new_symbol(allocator, kind, SYMBOL_STATUS_UNRESOLVED, name);
+    Symbol* sym = new_symbol(allocator, kind, SYMBOL_STATUS_UNRESOLVED, name, home_mod);
     sym->decl = decl;
 
     return sym;
 }
 
-Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type)
+Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type, Module* home_mod)
 {
-    Symbol* sym = new_symbol(allocator, SYMBOL_TYPE, SYMBOL_STATUS_RESOLVED, name);
+    Symbol* sym = new_symbol(allocator, SYMBOL_TYPE, SYMBOL_STATUS_RESOLVED, name, home_mod);
     sym->type = type;
 
     return sym;
@@ -1215,17 +1216,8 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ExprIdent* e = (ExprIdent*)expr;
             dstr = array_create(allocator, char, 16);
 
-            if (!list_empty(&e->pkg_path)) {
-                List* head = &e->pkg_path;
-                List* it = head->next;
-
-                while (it != head) {
-                    PkgPathName* pname = list_entry(it, PkgPathName, lnode);
-
-                    ftprint_char_array(&dstr, false, "%s::", pname->name->str);
-
-                    it = it->next;
-                }
+            if (e->mod_ns) {
+                ftprint_char_array(&dstr, false, "%s::", e->mod_ns->str);
             }
 
             ftprint_char_array(&dstr, false, "%s", e->name->str);
@@ -1504,14 +1496,14 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             ftprint_char_array(&dstr, false, "(import ");
 
             // Print imported entities
-            if (!list_empty(&s->import_entities)) {
+            if (!list_empty(&s->import_syms)) {
                 ftprint_char_array(&dstr, false, "{");
 
-                List* head = &s->import_entities;
+                List* head = &s->import_syms;
                 List* it = head->next;
 
                 while (it != head) {
-                    ImportEntity* entity = list_entry(it, ImportEntity, lnode);
+                    ImportSymbol* entity = list_entry(it, ImportSymbol, lnode);
                     const char* suffix = (it->next == head) ? "} from " : ", ";
 
                     ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);

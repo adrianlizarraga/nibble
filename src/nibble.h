@@ -189,10 +189,6 @@ Identifier* intern_ident(const char* str, size_t len);
 
 char* slurp_file(Allocator* allocator, const char* filename);
 
-bool nibble_init(OS target_os, Arch target_arch);
-void nibble_compile(const char* input_file, const char* output_file);
-void nibble_cleanup(void);
-
 #define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit((f), ##__VA_ARGS__)
 void nibble_fatal_exit(const char* format, ...);
 #endif

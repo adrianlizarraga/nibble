@@ -1533,19 +1533,6 @@ static Stmt* parse_stmt_static_assert(Parser* parser)
     return new_stmt_static_assert(parser->ast_arena, cond, msg, range);
 }
 
-// Just a TKN_IDENT wrapped in a linked-list node
-static ModPathName* parse_mod_path_name(Parser* parser, const char* error_prefix)
-{
-    if (!expect_token(parser, TKN_IDENT, error_prefix)) {
-        return NULL;
-    }
-
-    ModPathName* pname = alloc_type(parser->ast_arena, ModPathName, true);
-    pname->name = parser->ptoken.as_ident.ident;
-
-    return pname;
-}
-
 static bool is_mod_path_relative(const char* path, size_t len)
 {
     assert(path);
