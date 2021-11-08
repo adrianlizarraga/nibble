@@ -68,7 +68,6 @@ typedef struct IR_Builder {
     Allocator* arena;
     Allocator* tmp_arena;
     TypeCache* type_cache;
-    IR_Module* module;
     Symbol* curr_proc;
     Scope* curr_scope;
 
@@ -2556,59 +2555,28 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 #endif
 }
 
-IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, BucketList* symbols, size_t num_vars, size_t num_procs,
-                           TypeCache* type_cache)
+void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache)
 {
-    IR_Module* module = alloc_type(arena, IR_Module, true);
-
-    if (!module)
-        return NULL;
-
     IR_Builder builder = {.arena = arena,
                           .tmp_arena = tmp_arena,
                           .type_cache = type_cache,
                           .curr_proc = NULL,
                           .curr_scope = NULL,
-                          .module = module,
                           .free_regs = -1};
-
-    // Create global IR vars/procs arrays.
-    module->num_vars = num_vars;
-    module->vars = alloc_array(arena, Symbol*, module->num_vars, false);
-
-    module->num_procs = num_procs;
-    module->procs = alloc_array(arena, Symbol*, module->num_procs, false);
-
-    // Iterate through all global declarations and create IR structures for
-    // global variables and procedures.
-    size_t var_index = 0;
-    size_t proc_index = 0;
-
-    for (size_t i = 0; i < symbols->num_elems; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(symbols, i); assert(sym_ptr);
-        Symbol* sym = (Symbol*)(*sym_ptr);
-
-        if (sym->kind == SYMBOL_VAR) {
-            module->vars[var_index] = sym;
-            var_index += 1;
-        }
-        else if (sym->kind == SYMBOL_PROC) {
-            module->procs[proc_index] = sym;
-            proc_index += 1;
-        }
-    }
-
-    assert(proc_index == module->num_procs);
-    assert(var_index == module->num_vars);
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 
     // Iterate through all procedures and generate IR instructions.
-    for (size_t i = 0; i < module->num_procs; i += 1) {
-        IR_build_proc(&builder, module->procs[i]);
+    size_t num_procs = procs->num_elems;
+
+    for (size_t i = 0; i < num_procs; i += 1) {
+        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
+        assert(sym_ptr);
+        Symbol* sym = (Symbol*)(*sym_ptr);
+        assert(sym->kind == SYMBOL_PROC);
+
+        IR_build_proc(&builder, sym);
     }
 
     allocator_restore_state(tmp_mem_state);
-
-    return module;
 }

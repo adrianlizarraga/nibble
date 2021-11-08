@@ -206,7 +206,9 @@ bool nibble_init(OS target_os, Arch target_arch)
 
     assert(nibble->ident_map.len == (KW_COUNT + ANNOTATION_COUNT + INTRINSIC_COUNT));
 
-    bucket_list_init(&nibble->symbols, &nibble->ast_mem, 64);
+    bucket_list_init(&nibble->vars, &nibble->ast_mem, 32);
+    bucket_list_init(&nibble->procs, &nibble->ast_mem, 32);
+
     init_builtin_types(target_os, target_arch, &nibble->ast_mem, &nibble->type_cache);
 
     if (!init_code_gen(target_os, target_arch))
@@ -460,20 +462,19 @@ void nibble_compile(const char* main_file, const char* output_file)
         // TODO: Allow/check for envp param
     }
 
-    ftprint_out("\tglobal vars: %u\n\tglobal procs: %u\n", nibble->num_vars, nibble->num_procs);
+    ftprint_out("\tglobal vars: %u\n\tglobal procs: %u\n", nibble->vars.num_elems, nibble->procs.num_elems);
 
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
     ftprint_out("4. Generating IR bytecode\n");
-    IR_Module* ir_module = IR_build_module(&nibble->ast_mem, &nibble->tmp_mem, &nibble->symbols, nibble->num_vars,
-                                           nibble->num_procs, &nibble->type_cache);
+    IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->procs, &nibble->type_cache);
 
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
     ftprint_out("4. Generating NASM assembly output: %s ...\n", output_file);
-    gen_module(&nibble->gen_mem, &nibble->tmp_mem, ir_module, &nibble->str_lit_map, output_file);
+    gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lit_map, output_file);
 
     allocator_restore_state(mem_state);
 }

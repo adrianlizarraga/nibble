@@ -2460,18 +2460,8 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 
     assert(sym->status == SYMBOL_STATUS_UNRESOLVED);
 
-    // Add to bucket of reachable symbols.
-    if (!sym->is_local) {
-        bucket_list_add_elem(&resolver->ctx->symbols, sym);
-
-        if (sym->kind == SYMBOL_VAR)
-            resolver->ctx->num_vars += 1;
-        else if (sym->kind == SYMBOL_PROC)
-            resolver->ctx->num_procs += 1;
-    }
-
-
     bool success = false;
+    bool is_global = !sym->is_local;
     Module* old_mod = enter_module(resolver, sym->home);
 
     sym->status = SYMBOL_STATUS_RESOLVING;
@@ -2479,13 +2469,20 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
     switch (sym->kind) {
     case SYMBOL_VAR:
         success = resolve_decl_var(resolver, sym);
-        resolver->ctx->num_vars += 1;
+
+        if (is_global) {
+            bucket_list_add_elem(&resolver->ctx->vars, sym);
+        }
         break;
     case SYMBOL_CONST:
         success = resolve_decl_const(resolver, sym);
         break;
     case SYMBOL_PROC:
         success = resolve_decl_proc(resolver, sym);
+
+        if (is_global) {
+            bucket_list_add_elem(&resolver->ctx->procs, sym);
+        }
         break;
     default:
         ftprint_err("Unhandled symbol kind `%d`\n", sym->kind);
@@ -2565,20 +2562,19 @@ bool resolve_module(Resolver* resolver, Module* mod)
 }
 
 bool resolve_reachable_sym_defs(Resolver* resolver) {
-    BucketList* symbols = &resolver->ctx->symbols;
+    BucketList* procs = &resolver->ctx->procs;
 
-    // NOTE: IMPORTANT: symbols->num_elems may increase during iteration if new symbols are encountered
-    // while resolver proc/struct/union bodies.
+    // NOTE: The procs bucket-list may grow during iteration if new proc symbols are encountered
+    // while resolving proc/struct/union bodies.
     //
-    // Therefore, _DO NOT CACHE_ symbols->num_elems into a local variable.
-    for (size_t i = 0; i < symbols->num_elems; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(symbols, i); assert(sym_ptr);
+    // Therefore, _DO NOT CACHE_ procs->num_elems into a local variable.
+    for (size_t i = 0; i < procs->num_elems; i += 1) {
+        void** sym_ptr = bucket_list_get_elem_packed(procs, i); assert(sym_ptr);
         Symbol* sym = (Symbol*)(*sym_ptr);
+        assert(sym->kind == SYMBOL_PROC);
 
-        if (sym->kind == SYMBOL_PROC) {
-            if (!resolve_global_proc_body(resolver, sym)) {
-                return false;
-            }
+        if (!resolve_global_proc_body(resolver, sym)) {
+            return false;
         }
     }
 

@@ -1044,7 +1044,7 @@ static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 m
     const char* mem_label = mem_label_size ? x64_mem_size_label[mem_label_size] : "";
 
     if (addr->kind == X64_SIBD_ADDR_STR_LIT) {
-        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_STR_LIT_PRE, addr->str_lit->id); 
+        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_STR_LIT_PRE, addr->str_lit->id);
     }
     else if (addr->kind == X64_SIBD_ADDR_GLOBAL) {
         ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, addr->global->name->str);
@@ -2106,7 +2106,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     allocator_restore_state(mem_state);
 }
 
-static void X64_gen_global_vars(X64_Generator* generator, u32 num_vars, Symbol** vars, HMap* str_lit_map)
+static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, HMap* str_lit_map)
 {
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
@@ -2127,8 +2127,14 @@ static void X64_gen_global_vars(X64_Generator* generator, u32 num_vars, Symbol**
     }
 
     X64_emit_data(generator, "\nSECTION .data\n");
+
+    size_t num_vars = vars->num_elems;
+
     for (u32 i = 0; i < num_vars; i += 1) {
-        Symbol* sym = vars[i];
+        void** sym_ptr = bucket_list_get_elem_packed(vars, i);
+        assert(sym_ptr);
+        Symbol* sym = (Symbol*)(*sym_ptr);
+        assert(sym->kind == SYMBOL_VAR);
         DeclVar* dvar = (DeclVar*)sym->decl;
 
         X64_emit_global_data(generator, sym->name, sym->type, dvar->init);
@@ -2162,7 +2168,8 @@ static void X64_write_output_file(X64_Generator* generator, FILE* out_fd)
     }
 }
 
-bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, IR_Module* module, HMap* str_lit_map, const char* output_file)
+bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs, HMap* str_lit_map,
+                    const char* output_file)
 {
     FILE* out_fd = fopen(output_file, "w");
     if (!out_fd) {
@@ -2178,13 +2185,17 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, IR_Module* module, H
     };
 
     // Generate global variables.
-    X64_gen_global_vars(&generator, module->num_vars, module->vars, str_lit_map);
+    X64_gen_global_vars(&generator, vars, str_lit_map);
 
     // Generate instructions for each procedure.
-    u32 num_procs = module->num_procs;
+    size_t num_procs = procs->num_elems;
 
-    for (u32 i = 0; i < num_procs; i += 1) {
-        X64_gen_proc(&generator, i, module->procs[i]);
+    for (size_t i = 0; i < num_procs; i += 1) {
+        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
+        assert(sym_ptr);
+        Symbol* sym = (Symbol*)(*sym_ptr);
+
+        X64_gen_proc(&generator, i, sym);
     }
 
     // Output assembly to file.
