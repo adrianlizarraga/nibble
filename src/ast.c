@@ -607,6 +607,7 @@ Type* type_ssize;
 Type* type_usize;
 Type* type_ptr_void;
 Type* type_ptr_char;
+Type* type_ptr_ptr_char;
 
 size_t PTR_SIZE = 8;
 size_t PTR_ALIGN = 8;
@@ -924,6 +925,7 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 
     type_ptr_void = type_ptr(ast_mem, &type_cache->ptrs, type_void);
     type_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, type_char);
+    type_ptr_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, type_ptr_char);
 }
 
 //////////////////////////////

@@ -9,6 +9,7 @@ typedef struct Resolver Resolver;
 struct Resolver {
     NibbleCtx* ctx;
     Module* curr_mod;
+    Scope* curr_scope;
 };
 
 void init_resolver(Resolver* resolver, NibbleCtx* ctx, Module* mod);

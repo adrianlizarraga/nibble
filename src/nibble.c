@@ -332,6 +332,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     //      Check main file validity
     //////////////////////////////////////////
     static const char nib_ext[] = "nib";
+    static const char main_name[] = "main";
 
     AllocatorState mem_state = allocator_get_state(&nibble->tmp_mem);
 
@@ -362,14 +363,14 @@ void nibble_compile(const char* main_file, const char* output_file)
     path_init(base_ospath, &nibble->gen_mem);
     path_set(base_ospath, main_path.str, (base_path_end_ptr - main_path.str));
 
-    char* entry_mod_path_buf = array_create(&nibble->tmp_mem, char, ((main_path.str + main_path.len) - base_path_end_ptr) + 1);
+    size_t mod_path_cap = ((main_path.str + main_path.len) - base_path_end_ptr) + 1;
+    char* entry_mod_path_buf = array_create(&nibble->tmp_mem, char, mod_path_cap);
     ftprint_char_array(&entry_mod_path_buf, true, "%c%s", NIBBLE_PATH_SEP, filename_ptr);
 
     Module* main_mod = alloc_type(&nibble->ast_mem, Module, true);
     main_mod->mod_path = intern_str_lit(entry_mod_path_buf, cstr_len(entry_mod_path_buf));
-    main_mod->curr_scope = &main_mod->global_scope;
 
-    scope_init(&main_mod->global_scope);
+    scope_init(&main_mod->scope);
     hmap_put(&nibble->mod_map, PTR_UINT(main_mod->mod_path), PTR_UINT(main_mod));
 
     //////////////////////////////////////////
@@ -403,8 +404,17 @@ void nibble_compile(const char* main_file, const char* output_file)
     Resolver resolver = {0};
     size_t num_global_syms = num_decls + num_builtin_decls + 17; // TODO: Update magic 17 to num of builtin types.
 
-    init_scope_sym_table(&main_mod->global_scope, &nibble->ast_mem, num_global_syms * 2);
+    init_scope_sym_table(&main_mod->scope, &nibble->ast_mem, num_global_syms * 2);
     init_resolver(&resolver, nibble, main_mod);
+
+    // Look for main to have been parsed and installed as an unresolved proc symbol.
+    Identifier* main_ident = intern_ident(main_name, sizeof(main_name) - 1);
+    Symbol* main_sym = lookup_symbol(&main_mod->scope, main_ident);
+
+    if (!main_sym || (main_sym->kind != SYMBOL_PROC)) {
+        ftprint_err("[ERROR]: Program entry file must define a main() procedure.\n");
+        return;
+    }
 
     if (!resolve_module(&resolver, main_mod)) {
         print_errors(&nibble->errors);
@@ -414,6 +424,40 @@ void nibble_compile(const char* main_file, const char* output_file)
     if (!resolve_reachable_sym_defs(&resolver)) {
         print_errors(&nibble->errors);
         return;
+    }
+
+    // Ensure main has the expected type signature.
+    Type* main_type = main_sym->type; assert(main_type->kind == TYPE_PROC);
+    Type* main_ret_type = main_type->as_proc.ret;
+
+    if (main_ret_type != type_int) {
+        ftprint_err("[ERROR]: Main procedure must return an `int` (`%s`) type, but found `%s`.\n",
+                    type_name(type_int),
+                    type_name(main_ret_type));
+        return;
+    }
+
+    size_t main_num_params = main_type->as_proc.num_params;
+
+    // Check that params are either main(argc: int) or main(argc: int, argv: ^^char)
+    if (main_num_params > 0) {
+        Type** param_types = main_type->as_proc.params;
+
+        if (param_types[0] != type_int) {
+            ftprint_err("[ERROR]: Main procedure's first paramater must be an `int` (`%s`) type, but found `%s`.\n",
+                        type_name(type_int),
+                        type_name(param_types[0]));
+            return;
+        }
+
+        // TODO: Allow argv : []^char
+        if ((main_num_params == 2) && (param_types[1] != type_ptr_ptr_char)) {
+            ftprint_err("[ERROR]: Main procedure's second paramater must be a `^^char` type, but found `%s`.\n",
+                        type_name(param_types[0]));
+            return;
+        }
+
+        // TODO: Allow/check for envp param
     }
 
     ftprint_out("\tglobal vars: %u\n\tglobal procs: %u\n", nibble->num_vars, nibble->num_procs);

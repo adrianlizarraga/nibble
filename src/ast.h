@@ -666,8 +666,11 @@ extern Type* type_llong;
 extern Type* type_ullong;
 extern Type* type_ssize;
 extern Type* type_usize;
+
+// Common types used in the compiler for type-checking
 extern Type* type_ptr_void;
 extern Type* type_ptr_char;
+extern Type* type_ptr_ptr_char;
 
 extern size_t PTR_SIZE;
 extern size_t PTR_ALIGN;
@@ -780,11 +783,8 @@ Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 
 struct Module {
     StrLit* mod_path;
-
     List stmts;
-
-    Scope global_scope; // TODO: Rename to `mod_scope`
-    Scope* curr_scope;
+    Scope scope;
 };
 
 #endif
