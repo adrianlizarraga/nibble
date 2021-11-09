@@ -82,6 +82,7 @@ static void print_errors(ByteStream* errors)
 static bool init_annotations()
 {
     static const StringView names[ANNOTATION_COUNT] = {
+        [ANNOTATION_EXPORTED] = string_view_lit("exported"),
         [ANNOTATION_FOREIGN] = string_view_lit("foreign"),
         [ANNOTATION_PACKED] = string_view_lit("packed"),
     };

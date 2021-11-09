@@ -141,6 +141,7 @@ typedef enum Keyword {
 
 typedef enum Annotation {
     ANNOTATION_CUSTOM = 0,
+    ANNOTATION_EXPORTED,
     ANNOTATION_FOREIGN,
     ANNOTATION_PACKED,
 

@@ -1845,7 +1845,7 @@ static Decl* parse_decl_proc(Parser* parser)
                         list_head_init(&body.stmts);
                         range.end = parser->ptoken.range.end;
                         decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
-                                             body.num_decls, PROC_IS_INCOMPLETE, range);
+                                             body.num_decls, DECL_IS_INCOMPLETE, range);
                     }
                     else {
                         parser_unexpected_token(parser, TKN_RBRACE, error_prefix);

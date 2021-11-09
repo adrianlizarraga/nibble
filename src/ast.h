@@ -471,9 +471,16 @@ typedef enum DeclKind {
     CST_DeclTypedef,
 } DeclKind;
 
+enum DeclFlags {
+    DECL_IS_EXPORTED = 0x1,
+    DECL_IS_INCOMPLETE = 0x2,
+    DECL_IS_FOREIGN = 0x4,
+};
+
 struct Decl {
     DeclKind kind;
     ProgRange range;
+    unsigned flags;
     List annotations;
     ListNode lnode;
 };
@@ -514,18 +521,11 @@ typedef struct DeclAggregate {
 typedef DeclAggregate DeclUnion;
 typedef DeclAggregate DeclStruct;
 
-enum ProcFlags {
-    PROC_IS_INCOMPLETE = 0x1,
-    PROC_IS_INTRINSIC = 0x2,
-    PROC_IS_FOREIGN = 0x4,
-};
-
 typedef struct DeclProc {
     Decl super;
     Identifier* name;
     TypeSpec* ret;
 
-    u32 flags;
     u32 num_params;
     u32 num_decls;
     bool returns;

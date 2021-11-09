@@ -1772,6 +1772,38 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
     return NULL;
 }
 
+static bool resolve_decl_annotations(Resolver* resolver, Decl* decl)
+{
+    List* head = &decl->annotations;
+    List* it = head->next;
+
+    while (it != head) {
+        DeclAnnotation* a = list_entry(it, DeclAnnotation, lnode);
+        const char* name = a->ident->str;
+
+        if (name == annotation_names[ANNOTATION_FOREIGN]) {
+            if (decl->flags & DECL_IS_FOREIGN) {
+                resolver_on_error(resolver, "Duplicate @foreign annotations");
+                return false;
+            }
+
+            decl->flags |= DECL_IS_FOREIGN;
+        }
+        else if (name == annotation_names[ANNOTATION_EXPORTED]) {
+            if (decl->flags & DECL_IS_EXPORTED) {
+                resolver_on_error(resolver, "Duplicate @exported annotations");
+                return false;
+            }
+
+            decl->flags |= DECL_IS_EXPORTED;
+        }
+
+        it = it->next;
+    }
+
+    return true;
+}
+
 static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 {
     DeclVar* decl = (DeclVar*)sym->decl;
@@ -1846,9 +1878,28 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 
     assert(type);
 
+    if (!resolve_decl_annotations(resolver, sym->decl)) {
+        return false;
+    }
+
+    unsigned flags = sym->decl->flags;
+    bool is_foreign = flags & DECL_IS_FOREIGN;
+    bool is_exported = flags & DECL_IS_EXPORTED;
+
+    if (!global && is_foreign) {
+        resolver_on_error(resolver, "Local variables cannot be marked @foreign.");
+        return false;
+    }
+
+    if (!global && is_exported) {
+        resolver_on_error(resolver, "Local variables cannot be marked @exported.");
+        return false;
+    }
+
     // TODO: Complete incomplete aggregate type
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
+
 
     return true;
 }
@@ -1898,40 +1949,23 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 
     assert(type);
 
-    sym->type = type;
-    sym->status = SYMBOL_STATUS_RESOLVED;
+    unsigned flags = sym->decl->flags;
+    bool is_foreign = flags & DECL_IS_FOREIGN;
+    bool is_exported = flags & DECL_IS_EXPORTED;
+    bool global = !sym->is_local;
 
-    return true;
-}
-
-static bool resolve_decl_proc_annotations(Resolver* resolver, DeclProc* decl)
-{
-    List* head = &decl->super.annotations;
-    List* it = head->next;
-
-    while (it != head) {
-        DeclAnnotation* a = list_entry(it, DeclAnnotation, lnode);
-        const char* name = a->ident->str;
-
-        if (name == annotation_names[ANNOTATION_FOREIGN]) {
-            if (decl->flags & PROC_IS_FOREIGN) {
-                resolver_on_error(resolver, "Duplicate @foreign annotations");
-                return false;
-            }
-
-            decl->flags |= PROC_IS_FOREIGN;
-        }
-
-        it = it->next;
-    }
-
-    bool is_incomplete = decl->flags & PROC_IS_INCOMPLETE;
-    bool is_foreign = decl->flags & PROC_IS_FOREIGN;
-
-    if (is_foreign && !is_incomplete) {
-        resolver_on_error(resolver, "Foreign procedure cannot have a body");
+    if (!global && is_foreign) {
+        resolver_on_error(resolver, "Local consts cannot be marked @foreign.");
         return false;
     }
+
+    if (!global && is_exported) {
+        resolver_on_error(resolver, "Local consts cannot be marked @exported.");
+        return false;
+    }
+
+    sym->type = type;
+    sym->status = SYMBOL_STATUS_RESOLVED;
 
     return true;
 }
@@ -1940,16 +1974,22 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
 
-    if (!resolve_decl_proc_annotations(resolver, decl)) {
+    if (!resolve_decl_annotations(resolver, sym->decl)) {
         return false;
     }
 
-    bool is_incomplete = decl->flags & PROC_IS_INCOMPLETE;
-    bool is_foreign = decl->flags & PROC_IS_FOREIGN;
+    unsigned flags = sym->decl->flags;
+    bool is_incomplete = flags & DECL_IS_INCOMPLETE;
+    bool is_foreign = flags & DECL_IS_FOREIGN;
     bool is_intrinsic = decl->name->kind == IDENTIFIER_INTRINSIC;
 
+    if (is_foreign && !is_incomplete) {
+        resolver_on_error(resolver, "Foreign declaration cannot have a body");
+        return false;
+    }
+
     if (is_incomplete && !(is_foreign || is_intrinsic)) {
-        resolver_on_error(resolver, "Procedure must have a body");
+        resolver_on_error(resolver, "Procedure `%s` must have a body", decl->name->str);
         return false;
     }
 
@@ -2031,7 +2071,7 @@ static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_PROC);
 
-    if (((DeclProc*)(sym->decl))->flags & PROC_IS_INCOMPLETE) {
+    if (sym->decl->flags & DECL_IS_INCOMPLETE) {
         return true;
     }
 

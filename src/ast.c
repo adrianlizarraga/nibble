@@ -261,6 +261,8 @@ static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind
     decl->kind = kind;
     decl->range = range;
 
+    list_head_init(&decl->annotations);
+
     return (Decl*)decl;
 }
 
@@ -350,7 +352,7 @@ Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List
     decl->name = name;
     decl->ret = ret;
     decl->num_params = num_params;
-    decl->flags = flags;
+    decl->super.flags = flags;
     decl->num_decls = num_decls;
 
     list_replace(params, &decl->params);

@@ -2515,7 +2515,7 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 {
     DeclProc* dproc = (DeclProc*)sym->decl;
 
-    if (dproc->flags & PROC_IS_INCOMPLETE) {
+    if (sym->decl->flags & DECL_IS_INCOMPLETE) {
         return;
     }
 
