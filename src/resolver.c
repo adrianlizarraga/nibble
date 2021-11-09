@@ -68,11 +68,6 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt);
 static void set_scope(Resolver* resolver, Scope* scope);
 static Scope* push_scope(Resolver* resolver, size_t num_syms);
 static void pop_scope(Resolver* resolver);
-static void add_scope_symbol(Scope* scope, Symbol* sym);
-
-static void init_builtin_syms(Resolver* resolver);
-static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type);
-static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKind kind, Identifier* name, Decl* decl);
 
 static void resolver_on_error(Resolver* resolver, const char* format, ...)
 {
@@ -90,120 +85,6 @@ static void resolver_on_error(Resolver* resolver, const char* format, ...)
 static void add_module(Resolver* resolver, Module* mod)
 {
     hmap_put(&resolver->ctx->mod_map, PTR_UINT(mod->mod_path), PTR_UINT(mod));
-}
-
-static Module* enter_module(Resolver* resolver, Module* mod)
-{
-    Module* old = resolver->curr_mod;
-    resolver->curr_mod = mod;
-
-    return old;
-}
-
-static void exit_module(Resolver* resolver, Module* old_mod)
-{
-    resolver->curr_mod = old_mod;
-}
-
-static void add_scope_symbol(Scope* scope, Symbol* sym)
-{
-    hmap_put(&scope->sym_table, PTR_UINT(sym->name), PTR_UINT(sym));
-    list_add_last(&scope->sym_list, &sym->lnode);
-
-    scope->sym_kind_counts[sym->kind] += 1;
-}
-
-static void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, Identifier** name)
-{
-    // TODO: This is ugly.
-
-    switch (decl->kind) {
-    case CST_DeclVar: {
-        DeclVar* dvar = (DeclVar*)decl;
-
-        *kind = SYMBOL_VAR;
-        *name = dvar->name; // TODO: Multiple variables per cst decl
-        break;
-    }
-    case CST_DeclConst: {
-        DeclConst* dconst = (DeclConst*)decl;
-
-        *kind = SYMBOL_CONST;
-        *name = dconst->name;
-        break;
-    }
-    case CST_DeclProc: {
-        DeclProc* dproc = (DeclProc*)decl;
-
-        *kind = SYMBOL_PROC;
-        *name = dproc->name;
-        break;
-    }
-    case CST_DeclEnum: {
-        DeclEnum* denum = (DeclEnum*)decl;
-
-        *kind = SYMBOL_TYPE;
-        *name = denum->name;
-        break;
-    }
-    case CST_DeclUnion: {
-        DeclUnion* dunion = (DeclUnion*)decl;
-
-        *kind = SYMBOL_TYPE;
-        *name = dunion->name;
-        break;
-    }
-    case CST_DeclStruct: {
-        DeclStruct* dstruct = (DeclStruct*)decl;
-
-        *kind = SYMBOL_TYPE;
-        *name = dstruct->name;
-        break;
-    }
-    case CST_DeclTypedef: {
-        DeclTypedef* dtypedef = (DeclTypedef*)decl;
-
-        *kind = SYMBOL_TYPE;
-        *name = dtypedef->name;
-        break;
-    }
-    default:
-        *kind = SYMBOL_NONE;
-        *name = NULL;
-        ftprint_err("Not handling Decl kind %d in file %s, line %d\n", decl->kind, __FILE__, __LINE__);
-        assert(0);
-        break;
-    }
-}
-
-static bool add_global_type_symbol(Resolver* resolver, const char* name, Type* type)
-{
-    Identifier* sym_name = intern_ident(name, cstr_len(name));
-
-    if (lookup_scope_symbol(&resolver->curr_mod->scope, sym_name)) {
-        resolver_on_error(resolver, "Duplicate definition of `%s`", sym_name);
-        return false;
-    }
-
-    Symbol* sym = new_symbol_builtin_type(&resolver->ctx->ast_mem, sym_name, type, resolver->curr_mod);
-
-    add_scope_symbol(&resolver->curr_mod->scope, sym);
-
-    return true;
-}
-
-static Symbol* add_unresolved_symbol(Resolver* resolver, Scope* scope, SymbolKind kind, Identifier* name, Decl* decl)
-{
-    if (lookup_symbol(scope, name))
-        return NULL; // Shadows a symbol in the current scope or a parent scope.
-
-    Symbol* sym = new_symbol_decl(&resolver->ctx->ast_mem, kind, name, decl, resolver->curr_mod);
-    sym->status = SYMBOL_STATUS_UNRESOLVED;
-    sym->is_local = (scope != &resolver->curr_mod->scope);
-
-    add_scope_symbol(scope, sym);
-
-    return sym;
 }
 
 static void set_scope(Resolver* resolver, Scope* scope)
@@ -227,37 +108,6 @@ static Scope* push_scope(Resolver* resolver, size_t num_syms)
 static void pop_scope(Resolver* resolver)
 {
     resolver->curr_scope = resolver->curr_scope->parent;
-}
-
-static void init_builtin_syms(Resolver* resolver)
-{
-    add_global_type_symbol(resolver, "void", type_void);
-    add_global_type_symbol(resolver, "u8", type_u8);
-    add_global_type_symbol(resolver, "s8", type_s8);
-    add_global_type_symbol(resolver, "u16", type_u16);
-    add_global_type_symbol(resolver, "s16", type_s16);
-    add_global_type_symbol(resolver, "u32", type_u32);
-    add_global_type_symbol(resolver, "s32", type_s32);
-    add_global_type_symbol(resolver, "u64", type_u64);
-    add_global_type_symbol(resolver, "s64", type_s64);
-    add_global_type_symbol(resolver, "f32", type_f32);
-    add_global_type_symbol(resolver, "f64", type_f64);
-
-    // Aliased types
-    add_global_type_symbol(resolver, "bool", type_bool);
-    add_global_type_symbol(resolver, "char", type_char);
-    add_global_type_symbol(resolver, "schar", type_schar);
-    add_global_type_symbol(resolver, "uchar", type_uchar);
-    add_global_type_symbol(resolver, "short", type_short);
-    add_global_type_symbol(resolver, "ushort", type_ushort);
-    add_global_type_symbol(resolver, "int", type_int);
-    add_global_type_symbol(resolver, "uint", type_uint);
-    add_global_type_symbol(resolver, "long", type_long);
-    add_global_type_symbol(resolver, "ulong", type_ulong);
-    add_global_type_symbol(resolver, "llong", type_llong);
-    add_global_type_symbol(resolver, "ullong", type_ullong);
-    add_global_type_symbol(resolver, "ssize", type_ssize);
-    add_global_type_symbol(resolver, "usize", type_usize);
 }
 
 #define CASE_INT_CAST(k, o, t, f)                                  \
@@ -1977,7 +1827,8 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     for (List* it = head->next; it != head; it = it->next) {
         DeclVar* proc_param = (DeclVar*)list_entry(it, Decl, lnode);
         Symbol* param_sym =
-            add_unresolved_symbol(resolver, decl->scope, SYMBOL_VAR, proc_param->name, (Decl*)proc_param);
+            add_unresolved_symbol(&resolver->ctx->ast_mem, decl->scope, resolver->ctx->curr_mod, SYMBOL_VAR,
+                                  proc_param->name, (Decl*)proc_param);
 
         assert(param_sym);
 
@@ -2050,9 +1901,12 @@ static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
         return true;
     }
 
-    if (!resolve_proc_stmts(resolver, sym)) {
-        return false;
-    }
+    Module* old_mod = enter_module(sym->home);
+    bool success = resolve_proc_stmts(resolver, sym);
+
+    exit_module(old_mod);
+
+    return success;
 
     // TODO: Support local struct/union/enum declarations inside procedures.
     /*
@@ -2435,7 +2289,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
 
         if (decl->kind == CST_DeclVar) {
             DeclVar* dvar = (DeclVar*)decl;
-            Symbol* sym = add_unresolved_symbol(resolver, scope, SYMBOL_VAR, dvar->name, decl);
+            Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->ctx->curr_mod, SYMBOL_VAR, dvar->name, decl);
 
             if (!sym)
                 resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name->str);
@@ -2477,7 +2331,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 
     bool success = false;
     bool is_global = !sym->is_local;
-    Module* old_mod = enter_module(resolver, sym->home);
+    Module* old_mod = enter_module(sym->home);
 
     sym->status = SYMBOL_STATUS_RESOLVING;
 
@@ -2505,7 +2359,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
         break;
     }
 
-    exit_module(resolver, old_mod);
+    exit_module(old_mod);
 
     return success;
 }
@@ -2523,29 +2377,9 @@ static Symbol* resolve_name(Resolver* resolver, Identifier* name)
     return sym;
 }
 
-static void install_module_decls(Resolver* resolver, Module* mod)
-{
-    List* head = &mod->stmts;
-    Scope* mod_scope = &resolver->curr_mod->scope;
-
-    // Install decls in global symbol table.
-    for (List* it = head->next; it != head; it = it->next) {
-        Stmt* stmt = list_entry(it, Stmt, lnode);
-
-        if (stmt->kind == CST_StmtDecl) {
-            Decl* decl = ((StmtDecl*)stmt)->decl;
-            SymbolKind kind = SYMBOL_NONE;
-            Identifier* name = NULL;
-
-            fill_decl_symbol_info(decl, &kind, &name);
-            add_unresolved_symbol(resolver, mod_scope, kind, name, decl);
-        }
-    }
-}
-
 bool resolve_module(Resolver* resolver, Module* mod)
 {
-    Module* old_mod = enter_module(resolver, mod);
+    Module* old_mod = enter_module(mod);
 
     // Resolve declaration "headers". Will not resolve procedure bodies or complete aggregate types.
     List* sym_head = &mod->scope.sym_list;
@@ -2571,7 +2405,7 @@ bool resolve_module(Resolver* resolver, Module* mod)
         }
     }
 
-    exit_module(resolver, old_mod);
+    exit_module(old_mod);
 
     return true;
 }
@@ -2599,9 +2433,9 @@ bool resolve_reachable_sym_defs(Resolver* resolver) {
 void init_resolver(Resolver* resolver, NibbleCtx* ctx, Module* mod)
 {
     resolver->ctx = ctx;
-    resolver->curr_mod = mod;
+    resolver->ctx->curr_mod = mod;
     resolver->curr_scope = &mod->scope;
 
-    init_builtin_syms(resolver);
-    install_module_decls(resolver, mod);
+    //init_builtin_syms(resolver);
+    install_module_decls(&ctx->ast_mem, mod);
 }

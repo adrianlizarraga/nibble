@@ -183,20 +183,20 @@ bool u32_is_bit_set(u32 mask, u8 bit)
 
 #define ASSERT_PATH_INIT(p) assert((p)->str && (p)->cap)
 
-static void path_norm(Path* path)
+void path_norm(Path* path, char old_sep, char new_sep)
 {
     ASSERT_PATH_INIT(path);
 
-    if (OS_PATH_SEP != NIBBLE_PATH_SEP) {
+    if (new_sep != old_sep) {
         for (char* p = path->str; *p; p += 1) {
-            if (*p == NIBBLE_PATH_SEP) {
-                *p = OS_PATH_SEP;
+            if (*p == old_sep) {
+                *p = new_sep;
             }
         }
     }
 
     // Remove ending `/` (if not at the beginning of path)
-    if ((path->len > 1) && (path->str[path->len - 1] == OS_PATH_SEP)) {
+    if ((path->len > 1) && (path->str[path->len - 1] == new_sep)) {
         path->str[path->len - 1] = '\0';
         path->len -= 1;
     }
@@ -263,7 +263,7 @@ void path_set(Path* path, const char* src, size_t src_len)
 
     path->len = src_len;
 
-    path_norm(path);
+    path_norm(path, NIBBLE_PATH_SEP, OS_PATH_SEP);
 }
 
 void path_join(Path* dst, Path* src)

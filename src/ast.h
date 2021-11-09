@@ -701,7 +701,7 @@ typedef enum SymbolKind {
     SYMBOL_CONST,
     SYMBOL_PROC,
     SYMBOL_TYPE,
-    SYMBOL_PKG,
+    SYMBOL_MODULE,
     SYMBOL_KIND_COUNT,
 } SymbolKind;
 
@@ -777,6 +777,12 @@ void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms);
 Symbol* lookup_symbol(Scope* curr_scope, Identifier* name);
 Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 
+void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym);
+Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, SymbolKind kind, Identifier* name, Decl* decl);
+bool install_module_decls(Allocator* allocator, Module* mod);
+bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym);
+bool import_all_mod_syms(Module* dst_mod, Module* src_mod);
+
 ///////////////////////////////
 //      Module
 ///////////////////////////////
@@ -786,5 +792,8 @@ struct Module {
     List stmts;
     Scope scope;
 };
+
+// TODO: REMOVE THIS ONCE Decls have name in the base struct
+void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, Identifier** name);
 
 #endif

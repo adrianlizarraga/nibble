@@ -190,6 +190,8 @@ Identifier* intern_ident(const char* str, size_t len);
 
 char* slurp_file(Allocator* allocator, const char* filename);
 
+void report_error(const char* format, ...);
+
 #define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit((f), ##__VA_ARGS__)
 void nibble_fatal_exit(const char* format, ...);
 #endif

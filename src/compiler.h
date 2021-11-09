@@ -25,6 +25,8 @@ typedef struct NibbleCtx {
     OS target_os;
     Arch target_arch;
 
+    Module builtin_mod;
+
     BucketList vars;
     BucketList procs;
 
@@ -34,5 +36,8 @@ typedef struct NibbleCtx {
 bool nibble_init(OS target_os, Arch target_arch);
 void nibble_compile(const char* input_file, const char* output_file);
 void nibble_cleanup(void);
+
+Module* enter_module(Module* mod);
+void exit_module(Module* old_mod);
 
 #endif

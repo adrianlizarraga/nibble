@@ -1018,6 +1018,169 @@ Symbol* lookup_symbol(Scope* curr_scope, Identifier* name)
     return NULL;
 }
 
+void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym)
+{
+    hmap_put(&scope->sym_table, PTR_UINT(name), PTR_UINT(sym));
+    list_add_last(&scope->sym_list, &sym->lnode);
+
+    scope->sym_kind_counts[sym->kind] += 1;
+}
+
+Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, SymbolKind kind, Identifier* name, Decl* decl)
+{
+    if (lookup_symbol(scope, name))
+        return NULL; // Shadows a symbol in the current scope or a parent scope.
+
+    Symbol* sym = new_symbol_decl(allocator, kind, name, decl, mod);
+    sym->status = SYMBOL_STATUS_UNRESOLVED;
+    sym->is_local = (scope != &mod->scope);
+
+    add_scope_symbol(scope, sym->name, sym);
+
+    return sym;
+}
+
+bool install_module_decls(Allocator* allocator, Module* mod)
+{
+    List* head = &mod->stmts;
+    Scope* mod_scope = &mod->scope;
+
+    // Install decls in global symbol table.
+    for (List* it = head->next; it != head; it = it->next) {
+        Stmt* stmt = list_entry(it, Stmt, lnode);
+
+        if (stmt->kind == CST_StmtDecl) {
+            Decl* decl = ((StmtDecl*)stmt)->decl;
+            SymbolKind kind = SYMBOL_NONE;
+            Identifier* name = NULL;
+
+            fill_decl_symbol_info(decl, &kind, &name);
+            if (!add_unresolved_symbol(allocator, mod_scope, mod, kind, name, decl)) {
+                report_error(mod->mod_path->str, decl->range, "Duplicate definition of symbol `%s`", name->str);
+                return false;
+            }
+        }
+    }
+}
+
+bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
+{
+    Sym* old_sym = lookup_scope_symbol(&mod->scope, name);
+
+    if (sym == old_sym) {
+        return true;
+    }
+
+    // If replacing an existing symbol AND the new symbol is imported OR the old symbol
+    // is native to this module... check for errors.
+    if (old_sym && ((sym->home != mod) || (old_sym->home == mod))) {
+        // TODO: Handle module symbols?
+
+        ProgRange range = sym->decl ? sym->decl->range : (ProgRange){0};
+
+        if (sym->home == mod) {
+            // TODO: Module path is NOT the file's OS path. FIXME
+            report_error(mod->mod_path->str, range, "Duplicate definition of symbol `%s`", name->str);
+        }
+        else {
+            // TODO: Module path is NOT the file's OS path. FIXME
+            report_error(mod->mod_path->str, range, "Conflicting import name `%s`", name->str);
+        }
+
+        return false;
+    }
+
+    add_scope_symbol(&mod->scope, name, sym);
+
+    return true;
+}
+
+bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported)
+{
+    List* head = &src_mod->scope.sym_list;
+    List* it = head->next;
+
+    while (it != head) {
+        Symbol* sym = list_entry(it, Symbol, lnode);
+        Decl* decl = sym->decl;
+
+        bool is_exported = decl && (decl->flags & DECL_IS_EXPORTED);
+
+        if (ignore_exported || is_exported) {
+            if (!module_add_global_sym(dst_mod, sym->name, sym)) {
+                return false;
+            }
+        }
+
+        it = it->next;
+    }
+
+    return true;
+}
+
+void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, Identifier** name)
+{
+    // TODO: This is ugly. REMOVE
+
+    switch (decl->kind) {
+    case CST_DeclVar: {
+        DeclVar* dvar = (DeclVar*)decl;
+
+        *kind = SYMBOL_VAR;
+        *name = dvar->name; // TODO: Multiple variables per cst decl
+        break;
+    }
+    case CST_DeclConst: {
+        DeclConst* dconst = (DeclConst*)decl;
+
+        *kind = SYMBOL_CONST;
+        *name = dconst->name;
+        break;
+    }
+    case CST_DeclProc: {
+        DeclProc* dproc = (DeclProc*)decl;
+
+        *kind = SYMBOL_PROC;
+        *name = dproc->name;
+        break;
+    }
+    case CST_DeclEnum: {
+        DeclEnum* denum = (DeclEnum*)decl;
+
+        *kind = SYMBOL_TYPE;
+        *name = denum->name;
+        break;
+    }
+    case CST_DeclUnion: {
+        DeclUnion* dunion = (DeclUnion*)decl;
+
+        *kind = SYMBOL_TYPE;
+        *name = dunion->name;
+        break;
+    }
+    case CST_DeclStruct: {
+        DeclStruct* dstruct = (DeclStruct*)decl;
+
+        *kind = SYMBOL_TYPE;
+        *name = dstruct->name;
+        break;
+    }
+    case CST_DeclTypedef: {
+        DeclTypedef* dtypedef = (DeclTypedef*)decl;
+
+        *kind = SYMBOL_TYPE;
+        *name = dtypedef->name;
+        break;
+    }
+    default:
+        *kind = SYMBOL_NONE;
+        *name = NULL;
+        ftprint_err("Not handling Decl kind %d in file %s, line %d\n", decl->kind, __FILE__, __LINE__);
+        assert(0);
+        break;
+    }
+}
+
 //////////////////////////////
 //     CST Printing
 //////////////////////////////
