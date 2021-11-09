@@ -1882,20 +1882,6 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
         return false;
     }
 
-    unsigned flags = sym->decl->flags;
-    bool is_foreign = flags & DECL_IS_FOREIGN;
-    bool is_exported = flags & DECL_IS_EXPORTED;
-
-    if (!global && is_foreign) {
-        resolver_on_error(resolver, "Local variables cannot be marked @foreign.");
-        return false;
-    }
-
-    if (!global && is_exported) {
-        resolver_on_error(resolver, "Local variables cannot be marked @exported.");
-        return false;
-    }
-
     // TODO: Complete incomplete aggregate type
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
@@ -1949,18 +1935,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 
     assert(type);
 
-    unsigned flags = sym->decl->flags;
-    bool is_foreign = flags & DECL_IS_FOREIGN;
-    bool is_exported = flags & DECL_IS_EXPORTED;
-    bool global = !sym->is_local;
-
-    if (!global && is_foreign) {
-        resolver_on_error(resolver, "Local consts cannot be marked @foreign.");
-        return false;
-    }
-
-    if (!global && is_exported) {
-        resolver_on_error(resolver, "Local consts cannot be marked @exported.");
+    if (!resolve_decl_annotations(resolver, sym->decl)) {
         return false;
     }
 

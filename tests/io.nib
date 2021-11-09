@@ -1,3 +1,6 @@
+import "./cstr.nib" as CStr;
+
+@exported
 proc cstr_len(s : ^char) => usize
 {
     if (!s) {

@@ -1663,6 +1663,8 @@ Stmt* parse_global_stmt(Parser* parser)
         default:
             return parse_stmt_decl(parser);
         }
+    case TKN_AT:
+        return parse_stmt_decl(parser);
     default:
         break;
     }
