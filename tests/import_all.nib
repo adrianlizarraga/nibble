@@ -1,4 +1,7 @@
 import "./cstring.nib";
+//import "/cstring.nib"; // Should also work
+//import "../src/main.c"; // Should fail: outside of project root dir
+//import "./main.c"; // Should fail: not a .nib file
 
 proc main(argc : int, argv : ^^char) => int
 {

@@ -210,9 +210,11 @@ static void path_ensure_cap(Path* path, size_t cap)
 
     char* str = alloc_array(path->alloc, char, cap, false);
 
-    for (size_t i = 0; i <= path->len; i += 1) {
+    for (size_t i = 0; i < path->len; i += 1) {
         str[i] = path->str[i];
     }
+
+    str[path->len] = '\0';
 
     if (path->str != path->_buf) {
         mem_free(path->alloc, path->str);
@@ -319,6 +321,7 @@ void path_join(Path* dst, Path* src)
         s += 1;
     }
 
+    dst->str[len] = '\0';
     dst->len = len;
 }
 
