@@ -185,6 +185,8 @@ extern const char* keyword_names[KW_COUNT];
 extern const char* annotation_names[ANNOTATION_COUNT];
 extern const char* intrinsic_names[INTRINSIC_COUNT];
 
+extern Identifier* main_proc_ident;
+
 StrLit* intern_str_lit(const char* str, size_t len);
 Identifier* intern_ident(const char* str, size_t len);
 

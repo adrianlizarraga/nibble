@@ -240,12 +240,16 @@ static char** X64_emit_data(X64_Generator* gen, const char* format, ...)
     return line;
 }
 
-static void X64_emit_global_data(X64_Generator* generator, Identifier* name, Type* type, Expr* init)
+static void X64_emit_global_data(X64_Generator* generator, Symbol* sym)
 {
+    assert(sym->kind == SYMBOL_VAR);
+
     Allocator* tmp_mem = generator->tmp_mem;
+    Type* type = sym->type;
+    Expr* init = ((DeclVar*)sym->decl)->init;
 
     X64_emit_data(generator, "ALIGN %d", type->align);
-    X64_emit_data(generator, "%s: ", name->str);
+    X64_emit_data(generator, "%s: ", symbol_mangled_name(tmp_mem, sym));
 
     switch (type->kind) {
     case TYPE_INTEGER: {
@@ -1047,7 +1051,7 @@ static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 m
         ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_STR_LIT_PRE, addr->str_lit->id);
     }
     else if (addr->kind == X64_SIBD_ADDR_GLOBAL) {
-        ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, addr->global->name->str);
+        ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, symbol_mangled_name(allocator, addr->global));
     }
     else {
         assert(addr->kind == X64_SIBD_ADDR_LOCAL);
@@ -1845,7 +1849,8 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         }
 
         if (!is_last_instr)
-            X64_emit_text(generator, "    jmp end.%s", generator->curr_proc.sym->name->str);
+            X64_emit_text(generator, "    jmp end.%s",
+                          symbol_mangled_name(generator->tmp_mem, generator->curr_proc.sym));
 
         break;
     }
@@ -1902,8 +1907,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         // Stack should now be aligned properly for procedure call.
         assert((total_stack_size & (X64_STACK_ALIGN - 1)) == 0);
 
-        const char* proc_prefix = (instr->call.sym->name->kind == IDENTIFIER_INTRINSIC) ? "_nibble_" : "";
-        X64_emit_text(generator, "    call %s%s", proc_prefix, instr->call.sym->name->str);
+        X64_emit_text(generator, "    call %s", symbol_mangled_name(generator->tmp_mem, instr->call.sym));
 
         // Move return value (if any) to appropriate register.
         Type* ret_type = instr->call.sym->type->as_proc.ret;
@@ -1976,10 +1980,10 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
-    const char* proc_prefix = sym->name->kind == IDENTIFIER_INTRINSIC ? "_nibble_" : "";
+    const char* proc_mangled = symbol_mangled_name(generator->tmp_mem, sym);
     X64_emit_text(generator, "");
-    X64_emit_text(generator, "global %s%s", proc_prefix, sym->name->str);
-    X64_emit_text(generator, "%s%s:", proc_prefix, sym->name->str);
+    X64_emit_text(generator, "global %s", proc_mangled);
+    X64_emit_text(generator, "%s:", proc_mangled);
 
     X64_emit_text(generator, "    push rbp");
     X64_emit_text(generator, "    mov rbp, rsp");
@@ -2079,7 +2083,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     }
 
     // End label
-    X64_emit_text(generator, "    end.%s:", sym->name->str);
+    X64_emit_text(generator, "    end.%s:", proc_mangled);
 
     // Save/Restore callee-saved registers.
     char* tmp_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
@@ -2134,10 +2138,8 @@ static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, HMap
         void** sym_ptr = bucket_list_get_elem_packed(vars, i);
         assert(sym_ptr);
         Symbol* sym = (Symbol*)(*sym_ptr);
-        assert(sym->kind == SYMBOL_VAR);
-        DeclVar* dvar = (DeclVar*)sym->decl;
 
-        X64_emit_global_data(generator, sym->name, sym->type, dvar->init);
+        X64_emit_global_data(generator, sym);
     }
     allocator_restore_state(mem_state);
 }

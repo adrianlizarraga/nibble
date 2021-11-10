@@ -962,6 +962,46 @@ Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* ty
     return sym;
 }
 
+char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
+{
+    // TODO: Change to something stronger. Will require regenerating builtin code though.
+    static const char intrin_pre[] = "_nibble";
+
+    char* dstr = NULL;
+    size_t len = sym->name->len;
+
+    if (sym->name == main_proc_ident) {
+        dstr = array_create(allocator, char, len + 1);
+        ftprint_char_array(&dstr, true, "%s", sym->name->str);
+    }
+    else if (sym->name->kind == IDENTIFIER_INTRINSIC) {
+        len += sizeof(intrin_pre); // Counts the +1 for the joining `_`
+        dstr = array_create(allocator, char, len + 1); // TODO: Print to a fixed buffer
+
+        ftprint_char_array(&dstr, true, "%s_%s", intrin_pre, sym->name->str);
+    }
+    else if (!sym->is_local) {
+        len += sym->home->mod_path->len + 1;
+        dstr = array_create(allocator, char, len + 1);
+
+        ftprint_char_array(&dstr, true, "%s_%s", sym->home->mod_path->str, sym->name->str);
+    }
+    else {
+        dstr = array_create(allocator, char, len + 1);
+        ftprint_char_array(&dstr, true, "%s", sym->name->str);
+    }
+
+    for (size_t i = 0; i < len; i += 1) {
+        if (dstr[i] == NIBBLE_PATH_SEP || dstr[i] == '.') {
+            dstr[i] = '_';
+        }
+    }
+
+    assert(len + 1 == array_len(dstr));
+
+    return dstr;
+}
+
 //////////////////////////////
 //     Scope
 //////////////////////////////

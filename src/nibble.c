@@ -21,6 +21,8 @@ const char* keyword_names[KW_COUNT];
 const char* annotation_names[ANNOTATION_COUNT];
 const char* intrinsic_names[INTRINSIC_COUNT];
 
+Identifier* main_proc_ident;
+
 char* slurp_file(Allocator* allocator, const char* filename)
 {
     FILE* fd = fopen(filename, "r");
@@ -230,6 +232,8 @@ static bool init_keywords()
 
 bool nibble_init(OS target_os, Arch target_arch)
 {
+    static const char main_name[] = "main";
+
     Allocator bootstrap = allocator_create(32768);
     nibble = alloc_type(&bootstrap, NibbleCtx, true);
 
@@ -255,7 +259,9 @@ bool nibble_init(OS target_os, Arch target_arch)
     if (!init_annotations())
         return false;
 
-    assert(nibble->ident_map.len == (KW_COUNT + ANNOTATION_COUNT + INTRINSIC_COUNT));
+    main_proc_ident = intern_ident(main_name, sizeof(main_name) - 1);
+
+    assert(nibble->ident_map.len == (KW_COUNT + ANNOTATION_COUNT + INTRINSIC_COUNT + 1));
 
     bucket_list_init(&nibble->vars, &nibble->ast_mem, 32);
     bucket_list_init(&nibble->procs, &nibble->ast_mem, 32);
@@ -559,7 +565,6 @@ void nibble_compile(const char* main_file, const char* output_file)
     //////////////////////////////////////////
     //      Check main file validity
     //////////////////////////////////////////
-    static const char main_name[] = "main";
     static const char builtin_mod_name[] = "/_nibble_builtin";
 
     AllocatorState mem_state = allocator_get_state(&nibble->tmp_mem);
@@ -641,8 +646,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     }
 
     // Look for main to have been parsed and installed as an unresolved proc symbol.
-    Identifier* main_ident = intern_ident(main_name, sizeof(main_name) - 1);
-    Symbol* main_sym = lookup_symbol(&main_mod->scope, main_ident);
+    Symbol* main_sym = lookup_symbol(&main_mod->scope, main_proc_ident);
 
     if (!main_sym || (main_sym->kind != SYMBOL_PROC)) {
         ftprint_err("[ERROR]: Program entry file must define a main() procedure.\n");

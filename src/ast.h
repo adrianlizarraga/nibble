@@ -751,6 +751,7 @@ struct Symbol {
 
 Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl, Module* home_mod);
 Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type, Module* home_mod);
+char* symbol_mangled_name(Allocator* allocator, Symbol* sym);
 
 ///////////////////////////////
 //       Scope
