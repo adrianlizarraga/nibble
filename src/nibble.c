@@ -285,19 +285,6 @@ static Module* get_module(NibbleCtx* ctx, StrLit* mod_path)
     return mod;
 }
 
-Module* enter_module(Module* mod)
-{
-    Module* old_mod = nibble->curr_mod;
-    nibble->curr_mod = mod;
-
-    return old_mod;
-}
-
-void exit_module(Module* old_mod)
-{
-    nibble->curr_mod = old_mod;
-}
-
 static bool add_builtin_type_symbol(NibbleCtx* ctx, const char* name, Type* type)
 {
     Identifier* sym_name = intern_ident(name, cstr_len(name));
@@ -657,8 +644,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     //////////////////////////////////////////
     ftprint_out("2. Type-checking ...\n");
 
-    Resolver resolver = {0};
-    init_resolver(&resolver, nibble, main_mod);
+    Resolver resolver = {.ctx = nibble};
 
     if (!resolve_module(&resolver, main_mod)) {
         print_errors(&nibble->errors);

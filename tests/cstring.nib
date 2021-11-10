@@ -1,3 +1,4 @@
+import "./nested_module.nib";
 
 @exported
 proc len(s : ^char) => usize
@@ -14,6 +15,12 @@ proc len(s : ^char) => usize
     }
 
     return count;
+}
+
+@exported
+proc get_rand(seed:usize) => usize
+{
+    return g_nested_var + seed;
 }
 
 @exported

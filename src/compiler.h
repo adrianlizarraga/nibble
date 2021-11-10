@@ -29,15 +29,10 @@ typedef struct NibbleCtx {
 
     BucketList vars;
     BucketList procs;
-
-    Module* curr_mod;
 } NibbleCtx;
 
 bool nibble_init(OS target_os, Arch target_arch);
 void nibble_compile(const char* input_file, const char* output_file);
 void nibble_cleanup(void);
-
-Module* enter_module(Module* mod);
-void exit_module(Module* old_mod);
 
 #endif

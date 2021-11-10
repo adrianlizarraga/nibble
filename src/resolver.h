@@ -4,15 +4,16 @@
 
 #define MAX_LOCAL_SYMS 512
 
-typedef struct Resolver Resolver;
+typedef struct ModuleState {
+    Module* mod;
+    Scope* scope;
+} ModuleState;
 
-struct Resolver {
+typedef struct Resolver {
     NibbleCtx* ctx;
-    Module* curr_mod;
-    Scope* curr_scope;
-};
+    ModuleState state;
+} Resolver;
 
-void init_resolver(Resolver* resolver, NibbleCtx* ctx, Module* mod);
 bool resolve_module(Resolver* resolver, Module* mod);
 bool resolve_reachable_sym_defs(Resolver* resolver);
 #endif

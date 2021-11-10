@@ -65,6 +65,9 @@ static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, 
 static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type* ret_type, unsigned flags);
 static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt);
 
+static ModuleState enter_module(Resolver* resolver, Module* mod);
+static void exit_module(Resolver* resolver, ModuleState state);
+
 static void set_scope(Resolver* resolver, Scope* scope);
 static Scope* push_scope(Resolver* resolver, size_t num_syms);
 static void pop_scope(Resolver* resolver);
@@ -82,14 +85,33 @@ static void resolver_on_error(Resolver* resolver, const char* format, ...)
     add_byte_stream_chunk(&resolver->ctx->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
 }
 
+static ModuleState enter_module(Resolver* resolver, Module* mod)
+{
+    ModuleState old_state = resolver->state;
+
+    if (mod == old_state.mod) {
+        return old_state;
+    }
+
+    resolver->state.mod = mod;
+    resolver->state.scope = &mod->scope;
+
+    return old_state;
+}
+
+static void exit_module(Resolver* resolver, ModuleState state)
+{
+    resolver->state = state;
+}
+
 static void set_scope(Resolver* resolver, Scope* scope)
 {
-    resolver->curr_scope = scope;
+    resolver->state.scope = scope;
 }
 
 static Scope* push_scope(Resolver* resolver, size_t num_syms)
 {
-    Scope* prev_scope = resolver->curr_scope;
+    Scope* prev_scope = resolver->state.scope;
     Scope* scope = new_scope(&resolver->ctx->ast_mem, num_syms + num_syms);
 
     scope->parent = prev_scope;
@@ -102,7 +124,7 @@ static Scope* push_scope(Resolver* resolver, size_t num_syms)
 
 static void pop_scope(Resolver* resolver)
 {
-    resolver->curr_scope = resolver->curr_scope->parent;
+    resolver->state.scope = resolver->state.scope->parent;
 }
 
 #define CASE_INT_CAST(k, o, t, f)                                  \
@@ -1408,7 +1430,6 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
 
     if (infer_len) {
         type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, elem_type, elem_index);
-        ftprint_out("Inferred length %llu\n", elem_index);
     }
 
     // TODO: HMMMMMM.... there's a difference between an array initializer (not lvalue) and a compound literal (lvalue),
@@ -1852,10 +1873,10 @@ static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
         return true;
     }
 
-    Module* old_mod = enter_module(sym->home);
+    ModuleState mod_state = enter_module(resolver, sym->home);
     bool success = resolve_proc_stmts(resolver, sym);
 
-    exit_module(old_mod);
+    exit_module(resolver, mod_state);
 
     return success;
 
@@ -2236,11 +2257,11 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     case CST_StmtDecl: {
         StmtDecl* sdecl = (StmtDecl*)stmt;
         Decl* decl = sdecl->decl;
-        Scope* scope = resolver->curr_scope;
+        Scope* scope = resolver->state.scope;
 
         if (decl->kind == CST_DeclVar) {
             DeclVar* dvar = (DeclVar*)decl;
-            Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->ctx->curr_mod, SYMBOL_VAR, dvar->name, decl);
+            Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, SYMBOL_VAR, dvar->name, decl);
 
             if (!sym)
                 resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name->str);
@@ -2282,7 +2303,8 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 
     bool success = false;
     bool is_global = !sym->is_local;
-    Module* old_mod = enter_module(sym->home);
+
+    ModuleState mod_state = enter_module(resolver, sym->home);
 
     sym->status = SYMBOL_STATUS_RESOLVING;
 
@@ -2310,27 +2332,29 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
         break;
     }
 
-    exit_module(old_mod);
+    exit_module(resolver, mod_state);
 
     return success;
 }
 
 static Symbol* resolve_name(Resolver* resolver, Identifier* name)
 {
-    Symbol* sym = lookup_symbol(resolver->curr_scope, name);
+    Symbol* sym = lookup_symbol(resolver->state.scope, name);
 
-    if (!sym)
+    if (!sym) {
         return NULL;
+    }
 
-    if (!resolve_symbol(resolver, sym))
+    if (!resolve_symbol(resolver, sym)) {
         return NULL;
+    }
 
     return sym;
 }
 
 bool resolve_module(Resolver* resolver, Module* mod)
 {
-    Module* old_mod = enter_module(mod);
+    ModuleState mod_state = enter_module(resolver, mod);
 
     // Resolve declaration "headers". Will not resolve procedure bodies or complete aggregate types.
     List* sym_head = &mod->scope.sym_list;
@@ -2356,7 +2380,7 @@ bool resolve_module(Resolver* resolver, Module* mod)
         }
     }
 
-    exit_module(old_mod);
+    exit_module(resolver, mod_state);
 
     return true;
 }
@@ -2381,9 +2405,3 @@ bool resolve_reachable_sym_defs(Resolver* resolver) {
     return true;
 }
 
-void init_resolver(Resolver* resolver, NibbleCtx* ctx, Module* mod)
-{
-    resolver->ctx = ctx;
-    resolver->ctx->curr_mod = mod;
-    resolver->curr_scope = &mod->scope;
-}

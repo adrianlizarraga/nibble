@@ -7,6 +7,6 @@ proc main(argc : int, argv : ^^char) => int
 
     #writeout(a, num_chars);
 
-    return num_chars + CSTR_CONST + cstr_var;
+    return num_chars + CSTR_CONST + cstr_var + get_rand(1);
 }
 

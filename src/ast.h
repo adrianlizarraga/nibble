@@ -767,9 +767,6 @@ struct Scope {
     List sym_list;
     size_t num_syms;
 
-    // TODO: Consider storing a pointer to the parent module so that we don't
-    // have to keep track of curr_mod everywhere. We're already keeping track of curr_scope.
-
     ListNode lnode;
 };
 
