@@ -449,9 +449,13 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             if (stmt->kind == CST_StmtImport) {
                 StmtImport* simport = (StmtImport*)stmt;
 
-                // TODO: Support import entities.
-                // TODO: Do not allow renaming entities when using a module namespace.
                 
+                // TODO: IMPORTANT: Cache canonical import module paths to avoid expensive path construction
+                // and validation!!!
+                //
+                // Key: Current canonical directory + raw import path
+                // Val: A valid/existing canonical path for the imported module
+
                 //
                 // Create a canonical module path from import path.
                 //
