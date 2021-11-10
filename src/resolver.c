@@ -1622,38 +1622,6 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
     return NULL;
 }
 
-static bool resolve_decl_annotations(Resolver* resolver, Decl* decl)
-{
-    List* head = &decl->annotations;
-    List* it = head->next;
-
-    while (it != head) {
-        DeclAnnotation* a = list_entry(it, DeclAnnotation, lnode);
-        const char* name = a->ident->str;
-
-        if (name == annotation_names[ANNOTATION_FOREIGN]) {
-            if (decl->flags & DECL_IS_FOREIGN) {
-                resolver_on_error(resolver, "Duplicate @foreign annotations");
-                return false;
-            }
-
-            decl->flags |= DECL_IS_FOREIGN;
-        }
-        else if (name == annotation_names[ANNOTATION_EXPORTED]) {
-            if (decl->flags & DECL_IS_EXPORTED) {
-                resolver_on_error(resolver, "Duplicate @exported annotations");
-                return false;
-            }
-
-            decl->flags |= DECL_IS_EXPORTED;
-        }
-
-        it = it->next;
-    }
-
-    return true;
-}
-
 static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 {
     DeclVar* decl = (DeclVar*)sym->decl;
@@ -1728,10 +1696,6 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 
     assert(type);
 
-    if (!resolve_decl_annotations(resolver, sym->decl)) {
-        return false;
-    }
-
     // TODO: Complete incomplete aggregate type
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
@@ -1785,10 +1749,6 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 
     assert(type);
 
-    if (!resolve_decl_annotations(resolver, sym->decl)) {
-        return false;
-    }
-
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
 
@@ -1798,10 +1758,6 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
-
-    if (!resolve_decl_annotations(resolver, sym->decl)) {
-        return false;
-    }
 
     unsigned flags = sym->decl->flags;
     bool is_incomplete = flags & DECL_IS_INCOMPLETE;
@@ -1827,7 +1783,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     for (List* it = head->next; it != head; it = it->next) {
         DeclVar* proc_param = (DeclVar*)list_entry(it, Decl, lnode);
         Symbol* param_sym =
-            add_unresolved_symbol(&resolver->ctx->ast_mem, decl->scope, resolver->ctx->curr_mod, SYMBOL_VAR,
+            add_unresolved_symbol(&resolver->ctx->ast_mem, decl->scope, sym->home, SYMBOL_VAR,
                                   proc_param->name, (Decl*)proc_param);
 
         assert(param_sym);
@@ -2387,10 +2343,10 @@ bool resolve_module(Resolver* resolver, Module* mod)
     for (List* it = sym_head->next; it != sym_head; it = it->next) {
         Symbol* sym = list_entry(it, Symbol, lnode);
 
-        if (sym->home == mod) {
-            if (!resolve_symbol(resolver, sym))
-                return false;
-        }
+        assert(sym->home == mod);
+
+        if (!resolve_symbol(resolver, sym))
+            return false;
     }
 
     // Resolve global statements (e.g., #static_assert)
@@ -2435,7 +2391,4 @@ void init_resolver(Resolver* resolver, NibbleCtx* ctx, Module* mod)
     resolver->ctx = ctx;
     resolver->ctx->curr_mod = mod;
     resolver->curr_scope = &mod->scope;
-
-    //init_builtin_syms(resolver);
-    install_module_decls(&ctx->ast_mem, mod);
 }

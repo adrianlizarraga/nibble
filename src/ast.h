@@ -762,6 +762,7 @@ struct Scope {
 
     HMap sym_table;
     List sym_list;
+    size_t num_syms;
 
     u32 sym_kind_counts[SYMBOL_KIND_COUNT];
 
@@ -777,11 +778,11 @@ void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms);
 Symbol* lookup_symbol(Scope* curr_scope, Identifier* name);
 Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 
-void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym);
+void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list);
 Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, SymbolKind kind, Identifier* name, Decl* decl);
 bool install_module_decls(Allocator* allocator, Module* mod);
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym);
-bool import_all_mod_syms(Module* dst_mod, Module* src_mod);
+bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported);
 
 ///////////////////////////////
 //      Module

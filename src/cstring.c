@@ -257,10 +257,14 @@ void path_set(Path* path, const char* src, size_t src_len)
     }
 
     // Copy src characters (including null char) into our path.
-    for (size_t i = 0; i <= src_len; i += 1) {
+    size_t i = 0;
+
+    while (i < src_len) {
         path->str[i] = src[i];
+        i += 1;
     }
 
+    path->str[i] = '\0';
     path->len = src_len;
 
     path_norm(path, NIBBLE_PATH_SEP, OS_PATH_SEP);

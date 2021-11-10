@@ -277,76 +277,13 @@ static void module_get_ospath(Allocator* alloc, Path* dst, Module* mod, const Pa
     path_join(dst, &modpath);
 }
 
-/*
-static Package* get_pkg(NibbleCtx* ctx, StrLit* name)
+static Module* get_module(NibbleCtx* ctx, StrLit* mod_path)
 {
-    uint64_t* pval = hmap_get(&ctx->pkg_map, PTR_UINT(name));
-    Package* pkg = pval ? (void*)*pval : NULL;
+    uint64_t* pval = hmap_get(&ctx->mod_map, PTR_UINT(mod_path));
+    Module* mod = pval ? (void*)*pval : NULL;
 
-    return pkg;
+    return mod;
 }
-
-static bool set_pkg_path(NibbleCtx* ctx, Package* pkg)
-{
-    AllocatorState mem_state = allocator_get_state(&ctx->tmp_mem);
-    bool found = false;
-
-    for (int i = 0; i < ctx->num_search_paths; i += 1) {
-        Path* search_path = ctx->search_paths + i;
-
-        Path full_path;
-        path_init(&full_path, &ctx->tmp_mem);
-        path_set(&full_path, search_path->str);
-
-        Path name_path;
-        path_init(&name_path, &ctx->tmp_mem);
-        path_set(&name_path, pkg->name->str);
-
-        path_join(&full_path, &name_path);
-
-        if (path_abs(&full_path)) {
-            path_set(&pkg->path, full_path.str);
-            found = true;
-            break;
-        }
-    }
-
-    allocator_restore_state(mem_state);
-    return found;
-}
-
-static bool parse_pkg(NibbleCtx* ctx, Package* pkg)
-{
-    return true;
-}
-
-static Package* import_pkg(NibbleCtx* ctx, const char* pkg_path)
-{
-    StrLit* name = intern_str_lit(pkg_path, cstr_len(pkg_path));
-    Package* pkg = get_pkg(ctx, name);
-
-    if (!pkg) {
-        pkg = alloc_type(&ctx->ast_mem, Package, false);
-        pkg->name = name;
-        pkg->curr_scope = NULL;
-
-        scope_init(&pkg->global_scope);
-        path_init(&pkg->path, &ctx->ast_mem);
-
-        if (!set_pkg_path(ctx, pkg)) {
-            return NULL;
-        }
-
-        add_pkg(ctx, pkg);
-        
-        if (!parse_pkg(ctx, pkg)) {
-            return NULL;
-        }
-    }
-
-    return pkg;
-}
-*/
 
 Module* enter_module(Module* mod)
 {
@@ -374,7 +311,7 @@ static bool add_builtin_type_symbol(NibbleCtx* ctx, const char* name, Type* type
 
     Symbol* sym = new_symbol_builtin_type(&ctx->ast_mem, sym_name, type, builtin_mod);
 
-    add_scope_symbol(&builtin_mod->scope, sym);
+    add_scope_symbol(&builtin_mod->scope, sym_name, sym, true);
 
     return true;
 }
@@ -439,13 +376,36 @@ static bool parse_code(size_t* num_decls, List* stmts, const char* code)
     return true;
 }
 
+static bool parse_module(NibbleCtx* ctx, Module* mod);
+
+static Module* import_module(NibbleCtx* ctx, const char* path, size_t len)
+{
+    StrLit* mod_path = intern_str_lit(path, len);
+    Module* mod = get_module(ctx, mod_path);
+
+    if (!mod) {
+        mod = alloc_type(&ctx->ast_mem, Module, true);
+        mod->mod_path = mod_path;
+
+        scope_init(&mod->scope);
+        list_head_init(&mod->stmts);
+
+        hmap_put(&ctx->mod_map, PTR_UINT(mod->mod_path), PTR_UINT(mod));
+
+        if (!parse_module(ctx, mod)) {
+            return NULL;
+        }
+    }
+
+    return mod;
+}
+
 static bool parse_module(NibbleCtx* ctx, Module* mod)
 {
     ftprint_out("[INFO] Parsing module %s ...\n", mod->mod_path->str);
 
     const char* code = NULL;
     size_t num_decls = 0;
-    bool parse_error = false;
 
     AllocatorState mem_state = allocator_get_state(&ctx->tmp_mem);
 
@@ -453,26 +413,31 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     Path mod_ospath;
     module_get_ospath(&ctx->tmp_mem, &mod_ospath, mod, &ctx->base_ospath);
 
-    code = slurp_file(&ctx->tmp_mem, mod_ospath.str);
-    parse_error = parse_code(&num_decls, &mod->stmts, code);
+    ftprint_out("Module OS path: %s\n", mod_ospath.str);
 
-    if (parse_error) {
+    code = slurp_file(&ctx->tmp_mem, mod_ospath.str);
+
+    if (!parse_code(&num_decls, &mod->stmts, code)) {
         print_errors(&ctx->errors);
         return false;
     }
 
-    //Module* old_mod = enter_module(mod);
+    init_scope_sym_table(&mod->scope, &ctx->ast_mem, num_decls << 1);
+
+    ftprint_out("Trying to import builtins...\n");
 
     // Import all builtin symbols.
     if (!import_all_mod_syms(mod, &ctx->builtin_mod, true)) {
         return false;
     }
 
+    ftprint_out("Trying install decls into sym table...\n");
     // Install unresolved decls into the module's symbol table.
     if (!install_module_decls(&ctx->ast_mem, mod)) {
         return false;
     }
 
+    ftprint_out("Trying process imports...\n");
     // Process imports.
     {
         List* head = &mod->stmts;
@@ -492,6 +457,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                 //
                 // 1. Create an absolute OS path to the imported module and check if it exists.
                 // 2. If it exists, subtract base_ospath to generate the canonical module path.
+                ftprint_out("Trying to import %s\n", simport->mod_pathname->str);
 
                 Path import_mod_ospath;
                 path_init(&import_mod_ospath, &ctx->tmp_mem);
@@ -506,16 +472,23 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                     path_set(&import_mod_ospath, ctx->base_ospath.str, ctx->base_ospath.len);
                 }
                 else {
-                    path_set(&import_mod_ospath, mod_ospath.str, mod_ospath.len);
+                    const char* dir_begp = mod_ospath.str;
+                    const char* dir_endp = path_filename(&mod_ospath) - 1;
+
+                    path_set(&import_mod_ospath, dir_begp, dir_endp - dir_begp);
                 }
 
                 path_join(&import_mod_ospath, &import_rel_path);
+                ftprint_out("Hmmm import os path before abs: %s\n", import_mod_ospath.str);
 
                 // Check if imported module's path exists somewhere.
                 if (!path_abs(&import_mod_ospath)) {
-                    report_error(mod_ospath.str, stmt->range, "Invalid module import path \"%s\"", simport->mod_pathname.str);
+                    report_error(mod_ospath.str, stmt->range, "Invalid module import path \"%s\"", simport->mod_pathname->str);
                     return false;
                 }
+
+                ftprint_out("Import OS path: %s\n", import_mod_ospath.str);
+                ftprint_out("Base OS path: %s\n", ctx->base_ospath.str);
 
                 // Try to create a canonical module path (where `/` corresponds to main's home directory).
                 Path import_mod_path;
@@ -536,7 +509,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                     if (*bp) {
                         report_error(mod_ospath.str, stmt->range,
                                      "Relative module import path \"%s\" is outside of project root dir \"%s\"", 
-                                     simport->mod_pathname.str, ctx->base_ospath.str);
+                                     simport->mod_pathname->str, ctx->base_ospath.str);
                         return false;
                     }
 
@@ -545,6 +518,8 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
                     path_set(&import_mod_path, mp, (import_mod_ospath.str + import_mod_ospath.len) - mp);
                     path_norm(&import_mod_path, OS_PATH_SEP, NIBBLE_PATH_SEP);
+
+                    ftprint_out("Import canonical path: %s\n", import_mod_path.str);
                 }
 
                 //
@@ -560,6 +535,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
                 if (simport->mod_namespace) {
                     // TODO: Support module namespace
+                    // TODO: Create module symbol
                     assert(0);
                 }
                 else {
@@ -567,16 +543,14 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                         return false;
                     }
                 }
-
-                // TODO: Create module symbol
             }
 
             it = it->next;
         }
     }
 
-    //exit_module(old_mod);
     allocator_restore_state(mem_state);
+    ftprint_out("[INFO] DONE parsing module %s ...\n", mod->mod_path->str);
     return true;
 }
 
@@ -587,7 +561,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     //////////////////////////////////////////
     static const char nib_ext[] = "nib";
     static const char main_name[] = "main";
-    static const char builtin_mod_name[] = "/_nibble_builtin"
+    static const char builtin_mod_name[] = "/_nibble_builtin";
 
     AllocatorState mem_state = allocator_get_state(&nibble->tmp_mem);
 
@@ -618,6 +592,8 @@ void nibble_compile(const char* main_file, const char* output_file)
     path_init(base_ospath, &nibble->gen_mem);
     path_set(base_ospath, main_path.str, (base_path_end_ptr - main_path.str));
 
+    ftprint_out("[INFO] Base project OS path: %s\n", base_ospath->str);
+
     size_t mod_path_cap = ((main_path.str + main_path.len) - base_path_end_ptr) + 1;
     char* entry_mod_path_buf = array_create(&nibble->tmp_mem, char, mod_path_cap);
     ftprint_char_array(&entry_mod_path_buf, true, "%c%s", NIBBLE_PATH_SEP, filename_ptr);
@@ -632,7 +608,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     /// Builtin module
     Module* builtin_mod = &nibble->builtin_mod;
     builtin_mod->mod_path = intern_str_lit(builtin_mod_name, sizeof(builtin_mod_name) - 1);
-    scope_init(&builtin_mod);
+    scope_init(&builtin_mod->scope);
     list_head_init(&builtin_mod->stmts);
     hmap_put(&nibble->mod_map, PTR_UINT(builtin_mod->mod_path), PTR_UINT(builtin_mod)); // TODO: Necessary?
 
@@ -641,46 +617,27 @@ void nibble_compile(const char* main_file, const char* output_file)
     //////////////////////////////////////////
     ftprint_out("[INFO] Parsing builtin module\n");
 
-    int64_t num_builtin_decls = parse_code(&builtin_mod->stmts, builtin_code);
+    size_t num_builtin_decls = 0;
+    bool parse_ok = parse_code(&num_builtin_decls, &builtin_mod->stmts, builtin_code);
 
-    if (num_builtin_decls <= 0) {
+    if (!parse_ok) {
         ftprint_err("[ERROR]: Failed to parse builtin code\n");
         print_errors(&nibble->errors);
         return;
     }
 
+    // TODO: Update magic 17 to num of builtin types.
+    init_scope_sym_table(&builtin_mod->scope, &nibble->ast_mem, (num_builtin_decls + 17) << 1);
     init_builtin_syms(nibble);
 
     if (!install_module_decls(&nibble->ast_mem, builtin_mod)) {
         return;
     }
 
-    ftprint_out("[INFO] Parsing module %s ...\n", main_mod->mod_path->str);
-
-    const char* code = slurp_file(&nibble->gen_mem, main_path.str);
-    int64_t num_decls = parse_code(&main_mod->stmts, code);
-
-    if (num_decls <= 0) {
-        print_errors(&nibble->errors);
+    // Parse main module.
+    if (!parse_module(nibble, main_mod)) {
         return;
     }
-
-    import_all_mod_syms(main_mod, builtin_mod, true);
-
-    if (!install_module_decls(&nibble->ast_mem, main_mod)) {
-        return;
-    }
-
-    //////////////////////////////////////////
-    //          Resolve/Typecheck
-    //////////////////////////////////////////
-    ftprint_out("2. Type-checking ...\n");
-
-    Resolver resolver = {0};
-    size_t num_global_syms = num_decls + num_builtin_decls + 17; // TODO: Update magic 17 to num of builtin types.
-
-    init_scope_sym_table(&main_mod->scope, &nibble->ast_mem, num_global_syms * 2);
-    init_resolver(&resolver, nibble, main_mod);
 
     // Look for main to have been parsed and installed as an unresolved proc symbol.
     Identifier* main_ident = intern_ident(main_name, sizeof(main_name) - 1);
@@ -690,6 +647,14 @@ void nibble_compile(const char* main_file, const char* output_file)
         ftprint_err("[ERROR]: Program entry file must define a main() procedure.\n");
         return;
     }
+
+    //////////////////////////////////////////
+    //          Resolve/Typecheck
+    //////////////////////////////////////////
+    ftprint_out("2. Type-checking ...\n");
+
+    Resolver resolver = {0};
+    init_resolver(&resolver, nibble, main_mod);
 
     if (!resolve_module(&resolver, main_mod)) {
         print_errors(&nibble->errors);

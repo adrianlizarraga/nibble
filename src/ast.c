@@ -1018,12 +1018,15 @@ Symbol* lookup_symbol(Scope* curr_scope, Identifier* name)
     return NULL;
 }
 
-void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym)
+void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list)
 {
     hmap_put(&scope->sym_table, PTR_UINT(name), PTR_UINT(sym));
-    list_add_last(&scope->sym_list, &sym->lnode);
 
-    scope->sym_kind_counts[sym->kind] += 1;
+    if (add_list) {
+        list_add_last(&scope->sym_list, &sym->lnode);
+        scope->num_syms += 1;
+        scope->sym_kind_counts[sym->kind] += 1;
+    }
 }
 
 Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, SymbolKind kind, Identifier* name, Decl* decl)
@@ -1035,7 +1038,7 @@ Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, S
     sym->status = SYMBOL_STATUS_UNRESOLVED;
     sym->is_local = (scope != &mod->scope);
 
-    add_scope_symbol(scope, sym->name, sym);
+    add_scope_symbol(scope, sym->name, sym, true);
 
     return sym;
 }
@@ -1061,19 +1064,23 @@ bool install_module_decls(Allocator* allocator, Module* mod)
             }
         }
     }
+
+    return true;
 }
 
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
 {
-    Sym* old_sym = lookup_scope_symbol(&mod->scope, name);
+    Symbol* old_sym = lookup_scope_symbol(&mod->scope, name);
 
     if (sym == old_sym) {
         return true;
     }
 
+    bool is_imported = (sym->home != mod);
+
     // If replacing an existing symbol AND the new symbol is imported OR the old symbol
     // is native to this module... check for errors.
-    if (old_sym && ((sym->home != mod) || (old_sym->home == mod))) {
+    if (old_sym && (is_imported || (old_sym->home == mod))) {
         // TODO: Handle module symbols?
 
         ProgRange range = sym->decl ? sym->decl->range : (ProgRange){0};
@@ -1090,7 +1097,9 @@ bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
         return false;
     }
 
-    add_scope_symbol(&mod->scope, name, sym);
+    add_scope_symbol(&mod->scope, name, sym, !is_imported);
+
+    ftprint_out("\tAdded imported sym %s into %s\n", name->str, mod->mod_path->str);
 
     return true;
 }
