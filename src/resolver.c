@@ -82,11 +82,6 @@ static void resolver_on_error(Resolver* resolver, const char* format, ...)
     add_byte_stream_chunk(&resolver->ctx->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
 }
 
-static void add_module(Resolver* resolver, Module* mod)
-{
-    hmap_put(&resolver->ctx->mod_map, PTR_UINT(mod->mod_path), PTR_UINT(mod));
-}
-
 static void set_scope(Resolver* resolver, Scope* scope)
 {
     resolver->curr_scope = scope;

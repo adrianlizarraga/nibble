@@ -761,10 +761,14 @@ struct Scope {
     List children;
 
     HMap sym_table;
+
+    // TODO: Make this a vanilla array with a size equal to number of parsed decls.
+    // Why? Because we are only store symbols native to the corresponding module.
     List sym_list;
     size_t num_syms;
 
-    u32 sym_kind_counts[SYMBOL_KIND_COUNT];
+    // TODO: Consider storing a pointer to the parent module so that we don't
+    // have to keep track of curr_mod everywhere. We're already keeping track of curr_scope.
 
     ListNode lnode;
 };

@@ -1025,7 +1025,6 @@ void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list
     if (add_list) {
         list_add_last(&scope->sym_list, &sym->lnode);
         scope->num_syms += 1;
-        scope->sym_kind_counts[sym->kind] += 1;
     }
 }
 
