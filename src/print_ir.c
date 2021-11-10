@@ -316,7 +316,7 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
 
         ftprint_char_array(&dstr, false, "call ");
 
-        if (proc_type->as_proc.ret != type_void) {
+        if (proc_type->as_proc.ret != builtin_types[BUILTIN_TYPE_VOID].type) {
             ftprint_char_array(&dstr, false, "<%s> %s, ", type_name(proc_type->as_proc.ret),
                                IR_print_reg(arena, instr->call.dst));
         }

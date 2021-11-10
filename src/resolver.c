@@ -233,7 +233,7 @@ static bool eop_is_null_ptr(ExprOperand eop)
     Type* type = eop.type;
 
     if (eop.is_constexpr && (type->kind == TYPE_INTEGER || type->kind == TYPE_PTR)) {
-        cast_eop(&eop, type_u64);
+        cast_eop(&eop, builtin_types[BUILTIN_TYPE_U64].type);
 
         return eop.const_val.as_int._u64 == 0;
     }
@@ -251,7 +251,7 @@ static bool can_convert_eop(ExprOperand* operand, Type* dst_type)
         convertible = true;
     }
     // Can convert anything to void
-    else if (dst_type == type_void) {
+    else if (dst_type == builtin_types[BUILTIN_TYPE_VOID].type) {
         convertible = true;
     }
     // Can convert between arithmetic types
@@ -276,7 +276,8 @@ static bool can_convert_eop(ExprOperand* operand, Type* dst_type)
             convertible = true;
         }
         // Can convert if either is a void*
-        else if ((dst_pointed_type == type_void) || (src_pointed_type == type_void)) {
+        else if ((dst_pointed_type == builtin_types[BUILTIN_TYPE_VOID].type) ||
+                 (src_pointed_type == builtin_types[BUILTIN_TYPE_VOID].type)) {
             convertible = true;
         }
     }
@@ -306,8 +307,8 @@ static void promote_int_eops(ExprOperand* eop)
     switch (eop->type->kind) {
     case TYPE_INTEGER:
     case TYPE_ENUM:
-        if (eop->type->size < type_s32->size)
-            cast_eop(eop, type_s32);
+        if (eop->type->size < builtin_types[BUILTIN_TYPE_S32].type->size)
+            cast_eop(eop, builtin_types[BUILTIN_TYPE_S32].type);
         break;
     default:
         break;
@@ -317,18 +318,18 @@ static void promote_int_eops(ExprOperand* eop)
 static void convert_arith_eops(ExprOperand* left, ExprOperand* right)
 {
     // If one is an f64, cast the other to f64.
-    if (left->type == type_f64) {
-        cast_eop(right, type_f64);
+    if (left->type == builtin_types[BUILTIN_TYPE_F64].type) {
+        cast_eop(right, builtin_types[BUILTIN_TYPE_F64].type);
     }
-    else if (right->type == type_f64) {
-        cast_eop(left, type_f64);
+    else if (right->type == builtin_types[BUILTIN_TYPE_F64].type) {
+        cast_eop(left, builtin_types[BUILTIN_TYPE_F64].type);
     }
     // Else if one is an f32, cast the other to f32.
-    else if (left->type == type_f32) {
-        cast_eop(right, type_f32);
+    else if (left->type == builtin_types[BUILTIN_TYPE_F32].type) {
+        cast_eop(right, builtin_types[BUILTIN_TYPE_F32].type);
     }
-    else if (right->type == type_f32) {
-        cast_eop(left, type_f32);
+    else if (right->type == builtin_types[BUILTIN_TYPE_F32].type) {
+        cast_eop(left, builtin_types[BUILTIN_TYPE_F32].type);
     }
     // Else, do usual arithmetic conversions.
     else {
@@ -540,23 +541,23 @@ static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Sca
 
         // Compute the operation in the largest type available.
         if (type->as_integer.is_signed) {
-            cast_eop(&left_eop, type_s64);
-            cast_eop(&right_eop, type_s64);
+            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_S64].type);
+            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_S64].type);
 
             s64 r = eval_binary_op_s64(op, left_eop.const_val.as_int._s64, right_eop.const_val.as_int._s64);
 
-            dst->type = type_s64;
+            dst->type = builtin_types[BUILTIN_TYPE_S64].type;
             dst->is_constexpr = true;
             dst->is_lvalue = false;
             dst->const_val.as_int._s64 = r;
         }
         else {
-            cast_eop(&left_eop, type_u64);
-            cast_eop(&right_eop, type_u64);
+            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_U64].type);
+            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_U64].type);
 
             u64 r = eval_binary_op_u64(op, left_eop.const_val.as_int._u64, right_eop.const_val.as_int._u64);
 
-            dst->type = type_u64;
+            dst->type = builtin_types[BUILTIN_TYPE_U64].type;
             dst->is_constexpr = true;
             dst->is_lvalue = false;
             dst->const_val.as_int._u64 = r;
@@ -577,17 +578,17 @@ static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scal
 
         // Compute the operation in the largest type available.
         if (type->as_integer.is_signed) {
-            cast_eop(&val_eop, type_s64);
+            cast_eop(&val_eop, builtin_types[BUILTIN_TYPE_S64].type);
 
-            dst->type = type_s64;
+            dst->type = builtin_types[BUILTIN_TYPE_S64].type;
             dst->is_constexpr = true;
             dst->is_lvalue = false;
             dst->const_val.as_int._s64 = eval_unary_op_s64(op, val_eop.const_val.as_int._s64);
         }
         else {
-            cast_eop(&val_eop, type_u64);
+            cast_eop(&val_eop, builtin_types[BUILTIN_TYPE_U64].type);
 
-            dst->type = type_u64;
+            dst->type = builtin_types[BUILTIN_TYPE_U64].type;
             dst->is_constexpr = true;
             dst->is_lvalue = false;
             dst->const_val.as_int._u64 = eval_unary_op_u64(op, val_eop.const_val.as_int._u64);
@@ -621,7 +622,7 @@ static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
 {
     ExprInt* eint = (ExprInt*)expr;
-    Type* type = type_ullong;
+    Type* type = builtin_types[BUILTIN_TYPE_ULLONG].type;
 
     // Based on integer constant semantics from the C specification (ISO/IEC 9899:TC3)
     u64 value = eint->token.value;
@@ -629,15 +630,15 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     TokenIntSuffix suffix = eint->token.suffix;
 
     if (rep == TKN_INT_CHAR) {
-        type = type_int;
+        type = builtin_types[BUILTIN_TYPE_INT].type;
     }
     else if (rep == TKN_INT_DEC) {
         switch (suffix) {
         case TKN_INT_SUFFIX_NONE: {
             Type* types[] = {
-                type_int,
-                type_long,
-                type_llong,
+                builtin_types[BUILTIN_TYPE_INT].type,
+                builtin_types[BUILTIN_TYPE_LONG].type,
+                builtin_types[BUILTIN_TYPE_LLONG].type,
             };
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
@@ -645,28 +646,29 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
             break;
         }
         case TKN_INT_SUFFIX_U: {
-            Type* types[] = {type_uint, type_ulong, type_ullong};
+            Type* types[] = {builtin_types[BUILTIN_TYPE_UINT].type, builtin_types[BUILTIN_TYPE_ULONG].type,
+                             builtin_types[BUILTIN_TYPE_ULLONG].type};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
             break;
         }
         case TKN_INT_SUFFIX_L: {
             Type* types[] = {
-                type_long,
-                type_llong,
+                builtin_types[BUILTIN_TYPE_LONG].type,
+                builtin_types[BUILTIN_TYPE_LLONG].type,
             };
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
             break;
         }
         case TKN_INT_SUFFIX_UL: {
-            Type* types[] = {type_ulong, type_ullong};
+            Type* types[] = {builtin_types[BUILTIN_TYPE_ULONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
             break;
         }
         case TKN_INT_SUFFIX_LL: {
-            type = type_llong;
+            type = builtin_types[BUILTIN_TYPE_LLONG].type;
 
             if (value > type->as_integer.max) {
                 type = NULL;
@@ -674,7 +676,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
             break;
         }
         case TKN_INT_SUFFIX_ULL: {
-            type = type_ullong;
+            type = builtin_types[BUILTIN_TYPE_ULLONG].type;
 
             if (value > type->as_integer.max) {
                 type = NULL;
@@ -691,42 +693,46 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
 
         switch (suffix) {
         case TKN_INT_SUFFIX_NONE: {
-            Type* types[] = {type_int, type_uint, type_long, type_ulong, type_llong, type_ullong};
+            Type* types[] = {builtin_types[BUILTIN_TYPE_INT].type,   builtin_types[BUILTIN_TYPE_UINT].type,
+                             builtin_types[BUILTIN_TYPE_LONG].type,  builtin_types[BUILTIN_TYPE_ULONG].type,
+                             builtin_types[BUILTIN_TYPE_LLONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
             break;
         }
         case TKN_INT_SUFFIX_U: {
-            Type* types[] = {type_uint, type_ulong, type_ullong};
+            Type* types[] = {builtin_types[BUILTIN_TYPE_UINT].type, builtin_types[BUILTIN_TYPE_ULONG].type,
+                             builtin_types[BUILTIN_TYPE_ULLONG].type};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
             break;
         }
         case TKN_INT_SUFFIX_L: {
-            Type* types[] = {type_long, type_ulong, type_llong, type_ullong};
+            Type* types[] = {builtin_types[BUILTIN_TYPE_LONG].type, builtin_types[BUILTIN_TYPE_ULONG].type,
+                             builtin_types[BUILTIN_TYPE_LLONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
             break;
         }
         case TKN_INT_SUFFIX_UL: {
-            Type* types[] = {type_ulong, type_ullong};
+            Type* types[] = {builtin_types[BUILTIN_TYPE_ULONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
             break;
         }
         case TKN_INT_SUFFIX_LL: {
-            Type* types[] = {type_llong, type_ullong};
+            Type* types[] = {builtin_types[BUILTIN_TYPE_LLONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
 
             type = get_int_lit_type(value, types, ARRAY_LEN(types));
 
             break;
         }
         case TKN_INT_SUFFIX_ULL: {
-            type = type_ullong;
+            type = builtin_types[BUILTIN_TYPE_ULLONG].type;
 
             if (value > type->as_integer.max) {
                 type = NULL;
@@ -761,7 +767,7 @@ static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
         return false;
     }
 
-    expr->super.type = type_ullong;
+    expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
     expr->super.is_constexpr = true;
     expr->super.is_lvalue = false;
     expr->super.const_val.as_int._u64 = type->size;
@@ -771,7 +777,9 @@ static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
 
 static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
 {
-    expr->super.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, type_char, expr->str_lit->len + 1);
+    expr->super.type =
+        type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, builtin_types[BUILTIN_TYPE_CHAR].type,
+                   expr->str_lit->len + 1);
     expr->super.is_constexpr = true;
     expr->super.is_lvalue = true;
 
@@ -795,15 +803,16 @@ static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left
 static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOperand* ptr, ExprOperand* int_eop)
 {
     // Convert ^void to ^s8
-    if (ptr->type->as_ptr.base == type_void) {
-        ptr->type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
+    if (ptr->type->as_ptr.base == builtin_types[BUILTIN_TYPE_VOID].type) {
+        ptr->type =
+            type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, builtin_types[BUILTIN_TYPE_S8].type);
     }
     // Ensure base pointer type has non-zero size
     else if (ptr->type->as_ptr.base->size == 0) {
         return false;
     }
 
-    cast_eop(int_eop, type_u64);
+    cast_eop(int_eop, builtin_types[BUILTIN_TYPE_U64].type);
 
     dst->type = ptr->type;
     dst->is_constexpr = false;
@@ -880,15 +889,22 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             Type* left_base_type = left_op.type->as_ptr.base;
             Type* right_base_type = right_op.type->as_ptr.base;
 
-            if ((left_base_type == type_void) && (right_base_type == type_void)) {
-                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
-                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
+            if ((left_base_type == builtin_types[BUILTIN_TYPE_VOID].type) &&
+                (right_base_type == builtin_types[BUILTIN_TYPE_VOID].type)) {
+                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
+                                        builtin_types[BUILTIN_TYPE_S8].type);
+                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
+                                         builtin_types[BUILTIN_TYPE_S8].type);
             }
-            else if ((left_base_type == type_void) && (right_base_type == type_s8)) {
-                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
+            else if ((left_base_type == builtin_types[BUILTIN_TYPE_VOID].type) &&
+                     (right_base_type == builtin_types[BUILTIN_TYPE_S8].type)) {
+                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
+                                        builtin_types[BUILTIN_TYPE_S8].type);
             }
-            else if ((left_base_type == type_s8) && (right_base_type == type_void)) {
-                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
+            else if ((left_base_type == builtin_types[BUILTIN_TYPE_S8].type) &&
+                     (right_base_type == builtin_types[BUILTIN_TYPE_VOID].type)) {
+                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
+                                         builtin_types[BUILTIN_TYPE_S8].type);
             }
 
             if (left_op.type != right_op.type) {
@@ -897,7 +913,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 return false;
             }
 
-            dst_op.type = type_s64;
+            dst_op.type = builtin_types[BUILTIN_TYPE_S64].type;
             dst_op.is_constexpr = false;
             dst_op.is_lvalue = false;
         }
@@ -962,12 +978,14 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
             resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
-            cast_eop(&dst_op, type_s32); // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
+            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_S32]
+                                  .type); // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
         }
         else if (left_is_ptr && right_is_ptr) {
             bool same_type = (left_op.type == right_op.type);
             bool one_is_void_ptr =
-                (left_op.type->as_ptr.base == type_void) || (right_op.type->as_ptr.base == type_void);
+                (left_op.type->as_ptr.base == builtin_types[BUILTIN_TYPE_VOID].type) ||
+                (right_op.type->as_ptr.base == builtin_types[BUILTIN_TYPE_VOID].type);
 
             if (!same_type && !one_is_void_ptr) {
                 // TODO: Better way to print pointer types (recursively print base types).
@@ -975,12 +993,12 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 return false;
             }
 
-            dst_op.type = type_s32;
+            dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
             dst_op.is_constexpr = false;
             dst_op.is_lvalue = false;
         }
         else if ((left_is_ptr && eop_is_null_ptr(right_op)) || (right_is_ptr && eop_is_null_ptr(left_op))) {
-            dst_op.type = type_s32;
+            dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
             dst_op.is_constexpr = false;
             dst_op.is_lvalue = false;
         }
@@ -1001,15 +1019,18 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
             resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
-            cast_eop(&dst_op, type_s32); // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
+            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_S32]
+                                  .type); // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
         }
         else if (left_is_ptr && right_is_ptr) {
             Type* left_base_type = left_op.type->as_ptr.base;
             Type* right_base_type = right_op.type->as_ptr.base;
 
             if (left_base_type != right_base_type) {
-                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
-                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type_s8);
+                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
+                                        builtin_types[BUILTIN_TYPE_S8].type);
+                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
+                                         builtin_types[BUILTIN_TYPE_S8].type);
             }
 
             dst_op.type = left_op.type;
@@ -1017,7 +1038,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             dst_op.is_lvalue = false;
         }
         else if ((left_is_ptr && eop_is_null_ptr(right_op)) || (right_is_ptr && eop_is_null_ptr(left_op))) {
-            dst_op.type = type_s32;
+            dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
             dst_op.is_constexpr = false;
             dst_op.is_lvalue = false;
         }
@@ -1039,10 +1060,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 //
                 // TODO: THIS IS WRONG. Need to properly cast to bool (i.e., true if != 0), and not just truncate.
                 // Otherwise, ptr values with, for example, only the top bit set would evaluate to 0!!!!!
-                cast_eop(&left_op, type_u64);
-                cast_eop(&right_op, type_u64);
+                cast_eop(&left_op, builtin_types[BUILTIN_TYPE_U64].type);
+                cast_eop(&right_op, builtin_types[BUILTIN_TYPE_U64].type);
 
-                dst_op.type = type_s32;
+                dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
                 dst_op.is_constexpr = true;
                 dst_op.is_lvalue = false;
 
@@ -1052,7 +1073,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                     dst_op.const_val.as_int._s32 = (left_op.const_val.as_int._u64 || right_op.const_val.as_int._u64);
             }
             else {
-                dst_op.type = type_s32;
+                dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
                 dst_op.is_constexpr = false;
                 dst_op.is_lvalue = false;
             }
@@ -1202,7 +1223,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
 
     ExprOperand index_op = OP_FROM_EXPR(eindex->index);
 
-    if (!convert_eop(&index_op, type_s64)) {
+    if (!convert_eop(&index_op, builtin_types[BUILTIN_TYPE_S64].type)) {
         resolver_on_error(resolver, "Array index of type `%s` cannot be converted to an integer",
                           type_name(eindex->index->type));
         return false;
@@ -1295,7 +1316,8 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         if (!resolve_expr(resolver, arg->expr, NULL))
             return false;
 
-        Type* param_type = type_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, params[i]); // TODO: Cast at site?
+        Type* param_type =
+            type_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, params[i]); // TODO: Cast at site?
         ExprOperand arg_eop = OP_FROM_EXPR(arg->expr);
 
         if (!eop_decay(resolver, &arg_eop))
@@ -1358,7 +1380,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
 {
     assert(type->kind == TYPE_ARRAY);
 
-    if (type->as_array.base == type_void) {
+    if (type->as_array.base == builtin_types[BUILTIN_TYPE_VOID].type) {
         resolver_on_error(resolver, "Cannot declare an array of `void` elements");
         return false;
     }
@@ -1508,7 +1530,7 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
 static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 {
     if (!typespec)
-        return type_void;
+        return builtin_types[BUILTIN_TYPE_VOID].type;
 
     switch (typespec->kind) {
     case CST_TypeSpecIdent: {
@@ -1603,7 +1625,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 return NULL;
             }
 
-            if (param == type_void) {
+            if (param == builtin_types[BUILTIN_TYPE_VOID].type) {
                 resolver_on_error(resolver, "Procedure parameter cannot be void");
                 allocator_restore_state(mem_state);
                 return NULL;
@@ -1613,7 +1635,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
         }
         assert(array_len(params) == ts->num_params);
 
-        Type* ret = type_void;
+        Type* ret = builtin_types[BUILTIN_TYPE_VOID].type;
 
         if (ts->ret) {
             ret = resolve_typespec(resolver, ts->ret);
@@ -1624,7 +1646,8 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             }
         }
 
-        Type* type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret);
+        Type* type =
+            type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret);
         allocator_restore_state(mem_state);
 
         return type;
@@ -1716,7 +1739,6 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
 
-
     return true;
 }
 
@@ -1798,9 +1820,8 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 
     for (List* it = head->next; it != head; it = it->next) {
         DeclVar* proc_param = (DeclVar*)list_entry(it, Decl, lnode);
-        Symbol* param_sym =
-            add_unresolved_symbol(&resolver->ctx->ast_mem, decl->scope, sym->home, SYMBOL_VAR,
-                                  proc_param->name, (Decl*)proc_param);
+        Symbol* param_sym = add_unresolved_symbol(&resolver->ctx->ast_mem, decl->scope, sym->home, SYMBOL_VAR,
+                                                  proc_param->name, (Decl*)proc_param);
 
         assert(param_sym);
 
@@ -1812,7 +1833,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         // TODO: recursive ptr decay on param type
         // TODO: complete incomplete param type (struct, union)
 
-        if (param_sym->type == type_void) {
+        if (param_sym->type == builtin_types[BUILTIN_TYPE_VOID].type) {
             resolver_on_error(resolver, "Procedure parameter cannot be void");
             allocator_restore_state(mem_state);
             return false;
@@ -1825,7 +1846,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     assert(array_len(params) == decl->num_params);
     allocator_restore_state(mem_state);
 
-    Type* ret_type = type_void;
+    Type* ret_type = builtin_types[BUILTIN_TYPE_VOID].type;
 
     if (decl->ret) {
         ret_type = resolve_typespec(resolver, decl->ret);
@@ -1834,7 +1855,8 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
             return false;
     }
 
-    sym->type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type);
+    sym->type =
+        type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type);
     sym->status = SYMBOL_STATUS_RESOLVED;
 
     return true;
@@ -1857,7 +1879,7 @@ static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym)
 
     dproc->returns = returns;
 
-    if ((ret_type != type_void) && !returns && success) {
+    if ((ret_type != builtin_types[BUILTIN_TYPE_VOID].type) && !returns && success) {
         resolver_on_error(resolver, "Not all code paths in procedure `%s` return a value", dproc->name->str);
         return false;
     }
@@ -2148,7 +2170,6 @@ static bool resolve_static_assert(Resolver* resolver, StmtStaticAssert* sassert)
 
 static bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
 {
-
     switch (stmt->kind) {
     case CST_StmtStaticAssert: {
         StmtStaticAssert* sassert = (StmtStaticAssert*)stmt;
@@ -2188,7 +2209,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         ret = RESOLVE_STMT_RETURNS;
         StmtReturn* sret = (StmtReturn*)stmt;
 
-        if (!sret->expr && (ret_type != type_void)) {
+        if (!sret->expr && (ret_type != builtin_types[BUILTIN_TYPE_VOID].type)) {
             resolver_on_error(resolver, "Return statement is missing a return value of type `%s`", type_name(ret_type));
             break;
         }
@@ -2261,7 +2282,8 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
 
         if (decl->kind == CST_DeclVar) {
             DeclVar* dvar = (DeclVar*)decl;
-            Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, SYMBOL_VAR, dvar->name, decl);
+            Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, SYMBOL_VAR,
+                                                dvar->name, decl);
 
             if (!sym)
                 resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name->str);
@@ -2385,7 +2407,8 @@ bool resolve_module(Resolver* resolver, Module* mod)
     return true;
 }
 
-bool resolve_reachable_sym_defs(Resolver* resolver) {
+bool resolve_reachable_sym_defs(Resolver* resolver)
+{
     BucketList* procs = &resolver->ctx->procs;
 
     // NOTE: The procs bucket-list may grow during iteration if new proc symbols are encountered
@@ -2393,7 +2416,8 @@ bool resolve_reachable_sym_defs(Resolver* resolver) {
     //
     // Therefore, _DO NOT CACHE_ procs->num_elems into a local variable.
     for (size_t i = 0; i < procs->num_elems; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(procs, i); assert(sym_ptr);
+        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
+        assert(sym_ptr);
         Symbol* sym = (Symbol*)(*sym_ptr);
         assert(sym->kind == SYMBOL_PROC);
 
@@ -2404,4 +2428,3 @@ bool resolve_reachable_sym_defs(Resolver* resolver) {
 
     return true;
 }
-

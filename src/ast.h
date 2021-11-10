@@ -639,33 +639,45 @@ struct Type {
     };
 };
 
-extern Type* type_void;
-extern Type* type_u8;
-extern Type* type_s8;
-extern Type* type_u16;
-extern Type* type_s16;
-extern Type* type_u32;
-extern Type* type_s32;
-extern Type* type_u64;
-extern Type* type_s64;
-extern Type* type_f32;
-extern Type* type_f64;
+enum BuiltinTypeKind {
+    // Basic primitive types
+    BUILTIN_TYPE_VOID = 0,
+    BUILTIN_TYPE_U8,
+    BUILTIN_TYPE_S8,
+    BUILTIN_TYPE_U16,
+    BUILTIN_TYPE_S16,
+    BUILTIN_TYPE_U32,
+    BUILTIN_TYPE_S32,
+    BUILTIN_TYPE_U64,
+    BUILTIN_TYPE_S64,
+    BUILTIN_TYPE_F32,
+    BUILTIN_TYPE_F64,
 
-// Aliases
-extern Type* type_bool;
-extern Type* type_char;
-extern Type* type_schar;
-extern Type* type_uchar;
-extern Type* type_short;
-extern Type* type_ushort;
-extern Type* type_int;
-extern Type* type_uint;
-extern Type* type_long;
-extern Type* type_ulong;
-extern Type* type_llong;
-extern Type* type_ullong;
-extern Type* type_ssize;
-extern Type* type_usize;
+    // Aliases for primitive types
+    BUILTIN_TYPE_BOOL,
+    BUILTIN_TYPE_CHAR,
+    BUILTIN_TYPE_SCHAR,
+    BUILTIN_TYPE_UCHAR,
+    BUILTIN_TYPE_SHORT,
+    BUILTIN_TYPE_USHORT,
+    BUILTIN_TYPE_INT,
+    BUILTIN_TYPE_UINT,
+    BUILTIN_TYPE_LONG,
+    BUILTIN_TYPE_ULONG,
+    BUILTIN_TYPE_LLONG,
+    BUILTIN_TYPE_ULLONG,
+    BUILTIN_TYPE_SSIZE,
+    BUILTIN_TYPE_USIZE,
+
+    NUM_BUILTIN_TYPES,
+};
+
+typedef struct BuiltinType {
+    const char* name;
+    Type* type;
+} BuiltinType;
+
+extern BuiltinType builtin_types[NUM_BUILTIN_TYPES];
 
 // Common types used in the compiler for type-checking
 extern Type* type_ptr_void;

@@ -851,7 +851,7 @@ static void IR_execute_deferred_cmp(IR_Builder* builder, IR_Operand* operand)
 
     if (!has_sc_jmps && !has_final_jmp) {
         IR_emit_instr_setcc(builder, def_cmp->final_jmp.cond, dst_reg);
-        IR_emit_instr_zext_r_r(builder, operand->type, dst_reg, type_u8, dst_reg);
+        IR_emit_instr_zext_r_r(builder, operand->type, dst_reg, builtin_types[BUILTIN_TYPE_U8].type, dst_reg);
     }
     else {
         // Patch short-circuit jumps that jump to the "true" control path.
@@ -1131,9 +1131,9 @@ static void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand
             IR_op_to_rvi(builder, int_op);
 
             if (add)
-                IR_emit_instr_add(builder, type_s64, ptr_op->addr.index_reg, int_op);
+                IR_emit_instr_add(builder, builtin_types[BUILTIN_TYPE_S64].type, ptr_op->addr.index_reg, int_op);
             else
-                IR_emit_instr_sub(builder, type_s64, ptr_op->addr.index_reg, int_op);
+                IR_emit_instr_sub(builder, builtin_types[BUILTIN_TYPE_S64].type, ptr_op->addr.index_reg, int_op);
 
             IR_try_free_op_reg(builder, int_op);
         }
@@ -1397,7 +1397,7 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
 
             if (base_size_log2) {
                 Scalar shift_arg = {.as_int._u32 = base_size_log2};
-                IR_emit_instr_sar_r_i(builder, result_type, left.reg, type_u8, shift_arg);
+                IR_emit_instr_sar_r_i(builder, result_type, left.reg, builtin_types[BUILTIN_TYPE_U8].type, shift_arg);
             }
 
             *dst = left;
@@ -1865,7 +1865,7 @@ static void IR_setup_call_ret(IR_Builder* builder, ExprCall* expr_call, IR_Opera
     dst_op->type = expr_call->super.type;
 
     // Allocate register if procedure returns a value.
-    if (dst_op->type != type_void) {
+    if (dst_op->type != builtin_types[BUILTIN_TYPE_VOID].type) {
         if (IR_type_fits_in_reg(dst_op->type)) {
             dst_op->kind = IR_OPERAND_REG;
             dst_op->reg = IR_next_reg(builder);
@@ -2533,8 +2533,8 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
     // NOTE: This should only apply to procs that return void. The resolver
     // will catch other cases.
     if (!dproc->returns) {
-        assert(sym->type->as_proc.ret == type_void);
-        IR_emit_instr_ret(builder, type_void, IR_REG_COUNT);
+        assert(sym->type->as_proc.ret == builtin_types[BUILTIN_TYPE_VOID].type);
+        IR_emit_instr_ret(builder, builtin_types[BUILTIN_TYPE_VOID].type, IR_REG_COUNT);
     }
 
     IR_pop_scope(builder);

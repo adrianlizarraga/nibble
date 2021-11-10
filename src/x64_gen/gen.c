@@ -1744,7 +1744,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
     case IR_INSTR_SEXT_R_R: {
         Type* dst_type = instr->sext_r_r.dst_type;
         Type* src_type = instr->sext_r_r.src_type;
-        const char* movsx = src_type->size >= type_u32->size ? "movsxd" : "movsx";
+        const char* movsx = src_type->size >= builtin_types[BUILTIN_TYPE_U32].type->size ? "movsxd" : "movsx";
 
         X64_emit_rr_instr(generator, movsx, true, dst_type->size, instr->sext_r_r.dst, src_type->size,
                           instr->sext_r_r.src);
@@ -1753,7 +1753,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
     case IR_INSTR_SEXT_R_M: {
         Type* dst_type = instr->sext_r_m.dst_type;
         Type* src_type = instr->sext_r_m.src_type;
-        const char* movsx = src_type->size >= type_u32->size ? "movsxd" : "movsx";
+        const char* movsx = src_type->size >= builtin_types[BUILTIN_TYPE_U32].type->size ? "movsxd" : "movsx";
 
         X64_emit_rm_instr(generator, movsx, true, dst_type->size, instr->sext_r_m.dst, src_type->size,
                           &instr->sext_r_m.src);
@@ -1833,7 +1833,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
     case IR_INSTR_RET: {
         Type* ret_type = instr->ret.type;
 
-        if (ret_type != type_void) {
+        if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
             X64_VRegLoc ret_loc = X64_vreg_loc(generator, instr->ret.src);
 
             assert(ret_loc.kind != X64_VREG_LOC_UNASSIGNED);
@@ -1912,7 +1912,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         // Move return value (if any) to appropriate register.
         Type* ret_type = instr->call.sym->type->as_proc.ret;
 
-        if (ret_type != type_void) {
+        if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
             X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->call.dst);
 
             if (dst_loc.kind == X64_VREG_LOC_STACK) {

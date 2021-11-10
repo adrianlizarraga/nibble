@@ -313,33 +313,13 @@ static bool add_builtin_type_symbol(NibbleCtx* ctx, const char* name, Type* type
 
 static void init_builtin_syms(NibbleCtx* ctx)
 {
-    add_builtin_type_symbol(ctx, "void", type_void);
-    add_builtin_type_symbol(ctx, "u8", type_u8);
-    add_builtin_type_symbol(ctx, "s8", type_s8);
-    add_builtin_type_symbol(ctx, "u16", type_u16);
-    add_builtin_type_symbol(ctx, "s16", type_s16);
-    add_builtin_type_symbol(ctx, "u32", type_u32);
-    add_builtin_type_symbol(ctx, "s32", type_s32);
-    add_builtin_type_symbol(ctx, "u64", type_u64);
-    add_builtin_type_symbol(ctx, "s64", type_s64);
-    add_builtin_type_symbol(ctx, "f32", type_f32);
-    add_builtin_type_symbol(ctx, "f64", type_f64);
+    size_t num_types = ARRAY_LEN(builtin_types);
 
-    // Aliased types
-    add_builtin_type_symbol(ctx, "bool", type_bool);
-    add_builtin_type_symbol(ctx, "char", type_char);
-    add_builtin_type_symbol(ctx, "schar", type_schar);
-    add_builtin_type_symbol(ctx, "uchar", type_uchar);
-    add_builtin_type_symbol(ctx, "short", type_short);
-    add_builtin_type_symbol(ctx, "ushort", type_ushort);
-    add_builtin_type_symbol(ctx, "int", type_int);
-    add_builtin_type_symbol(ctx, "uint", type_uint);
-    add_builtin_type_symbol(ctx, "long", type_long);
-    add_builtin_type_symbol(ctx, "ulong", type_ulong);
-    add_builtin_type_symbol(ctx, "llong", type_llong);
-    add_builtin_type_symbol(ctx, "ullong", type_ullong);
-    add_builtin_type_symbol(ctx, "ssize", type_ssize);
-    add_builtin_type_symbol(ctx, "usize", type_usize);
+    for (size_t i = 0; i < num_types; i += 1) {
+        BuiltinType* builtin = builtin_types + i;
+
+        add_builtin_type_symbol(ctx, builtin->name, builtin->type);
+    }
 }
 
 static bool parse_code(size_t* num_decls, List* stmts, const char* code)
@@ -621,6 +601,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     //////////////////////////////////////////
     ftprint_out("[INFO] Parsing builtin module\n");
 
+    const size_t num_builtin_types = ARRAY_LEN(builtin_types);
     size_t num_builtin_decls = 0;
     bool parse_ok = parse_code(&num_builtin_decls, &builtin_mod->stmts, builtin_code);
 
@@ -630,8 +611,7 @@ void nibble_compile(const char* main_file, const char* output_file)
         return;
     }
 
-    // TODO: Update magic 17 to num of builtin types.
-    init_scope_sym_table(&builtin_mod->scope, &nibble->ast_mem, (num_builtin_decls + 17) << 1);
+    init_scope_sym_table(&builtin_mod->scope, &nibble->ast_mem, (num_builtin_decls + num_builtin_types) << 1);
     init_builtin_syms(nibble);
 
     if (!install_module_decls(&nibble->ast_mem, builtin_mod)) {
@@ -674,9 +654,9 @@ void nibble_compile(const char* main_file, const char* output_file)
     Type* main_type = main_sym->type; assert(main_type->kind == TYPE_PROC);
     Type* main_ret_type = main_type->as_proc.ret;
 
-    if (main_ret_type != type_int) {
+    if (main_ret_type != builtin_types[BUILTIN_TYPE_INT].type) {
         ftprint_err("[ERROR]: Main procedure must return an `int` (`%s`) type, but found `%s`.\n",
-                    type_name(type_int),
+                    type_name(builtin_types[BUILTIN_TYPE_INT].type),
                     type_name(main_ret_type));
         return;
     }
@@ -687,9 +667,9 @@ void nibble_compile(const char* main_file, const char* output_file)
     if (main_num_params > 0) {
         Type** param_types = main_type->as_proc.params;
 
-        if (param_types[0] != type_int) {
+        if (param_types[0] != builtin_types[BUILTIN_TYPE_INT].type) {
             ftprint_err("[ERROR]: Main procedure's first paramater must be an `int` (`%s`) type, but found `%s`.\n",
-                        type_name(type_int),
+                        type_name(builtin_types[BUILTIN_TYPE_INT].type),
                         type_name(param_types[0]));
             return;
         }

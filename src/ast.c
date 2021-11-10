@@ -387,7 +387,8 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
-Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range)
+Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
+                      ProgRange range)
 {
     StmtImport* stmt = new_stmt(allocator, StmtImport, range);
     stmt->mod_pathname = mod_pathname;
@@ -544,69 +545,8 @@ Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange r
 //     Types
 //////////////////////////////
 
-static Type type_void_ = {.kind = TYPE_VOID};
-static Type type_u8_ = {.kind = TYPE_INTEGER,
-                        .size = 1,
-                        .align = 1,
-                        .as_integer = {.kind = INTEGER_U8, .is_signed = false, .max = 0xFF}};
-static Type type_s8_ = {.kind = TYPE_INTEGER,
-                        .size = 1,
-                        .align = 1,
-                        .as_integer = {.kind = INTEGER_S8, .is_signed = true, .max = 0x7F}};
-static Type type_u16_ = {.kind = TYPE_INTEGER,
-                         .size = 2,
-                         .align = 2,
-                         .as_integer = {.kind = INTEGER_U16, .is_signed = false, .max = 0xFFFF}};
-static Type type_s16_ = {.kind = TYPE_INTEGER,
-                         .size = 2,
-                         .align = 2,
-                         .as_integer = {.kind = INTEGER_S16, .is_signed = true, .max = 0x7FFF}};
-static Type type_u32_ = {.kind = TYPE_INTEGER,
-                         .size = 4,
-                         .align = 4,
-                         .as_integer = {.kind = INTEGER_U32, .is_signed = false, .max = 0xFFFFFFFF}};
-static Type type_s32_ = {.kind = TYPE_INTEGER,
-                         .size = 4,
-                         .align = 4,
-                         .as_integer = {.kind = INTEGER_S32, .is_signed = true, .max = 0x7FFFFFFF}};
-static Type type_u64_ = {.kind = TYPE_INTEGER,
-                         .size = 8,
-                         .align = 8,
-                         .as_integer = {.kind = INTEGER_U64, .is_signed = false, .max = 0xFFFFFFFFFFFFFFFF}};
-static Type type_s64_ = {.kind = TYPE_INTEGER,
-                         .size = 8,
-                         .align = 8,
-                         .as_integer = {.kind = INTEGER_S64, .is_signed = true, .max = 0x7FFFFFFFFFFFFFFF}};
-static Type type_f32_ = {.kind = TYPE_FLOAT, .size = 4, .align = 4, .as_float.kind = FLOAT_F32};
-static Type type_f64_ = {.kind = TYPE_FLOAT, .size = 8, .align = 8, .as_float.kind = FLOAT_F64};
+BuiltinType builtin_types[NUM_BUILTIN_TYPES];
 
-Type* type_void = &type_void_;
-Type* type_u8 = &type_u8_;
-Type* type_s8 = &type_s8_;
-Type* type_u16 = &type_u16_;
-Type* type_s16 = &type_s16_;
-Type* type_u32 = &type_u32_;
-Type* type_s32 = &type_s32_;
-Type* type_u64 = &type_u64_;
-Type* type_s64 = &type_s64_;
-Type* type_f32 = &type_f32_;
-Type* type_f64 = &type_f64_;
-
-// Aliases
-Type* type_bool;
-Type* type_char;
-Type* type_schar;
-Type* type_uchar;
-Type* type_short;
-Type* type_ushort;
-Type* type_int;
-Type* type_uint;
-Type* type_long;
-Type* type_ulong;
-Type* type_llong;
-Type* type_ullong;
-Type* type_ssize;
-Type* type_usize;
 Type* type_ptr_void;
 Type* type_ptr_char;
 Type* type_ptr_ptr_char;
@@ -694,16 +634,16 @@ Type* type_unsigned_int(Type* type_int)
     switch (type_int->as_integer.kind) {
     case INTEGER_U8:
     case INTEGER_S8:
-        return type_u8;
+        return builtin_types[BUILTIN_TYPE_U8].type;
     case INTEGER_U16:
     case INTEGER_S16:
-        return type_u16;
+        return builtin_types[BUILTIN_TYPE_U16].type;
     case INTEGER_U32:
     case INTEGER_S32:
-        return type_u32;
+        return builtin_types[BUILTIN_TYPE_U32].type;
     case INTEGER_U64:
     case INTEGER_S64:
-        return type_u64;
+        return builtin_types[BUILTIN_TYPE_U64].type;
     }
 
     return NULL;
@@ -722,6 +662,28 @@ static Type* type_alloc(Allocator* allocator, TypeKind kind)
     Type* type = alloc_type(allocator, Type, true);
     type->kind = kind;
     type->id = next_type_id++;
+
+    return type;
+}
+
+static Type* type_int_alloc(Allocator* allocator, IntegerKind kind, size_t size, bool is_signed, u64 max)
+{
+    Type* type = type_alloc(allocator, TYPE_INTEGER);
+    type->size = size;
+    type->align = size;
+    type->as_integer.kind = kind;
+    type->as_integer.is_signed = is_signed;
+    type->as_integer.max = max;
+
+    return type;
+}
+
+static Type* type_float_alloc(Allocator* allocator, FloatKind kind, size_t size)
+{
+    Type* type = type_alloc(allocator, TYPE_FLOAT);
+    type->size = size;
+    type->align = size;
+    type->as_float.kind = kind;
 
     return type;
 }
@@ -825,42 +787,54 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 {
     bool invalid_os_arch = false;
 
-    type_void->id = next_type_id++;
-    type_u8->id = next_type_id++;
-    type_s8->id = next_type_id++;
-    type_u16->id = next_type_id++;
-    type_s16->id = next_type_id++;
-    type_u32->id = next_type_id++;
-    type_s32->id = next_type_id++;
-    type_u64->id = next_type_id++;
-    type_s64->id = next_type_id++;
-    type_f32->id = next_type_id++;
-    type_f64->id = next_type_id++;
+    builtin_types[BUILTIN_TYPE_VOID] = (BuiltinType){.name = "void", .type = type_alloc(ast_mem, TYPE_VOID)};
+    builtin_types[BUILTIN_TYPE_U8] =
+        (BuiltinType){.name = "u8", .type = type_int_alloc(ast_mem, INTEGER_U8, 1, false, 0xFF)};
+    builtin_types[BUILTIN_TYPE_S8] =
+        (BuiltinType){.name = "s8", .type = type_int_alloc(ast_mem, INTEGER_S8, 1, true, 0x7F)};
+    builtin_types[BUILTIN_TYPE_U16] =
+        (BuiltinType){.name = "u16", .type = type_int_alloc(ast_mem, INTEGER_U16, 2, false, 0xFFFF)};
+    builtin_types[BUILTIN_TYPE_S16] =
+        (BuiltinType){.name = "s16", .type = type_int_alloc(ast_mem, INTEGER_S16, 2, true, 0x7FFF)};
+    builtin_types[BUILTIN_TYPE_U32] =
+        (BuiltinType){.name = "u32", .type = type_int_alloc(ast_mem, INTEGER_U32, 4, false, 0xFFFFFFFF)};
+    builtin_types[BUILTIN_TYPE_S32] =
+        (BuiltinType){.name = "s32", .type = type_int_alloc(ast_mem, INTEGER_S32, 4, true, 0x7FFFFFFF)};
+    builtin_types[BUILTIN_TYPE_U64] =
+        (BuiltinType){.name = "u64", .type = type_int_alloc(ast_mem, INTEGER_U64, 8, false, 0xFFFFFFFFFFFFFFFF)};
+    builtin_types[BUILTIN_TYPE_S64] =
+        (BuiltinType){.name = "s64", .type = type_int_alloc(ast_mem, INTEGER_S64, 8, true, 0x7FFFFFFFFFFFFFFF)};
+    builtin_types[BUILTIN_TYPE_F32] = (BuiltinType){.name = "f32", .type = type_float_alloc(ast_mem, FLOAT_F32, 4)};
+    builtin_types[BUILTIN_TYPE_F64] = (BuiltinType){.name = "f64", .type = type_float_alloc(ast_mem, FLOAT_F64, 8)};
 
-    type_bool = type_s8;
-    type_char = type_s8;
-    type_schar = type_s8;
-    type_uchar = type_u8;
-    type_short = type_s16;
-    type_ushort = type_u16;
-    type_int = type_s32;
-    type_uint = type_u32;
-    type_llong = type_s64;
-    type_ullong = type_u64;
+    builtin_types[BUILTIN_TYPE_BOOL] = (BuiltinType){.name = "bool", .type = builtin_types[BUILTIN_TYPE_S8].type};
+    builtin_types[BUILTIN_TYPE_CHAR] = (BuiltinType){.name = "char", .type = builtin_types[BUILTIN_TYPE_S8].type};
+    builtin_types[BUILTIN_TYPE_SCHAR] = (BuiltinType){.name = "schar", .type = builtin_types[BUILTIN_TYPE_S8].type};
+    builtin_types[BUILTIN_TYPE_UCHAR] = (BuiltinType){.name = "uchar", .type = builtin_types[BUILTIN_TYPE_U8].type};
+    builtin_types[BUILTIN_TYPE_SHORT] = (BuiltinType){.name = "short", .type = builtin_types[BUILTIN_TYPE_S16].type};
+    builtin_types[BUILTIN_TYPE_USHORT] = (BuiltinType){.name = "ushort", .type = builtin_types[BUILTIN_TYPE_U16].type};
+    builtin_types[BUILTIN_TYPE_INT] = (BuiltinType){.name = "int", .type = builtin_types[BUILTIN_TYPE_S32].type};
+    builtin_types[BUILTIN_TYPE_UINT] = (BuiltinType){.name = "uint", .type = builtin_types[BUILTIN_TYPE_U32].type};
+    builtin_types[BUILTIN_TYPE_LONG] = (BuiltinType){.name = "long"};
+    builtin_types[BUILTIN_TYPE_ULONG] = (BuiltinType){.name = "ulong"};
+    builtin_types[BUILTIN_TYPE_LLONG] = (BuiltinType){.name = "llong", .type = builtin_types[BUILTIN_TYPE_S64].type};
+    builtin_types[BUILTIN_TYPE_ULLONG] = (BuiltinType){.name = "ullong", .type = builtin_types[BUILTIN_TYPE_U64].type};
+    builtin_types[BUILTIN_TYPE_SSIZE] = (BuiltinType){.name = "ssize"};
+    builtin_types[BUILTIN_TYPE_USIZE] = (BuiltinType){.name = "usize"};
 
     switch (target_os) {
     case OS_LINUX:
         switch (target_arch) {
         case ARCH_X86:
-            type_long = type_s32;
-            type_ulong = type_u32;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S32].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U32].type;
 
             PTR_SIZE = 4;
             PTR_ALIGN = 4;
             break;
         case ARCH_X64:
-            type_long = type_s64;
-            type_ulong = type_u64;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S64].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U64].type;
 
             PTR_SIZE = 8;
             PTR_ALIGN = 8;
@@ -873,15 +847,15 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     case OS_WIN32:
         switch (target_arch) {
         case ARCH_X86:
-            type_long = type_s32;
-            type_ulong = type_u32;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S32].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U32].type;
 
             PTR_SIZE = 4;
             PTR_ALIGN = 4;
             break;
         case ARCH_X64:
-            type_long = type_s32;
-            type_ulong = type_u32;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S32].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U32].type;
 
             PTR_SIZE = 8;
             PTR_ALIGN = 8;
@@ -894,8 +868,8 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     case OS_OSX:
         switch (target_arch) {
         case ARCH_X64:
-            type_long = type_s64;
-            type_ulong = type_u64;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S64].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U64].type;
 
             PTR_SIZE = 8;
             PTR_ALIGN = 8;
@@ -916,17 +890,17 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     }
 
     if (PTR_SIZE == 4) {
-        type_ssize = type_int;
-        type_usize = type_uint;
+        builtin_types[BUILTIN_TYPE_SSIZE].type = builtin_types[BUILTIN_TYPE_INT].type;
+        builtin_types[BUILTIN_TYPE_USIZE].type = builtin_types[BUILTIN_TYPE_UINT].type;
     }
     else {
         assert(PTR_SIZE == 8);
-        type_ssize = type_llong;
-        type_usize = type_ullong;
+        builtin_types[BUILTIN_TYPE_SSIZE].type = builtin_types[BUILTIN_TYPE_LLONG].type;
+        builtin_types[BUILTIN_TYPE_USIZE].type = builtin_types[BUILTIN_TYPE_ULLONG].type;
     }
 
-    type_ptr_void = type_ptr(ast_mem, &type_cache->ptrs, type_void);
-    type_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, type_char);
+    type_ptr_void = type_ptr(ast_mem, &type_cache->ptrs, builtin_types[BUILTIN_TYPE_VOID].type);
+    type_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, builtin_types[BUILTIN_TYPE_CHAR].type);
     type_ptr_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, type_ptr_char);
 }
 
@@ -934,7 +908,8 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 //     Symbols
 //////////////////////////////
 
-static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod)
+static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name,
+                          Module* home_mod)
 {
     Symbol* sym = alloc_type(allocator, Symbol, true);
 
@@ -1009,7 +984,7 @@ char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
 void scope_init(Scope* scope)
 {
     memset(scope, 0, sizeof(Scope));
-    
+
     list_head_init(&scope->children);
     list_head_init(&scope->sym_list);
 }
@@ -1068,7 +1043,8 @@ void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list
     }
 }
 
-Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, SymbolKind kind, Identifier* name, Decl* decl)
+Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, SymbolKind kind, Identifier* name,
+                              Decl* decl)
 {
     if (lookup_symbol(scope, name))
         return NULL; // Shadows a symbol in the current scope or a parent scope.
@@ -1829,7 +1805,8 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             DeclAggregate* d = (DeclAggregate*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"), d->name->str);
+            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"),
+                               d->name->str);
 
             if (!list_empty(&d->fields)) {
                 ftprint_char_array(&dstr, false, " ");
