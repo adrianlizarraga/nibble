@@ -786,7 +786,6 @@ struct Scope {
 void scope_init(Scope* scope);
 
 Scope* new_scope(Allocator* allocator, u32 num_syms);
-void init_scope_lists(Scope* scope);
 void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms);
 
 Symbol* lookup_symbol(Scope* curr_scope, Identifier* name);

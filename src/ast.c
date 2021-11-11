@@ -993,7 +993,8 @@ Scope* new_scope(Allocator* allocator, u32 num_syms)
 {
     Scope* scope = alloc_type(allocator, Scope, true);
 
-    init_scope_lists(scope);
+    list_head_init(&scope->children);
+    list_head_init(&scope->sym_list);
     init_scope_sym_table(scope, allocator, num_syms);
 
     return scope;
@@ -1006,12 +1007,6 @@ void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms)
 
         scope->sym_table = hmap(log2_cap, allocator);
     }
-}
-
-void init_scope_lists(Scope* scope)
-{
-    list_head_init(&scope->children);
-    list_head_init(&scope->sym_list);
 }
 
 Symbol* lookup_scope_symbol(Scope* scope, Identifier* name)
