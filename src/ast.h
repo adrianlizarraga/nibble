@@ -453,6 +453,7 @@ ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifi
 Stmt* new_stmt_import(Allocator* allocator, List* import_entities, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
+Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name);
 ///////////////////////////////
 //       Declarations
 //////////////////////////////

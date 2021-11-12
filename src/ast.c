@@ -409,6 +409,37 @@ Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathn
     return (Stmt*)stmt;
 }
 
+Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name)
+{
+    Identifier* sym_name = NULL;
+    List* import_syms = &stmt->import_syms;
+
+    // If the import statement explicitly imports certain symbols, make sure that we're not trying
+    // to access a symbol that was not imported.
+    if (!list_empty(import_syms)) {
+        List* it = import_syms->next;
+
+        // Look to see if the expression's identifier name is among the imported symbols.
+        // If so, set sym_name to the expected native symbol name.
+        while (it != import_syms) {
+            ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
+            Identifier* isym_name = isym->rename != NULL ? isym->rename : isym->name;
+
+            if (isym_name == name) {
+                sym_name = isym->name;
+                break;
+            }
+
+            it = it->next;
+        }
+    }
+    else {
+        sym_name = name;
+    }
+
+    return sym_name;
+}
+
 Stmt* new_stmt_decl(Allocator* allocator, Decl* decl)
 {
     StmtDecl* stmt = new_stmt(allocator, StmtDecl, decl->range);

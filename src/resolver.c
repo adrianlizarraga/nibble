@@ -1239,31 +1239,56 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     return true;
 }
 
-static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
+static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr)
 {
-    ExprIdent* eident = (ExprIdent*)expr;
+    //
+    // Tries to lookup a symbol for an identifier in the form <module_namespace>::<identifier_name>
+    //
+
     Symbol* sym = NULL;
 
-    if (eident->mod_ns) {
-        Symbol* sym_modns = resolve_name(resolver, eident->mod_ns);
+    if (expr->mod_ns) {
+        // Lookup namespace symbol.
+        Symbol* sym_modns = resolve_name(resolver, expr->mod_ns);
 
         if (!sym_modns || (sym_modns->kind != SYMBOL_MODULE)) {
-            resolver_on_error(resolver, "Unknown module namespace `%s::` in expression", eident->mod_ns->str);
-            return false;
+            resolver_on_error(resolver, "Unknown module namespace `%s::` in expression", expr->mod_ns->str);
+            return NULL;
         }
 
+        StmtImport* stmt = (StmtImport*)sym_modns->as_mod.stmt;
+        Identifier* sym_name = get_import_sym_name(stmt, expr->name);
+
+        if (!sym_name) {
+            resolver_on_error(resolver, "Identifier `%s` is not among the imported symbols in module namespace `%s`",
+                              expr->name->str, sym_modns->name->str);
+            return NULL;
+        }
+
+        // Enter the namespace's module, and then try to lookup the identifier with its native name.
         ModuleState mod_state = enter_module(resolver, sym_modns->as_mod.mod);
-
-        sym = resolve_name(resolver, eident->name);
-
+        sym = resolve_name(resolver, sym_name);
         exit_module(resolver, mod_state);
     }
     else {
-        sym = resolve_name(resolver, eident->name);
+        sym = resolve_name(resolver, expr->name);
     }
 
     if (!sym) {
-        resolver_on_error(resolver, "Unknown symbol `%s` in expression", eident->name->str);
+        // TODO: Print full identifier name (with module namespace).
+        resolver_on_error(resolver, "Unknown symbol `%s` in expression", expr->name->str);
+        return NULL;
+    }
+
+    return sym;
+}
+
+static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
+{
+    ExprIdent* eident = (ExprIdent*)expr;
+    Symbol* sym = lookup_ident(resolver, eident);
+
+    if (!sym) {
         return false;
     }
 
