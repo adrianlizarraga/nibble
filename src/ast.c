@@ -908,8 +908,7 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 //     Symbols
 //////////////////////////////
 
-static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name,
-                          Module* home_mod)
+Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod)
 {
     Symbol* sym = alloc_type(allocator, Symbol, true);
 
@@ -933,6 +932,15 @@ Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* ty
 {
     Symbol* sym = new_symbol(allocator, SYMBOL_TYPE, SYMBOL_STATUS_RESOLVED, name, home_mod);
     sym->type = type;
+
+    return sym;
+}
+
+Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, Module* home_mod)
+{
+    Symbol* sym = new_symbol(alloc, SYMBOL_MODULE, SYMBOL_STATUS_RESOLVED, stmt->mod_namespace, home_mod);
+    sym->as_mod.mod = import_mod;
+    sym->as_mod.stmt = (Stmt*)stmt;
 
     return sym;
 }
@@ -1109,7 +1117,7 @@ bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
 
     add_scope_symbol(&mod->scope, name, sym, !is_imported);
 
-    ftprint_out("\tAdded imported sym %s into %s\n", name->str, mod->mod_path->str);
+    ftprint_out("\tAdded imported(%d) sym %s into %s\n", is_imported, name->str, mod->mod_path->str);
 
     return true;
 }

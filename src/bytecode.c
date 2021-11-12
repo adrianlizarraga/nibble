@@ -1110,7 +1110,20 @@ static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst);
 
 static void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operand* dst)
 {
-    Symbol* sym = lookup_symbol(builder->curr_scope, eident->name);
+    Symbol* sym = NULL;
+
+    if (eident->mod_ns) {
+        Symbol* sym_modns = lookup_symbol(builder->curr_scope, eident->mod_ns);
+        assert(sym_modns);
+
+        sym = lookup_symbol(&sym_modns->as_mod.mod->scope, eident->name);
+    }
+    else {
+        sym = lookup_symbol(builder->curr_scope, eident->name);
+    }
+
+    assert(sym);
+
     IR_operand_from_sym(dst, sym);
 }
 

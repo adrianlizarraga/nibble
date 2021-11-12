@@ -19,6 +19,7 @@ typedef struct Type Type;
 typedef struct Symbol Symbol;
 typedef struct SymbolVar SymbolVar;
 typedef struct SymbolProc SymbolProc;
+typedef struct SymbolModule SymbolModule;
 typedef struct Scope Scope;
 typedef struct Module Module;
 
@@ -743,6 +744,11 @@ struct SymbolProc {
     bool is_nonleaf;
 };
 
+struct SymbolModule {
+    Module* mod;
+    Stmt* stmt;
+};
+
 struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
@@ -757,12 +763,14 @@ struct Symbol {
     union {
         SymbolVar as_var;
         SymbolProc as_proc;
-        Module* as_mod;
+        SymbolModule as_mod;
     };
 };
 
+Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod);
 Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl, Module* home_mod);
 Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type, Module* home_mod);
+Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, Module* home_mod);
 char* symbol_mangled_name(Allocator* allocator, Symbol* sym);
 
 ///////////////////////////////

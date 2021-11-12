@@ -520,14 +520,14 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                 assert(list_empty(&simport->import_syms));
 
                 if (simport->mod_namespace) {
-                    // TODO: Support module namespace
-                    // TODO: Create module symbol
-                    assert(0);
-                }
-                else {
-                    if (!import_all_mod_syms(mod, import_mod, false)) {
+                    Symbol* import_mod_sym = new_symbol_mod(&ctx->ast_mem, simport, import_mod, mod);
+
+                    if (!module_add_global_sym(mod, import_mod_sym->name, import_mod_sym)) {
                         return false;
                     }
+                }
+                else if (!import_all_mod_syms(mod, import_mod, false)) {
+                    return false;
                 }
             }
 

@@ -777,9 +777,8 @@ static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
 
 static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
 {
-    expr->super.type =
-        type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, builtin_types[BUILTIN_TYPE_CHAR].type,
-                   expr->str_lit->len + 1);
+    expr->super.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays,
+                                  builtin_types[BUILTIN_TYPE_CHAR].type, expr->str_lit->len + 1);
     expr->super.is_constexpr = true;
     expr->super.is_lvalue = true;
 
@@ -983,9 +982,8 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         }
         else if (left_is_ptr && right_is_ptr) {
             bool same_type = (left_op.type == right_op.type);
-            bool one_is_void_ptr =
-                (left_op.type->as_ptr.base == builtin_types[BUILTIN_TYPE_VOID].type) ||
-                (right_op.type->as_ptr.base == builtin_types[BUILTIN_TYPE_VOID].type);
+            bool one_is_void_ptr = (left_op.type->as_ptr.base == builtin_types[BUILTIN_TYPE_VOID].type) ||
+                                   (right_op.type->as_ptr.base == builtin_types[BUILTIN_TYPE_VOID].type);
 
             if (!same_type && !one_is_void_ptr) {
                 // TODO: Better way to print pointer types (recursively print base types).
@@ -1244,7 +1242,25 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
 static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
 {
     ExprIdent* eident = (ExprIdent*)expr;
-    Symbol* sym = resolve_name(resolver, eident->name);
+    Symbol* sym = NULL;
+
+    if (eident->mod_ns) {
+        Symbol* sym_modns = resolve_name(resolver, eident->mod_ns);
+
+        if (!sym_modns) {
+            resolver_on_error(resolver, "Unknown module namespace `%s::` in expression", eident->mod_ns->str);
+            return false;
+        }
+
+        ModuleState mod_state = enter_module(resolver, sym_modns->as_mod.mod);
+
+        sym = resolve_name(resolver, eident->name);
+
+        exit_module(resolver, mod_state);
+    }
+    else {
+        sym = resolve_name(resolver, eident->name);
+    }
 
     if (!sym) {
         resolver_on_error(resolver, "Unknown symbol `%s` in expression", eident->name->str);
