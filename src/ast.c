@@ -1169,7 +1169,7 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
 
         if (!sym) {
             report_error(dst_mod->mod_path->str, stmt->super.range, "Importing unknown symbol `%s` from module `%s`",
-                         isym->name, src_mod->mod_path->str); // TODO: mod_path is not an OS path
+                         isym->name->str, src_mod->mod_path->str); // TODO: mod_path is not an OS path
             return false;
         }
 
@@ -1185,8 +1185,8 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
         //   export { CStrings };
         //
         if (!is_exported) {
-            report_error(dst_mod->mod_path->str, stmt->super.range, "Importing private symbol `%s` from module `%s`",
-                         isym->name, src_mod->mod_path->str); // TODO: mod_path is not an OS path
+            report_error(dst_mod->mod_path->str, stmt->super.range, "Cannot import private symbol `%s` from module `%s`",
+                         isym->name->str, src_mod->mod_path->str); // TODO: mod_path is not an OS path
             return false;
         }
 
