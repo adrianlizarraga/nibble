@@ -1247,7 +1247,7 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     if (eident->mod_ns) {
         Symbol* sym_modns = resolve_name(resolver, eident->mod_ns);
 
-        if (!sym_modns) {
+        if (!sym_modns || (sym_modns->kind != SYMBOL_MODULE)) {
             resolver_on_error(resolver, "Unknown module namespace `%s::` in expression", eident->mod_ns->str);
             return false;
         }

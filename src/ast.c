@@ -387,6 +387,16 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
+ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
+{
+    ImportSymbol* isym = alloc_type(allocator, ImportSymbol, true);
+    isym->name = name;
+    isym->rename = rename;
+    isym->range = range;
+
+    return isym;
+}
+
 Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
                       ProgRange range)
 {
@@ -941,6 +951,7 @@ Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, M
     Symbol* sym = new_symbol(alloc, SYMBOL_MODULE, SYMBOL_STATUS_RESOLVED, stmt->mod_namespace, home_mod);
     sym->as_mod.mod = import_mod;
     sym->as_mod.stmt = (Stmt*)stmt;
+    sym->is_local = false;
 
     return sym;
 }
@@ -1115,6 +1126,8 @@ bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
         return false;
     }
 
+    assert(!sym->is_local);
+
     add_scope_symbol(&mod->scope, name, sym, !is_imported);
 
     ftprint_out("\tAdded imported(%d) sym %s into %s\n", is_imported, name->str, mod->mod_path->str);
@@ -1137,6 +1150,50 @@ bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported)
             if (!module_add_global_sym(dst_mod, sym->name, sym)) {
                 return false;
             }
+        }
+
+        it = it->next;
+    }
+
+    return true;
+}
+
+bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
+{
+    List* head = &stmt->import_syms;
+    List* it = head->next;
+
+    while (it != head) {
+        ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
+        Symbol* sym = lookup_scope_symbol(&src_mod->scope, isym->name);
+
+        if (!sym) {
+            report_error(dst_mod->mod_path->str, stmt->super.range, "Importing unknown symbol `%s` from module `%s`",
+                         isym->name, src_mod->mod_path->str); // TODO: mod_path is not an OS path
+            return false;
+        }
+
+        Decl* decl = sym->decl;
+        bool is_exported = decl && (decl->flags & DECL_IS_EXPORTED);
+
+        // TODO: Will not work once we try to re-export SYMBOL_MODULE syms because sym->decl is NULL
+        // This will happen when a module wants to export an imported module namespace.
+        //
+        // Ex:
+        //   import "./cstrings.nib" as CStrings;
+        //   ...
+        //   export { CStrings };
+        //
+        if (!is_exported) {
+            report_error(dst_mod->mod_path->str, stmt->super.range, "Importing private symbol `%s` from module `%s`",
+                         isym->name, src_mod->mod_path->str); // TODO: mod_path is not an OS path
+            return false;
+        }
+
+        Identifier* name = isym->rename ? isym->rename : isym->name;
+
+        if (!module_add_global_sym(dst_mod, name, sym)) {
+            return false;
         }
 
         it = it->next;

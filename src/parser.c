@@ -1548,9 +1548,35 @@ static bool is_mod_path_relative(const char* path, size_t len)
     return (c0 == '/') || (c0 == '.' && ((c1 == '/') || (c1 == '.' && c2 == '/')));
 }
 
+// import_sym = TKN_IDENT ('as' TKN_IDENT)?
+static ImportSymbol* parse_import_symbol(Parser* parser)
+{
+    ProgRange range = parser->token.range;
+    const char* error_prefix = "Failed to parse import symbol";
+
+    if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+        return NULL;
+    }
+
+    Identifier* name = parser->ptoken.as_ident.ident;
+    Identifier* rename = NULL;
+
+    if (match_keyword(parser, KW_AS)) {
+        if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+            return NULL;
+        }
+
+        Token* ptoken = &parser->ptoken;
+
+        rename = ptoken->as_ident.ident;
+        range.end = ptoken->range.end;
+    }
+
+    return new_import_symbol(parser->ast_arena, name, rename, range);
+}
+
 // stmt_import = 'import' ('{' import_entities '}' 'from' )? TKN_STR ('as' TKN_IDENT)? ';'
-// import entities = import_entity (',' import_entity)*
-// import_entity = TKN_IDENT ('as' TKN_IDENT)?
+// import_syms = import_sym (',' import_sym)*
 static Stmt* parse_stmt_import(Parser* parser)
 {
     assert(is_keyword(parser, KW_IMPORT));
@@ -1559,8 +1585,39 @@ static Stmt* parse_stmt_import(Parser* parser)
 
     next_token(parser);
 
-    // TODO: Parse import entities
-    List import_entities = list_head_create(import_entities);
+    // Parse import syms
+    List import_syms = list_head_create(import_syms);
+
+    if (match_token(parser, TKN_LBRACE)) {
+        // Parse the first import symbol.
+        ImportSymbol* isym_1 = parse_import_symbol(parser);
+
+        if (!isym_1) {
+            parser_on_error(parser, "Import statement must import at least one symbol");
+            return NULL;
+        }
+
+        list_add_last(&import_syms, &isym_1->lnode);
+
+        // Parse the rest, if any.
+        while (match_token(parser, TKN_COMMA)) {
+            ImportSymbol* isym = parse_import_symbol(parser);
+
+            if (!isym) {
+                return NULL;
+            }
+
+            list_add_last(&import_syms, &isym->lnode);
+        }
+
+        if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
+            return NULL;
+        }
+
+        if (!expect_keyword(parser, KW_FROM, error_prefix)) {
+            return NULL;
+        }
+    }
 
     if (!expect_token(parser, TKN_STR, error_prefix)) {
         return NULL;
@@ -1590,7 +1647,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return new_stmt_import(parser->ast_arena, &import_entities, mod_pathname, mod_namespace, range);
+    return new_stmt_import(parser->ast_arena, &import_syms, mod_pathname, mod_namespace, range);
 }
 
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?

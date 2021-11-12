@@ -1,0 +1,15 @@
+import { len,
+         CSTR_CONST, CSTR_CONST as CONST20, // Can import twice using different names!
+         cstr_var, cstr_var as var2,
+         get_rand as rand } from "./cstring.nib";
+
+proc main(argc : int, argv : ^^char) => int
+{
+    var a : ^char = "Hello\n";
+    var num_chars := len(a);
+
+    #writeout(a, num_chars);
+
+    return num_chars + CSTR_CONST + CONST20 + cstr_var + var2 + rand(4);
+}
+

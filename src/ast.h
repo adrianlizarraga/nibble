@@ -311,6 +311,7 @@ typedef struct StmtStaticAssert {
 } StmtStaticAssert;
 
 typedef struct ImportSymbol {
+    ProgRange range;
     Identifier* name;
     Identifier* rename;
     ListNode lnode;
@@ -448,6 +449,7 @@ Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, Prog
 SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
+ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
 Stmt* new_stmt_import(Allocator* allocator, List* import_entities, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
