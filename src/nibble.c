@@ -377,7 +377,7 @@ static Module* import_module(NibbleCtx* ctx, const char* path, size_t len)
 
 static bool parse_module(NibbleCtx* ctx, Module* mod)
 {
-    ftprint_out("[INFO] Parsing module %s ...\n", mod->mod_path->str);
+    ftprint_out("[INFO]: Parsing module %s ...\n", mod->mod_path->str);
 
     const char* code = NULL;
     size_t num_decls = 0;
@@ -388,8 +388,6 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     Path mod_ospath;
     module_get_ospath(&ctx->tmp_mem, &mod_ospath, mod, &ctx->base_ospath);
 
-    ftprint_out("Module OS path: %s\n", mod_ospath.str);
-
     code = slurp_file(&ctx->tmp_mem, mod_ospath.str);
 
     if (!parse_code(&num_decls, &mod->stmts, code)) {
@@ -398,20 +396,16 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
     init_scope_sym_table(&mod->scope, &ctx->ast_mem, num_decls << 1);
 
-    ftprint_out("Trying to import builtins...\n");
-
     // Import all builtin symbols.
     if (!import_all_mod_syms(mod, &ctx->builtin_mod, true)) {
         return false;
     }
 
-    ftprint_out("Trying install decls into sym table...\n");
     // Install unresolved decls into the module's symbol table.
     if (!install_module_decls(&ctx->ast_mem, mod)) {
         return false;
     }
 
-    ftprint_out("Trying process imports...\n");
     // Process imports.
     {
         List* head = &mod->stmts;
@@ -435,7 +429,6 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                 //
                 // 1. Create an absolute OS path to the imported module and check if it exists.
                 // 2. If it exists, subtract base_ospath to generate the canonical module path.
-                ftprint_out("Trying to import %s\n", simport->mod_pathname->str);
 
                 Path import_mod_ospath;
                 path_init(&import_mod_ospath, &ctx->tmp_mem);
@@ -457,7 +450,6 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                 }
 
                 path_join(&import_mod_ospath, &import_rel_path);
-                ftprint_out("Hmmm import os path before abs: %s\n", import_mod_ospath.str);
 
                 // Check if imported module's path exists somewhere.
                 if (!path_abs(&import_mod_ospath)) {
@@ -471,9 +463,6 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                                  simport->mod_pathname->str, nib_ext);
                     return false;
                 }
-
-                ftprint_out("Import OS path: %s\n", import_mod_ospath.str);
-                ftprint_out("Base OS path: %s\n", ctx->base_ospath.str);
 
                 // Try to create a canonical module path (where `/` corresponds to main's home directory).
                 Path import_mod_path;
@@ -502,8 +491,6 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
                     path_set(&import_mod_path, mp, (import_mod_ospath.str + import_mod_ospath.len) - mp);
                     path_norm(&import_mod_path, OS_PATH_SEP, NIBBLE_PATH_SEP);
-
-                    ftprint_out("Import canonical path: %s\n", import_mod_path.str);
                 }
 
                 //
@@ -541,7 +528,6 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     }
 
     allocator_restore_state(mem_state);
-    ftprint_out("[INFO] DONE parsing module %s ...\n", mod->mod_path->str);
     return true;
 }
 
@@ -581,7 +567,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     path_init(base_ospath, &nibble->gen_mem);
     path_set(base_ospath, main_path.str, (base_path_end_ptr - main_path.str));
 
-    ftprint_out("[INFO] Base project OS path: %s\n", base_ospath->str);
+    ftprint_out("[INFO]: Base project OS path: %s\n", base_ospath->str);
 
     size_t mod_path_cap = ((main_path.str + main_path.len) - base_path_end_ptr) + 1;
     char* entry_mod_path_buf = array_create(&nibble->tmp_mem, char, mod_path_cap);
@@ -604,7 +590,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     //////////////////////////////////////////
     //                Parse
     //////////////////////////////////////////
-    ftprint_out("[INFO] Parsing builtin module\n");
+    ftprint_out("[INFO]: Parsing builtin module\n");
 
     const size_t num_builtin_types = ARRAY_LEN(builtin_types);
     size_t num_builtin_decls = 0;
@@ -641,7 +627,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     //////////////////////////////////////////
     //          Resolve/Typecheck
     //////////////////////////////////////////
-    ftprint_out("2. Type-checking ...\n");
+    ftprint_out("[INFO]: Type-checking ...\n");
 
     Resolver resolver = {.ctx = nibble};
 
@@ -689,18 +675,18 @@ void nibble_compile(const char* main_file, const char* output_file)
         // TODO: Allow/check for envp param
     }
 
-    ftprint_out("\tglobal vars: %u\n\tglobal procs: %u\n", nibble->vars.num_elems, nibble->procs.num_elems);
+    ftprint_out("[INFO]: global vars: %u\tglobal procs: %u\n", nibble->vars.num_elems, nibble->procs.num_elems);
 
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
-    ftprint_out("4. Generating IR bytecode\n");
+    ftprint_out("[INFO]: Generating IR bytecode\n");
     IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->procs, &nibble->type_cache);
 
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
-    ftprint_out("4. Generating NASM assembly output: %s ...\n", output_file);
+    ftprint_out("[INFO]: Generating NASM assembly output: %s ...\n", output_file);
     gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lit_map, output_file);
 
     allocator_restore_state(mem_state);

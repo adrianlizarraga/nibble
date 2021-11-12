@@ -1188,8 +1188,6 @@ bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
 
     add_scope_symbol(&mod->scope, name, sym, !is_imported);
 
-    ftprint_out("\tAdded imported(%d) sym %s into %s\n", is_imported, name->str, mod->mod_path->str);
-
     return true;
 }
 
