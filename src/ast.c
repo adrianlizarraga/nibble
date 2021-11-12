@@ -411,6 +411,33 @@ Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathn
 
 Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name)
 {
+    //
+    // Import statements support symbol renaming. This procedure takes in an identifier used
+    // in an expression context and returns the original imported symbol's name.
+    //
+    // For example, assume the following import statement:
+    //
+    //   import { len, cpy as copy } from "./cstring.nib" as CString;
+    //
+    // The following are true:
+    //
+    //   'len' returns 'len'
+    //   'copy' returns 'cpy'
+    //   'malloc' returns 'malloc'
+    //   'unknown' returns NULL
+    //
+    // Now, assume the following greedy import statement.
+    //
+    //   import "./memory" as Memory; // Assume this module exports "malloc"
+    //
+    // For this kind of import statement, the input name is always returned as the output.
+    //
+    //   'malloc' returns 'malloc'
+    //   'unknown' returns 'unknown'
+    //
+    // This is only called for import statements with a module namespace.
+    //
+
     Identifier* sym_name = NULL;
     List* import_syms = &stmt->import_syms;
 
