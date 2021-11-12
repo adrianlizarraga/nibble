@@ -1,0 +1,32 @@
+import "./nested_module.nib";
+
+@exported
+proc len(s : ^char) => usize
+{
+    if (!s) {
+        return 0;
+    }
+
+    var count : usize = 0;
+
+    while (*s) {
+        s = s + 1;
+        count = count + 1;
+    }
+
+    return count;
+}
+
+@exported
+proc get_rand(seed:usize) => usize
+{
+    return g_nested_var + seed;
+}
+
+@exported
+const CSTR_CONST : int = 20;
+
+@exported
+var cstr_var : char = 100;
+
+var _internal_var : int;

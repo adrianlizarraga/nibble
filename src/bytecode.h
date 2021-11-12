@@ -392,13 +392,6 @@ typedef struct IR_Instr {
     };
 } IR_Instr;
 
-typedef struct IR_Module {
-    u32 num_vars;
-    u32 num_procs;
-    Symbol** vars;
-    Symbol** procs;
-} IR_Module;
-
-IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope, TypeCache* type_cache);
+void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache);
 
 #endif

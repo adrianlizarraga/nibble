@@ -183,12 +183,20 @@ bool u32_is_bit_set(u32 mask, u8 bit)
 
 #define ASSERT_PATH_INIT(p) assert((p)->str && (p)->cap)
 
-static void path_norm(Path* path)
+void path_norm(Path* path, char old_sep, char new_sep)
 {
     ASSERT_PATH_INIT(path);
 
+    if (new_sep != old_sep) {
+        for (char* p = path->str; *p; p += 1) {
+            if (*p == old_sep) {
+                *p = new_sep;
+            }
+        }
+    }
+
     // Remove ending `/` (if not at the beginning of path)
-    if ((path->len > 1) && (path->str[path->len - 1] == NIBBLE_PATH_SEP)) {
+    if ((path->len > 1) && (path->str[path->len - 1] == new_sep)) {
         path->str[path->len - 1] = '\0';
         path->len -= 1;
     }
@@ -202,9 +210,11 @@ static void path_ensure_cap(Path* path, size_t cap)
 
     char* str = alloc_array(path->alloc, char, cap, false);
 
-    for (size_t i = 0; i <= path->len; i += 1) {
+    for (size_t i = 0; i < path->len; i += 1) {
         str[i] = path->str[i];
     }
+
+    str[path->len] = '\0';
 
     if (path->str != path->_buf) {
         mem_free(path->alloc, path->str);
@@ -234,11 +244,9 @@ void path_init(Path* path, Allocator* alloc)
     path->_buf[0] = 0;
 }
 
-void path_set(Path* path, const char* src)
+void path_set(Path* path, const char* src, size_t src_len)
 {
     ASSERT_PATH_INIT(path);
-
-    const size_t src_len = cstr_len(src);
 
     if (src_len >= path->cap) {
         path_free(path);
@@ -251,13 +259,17 @@ void path_set(Path* path, const char* src)
     }
 
     // Copy src characters (including null char) into our path.
-    for (size_t i = 0; i <= src_len; i += 1) {
+    size_t i = 0;
+
+    while (i < src_len) {
         path->str[i] = src[i];
+        i += 1;
     }
 
+    path->str[i] = '\0';
     path->len = src_len;
 
-    path_norm(path);
+    path_norm(path, NIBBLE_PATH_SEP, OS_PATH_SEP);
 }
 
 void path_join(Path* dst, Path* src)
@@ -269,8 +281,8 @@ void path_join(Path* dst, Path* src)
         return;
     }
 
-    bool dst_ends_sep = dst->len && (dst->str[dst->len - 1] == NIBBLE_PATH_SEP);
-    bool src_begs_sep = src->str[0] == NIBBLE_PATH_SEP;
+    bool dst_ends_sep = dst->len && (dst->str[dst->len - 1] == OS_PATH_SEP);
+    bool src_begs_sep = src->str[0] == OS_PATH_SEP;
 
     size_t len = dst->len + src->len + 1; // <dst>/<src>
 
@@ -300,7 +312,7 @@ void path_join(Path* dst, Path* src)
     }
 
     // Start appending src to dst
-    *d = NIBBLE_PATH_SEP;
+    *d = OS_PATH_SEP;
     d += 1;
 
     while (*s) {
@@ -309,6 +321,7 @@ void path_join(Path* dst, Path* src)
         s += 1;
     }
 
+    dst->str[len] = '\0';
     dst->len = len;
 }
 
@@ -317,7 +330,7 @@ char* path_filename(Path* path)
     ASSERT_PATH_INIT(path);
 
     for (char* p = path->str + path->len; p != path->str; p -= 1) {
-        if (p[-1] == NIBBLE_PATH_SEP) {
+        if (p[-1] == OS_PATH_SEP) {
             return p;
         }
     }
@@ -345,13 +358,37 @@ bool dirent_it_skip(const char* name)
 
 #ifdef _WIN32
 
+FileKind path_kind(Path* path)
+{
+
+    DWORD attribs = GetFileAttributesA(path->str);
+
+    if (attribs == INVALID_FILE_ATTRIBUTES) {
+        return FILE_NONE;
+    }
+
+    FileKind kind = FILE_NONE;
+
+    if (attribs & FILE_ATTRIBUTE_NORMAL) {
+        kind = FILE_REG;
+    }
+    else if (attribs & FILE_ATTRIBUTE_DIRECTORY) {
+        kind = FILE_DIR;
+    }
+    else {
+        kind = FILE_OTHER;
+    }
+
+    return kind;
+}
+
 bool path_abs(Path* path)
 {
     ASSERT_PATH_INIT(path);
 
     Path rel;
     path_init(&rel, path->alloc);
-    path_set(&rel, path->str);
+    path_set(&rel, path->str, path->len);
 
     bool success = _fullpath(path->str, rel.str, path->cap) != NULL;
 
@@ -397,7 +434,7 @@ void dirent_it_next(DirentIter* it)
             return;
         }
 
-        path_set(&it->name, fileinfo.name);
+        path_set(&it->name, fileinfo.name, cstr_len(fileinfo.name));
 
         is_dir = fileinfo.attrib & _A_SUBDIR;
     } while (dirent_it_skip(it->name.str));
@@ -414,16 +451,17 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
 
     // Create a temporary `filespec` Path that adds `/*` to the base path.
     Path filespec;
+    size_t path_len = cstr_len(path_str);
     path_init(&filespec, alloc);
-    path_set(&filespec, path_str);
+    path_set(&filespec, path_str, path_len);
 
-    bool ends_sep = filespec.str[filespec.len - 1] == NIBBLE_PATH_SEP;
+    bool ends_sep = filespec.str[filespec.len - 1] == OS_PATH_SEP;
     size_t needed_space = ends_sep ? 1 : 2;
 
     path_ensure_cap(&filespec, filespec.len + 1 + needed_space);
 
     if (!ends_sep) {
-        filespec.str[filespec.len++] = NIBBLE_PATH_SEP;
+        filespec.str[filespec.len++] = OS_PATH_SEP;
     }
 
     filespec.str[filespec.len++] = '*';
@@ -445,8 +483,8 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
         it->flags |= DIRENT_IS_DIR;
     }
 
-    path_set(&it->base, path_str);
-    path_set(&it->name, fileinfo.name);
+    path_set(&it->base, path_str, path_len);
+    path_set(&it->name, fileinfo.name, cstr_len(fileinfo.name));
 
     if (dirent_it_skip(it->name.str)) {
         dirent_it_next(it);
@@ -454,13 +492,38 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
 }
 #else
 
+FileKind path_kind(Path* path)
+{
+
+    struct stat sb;
+    int ret = stat(path->str, &sb);
+
+    if (ret == -1) {
+        return FILE_NONE;
+    }
+
+    FileKind kind = FILE_NONE;
+
+    if ((sb.st_mode & S_IFMT) ==  S_IFREG) {
+        kind = FILE_REG;
+    }
+    else if ((sb.st_mode & S_IFMT) == S_IFDIR) {
+        kind = FILE_DIR;
+    }
+    else {
+        kind = FILE_OTHER;
+    }
+
+    return kind;
+}
+
 bool path_abs(Path* path)
 {
     ASSERT_PATH_INIT(path);
 
     Path rel;
     path_init(&rel, path->alloc);
-    path_set(&rel, path->str);
+    path_set(&rel, path->str, path->len);
 
     assert(path->cap >= PATH_MAX);
 
@@ -507,7 +570,7 @@ void dirent_it_next(DirentIter* it)
             return;
         }
 
-        path_set(&it->name, entry->d_name);
+        path_set(&it->name, entry->d_name, cstr_len(entry->d_name));
 
         is_dir = entry->d_type & DT_DIR;
     } while (dirent_it_skip(it->name.str));
@@ -531,7 +594,7 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
 
     it->flags = DIRENT_IS_VALID;
 
-    path_set(&it->base, path_str);
+    path_set(&it->base, path_str, cstr_len(path_str));
     dirent_it_next(it);
 }
 

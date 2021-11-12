@@ -1,0 +1,12 @@
+import "./cstring.nib" as CString;
+
+proc main(argc : int, argv : ^^char) => int
+{
+    var a : ^char = "Hello\n";
+    var num_chars := CString::len(a);
+
+    #writeout(a, num_chars);
+
+    return num_chars + CString::CSTR_CONST + CString::cstr_var + CString::get_rand(2);
+}
+

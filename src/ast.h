@@ -19,7 +19,9 @@ typedef struct Type Type;
 typedef struct Symbol Symbol;
 typedef struct SymbolVar SymbolVar;
 typedef struct SymbolProc SymbolProc;
+typedef struct SymbolModule SymbolModule;
 typedef struct Scope Scope;
+typedef struct Module Module;
 
 ///////////////////////////////
 //       Type Specifiers
@@ -209,7 +211,7 @@ typedef struct ExprStr {
 
 typedef struct ExprIdent {
     Expr super;
-    List pkg_path;
+    Identifier* mod_ns;
     Identifier* name;
 } ExprIdent;
 
@@ -264,7 +266,7 @@ ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, Identifier* nam
 Expr* new_expr_int(Allocator* allocator, TokenInt token, ProgRange range);
 Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
 Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
-Expr* new_expr_ident(Allocator* allocator, List* pkg_path, Identifier* name, ProgRange range);
+Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
@@ -308,27 +310,18 @@ typedef struct StmtStaticAssert {
     StrLit* msg;
 } StmtStaticAssert;
 
-typedef struct PkgPathName {
-    Identifier* name;
-    ListNode lnode;
-} PkgPathName;
-
-typedef struct ImportEntity {
+typedef struct ImportSymbol {
+    ProgRange range;
     Identifier* name;
     Identifier* rename;
     ListNode lnode;
-} ImportEntity;
-
-enum StmtImportFlags {
-    STMT_IMPORT_ALL = 1 << 0,
-    STMT_IMPORT_REL = 1 << 1,
-};
+} ImportSymbol;
 
 typedef struct StmtImport {
     Stmt super;
-    List pkg_names;
-    List import_entities;
-    unsigned char flags;
+    List import_syms;
+    StrLit* mod_pathname;
+    Identifier* mod_namespace;
 } StmtImport;
 
 typedef struct StmtNoOp {
@@ -456,9 +449,11 @@ Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, Prog
 SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
-Stmt* new_stmt_import(Allocator* allocator, List* pkg_names, List* import_entities, unsigned flags, ProgRange range);
+ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
+Stmt* new_stmt_import(Allocator* allocator, List* import_entities, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
+Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name);
 ///////////////////////////////
 //       Declarations
 //////////////////////////////
@@ -470,7 +465,7 @@ typedef struct DeclAnnotation {
 } DeclAnnotation;
 
 typedef enum DeclKind {
-    CST_DECL_NONE,
+    CST_DECL_NONE = 0,
     CST_DeclVar,
     CST_DeclConst,
     CST_DeclEnum,
@@ -478,25 +473,32 @@ typedef enum DeclKind {
     CST_DeclStruct,
     CST_DeclProc,
     CST_DeclTypedef,
+    CST_DECL_KIND_COUNT
 } DeclKind;
+
+enum DeclFlags {
+    DECL_IS_EXPORTED = 0x1,
+    DECL_IS_INCOMPLETE = 0x2,
+    DECL_IS_FOREIGN = 0x4,
+};
 
 struct Decl {
     DeclKind kind;
     ProgRange range;
+    Identifier* name;
+    unsigned flags;
     List annotations;
     ListNode lnode;
 };
 
 typedef struct DeclVar {
     Decl super;
-    Identifier* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclVar;
 
 typedef struct DeclConst {
     Decl super;
-    Identifier* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclConst;
@@ -509,32 +511,22 @@ typedef struct EnumItem {
 
 typedef struct DeclEnum {
     Decl super;
-    Identifier* name;
     TypeSpec* typespec;
     List items;
 } DeclEnum;
 
 typedef struct DeclAggregate {
     Decl super;
-    Identifier* name;
     List fields;
 } DeclAggregate;
 
 typedef DeclAggregate DeclUnion;
 typedef DeclAggregate DeclStruct;
 
-enum ProcFlags {
-    PROC_IS_INCOMPLETE = 0x1,
-    PROC_IS_INTRINSIC = 0x2,
-    PROC_IS_FOREIGN = 0x4,
-};
-
 typedef struct DeclProc {
     Decl super;
-    Identifier* name;
     TypeSpec* ret;
 
-    u32 flags;
     u32 num_params;
     u32 num_decls;
     bool returns;
@@ -547,7 +539,6 @@ typedef struct DeclProc {
 
 typedef struct DeclTypedef {
     Decl super;
-    Identifier* name;
     TypeSpec* typespec;
 } DeclTypedef;
 
@@ -648,35 +639,50 @@ struct Type {
     };
 };
 
-extern Type* type_void;
-extern Type* type_u8;
-extern Type* type_s8;
-extern Type* type_u16;
-extern Type* type_s16;
-extern Type* type_u32;
-extern Type* type_s32;
-extern Type* type_u64;
-extern Type* type_s64;
-extern Type* type_f32;
-extern Type* type_f64;
+enum BuiltinTypeKind {
+    // Basic primitive types
+    BUILTIN_TYPE_VOID = 0,
+    BUILTIN_TYPE_U8,
+    BUILTIN_TYPE_S8,
+    BUILTIN_TYPE_U16,
+    BUILTIN_TYPE_S16,
+    BUILTIN_TYPE_U32,
+    BUILTIN_TYPE_S32,
+    BUILTIN_TYPE_U64,
+    BUILTIN_TYPE_S64,
+    BUILTIN_TYPE_F32,
+    BUILTIN_TYPE_F64,
 
-// Aliases
-extern Type* type_bool;
-extern Type* type_char;
-extern Type* type_schar;
-extern Type* type_uchar;
-extern Type* type_short;
-extern Type* type_ushort;
-extern Type* type_int;
-extern Type* type_uint;
-extern Type* type_long;
-extern Type* type_ulong;
-extern Type* type_llong;
-extern Type* type_ullong;
-extern Type* type_ssize;
-extern Type* type_usize;
+    // Aliases for primitive types
+    BUILTIN_TYPE_BOOL,
+    BUILTIN_TYPE_CHAR,
+    BUILTIN_TYPE_SCHAR,
+    BUILTIN_TYPE_UCHAR,
+    BUILTIN_TYPE_SHORT,
+    BUILTIN_TYPE_USHORT,
+    BUILTIN_TYPE_INT,
+    BUILTIN_TYPE_UINT,
+    BUILTIN_TYPE_LONG,
+    BUILTIN_TYPE_ULONG,
+    BUILTIN_TYPE_LLONG,
+    BUILTIN_TYPE_ULLONG,
+    BUILTIN_TYPE_SSIZE,
+    BUILTIN_TYPE_USIZE,
+
+    NUM_BUILTIN_TYPES,
+};
+
+typedef struct BuiltinType {
+    const char* name;
+    Type* type;
+} BuiltinType;
+
+extern BuiltinType builtin_types[NUM_BUILTIN_TYPES];
+
+// Common types used in the compiler for type-checking
 extern Type* type_ptr_void;
 extern Type* type_ptr_char;
+extern Type* type_ptr_ptr_char;
 
 extern size_t PTR_SIZE;
 extern size_t PTR_ALIGN;
@@ -707,8 +713,11 @@ typedef enum SymbolKind {
     SYMBOL_CONST,
     SYMBOL_PROC,
     SYMBOL_TYPE,
+    SYMBOL_MODULE,
     SYMBOL_KIND_COUNT,
 } SymbolKind;
+
+extern const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT];
 
 typedef enum SymbolStatus {
     SYMBOL_STATUS_UNRESOLVED,
@@ -736,6 +745,11 @@ struct SymbolProc {
     bool is_nonleaf;
 };
 
+struct SymbolModule {
+    Module* mod;
+    Stmt* stmt;
+};
+
 struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
@@ -744,16 +758,21 @@ struct Symbol {
     Identifier* name;
     Decl* decl;
     Type* type;
+    Module* home;
     List lnode;
 
     union {
         SymbolVar as_var;
         SymbolProc as_proc;
+        SymbolModule as_mod;
     };
 };
 
-Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl);
-Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type);
+Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod);
+Symbol* new_symbol_decl(Allocator* allocator, Decl* decl, Module* home_mod);
+Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type, Module* home_mod);
+Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, Module* home_mod);
+char* symbol_mangled_name(Allocator* allocator, Symbol* sym);
 
 ///////////////////////////////
 //       Scope
@@ -764,17 +783,37 @@ struct Scope {
     List children;
 
     HMap sym_table;
-    List sym_list;
 
-    u32 sym_kind_counts[SYMBOL_KIND_COUNT];
+    // TODO: Make this a vanilla array with a size equal to number of parsed decls.
+    // Why? Because we are only store symbols native to the corresponding module.
+    List sym_list;
+    size_t num_syms;
 
     ListNode lnode;
 };
 
+void scope_init(Scope* scope);
+
 Scope* new_scope(Allocator* allocator, u32 num_syms);
-void init_scope_lists(Scope* scope);
 void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms);
 
 Symbol* lookup_symbol(Scope* curr_scope, Identifier* name);
 Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
+
+void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list);
+Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl);
+bool install_module_decls(Allocator* allocator, Module* mod);
+bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym);
+bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported);
+
+///////////////////////////////
+//      Module
+///////////////////////////////
+
+struct Module {
+    StrLit* mod_path;
+    List stmts;
+    Scope scope;
+};
+
 #endif

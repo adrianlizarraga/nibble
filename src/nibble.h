@@ -120,6 +120,8 @@ typedef enum Keyword {
     KW_TYPEOF,
     KW_STATIC_ASSERT,
     KW_IMPORT,
+    KW_FROM,
+    KW_AS,
     KW_LABEL,
     KW_GOTO,
     KW_BREAK,
@@ -139,6 +141,7 @@ typedef enum Keyword {
 
 typedef enum Annotation {
     ANNOTATION_CUSTOM = 0,
+    ANNOTATION_EXPORTED,
     ANNOTATION_FOREIGN,
     ANNOTATION_PACKED,
 
@@ -182,14 +185,14 @@ extern const char* keyword_names[KW_COUNT];
 extern const char* annotation_names[ANNOTATION_COUNT];
 extern const char* intrinsic_names[INTRINSIC_COUNT];
 
+extern Identifier* main_proc_ident;
+
 StrLit* intern_str_lit(const char* str, size_t len);
 Identifier* intern_ident(const char* str, size_t len);
 
 char* slurp_file(Allocator* allocator, const char* filename);
 
-bool nibble_init(OS target_os, Arch target_arch);
-void nibble_compile(const char* input_file, const char* output_file);
-void nibble_cleanup(void);
+void report_error(const char* file, ProgRange range, const char* format, ...);
 
 #define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit((f), ##__VA_ARGS__)
 void nibble_fatal_exit(const char* format, ...);

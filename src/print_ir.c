@@ -49,7 +49,7 @@ static char* IR_print_mem(Allocator* arena, IR_MemAddr* addr)
             ftprint_char_array(&dstr, false, "%s", IR_print_reg(arena, addr->base.reg));
         else if (addr->base_kind == IR_MEM_BASE_SYM)
             ftprint_char_array(&dstr, false, "%s %s", (addr->base.sym->is_local ? "local" : "global"),
-                               addr->base.sym->name->str);
+                               symbol_mangled_name(arena, addr->base.sym));
         else {
             assert(addr->base_kind == IR_MEM_BASE_STR_LIT);
             ftprint_char_array(&dstr, false, "\"%s\"", cstr_escape(arena, addr->base.str_lit->str, addr->base.str_lit->len, 0));
@@ -316,12 +316,12 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
 
         ftprint_char_array(&dstr, false, "call ");
 
-        if (proc_type->as_proc.ret != type_void) {
+        if (proc_type->as_proc.ret != builtin_types[BUILTIN_TYPE_VOID].type) {
             ftprint_char_array(&dstr, false, "<%s> %s, ", type_name(proc_type->as_proc.ret),
                                IR_print_reg(arena, instr->call.dst));
         }
 
-        ftprint_char_array(&dstr, false, "%s (", instr->call.sym->name->str);
+        ftprint_char_array(&dstr, false, "%s (", symbol_mangled_name(arena, instr->call.sym));
 
         u32 num_args = instr->call.num_args;
         IR_InstrCallArg* args = instr->call.args;
@@ -353,7 +353,7 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
 
 void IR_print_out_proc(Allocator* arena, Symbol* sym)
 {
-    ftprint_out("\nproc %s:\n", sym->name->str);
+    ftprint_out("\nproc %s:\n", symbol_mangled_name(arena, sym));
     ftprint_out("num instrs: %d\n", array_len(sym->as_proc.instrs));
 
     AllocatorState mem_state = allocator_get_state(arena);

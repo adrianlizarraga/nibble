@@ -1,0 +1,2 @@
+@exported
+var g_nested_var : usize = 0x3;

@@ -606,25 +606,23 @@ static Expr* parse_expr_sizeof(Parser* parser)
     return expr;
 }
 
-// expr_ident = pkg_path? TKN_IDENT
-// pkg_path = (TKN_IDENT '::')+
+// expr_ident = mod_namespace? TKN_IDENT
+// mod_namespace = (TKN_IDENT '::')
 static Expr* parse_expr_ident(Parser* parser)
 {
     assert(is_token_kind(parser, TKN_IDENT));
     ProgRange range = parser->token.range;
-    List pkg_path = list_head_create(pkg_path);
+    List mod_path = list_head_create(mod_path);
 
     Identifier* name = parser->token.as_ident.ident;
+    Identifier* mod_ns = NULL;
 
     next_token(parser);
 
-    while (match_token(parser, TKN_DBL_COLON)) {
-        PkgPathName* pname = alloc_type(parser->ast_arena, PkgPathName, true);
-        pname->name = name;
+    if (match_token(parser, TKN_DBL_COLON)) {
+        mod_ns = name; // The first identifier was actually a module namespace.
 
-        list_add_last(&pkg_path, &pname->lnode); // The name was actually a package path, so add it to the list.
-
-        if (!expect_token(parser, TKN_IDENT, "Failed to parse identifier package path")) {
+        if (!expect_token(parser, TKN_IDENT, "Failed to parse identifier name after module namespace")) {
             return NULL;
         }
 
@@ -634,7 +632,7 @@ static Expr* parse_expr_ident(Parser* parser)
         range.end = ptoken.range.end;
     }
 
-    return new_expr_ident(parser->ast_arena, &pkg_path, name, range);
+    return new_expr_ident(parser->ast_arena, mod_ns, name, range);
 }
 
 // expr_base = TKN_INT
@@ -1535,61 +1533,113 @@ static Stmt* parse_stmt_static_assert(Parser* parser)
     return new_stmt_static_assert(parser->ast_arena, cond, msg, range);
 }
 
-// Just a TKN_IDENT wrapped in a linked-list node
-static PkgPathName* parse_pkg_path_name(Parser* parser, const char* error_prefix)
+static bool is_mod_path_relative(const char* path, size_t len)
 {
+    assert(path);
+
+    if (len < 3) {
+        return false;
+    }
+
+    char c0 = path[0];
+    char c1 = path[1];
+    char c2 = path[2];
+
+    return (c0 == '/') || (c0 == '.' && ((c1 == '/') || (c1 == '.' && c2 == '/')));
+}
+
+// import_sym = TKN_IDENT ('as' TKN_IDENT)?
+static ImportSymbol* parse_import_symbol(Parser* parser)
+{
+    ProgRange range = parser->token.range;
+    const char* error_prefix = "Failed to parse import symbol";
+
     if (!expect_token(parser, TKN_IDENT, error_prefix)) {
         return NULL;
     }
 
-    PkgPathName* pname = alloc_type(parser->ast_arena, PkgPathName, true);
-    pname->name = parser->ptoken.as_ident.ident;
+    Identifier* name = parser->ptoken.as_ident.ident;
+    Identifier* rename = NULL;
 
-    return pname;
+    if (match_keyword(parser, KW_AS)) {
+        if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+            return NULL;
+        }
+
+        Token* ptoken = &parser->ptoken;
+
+        rename = ptoken->as_ident.ident;
+        range.end = ptoken->range.end;
+    }
+
+    return new_import_symbol(parser->ast_arena, name, rename, range);
 }
 
-// stmt_import = 'import' '::'? TKN_IDENT ('::' TKN_IDENT)* ('{' ('*' | import_entities) '}')? ';'
-// import entities = import_entity (',' import_entity)*
-// import_entity = (TKN_IDENT '=')? TKN_IDENT
+// stmt_import = 'import' ('{' import_entities '}' 'from' )? TKN_STR ('as' TKN_IDENT)? ';'
+// import_syms = import_sym (',' import_sym)*
 static Stmt* parse_stmt_import(Parser* parser)
 {
     assert(is_keyword(parser, KW_IMPORT));
     ProgRange range = {.start = parser->token.range.start};
-    const char* error_prefix = "Failed to parse import path";
-
-    unsigned char flags = 0;
+    const char* error_prefix = "Failed to parse import statement";
 
     next_token(parser);
 
-    // Path is relative if package name begins with a '::'.
-    if (match_token(parser, TKN_DBL_COLON)) {
-        flags |= STMT_IMPORT_REL;
-    }
+    // Parse import syms
+    List import_syms = list_head_create(import_syms);
 
-    // Parse the package root path name
-    List pkg_names = list_head_create(pkg_names);
-    PkgPathName* root = parse_pkg_path_name(parser, error_prefix);
+    if (match_token(parser, TKN_LBRACE)) {
+        // Parse the first import symbol.
+        ImportSymbol* isym_1 = parse_import_symbol(parser);
 
-    if (!root) {
-        return NULL;
-    }
-
-    list_add_last(&pkg_names, &root->lnode);
-
-    // Parse the rest of the package path
-    while (match_token(parser, TKN_DBL_COLON)) {
-        PkgPathName* subname = parse_pkg_path_name(parser, error_prefix);
-
-        if (!subname) {
+        if (!isym_1) {
+            parser_on_error(parser, "Import statement must import at least one symbol");
             return NULL;
         }
 
-        list_add_last(&pkg_names, &subname->lnode);
+        list_add_last(&import_syms, &isym_1->lnode);
+
+        // Parse the rest, if any.
+        while (match_token(parser, TKN_COMMA)) {
+            ImportSymbol* isym = parse_import_symbol(parser);
+
+            if (!isym) {
+                return NULL;
+            }
+
+            list_add_last(&import_syms, &isym->lnode);
+        }
+
+        if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
+            return NULL;
+        }
+
+        if (!expect_keyword(parser, KW_FROM, error_prefix)) {
+            return NULL;
+        }
     }
 
-    // TODO: Parse import entities
-    // TODO: Parse import all entities
-    List import_entities = list_head_create(import_entities);
+    if (!expect_token(parser, TKN_STR, error_prefix)) {
+        return NULL;
+    }
+
+    StrLit* mod_pathname = parser->ptoken.as_str.str_lit;
+
+    // TODO: Support non-relative module paths (when support a node_modules-like module repository).
+    if (!is_mod_path_relative(mod_pathname->str, mod_pathname->len)) {
+        parser_on_error(parser, "Module import path must be relative (i.e., starts with `./`, `../`, or `/`)");
+        return NULL;
+    }
+
+    Identifier* mod_namespace = NULL;
+
+    if (match_keyword(parser, KW_AS)) {
+        if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+            return NULL;
+        }
+
+        mod_namespace = parser->ptoken.as_ident.ident;
+    }
 
     if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
         return NULL;
@@ -1597,7 +1647,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return new_stmt_import(parser->ast_arena, &pkg_names, &import_entities, flags, range);
+    return new_stmt_import(parser->ast_arena, &import_syms, mod_pathname, mod_namespace, range);
 }
 
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
@@ -1670,6 +1720,8 @@ Stmt* parse_global_stmt(Parser* parser)
         default:
             return parse_stmt_decl(parser);
         }
+    case TKN_AT:
+        return parse_stmt_decl(parser);
     default:
         break;
     }
@@ -1852,7 +1904,7 @@ static Decl* parse_decl_proc(Parser* parser)
                         list_head_init(&body.stmts);
                         range.end = parser->ptoken.range.end;
                         decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
-                                             body.num_decls, PROC_IS_INCOMPLETE, range);
+                                             body.num_decls, DECL_IS_INCOMPLETE, range);
                     }
                     else {
                         parser_unexpected_token(parser, TKN_RBRACE, error_prefix);
@@ -2102,6 +2154,37 @@ Decl* parse_decl(Parser* parser)
     }
 
     list_replace(&annotations, &decl->annotations);
+
+    // Initialize decl flags based on some builtin annotations.
+    {
+        List* head = &decl->annotations;
+        List* it = head->next;
+
+        while (it != head) {
+            DeclAnnotation* a = list_entry(it, DeclAnnotation, lnode);
+            const char* name = a->ident->str;
+
+            if (name == annotation_names[ANNOTATION_FOREIGN]) {
+                if (decl->flags & DECL_IS_FOREIGN) {
+                    parser_on_error(parser, "Duplicate @foreign annotations");
+                    return NULL;
+                }
+
+                decl->flags |= DECL_IS_FOREIGN;
+            }
+            else if (name == annotation_names[ANNOTATION_EXPORTED]) {
+                if (decl->flags & DECL_IS_EXPORTED) {
+                    parser_on_error(parser, "Duplicate @exported annotations");
+                    return NULL;
+                }
+
+                decl->flags |= DECL_IS_EXPORTED;
+            }
+
+            it = it->next;
+        }
+    }
+
 
     return decl;
 }

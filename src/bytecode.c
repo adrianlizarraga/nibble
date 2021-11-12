@@ -68,7 +68,6 @@ typedef struct IR_Builder {
     Allocator* arena;
     Allocator* tmp_arena;
     TypeCache* type_cache;
-    IR_Module* module;
     Symbol* curr_proc;
     Scope* curr_scope;
 
@@ -852,7 +851,7 @@ static void IR_execute_deferred_cmp(IR_Builder* builder, IR_Operand* operand)
 
     if (!has_sc_jmps && !has_final_jmp) {
         IR_emit_instr_setcc(builder, def_cmp->final_jmp.cond, dst_reg);
-        IR_emit_instr_zext_r_r(builder, operand->type, dst_reg, type_u8, dst_reg);
+        IR_emit_instr_zext_r_r(builder, operand->type, dst_reg, builtin_types[BUILTIN_TYPE_U8].type, dst_reg);
     }
     else {
         // Patch short-circuit jumps that jump to the "true" control path.
@@ -1111,7 +1110,22 @@ static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst);
 
 static void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operand* dst)
 {
-    Symbol* sym = lookup_symbol(builder->curr_scope, eident->name);
+    Symbol* sym = NULL;
+
+    if (eident->mod_ns) {
+        Symbol* sym_modns = lookup_symbol(builder->curr_scope, eident->mod_ns);
+        StmtImport* stmt = (StmtImport*)sym_modns->as_mod.stmt;
+
+        Identifier* sym_name = get_import_sym_name(stmt, eident->name);
+
+        sym = lookup_symbol(&sym_modns->as_mod.mod->scope, sym_name);
+    }
+    else {
+        sym = lookup_symbol(builder->curr_scope, eident->name);
+    }
+
+    assert(sym);
+
     IR_operand_from_sym(dst, sym);
 }
 
@@ -1132,9 +1146,9 @@ static void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand
             IR_op_to_rvi(builder, int_op);
 
             if (add)
-                IR_emit_instr_add(builder, type_s64, ptr_op->addr.index_reg, int_op);
+                IR_emit_instr_add(builder, builtin_types[BUILTIN_TYPE_S64].type, ptr_op->addr.index_reg, int_op);
             else
-                IR_emit_instr_sub(builder, type_s64, ptr_op->addr.index_reg, int_op);
+                IR_emit_instr_sub(builder, builtin_types[BUILTIN_TYPE_S64].type, ptr_op->addr.index_reg, int_op);
 
             IR_try_free_op_reg(builder, int_op);
         }
@@ -1398,7 +1412,7 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
 
             if (base_size_log2) {
                 Scalar shift_arg = {.as_int._u32 = base_size_log2};
-                IR_emit_instr_sar_r_i(builder, result_type, left.reg, type_u8, shift_arg);
+                IR_emit_instr_sar_r_i(builder, result_type, left.reg, builtin_types[BUILTIN_TYPE_U8].type, shift_arg);
             }
 
             *dst = left;
@@ -1866,7 +1880,7 @@ static void IR_setup_call_ret(IR_Builder* builder, ExprCall* expr_call, IR_Opera
     dst_op->type = expr_call->super.type;
 
     // Allocate register if procedure returns a value.
-    if (dst_op->type != type_void) {
+    if (dst_op->type != builtin_types[BUILTIN_TYPE_VOID].type) {
         if (IR_type_fits_in_reg(dst_op->type)) {
             dst_op->kind = IR_OPERAND_REG;
             dst_op->reg = IR_next_reg(builder);
@@ -2245,7 +2259,7 @@ static void IR_emit_stmt_decl(IR_Builder* builder, StmtDecl* sdecl)
         IR_Operand lhs_op = {0};
 
         IR_emit_expr(builder, dvar->init, &rhs_op);
-        IR_operand_from_sym(&lhs_op, lookup_symbol(builder->curr_scope, dvar->name));
+        IR_operand_from_sym(&lhs_op, lookup_symbol(builder->curr_scope, dvar->super.name));
 
         IR_emit_assign(builder, &lhs_op, &rhs_op);
 
@@ -2516,7 +2530,7 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 {
     DeclProc* dproc = (DeclProc*)sym->decl;
 
-    if (dproc->flags & PROC_IS_INCOMPLETE) {
+    if (sym->decl->flags & DECL_IS_INCOMPLETE) {
         return;
     }
 
@@ -2534,8 +2548,8 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
     // NOTE: This should only apply to procs that return void. The resolver
     // will catch other cases.
     if (!dproc->returns) {
-        assert(sym->type->as_proc.ret == type_void);
-        IR_emit_instr_ret(builder, type_void, IR_REG_COUNT);
+        assert(sym->type->as_proc.ret == builtin_types[BUILTIN_TYPE_VOID].type);
+        IR_emit_instr_ret(builder, builtin_types[BUILTIN_TYPE_VOID].type, IR_REG_COUNT);
     }
 
     IR_pop_scope(builder);
@@ -2556,62 +2570,28 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 #endif
 }
 
-IR_Module* IR_build_module(Allocator* arena, Allocator* tmp_arena, Scope* global_scope, TypeCache* type_cache)
+void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache)
 {
-    IR_Module* module = alloc_type(arena, IR_Module, true);
-
-    if (!module)
-        return NULL;
-
     IR_Builder builder = {.arena = arena,
                           .tmp_arena = tmp_arena,
                           .type_cache = type_cache,
                           .curr_proc = NULL,
-                          .curr_scope = global_scope,
-                          .module = module,
+                          .curr_scope = NULL,
                           .free_regs = -1};
-
-    // Create global IR vars/procs arrays.
-    module->num_vars = global_scope->sym_kind_counts[SYMBOL_VAR];
-    module->vars = alloc_array(arena, Symbol*, module->num_vars, false);
-
-    module->num_procs = global_scope->sym_kind_counts[SYMBOL_PROC];
-    module->procs = alloc_array(arena, Symbol*, module->num_procs, false);
-
-    // Iterate through all global declarations and create IR structures for
-    // global variables and procedures.
-    size_t var_index = 0;
-    size_t proc_index = 0;
-
-    List* head = &global_scope->sym_list;
-    List* it = head->next;
-
-    while (it != head) {
-        Symbol* sym = list_entry(it, Symbol, lnode);
-
-        if (sym->kind == SYMBOL_VAR) {
-            module->vars[var_index] = sym;
-            var_index += 1;
-        }
-        else if (sym->kind == SYMBOL_PROC) {
-            module->procs[proc_index] = sym;
-            proc_index += 1;
-        }
-
-        it = it->next;
-    }
-
-    assert(proc_index == module->num_procs);
-    assert(var_index == module->num_vars);
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 
     // Iterate through all procedures and generate IR instructions.
-    for (size_t i = 0; i < module->num_procs; i += 1) {
-        IR_build_proc(&builder, module->procs[i]);
+    size_t num_procs = procs->num_elems;
+
+    for (size_t i = 0; i < num_procs; i += 1) {
+        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
+        assert(sym_ptr);
+        Symbol* sym = (Symbol*)(*sym_ptr);
+        assert(sym->kind == SYMBOL_PROC);
+
+        IR_build_proc(&builder, sym);
     }
 
     allocator_restore_state(tmp_mem_state);
-
-    return module;
 }

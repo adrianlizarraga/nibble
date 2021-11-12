@@ -196,12 +196,11 @@ Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range)
     return (Expr*)expr;
 }
 
-Expr* new_expr_ident(Allocator* allocator, List* pkg_path, Identifier* name, ProgRange range)
+Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range)
 {
     ExprIdent* expr = new_expr(allocator, ExprIdent, range);
+    expr->mod_ns = mod_ns;
     expr->name = name;
-
-    list_replace(pkg_path, &expr->pkg_path);
 
     return (Expr*)expr;
 }
@@ -255,20 +254,23 @@ DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRang
     return annotation;
 }
 
-#define new_decl(a, k, r) (k*)new_decl_((a), sizeof(k), alignof(k), CST_##k, (r))
-static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, ProgRange range)
+#define new_decl(a, k, n, r) (k*)new_decl_((a), sizeof(k), alignof(k), CST_##k, (n), (r))
+static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, Identifier* name,
+                       ProgRange range)
 {
     Decl* decl = mem_allocate(allocator, size, align, true);
     decl->kind = kind;
+    decl->name = name;
     decl->range = range;
 
-    return (Decl*)decl;
+    list_head_init(&decl->annotations);
+
+    return decl;
 }
 
 Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
-    DeclVar* decl = new_decl(allocator, DeclVar, range);
-    decl->name = name;
+    DeclVar* decl = new_decl(allocator, DeclVar, name, range);
     decl->typespec = typespec;
     decl->init = init;
 
@@ -277,8 +279,7 @@ Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, E
 
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
-    DeclConst* decl = new_decl(allocator, DeclConst, range);
-    decl->name = name;
+    DeclConst* decl = new_decl(allocator, DeclConst, name, range);
     decl->typespec = typespec;
     decl->init = init;
 
@@ -287,8 +288,7 @@ Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* typespec,
 
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* typespec, ProgRange range)
 {
-    DeclTypedef* decl = new_decl(allocator, DeclTypedef, range);
-    decl->name = name;
+    DeclTypedef* decl = new_decl(allocator, DeclTypedef, name, range);
     decl->typespec = typespec;
 
     return (Decl*)decl;
@@ -296,8 +296,7 @@ Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* typespe
 
 Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* typespec, List* items, ProgRange range)
 {
-    DeclEnum* decl = new_decl(allocator, DeclEnum, range);
-    decl->name = name;
+    DeclEnum* decl = new_decl(allocator, DeclEnum, name, range);
     decl->typespec = typespec;
 
     list_replace(items, &decl->items);
@@ -316,8 +315,7 @@ EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value)
 
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range)
 {
-    DeclStruct* decl = new_decl(allocator, DeclStruct, range);
-    decl->name = name;
+    DeclStruct* decl = new_decl(allocator, DeclStruct, name, range);
 
     list_replace(fields, &decl->fields);
 
@@ -326,8 +324,7 @@ Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, Prog
 
 Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range)
 {
-    DeclUnion* decl = new_decl(allocator, DeclUnion, range);
-    decl->name = name;
+    DeclUnion* decl = new_decl(allocator, DeclUnion, name, range);
 
     list_replace(fields, &decl->fields);
 
@@ -347,11 +344,10 @@ AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, Type
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
                     u32 num_decls, u32 flags, ProgRange range)
 {
-    DeclProc* decl = new_decl(allocator, DeclProc, range);
-    decl->name = name;
+    DeclProc* decl = new_decl(allocator, DeclProc, name, range);
     decl->ret = ret;
     decl->num_params = num_params;
-    decl->flags = flags;
+    decl->super.flags = flags;
     decl->num_decls = num_decls;
 
     list_replace(params, &decl->params);
@@ -386,15 +382,84 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
-Stmt* new_stmt_import(Allocator* allocator, List* pkg_names, List* import_entities, unsigned flags, ProgRange range)
+ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
+{
+    ImportSymbol* isym = alloc_type(allocator, ImportSymbol, true);
+    isym->name = name;
+    isym->rename = rename;
+    isym->range = range;
+
+    return isym;
+}
+
+Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
+                      ProgRange range)
 {
     StmtImport* stmt = new_stmt(allocator, StmtImport, range);
-    stmt->flags = flags;
+    stmt->mod_pathname = mod_pathname;
+    stmt->mod_namespace = mod_namespace;
 
-    list_replace(pkg_names, &stmt->pkg_names);
-    list_replace(import_entities, &stmt->import_entities);
+    list_replace(import_syms, &stmt->import_syms);
 
     return (Stmt*)stmt;
+}
+
+Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name)
+{
+    //
+    // Import statements support symbol renaming. This procedure takes in an identifier used
+    // in an expression context and returns the original imported symbol's name.
+    //
+    // For example, assume the following import statement:
+    //
+    //   import { len, cpy as copy } from "./cstring.nib" as CString;
+    //
+    // The following are true:
+    //
+    //   'len' returns 'len'
+    //   'copy' returns 'cpy'
+    //   'malloc' returns 'malloc'
+    //   'unknown' returns NULL
+    //
+    // Now, assume the following greedy import statement.
+    //
+    //   import "./memory" as Memory; // Assume this module exports "malloc"
+    //
+    // For this kind of import statement, the input name is always returned as the output.
+    //
+    //   'malloc' returns 'malloc'
+    //   'unknown' returns 'unknown'
+    //
+    // This is only called for import statements with a module namespace.
+    //
+
+    Identifier* sym_name = NULL;
+    List* import_syms = &stmt->import_syms;
+
+    // If the import statement explicitly imports certain symbols, make sure that we're not trying
+    // to access a symbol that was not imported.
+    if (!list_empty(import_syms)) {
+        List* it = import_syms->next;
+
+        // Look to see if the expression's identifier name is among the imported symbols.
+        // If so, set sym_name to the expected native symbol name.
+        while (it != import_syms) {
+            ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
+            Identifier* isym_name = isym->rename != NULL ? isym->rename : isym->name;
+
+            if (isym_name == name) {
+                sym_name = isym->name;
+                break;
+            }
+
+            it = it->next;
+        }
+    }
+    else {
+        sym_name = name;
+    }
+
+    return sym_name;
 }
 
 Stmt* new_stmt_decl(Allocator* allocator, Decl* decl)
@@ -543,71 +608,11 @@ Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange r
 //     Types
 //////////////////////////////
 
-static Type type_void_ = {.kind = TYPE_VOID};
-static Type type_u8_ = {.kind = TYPE_INTEGER,
-                        .size = 1,
-                        .align = 1,
-                        .as_integer = {.kind = INTEGER_U8, .is_signed = false, .max = 0xFF}};
-static Type type_s8_ = {.kind = TYPE_INTEGER,
-                        .size = 1,
-                        .align = 1,
-                        .as_integer = {.kind = INTEGER_S8, .is_signed = true, .max = 0x7F}};
-static Type type_u16_ = {.kind = TYPE_INTEGER,
-                         .size = 2,
-                         .align = 2,
-                         .as_integer = {.kind = INTEGER_U16, .is_signed = false, .max = 0xFFFF}};
-static Type type_s16_ = {.kind = TYPE_INTEGER,
-                         .size = 2,
-                         .align = 2,
-                         .as_integer = {.kind = INTEGER_S16, .is_signed = true, .max = 0x7FFF}};
-static Type type_u32_ = {.kind = TYPE_INTEGER,
-                         .size = 4,
-                         .align = 4,
-                         .as_integer = {.kind = INTEGER_U32, .is_signed = false, .max = 0xFFFFFFFF}};
-static Type type_s32_ = {.kind = TYPE_INTEGER,
-                         .size = 4,
-                         .align = 4,
-                         .as_integer = {.kind = INTEGER_S32, .is_signed = true, .max = 0x7FFFFFFF}};
-static Type type_u64_ = {.kind = TYPE_INTEGER,
-                         .size = 8,
-                         .align = 8,
-                         .as_integer = {.kind = INTEGER_U64, .is_signed = false, .max = 0xFFFFFFFFFFFFFFFF}};
-static Type type_s64_ = {.kind = TYPE_INTEGER,
-                         .size = 8,
-                         .align = 8,
-                         .as_integer = {.kind = INTEGER_S64, .is_signed = true, .max = 0x7FFFFFFFFFFFFFFF}};
-static Type type_f32_ = {.kind = TYPE_FLOAT, .size = 4, .align = 4, .as_float.kind = FLOAT_F32};
-static Type type_f64_ = {.kind = TYPE_FLOAT, .size = 8, .align = 8, .as_float.kind = FLOAT_F64};
+BuiltinType builtin_types[NUM_BUILTIN_TYPES];
 
-Type* type_void = &type_void_;
-Type* type_u8 = &type_u8_;
-Type* type_s8 = &type_s8_;
-Type* type_u16 = &type_u16_;
-Type* type_s16 = &type_s16_;
-Type* type_u32 = &type_u32_;
-Type* type_s32 = &type_s32_;
-Type* type_u64 = &type_u64_;
-Type* type_s64 = &type_s64_;
-Type* type_f32 = &type_f32_;
-Type* type_f64 = &type_f64_;
-
-// Aliases
-Type* type_bool;
-Type* type_char;
-Type* type_schar;
-Type* type_uchar;
-Type* type_short;
-Type* type_ushort;
-Type* type_int;
-Type* type_uint;
-Type* type_long;
-Type* type_ulong;
-Type* type_llong;
-Type* type_ullong;
-Type* type_ssize;
-Type* type_usize;
 Type* type_ptr_void;
 Type* type_ptr_char;
+Type* type_ptr_ptr_char;
 
 size_t PTR_SIZE = 8;
 size_t PTR_ALIGN = 8;
@@ -692,16 +697,16 @@ Type* type_unsigned_int(Type* type_int)
     switch (type_int->as_integer.kind) {
     case INTEGER_U8:
     case INTEGER_S8:
-        return type_u8;
+        return builtin_types[BUILTIN_TYPE_U8].type;
     case INTEGER_U16:
     case INTEGER_S16:
-        return type_u16;
+        return builtin_types[BUILTIN_TYPE_U16].type;
     case INTEGER_U32:
     case INTEGER_S32:
-        return type_u32;
+        return builtin_types[BUILTIN_TYPE_U32].type;
     case INTEGER_U64:
     case INTEGER_S64:
-        return type_u64;
+        return builtin_types[BUILTIN_TYPE_U64].type;
     }
 
     return NULL;
@@ -720,6 +725,28 @@ static Type* type_alloc(Allocator* allocator, TypeKind kind)
     Type* type = alloc_type(allocator, Type, true);
     type->kind = kind;
     type->id = next_type_id++;
+
+    return type;
+}
+
+static Type* type_int_alloc(Allocator* allocator, IntegerKind kind, size_t size, bool is_signed, u64 max)
+{
+    Type* type = type_alloc(allocator, TYPE_INTEGER);
+    type->size = size;
+    type->align = size;
+    type->as_integer.kind = kind;
+    type->as_integer.is_signed = is_signed;
+    type->as_integer.max = max;
+
+    return type;
+}
+
+static Type* type_float_alloc(Allocator* allocator, FloatKind kind, size_t size)
+{
+    Type* type = type_alloc(allocator, TYPE_FLOAT);
+    type->size = size;
+    type->align = size;
+    type->as_float.kind = kind;
 
     return type;
 }
@@ -823,42 +850,54 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 {
     bool invalid_os_arch = false;
 
-    type_void->id = next_type_id++;
-    type_u8->id = next_type_id++;
-    type_s8->id = next_type_id++;
-    type_u16->id = next_type_id++;
-    type_s16->id = next_type_id++;
-    type_u32->id = next_type_id++;
-    type_s32->id = next_type_id++;
-    type_u64->id = next_type_id++;
-    type_s64->id = next_type_id++;
-    type_f32->id = next_type_id++;
-    type_f64->id = next_type_id++;
+    builtin_types[BUILTIN_TYPE_VOID] = (BuiltinType){.name = "void", .type = type_alloc(ast_mem, TYPE_VOID)};
+    builtin_types[BUILTIN_TYPE_U8] =
+        (BuiltinType){.name = "u8", .type = type_int_alloc(ast_mem, INTEGER_U8, 1, false, 0xFF)};
+    builtin_types[BUILTIN_TYPE_S8] =
+        (BuiltinType){.name = "s8", .type = type_int_alloc(ast_mem, INTEGER_S8, 1, true, 0x7F)};
+    builtin_types[BUILTIN_TYPE_U16] =
+        (BuiltinType){.name = "u16", .type = type_int_alloc(ast_mem, INTEGER_U16, 2, false, 0xFFFF)};
+    builtin_types[BUILTIN_TYPE_S16] =
+        (BuiltinType){.name = "s16", .type = type_int_alloc(ast_mem, INTEGER_S16, 2, true, 0x7FFF)};
+    builtin_types[BUILTIN_TYPE_U32] =
+        (BuiltinType){.name = "u32", .type = type_int_alloc(ast_mem, INTEGER_U32, 4, false, 0xFFFFFFFF)};
+    builtin_types[BUILTIN_TYPE_S32] =
+        (BuiltinType){.name = "s32", .type = type_int_alloc(ast_mem, INTEGER_S32, 4, true, 0x7FFFFFFF)};
+    builtin_types[BUILTIN_TYPE_U64] =
+        (BuiltinType){.name = "u64", .type = type_int_alloc(ast_mem, INTEGER_U64, 8, false, 0xFFFFFFFFFFFFFFFF)};
+    builtin_types[BUILTIN_TYPE_S64] =
+        (BuiltinType){.name = "s64", .type = type_int_alloc(ast_mem, INTEGER_S64, 8, true, 0x7FFFFFFFFFFFFFFF)};
+    builtin_types[BUILTIN_TYPE_F32] = (BuiltinType){.name = "f32", .type = type_float_alloc(ast_mem, FLOAT_F32, 4)};
+    builtin_types[BUILTIN_TYPE_F64] = (BuiltinType){.name = "f64", .type = type_float_alloc(ast_mem, FLOAT_F64, 8)};
 
-    type_bool = type_s8;
-    type_char = type_s8;
-    type_schar = type_s8;
-    type_uchar = type_u8;
-    type_short = type_s16;
-    type_ushort = type_u16;
-    type_int = type_s32;
-    type_uint = type_u32;
-    type_llong = type_s64;
-    type_ullong = type_u64;
+    builtin_types[BUILTIN_TYPE_BOOL] = (BuiltinType){.name = "bool", .type = builtin_types[BUILTIN_TYPE_S8].type};
+    builtin_types[BUILTIN_TYPE_CHAR] = (BuiltinType){.name = "char", .type = builtin_types[BUILTIN_TYPE_S8].type};
+    builtin_types[BUILTIN_TYPE_SCHAR] = (BuiltinType){.name = "schar", .type = builtin_types[BUILTIN_TYPE_S8].type};
+    builtin_types[BUILTIN_TYPE_UCHAR] = (BuiltinType){.name = "uchar", .type = builtin_types[BUILTIN_TYPE_U8].type};
+    builtin_types[BUILTIN_TYPE_SHORT] = (BuiltinType){.name = "short", .type = builtin_types[BUILTIN_TYPE_S16].type};
+    builtin_types[BUILTIN_TYPE_USHORT] = (BuiltinType){.name = "ushort", .type = builtin_types[BUILTIN_TYPE_U16].type};
+    builtin_types[BUILTIN_TYPE_INT] = (BuiltinType){.name = "int", .type = builtin_types[BUILTIN_TYPE_S32].type};
+    builtin_types[BUILTIN_TYPE_UINT] = (BuiltinType){.name = "uint", .type = builtin_types[BUILTIN_TYPE_U32].type};
+    builtin_types[BUILTIN_TYPE_LONG] = (BuiltinType){.name = "long"};
+    builtin_types[BUILTIN_TYPE_ULONG] = (BuiltinType){.name = "ulong"};
+    builtin_types[BUILTIN_TYPE_LLONG] = (BuiltinType){.name = "llong", .type = builtin_types[BUILTIN_TYPE_S64].type};
+    builtin_types[BUILTIN_TYPE_ULLONG] = (BuiltinType){.name = "ullong", .type = builtin_types[BUILTIN_TYPE_U64].type};
+    builtin_types[BUILTIN_TYPE_SSIZE] = (BuiltinType){.name = "ssize"};
+    builtin_types[BUILTIN_TYPE_USIZE] = (BuiltinType){.name = "usize"};
 
     switch (target_os) {
     case OS_LINUX:
         switch (target_arch) {
         case ARCH_X86:
-            type_long = type_s32;
-            type_ulong = type_u32;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S32].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U32].type;
 
             PTR_SIZE = 4;
             PTR_ALIGN = 4;
             break;
         case ARCH_X64:
-            type_long = type_s64;
-            type_ulong = type_u64;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S64].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U64].type;
 
             PTR_SIZE = 8;
             PTR_ALIGN = 8;
@@ -871,15 +910,15 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     case OS_WIN32:
         switch (target_arch) {
         case ARCH_X86:
-            type_long = type_s32;
-            type_ulong = type_u32;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S32].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U32].type;
 
             PTR_SIZE = 4;
             PTR_ALIGN = 4;
             break;
         case ARCH_X64:
-            type_long = type_s32;
-            type_ulong = type_u32;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S32].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U32].type;
 
             PTR_SIZE = 8;
             PTR_ALIGN = 8;
@@ -892,8 +931,8 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     case OS_OSX:
         switch (target_arch) {
         case ARCH_X64:
-            type_long = type_s64;
-            type_ulong = type_u64;
+            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S64].type;
+            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U64].type;
 
             PTR_SIZE = 8;
             PTR_ALIGN = 8;
@@ -914,59 +953,126 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     }
 
     if (PTR_SIZE == 4) {
-        type_ssize = type_int;
-        type_usize = type_uint;
+        builtin_types[BUILTIN_TYPE_SSIZE].type = builtin_types[BUILTIN_TYPE_INT].type;
+        builtin_types[BUILTIN_TYPE_USIZE].type = builtin_types[BUILTIN_TYPE_UINT].type;
     }
     else {
         assert(PTR_SIZE == 8);
-        type_ssize = type_llong;
-        type_usize = type_ullong;
+        builtin_types[BUILTIN_TYPE_SSIZE].type = builtin_types[BUILTIN_TYPE_LLONG].type;
+        builtin_types[BUILTIN_TYPE_USIZE].type = builtin_types[BUILTIN_TYPE_ULLONG].type;
     }
 
-    type_ptr_void = type_ptr(ast_mem, &type_cache->ptrs, type_void);
-    type_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, type_char);
+    type_ptr_void = type_ptr(ast_mem, &type_cache->ptrs, builtin_types[BUILTIN_TYPE_VOID].type);
+    type_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, builtin_types[BUILTIN_TYPE_CHAR].type);
+    type_ptr_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, type_ptr_char);
 }
 
 //////////////////////////////
 //     Symbols
 //////////////////////////////
 
-static Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name)
+const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT] = {
+    [CST_DECL_NONE] = SYMBOL_NONE, [CST_DeclVar] = SYMBOL_VAR,      [CST_DeclConst] = SYMBOL_CONST,
+    [CST_DeclEnum] = SYMBOL_TYPE,  [CST_DeclUnion] = SYMBOL_TYPE,   [CST_DeclStruct] = SYMBOL_TYPE,
+    [CST_DeclProc] = SYMBOL_PROC,  [CST_DeclTypedef] = SYMBOL_TYPE,
+};
+
+Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod)
 {
     Symbol* sym = alloc_type(allocator, Symbol, true);
 
     sym->kind = kind;
     sym->status = status;
     sym->name = name;
+    sym->home = home_mod;
 
     return sym;
 }
 
-Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl)
+Symbol* new_symbol_decl(Allocator* allocator, Decl* decl, Module* home_mod)
 {
-    Symbol* sym = new_symbol(allocator, kind, SYMBOL_STATUS_UNRESOLVED, name);
+    Symbol* sym = new_symbol(allocator, decl_sym_kind[decl->kind], SYMBOL_STATUS_UNRESOLVED, decl->name, home_mod);
     sym->decl = decl;
 
     return sym;
 }
 
-Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type)
+Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type, Module* home_mod)
 {
-    Symbol* sym = new_symbol(allocator, SYMBOL_TYPE, SYMBOL_STATUS_RESOLVED, name);
+    Symbol* sym = new_symbol(allocator, SYMBOL_TYPE, SYMBOL_STATUS_RESOLVED, name, home_mod);
     sym->type = type;
 
     return sym;
+}
+
+Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, Module* home_mod)
+{
+    Symbol* sym = new_symbol(alloc, SYMBOL_MODULE, SYMBOL_STATUS_RESOLVED, stmt->mod_namespace, home_mod);
+    sym->as_mod.mod = import_mod;
+    sym->as_mod.stmt = (Stmt*)stmt;
+    sym->is_local = false;
+
+    return sym;
+}
+
+char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
+{
+    // TODO: Change to something stronger. Will require regenerating builtin code though.
+    static const char intrin_pre[] = "_nibble";
+
+    char* dstr = NULL;
+    size_t len = sym->name->len;
+
+    if (sym->name == main_proc_ident) {
+        dstr = array_create(allocator, char, len + 1);
+        ftprint_char_array(&dstr, true, "%s", sym->name->str);
+    }
+    else if (sym->name->kind == IDENTIFIER_INTRINSIC) {
+        len += sizeof(intrin_pre); // Counts the +1 for the joining `_`
+        dstr = array_create(allocator, char, len + 1); // TODO: Print to a fixed buffer
+
+        ftprint_char_array(&dstr, true, "%s_%s", intrin_pre, sym->name->str);
+    }
+    else if (!sym->is_local) {
+        len += sym->home->mod_path->len + 1;
+        dstr = array_create(allocator, char, len + 1);
+
+        ftprint_char_array(&dstr, true, "%s_%s", sym->home->mod_path->str, sym->name->str);
+    }
+    else {
+        dstr = array_create(allocator, char, len + 1);
+        ftprint_char_array(&dstr, true, "%s", sym->name->str);
+    }
+
+    for (size_t i = 0; i < len; i += 1) {
+        if (dstr[i] == NIBBLE_PATH_SEP || dstr[i] == '.') {
+            dstr[i] = '_';
+        }
+    }
+
+    assert(len + 1 == array_len(dstr));
+
+    return dstr;
 }
 
 //////////////////////////////
 //     Scope
 //////////////////////////////
 
+void scope_init(Scope* scope)
+{
+    memset(scope, 0, sizeof(Scope));
+
+    list_head_init(&scope->children);
+    list_head_init(&scope->sym_list);
+}
+
 Scope* new_scope(Allocator* allocator, u32 num_syms)
 {
     Scope* scope = alloc_type(allocator, Scope, true);
 
-    init_scope_lists(scope);
+    list_head_init(&scope->children);
+    list_head_init(&scope->sym_list);
     init_scope_sym_table(scope, allocator, num_syms);
 
     return scope;
@@ -979,12 +1085,6 @@ void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms)
 
         scope->sym_table = hmap(log2_cap, allocator);
     }
-}
-
-void init_scope_lists(Scope* scope)
-{
-    list_head_init(&scope->children);
-    list_head_init(&scope->sym_list);
 }
 
 Symbol* lookup_scope_symbol(Scope* scope, Identifier* name)
@@ -1004,6 +1104,156 @@ Symbol* lookup_symbol(Scope* curr_scope, Identifier* name)
     }
 
     return NULL;
+}
+
+void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list)
+{
+    hmap_put(&scope->sym_table, PTR_UINT(name), PTR_UINT(sym));
+
+    if (add_list) {
+        list_add_last(&scope->sym_list, &sym->lnode);
+        scope->num_syms += 1;
+    }
+}
+
+Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl)
+{
+    if (lookup_symbol(scope, decl->name))
+        return NULL; // Shadows a symbol in the current scope or a parent scope.
+
+    Symbol* sym = new_symbol_decl(allocator, decl, mod);
+    sym->status = SYMBOL_STATUS_UNRESOLVED;
+    sym->is_local = (scope != &mod->scope);
+
+    add_scope_symbol(scope, sym->name, sym, true);
+
+    return sym;
+}
+
+bool install_module_decls(Allocator* allocator, Module* mod)
+{
+    List* head = &mod->stmts;
+    Scope* mod_scope = &mod->scope;
+
+    // Install decls in global symbol table.
+    for (List* it = head->next; it != head; it = it->next) {
+        Stmt* stmt = list_entry(it, Stmt, lnode);
+
+        if (stmt->kind == CST_StmtDecl) {
+            Decl* decl = ((StmtDecl*)stmt)->decl;
+
+            if (!add_unresolved_symbol(allocator, mod_scope, mod, decl)) {
+                report_error(mod->mod_path->str, decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
+{
+    Symbol* old_sym = lookup_scope_symbol(&mod->scope, name);
+
+    if (sym == old_sym) {
+        return true;
+    }
+
+    bool is_imported = (sym->home != mod);
+
+    // If replacing an existing symbol AND the new symbol is imported OR the old symbol
+    // is native to this module... check for errors.
+    if (old_sym && (is_imported || (old_sym->home == mod))) {
+        // TODO: Handle module symbols?
+
+        ProgRange range = sym->decl ? sym->decl->range : (ProgRange){0};
+
+        if (sym->home == mod) {
+            // TODO: Module path is NOT the file's OS path. FIXME
+            report_error(mod->mod_path->str, range, "Duplicate definition of symbol `%s`", name->str);
+        }
+        else {
+            // TODO: Module path is NOT the file's OS path. FIXME
+            report_error(mod->mod_path->str, range, "Conflicting import name `%s`", name->str);
+        }
+
+        return false;
+    }
+
+    assert(!sym->is_local);
+
+    add_scope_symbol(&mod->scope, name, sym, !is_imported);
+
+    return true;
+}
+
+bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported)
+{
+    List* head = &src_mod->scope.sym_list;
+    List* it = head->next;
+
+    while (it != head) {
+        Symbol* sym = list_entry(it, Symbol, lnode);
+        Decl* decl = sym->decl;
+
+        bool is_exported = decl && (decl->flags & DECL_IS_EXPORTED);
+
+        if (ignore_exported || is_exported) {
+            if (!module_add_global_sym(dst_mod, sym->name, sym)) {
+                return false;
+            }
+        }
+
+        it = it->next;
+    }
+
+    return true;
+}
+
+bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
+{
+    List* head = &stmt->import_syms;
+    List* it = head->next;
+
+    while (it != head) {
+        ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
+        Symbol* sym = lookup_scope_symbol(&src_mod->scope, isym->name);
+
+        if (!sym) {
+            report_error(dst_mod->mod_path->str, stmt->super.range, "Importing unknown symbol `%s` from module `%s`",
+                         isym->name->str, src_mod->mod_path->str); // TODO: mod_path is not an OS path
+            return false;
+        }
+
+        Decl* decl = sym->decl;
+        bool is_exported = decl && (decl->flags & DECL_IS_EXPORTED);
+
+        // TODO: Will not work once we try to re-export SYMBOL_MODULE syms because sym->decl is NULL
+        // This will happen when a module wants to export an imported module namespace.
+        //
+        // Ex:
+        //   import "./cstrings.nib" as CStrings;
+        //   ...
+        //   export { CStrings };
+        //
+        if (!is_exported) {
+            report_error(dst_mod->mod_path->str, stmt->super.range,
+                         "Cannot import private symbol `%s` from module `%s`", isym->name->str,
+                         src_mod->mod_path->str); // TODO: mod_path is not an OS path
+            return false;
+        }
+
+        Identifier* name = isym->rename ? isym->rename : isym->name;
+
+        if (!module_add_global_sym(dst_mod, name, sym)) {
+            return false;
+        }
+
+        it = it->next;
+    }
+
+    return true;
 }
 
 //////////////////////////////
@@ -1208,17 +1458,8 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ExprIdent* e = (ExprIdent*)expr;
             dstr = array_create(allocator, char, 16);
 
-            if (!list_empty(&e->pkg_path)) {
-                List* head = &e->pkg_path;
-                List* it = head->next;
-
-                while (it != head) {
-                    PkgPathName* pname = list_entry(it, PkgPathName, lnode);
-
-                    ftprint_char_array(&dstr, false, "%s::", pname->name->str);
-
-                    it = it->next;
-                }
+            if (e->mod_ns) {
+                ftprint_char_array(&dstr, false, "%s::", e->mod_ns->str);
             }
 
             ftprint_char_array(&dstr, false, "%s", e->name->str);
@@ -1496,38 +1737,26 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
             ftprint_char_array(&dstr, false, "(import ");
 
-            if (s->flags & STMT_IMPORT_REL) {
-                ftprint_char_array(&dstr, false, "::");
-            }
-
-            // Print package path
-            {
-                List* head = &s->pkg_names;
-                List* it = head->next;
-
-                while (it != head) {
-                    PkgPathName* pname = list_entry(it, PkgPathName, lnode);
-                    const char* suffix = (it->next == head) ? "" : "::";
-
-                    ftprint_char_array(&dstr, false, "%s%s", pname->name->str, suffix);
-                    it = it->next;
-                }
-            }
-
             // Print imported entities
-            if (!list_empty(&s->import_entities)) {
+            if (!list_empty(&s->import_syms)) {
                 ftprint_char_array(&dstr, false, "{");
 
-                List* head = &s->import_entities;
+                List* head = &s->import_syms;
                 List* it = head->next;
 
                 while (it != head) {
-                    ImportEntity* entity = list_entry(it, ImportEntity, lnode);
-                    const char* suffix = (it->next == head) ? "}" : ", ";
+                    ImportSymbol* entity = list_entry(it, ImportSymbol, lnode);
+                    const char* suffix = (it->next == head) ? "} from " : ", ";
 
                     ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
                     it = it->next;
                 }
+            }
+
+            ftprint_char_array(&dstr, false, "\"%s\"", s->mod_pathname->str);
+
+            if (s->mod_namespace) {
+                ftprint_char_array(&dstr, false, " as %s)", s->mod_namespace->str);
             }
             else {
                 ftprint_char_array(&dstr, false, ")");
@@ -1561,7 +1790,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclVar: {
             DeclVar* d = (DeclVar*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(var %s", d->name->str);
+            ftprint_char_array(&dstr, false, "(var %s", decl->name->str);
 
             if (d->typespec) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
@@ -1576,7 +1805,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclConst: {
             DeclConst* d = (DeclConst*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(const %s", d->name->str);
+            ftprint_char_array(&dstr, false, "(const %s", decl->name->str);
 
             if (d->typespec) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
@@ -1591,13 +1820,14 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclTypedef: {
             DeclTypedef* d = (DeclTypedef*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(typedef %s %s)", d->name->str, ftprint_typespec(allocator, d->typespec));
+            ftprint_char_array(&dstr, false, "(typedef %s %s)", decl->name->str,
+                               ftprint_typespec(allocator, d->typespec));
         } break;
         case CST_DeclEnum: {
             DeclEnum* d = (DeclEnum*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(enum %s", d->name->str);
+            ftprint_char_array(&dstr, false, "(enum %s", decl->name->str);
 
             if (d->typespec)
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
@@ -1627,7 +1857,8 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             DeclAggregate* d = (DeclAggregate*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"), d->name->str);
+            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"),
+                               decl->name->str);
 
             if (!list_empty(&d->fields)) {
                 ftprint_char_array(&dstr, false, " ");
@@ -1651,7 +1882,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             DeclProc* proc = (DeclProc*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(proc %s (", proc->name->str);
+            ftprint_char_array(&dstr, false, "(proc %s (", decl->name->str);
 
             if (!list_empty(&proc->params)) {
                 List* head = &proc->params;
