@@ -254,22 +254,23 @@ DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRang
     return annotation;
 }
 
-#define new_decl(a, k, r) (k*)new_decl_((a), sizeof(k), alignof(k), CST_##k, (r))
-static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, ProgRange range)
+#define new_decl(a, k, n, r) (k*)new_decl_((a), sizeof(k), alignof(k), CST_##k, (n), (r))
+static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, Identifier* name,
+                       ProgRange range)
 {
     Decl* decl = mem_allocate(allocator, size, align, true);
     decl->kind = kind;
+    decl->name = name;
     decl->range = range;
 
     list_head_init(&decl->annotations);
 
-    return (Decl*)decl;
+    return decl;
 }
 
 Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
-    DeclVar* decl = new_decl(allocator, DeclVar, range);
-    decl->name = name;
+    DeclVar* decl = new_decl(allocator, DeclVar, name, range);
     decl->typespec = typespec;
     decl->init = init;
 
@@ -278,8 +279,7 @@ Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, E
 
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, ProgRange range)
 {
-    DeclConst* decl = new_decl(allocator, DeclConst, range);
-    decl->name = name;
+    DeclConst* decl = new_decl(allocator, DeclConst, name, range);
     decl->typespec = typespec;
     decl->init = init;
 
@@ -288,8 +288,7 @@ Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* typespec,
 
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* typespec, ProgRange range)
 {
-    DeclTypedef* decl = new_decl(allocator, DeclTypedef, range);
-    decl->name = name;
+    DeclTypedef* decl = new_decl(allocator, DeclTypedef, name, range);
     decl->typespec = typespec;
 
     return (Decl*)decl;
@@ -297,8 +296,7 @@ Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* typespe
 
 Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* typespec, List* items, ProgRange range)
 {
-    DeclEnum* decl = new_decl(allocator, DeclEnum, range);
-    decl->name = name;
+    DeclEnum* decl = new_decl(allocator, DeclEnum, name, range);
     decl->typespec = typespec;
 
     list_replace(items, &decl->items);
@@ -317,8 +315,7 @@ EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value)
 
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range)
 {
-    DeclStruct* decl = new_decl(allocator, DeclStruct, range);
-    decl->name = name;
+    DeclStruct* decl = new_decl(allocator, DeclStruct, name, range);
 
     list_replace(fields, &decl->fields);
 
@@ -327,8 +324,7 @@ Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, Prog
 
 Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range)
 {
-    DeclUnion* decl = new_decl(allocator, DeclUnion, range);
-    decl->name = name;
+    DeclUnion* decl = new_decl(allocator, DeclUnion, name, range);
 
     list_replace(fields, &decl->fields);
 
@@ -348,8 +344,7 @@ AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, Type
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
                     u32 num_decls, u32 flags, ProgRange range)
 {
-    DeclProc* decl = new_decl(allocator, DeclProc, range);
-    decl->name = name;
+    DeclProc* decl = new_decl(allocator, DeclProc, name, range);
     decl->ret = ret;
     decl->num_params = num_params;
     decl->super.flags = flags;
@@ -976,6 +971,12 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 //     Symbols
 //////////////////////////////
 
+const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT] = {
+    [CST_DECL_NONE] = SYMBOL_NONE, [CST_DeclVar] = SYMBOL_VAR,      [CST_DeclConst] = SYMBOL_CONST,
+    [CST_DeclEnum] = SYMBOL_TYPE,  [CST_DeclUnion] = SYMBOL_TYPE,   [CST_DeclStruct] = SYMBOL_TYPE,
+    [CST_DeclProc] = SYMBOL_PROC,  [CST_DeclTypedef] = SYMBOL_TYPE,
+};
+
 Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod)
 {
     Symbol* sym = alloc_type(allocator, Symbol, true);
@@ -988,9 +989,9 @@ Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, I
     return sym;
 }
 
-Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl, Module* home_mod)
+Symbol* new_symbol_decl(Allocator* allocator, Decl* decl, Module* home_mod)
 {
-    Symbol* sym = new_symbol(allocator, kind, SYMBOL_STATUS_UNRESOLVED, name, home_mod);
+    Symbol* sym = new_symbol(allocator, decl_sym_kind[decl->kind], SYMBOL_STATUS_UNRESOLVED, decl->name, home_mod);
     sym->decl = decl;
 
     return sym;
@@ -1115,13 +1116,12 @@ void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list
     }
 }
 
-Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, SymbolKind kind, Identifier* name,
-                              Decl* decl)
+Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl)
 {
-    if (lookup_symbol(scope, name))
+    if (lookup_symbol(scope, decl->name))
         return NULL; // Shadows a symbol in the current scope or a parent scope.
 
-    Symbol* sym = new_symbol_decl(allocator, kind, name, decl, mod);
+    Symbol* sym = new_symbol_decl(allocator, decl, mod);
     sym->status = SYMBOL_STATUS_UNRESOLVED;
     sym->is_local = (scope != &mod->scope);
 
@@ -1141,12 +1141,9 @@ bool install_module_decls(Allocator* allocator, Module* mod)
 
         if (stmt->kind == CST_StmtDecl) {
             Decl* decl = ((StmtDecl*)stmt)->decl;
-            SymbolKind kind = SYMBOL_NONE;
-            Identifier* name = NULL;
 
-            fill_decl_symbol_info(decl, &kind, &name);
-            if (!add_unresolved_symbol(allocator, mod_scope, mod, kind, name, decl)) {
-                report_error(mod->mod_path->str, decl->range, "Duplicate definition of symbol `%s`", name->str);
+            if (!add_unresolved_symbol(allocator, mod_scope, mod, decl)) {
+                report_error(mod->mod_path->str, decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
                 return false;
             }
         }
@@ -1241,8 +1238,9 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
         //   export { CStrings };
         //
         if (!is_exported) {
-            report_error(dst_mod->mod_path->str, stmt->super.range, "Cannot import private symbol `%s` from module `%s`",
-                         isym->name->str, src_mod->mod_path->str); // TODO: mod_path is not an OS path
+            report_error(dst_mod->mod_path->str, stmt->super.range,
+                         "Cannot import private symbol `%s` from module `%s`", isym->name->str,
+                         src_mod->mod_path->str); // TODO: mod_path is not an OS path
             return false;
         }
 
@@ -1256,69 +1254,6 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
     }
 
     return true;
-}
-
-void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, Identifier** name)
-{
-    // TODO: This is ugly. REMOVE
-
-    switch (decl->kind) {
-    case CST_DeclVar: {
-        DeclVar* dvar = (DeclVar*)decl;
-
-        *kind = SYMBOL_VAR;
-        *name = dvar->name; // TODO: Multiple variables per cst decl
-        break;
-    }
-    case CST_DeclConst: {
-        DeclConst* dconst = (DeclConst*)decl;
-
-        *kind = SYMBOL_CONST;
-        *name = dconst->name;
-        break;
-    }
-    case CST_DeclProc: {
-        DeclProc* dproc = (DeclProc*)decl;
-
-        *kind = SYMBOL_PROC;
-        *name = dproc->name;
-        break;
-    }
-    case CST_DeclEnum: {
-        DeclEnum* denum = (DeclEnum*)decl;
-
-        *kind = SYMBOL_TYPE;
-        *name = denum->name;
-        break;
-    }
-    case CST_DeclUnion: {
-        DeclUnion* dunion = (DeclUnion*)decl;
-
-        *kind = SYMBOL_TYPE;
-        *name = dunion->name;
-        break;
-    }
-    case CST_DeclStruct: {
-        DeclStruct* dstruct = (DeclStruct*)decl;
-
-        *kind = SYMBOL_TYPE;
-        *name = dstruct->name;
-        break;
-    }
-    case CST_DeclTypedef: {
-        DeclTypedef* dtypedef = (DeclTypedef*)decl;
-
-        *kind = SYMBOL_TYPE;
-        *name = dtypedef->name;
-        break;
-    }
-    default:
-        *kind = SYMBOL_NONE;
-        *name = NULL;
-        ftprint_err("Not handling Decl kind %d in file %s, line %d\n", decl->kind, __FILE__, __LINE__);
-        assert(0);
-        break;
-    }
 }
 
 //////////////////////////////
@@ -1855,7 +1790,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclVar: {
             DeclVar* d = (DeclVar*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(var %s", d->name->str);
+            ftprint_char_array(&dstr, false, "(var %s", decl->name->str);
 
             if (d->typespec) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
@@ -1870,7 +1805,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclConst: {
             DeclConst* d = (DeclConst*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(const %s", d->name->str);
+            ftprint_char_array(&dstr, false, "(const %s", decl->name->str);
 
             if (d->typespec) {
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
@@ -1885,13 +1820,14 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclTypedef: {
             DeclTypedef* d = (DeclTypedef*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(typedef %s %s)", d->name->str, ftprint_typespec(allocator, d->typespec));
+            ftprint_char_array(&dstr, false, "(typedef %s %s)", decl->name->str,
+                               ftprint_typespec(allocator, d->typespec));
         } break;
         case CST_DeclEnum: {
             DeclEnum* d = (DeclEnum*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(enum %s", d->name->str);
+            ftprint_char_array(&dstr, false, "(enum %s", decl->name->str);
 
             if (d->typespec)
                 ftprint_char_array(&dstr, false, " %s", ftprint_typespec(allocator, d->typespec));
@@ -1922,7 +1858,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             dstr = array_create(allocator, char, 32);
 
             ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"),
-                               d->name->str);
+                               decl->name->str);
 
             if (!list_empty(&d->fields)) {
                 ftprint_char_array(&dstr, false, " ");
@@ -1946,7 +1882,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             DeclProc* proc = (DeclProc*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(proc %s (", proc->name->str);
+            ftprint_char_array(&dstr, false, "(proc %s (", decl->name->str);
 
             if (!list_empty(&proc->params)) {
                 List* head = &proc->params;

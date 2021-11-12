@@ -1793,7 +1793,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
         return false;
 
     if (!init->is_constexpr) {
-        resolver_on_error(resolver, "Value for const decl `%s` must be a constant expression", decl->name->str);
+        resolver_on_error(resolver, "Value for const decl `%s` must be a constant expression", decl->super.name->str);
         return false;
     }
 
@@ -1841,7 +1841,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     unsigned flags = sym->decl->flags;
     bool is_incomplete = flags & DECL_IS_INCOMPLETE;
     bool is_foreign = flags & DECL_IS_FOREIGN;
-    bool is_intrinsic = decl->name->kind == IDENTIFIER_INTRINSIC;
+    bool is_intrinsic = decl->super.name->kind == IDENTIFIER_INTRINSIC;
 
     if (is_foreign && !is_incomplete) {
         resolver_on_error(resolver, "Foreign declaration cannot have a body");
@@ -1849,7 +1849,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     }
 
     if (is_incomplete && !(is_foreign || is_intrinsic)) {
-        resolver_on_error(resolver, "Procedure `%s` must have a body", decl->name->str);
+        resolver_on_error(resolver, "Procedure `%s` must have a body", decl->super.name->str);
         return false;
     }
 
@@ -1860,9 +1860,8 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     List* head = &decl->params;
 
     for (List* it = head->next; it != head; it = it->next) {
-        DeclVar* proc_param = (DeclVar*)list_entry(it, Decl, lnode);
-        Symbol* param_sym = add_unresolved_symbol(&resolver->ctx->ast_mem, decl->scope, sym->home, SYMBOL_VAR,
-                                                  proc_param->name, (Decl*)proc_param);
+        Decl* proc_param = list_entry(it, Decl, lnode);
+        Symbol* param_sym = add_unresolved_symbol(&resolver->ctx->ast_mem, decl->scope, sym->home, proc_param);
 
         assert(param_sym);
 
@@ -1921,7 +1920,7 @@ static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym)
     dproc->returns = returns;
 
     if ((ret_type != builtin_types[BUILTIN_TYPE_VOID].type) && !returns && success) {
-        resolver_on_error(resolver, "Not all code paths in procedure `%s` return a value", dproc->name->str);
+        resolver_on_error(resolver, "Not all code paths in procedure `%s` return a value", dproc->super.name->str);
         return false;
     }
 
@@ -2322,12 +2321,10 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         Scope* scope = resolver->state.scope;
 
         if (decl->kind == CST_DeclVar) {
-            DeclVar* dvar = (DeclVar*)decl;
-            Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, SYMBOL_VAR,
-                                                dvar->name, decl);
+            Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, decl);
 
             if (!sym)
-                resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", dvar->name->str);
+                resolver_on_error(resolver, "Variable `%s` shadows a previous local declaration", decl->name->str);
             else if (resolve_decl_var(resolver, sym))
                 ret = RESOLVE_STMT_SUCCESS;
         }

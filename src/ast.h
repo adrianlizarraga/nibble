@@ -465,7 +465,7 @@ typedef struct DeclAnnotation {
 } DeclAnnotation;
 
 typedef enum DeclKind {
-    CST_DECL_NONE,
+    CST_DECL_NONE = 0,
     CST_DeclVar,
     CST_DeclConst,
     CST_DeclEnum,
@@ -473,6 +473,7 @@ typedef enum DeclKind {
     CST_DeclStruct,
     CST_DeclProc,
     CST_DeclTypedef,
+    CST_DECL_KIND_COUNT
 } DeclKind;
 
 enum DeclFlags {
@@ -484,6 +485,7 @@ enum DeclFlags {
 struct Decl {
     DeclKind kind;
     ProgRange range;
+    Identifier* name;
     unsigned flags;
     List annotations;
     ListNode lnode;
@@ -491,14 +493,12 @@ struct Decl {
 
 typedef struct DeclVar {
     Decl super;
-    Identifier* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclVar;
 
 typedef struct DeclConst {
     Decl super;
-    Identifier* name;
     TypeSpec* typespec;
     Expr* init;
 } DeclConst;
@@ -511,14 +511,12 @@ typedef struct EnumItem {
 
 typedef struct DeclEnum {
     Decl super;
-    Identifier* name;
     TypeSpec* typespec;
     List items;
 } DeclEnum;
 
 typedef struct DeclAggregate {
     Decl super;
-    Identifier* name;
     List fields;
 } DeclAggregate;
 
@@ -527,7 +525,6 @@ typedef DeclAggregate DeclStruct;
 
 typedef struct DeclProc {
     Decl super;
-    Identifier* name;
     TypeSpec* ret;
 
     u32 num_params;
@@ -542,7 +539,6 @@ typedef struct DeclProc {
 
 typedef struct DeclTypedef {
     Decl super;
-    Identifier* name;
     TypeSpec* typespec;
 } DeclTypedef;
 
@@ -721,6 +717,8 @@ typedef enum SymbolKind {
     SYMBOL_KIND_COUNT,
 } SymbolKind;
 
+extern const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT];
+
 typedef enum SymbolStatus {
     SYMBOL_STATUS_UNRESOLVED,
     SYMBOL_STATUS_RESOLVING,
@@ -771,7 +769,7 @@ struct Symbol {
 };
 
 Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod);
-Symbol* new_symbol_decl(Allocator* allocator, SymbolKind kind, Identifier* name, Decl* decl, Module* home_mod);
+Symbol* new_symbol_decl(Allocator* allocator, Decl* decl, Module* home_mod);
 Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type, Module* home_mod);
 Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, Module* home_mod);
 char* symbol_mangled_name(Allocator* allocator, Symbol* sym);
@@ -803,7 +801,7 @@ Symbol* lookup_symbol(Scope* curr_scope, Identifier* name);
 Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 
 void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list);
-Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, SymbolKind kind, Identifier* name, Decl* decl);
+Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl);
 bool install_module_decls(Allocator* allocator, Module* mod);
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym);
 bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported);
@@ -817,8 +815,5 @@ struct Module {
     List stmts;
     Scope scope;
 };
-
-// TODO: REMOVE THIS ONCE Decls have name in the base struct
-void fill_decl_symbol_info(Decl* decl, SymbolKind* kind, Identifier** name);
 
 #endif

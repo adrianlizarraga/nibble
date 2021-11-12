@@ -2259,7 +2259,7 @@ static void IR_emit_stmt_decl(IR_Builder* builder, StmtDecl* sdecl)
         IR_Operand lhs_op = {0};
 
         IR_emit_expr(builder, dvar->init, &rhs_op);
-        IR_operand_from_sym(&lhs_op, lookup_symbol(builder->curr_scope, dvar->name));
+        IR_operand_from_sym(&lhs_op, lookup_symbol(builder->curr_scope, dvar->super.name));
 
         IR_emit_assign(builder, &lhs_op, &rhs_op);
 
