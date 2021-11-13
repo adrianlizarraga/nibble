@@ -522,7 +522,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
         }
     }
 
-    // Process export.
+    // Process exports
     {
         List* head = &mod->exports;
         List* it = head->next;
@@ -532,6 +532,37 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
             assert(stmt->kind == CST_StmtExport);
             StmtExport* sexport = (StmtExport*)stmt;
+
+            List* h = &sexport->export_syms;
+
+            for (List* i = h->next; i != h; i = i->next) {
+                PortSymbol* esym = list_entry(i, PortSymbol, lnode);
+
+                // Look it up
+                Symbol* sym = lookup_scope_symbol(&mod->scope, esym->name);
+
+                if (!sym) {
+                    report_error(mod_ospath.str, esym->range,
+                                 "Unknown exported symbol `%s`", esym->name->str);
+                    return false;
+                }
+
+                if (sym->home == &ctx->builtin_mod) {
+                    report_error(mod_ospath.str, esym->range,
+                                 "Cannot export builtin symbol `%s`", esym->name->str);
+                    return false;
+                }
+
+                // Mark symbol as exported
+                sym->flags |= SYM_IS_EXPORTED;
+
+                // If renamed, create new symbol table entry
+                if (esym->rename && !module_add_global_sym(mod, esym->rename, sym)) {
+                    return false;
+                }
+            }
+
+            it = it->next;
         }
     }
 

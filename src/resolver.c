@@ -1838,9 +1838,8 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
 
-    unsigned flags = sym->decl->flags;
-    bool is_incomplete = flags & DECL_IS_INCOMPLETE;
-    bool is_foreign = flags & DECL_IS_FOREIGN;
+    bool is_incomplete = decl->is_incomplete;
+    bool is_foreign = sym->flags & SYM_IS_FOREIGN;
     bool is_intrinsic = decl->super.name->kind == IDENTIFIER_INTRINSIC;
 
     if (is_foreign && !is_incomplete) {
@@ -1930,8 +1929,9 @@ static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym)
 static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_PROC);
+    DeclProc* dproc = (DeclProc*)(sym->decl);
 
-    if (sym->decl->flags & DECL_IS_INCOMPLETE) {
+    if (dproc->is_incomplete) {
         return true;
     }
 

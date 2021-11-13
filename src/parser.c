@@ -1957,7 +1957,7 @@ static Decl* parse_decl_proc(Parser* parser)
                         list_head_init(&body.stmts);
                         range.end = parser->ptoken.range.end;
                         decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
-                                             body.num_decls, DECL_IS_INCOMPLETE, range);
+                                             body.num_decls, true, range);
                     }
                     else {
                         parser_unexpected_token(parser, TKN_RBRACE, error_prefix);
@@ -2207,37 +2207,6 @@ Decl* parse_decl(Parser* parser)
     }
 
     list_replace(&annotations, &decl->annotations);
-
-    // Initialize decl flags based on some builtin annotations.
-    {
-        List* head = &decl->annotations;
-        List* it = head->next;
-
-        while (it != head) {
-            DeclAnnotation* a = list_entry(it, DeclAnnotation, lnode);
-            const char* name = a->ident->str;
-
-            if (name == annotation_names[ANNOTATION_FOREIGN]) {
-                if (decl->flags & DECL_IS_FOREIGN) {
-                    parser_on_error(parser, "Duplicate @foreign annotations");
-                    return NULL;
-                }
-
-                decl->flags |= DECL_IS_FOREIGN;
-            }
-            else if (name == annotation_names[ANNOTATION_EXPORTED]) {
-                if (decl->flags & DECL_IS_EXPORTED) {
-                    parser_on_error(parser, "Duplicate @exported annotations");
-                    return NULL;
-                }
-
-                decl->flags |= DECL_IS_EXPORTED;
-            }
-
-            it = it->next;
-        }
-    }
-
 
     return decl;
 }

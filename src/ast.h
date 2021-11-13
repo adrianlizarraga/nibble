@@ -483,17 +483,10 @@ typedef enum DeclKind {
     CST_DECL_KIND_COUNT
 } DeclKind;
 
-enum DeclFlags {
-    DECL_IS_EXPORTED = 0x1,
-    DECL_IS_INCOMPLETE = 0x2,
-    DECL_IS_FOREIGN = 0x4,
-};
-
 struct Decl {
     DeclKind kind;
     ProgRange range;
     Identifier* name;
-    unsigned flags;
     List annotations;
     ListNode lnode;
 };
@@ -537,6 +530,7 @@ typedef struct DeclProc {
     u32 num_params;
     u32 num_decls;
     bool returns;
+    bool is_incomplete;
 
     List params;
     List stmts;
@@ -560,7 +554,7 @@ typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fie
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, u32 flags, ProgRange range);
+                    u32 num_decls, bool is_incomplete, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 
@@ -757,11 +751,17 @@ struct SymbolModule {
     Stmt* stmt;
 };
 
+enum SymbolFlags {
+    SYM_IS_EXPORTED = 0x1,
+    SYM_IS_FOREIGN = 0x2,
+};
+
 struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
 
     bool is_local;
+    unsigned flags;
     Identifier* name;
     Decl* decl;
     Type* type;

@@ -342,12 +342,12 @@ AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, Type
 }
 
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, u32 flags, ProgRange range)
+                    u32 num_decls, bool is_incomplete, ProgRange range)
 {
     DeclProc* decl = new_decl(allocator, DeclProc, name, range);
     decl->ret = ret;
     decl->num_params = num_params;
-    decl->super.flags = flags;
+    decl->is_incomplete = is_incomplete;
     decl->num_decls = num_decls;
 
     list_replace(params, &decl->params);
@@ -1139,6 +1139,44 @@ Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, D
     return sym;
 }
 
+static bool process_sym_decl_annotations(Module* mod, Symbol* sym)
+{
+    assert(sym->decl);
+    Decl* decl = sym->decl;
+    List* head = &decl->annotations;
+    List* it = head->next;
+
+    unsigned flags = 0;
+
+    while (it != head) {
+        DeclAnnotation* a = list_entry(it, DeclAnnotation, lnode);
+        const char* name = a->ident->str;
+
+        if (name == annotation_names[ANNOTATION_FOREIGN]) {
+            if (flags & SYM_IS_FOREIGN) {
+                report_error(mod->mod_path->str, a->range, "Duplicate @foreign annotation");
+                return false;
+            }
+
+            flags |= SYM_IS_FOREIGN;
+        }
+        else if (name == annotation_names[ANNOTATION_EXPORTED]) {
+            if (flags & SYM_IS_EXPORTED) {
+                report_error(mod->mod_path->str, a->range, "Duplicate @exported annotation");
+                return false;
+            }
+
+            flags |= SYM_IS_EXPORTED;
+        }
+
+        it = it->next;
+    }
+
+    sym->flags = flags;
+
+    return true;
+}
+
 bool install_module_decls(Allocator* allocator, Module* mod)
 {
     List* head = &mod->stmts;
@@ -1150,9 +1188,14 @@ bool install_module_decls(Allocator* allocator, Module* mod)
 
         if (stmt->kind == CST_StmtDecl) {
             Decl* decl = ((StmtDecl*)stmt)->decl;
+            Symbol* sym = add_unresolved_symbol(allocator, mod_scope, mod, decl);
 
-            if (!add_unresolved_symbol(allocator, mod_scope, mod, decl)) {
+            if (!sym) {
                 report_error(mod->mod_path->str, decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
+                return false;
+            }
+
+            if (!process_sym_decl_annotations(mod, sym)) {
                 return false;
             }
         }
@@ -1204,9 +1247,8 @@ bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported)
 
     while (it != head) {
         Symbol* sym = list_entry(it, Symbol, lnode);
-        Decl* decl = sym->decl;
 
-        bool is_exported = decl && (decl->flags & DECL_IS_EXPORTED);
+        bool is_exported = sym->flags & SYM_IS_EXPORTED;
 
         if (ignore_exported || is_exported) {
             if (!module_add_global_sym(dst_mod, sym->name, sym)) {
@@ -1235,17 +1277,8 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
             return false;
         }
 
-        Decl* decl = sym->decl;
-        bool is_exported = decl && (decl->flags & DECL_IS_EXPORTED);
+        bool is_exported = sym->flags & SYM_IS_EXPORTED;
 
-        // TODO: Will not work once we try to re-export SYMBOL_MODULE syms because sym->decl is NULL
-        // This will happen when a module wants to export an imported module namespace.
-        //
-        // Ex:
-        //   import "./cstrings.nib" as CStrings;
-        //   ...
-        //   export { CStrings };
-        //
         if (!is_exported) {
             report_error(dst_mod->mod_path->str, stmt->super.range,
                          "Cannot import private symbol `%s` from module `%s`", isym->name->str,
