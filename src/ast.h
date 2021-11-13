@@ -294,6 +294,7 @@ typedef enum StmtKind {
     CST_StmtDecl,
     CST_StmtBlock,
     CST_StmtStaticAssert,
+    CST_StmtExport,
     CST_StmtImport,
 } StmtKind;
 
@@ -310,12 +311,12 @@ typedef struct StmtStaticAssert {
     StrLit* msg;
 } StmtStaticAssert;
 
-typedef struct ImportSymbol {
+typedef struct PortSymbol {
     ProgRange range;
     Identifier* name;
     Identifier* rename;
     ListNode lnode;
-} ImportSymbol;
+} PortSymbol;
 
 typedef struct StmtImport {
     Stmt super;
@@ -323,6 +324,11 @@ typedef struct StmtImport {
     StrLit* mod_pathname;
     Identifier* mod_namespace;
 } StmtImport;
+
+typedef struct StmtExport {
+    Stmt super;
+    List export_syms;
+} StmtExport;
 
 typedef struct StmtNoOp {
     Stmt super;
@@ -449,8 +455,9 @@ Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, Prog
 SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
-ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
-Stmt* new_stmt_import(Allocator* allocator, List* import_entities, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range);
+PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
+Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range);
+Stmt* new_stmt_export(Allocator* allocator, List* export_syms, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name);
@@ -812,8 +819,14 @@ bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported)
 
 struct Module {
     StrLit* mod_path;
+    List imports;
+    List exports;
     List stmts;
     Scope scope;
+
+    size_t num_decls;
+    size_t num_imports;
+    size_t num_exports;
 };
 
 #endif

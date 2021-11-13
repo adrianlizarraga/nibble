@@ -2216,10 +2216,6 @@ static bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
 
         return resolve_static_assert(resolver, sassert);
     }
-    case CST_StmtImport: {
-        // Do nothing.
-        return true;
-    }
     default:
         assert(0);
         break;

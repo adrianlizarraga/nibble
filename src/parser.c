@@ -1548,8 +1548,8 @@ static bool is_mod_path_relative(const char* path, size_t len)
     return (c0 == '/') || (c0 == '.' && ((c1 == '/') || (c1 == '.' && c2 == '/')));
 }
 
-// import_sym = TKN_IDENT ('as' TKN_IDENT)?
-static ImportSymbol* parse_import_symbol(Parser* parser)
+// port_sym = TKN_IDENT ('as' TKN_IDENT)?
+static PortSymbol* parse_port_symbol(Parser* parser)
 {
     ProgRange range = parser->token.range;
     const char* error_prefix = "Failed to parse import symbol";
@@ -1572,11 +1572,62 @@ static ImportSymbol* parse_import_symbol(Parser* parser)
         range.end = ptoken->range.end;
     }
 
-    return new_import_symbol(parser->ast_arena, name, rename, range);
+    return new_port_symbol(parser->ast_arena, name, rename, range);
 }
 
-// stmt_import = 'import' ('{' import_entities '}' 'from' )? TKN_STR ('as' TKN_IDENT)? ';'
-// import_syms = import_sym (',' import_sym)*
+// stmt_export = 'export' '{' export_syms '}' ';'
+// export_syms = port_sym (',' port_sym)*
+static Stmt* parse_stmt_export(Parser* parser)
+{
+    assert(is_keyword(parser, KW_EXPORT));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse export statement";
+
+    next_token(parser);
+
+    // Parse export syms
+    List export_syms = list_head_create(export_syms);
+
+    if (!expect_token(parser, TKN_LBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    // Parse the first export symbol.
+    PortSymbol* esym_1 = parse_port_symbol(parser);
+
+    if (!esym_1) {
+        parser_on_error(parser, "Export statement must export at least one symbol");
+        return NULL;
+    }
+
+    list_add_last(&export_syms, &esym_1->lnode);
+
+    // Parse the rest, if any.
+    while (match_token(parser, TKN_COMMA)) {
+        PortSymbol* esym = parse_port_symbol(parser);
+
+        if (!esym) {
+            return NULL;
+        }
+
+        list_add_last(&export_syms, &esym->lnode);
+    }
+
+    if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return new_stmt_export(parser->ast_arena, &export_syms, range);
+}
+
+// stmt_import = 'import' ('{' import_syms '}' 'from' )? TKN_STR ('as' TKN_IDENT)? ';'
+// import_syms = port_sym (',' port_sym)*
 static Stmt* parse_stmt_import(Parser* parser)
 {
     assert(is_keyword(parser, KW_IMPORT));
@@ -1590,7 +1641,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
     if (match_token(parser, TKN_LBRACE)) {
         // Parse the first import symbol.
-        ImportSymbol* isym_1 = parse_import_symbol(parser);
+        PortSymbol* isym_1 = parse_port_symbol(parser);
 
         if (!isym_1) {
             parser_on_error(parser, "Import statement must import at least one symbol");
@@ -1601,7 +1652,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
         // Parse the rest, if any.
         while (match_token(parser, TKN_COMMA)) {
-            ImportSymbol* isym = parse_import_symbol(parser);
+            PortSymbol* isym = parse_port_symbol(parser);
 
             if (!isym) {
                 return NULL;
@@ -1717,6 +1768,8 @@ Stmt* parse_global_stmt(Parser* parser)
             return parse_stmt_static_assert(parser);
         case KW_IMPORT:
             return parse_stmt_import(parser);
+        case KW_EXPORT:
+            return parse_stmt_export(parser);
         default:
             return parse_stmt_decl(parser);
         }

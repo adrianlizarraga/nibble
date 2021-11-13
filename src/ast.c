@@ -382,14 +382,14 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
-ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
+PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
 {
-    ImportSymbol* isym = alloc_type(allocator, ImportSymbol, true);
-    isym->name = name;
-    isym->rename = rename;
-    isym->range = range;
+    PortSymbol* psym = alloc_type(allocator, PortSymbol, true);
+    psym->name = name;
+    psym->rename = rename;
+    psym->range = range;
 
-    return isym;
+    return psym;
 }
 
 Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
@@ -400,6 +400,15 @@ Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathn
     stmt->mod_namespace = mod_namespace;
 
     list_replace(import_syms, &stmt->import_syms);
+
+    return (Stmt*)stmt;
+}
+
+Stmt* new_stmt_export(Allocator* allocator, List* export_syms, ProgRange range)
+{
+    StmtExport* stmt = new_stmt(allocator, StmtExport, range);
+
+    list_replace(export_syms, &stmt->export_syms);
 
     return (Stmt*)stmt;
 }
@@ -444,7 +453,7 @@ Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name)
         // Look to see if the expression's identifier name is among the imported symbols.
         // If so, set sym_name to the expected native symbol name.
         while (it != import_syms) {
-            ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
+            PortSymbol* isym = list_entry(it, PortSymbol, lnode);
             Identifier* isym_name = isym->rename != NULL ? isym->rename : isym->name;
 
             if (isym_name == name) {
@@ -1217,7 +1226,7 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
     List* it = head->next;
 
     while (it != head) {
-        ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
+        PortSymbol* isym = list_entry(it, PortSymbol, lnode);
         Symbol* sym = lookup_scope_symbol(&src_mod->scope, isym->name);
 
         if (!sym) {
@@ -1737,7 +1746,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
             ftprint_char_array(&dstr, false, "(import ");
 
-            // Print imported entities
+            // Print imported syms
             if (!list_empty(&s->import_syms)) {
                 ftprint_char_array(&dstr, false, "{");
 
@@ -1745,7 +1754,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 List* it = head->next;
 
                 while (it != head) {
-                    ImportSymbol* entity = list_entry(it, ImportSymbol, lnode);
+                    PortSymbol* entity = list_entry(it, PortSymbol, lnode);
                     const char* suffix = (it->next == head) ? "} from " : ", ";
 
                     ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
@@ -1762,6 +1771,30 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, ")");
             }
 
+        } break;
+        case CST_StmtExport: {
+            StmtExport* s = (StmtExport*)stmt;
+            dstr = array_create(allocator, char, 16);
+
+            ftprint_char_array(&dstr, false, "(export ");
+
+            // Print exported syms
+            if (!list_empty(&s->export_syms)) {
+                ftprint_char_array(&dstr, false, "{");
+
+                List* head = &s->export_syms;
+                List* it = head->next;
+
+                while (it != head) {
+                    PortSymbol* entity = list_entry(it, PortSymbol, lnode);
+                    const char* suffix = (it->next == head) ? "}" : ", ";
+
+                    ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
+                    it = it->next;
+                }
+            }
+
+            ftprint_char_array(&dstr, false, ")");
         } break;
         default: {
             ftprint_err("Unknown stmt kind: %d\n", stmt->kind);
