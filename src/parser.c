@@ -1706,6 +1706,35 @@ static Stmt* parse_stmt_import(Parser* parser)
     return new_stmt_import(parser->ast_arena, num_imports, &import_syms, mod_pathname, mod_namespace, range);
 }
 
+// stmt_include = '#include' TKN_STR ';'
+static Stmt* parse_stmt_include(Parser* parser)
+{
+    assert(is_keyword(parser, KW_INCLUDE));
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse include statement";
+
+    next_token(parser);
+
+    if (!expect_token(parser, TKN_STR, error_prefix)) {
+        return NULL;
+    }
+
+    StrLit* file_pathname = parser->ptoken.as_str.str_lit;
+
+    if (!is_mod_path_relative(file_pathname->str, file_pathname->len)) {
+        parser_on_error(parser, "Include path must be relative (i.e., starts with `./`, `../`, or `/`)");
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return new_stmt_include(parser->ast_arena, file_pathname, range);
+}
+
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
 //      | ';'
 //      | stmt_while
@@ -1718,7 +1747,6 @@ static Stmt* parse_stmt_import(Parser* parser)
 //      | 'goto' TKN_IDENT ';'
 //      | 'label' TKN_IDENT ':'
 //      | stmt_static_assert
-//      | stmt_import
 //      | stmt_block
 //      | expr ';'
 //      | expr_assign ';'
@@ -1764,6 +1792,11 @@ Stmt* parse_stmt(Parser* parser)
     }
 }
 
+// global_stmt = stmt_static_assert
+//             | stmt_import
+//             | stmt_export
+//             | stmt_include
+//             | stmt_decl
 Stmt* parse_global_stmt(Parser* parser)
 {
     switch (parser->token.kind) {
@@ -1775,6 +1808,8 @@ Stmt* parse_global_stmt(Parser* parser)
             return parse_stmt_import(parser);
         case KW_EXPORT:
             return parse_stmt_export(parser);
+        case KW_INCLUDE:
+            return parse_stmt_include(parser);
         default:
             return parse_stmt_decl(parser);
         }

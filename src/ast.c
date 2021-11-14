@@ -415,6 +415,14 @@ Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_sym
     return (Stmt*)stmt;
 }
 
+Stmt* new_stmt_include(Allocator* allocator, StrLit* file_pathname, ProgRange range)
+{
+    StmtInclude* stmt = new_stmt(allocator, StmtInclude, range);
+    stmt->file_pathname = file_pathname;
+
+    return (Stmt*)stmt;
+}
+
 Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name)
 {
     //
@@ -1776,9 +1784,15 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, ")");
             }
         } break;
+        case CST_StmtInclude: {
+            StmtInclude* s = (StmtInclude*)stmt;
+            dstr = array_create(allocator, char, 32);
+
+            ftprint_char_array(&dstr, false, "(include \"%s\")", s->file_pathname->str);
+        } break;
         case CST_StmtImport: {
             StmtImport* s = (StmtImport*)stmt;
-            dstr = array_create(allocator, char, 16);
+            dstr = array_create(allocator, char, 32);
 
             ftprint_char_array(&dstr, false, "(import ");
 
@@ -1810,7 +1824,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
         } break;
         case CST_StmtExport: {
             StmtExport* s = (StmtExport*)stmt;
-            dstr = array_create(allocator, char, 16);
+            dstr = array_create(allocator, char, 32);
 
             ftprint_char_array(&dstr, false, "(export ");
 

@@ -296,6 +296,7 @@ typedef enum StmtKind {
     CST_StmtStaticAssert,
     CST_StmtExport,
     CST_StmtImport,
+    CST_StmtInclude,
 } StmtKind;
 
 struct Stmt {
@@ -331,6 +332,11 @@ typedef struct StmtExport {
     List export_syms;
     size_t num_exports;
 } StmtExport;
+
+typedef struct StmtInclude {
+    Stmt super;
+    StrLit* file_pathname;
+} StmtInclude;
 
 typedef struct StmtNoOp {
     Stmt super;
@@ -461,6 +467,7 @@ PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* 
 Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
                       ProgRange range);
 Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_syms, ProgRange range);
+Stmt* new_stmt_include(Allocator* allocator, StrLit* file_pathname, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name);
