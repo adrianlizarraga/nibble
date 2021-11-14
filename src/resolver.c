@@ -19,6 +19,7 @@ typedef struct ExprOperand {
 } ExprOperand;
 
 static Symbol* resolve_name(Resolver* resolver, Identifier* name);
+static Symbol* resolve_export_name(Resolver* resolver, Identifier* name);
 static bool resolve_symbol(Resolver* resolver, Symbol* sym);
 static bool resolve_decl_var(Resolver* resolver, Symbol* sym);
 static bool resolve_decl_const(Resolver* resolver, Symbol* sym);
@@ -1267,7 +1268,7 @@ static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr)
 
         // Enter the namespace's module, and then try to lookup the identifier with its native name.
         ModuleState mod_state = enter_module(resolver, sym_modns->as_mod.mod);
-        sym = resolve_name(resolver, sym_name);
+        sym = resolve_export_name(resolver, sym_name);
         exit_module(resolver, mod_state);
     }
     else {
@@ -2396,6 +2397,21 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 static Symbol* resolve_name(Resolver* resolver, Identifier* name)
 {
     Symbol* sym = lookup_symbol(resolver->state.scope, name);
+
+    if (!sym) {
+        return NULL;
+    }
+
+    if (!resolve_symbol(resolver, sym)) {
+        return NULL;
+    }
+
+    return sym;
+}
+
+static Symbol* resolve_export_name(Resolver* resolver, Identifier* name)
+{
+    Symbol* sym = module_get_export_sym(resolver->state.mod, name);
 
     if (!sym) {
         return NULL;

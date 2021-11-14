@@ -1118,7 +1118,7 @@ static void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operan
 
         Identifier* sym_name = get_import_sym_name(stmt, eident->name);
 
-        sym = lookup_symbol(&sym_modns->as_mod.mod->scope, sym_name);
+        sym = module_get_export_sym(sym_modns->as_mod.mod, sym_name);
     }
     else {
         sym = lookup_symbol(builder->curr_scope, eident->name);
