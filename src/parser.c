@@ -1601,6 +1601,7 @@ static Stmt* parse_stmt_export(Parser* parser)
     }
 
     list_add_last(&export_syms, &esym_1->lnode);
+    size_t num_exports = 1;
 
     // Parse the rest, if any.
     while (match_token(parser, TKN_COMMA)) {
@@ -1611,6 +1612,7 @@ static Stmt* parse_stmt_export(Parser* parser)
         }
 
         list_add_last(&export_syms, &esym->lnode);
+        num_exports += 1;
     }
 
     if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
@@ -1623,7 +1625,7 @@ static Stmt* parse_stmt_export(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return new_stmt_export(parser->ast_arena, &export_syms, range);
+    return new_stmt_export(parser->ast_arena, num_exports, &export_syms, range);
 }
 
 // stmt_import = 'import' ('{' import_syms '}' 'from' )? TKN_STR ('as' TKN_IDENT)? ';'
@@ -1638,6 +1640,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
     // Parse import syms
     List import_syms = list_head_create(import_syms);
+    size_t num_imports = 0;
 
     if (match_token(parser, TKN_LBRACE)) {
         // Parse the first import symbol.
@@ -1649,6 +1652,7 @@ static Stmt* parse_stmt_import(Parser* parser)
         }
 
         list_add_last(&import_syms, &isym_1->lnode);
+        num_imports += 1;
 
         // Parse the rest, if any.
         while (match_token(parser, TKN_COMMA)) {
@@ -1659,6 +1663,7 @@ static Stmt* parse_stmt_import(Parser* parser)
             }
 
             list_add_last(&import_syms, &isym->lnode);
+            num_imports += 1;
         }
 
         if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
@@ -1698,7 +1703,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
     range.end = parser->ptoken.range.end;
 
-    return new_stmt_import(parser->ast_arena, &import_syms, mod_pathname, mod_namespace, range);
+    return new_stmt_import(parser->ast_arena, num_imports, &import_syms, mod_pathname, mod_namespace, range);
 }
 
 // stmt = 'if' '(' expr ')' stmt ('elif' '(' expr ')' stmt)* ('else' stmt)?
@@ -2207,6 +2212,36 @@ Decl* parse_decl(Parser* parser)
     }
 
     list_replace(&annotations, &decl->annotations);
+
+    // Initialize decl flags based on some builtin annotations.
+    {
+        List* head = &decl->annotations;
+        List* it = head->next;
+
+        while (it != head) {
+            DeclAnnotation* a = list_entry(it, DeclAnnotation, lnode);
+            const char* name = a->ident->str;
+
+            if (name == annotation_names[ANNOTATION_FOREIGN]) {
+                if (decl->flags & DECL_IS_FOREIGN) {
+                    parser_on_error(parser, "Duplicate @foreign annotations");
+                    return NULL;
+                }
+
+                decl->flags |= DECL_IS_FOREIGN;
+            }
+            else if (name == annotation_names[ANNOTATION_EXPORTED]) {
+                if (decl->flags & DECL_IS_EXPORTED) {
+                    parser_on_error(parser, "Duplicate @exported annotations");
+                    return NULL;
+                }
+
+                decl->flags |= DECL_IS_EXPORTED;
+            }
+
+            it = it->next;
+        }
+    }
 
     return decl;
 }

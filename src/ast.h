@@ -321,6 +321,7 @@ typedef struct PortSymbol {
 typedef struct StmtImport {
     Stmt super;
     List import_syms;
+    size_t num_imports;
     StrLit* mod_pathname;
     Identifier* mod_namespace;
 } StmtImport;
@@ -328,6 +329,7 @@ typedef struct StmtImport {
 typedef struct StmtExport {
     Stmt super;
     List export_syms;
+    size_t num_exports;
 } StmtExport;
 
 typedef struct StmtNoOp {
@@ -456,8 +458,9 @@ SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* 
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
 PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
-Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range);
-Stmt* new_stmt_export(Allocator* allocator, List* export_syms, ProgRange range);
+Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
+                      ProgRange range);
+Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_syms, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name);
@@ -483,10 +486,16 @@ typedef enum DeclKind {
     CST_DECL_KIND_COUNT
 } DeclKind;
 
+enum DeclFlags {
+    DECL_IS_EXPORTED = 0x1,
+    DECL_IS_FOREIGN = 0x2,
+};
+
 struct Decl {
     DeclKind kind;
     ProgRange range;
     Identifier* name;
+    unsigned flags;
     List annotations;
     ListNode lnode;
 };
@@ -751,17 +760,11 @@ struct SymbolModule {
     Stmt* stmt;
 };
 
-enum SymbolFlags {
-    SYM_IS_EXPORTED = 0x1,
-    SYM_IS_FOREIGN = 0x2,
-};
-
 struct Symbol {
     SymbolKind kind;
     SymbolStatus status;
 
     bool is_local;
-    unsigned flags;
     Identifier* name;
     Decl* decl;
     Type* type;
@@ -811,7 +814,7 @@ void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list
 Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl);
 bool install_module_decls(Allocator* allocator, Module* mod);
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym);
-bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported);
+bool import_all_mod_syms(Module* dst_mod, Module* src_mod);
 
 ///////////////////////////////
 //      Module
@@ -819,14 +822,20 @@ bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported)
 
 struct Module {
     StrLit* mod_path;
-    List imports;
-    List exports;
+    List import_stmts;
+    List export_stmts;
     List stmts;
     Scope scope;
+
+    HMap export_table;
 
     size_t num_decls;
     size_t num_imports;
     size_t num_exports;
 };
 
+void module_init(Module* mod, StrLit* mod_path);
+void module_init_tables(Module* mod, Allocator* allocator, size_t num_builtins);
+Symbol* module_get_export_sym(Module* mod, Identifier* name);
+bool module_add_export_sym(Module* mod, Identifier* name, Symbol* sym);
 #endif

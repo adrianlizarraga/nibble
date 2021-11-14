@@ -1,11 +1,12 @@
-import { len,
+import { len, g_nested_renamed,
          CSTR_CONST, CSTR_CONST as CONST20, // Can import twice using different names!
          get_rand as rand } from "./cstring_export.nib";
 
 import { cstr_var, cstr_var as var2 } from "./cstring_export.nib";
 
-//import { _internal_var } from "./cstring.nib"; // Cannot import private symbols!
-//import { nonexisting_var } from "./cstring.nib"; // Cannot import nonexisting symbols!
+//import { _internal_var } from "./cstring_export.nib"; // Cannot import private symbols!
+//import { nonexisting_var } from "./cstring_export.nib"; // Cannot import nonexisting symbols!
+//import { g_nested_var } from "./cstring_export.nib"; // Must use the exported name! Cannot just use the original sym name.
 
 proc main(argc : int, argv : ^^char) => int
 {
@@ -14,6 +15,6 @@ proc main(argc : int, argv : ^^char) => int
 
     #writeout(a, num_chars);
 
-    return num_chars + CSTR_CONST + CONST20 + cstr_var + var2 + rand(4);
+    return num_chars + CSTR_CONST + CONST20 + cstr_var + var2 + rand(4) - g_nested_renamed;
 }
 

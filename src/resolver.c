@@ -1839,7 +1839,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     DeclProc* decl = (DeclProc*)sym->decl;
 
     bool is_incomplete = decl->is_incomplete;
-    bool is_foreign = sym->flags & SYM_IS_FOREIGN;
+    bool is_foreign = decl->super.flags & DECL_IS_FOREIGN;
     bool is_intrinsic = decl->super.name->kind == IDENTIFIER_INTRINSIC;
 
     if (is_foreign && !is_incomplete) {
