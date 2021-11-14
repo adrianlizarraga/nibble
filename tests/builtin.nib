@@ -1,0 +1,2 @@
+proc #writeout(buf: ^char, size: usize) => ssize;
+proc #readin(buf: ^char, size: usize) => ssize;

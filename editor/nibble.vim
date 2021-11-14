@@ -10,7 +10,7 @@ endif
 syntax keyword nibbleTodos TODO NOTE IMPORTANT FIXME
 
 " Language keywords
-syntax keyword nibbleKeywords var const proc typedef sizeof typeof #static_assert import from as label goto break continue return if else while do for switch case
+syntax keyword nibbleKeywords var const proc typedef sizeof typeof #static_assert export import from as label goto break continue return if else while do for switch case
 
 syntax keyword nibbleStructure struct union enum
 syntax keyword nibbleType void u8 s8 u16 s16 u32 s32 u64 s64 f32 f64 bool char schar uchar short ushort int uint long ulong llong ullong ssize usize

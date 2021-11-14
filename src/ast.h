@@ -294,6 +294,7 @@ typedef enum StmtKind {
     CST_StmtDecl,
     CST_StmtBlock,
     CST_StmtStaticAssert,
+    CST_StmtExport,
     CST_StmtImport,
 } StmtKind;
 
@@ -310,19 +311,26 @@ typedef struct StmtStaticAssert {
     StrLit* msg;
 } StmtStaticAssert;
 
-typedef struct ImportSymbol {
+typedef struct PortSymbol {
     ProgRange range;
     Identifier* name;
     Identifier* rename;
     ListNode lnode;
-} ImportSymbol;
+} PortSymbol;
 
 typedef struct StmtImport {
     Stmt super;
     List import_syms;
+    size_t num_imports;
     StrLit* mod_pathname;
     Identifier* mod_namespace;
 } StmtImport;
+
+typedef struct StmtExport {
+    Stmt super;
+    List export_syms;
+    size_t num_exports;
+} StmtExport;
 
 typedef struct StmtNoOp {
     Stmt super;
@@ -449,8 +457,10 @@ Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, Prog
 SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
-ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
-Stmt* new_stmt_import(Allocator* allocator, List* import_entities, StrLit* mod_pathname, Identifier* mod_namespace, ProgRange range);
+PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
+Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
+                      ProgRange range);
+Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_syms, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name);
@@ -478,8 +488,7 @@ typedef enum DeclKind {
 
 enum DeclFlags {
     DECL_IS_EXPORTED = 0x1,
-    DECL_IS_INCOMPLETE = 0x2,
-    DECL_IS_FOREIGN = 0x4,
+    DECL_IS_FOREIGN = 0x2,
 };
 
 struct Decl {
@@ -530,6 +539,7 @@ typedef struct DeclProc {
     u32 num_params;
     u32 num_decls;
     bool returns;
+    bool is_incomplete;
 
     List params;
     List stmts;
@@ -553,7 +563,7 @@ typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fie
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, u32 flags, ProgRange range);
+                    u32 num_decls, bool is_incomplete, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 
@@ -804,7 +814,7 @@ void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list
 Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl);
 bool install_module_decls(Allocator* allocator, Module* mod);
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym);
-bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported);
+bool import_all_mod_syms(Module* dst_mod, Module* src_mod);
 
 ///////////////////////////////
 //      Module
@@ -812,8 +822,20 @@ bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported)
 
 struct Module {
     StrLit* mod_path;
+    List import_stmts;
+    List export_stmts;
     List stmts;
     Scope scope;
+
+    HMap export_table;
+
+    size_t num_decls;
+    size_t num_imports;
+    size_t num_exports;
 };
 
+void module_init(Module* mod, StrLit* mod_path);
+void module_init_tables(Module* mod, Allocator* allocator, size_t num_builtins);
+Symbol* module_get_export_sym(Module* mod, Identifier* name);
+bool module_add_export_sym(Module* mod, Identifier* name, Symbol* sym);
 #endif

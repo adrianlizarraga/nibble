@@ -342,12 +342,12 @@ AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, Type
 }
 
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, u32 flags, ProgRange range)
+                    u32 num_decls, bool is_incomplete, ProgRange range)
 {
     DeclProc* decl = new_decl(allocator, DeclProc, name, range);
     decl->ret = ret;
     decl->num_params = num_params;
-    decl->super.flags = flags;
+    decl->is_incomplete = is_incomplete;
     decl->num_decls = num_decls;
 
     list_replace(params, &decl->params);
@@ -382,24 +382,35 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
-ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
+PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
 {
-    ImportSymbol* isym = alloc_type(allocator, ImportSymbol, true);
-    isym->name = name;
-    isym->rename = rename;
-    isym->range = range;
+    PortSymbol* psym = alloc_type(allocator, PortSymbol, true);
+    psym->name = name;
+    psym->rename = rename;
+    psym->range = range;
 
-    return isym;
+    return psym;
 }
 
-Stmt* new_stmt_import(Allocator* allocator, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
+Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
                       ProgRange range)
 {
     StmtImport* stmt = new_stmt(allocator, StmtImport, range);
     stmt->mod_pathname = mod_pathname;
     stmt->mod_namespace = mod_namespace;
+    stmt->num_imports = num_imports;
 
     list_replace(import_syms, &stmt->import_syms);
+
+    return (Stmt*)stmt;
+}
+
+Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_syms, ProgRange range)
+{
+    StmtExport* stmt = new_stmt(allocator, StmtExport, range);
+    stmt->num_exports = num_exports;
+
+    list_replace(export_syms, &stmt->export_syms);
 
     return (Stmt*)stmt;
 }
@@ -444,7 +455,7 @@ Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name)
         // Look to see if the expression's identifier name is among the imported symbols.
         // If so, set sym_name to the expected native symbol name.
         while (it != import_syms) {
-            ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
+            PortSymbol* isym = list_entry(it, PortSymbol, lnode);
             Identifier* isym_name = isym->rename != NULL ? isym->rename : isym->name;
 
             if (isym_name == name) {
@@ -1073,23 +1084,19 @@ Scope* new_scope(Allocator* allocator, u32 num_syms)
 
     list_head_init(&scope->children);
     list_head_init(&scope->sym_list);
-    init_scope_sym_table(scope, allocator, num_syms);
 
-    return scope;
-}
-
-void init_scope_sym_table(Scope* scope, Allocator* allocator, u32 num_syms)
-{
     if (num_syms) {
         size_t log2_cap = calc_hmap_size((size_t)num_syms);
 
         scope->sym_table = hmap(log2_cap, allocator);
     }
+
+    return scope;
 }
 
 Symbol* lookup_scope_symbol(Scope* scope, Identifier* name)
 {
-    uint64_t* pval = hmap_get(&scope->sym_table, PTR_UINT(name));
+    u64* pval = hmap_get(&scope->sym_table, PTR_UINT(name));
 
     return pval ? (void*)*pval : NULL;
 }
@@ -1141,10 +1148,19 @@ bool install_module_decls(Allocator* allocator, Module* mod)
 
         if (stmt->kind == CST_StmtDecl) {
             Decl* decl = ((StmtDecl*)stmt)->decl;
+            Symbol* sym = add_unresolved_symbol(allocator, mod_scope, mod, decl);
 
-            if (!add_unresolved_symbol(allocator, mod_scope, mod, decl)) {
+            if (!sym) {
                 report_error(mod->mod_path->str, decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
                 return false;
+            }
+
+            // Add to export table if decl is exported.
+            if (decl->flags & DECL_IS_EXPORTED) {
+                if (!module_add_export_sym(mod, sym->name, sym)) {
+                    report_error(mod->mod_path->str, decl->range, "Conflicting export symbol name `%s`", sym->name->str);
+                    return false;
+                }
             }
         }
     }
@@ -1188,24 +1204,22 @@ bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
     return true;
 }
 
-bool import_all_mod_syms(Module* dst_mod, Module* src_mod, bool ignore_exported)
+bool import_all_mod_syms(Module* dst_mod, Module* src_mod)
 {
-    List* head = &src_mod->scope.sym_list;
-    List* it = head->next;
+    HMap* export_table = &src_mod->export_table;
+    size_t cap = export_table->cap;
 
-    while (it != head) {
-        Symbol* sym = list_entry(it, Symbol, lnode);
-        Decl* decl = sym->decl;
+    // TODO: Iterating through all empty slots in the hash table is slow....
+    for (size_t i = 0; i < cap; i += 1) {
+        HMapEntry* entry = export_table->entries + i;
 
-        bool is_exported = decl && (decl->flags & DECL_IS_EXPORTED);
+        if (entry->key != HASH_MAP_NULL_KEY) {
+            Symbol* sym = UINT_PTR(entry->value, Symbol);
 
-        if (ignore_exported || is_exported) {
             if (!module_add_global_sym(dst_mod, sym->name, sym)) {
                 return false;
             }
         }
-
-        it = it->next;
     }
 
     return true;
@@ -1217,30 +1231,12 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
     List* it = head->next;
 
     while (it != head) {
-        ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
-        Symbol* sym = lookup_scope_symbol(&src_mod->scope, isym->name);
+        PortSymbol* isym = list_entry(it, PortSymbol, lnode);
+        Symbol* sym = module_get_export_sym(src_mod, isym->name);
 
         if (!sym) {
-            report_error(dst_mod->mod_path->str, stmt->super.range, "Importing unknown symbol `%s` from module `%s`",
+            report_error(dst_mod->mod_path->str, stmt->super.range, "Importing unknown or private symbol `%s` from module `%s`",
                          isym->name->str, src_mod->mod_path->str); // TODO: mod_path is not an OS path
-            return false;
-        }
-
-        Decl* decl = sym->decl;
-        bool is_exported = decl && (decl->flags & DECL_IS_EXPORTED);
-
-        // TODO: Will not work once we try to re-export SYMBOL_MODULE syms because sym->decl is NULL
-        // This will happen when a module wants to export an imported module namespace.
-        //
-        // Ex:
-        //   import "./cstrings.nib" as CStrings;
-        //   ...
-        //   export { CStrings };
-        //
-        if (!is_exported) {
-            report_error(dst_mod->mod_path->str, stmt->super.range,
-                         "Cannot import private symbol `%s` from module `%s`", isym->name->str,
-                         src_mod->mod_path->str); // TODO: mod_path is not an OS path
             return false;
         }
 
@@ -1252,6 +1248,55 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
 
         it = it->next;
     }
+
+    return true;
+}
+
+void module_init(Module* mod, StrLit* mod_path)
+{
+    mod->mod_path = mod_path;
+    mod->num_decls = 0;
+
+    memset(&mod->export_table, 0, sizeof(HMap));
+    scope_init(&mod->scope);
+    list_head_init(&mod->stmts);
+    list_head_init(&mod->import_stmts);
+    list_head_init(&mod->export_stmts);
+}
+
+void module_init_tables(Module* mod, Allocator* allocator, size_t num_builtins)
+{
+    size_t syms_cap = (mod->num_decls + mod->num_imports + num_builtins) << 1;
+    size_t exports_cap = (mod->num_exports) << 1;
+
+    if (syms_cap) {
+        size_t log2_cap = calc_hmap_size(syms_cap);
+
+        mod->scope.sym_table = hmap(log2_cap, allocator);
+    }
+
+    if (exports_cap) {
+        size_t log2_cap = calc_hmap_size(exports_cap);
+
+        mod->export_table = hmap(log2_cap, allocator);
+    }
+}
+
+Symbol* module_get_export_sym(Module* mod, Identifier* name)
+{
+    u64* pval = hmap_get(&mod->export_table, PTR_UINT(name));
+    return pval ? (void*)*pval : NULL;
+}
+
+bool module_add_export_sym(Module* mod, Identifier* name, Symbol* sym)
+{
+    Symbol* old_sym = module_get_export_sym(mod, name);
+
+    if (old_sym) {
+        return sym == old_sym;
+    }
+
+    hmap_put(&mod->export_table, PTR_UINT(name), PTR_UINT(sym));
 
     return true;
 }
@@ -1737,7 +1782,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
             ftprint_char_array(&dstr, false, "(import ");
 
-            // Print imported entities
+            // Print imported syms
             if (!list_empty(&s->import_syms)) {
                 ftprint_char_array(&dstr, false, "{");
 
@@ -1745,7 +1790,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 List* it = head->next;
 
                 while (it != head) {
-                    ImportSymbol* entity = list_entry(it, ImportSymbol, lnode);
+                    PortSymbol* entity = list_entry(it, PortSymbol, lnode);
                     const char* suffix = (it->next == head) ? "} from " : ", ";
 
                     ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
@@ -1762,6 +1807,30 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, ")");
             }
 
+        } break;
+        case CST_StmtExport: {
+            StmtExport* s = (StmtExport*)stmt;
+            dstr = array_create(allocator, char, 16);
+
+            ftprint_char_array(&dstr, false, "(export ");
+
+            // Print exported syms
+            if (!list_empty(&s->export_syms)) {
+                ftprint_char_array(&dstr, false, "{");
+
+                List* head = &s->export_syms;
+                List* it = head->next;
+
+                while (it != head) {
+                    PortSymbol* entity = list_entry(it, PortSymbol, lnode);
+                    const char* suffix = (it->next == head) ? "}" : ", ";
+
+                    ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
+                    it = it->next;
+                }
+            }
+
+            ftprint_char_array(&dstr, false, ")");
         } break;
         default: {
             ftprint_err("Unknown stmt kind: %d\n", stmt->kind);
