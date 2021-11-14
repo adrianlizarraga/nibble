@@ -324,8 +324,8 @@ typedef enum NibblePathErr {
     NIB_PATH_OUTSIDE_ROOT,
 } NibblePathErr;
 
-static NibblePathErr module_get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* base_ospath,
-                                                Path* mod_ospath, Allocator* alloc)
+static NibblePathErr module_get_import_ospath(Path* import_ospath, const StrLit* import_path_str,
+                                              const Path* base_ospath, Path* mod_ospath, Allocator* alloc)
 {
     path_init(import_ospath, alloc);
 
@@ -360,7 +360,8 @@ static NibblePathErr module_get_import_ospath(Path* import_ospath, const StrLit*
     return NIB_PATH_OK;
 }
 
-static NibblePathErr canonicalize_ospath(Path* dst_path, const Path* src_ospath, const Path* base_ospath, Allocator* alloc)
+static NibblePathErr canonicalize_ospath(Path* dst_path, const Path* src_ospath, const Path* base_ospath,
+                                         Allocator* alloc)
 {
     // TODO: Does not handle case where base_ospath is literally `/`.
     assert(base_ospath->len > 1);
@@ -388,7 +389,7 @@ static NibblePathErr canonicalize_ospath(Path* dst_path, const Path* src_ospath,
     return NIB_PATH_OK;
 }
 
-static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code)
+static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code, int include_depth)
 {
     Parser parser = {0};
 
@@ -407,13 +408,26 @@ static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code)
             Path mod_ospath;
             module_get_ospath(&ctx->tmp_mem, &mod_ospath, mod, &ctx->base_ospath);
 
+            // TODO: Better protection against infinite recursion.
+            //
+            // The current simple, but crude/wrong, approach is to pass include_depth + 1 to every recursive call to parse_code().
+            // We terminate upon reaching a hardcoded inclusion depth threshold.
+            //
+            // A better option, is to pass in a hashmap (maps path -> has_seen) and exit when we detect the same file
+            // has been included more than once.
+            if (include_depth >= 100) {
+                report_error(mod_ospath.str, stmt->range, "Include limit exceeded. TODO: Proper include cycle detection.");
+                return false;
+            }
+
             Path include_ospath;
-            NibblePathErr ret = module_get_import_ospath(&include_ospath, stmt_include->file_pathname, &ctx->base_ospath,
-                                                           &mod_ospath, &ctx->tmp_mem);
+            NibblePathErr ret = module_get_import_ospath(&include_ospath, stmt_include->file_pathname,
+                                                         &ctx->base_ospath, &mod_ospath, &ctx->tmp_mem);
 
             // Check if included file's path exists somewhere.
             if (ret == NIB_PATH_INV_PATH) {
-                report_error(mod_ospath.str, stmt->range, "Invalid include path \"%s\"", stmt_include->file_pathname->str);
+                report_error(mod_ospath.str, stmt->range, "Invalid include path \"%s\"",
+                             stmt_include->file_pathname->str);
                 return false;
             }
 
@@ -440,7 +454,7 @@ static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code)
 
             const char* included_code = slurp_file(&ctx->tmp_mem, include_ospath.str);
 
-            if (!parse_code(ctx, mod, included_code)) {
+            if (!parse_code(ctx, mod, included_code, include_depth + 1)) {
                 return false;
             }
         }
@@ -538,7 +552,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
     code = slurp_file(&ctx->tmp_mem, mod_ospath.str);
 
-    if (!parse_code(ctx, mod, code)) {
+    if (!parse_code(ctx, mod, code, 0)) {
         return false;
     }
 
@@ -579,8 +593,8 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             // 2. If it exists, subtract base_ospath to generate the canonical module path.
 
             Path import_mod_ospath;
-            NibblePathErr ret_err = module_get_import_ospath(&import_mod_ospath, simport->mod_pathname, &ctx->base_ospath,
-                                                               &mod_ospath, &ctx->tmp_mem);
+            NibblePathErr ret_err = module_get_import_ospath(&import_mod_ospath, simport->mod_pathname,
+                                                             &ctx->base_ospath, &mod_ospath, &ctx->tmp_mem);
             // Check if imported module's path exists somewhere.
             if (ret_err == NIB_PATH_INV_PATH) {
                 report_error(mod_ospath.str, stmt->range, "Invalid module import path \"%s\"",
@@ -750,7 +764,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     ftprint_out("[INFO]: Parsing builtin module\n");
 
     const size_t num_builtin_types = ARRAY_LEN(builtin_types);
-    bool parse_ok = parse_code(nibble, builtin_mod, builtin_code);
+    bool parse_ok = parse_code(nibble, builtin_mod, builtin_code, 0);
 
     if (!parse_ok) {
         ftprint_err("[ERROR]: Failed to parse builtin code\n");
