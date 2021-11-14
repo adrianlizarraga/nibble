@@ -416,8 +416,6 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
         return false;
     }
 
-    ftprint_out("\t# decls: %llu\t# imports: %llu\t# exports: %llu\n", mod->num_decls, mod->num_imports, mod->num_exports);
-
     module_init_tables(mod, &ctx->ast_mem, ctx->num_builtins);
 
     // Import all builtin symbols.
