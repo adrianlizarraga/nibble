@@ -389,7 +389,8 @@ static NibblePathErr canonicalize_ospath(Path* dst_path, const Path* src_ospath,
     return NIB_PATH_OK;
 }
 
-static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code, int include_depth)
+static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* code, HMap* seen_includes,
+                                 int include_depth)
 {
     Parser parser = {0};
 
@@ -450,11 +451,13 @@ static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code, int includ
                 return false;
             }
 
+            // TODO: Check if in seen_includes. If yes, fail. Otherwise, add.
+
             assert(ret == NIB_PATH_OK);
 
             const char* included_code = slurp_file(&ctx->tmp_mem, include_ospath.str);
 
-            if (!parse_code(ctx, mod, included_code, include_depth + 1)) {
+            if (!parse_code_recursive(ctx, mod, included_code, seen_includes, include_depth + 1)) {
                 return false;
             }
         }
@@ -496,6 +499,16 @@ static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code, int includ
 #endif
 
     return true;
+}
+
+static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code)
+{
+    HMap seen_includes = hmap(3, &ctx->tmp_mem);
+    //TODO: Seed current module canonical path into seen_includes.
+
+    bool ret = parse_code_recursive(ctx, mod, code, &seen_includes, 0);
+
+    return ret;
 }
 
 static bool parse_module(NibbleCtx* ctx, Module* mod);
@@ -552,7 +565,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
     code = slurp_file(&ctx->tmp_mem, mod_ospath.str);
 
-    if (!parse_code(ctx, mod, code, 0)) {
+    if (!parse_code(ctx, mod, code)) {
         return false;
     }
 
@@ -764,7 +777,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     ftprint_out("[INFO]: Parsing builtin module\n");
 
     const size_t num_builtin_types = ARRAY_LEN(builtin_types);
-    bool parse_ok = parse_code(nibble, builtin_mod, builtin_code, 0);
+    bool parse_ok = parse_code(nibble, builtin_mod, builtin_code);
 
     if (!parse_ok) {
         ftprint_err("[ERROR]: Failed to parse builtin code\n");
