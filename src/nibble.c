@@ -268,6 +268,16 @@ bool nibble_init(OS target_os, Arch target_arch)
     return true;
 }
 
+static Module* add_module(NibbleCtx* ctx, StrLit* cpath_lit)
+{
+    Module* mod = alloc_type(&ctx->ast_mem, Module, true);
+
+    module_init(mod, cpath_lit);
+    hmap_put(&ctx->mod_map, PTR_UINT(cpath_lit), PTR_UINT(mod));
+
+    return mod;
+}
+
 static Module* get_module(NibbleCtx* ctx, StrLit* cpath_lit)
 {
     uint64_t* pval = hmap_get(&ctx->mod_map, PTR_UINT(cpath_lit));
@@ -279,7 +289,7 @@ static Module* get_module(NibbleCtx* ctx, StrLit* cpath_lit)
 static bool add_builtin_type_symbol(NibbleCtx* ctx, const char* name, Type* type)
 {
     Identifier* sym_name = intern_ident(name, cstr_len(name));
-    Module* builtin_mod = &ctx->builtin_mod;
+    Module* builtin_mod = ctx->builtin_mod;
 
     if (lookup_scope_symbol(&builtin_mod->scope, sym_name)) {
         ProgRange range = {0};
@@ -498,10 +508,7 @@ static Module* parse_import_module(NibbleCtx* ctx, const char* path, size_t len)
     Module* mod = get_module(ctx, cpath_lit);
 
     if (!mod) {
-        mod = alloc_type(&ctx->ast_mem, Module, true);
-
-        module_init(mod, cpath_lit);
-        hmap_put(&ctx->mod_map, PTR_UINT(mod->cpath_lit), PTR_UINT(mod));
+        mod = add_module(ctx, cpath_lit);
 
         if (!parse_module(ctx, mod)) {
             return NULL;
@@ -513,7 +520,7 @@ static Module* parse_import_module(NibbleCtx* ctx, const char* path, size_t len)
 
 bool import_builtin_syms(NibbleCtx* ctx, Module* mod)
 {
-    Module* src_mod = &ctx->builtin_mod;
+    Module* src_mod = ctx->builtin_mod;
     List* head = &src_mod->scope.sym_list;
     List* it = head->next;
 
@@ -683,7 +690,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                 }
 
                 // Prevent users from exporting builtin symbols.
-                if (sym->home == &ctx->builtin_mod) {
+                if (sym->home == ctx->builtin_mod) {
                     report_error(mod_ospath.str, esym->range, "Cannot export builtin symbol `%s`", esym->name->str);
                     return false;
                 }
@@ -748,16 +755,11 @@ void nibble_compile(const char* main_file, const char* output_file)
     ftprint_char_array(&entry_cpath_buf, true, "%c%s", NIBBLE_PATH_SEP, filename_ptr);
 
     // Main module
-    Module* main_mod = alloc_type(&nibble->ast_mem, Module, true);
-
-    module_init(main_mod, intern_str_lit(entry_cpath_buf, cstr_len(entry_cpath_buf)));
-    hmap_put(&nibble->mod_map, PTR_UINT(main_mod->cpath_lit), PTR_UINT(main_mod));
+    Module* main_mod = add_module(nibble, intern_str_lit(entry_cpath_buf, cstr_len(entry_cpath_buf)));
 
     /// Builtin module
-    Module* builtin_mod = &nibble->builtin_mod;
-
-    module_init(builtin_mod, intern_str_lit(builtin_mod_name, sizeof(builtin_mod_name) - 1));
-    hmap_put(&nibble->mod_map, PTR_UINT(builtin_mod->cpath_lit), PTR_UINT(builtin_mod)); // TODO: Necessary?
+    Module* builtin_mod = add_module(nibble, intern_str_lit(builtin_mod_name, sizeof(builtin_mod_name) - 1));
+    nibble->builtin_mod = builtin_mod;
 
     //////////////////////////////////////////
     //                Parse

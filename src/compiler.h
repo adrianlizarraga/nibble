@@ -25,7 +25,7 @@ typedef struct NibbleCtx {
     OS target_os;
     Arch target_arch;
 
-    Module builtin_mod;
+    Module* builtin_mod;
     size_t num_builtins;
 
     BucketList vars;
