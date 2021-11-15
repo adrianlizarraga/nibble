@@ -296,6 +296,7 @@ typedef enum StmtKind {
     CST_StmtStaticAssert,
     CST_StmtExport,
     CST_StmtImport,
+    CST_StmtInclude,
 } StmtKind;
 
 struct Stmt {
@@ -331,6 +332,11 @@ typedef struct StmtExport {
     List export_syms;
     size_t num_exports;
 } StmtExport;
+
+typedef struct StmtInclude {
+    Stmt super;
+    StrLit* file_pathname;
+} StmtInclude;
 
 typedef struct StmtNoOp {
     Stmt super;
@@ -461,6 +467,7 @@ PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* 
 Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
                       ProgRange range);
 Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_syms, ProgRange range);
+Stmt* new_stmt_include(Allocator* allocator, StrLit* file_pathname, ProgRange range);
 
 char* ftprint_stmt(Allocator* allocator, Stmt* stmt);
 Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name);
@@ -821,7 +828,7 @@ bool import_all_mod_syms(Module* dst_mod, Module* src_mod);
 ///////////////////////////////
 
 struct Module {
-    StrLit* mod_path;
+    StrLit* cpath_lit;
     List import_stmts;
     List export_stmts;
     List stmts;
@@ -834,7 +841,7 @@ struct Module {
     size_t num_exports;
 };
 
-void module_init(Module* mod, StrLit* mod_path);
+void module_init(Module* mod, StrLit* cpath_lit);
 void module_init_tables(Module* mod, Allocator* allocator, size_t num_builtins);
 Symbol* module_get_export_sym(Module* mod, Identifier* name);
 bool module_add_export_sym(Module* mod, Identifier* name, Symbol* sym);

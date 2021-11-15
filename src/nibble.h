@@ -123,6 +123,7 @@ typedef enum Keyword {
     KW_IMPORT,
     KW_FROM,
     KW_AS,
+    KW_INCLUDE,
     KW_LABEL,
     KW_GOTO,
     KW_BREAK,

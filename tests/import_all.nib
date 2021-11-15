@@ -1,7 +1,8 @@
 import "./cstring.nib";
 //import "/cstring.nib"; // Should also work
-//import "../src/main.c"; // Should fail: outside of project root dir
-//import "./main.c"; // Should fail: not a .nib file
+//import "../src/main.c"; // Should fail: Invalid ext
+//import "./main.c"; // Should fail: Does not exist
+//import "../tests/simple.nib"; // Fails: outside of project root dir
 
 proc main(argc : int, argv : ^^char) => int
 {

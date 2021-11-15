@@ -392,8 +392,8 @@ PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* 
     return psym;
 }
 
-Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
-                      ProgRange range)
+Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname,
+                      Identifier* mod_namespace, ProgRange range)
 {
     StmtImport* stmt = new_stmt(allocator, StmtImport, range);
     stmt->mod_pathname = mod_pathname;
@@ -411,6 +411,14 @@ Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_sym
     stmt->num_exports = num_exports;
 
     list_replace(export_syms, &stmt->export_syms);
+
+    return (Stmt*)stmt;
+}
+
+Stmt* new_stmt_include(Allocator* allocator, StrLit* file_pathname, ProgRange range)
+{
+    StmtInclude* stmt = new_stmt(allocator, StmtInclude, range);
+    stmt->file_pathname = file_pathname;
 
     return (Stmt*)stmt;
 }
@@ -1045,10 +1053,10 @@ char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
         ftprint_char_array(&dstr, true, "%s_%s", intrin_pre, sym->name->str);
     }
     else if (!sym->is_local) {
-        len += sym->home->mod_path->len + 1;
+        len += sym->home->cpath_lit->len + 1;
         dstr = array_create(allocator, char, len + 1);
 
-        ftprint_char_array(&dstr, true, "%s_%s", sym->home->mod_path->str, sym->name->str);
+        ftprint_char_array(&dstr, true, "%s_%s", sym->home->cpath_lit->str, sym->name->str);
     }
     else {
         dstr = array_create(allocator, char, len + 1);
@@ -1151,14 +1159,15 @@ bool install_module_decls(Allocator* allocator, Module* mod)
             Symbol* sym = add_unresolved_symbol(allocator, mod_scope, mod, decl);
 
             if (!sym) {
-                report_error(mod->mod_path->str, decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
+                report_error(mod->cpath_lit->str, decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
                 return false;
             }
 
             // Add to export table if decl is exported.
             if (decl->flags & DECL_IS_EXPORTED) {
                 if (!module_add_export_sym(mod, sym->name, sym)) {
-                    report_error(mod->mod_path->str, decl->range, "Conflicting export symbol name `%s`", sym->name->str);
+                    report_error(mod->cpath_lit->str, decl->range, "Conflicting export symbol name `%s`",
+                                 sym->name->str);
                     return false;
                 }
             }
@@ -1187,11 +1196,11 @@ bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
 
         if (sym->home == mod) {
             // TODO: Module path is NOT the file's OS path. FIXME
-            report_error(mod->mod_path->str, range, "Duplicate definition of symbol `%s`", name->str);
+            report_error(mod->cpath_lit->str, range, "Duplicate definition of symbol `%s`", name->str);
         }
         else {
             // TODO: Module path is NOT the file's OS path. FIXME
-            report_error(mod->mod_path->str, range, "Conflicting import name `%s`", name->str);
+            report_error(mod->cpath_lit->str, range, "Conflicting import name `%s`", name->str);
         }
 
         return false;
@@ -1235,8 +1244,9 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
         Symbol* sym = module_get_export_sym(src_mod, isym->name);
 
         if (!sym) {
-            report_error(dst_mod->mod_path->str, stmt->super.range, "Importing unknown or private symbol `%s` from module `%s`",
-                         isym->name->str, src_mod->mod_path->str); // TODO: mod_path is not an OS path
+            report_error(dst_mod->cpath_lit->str, stmt->super.range,
+                         "Importing unknown or private symbol `%s` from module `%s`", isym->name->str,
+                         src_mod->cpath_lit->str); // TODO: mod_path is not an OS path
             return false;
         }
 
@@ -1252,9 +1262,9 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
     return true;
 }
 
-void module_init(Module* mod, StrLit* mod_path)
+void module_init(Module* mod, StrLit* cpath_lit)
 {
-    mod->mod_path = mod_path;
+    mod->cpath_lit = cpath_lit;
     mod->num_decls = 0;
 
     memset(&mod->export_table, 0, sizeof(HMap));
@@ -1776,9 +1786,15 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 ftprint_char_array(&dstr, false, ")");
             }
         } break;
+        case CST_StmtInclude: {
+            StmtInclude* s = (StmtInclude*)stmt;
+            dstr = array_create(allocator, char, 32);
+
+            ftprint_char_array(&dstr, false, "(include \"%s\")", s->file_pathname->str);
+        } break;
         case CST_StmtImport: {
             StmtImport* s = (StmtImport*)stmt;
-            dstr = array_create(allocator, char, 16);
+            dstr = array_create(allocator, char, 32);
 
             ftprint_char_array(&dstr, false, "(import ");
 
@@ -1810,7 +1826,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
         } break;
         case CST_StmtExport: {
             StmtExport* s = (StmtExport*)stmt;
-            dstr = array_create(allocator, char, 16);
+            dstr = array_create(allocator, char, 32);
 
             ftprint_char_array(&dstr, false, "(export ");
 

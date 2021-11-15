@@ -143,15 +143,12 @@ proc #writeout(buf: ^char, size: usize) => ssize;
 proc #readin(buf: ^char, size: usize) => ssize;
 */
 static const char builtin_code[] = {
-  0x70, 0x72, 0x6f, 0x63, 0x20, 0x23, 0x77, 0x72, 0x69, 0x74, 0x65, 0x6f,
-  0x75, 0x74, 0x28, 0x62, 0x75, 0x66, 0x3a, 0x20, 0x5e, 0x63, 0x68, 0x61,
-  0x72, 0x2c, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x3a, 0x20, 0x75, 0x73, 0x69,
-  0x7a, 0x65, 0x29, 0x20, 0x3d, 0x3e, 0x20, 0x73, 0x73, 0x69, 0x7a, 0x65,
-  0x3b, 0x0a, 0x70, 0x72, 0x6f, 0x63, 0x20, 0x23, 0x72, 0x65, 0x61, 0x64,
-  0x69, 0x6e, 0x28, 0x62, 0x75, 0x66, 0x3a, 0x20, 0x5e, 0x63, 0x68, 0x61,
-  0x72, 0x2c, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x3a, 0x20, 0x75, 0x73, 0x69,
-  0x7a, 0x65, 0x29, 0x20, 0x3d, 0x3e, 0x20, 0x73, 0x73, 0x69, 0x7a, 0x65,
-  0x3b, 0x0a, 0x00};
+    0x70, 0x72, 0x6f, 0x63, 0x20, 0x23, 0x77, 0x72, 0x69, 0x74, 0x65, 0x6f, 0x75, 0x74, 0x28, 0x62, 0x75,
+    0x66, 0x3a, 0x20, 0x5e, 0x63, 0x68, 0x61, 0x72, 0x2c, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x3a, 0x20, 0x75,
+    0x73, 0x69, 0x7a, 0x65, 0x29, 0x20, 0x3d, 0x3e, 0x20, 0x73, 0x73, 0x69, 0x7a, 0x65, 0x3b, 0x0a, 0x70,
+    0x72, 0x6f, 0x63, 0x20, 0x23, 0x72, 0x65, 0x61, 0x64, 0x69, 0x6e, 0x28, 0x62, 0x75, 0x66, 0x3a, 0x20,
+    0x5e, 0x63, 0x68, 0x61, 0x72, 0x2c, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x3a, 0x20, 0x75, 0x73, 0x69, 0x7a,
+    0x65, 0x29, 0x20, 0x3d, 0x3e, 0x20, 0x73, 0x73, 0x69, 0x7a, 0x65, 0x3b, 0x0a, 0x00};
 
 static bool init_intrinsics()
 {
@@ -180,19 +177,33 @@ static bool init_intrinsics()
 static bool init_keywords()
 {
     static const StringView names[KW_COUNT] = {
-        [KW_VAR] = string_view_lit("var"),         [KW_CONST] = string_view_lit("const"),
-        [KW_ENUM] = string_view_lit("enum"),       [KW_UNION] = string_view_lit("union"),
-        [KW_STRUCT] = string_view_lit("struct"),   [KW_PROC] = string_view_lit("proc"),
-        [KW_TYPEDEF] = string_view_lit("typedef"), [KW_SIZEOF] = string_view_lit("#sizeof"),
-        [KW_TYPEOF] = string_view_lit("#typeof"),  [KW_STATIC_ASSERT] = string_view_lit("#static_assert"),
-        [KW_EXPORT] = string_view_lit("export"),   [KW_IMPORT] = string_view_lit("import"),
-        [KW_FROM] = string_view_lit("from"),       [KW_AS] = string_view_lit("as"),
-        [KW_LABEL] = string_view_lit("label"),     [KW_GOTO] = string_view_lit("goto"),
-        [KW_BREAK] = string_view_lit("break"),     [KW_CONTINUE] = string_view_lit("continue"),
-        [KW_RETURN] = string_view_lit("return"),   [KW_IF] = string_view_lit("if"),
-        [KW_ELSE] = string_view_lit("else"),       [KW_WHILE] = string_view_lit("while"),
-        [KW_DO] = string_view_lit("do"),           [KW_FOR] = string_view_lit("for"),
-        [KW_SWITCH] = string_view_lit("switch"),   [KW_CASE] = string_view_lit("case"),
+        [KW_VAR] = string_view_lit("var"),
+        [KW_CONST] = string_view_lit("const"),
+        [KW_ENUM] = string_view_lit("enum"),
+        [KW_UNION] = string_view_lit("union"),
+        [KW_STRUCT] = string_view_lit("struct"),
+        [KW_PROC] = string_view_lit("proc"),
+        [KW_TYPEDEF] = string_view_lit("typedef"),
+        [KW_SIZEOF] = string_view_lit("#sizeof"),
+        [KW_TYPEOF] = string_view_lit("#typeof"),
+        [KW_STATIC_ASSERT] = string_view_lit("#static_assert"),
+        [KW_EXPORT] = string_view_lit("export"),
+        [KW_IMPORT] = string_view_lit("import"),
+        [KW_FROM] = string_view_lit("from"),
+        [KW_AS] = string_view_lit("as"),
+        [KW_INCLUDE] = string_view_lit("#include"),
+        [KW_LABEL] = string_view_lit("label"),
+        [KW_GOTO] = string_view_lit("goto"),
+        [KW_BREAK] = string_view_lit("break"),
+        [KW_CONTINUE] = string_view_lit("continue"),
+        [KW_RETURN] = string_view_lit("return"),
+        [KW_IF] = string_view_lit("if"),
+        [KW_ELSE] = string_view_lit("else"),
+        [KW_WHILE] = string_view_lit("while"),
+        [KW_DO] = string_view_lit("do"),
+        [KW_FOR] = string_view_lit("for"),
+        [KW_SWITCH] = string_view_lit("switch"),
+        [KW_CASE] = string_view_lit("case"),
         [KW_UNDERSCORE] = string_view_lit("_"),
     };
 
@@ -257,20 +268,21 @@ bool nibble_init(OS target_os, Arch target_arch)
     return true;
 }
 
-static void module_get_ospath(Allocator* alloc, Path* dst, Module* mod, const Path* base_ospath)
+static void cpath_str_to_ospath(Allocator* alloc, Path* dst, const char* cpath_str, size_t cpath_len,
+                                const Path* base_ospath)
 {
-    Path modpath;
-    path_init(&modpath, alloc);
-    path_set(&modpath, mod->mod_path->str, mod->mod_path->len);
+    Path cpath;
+    path_init(&cpath, alloc);
+    path_set(&cpath, cpath_str, cpath_len);
 
     path_init(dst, alloc);
     path_set(dst, base_ospath->str, base_ospath->len);
-    path_join(dst, &modpath);
+    path_join(dst, &cpath);
 }
 
-static Module* get_module(NibbleCtx* ctx, StrLit* mod_path)
+static Module* get_module(NibbleCtx* ctx, StrLit* cpath_lit)
 {
-    uint64_t* pval = hmap_get(&ctx->mod_map, PTR_UINT(mod_path));
+    uint64_t* pval = hmap_get(&ctx->mod_map, PTR_UINT(cpath_lit));
     Module* mod = pval ? (void*)*pval : NULL;
 
     return mod;
@@ -283,7 +295,7 @@ static bool add_builtin_type_symbol(NibbleCtx* ctx, const char* name, Type* type
 
     if (lookup_scope_symbol(&builtin_mod->scope, sym_name)) {
         ProgRange range = {0};
-        report_error(builtin_mod->mod_path->str, range, "[INTERNAL ERROR] Duplicate definition of builtin `%s`",
+        report_error(builtin_mod->cpath_lit->str, range, "[INTERNAL ERROR] Duplicate definition of builtin `%s`",
                      sym_name);
         return false;
     }
@@ -306,11 +318,92 @@ static void init_builtin_syms(NibbleCtx* ctx)
     }
 }
 
-static bool parse_code(Module* mod, const char* code)
+typedef enum NibblePathErr {
+    NIB_PATH_OK = 0,
+    NIB_PATH_INV_PATH,
+    NIB_PATH_INV_EXT,
+    NIB_PATH_OUTSIDE_ROOT,
+} NibblePathErr;
+
+static NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* base_ospath,
+                                       Path* importer_ospath, Allocator* alloc)
+{
+    path_init(import_ospath, alloc);
+
+    Path import_rel_path;
+    path_init(&import_rel_path, alloc);
+    path_set(&import_rel_path, import_path_str->str, import_path_str->len);
+
+    bool starts_root = import_path_str->str[0] == NIBBLE_PATH_SEP;
+
+    if (starts_root) {
+        path_set(import_ospath, base_ospath->str, base_ospath->len);
+    }
+    else {
+        const char* dir_begp = importer_ospath->str;
+        const char* dir_endp = path_filename(importer_ospath) - 1;
+
+        path_set(import_ospath, dir_begp, dir_endp - dir_begp);
+    }
+
+    path_join(import_ospath, &import_rel_path);
+
+    // Check if file's path exists somewhere.
+    if (!path_abs(import_ospath)) {
+        return NIB_PATH_INV_PATH;
+    }
+
+    // Check for .nib extension.
+    if (cstr_cmp(path_ext(import_ospath), nib_ext) != 0) {
+        return NIB_PATH_INV_EXT;
+    }
+
+    return NIB_PATH_OK;
+}
+
+static NibblePathErr ospath_to_cpath(Path* dst_path, const Path* src_ospath, const Path* base_ospath, Allocator* alloc)
+{
+    // TODO: Does not handle case where base_ospath is literally `/`.
+    assert(base_ospath->len > 1);
+
+    // Try to create a canonical module path (where `/` corresponds to main's home directory).
+    path_init(dst_path, alloc);
+
+    const char* bp = base_ospath->str;
+    const char* sp = src_ospath->str;
+
+    while (*bp && *sp && (*bp == *sp)) {
+        bp += 1;
+        sp += 1;
+    }
+
+    if (*bp) {
+        return NIB_PATH_OUTSIDE_ROOT;
+    }
+
+    assert(*sp == OS_PATH_SEP);
+
+    path_set(dst_path, sp, (src_ospath->str + src_ospath->len) - sp);
+    path_norm(dst_path, OS_PATH_SEP, NIBBLE_PATH_SEP);
+
+    return NIB_PATH_OK;
+}
+
+#define NIBBLE_INCLUDE_LIMIT 50
+
+typedef struct CachedInclude {
+    struct CachedInclude* next;
+    Path* includer_ospath;
+    size_t len;
+    char str[];
+} CachedInclude;
+
+static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_str, size_t cpath_len, const char* code,
+                                 HMap* seen_includes, int include_depth)
 {
     Parser parser = {0};
 
-    parser_init(&parser, &nibble->ast_mem, &nibble->tmp_mem, code, 0, &nibble->errors);
+    parser_init(&parser, &ctx->ast_mem, &ctx->tmp_mem, code, 0, &ctx->errors);
     next_token(&parser);
 
     while (!is_token_kind(&parser, TKN_EOF)) {
@@ -319,7 +412,117 @@ static bool parse_code(Module* mod, const char* code)
         if (!stmt || nibble->errors.count)
             return false;
 
-        if (stmt->kind == CST_StmtImport) {
+        if (stmt->kind == CST_StmtInclude) {
+            StmtInclude* stmt_include = (StmtInclude*)stmt;
+
+            Path file_ospath;
+            cpath_str_to_ospath(&ctx->tmp_mem, &file_ospath, cpath_str, cpath_len, &ctx->base_ospath);
+
+            if (include_depth > NIBBLE_INCLUDE_LIMIT) {
+                report_error(file_ospath.str, stmt->range,
+                             "Include limit exceeded. File include chain exceeded the current threshold of `%d`.",
+                             NIBBLE_INCLUDE_LIMIT);
+                return false;
+            }
+
+            Path include_ospath;
+            NibblePathErr ret = get_import_ospath(&include_ospath, stmt_include->file_pathname, &ctx->base_ospath,
+                                                  &file_ospath, &ctx->tmp_mem);
+
+            // Check if included file's path exists somewhere.
+            if (ret == NIB_PATH_INV_PATH) {
+                report_error(file_ospath.str, stmt->range, "Invalid include path \"%s\"",
+                             stmt_include->file_pathname->str);
+                return false;
+            }
+
+            // Check for .nib extension.
+            if (ret == NIB_PATH_INV_EXT) {
+                report_error(file_ospath.str, stmt->range, "Included file \"%s\" does not end in `.%s`",
+                             stmt_include->file_pathname->str, nib_ext);
+                return false;
+            }
+
+            assert(ret == NIB_PATH_OK);
+            Path include_cpath;
+            ret = ospath_to_cpath(&include_cpath, &include_ospath, &ctx->base_ospath, &ctx->tmp_mem);
+
+            // Check that include path is inside the project's root directory.
+            if (ret == NIB_PATH_OUTSIDE_ROOT) {
+                report_error(file_ospath.str, stmt->range,
+                             "Relative include path \"%s\" is outside of project root dir \"%s\"",
+                             stmt_include->file_pathname->str, ctx->base_ospath.str);
+                return false;
+            }
+
+            assert(ret == NIB_PATH_OK);
+
+            // Check that the include file is not the same as the current file.
+            if (cstr_ncmp(cpath_str, include_cpath.str, include_cpath.len) == 0) {
+                report_error(file_ospath.str, stmt->range,
+                             "Cyclic file inclusion detected at file `%s`. Cannot include self.", file_ospath.str);
+                return false;
+            }
+
+            // Check if the file we're trying to include is in the seen_includes table.
+            // If yes, fail. Otherwise, add.
+            u64 key = hash_bytes(include_cpath.str, include_cpath.len);
+            CachedInclude* cached_include = NULL;
+            bool seen = false;
+
+            // Look to see if this include file has already been seen.
+            {
+                u64* pval = hmap_get(seen_includes, key);
+
+                if (pval) {
+                    CachedInclude* cached = (void*)*pval;
+
+                    for (CachedInclude* it = cached; it; it = it->next) {
+                        if ((it->len == include_cpath.len) &&
+                            (cstr_ncmp(it->str, include_cpath.str, include_cpath.len) == 0)) {
+                            seen = true;
+                            cached_include = it;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (seen) {
+                report_error(file_ospath.str, stmt->range,
+                             "Cyclic file inclusion detected.\nFile `%s` was first included by `%s`",
+                             include_ospath.str, cached_include->includer_ospath->str);
+                return false;
+            }
+
+            // Add to seen_includes
+            {
+                CachedInclude* new_cached_include = mem_allocate(
+                    &ctx->tmp_mem, offsetof(CachedInclude, str) + include_cpath.len + 1, DEFAULT_ALIGN, true);
+
+                if (!new_cached_include) {
+                    NIBBLE_FATAL_EXIT("Out of memory: %s:%d", __FILE__, __LINE__);
+                    return false;
+                }
+
+                new_cached_include->next = cached_include;
+                new_cached_include->len = include_cpath.len;
+                new_cached_include->includer_ospath = &file_ospath;
+
+                memcpy(new_cached_include->str, include_cpath.str, include_cpath.len);
+                new_cached_include->str[include_cpath.len] = '\0';
+
+                hmap_put(seen_includes, key, (uintptr_t)new_cached_include);
+            }
+
+            const char* included_code = slurp_file(&ctx->gen_mem, include_ospath.str);
+
+            if (!parse_code_recursive(ctx, mod, include_cpath.str, include_cpath.len, included_code, seen_includes,
+                                      include_depth + 1)) {
+                return false;
+            }
+        }
+        else if (stmt->kind == CST_StmtImport) {
             StmtImport* stmt_import = (StmtImport*)stmt;
 
             // NOTE: A namespaced import only really imports one new symbol into a module.
@@ -340,14 +543,15 @@ static bool parse_code(Module* mod, const char* code)
                 StmtDecl* stmt_decl = (StmtDecl*)stmt;
 
                 mod->num_decls += 1;
-                if (stmt_decl->decl->flags & DECL_IS_EXPORTED) mod->num_exports += 1;
+                if (stmt_decl->decl->flags & DECL_IS_EXPORTED)
+                    mod->num_exports += 1;
             }
 
             list_add_last(&mod->stmts, &stmt->lnode);
         }
 
 #ifdef NIBBLE_PRINT_DECLS
-        ftprint_out("%s\n", ftprint_stmt(&nibble->gen_mem, stmt));
+        ftprint_out("%s\n", ftprint_stmt(&ctx->gen_mem, stmt));
 #endif
     }
 
@@ -358,18 +562,29 @@ static bool parse_code(Module* mod, const char* code)
     return true;
 }
 
+static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code)
+{
+    AllocatorState tmp_state = allocator_get_state(&ctx->tmp_mem);
+    HMap seen_includes = hmap(3, &ctx->tmp_mem);
+
+    bool ret = parse_code_recursive(ctx, mod, mod->cpath_lit->str, mod->cpath_lit->len, code, &seen_includes, 0);
+    allocator_restore_state(tmp_state);
+
+    return ret;
+}
+
 static bool parse_module(NibbleCtx* ctx, Module* mod);
 
 static Module* parse_import_module(NibbleCtx* ctx, const char* path, size_t len)
 {
-    StrLit* mod_path = intern_str_lit(path, len);
-    Module* mod = get_module(ctx, mod_path);
+    StrLit* cpath_lit = intern_str_lit(path, len);
+    Module* mod = get_module(ctx, cpath_lit);
 
     if (!mod) {
         mod = alloc_type(&ctx->ast_mem, Module, true);
 
-        module_init(mod, mod_path);
-        hmap_put(&ctx->mod_map, PTR_UINT(mod->mod_path), PTR_UINT(mod));
+        module_init(mod, cpath_lit);
+        hmap_put(&ctx->mod_map, PTR_UINT(mod->cpath_lit), PTR_UINT(mod));
 
         if (!parse_module(ctx, mod)) {
             return NULL;
@@ -400,7 +615,7 @@ bool import_builtin_syms(NibbleCtx* ctx, Module* mod)
 
 static bool parse_module(NibbleCtx* ctx, Module* mod)
 {
-    ftprint_out("[INFO]: Parsing module %s ...\n", mod->mod_path->str);
+    ftprint_out("[INFO]: Parsing module %s ...\n", mod->cpath_lit->str);
 
     const char* code = NULL;
 
@@ -408,11 +623,11 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
     // Parse the code text
     Path mod_ospath;
-    module_get_ospath(&ctx->tmp_mem, &mod_ospath, mod, &ctx->base_ospath);
+    cpath_str_to_ospath(&ctx->tmp_mem, &mod_ospath, mod->cpath_lit->str, mod->cpath_lit->len, &ctx->base_ospath);
 
-    code = slurp_file(&ctx->tmp_mem, mod_ospath.str);
+    code = slurp_file(&ctx->gen_mem, mod_ospath.str);
 
-    if (!parse_code(mod, code)) {
+    if (!parse_code(ctx, mod, code)) {
         return false;
     }
 
@@ -453,74 +668,43 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             // 2. If it exists, subtract base_ospath to generate the canonical module path.
 
             Path import_mod_ospath;
-            path_init(&import_mod_ospath, &ctx->tmp_mem);
-
-            Path import_rel_path;
-            path_init(&import_rel_path, &ctx->tmp_mem);
-            path_set(&import_rel_path, simport->mod_pathname->str, simport->mod_pathname->len);
-
-            bool starts_root = simport->mod_pathname->str[0] == NIBBLE_PATH_SEP;
-
-            if (starts_root) {
-                path_set(&import_mod_ospath, ctx->base_ospath.str, ctx->base_ospath.len);
-            }
-            else {
-                const char* dir_begp = mod_ospath.str;
-                const char* dir_endp = path_filename(&mod_ospath) - 1;
-
-                path_set(&import_mod_ospath, dir_begp, dir_endp - dir_begp);
-            }
-
-            path_join(&import_mod_ospath, &import_rel_path);
-
+            NibblePathErr ret_err = get_import_ospath(&import_mod_ospath, simport->mod_pathname, &ctx->base_ospath,
+                                                      &mod_ospath, &ctx->tmp_mem);
             // Check if imported module's path exists somewhere.
-            if (!path_abs(&import_mod_ospath)) {
+            if (ret_err == NIB_PATH_INV_PATH) {
                 report_error(mod_ospath.str, stmt->range, "Invalid module import path \"%s\"",
                              simport->mod_pathname->str);
                 return false;
             }
 
             // Check for .nib extension.
-            if (cstr_cmp(path_ext(&import_mod_ospath), nib_ext) != 0) {
-                report_error(mod_ospath.str, stmt->range, "Imported file \"%s\" does not end in `.%s`",
+            if (ret_err == NIB_PATH_INV_EXT) {
+                report_error(mod_ospath.str, stmt->range, "Imported module file \"%s\" does not end in `.%s`",
                              simport->mod_pathname->str, nib_ext);
                 return false;
             }
 
+            assert(ret_err == NIB_PATH_OK);
+
             // Try to create a canonical module path (where `/` corresponds to main's home directory).
-            Path import_mod_path;
-            path_init(&import_mod_path, &ctx->tmp_mem);
+            Path import_cpath;
+            ret_err = ospath_to_cpath(&import_cpath, &import_mod_ospath, &ctx->base_ospath, &ctx->tmp_mem);
 
-            {
-                // NOTE: Does not handle case where base_ospath is literally `/`.
-                assert(ctx->base_ospath.len);
-
-                const char* bp = ctx->base_ospath.str;
-                const char* mp = import_mod_ospath.str;
-
-                while (*bp && *mp && (*bp == *mp)) {
-                    bp += 1;
-                    mp += 1;
-                }
-
-                if (*bp) {
-                    report_error(mod_ospath.str, stmt->range,
-                                 "Relative module import path \"%s\" is outside of project root dir \"%s\"",
-                                 simport->mod_pathname->str, ctx->base_ospath.str);
-                    return false;
-                }
-
-                assert(*mp == OS_PATH_SEP);
-
-                path_set(&import_mod_path, mp, (import_mod_ospath.str + import_mod_ospath.len) - mp);
-                path_norm(&import_mod_path, OS_PATH_SEP, NIBBLE_PATH_SEP);
+            // Check that import module path is inside the project's root directory.
+            if (ret_err == NIB_PATH_OUTSIDE_ROOT) {
+                report_error(mod_ospath.str, stmt->range,
+                             "Relative module import path \"%s\" is outside of project root dir \"%s\"",
+                             simport->mod_pathname->str, ctx->base_ospath.str);
+                return false;
             }
+
+            assert(ret_err == NIB_PATH_OK);
 
             //
             // Parse import module
             //
 
-            Module* import_mod = parse_import_module(ctx, import_mod_path.str, import_mod_path.len);
+            Module* import_mod = parse_import_module(ctx, import_cpath.str, import_cpath.len);
 
             if (!import_mod) {
                 return false;
@@ -569,22 +753,19 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                 Symbol* sym = lookup_scope_symbol(&mod->scope, esym->name);
 
                 if (!sym) {
-                    report_error(mod_ospath.str, esym->range,
-                                 "Unknown export symbol `%s`", esym->name->str);
+                    report_error(mod_ospath.str, esym->range, "Unknown export symbol `%s`", esym->name->str);
                     return false;
                 }
 
                 // Prevent users from exporting builtin symbols.
                 if (sym->home == &ctx->builtin_mod) {
-                    report_error(mod_ospath.str, esym->range,
-                                 "Cannot export builtin symbol `%s`", esym->name->str);
+                    report_error(mod_ospath.str, esym->range, "Cannot export builtin symbol `%s`", esym->name->str);
                     return false;
                 }
 
                 // Add symbol to the module's export table
                 if (!module_add_export_sym(mod, esym->rename ? esym->rename : esym->name, sym)) {
-                    report_error(mod_ospath.str, esym->range,
-                                 "Conflicting export symbol name `%s`", esym->name->str);
+                    report_error(mod_ospath.str, esym->range, "Conflicting export symbol name `%s`", esym->name->str);
                     return false;
                 }
             }
@@ -636,21 +817,21 @@ void nibble_compile(const char* main_file, const char* output_file)
 
     ftprint_out("[INFO]: Base project OS path: %s\n", base_ospath->str);
 
-    size_t mod_path_cap = ((main_path.str + main_path.len) - base_path_end_ptr) + 1;
-    char* entry_mod_path_buf = array_create(&nibble->tmp_mem, char, mod_path_cap);
-    ftprint_char_array(&entry_mod_path_buf, true, "%c%s", NIBBLE_PATH_SEP, filename_ptr);
+    size_t cpath_cap = ((main_path.str + main_path.len) - base_path_end_ptr) + 1;
+    char* entry_cpath_buf = array_create(&nibble->tmp_mem, char, cpath_cap);
+    ftprint_char_array(&entry_cpath_buf, true, "%c%s", NIBBLE_PATH_SEP, filename_ptr);
 
     // Main module
     Module* main_mod = alloc_type(&nibble->ast_mem, Module, true);
 
-    module_init(main_mod, intern_str_lit(entry_mod_path_buf, cstr_len(entry_mod_path_buf)));
-    hmap_put(&nibble->mod_map, PTR_UINT(main_mod->mod_path), PTR_UINT(main_mod));
+    module_init(main_mod, intern_str_lit(entry_cpath_buf, cstr_len(entry_cpath_buf)));
+    hmap_put(&nibble->mod_map, PTR_UINT(main_mod->cpath_lit), PTR_UINT(main_mod));
 
     /// Builtin module
     Module* builtin_mod = &nibble->builtin_mod;
 
     module_init(builtin_mod, intern_str_lit(builtin_mod_name, sizeof(builtin_mod_name) - 1));
-    hmap_put(&nibble->mod_map, PTR_UINT(builtin_mod->mod_path), PTR_UINT(builtin_mod)); // TODO: Necessary?
+    hmap_put(&nibble->mod_map, PTR_UINT(builtin_mod->cpath_lit), PTR_UINT(builtin_mod)); // TODO: Necessary?
 
     //////////////////////////////////////////
     //                Parse
@@ -658,7 +839,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     ftprint_out("[INFO]: Parsing builtin module\n");
 
     const size_t num_builtin_types = ARRAY_LEN(builtin_types);
-    bool parse_ok = parse_code(builtin_mod, builtin_code);
+    bool parse_ok = parse_code(nibble, builtin_mod, builtin_code);
 
     if (!parse_ok) {
         ftprint_err("[ERROR]: Failed to parse builtin code\n");
