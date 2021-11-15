@@ -828,7 +828,7 @@ bool import_all_mod_syms(Module* dst_mod, Module* src_mod);
 ///////////////////////////////
 
 struct Module {
-    StrLit* mod_path;
+    StrLit* cpath_lit;
     List import_stmts;
     List export_stmts;
     List stmts;
@@ -841,7 +841,7 @@ struct Module {
     size_t num_exports;
 };
 
-void module_init(Module* mod, StrLit* mod_path);
+void module_init(Module* mod, StrLit* cpath_lit);
 void module_init_tables(Module* mod, Allocator* allocator, size_t num_builtins);
 Symbol* module_get_export_sym(Module* mod, Identifier* name);
 bool module_add_export_sym(Module* mod, Identifier* name, Symbol* sym);
