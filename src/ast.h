@@ -839,6 +839,8 @@ struct Module {
     size_t num_decls;
     size_t num_imports;
     size_t num_exports;
+
+    bool is_parsing;
 };
 
 void module_init(Module* mod, StrLit* cpath_lit);

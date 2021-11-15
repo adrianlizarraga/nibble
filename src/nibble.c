@@ -534,6 +534,8 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 {
     ftprint_out("[INFO]: Parsing module %s ...\n", mod->cpath_lit->str);
 
+    mod->is_parsing = true;
+
     const char* code = NULL;
 
     AllocatorState mem_state = allocator_get_state(&ctx->tmp_mem);
@@ -627,6 +629,12 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                 return false;
             }
 
+            if (import_mod->is_parsing) {
+                report_error(mod_ospath.str, stmt->range,
+                             "Cyclic import \"%s\" detected", simport->mod_pathname->str);
+                return false;
+            }
+
             bool have_import_syms = !list_empty(&simport->import_syms);
             bool have_import_ns = simport->mod_namespace != NULL;
 
@@ -692,6 +700,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     }
 
     allocator_restore_state(mem_state);
+    mod->is_parsing = false; // IMPORTANT: This should be only successful exit point for this procedure.
     return true;
 }
 
