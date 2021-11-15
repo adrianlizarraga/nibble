@@ -6,26 +6,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#ifdef _WIN32
-#include <io.h>
-#include <fileapi.h>
-#define OS_PATH_SEP '\\'
-#define NIBBLE_MAX_PATH MAX_PATH
-#else
-#include <dirent.h>
-#include <limits.h>
-#include <sys/stat.h>
-#define OS_PATH_SEP '/'
-#define NIBBLE_MAX_PATH PATH_MAX
-#endif
-
-#define NIBBLE_PATH_SEP '/'
-
-#ifndef NIBBLE_MAX_PATH
-#define NIBBLE_MAX_PATH 4096
-#warning "Cannot determine maximum path length (PATH_MAX or MAX_PATH)" 
-#endif
-
 #include "allocator.h"
 
 int cstr_cmp(const char* str1, const char* str2);
@@ -62,52 +42,4 @@ void u32_set_bit(u32* mask, u8 bit);
 void u32_unset_bit(u32* mask, u8 bit);
 bool u32_is_bit_set(u32 mask, u8 bit);
 
-enum PathFlags {
-    PATH_IS_INVALID = 1 << 0,
-    PATH_IS_CANONICAL = 1 << 1,
-};
-
-typedef struct Path {
-    char* str; // Points to _buf if the path length is < MAX_PATH_LEN
-               // Otherwise, points to an allocated buffer.
-
-    size_t len; // Length of str (not counting null character).
-    size_t cap; // Total capacity of the buffer pointed to by str.
-    Allocator* alloc;
-    unsigned flags;
-    char _buf[NIBBLE_MAX_PATH];
-} Path;
-
-enum DirentFlags {
-    DIRENT_IS_VALID = 1 << 0,
-    DIRENT_IS_DIR   = 1 << 1,
-};
-
-typedef struct DirentIter {
-    Path base;
-    Path name;
-    unsigned flags;
-    void* os_handle;
-} DirentIter;
-
-typedef enum FileKind {
-    FILE_NONE,
-    FILE_REG,
-    FILE_DIR,
-    FILE_OTHER,
-} FileKind;
-
-void path_init(Path* path, Allocator* alloc);
-void path_norm(Path* path, char old_sep, char new_sep);
-void path_free(Path* path);
-void path_set(Path* path, const char* src, size_t len);
-void path_join(Path* dst, Path* src);
-bool path_abs(Path* path);
-char* path_filename(Path* path);
-char* path_ext(Path* path);
-FileKind path_kind(Path* path);
-
-void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
-void dirent_it_next(DirentIter* it);
-void dirent_it_free(DirentIter* it);
 #endif

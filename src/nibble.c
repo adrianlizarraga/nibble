@@ -3,6 +3,7 @@
 #include "parser.h"
 #include "bytecode.h"
 #include "code_gen.h"
+#include "path_utils.h"
 
 static NibbleCtx* nibble;
 
@@ -131,7 +132,6 @@ static bool init_annotations()
     return true;
 }
 
-static const char nib_ext[] = "nib";
 
 /*
 // Code for the builtin module that is automatically imported everywhere:
@@ -268,18 +268,6 @@ bool nibble_init(OS target_os, Arch target_arch)
     return true;
 }
 
-static void cpath_str_to_ospath(Allocator* alloc, Path* dst, const char* cpath_str, size_t cpath_len,
-                                const Path* base_ospath)
-{
-    Path cpath;
-    path_init(&cpath, alloc);
-    path_set(&cpath, cpath_str, cpath_len);
-
-    path_init(dst, alloc);
-    path_set(dst, base_ospath->str, base_ospath->len);
-    path_join(dst, &cpath);
-}
-
 static Module* get_module(NibbleCtx* ctx, StrLit* cpath_lit)
 {
     uint64_t* pval = hmap_get(&ctx->mod_map, PTR_UINT(cpath_lit));
@@ -316,77 +304,6 @@ static void init_builtin_syms(NibbleCtx* ctx)
 
         add_builtin_type_symbol(ctx, builtin->name, builtin->type);
     }
-}
-
-typedef enum NibblePathErr {
-    NIB_PATH_OK = 0,
-    NIB_PATH_INV_PATH,
-    NIB_PATH_INV_EXT,
-    NIB_PATH_OUTSIDE_ROOT,
-} NibblePathErr;
-
-static NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* base_ospath,
-                                       Path* importer_ospath, Allocator* alloc)
-{
-    path_init(import_ospath, alloc);
-
-    Path import_rel_path;
-    path_init(&import_rel_path, alloc);
-    path_set(&import_rel_path, import_path_str->str, import_path_str->len);
-
-    bool starts_root = import_path_str->str[0] == NIBBLE_PATH_SEP;
-
-    if (starts_root) {
-        path_set(import_ospath, base_ospath->str, base_ospath->len);
-    }
-    else {
-        const char* dir_begp = importer_ospath->str;
-        const char* dir_endp = path_filename(importer_ospath) - 1;
-
-        path_set(import_ospath, dir_begp, dir_endp - dir_begp);
-    }
-
-    path_join(import_ospath, &import_rel_path);
-
-    // Check if file's path exists somewhere.
-    if (!path_abs(import_ospath)) {
-        return NIB_PATH_INV_PATH;
-    }
-
-    // Check for .nib extension.
-    if (cstr_cmp(path_ext(import_ospath), nib_ext) != 0) {
-        return NIB_PATH_INV_EXT;
-    }
-
-    return NIB_PATH_OK;
-}
-
-static NibblePathErr ospath_to_cpath(Path* dst_path, const Path* src_ospath, const Path* base_ospath, Allocator* alloc)
-{
-    // TODO: Does not handle case where base_ospath is literally `/`.
-    assert(base_ospath->len > 1);
-
-    // Try to create a canonical module path (where `/` corresponds to main's home directory).
-    path_init(dst_path, alloc);
-
-    const char* bp = base_ospath->str;
-    const char* sp = src_ospath->str;
-
-    while (*bp && *sp && (*bp == *sp)) {
-        bp += 1;
-        sp += 1;
-    }
-
-    if (*bp) {
-        return NIB_PATH_OUTSIDE_ROOT;
-    }
-
-    assert(*sp == OS_PATH_SEP);
-
-    path_set(dst_path, sp, (src_ospath->str + src_ospath->len) - sp);
-    path_norm(dst_path, OS_PATH_SEP, NIBBLE_PATH_SEP);
-
-    return NIB_PATH_OK;
 }
 
 #define NIBBLE_INCLUDE_LIMIT 50

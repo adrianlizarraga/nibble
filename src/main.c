@@ -6,13 +6,14 @@
 #include <string.h>
 
 //#define NDEBUG
-#define NIBBLE_PRINT_DECLS
+//#define NIBBLE_PRINT_DECLS
 
 // This is a "unity build".
 // Having a single compilation unit makes building trivial.
 // I'll add a proper build system later.
 #include "allocator.c"
 #include "cstring.c"
+#include "path_utils.c"
 #include "print.c"
 #include "array.c"
 #include "hash_map.c"
