@@ -78,7 +78,7 @@ int run_cmd(Allocator* allocator, char* argv[], int argc)
         &si,            // Pointer to STARTUPINFO structure
         &pi)            // Pointer to PROCESS_INFORMATION structure
     ) {
-        ftprint_error("[INTERNAL ERROR]: CreateProcess failed (%d).\n", GetLastError());
+        ftprint_err("[INTERNAL ERROR]: CreateProcess failed (%d).\n", GetLastError());
         return -1;
     }
 

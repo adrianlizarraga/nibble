@@ -156,6 +156,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
+    // TODO: For windows, we should always add .exe if it is missing!!
     if (!out_fname) {
         out_fname = target_os == OS_WIN32 ? "out.exe" : "out";
     }
