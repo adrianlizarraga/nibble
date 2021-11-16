@@ -27,6 +27,16 @@ int cstr_ncmp(const char* str1, const char* str2, size_t num)
     return *(unsigned char*)str1 - *(unsigned char*)str2;
 }
 
+char* cstr_dup(Allocator* allocator, const char* cstr)
+{
+    assert(cstr);
+    size_t len = cstr_len(cstr);
+
+    char* cstr2 = mem_dup_array(allocator, char, cstr, len + 1);
+
+    return cstr2;
+}
+
 // From "Hacker's Delight 2nd edition", pg 118. Attributed to: Mycroft, Alan. Newsgroup comp.arch, April 8, 1987.
 // Returns non-zero value if the uint32_t has a zero-byte. Works for any endianness.
 #define U32_ONE_BYTES 0x01010101

@@ -145,6 +145,34 @@ void path_join(Path* dst, Path* src)
     dst->len = len;
 }
 
+void path_append(Path* dst, const char* str, size_t len)
+{
+    ASSERT_PATH_INIT(dst);
+    if (len == 0) {
+        return;
+    }
+
+    size_t new_len = dst->len + len;
+
+    if (new_len >= dst->cap) {
+        const size_t _buf_size = sizeof(dst->_buf);
+        const size_t cap = new_len + 1 + (_buf_size >> 2);
+
+        path_ensure_cap(dst, cap);
+    }
+
+    char* d = dst->str + dst->len;
+
+    while (*str) {
+        *d = *str;
+        d += 1;
+        str += 1;
+    }
+
+    dst->str[new_len] = '\0';
+    dst->len = new_len;
+}
+
 char* path_filename(Path* path)
 {
     ASSERT_PATH_INIT(path);

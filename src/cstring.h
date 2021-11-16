@@ -15,6 +15,7 @@ size_t cstr_nlen(const char* str, size_t max_len);
 void cstr_tolower(char* str);
 char* cstr_chrnul(const char* cstr, int c);
 char* cstr_chr(const char* cstr, int c);
+char* cstr_dup(Allocator* allocator, const char* cstr);
 
 char* cstr_escape(Allocator* allocator, const char* str, size_t len, char extra_escape);
 
