@@ -711,7 +711,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     return true;
 }
 
-void nibble_compile(const char* main_file, const char* output_file)
+bool nibble_compile(const char* main_file, const char* output_file)
 {
     //////////////////////////////////////////
     //      Check main file validity
@@ -726,14 +726,14 @@ void nibble_compile(const char* main_file, const char* output_file)
 
     if (!path_abs(&main_path)) {
         ftprint_err("[ERROR]: Cannot find file `%s`\n", main_file);
-        return;
+        return false;
     }
 
     FileKind file_kind = path_kind(&main_path);
 
     if ((file_kind != FILE_REG) || cstr_cmp(path_ext(&main_path), nib_ext) != 0) {
         ftprint_err("[ERROR]: Program main file must end in `.nib`\n");
-        return;
+        return false;
     }
 
     /////////////////////////////////////////////////////////
@@ -772,7 +772,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     if (!parse_ok) {
         ftprint_err("[ERROR]: Failed to parse builtin code\n");
         print_errors(&nibble->errors);
-        return;
+        return false;
     }
 
     nibble->num_builtins = builtin_mod->num_decls + num_builtin_types;
@@ -782,13 +782,13 @@ void nibble_compile(const char* main_file, const char* output_file)
 
     if (!install_module_decls(&nibble->ast_mem, builtin_mod)) {
         print_errors(&nibble->errors);
-        return;
+        return false;
     }
 
     // Parse main module.
     if (!parse_module(nibble, main_mod)) {
         print_errors(&nibble->errors);
-        return;
+        return false;
     }
 
     // Look for main to have been parsed and installed as an unresolved proc symbol.
@@ -796,7 +796,7 @@ void nibble_compile(const char* main_file, const char* output_file)
 
     if (!main_sym || (main_sym->kind != SYMBOL_PROC)) {
         ftprint_err("[ERROR]: Program entry file must define a main() procedure.\n");
-        return;
+        return false;
     }
 
     //////////////////////////////////////////
@@ -808,12 +808,12 @@ void nibble_compile(const char* main_file, const char* output_file)
 
     if (!resolve_module(&resolver, main_mod)) {
         print_errors(&nibble->errors);
-        return;
+        return false;
     }
 
     if (!resolve_reachable_sym_defs(&resolver)) {
         print_errors(&nibble->errors);
-        return;
+        return false;
     }
 
     // Ensure main has the expected type signature.
@@ -824,7 +824,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     if (main_ret_type != builtin_types[BUILTIN_TYPE_INT].type) {
         ftprint_err("[ERROR]: Main procedure must return an `int` (`%s`) type, but found `%s`.\n",
                     type_name(builtin_types[BUILTIN_TYPE_INT].type), type_name(main_ret_type));
-        return;
+        return false;
     }
 
     size_t main_num_params = main_type->as_proc.num_params;
@@ -836,14 +836,14 @@ void nibble_compile(const char* main_file, const char* output_file)
         if (param_types[0] != builtin_types[BUILTIN_TYPE_INT].type) {
             ftprint_err("[ERROR]: Main procedure's first paramater must be an `int` (`%s`) type, but found `%s`.\n",
                         type_name(builtin_types[BUILTIN_TYPE_INT].type), type_name(param_types[0]));
-            return;
+            return false;
         }
 
         // TODO: Allow argv : []^char
         if ((main_num_params == 2) && (param_types[1] != type_ptr_ptr_char)) {
             ftprint_err("[ERROR]: Main procedure's second paramater must be a `^^char` type, but found `%s`.\n",
                         type_name(param_types[0]));
-            return;
+            return false;
         }
 
         // TODO: Allow/check for envp param
@@ -864,6 +864,7 @@ void nibble_compile(const char* main_file, const char* output_file)
     gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lit_map, output_file);
 
     allocator_restore_state(mem_state);
+    return true;
 }
 
 void nibble_cleanup(void)

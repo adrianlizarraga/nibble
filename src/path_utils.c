@@ -176,7 +176,7 @@ bool dirent_it_skip(const char* name)
     return (cstr_cmp(name, ".") == 0) || (cstr_cmp(name, "..") == 0);
 }
 
-#ifdef _WIN32
+#ifdef NIBBLE_HOST_WINDOWS
 
 FileKind path_kind(Path* path)
 {

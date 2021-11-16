@@ -29,7 +29,10 @@ int cstr_ncmp(const char* str1, const char* str2, size_t num)
 
 // From "Hacker's Delight 2nd edition", pg 118. Attributed to: Mycroft, Alan. Newsgroup comp.arch, April 8, 1987.
 // Returns non-zero value if the uint32_t has a zero-byte. Works for any endianness.
-#define U32_HAS_ZERO_BYTE(x) (((x)-0x01010101) & (~(x)) & 0x80808080)
+#define U32_ONE_BYTES 0x01010101
+#define U32_EIGHT_BYTES 0x80808080
+#define U32_ALIGN_MASK (sizeof(uint32_t) - 1)
+#define U32_HAS_ZERO_BYTE(x) (((x) - U32_ONE_BYTES) & (~(x)) & U32_EIGHT_BYTES)
 
 size_t cstr_len(const char* str)
 {
@@ -61,6 +64,20 @@ size_t cstr_len(const char* str)
         s += 1;
 
     return s - str;
+}
+
+size_t cstr_nlen(const char* str, size_t max_len)
+{
+    assert(str);
+    const char* s = str;
+    size_t len = 0;
+
+    while (*s && (len < max_len)) {
+        s += 1;
+        len += 1;
+    }
+
+    return len;
 }
 
 void cstr_tolower(char* str)
@@ -135,6 +152,51 @@ char* cstr_escape(Allocator* allocator, const char* str, size_t len, char extra_
     array_push(result, '\0');
 
     return result;
+}
+
+char* cstr_chrnul(const char* str, int ch)
+{
+    assert(str);
+    char c = (char)ch;
+
+    if (!c) {
+        return (char*)str + cstr_len(str);
+    }
+
+#ifdef __GNUC__
+    // Check for c until str pointer is aligned to a 4-byte boundary.
+    while (((uintptr_t)str & U32_ALIGN_MASK)) {
+        if (!*str || *str == c) {
+            return (char*)str;
+        }
+
+        str += 1;
+    }
+
+    // Iterate over the data in 4-byte increments until the character or null terminator is found.
+    typedef uint32_t __attribute__((__may_alias__)) uword;
+    const uword* w = (void*)str;
+    const uword u32_c_bytes = U32_ONE_BYTES * (uword)c;
+
+    while (!U32_HAS_ZERO_BYTE(*w) && !U32_HAS_ZERO_BYTE(*w ^ u32_c_bytes)) {
+        w += 1;
+    }
+
+    str = (void*)w; // Point to the beginning of the word containing the desired byte (or \0)
+#endif
+
+    while (*str && *str != c) {
+        str += 1;
+    }
+
+    return (char*)str;
+}
+
+char* cstr_chr(const char* cstr, int c)
+{
+    char* p = cstr_chrnul(cstr, c);
+
+    return *p == (char)c ? p : NULL;
 }
 
 // Generated with tools/char_props_printer.c
