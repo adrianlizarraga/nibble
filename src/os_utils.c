@@ -59,13 +59,15 @@ int run_cmd(Allocator* allocator, char* argv[], int argc)
     ftprint_out("\n");
     array_push(cmd_line_cstr, '\0');
 
+    // Adapted from: https://docs.microsoft.com/en-us/windows/win32/procthread/creating-processes
     STARTUPINFO si = {0};
     PROCESS_INFORMATION pi = {0};
+    DWORD ec;
 
     si.cb = sizeof(si);
 
     // Start the child process. 
-    if( !CreateProcess( NULL,   // No module name (use command line)
+    if(!CreateProcess( NULL,   // No module name (use command line)
         cmd_line_cstr,  // Command line
         NULL,           // Process handle not inheritable
         NULL,           // Thread handle not inheritable
@@ -74,21 +76,23 @@ int run_cmd(Allocator* allocator, char* argv[], int argc)
         NULL,           // Use parent's environment block
         NULL,           // Use parent's starting directory 
         &si,            // Pointer to STARTUPINFO structure
-        &pi )           // Pointer to PROCESS_INFORMATION structure
-    ) 
-    {
-        printf( "CreateProcess failed (%d).\n", GetLastError() );
+        &pi)            // Pointer to PROCESS_INFORMATION structure
+    ) {
+        ftprint_error("[INTERNAL ERROR]: CreateProcess failed (%d).\n", GetLastError());
         return -1;
     }
 
     // Wait until child process exits.
-    WaitForSingleObject( pi.hProcess, INFINITE );
+    WaitForSingleObject(pi.hProcess, INFINITE);
 
-    // Close process and thread handles. 
-    CloseHandle( pi.hProcess );
-    CloseHandle( pi.hThread );
+    // Get the child's exit code.
+    GetExitCodeProcess(pi.hProcess, &ec);
 
-    return 0;
+    // Close the thread and process handles.
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    return ec;
 }
 #else
 #endif

@@ -109,46 +109,11 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
     return target_arch;
 }
 
-char* get_env_val(const char* name, char* envp[])
+int main(int argc, char* argv[])
 {
-    size_t len = cstr_len(name);
-
-    if (len && envp) {
-        for (char** p = envp; *p; p += 1) {
-            if (!cstr_ncmp(name, *p, len) && (*p)[len] == '=') {
-                return *p + len + 1;
-            }
-        }
-    }
-
-    return NULL;
-}
-
-int main(int argc, char* argv[], char* envp[])
-{
-    (void)envp;
-    /*
-    const char* path_env = get_env_val("PATH", envp);
-    ftprint_out("PATH IS: %s\n", path_env);
-
-    const char* p = path_env;
-
-    while (*p) {
-        const char* e = p;
-        while (*e && *e != ':') {
-            e++;
-        }
-
-        int len = e - p;
-        ftprint_out("%.*s\n", len, p);
-
-        p = *e ? e + 1 : e;
-    }
-    */
-
     const char* program_name = consume_arg(&argc, &argv);
     const char* main_fname = NULL;
-    const char* out_fname = "out";
+    const char* out_fname = NULL;
 
     OS target_os = OS_LINUX;
     Arch target_arch = ARCH_X64;
@@ -189,6 +154,10 @@ int main(int argc, char* argv[], char* envp[])
     if (!nibble_init(target_os, target_arch)) {
         ftprint_err("[ERROR]: Failed to initialize compiler.\n");
         exit(1);
+    }
+
+    if (!out_fname) {
+        out_fname = target_os == OS_WIN32 ? "out.exe" : "out";
     }
 
     size_t out_fname_len = cstr_len(out_fname);
