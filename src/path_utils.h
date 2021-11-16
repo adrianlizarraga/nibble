@@ -2,6 +2,8 @@
 #define NIBBLE_PATH_UTILS_H
 
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN      // Exclude rarely-used stuff from Windows headers
+#include <windows.h>
 #include <io.h>
 #include <fileapi.h>
 #define OS_PATH_SEP '\\'

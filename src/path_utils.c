@@ -1,5 +1,6 @@
 #include "path_utils.h"
 #include "cstring.h"
+#include "nibble.h"
 
 #define ASSERT_PATH_INIT(p) assert((p)->str && (p)->cap)
 
@@ -216,11 +217,12 @@ FileKind path_kind(Path* path)
 
     FileKind kind = FILE_NONE;
 
-    if (attribs & FILE_ATTRIBUTE_NORMAL) {
-        kind = FILE_REG;
-    }
-    else if (attribs & FILE_ATTRIBUTE_DIRECTORY) {
+    if (attribs & FILE_ATTRIBUTE_DIRECTORY) {
         kind = FILE_DIR;
+    }
+    else if ((attribs & FILE_ATTRIBUTE_NORMAL) ||
+             (attribs & FILE_ATTRIBUTE_ARCHIVE)) {
+        kind = FILE_REG;
     }
     else {
         kind = FILE_OTHER;
@@ -237,6 +239,8 @@ bool path_abs(Path* path)
     path_init(&rel, path->alloc);
     path_set(&rel, path->str, path->len);
 
+    // TODO: _fullpath succeeds even if the file does not exist!
+    // Use _stat to see if file exists.
     bool success = _fullpath(path->str, rel.str, path->cap) != NULL;
 
     if (success) {

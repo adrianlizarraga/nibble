@@ -750,10 +750,14 @@ bool nibble_compile(const char* main_fname, const char* out_fname, size_t out_fn
     FileKind file_kind = path_kind(&main_path);
 
     if ((file_kind != FILE_REG) || cstr_cmp(path_ext(&main_path), nib_ext) != 0) {
-        ftprint_err("[ERROR]: Program main file must end in `.nib`\n");
+        ftprint_err("[ERROR]: Program entry file must be a regular file (%d).\n", file_kind);
         return false;
     }
 
+    if ((file_kind != FILE_REG) || cstr_cmp(path_ext(&main_path), nib_ext) != 0) {
+        ftprint_err("[ERROR]: Program main file must end in `.nib`, entered `%s`.\n", main_path.str);
+        return false;
+    }
     /////////////////////////////////////////////////////////
     //      Get main file's module path (e.g., /main.nib)
     //      and extract the base OS path.
@@ -921,7 +925,7 @@ bool nibble_compile(const char* main_fname, const char* out_fname, size_t out_fn
 
     char* nasm_cmd[] = {"nasm", "-f", nasm_fformat, nasm_fname.str, "-o", obj_fname.str, NULL};
 
-    if (run_cmd(nasm_cmd, ARRAY_LEN(nasm_cmd) - 1) < 0) {
+    if (run_cmd(&nibble->tmp_mem, nasm_cmd, ARRAY_LEN(nasm_cmd) - 1) < 0) {
         ftprint_err("[ERROR]: NASM command failed\n");
         return false;
     }
@@ -930,10 +934,14 @@ bool nibble_compile(const char* main_fname, const char* out_fname, size_t out_fn
     //          Run linker
     //////////////////////////////////////////
     char* out_fname_dup = cstr_dup(&nibble->tmp_mem, out_fname);
+    char* win_linker_out = array_create(&nibble->tmp_mem, char, 16);
+
+    ftprint_char_array(&win_linker_out, true, "/out:%s", out_fname_dup);
 
     char* ld_cmd_linux[] = {"ld", "-o", out_fname_dup, obj_fname.str, NULL};
+    // link /entry:_start /nodefaultlib /subsystem:console .\out.obj kernel32.lib user32.lib Shell32.lib
     char* ld_cmd_windows[] = {
-        "link.exe", obj_fname.str, "/subsystem:console", "/entry:main", "/out:", out_fname_dup, NULL};
+        "link.exe", obj_fname.str, "/entry:_start", "/nodefaultlib", "/subsystem:console", win_linker_out, "kernel32.lib", "user32.lib", "Shell32.lib", NULL};
 
     char** ld_cmd;
     int ld_cmd_argc;
@@ -948,7 +956,7 @@ bool nibble_compile(const char* main_fname, const char* out_fname, size_t out_fn
         ld_cmd_argc = ARRAY_LEN(ld_cmd_windows) - 1;
     }
 
-    if (run_cmd(ld_cmd, ld_cmd_argc) < 0) {
+    if (run_cmd(&nibble->tmp_mem, ld_cmd, ld_cmd_argc) < 0) {
         ftprint_err("[ERROR]: Linker command failed\n");
         return false;
     }

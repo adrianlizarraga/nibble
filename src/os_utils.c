@@ -4,8 +4,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-int run_cmd(char* argv[], int argc)
+int run_cmd(Allocator* allocator, char* argv[], int argc)
 {
+    (void)allocator;
     (void)argc;
 
     pid_t child_pid;
@@ -41,18 +42,53 @@ int run_cmd(char* argv[], int argc)
     }
 }
 #elif defined(NIBBLE_HOST_WINDOWS)
+#include "array.h"
 
-int run_cmd(char* argv[], int argc)
+int run_cmd(Allocator* allocator, char* argv[], int argc)
 {
     (void)argc;
+
+    char* cmd_line_cstr = array_create(allocator, char, 64);
 
     ftprint_out("[CMD]:");
     for (char** p = argv; *p; p += 1) {
         ftprint_out(" %s", *p);
+        ftprint_char_array(&cmd_line_cstr, false, "%s ", *p);
     }
-    ftprint_out(" ... NOT SUPPORTED\n");
 
-    return -1;
+    ftprint_out("\n");
+    array_push(cmd_line_cstr, '\0');
+
+    STARTUPINFO si = {0};
+    PROCESS_INFORMATION pi = {0};
+
+    si.cb = sizeof(si);
+
+    // Start the child process. 
+    if( !CreateProcess( NULL,   // No module name (use command line)
+        cmd_line_cstr,  // Command line
+        NULL,           // Process handle not inheritable
+        NULL,           // Thread handle not inheritable
+        FALSE,          // Set handle inheritance to FALSE
+        0,              // No creation flags
+        NULL,           // Use parent's environment block
+        NULL,           // Use parent's starting directory 
+        &si,            // Pointer to STARTUPINFO structure
+        &pi )           // Pointer to PROCESS_INFORMATION structure
+    ) 
+    {
+        printf( "CreateProcess failed (%d).\n", GetLastError() );
+        return -1;
+    }
+
+    // Wait until child process exits.
+    WaitForSingleObject( pi.hProcess, INFINITE );
+
+    // Close process and thread handles. 
+    CloseHandle( pi.hProcess );
+    CloseHandle( pi.hThread );
+
+    return 0;
 }
 #else
 #endif
