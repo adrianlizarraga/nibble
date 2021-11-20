@@ -70,9 +70,6 @@ char* slurp_file(Allocator* allocator, const char* filename)
 
 void report_error(const char* filename, ProgRange range, const char* format, ...)
 {
-    // TODO: range should just have line and column numbers instead of byte offsets.
-    (void)range;
-
     // TODO: Use an allocator + string writer.
     char buf[MAX_ERROR_LEN];
     va_list vargs;
@@ -93,7 +90,7 @@ void report_error(const char* filename, ProgRange range, const char* format, ...
         size = MAX_ERROR_LEN;
     }
 
-    add_byte_stream_chunk(&nibble->errors, buf, size);
+    error_stream_add(&nibble->errors, range, buf, size);
 }
 
 static void print_errors(ByteStream* errors)
@@ -255,7 +252,6 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->gen_mem = bootstrap;
     nibble->ast_mem = allocator_create(16384);
     nibble->tmp_mem = allocator_create(4096);
-    nibble->errors = byte_stream_create(&nibble->gen_mem);
     nibble->str_lit_map = hmap(6, NULL);
     nibble->ident_map = hmap(8, NULL);
     nibble->mod_map = hmap(6, NULL);
@@ -278,6 +274,8 @@ bool nibble_init(OS target_os, Arch target_arch)
 
     bucket_list_init(&nibble->vars, &nibble->ast_mem, 32);
     bucket_list_init(&nibble->procs, &nibble->ast_mem, 32);
+
+    error_stream_init(&nibble->errors, &nibble->gen_mem);
 
     init_builtin_types(target_os, target_arch, &nibble->ast_mem, &nibble->type_cache);
 

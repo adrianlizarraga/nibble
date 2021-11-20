@@ -73,7 +73,7 @@ static void set_scope(Resolver* resolver, Scope* scope);
 static Scope* push_scope(Resolver* resolver, size_t num_syms);
 static void pop_scope(Resolver* resolver);
 
-static void resolver_on_error(Resolver* resolver, const char* format, ...)
+static void resolver_on_error(Resolver* resolver, ProgRange range, const char* format, ...)
 {
     char buf[MAX_ERROR_LEN];
     size_t size = 0;
@@ -83,7 +83,7 @@ static void resolver_on_error(Resolver* resolver, const char* format, ...)
     size = vsnprintf(buf, MAX_ERROR_LEN, format, vargs) + 1;
     va_end(vargs);
 
-    add_byte_stream_chunk(&resolver->ctx->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
+    error_stream_add(&resolver->ctx->errors, range, buf, size > sizeof(buf) ? sizeof(buf) : size);
 }
 
 static ModuleState enter_module(Resolver* resolver, Module* mod)
@@ -748,7 +748,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
 
     // TODO: Can this ever happen with this jacked-up mixing of host and target types???
     if (!type) {
-        resolver_on_error(resolver, "Integer literal `%llu` is too large", value);
+        resolver_on_error(resolver, expr->range, "Integer literal `%llu` is too large", value);
         return false;
     }
 
@@ -848,7 +848,8 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         }
         else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
             if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op, &right_op)) {
-                resolver_on_error(resolver, "Cannot add to a pointer with a base type (%s) of zero size",
+                resolver_on_error(resolver, ebinary->left->range,
+                                  "Cannot add to a pointer with a base type (%s) of zero size",
                                   type_name(left_op.type->as_ptr.base));
 
                 return false;
@@ -856,14 +857,15 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         }
         else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR)) {
             if (!resolve_ptr_int_arith(resolver, &dst_op, &right_op, &left_op)) {
-                resolver_on_error(resolver, "Cannot add to a pointer with a base type (%s) of zero size",
+                resolver_on_error(resolver, ebinary->right->range,
+                                  "Cannot add to a pointer with a base type (%s) of zero size",
                                   type_name(right_op.type->as_ptr.base));
 
                 return false;
             }
         }
         else {
-            resolver_on_error(resolver, "Can only add arithmetic and pointer types");
+            resolver_on_error(resolver, expr->range, "Can only add arithmetic and pointer types");
             return false;
         }
 

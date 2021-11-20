@@ -8,12 +8,12 @@ void error_stream_init(ErrorStream* stream, Allocator* allocator)
 
 void error_stream_free(ErrorStream* stream)
 {
-    Error* chunk = stream->first;
+    Error* err = stream->first;
 
-    while (chunk) {
-        Error* next = chunk->next;
-        mem_free(stream->allocator, chunk);
-        chunk = next;
+    while (err) {
+        Error* next = err->next;
+        mem_free(stream->allocator, err);
+        err = next;
     }
 
     stream->first = stream->last = NULL;
@@ -22,19 +22,19 @@ void error_stream_free(ErrorStream* stream)
 void error_stream_add(ErrorStream* stream, ProgRange range, const char* msg, size_t size)
 {
     if (stream) {
-        size_t chunk_size = offsetof(Error, buf) + size;
-        Error* chunk = mem_allocate(stream->allocator, chunk_size, DEFAULT_ALIGN, false);
+        size_t err_size = offsetof(Error, buf) + size;
+        Error* err = mem_allocate(stream->allocator, err_size, DEFAULT_ALIGN, false);
 
-        if (chunk) {
-            memcpy(chunk->msg, msg, size);
-            chunk->size = size;
-            chunk->next = NULL;
-            chunk->range = range;
+        if (err) {
+            memcpy(err->msg, msg, size);
+            err->size = size;
+            err->next = NULL;
+            err->range = range;
 
             if (!stream->first)
-                stream->last = stream->first = chunk;
+                stream->last = stream->first = err;
             else
-                stream->last = stream->last->next = chunk;
+                stream->last = stream->last->next = err;
 
             stream->count += 1;
         }

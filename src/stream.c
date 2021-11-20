@@ -2,8 +2,6 @@
 
 #include <string.h>
 
-///////////////////////////////////////////////////////////////
-
 static Bucket* bucket_list_add_bucket(BucketList* bucket_list)
 {
     size_t alloc_size = offsetof(Bucket, elems) + (bucket_list->bucket_cap * sizeof(void*));
