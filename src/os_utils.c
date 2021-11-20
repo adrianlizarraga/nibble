@@ -66,18 +66,8 @@ int run_cmd(Allocator* allocator, char* argv[], int argc)
 
     si.cb = sizeof(si);
 
-    // Start the child process. 
-    if(!CreateProcess( NULL,   // No module name (use command line)
-        cmd_line_cstr,  // Command line
-        NULL,           // Process handle not inheritable
-        NULL,           // Thread handle not inheritable
-        FALSE,          // Set handle inheritance to FALSE
-        0,              // No creation flags
-        NULL,           // Use parent's environment block
-        NULL,           // Use parent's starting directory 
-        &si,            // Pointer to STARTUPINFO structure
-        &pi)            // Pointer to PROCESS_INFORMATION structure
-    ) {
+    // Start the child process.
+    if (!CreateProcess(NULL, cmd_line_cstr, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
         ftprint_err("[INTERNAL ERROR]: CreateProcess failed (%d).\n", GetLastError());
         return -1;
     }

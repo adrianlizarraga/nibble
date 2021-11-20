@@ -164,51 +164,6 @@ char* cstr_escape(Allocator* allocator, const char* str, size_t len, char extra_
     return result;
 }
 
-char* cstr_chrnul(const char* str, int ch)
-{
-    assert(str);
-    char c = (char)ch;
-
-    if (!c) {
-        return (char*)str + cstr_len(str);
-    }
-
-#ifdef __GNUC__
-    // Check for c until str pointer is aligned to a 4-byte boundary.
-    while (((uintptr_t)str & U32_ALIGN_MASK)) {
-        if (!*str || *str == c) {
-            return (char*)str;
-        }
-
-        str += 1;
-    }
-
-    // Iterate over the data in 4-byte increments until the character or null terminator is found.
-    typedef uint32_t __attribute__((__may_alias__)) uword;
-    const uword* w = (void*)str;
-    const uword u32_c_bytes = U32_ONE_BYTES * (uword)c;
-
-    while (!U32_HAS_ZERO_BYTE(*w) && !U32_HAS_ZERO_BYTE(*w ^ u32_c_bytes)) {
-        w += 1;
-    }
-
-    str = (void*)w; // Point to the beginning of the word containing the desired byte (or \0)
-#endif
-
-    while (*str && *str != c) {
-        str += 1;
-    }
-
-    return (char*)str;
-}
-
-char* cstr_chr(const char* cstr, int c)
-{
-    char* p = cstr_chrnul(cstr, c);
-
-    return *p == (char)c ? p : NULL;
-}
-
 // Generated with tools/char_props_printer.c
 const unsigned char char_props[256] = {
     0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x9, 0x9, 0x9, 0x8, 0x9, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8, 0x8,

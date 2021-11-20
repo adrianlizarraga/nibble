@@ -220,8 +220,7 @@ FileKind path_kind(Path* path)
     if (attribs & FILE_ATTRIBUTE_DIRECTORY) {
         kind = FILE_DIR;
     }
-    else if ((attribs & FILE_ATTRIBUTE_NORMAL) ||
-             (attribs & FILE_ATTRIBUTE_ARCHIVE)) {
+    else if ((attribs & FILE_ATTRIBUTE_NORMAL) || (attribs & FILE_ATTRIBUTE_ARCHIVE)) {
         kind = FILE_REG;
     }
     else {
@@ -536,4 +535,3 @@ NibblePathErr ospath_to_cpath(Path* dst_path, const Path* src_ospath, const Path
 
     return NIB_PATH_OK;
 }
-

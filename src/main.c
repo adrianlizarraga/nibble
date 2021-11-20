@@ -29,8 +29,6 @@
 #include "x64_gen/gen.c"
 #include "nibble.c"
 
-#define NIBBLE_MAX_OUT_FILE_LEN (NIBBLE_MAX_PATH - 5)
-
 void print_usage(FILE* fd, const char* program_name)
 {
     ftprint_file(fd, true, "Usage: %s [OPTIONS] <input.nib>\n", program_name);
