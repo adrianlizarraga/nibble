@@ -729,21 +729,37 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     return true;
 }
 
-bool nibble_compile(const char* main_fname, const char* out_fname, size_t out_fname_len)
+bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_name, size_t outf_len)
 {
+    AllocatorState mem_state = allocator_get_state(&nibble->tmp_mem);
+
+    //////////////////////////////////////////
+    //      Check output file name
+    //////////////////////////////////////////
+    Path outf_ospath;
+    path_init(&outf_ospath, &nibble->tmp_mem);
+    path_set(&outf_ospath, outf_name, outf_len);
+
+    const char* outf_ext = path_ext(&outf_ospath);
+
+    if ((nibble->target_os == OS_WIN32) &&
+        (cstr_cmp(outf_ext, exe_ext) != 0 || outf_ext == outf_ospath.str)) {
+        path_append(&outf_ospath, dot_exe_ext, sizeof(dot_exe_ext) - 1);
+    }
+
+    // TODO: Validate output file name more extensively.
+
     //////////////////////////////////////////
     //      Check main file validity
     //////////////////////////////////////////
     static const char builtin_mod_name[] = "/_nibble_builtin";
 
-    AllocatorState mem_state = allocator_get_state(&nibble->tmp_mem);
-
     Path main_path;
     path_init(&main_path, &nibble->tmp_mem);
-    path_set(&main_path, main_fname, cstr_len(main_fname));
+    path_set(&main_path, mainf_name, mainf_len);
 
     if (!path_abs(&main_path)) {
-        ftprint_err("[ERROR]: Cannot find file `%s`\n", main_fname);
+        ftprint_err("[ERROR]: Cannot find file `%s`\n", mainf_name);
         return false;
     }
 
@@ -779,7 +795,7 @@ bool nibble_compile(const char* main_fname, const char* out_fname, size_t out_fn
     // Main module
     Module* main_mod = add_module(nibble, intern_str_lit(entry_cpath_buf, cstr_len(entry_cpath_buf)));
 
-    /// Builtin module
+    // Builtin module
     Module* builtin_mod = add_module(nibble, intern_str_lit(builtin_mod_name, sizeof(builtin_mod_name) - 1));
     nibble->builtin_mod = builtin_mod;
 
@@ -886,7 +902,7 @@ bool nibble_compile(const char* main_fname, const char* out_fname, size_t out_fn
 
     Path nasm_fname;
     path_init(&nasm_fname, &nibble->tmp_mem);
-    path_set(&nasm_fname, out_fname, out_fname_len);
+    path_set(&nasm_fname, outf_ospath.str, outf_ospath.len);
     path_append(&nasm_fname, nasm_ext, sizeof(nasm_ext) - 1);
 
     ftprint_out("[INFO]: Generating NASM assembly output: %s ...\n", nasm_fname.str);
@@ -920,7 +936,7 @@ bool nibble_compile(const char* main_fname, const char* out_fname, size_t out_fn
 
     Path obj_fname;
     path_init(&obj_fname, &nibble->tmp_mem);
-    path_set(&obj_fname, out_fname, out_fname_len);
+    path_set(&obj_fname, outf_ospath.str, outf_ospath.len);
     path_append(&obj_fname, obj_ext, obj_ext_len);
 
     char* nasm_cmd[] = {"nasm", "-f", nasm_fformat, nasm_fname.str, "-o", obj_fname.str, NULL};
@@ -933,12 +949,12 @@ bool nibble_compile(const char* main_fname, const char* out_fname, size_t out_fn
     //////////////////////////////////////////
     //          Run linker
     //////////////////////////////////////////
-    char* out_fname_dup = cstr_dup(&nibble->tmp_mem, out_fname);
+    char* outf_name_dup = cstr_dup(&nibble->tmp_mem, outf_ospath.str);
     char* win_linker_out = array_create(&nibble->tmp_mem, char, 16);
 
-    ftprint_char_array(&win_linker_out, true, "/out:%s", out_fname_dup);
+    ftprint_char_array(&win_linker_out, true, "/out:%s", outf_name_dup);
 
-    char* ld_cmd_linux[] = {"ld", "-o", out_fname_dup, obj_fname.str, NULL};
+    char* ld_cmd_linux[] = {"ld", "-o", outf_name_dup, obj_fname.str, NULL};
     // link /entry:_start /nodefaultlib /subsystem:console .\out.obj kernel32.lib user32.lib Shell32.lib
     char* ld_cmd_windows[] = {
         "link.exe", obj_fname.str, "/entry:_start", "/nodefaultlib", "/subsystem:console", win_linker_out, "kernel32.lib", "user32.lib", "Shell32.lib", NULL};

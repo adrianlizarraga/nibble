@@ -112,8 +112,8 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
 int main(int argc, char* argv[])
 {
     const char* program_name = consume_arg(&argc, &argv);
-    const char* main_fname = NULL;
-    const char* out_fname = NULL;
+    const char* mainf_name = NULL;
+    const char* outf_name = "out";
 
     OS target_os = OS_LINUX;
     Arch target_arch = ARCH_X64;
@@ -132,21 +132,30 @@ int main(int argc, char* argv[])
             target_arch = get_target_arch(&argc, &argv, program_name);
         }
         else if (cstr_cmp(arg, "-o") == 0) {
-            out_fname = get_flag_value(&argc, &argv, program_name, "-o");
+            outf_name = get_flag_value(&argc, &argv, program_name, "-o");
         }
         else {
-            if (main_fname) {
+            if (mainf_name) {
                 ftprint_err("[ERROR]: unknown option `%s`\n\n", arg);
                 print_usage(stderr, program_name);
                 exit(1);
             }
 
-            main_fname = arg;
+            mainf_name = arg;
         }
     }
 
-    if (!main_fname) {
+    size_t mainf_len = mainf_name ? cstr_len(mainf_name) : 0;
+    size_t outf_len = outf_name ? cstr_len(outf_name) : 0;
+
+    if (!mainf_len) {
         ftprint_err("[ERROR]: No input source file provided.\n\n");
+        print_usage(stderr, program_name);
+        exit(1);
+    }
+
+    if (!outf_len) {
+        ftprint_err("[ERROR]: Invalid output file name provided.\n\n");
         print_usage(stderr, program_name);
         exit(1);
     }
@@ -156,20 +165,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    // TODO: For windows, we should always add .exe if it is missing!!
-    if (!out_fname) {
-        out_fname = target_os == OS_WIN32 ? "out.exe" : "out";
-    }
-
-    size_t out_fname_len = cstr_len(out_fname);
-
-    if (out_fname_len >= NIBBLE_MAX_OUT_FILE_LEN) {
-        ftprint_err("[ERROR]: Output file path is too large ( > %llu).\n", NIBBLE_MAX_OUT_FILE_LEN);
-        exit(1);
-    }
-
-    nibble_compile(main_fname, out_fname, out_fname_len);
-
+    nibble_compile(mainf_name, mainf_len, outf_name, outf_len);
     nibble_cleanup();
 
     return 0;

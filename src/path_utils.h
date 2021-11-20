@@ -25,8 +25,7 @@
 
 #include "allocator.h"
 
-enum PathFlags
-{
+enum PathFlags {
     PATH_IS_INVALID = 1 << 0,
     PATH_IS_CANONICAL = 1 << 1,
 };
@@ -42,8 +41,7 @@ typedef struct Path {
     char _buf[NIBBLE_MAX_PATH];
 } Path;
 
-enum DirentFlags
-{
+enum DirentFlags {
     DIRENT_IS_VALID = 1 << 0,
     DIRENT_IS_DIR = 1 << 1,
 };
@@ -63,8 +61,7 @@ typedef enum FileKind
     FILE_OTHER,
 } FileKind;
 
-typedef enum NibblePathErr
-{
+typedef enum NibblePathErr {
     NIB_PATH_OK = 0,
     NIB_PATH_INV_PATH,
     NIB_PATH_INV_EXT,
@@ -72,6 +69,8 @@ typedef enum NibblePathErr
 } NibblePathErr;
 
 extern const char nib_ext[];
+extern const char exe_ext[];
+extern const char dot_exe_ext[];
 
 void path_init(Path* path, Allocator* alloc);
 void path_norm(Path* path, char old_sep, char new_sep);

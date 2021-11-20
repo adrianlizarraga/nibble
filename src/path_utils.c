@@ -455,6 +455,8 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
 ///////////////////////////////////////////
 
 const char nib_ext[] = "nib";
+const char exe_ext[] = "exe";
+const char dot_exe_ext[] = ".exe";
 
 void cpath_str_to_ospath(Allocator* alloc, Path* dst, const char* cpath_str, size_t cpath_len, const Path* base_ospath)
 {
