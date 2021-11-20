@@ -766,14 +766,10 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     FileKind file_kind = path_kind(&main_path);
 
     if ((file_kind != FILE_REG) || cstr_cmp(path_ext(&main_path), nib_ext) != 0) {
-        ftprint_err("[ERROR]: Program entry file must be a regular file (%d).\n", file_kind);
+        ftprint_err("[ERROR]: Program entry file `%s` is not a valid `.nib` source file.\n", main_path.str);
         return false;
     }
 
-    if ((file_kind != FILE_REG) || cstr_cmp(path_ext(&main_path), nib_ext) != 0) {
-        ftprint_err("[ERROR]: Program main file must end in `.nib`, entered `%s`.\n", main_path.str);
-        return false;
-    }
     /////////////////////////////////////////////////////////
     //      Get main file's module path (e.g., /main.nib)
     //      and extract the base OS path.
