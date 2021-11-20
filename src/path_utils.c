@@ -493,6 +493,10 @@ NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_s
     path_join(import_ospath, &import_rel_path);
 
     // Check if file's path exists somewhere.
+    if (path_kind(import_ospath) != FILE_REG) {
+        return NIB_PATH_INV_PATH;
+    }
+
     if (!path_abs(import_ospath)) {
         return NIB_PATH_INV_PATH;
     }

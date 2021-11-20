@@ -377,7 +377,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
 
             // Check if included file's path exists somewhere.
             if (ret == NIB_PATH_INV_PATH) {
-                report_error(file_ospath.str, stmt->range, "Invalid include path \"%s\"",
+                report_error(file_ospath.str, stmt->range, "Invalid include file path \"%s\"",
                              stmt_include->file_pathname->str);
                 return false;
             }
