@@ -33,7 +33,7 @@ typedef struct NibbleCtx {
 } NibbleCtx;
 
 bool nibble_init(OS target_os, Arch target_arch);
-void nibble_compile(const char* input_file, const char* output_file);
+bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_name, size_t outf_len);
 void nibble_cleanup(void);
 
 #endif

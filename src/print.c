@@ -600,10 +600,16 @@ size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list ar
                 const char* value = va_arg(args, char*);
                 bool is_null = !value;
                 const char null_str[] = "(null)";
-                uint32_t str_len = is_null ? 0 : cstr_len(value);
+                unsigned str_len;
 
-                if (flags & FORMAT_FLAG_PRECISION) {
-                    str_len = str_len > precision ? precision : str_len;
+                if (is_null) {
+                    str_len = 0;
+                }
+                else if (flags & FORMAT_FLAG_PRECISION) {
+                    str_len = cstr_nlen(value, precision);
+                }
+                else {
+                    str_len = cstr_len(value);
                 }
 
                 // Pad with spaces if a width was specified, is right-aligned, and the

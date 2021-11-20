@@ -27,9 +27,22 @@ int cstr_ncmp(const char* str1, const char* str2, size_t num)
     return *(unsigned char*)str1 - *(unsigned char*)str2;
 }
 
+char* cstr_dup(Allocator* allocator, const char* cstr)
+{
+    assert(cstr);
+    size_t len = cstr_len(cstr);
+
+    char* cstr2 = mem_dup_array(allocator, char, cstr, len + 1);
+
+    return cstr2;
+}
+
 // From "Hacker's Delight 2nd edition", pg 118. Attributed to: Mycroft, Alan. Newsgroup comp.arch, April 8, 1987.
 // Returns non-zero value if the uint32_t has a zero-byte. Works for any endianness.
-#define U32_HAS_ZERO_BYTE(x) (((x)-0x01010101) & (~(x)) & 0x80808080)
+#define U32_ONE_BYTES 0x01010101
+#define U32_EIGHT_BYTES 0x80808080
+#define U32_ALIGN_MASK (sizeof(uint32_t) - 1)
+#define U32_HAS_ZERO_BYTE(x) (((x) - U32_ONE_BYTES) & (~(x)) & U32_EIGHT_BYTES)
 
 size_t cstr_len(const char* str)
 {
@@ -61,6 +74,20 @@ size_t cstr_len(const char* str)
         s += 1;
 
     return s - str;
+}
+
+size_t cstr_nlen(const char* str, size_t max_len)
+{
+    assert(str);
+    const char* s = str;
+    size_t len = 0;
+
+    while (*s && (len < max_len)) {
+        s += 1;
+        len += 1;
+    }
+
+    return len;
 }
 
 void cstr_tolower(char* str)

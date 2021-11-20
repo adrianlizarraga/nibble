@@ -13,6 +13,14 @@
 #define ALIGN_UP(p, a) (((p) + (a)-1) & ~((a)-1))
 #define BITS(x) (sizeof(x) * 8)
 
+#if defined(_WIN32) || defined(_WIN64)
+#define NIBBLE_HOST_WINDOWS
+#elif defined(__linux__)
+#define NIBBLE_HOST_LINUX
+#else
+#error "This operating system is not yet supported!"
+#endif
+
 typedef enum OS {
     OS_INVALID,
     OS_LINUX,

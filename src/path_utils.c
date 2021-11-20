@@ -1,5 +1,6 @@
 #include "path_utils.h"
 #include "cstring.h"
+#include "nibble.h"
 
 #define ASSERT_PATH_INIT(p) assert((p)->str && (p)->cap)
 
@@ -145,6 +146,34 @@ void path_join(Path* dst, Path* src)
     dst->len = len;
 }
 
+void path_append(Path* dst, const char* str, size_t len)
+{
+    ASSERT_PATH_INIT(dst);
+    if (len == 0) {
+        return;
+    }
+
+    size_t new_len = dst->len + len;
+
+    if (new_len >= dst->cap) {
+        const size_t _buf_size = sizeof(dst->_buf);
+        const size_t cap = new_len + 1 + (_buf_size >> 2);
+
+        path_ensure_cap(dst, cap);
+    }
+
+    char* d = dst->str + dst->len;
+
+    while (*str) {
+        *d = *str;
+        d += 1;
+        str += 1;
+    }
+
+    dst->str[new_len] = '\0';
+    dst->len = new_len;
+}
+
 char* path_filename(Path* path)
 {
     ASSERT_PATH_INIT(path);
@@ -176,7 +205,7 @@ bool dirent_it_skip(const char* name)
     return (cstr_cmp(name, ".") == 0) || (cstr_cmp(name, "..") == 0);
 }
 
-#ifdef _WIN32
+#ifdef NIBBLE_HOST_WINDOWS
 
 FileKind path_kind(Path* path)
 {
@@ -188,11 +217,11 @@ FileKind path_kind(Path* path)
 
     FileKind kind = FILE_NONE;
 
-    if (attribs & FILE_ATTRIBUTE_NORMAL) {
-        kind = FILE_REG;
-    }
-    else if (attribs & FILE_ATTRIBUTE_DIRECTORY) {
+    if (attribs & FILE_ATTRIBUTE_DIRECTORY) {
         kind = FILE_DIR;
+    }
+    else if ((attribs & FILE_ATTRIBUTE_NORMAL) || (attribs & FILE_ATTRIBUTE_ARCHIVE)) {
+        kind = FILE_REG;
     }
     else {
         kind = FILE_OTHER;
@@ -209,6 +238,8 @@ bool path_abs(Path* path)
     path_init(&rel, path->alloc);
     path_set(&rel, path->str, path->len);
 
+    // TODO: _fullpath succeeds even if the file does not exist!
+    // Use _stat to see if file exists.
     bool success = _fullpath(path->str, rel.str, path->cap) != NULL;
 
     if (success) {
@@ -423,6 +454,8 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
 ///////////////////////////////////////////
 
 const char nib_ext[] = "nib";
+const char exe_ext[] = "exe";
+const char dot_exe_ext[] = ".exe";
 
 void cpath_str_to_ospath(Allocator* alloc, Path* dst, const char* cpath_str, size_t cpath_len, const Path* base_ospath)
 {
@@ -459,6 +492,10 @@ NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_s
     path_join(import_ospath, &import_rel_path);
 
     // Check if file's path exists somewhere.
+    if (path_kind(import_ospath) != FILE_REG) {
+        return NIB_PATH_INV_PATH;
+    }
+
     if (!path_abs(import_ospath)) {
         return NIB_PATH_INV_PATH;
     }
@@ -498,4 +535,3 @@ NibblePathErr ospath_to_cpath(Path* dst_path, const Path* src_ospath, const Path
 
     return NIB_PATH_OK;
 }
-

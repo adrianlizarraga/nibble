@@ -2,6 +2,8 @@
 #define NIBBLE_PATH_UTILS_H
 
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN      // Exclude rarely-used stuff from Windows headers
+#include <windows.h>
 #include <io.h>
 #include <fileapi.h>
 #define OS_PATH_SEP '\\'
@@ -23,8 +25,7 @@
 
 #include "allocator.h"
 
-enum PathFlags
-{
+enum PathFlags {
     PATH_IS_INVALID = 1 << 0,
     PATH_IS_CANONICAL = 1 << 1,
 };
@@ -40,8 +41,7 @@ typedef struct Path {
     char _buf[NIBBLE_MAX_PATH];
 } Path;
 
-enum DirentFlags
-{
+enum DirentFlags {
     DIRENT_IS_VALID = 1 << 0,
     DIRENT_IS_DIR = 1 << 1,
 };
@@ -61,8 +61,7 @@ typedef enum FileKind
     FILE_OTHER,
 } FileKind;
 
-typedef enum NibblePathErr
-{
+typedef enum NibblePathErr {
     NIB_PATH_OK = 0,
     NIB_PATH_INV_PATH,
     NIB_PATH_INV_EXT,
@@ -70,12 +69,15 @@ typedef enum NibblePathErr
 } NibblePathErr;
 
 extern const char nib_ext[];
+extern const char exe_ext[];
+extern const char dot_exe_ext[];
 
 void path_init(Path* path, Allocator* alloc);
 void path_norm(Path* path, char old_sep, char new_sep);
 void path_free(Path* path);
 void path_set(Path* path, const char* src, size_t len);
 void path_join(Path* dst, Path* src);
+void path_append(Path* dst, const char* str, size_t len);
 bool path_abs(Path* path);
 char* path_filename(Path* path);
 char* path_ext(Path* path);

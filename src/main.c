@@ -14,6 +14,7 @@
 #include "allocator.c"
 #include "cstring.c"
 #include "path_utils.c"
+#include "os_utils.c"
 #include "print.c"
 #include "array.c"
 #include "hash_map.c"
@@ -35,7 +36,7 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "    -h                              Print this help message\n");
     ftprint_file(fd, true, "    -os   [linux | win32 | osx]     Target OS\n");
     ftprint_file(fd, true, "    -arch [x64 | x86]               Target architecture\n");
-    ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `out.s`\n");
+    ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `out`\n");
 }
 
 char* consume_arg(int* argc, char*** argv)
@@ -109,10 +110,9 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
 int main(int argc, char* argv[])
 {
     const char* program_name = consume_arg(&argc, &argv);
-    const char* input_file = NULL;
-    const char* output_file = "out.s";
+    const char* mainf_name = NULL;
+    const char* outf_name = "out";
 
-    // TODO: Detect default os/arch from env variables or GCC macros
     OS target_os = OS_LINUX;
     Arch target_arch = ARCH_X64;
 
@@ -130,31 +130,40 @@ int main(int argc, char* argv[])
             target_arch = get_target_arch(&argc, &argv, program_name);
         }
         else if (cstr_cmp(arg, "-o") == 0) {
-            output_file = get_flag_value(&argc, &argv, program_name, "-o");
+            outf_name = get_flag_value(&argc, &argv, program_name, "-o");
         }
         else {
-            if (input_file) {
-                ftprint_err("ERROR: unknown option `%s`\n\n", arg);
+            if (mainf_name) {
+                ftprint_err("[ERROR]: unknown option `%s`\n\n", arg);
                 print_usage(stderr, program_name);
                 exit(1);
             }
 
-            input_file = arg;
+            mainf_name = arg;
         }
     }
 
-    if (!input_file) {
-        ftprint_err("ERROR: No input file provided.\n\n");
+    size_t mainf_len = mainf_name ? cstr_len(mainf_name) : 0;
+    size_t outf_len = outf_name ? cstr_len(outf_name) : 0;
+
+    if (!mainf_len) {
+        ftprint_err("[ERROR]: No input source file provided.\n\n");
+        print_usage(stderr, program_name);
+        exit(1);
+    }
+
+    if (!outf_len) {
+        ftprint_err("[ERROR]: Invalid output file name provided.\n\n");
         print_usage(stderr, program_name);
         exit(1);
     }
 
     if (!nibble_init(target_os, target_arch)) {
-        ftprint_err("ERROR: Failed to initialize compiler.\n");
+        ftprint_err("[ERROR]: Failed to initialize compiler.\n");
         exit(1);
     }
 
-    nibble_compile(input_file, output_file);
+    nibble_compile(mainf_name, mainf_len, outf_name, outf_len);
     nibble_cleanup();
 
     return 0;
