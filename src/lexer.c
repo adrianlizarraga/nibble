@@ -45,7 +45,11 @@ static void lexer_on_error(Lexer* lexer, ProgRange range, const char* format, ..
 
 static void lexer_on_line(Lexer* lexer)
 {
-    (void)lexer;
+    ProgPos** line_pos = lexer->line_pos;
+
+    if (line_pos) {
+        array_push(*line_pos, lexer_at_pos(lexer) + 1);
+    }
 }
 
 static void skip_c_comment(Lexer* lexer)
@@ -459,13 +463,14 @@ static TokenInt scan_char(Lexer* lexer)
     return tint;
 }
 
-Lexer lexer_create(const char* str, ProgPos start, Allocator* arena, ErrorStream* errors)
+Lexer lexer_create(const char* str, ProgPos start, Allocator* arena, ErrorStream* errors, ProgPos** line_pos)
 {
     Lexer lexer = {0};
     lexer.str = str;
     lexer.at = str;
     lexer.start = start;
     lexer.errors = errors;
+    lexer.line_pos = line_pos;
     lexer.arena = arena;
 
     return lexer;

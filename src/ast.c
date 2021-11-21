@@ -996,6 +996,14 @@ const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT] = {
     [CST_DeclProc] = SYMBOL_PROC,  [CST_DeclTypedef] = SYMBOL_TYPE,
 };
 
+const char* sym_kind_names[SYMBOL_KIND_COUNT] = {
+    [SYMBOL_VAR] = "variable",
+    [SYMBOL_CONST] = "constant",
+    [SYMBOL_PROC] = "procedure",
+    [SYMBOL_TYPE] = "type",
+    [SYMBOL_MODULE] = "module",
+};
+
 Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod)
 {
     Symbol* sym = alloc_type(allocator, Symbol, true);

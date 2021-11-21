@@ -17,6 +17,9 @@ struct NibbleCtx {
     HMap str_lit_map;
     HMap mod_map;
 
+    BucketList src_files;
+    ProgPos src_pos;
+
     ErrorStream errors;
 
     TypeCache type_cache;

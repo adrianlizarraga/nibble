@@ -735,6 +735,7 @@ typedef enum SymbolKind {
 } SymbolKind;
 
 extern const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT];
+extern const char* sym_kind_names[SYMBOL_KIND_COUNT];
 
 typedef enum SymbolStatus {
     SYMBOL_STATUS_UNRESOLVED,

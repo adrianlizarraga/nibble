@@ -13,7 +13,7 @@ typedef struct Parser {
 } Parser;
 
 void parser_init(Parser* parser, Allocator* ast_arena, Allocator* tmp_arena, const char* str, ProgPos pos,
-                 ErrorStream* errors);
+                 ErrorStream* errors, ProgPos** line_pos);
 
 typedef enum TokenKindProps {
     OP_PRECEDENCE_TERNARY = 1 << 0,

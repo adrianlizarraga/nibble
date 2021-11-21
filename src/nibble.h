@@ -201,7 +201,7 @@ extern Identifier* main_proc_ident;
 StrLit* intern_str_lit(const char* str, size_t len);
 Identifier* intern_ident(const char* str, size_t len);
 
-char* slurp_file(Allocator* allocator, const char* filename);
+bool slurp_file(StringView* contents, Allocator* allocator, const char* filename);
 
 typedef struct Error Error;
 typedef struct ErrorStream ErrorStream;

@@ -25,47 +25,49 @@ const char* intrinsic_names[INTRINSIC_COUNT];
 
 Identifier* main_proc_ident;
 
-char* slurp_file(Allocator* allocator, const char* filename)
+bool slurp_file(StringView* contents, Allocator* allocator, const char* filename)
 {
     FILE* fd = fopen(filename, "r");
     if (!fd) {
         NIBBLE_FATAL_EXIT("Failed to open file %s", filename);
-        return NULL;
+        return false;
     }
 
     if (fseek(fd, 0, SEEK_END) < 0) {
         NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
-        return NULL;
+        return false;
     }
 
     long int size = ftell(fd);
     if (size < 0) {
         NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
-        return NULL;
+        return false;
     }
 
     char* buf = mem_allocate(allocator, size + 1, DEFAULT_ALIGN, false);
     if (!buf) {
         NIBBLE_FATAL_EXIT("Out of memory: %s:%d", __FILE__, __LINE__);
-        return NULL;
+        return false;
     }
 
     if (fseek(fd, 0, SEEK_SET) < 0) {
         NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
-        return NULL;
+        return false;
     }
 
     size_t n = fread(buf, 1, (size_t)size, fd);
     if (ferror(fd)) {
         NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
-        return NULL;
+        return false;
     }
 
     fclose(fd);
-
     buf[n] = '\0';
 
-    return buf;
+    contents->str = buf;
+    contents->len = n;
+
+    return true;
 }
 
 void report_error(ProgRange range, const char* format, ...)
@@ -126,14 +128,104 @@ void error_stream_add(ErrorStream* stream, ProgRange range, const char* msg, siz
     }
 }
 
+typedef struct SourceFile {
+    ProgRange range;
+    const char* code;
+    const char* cpath_str;
+    size_t cpath_len;
+
+    ProgPos* line_pos; // Stretchy array for now
+} SourceFile;
+
+static SourceFile* add_src_file(NibbleCtx* ctx, const char* cpath_str, size_t cpath_len, const char* code,
+                                size_t code_len)
+{
+    SourceFile* src_file = alloc_type(&ctx->gen_mem, SourceFile, true);
+    src_file->range.start = ctx->src_pos;
+    src_file->range.end = ctx->src_pos + (ProgPos)code_len;
+    src_file->code = code;
+    src_file->cpath_str = cpath_str;
+    src_file->cpath_len = cpath_len;
+    src_file->line_pos = array_create(&ctx->gen_mem, ProgPos, 32);
+
+    ctx->src_pos = src_file->range.end;
+
+    bucket_list_add_elem(&ctx->src_files, src_file);
+
+    return src_file;
+}
+
+static SourceFile* get_src_file(NibbleCtx* ctx, ProgPos pos)
+{
+    size_t num_files = ctx->src_files.num_elems;
+
+    for (size_t i = 0; i < num_files; i += 1) {
+        void** elem_ptr = bucket_list_get_elem_packed(&ctx->src_files, i);
+        assert(elem_ptr);
+
+        SourceFile* src_file = (SourceFile*)*elem_ptr;
+
+        if (pos < src_file->range.end) {
+            return src_file;
+        }
+    }
+
+    return NULL;
+}
+
+typedef struct LineCol {
+    unsigned line; // zero-indexed
+    unsigned col;
+} LineCol;
+
+static LineCol get_src_linecol(SourceFile* src_file, ProgPos pos)
+{
+    assert(pos >= src_file->range.start);
+    assert(pos <= src_file->range.end);
+
+    LineCol result = {0};
+
+    size_t num_line_pos = array_len(src_file->line_pos);
+    size_t line_pos_i = 0;
+
+    for (; line_pos_i < num_line_pos; line_pos_i += 1) {
+        ProgPos line_end = src_file->line_pos[line_pos_i];
+        assert(line_end <= src_file->range.end);
+
+        if (pos < line_end) {
+            break;
+        }
+    }
+
+    ProgPos line_start = line_pos_i == 0 ? src_file->range.start : src_file->line_pos[line_pos_i - 1];
+
+    result.line = line_pos_i + 1;
+    result.col = pos - line_start + 1;
+
+    return result;
+}
+
+static void print_error(Error* error)
+{
+    SourceFile* src_file = get_src_file(nibble, error->range.start);
+    assert(src_file);
+
+    LineCol linecol_s = get_src_linecol(src_file, error->range.start);
+
+    Path src_ospath;
+    cpath_str_to_ospath(&nibble->tmp_mem, &src_ospath, src_file->cpath_str, src_file->cpath_len, &nibble->base_ospath);
+
+    ftprint_err("%.*s:%u:%u: [Error]: %s\n", src_ospath.len, src_ospath.str, linecol_s.line, linecol_s.col, error->msg);
+}
+
 static void print_errors(ErrorStream* errors)
 {
     if (errors->count > 0) {
+        ftprint_err("\n%u errors:\n\n", errors->count);
         Error* err = errors->first;
 
         while (err) {
-            ftprint_out("%s\n", err->msg);
-
+            print_error(err);
             err = err->next;
         }
     }
@@ -303,6 +395,7 @@ bool nibble_init(OS target_os, Arch target_arch)
 
     assert(nibble->ident_map.len == (KW_COUNT + ANNOTATION_COUNT + INTRINSIC_COUNT + 1));
 
+    bucket_list_init(&nibble->src_files, &nibble->gen_mem, 16);
     bucket_list_init(&nibble->vars, &nibble->ast_mem, 32);
     bucket_list_init(&nibble->procs, &nibble->ast_mem, 32);
 
@@ -373,11 +466,14 @@ typedef struct CachedInclude {
 } CachedInclude;
 
 static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_str, size_t cpath_len, const char* code,
-                                 HMap* seen_includes, int include_depth)
+                                 size_t code_len, HMap* seen_includes, int include_depth)
 {
-    Parser parser = {0};
+    ProgPos src_pos = ctx->src_pos;
+    SourceFile* src_file = add_src_file(ctx, cpath_str, cpath_len, code, code_len);
 
-    parser_init(&parser, &ctx->ast_mem, &ctx->tmp_mem, code, 0, &ctx->errors);
+    Parser parser = {0};
+    parser_init(&parser, &ctx->ast_mem, &ctx->tmp_mem, code, src_pos, &ctx->errors, &src_file->line_pos);
+
     next_token(&parser);
 
     while (!is_token_kind(&parser, TKN_EOF)) {
@@ -486,10 +582,14 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
                 hmap_put(seen_includes, key, (uintptr_t)new_cached_include);
             }
 
-            const char* included_code = slurp_file(&ctx->gen_mem, include_ospath.str);
+            StringView included_code;
 
-            if (!parse_code_recursive(ctx, mod, include_cpath.str, include_cpath.len, included_code, seen_includes,
-                                      include_depth + 1)) {
+            if (!slurp_file(&included_code, &ctx->gen_mem, include_ospath.str)) {
+                return false;
+            }
+
+            if (!parse_code_recursive(ctx, mod, include_cpath.str, include_cpath.len, included_code.str,
+                                      included_code.len, seen_includes, include_depth + 1)) {
                 return false;
             }
         }
@@ -533,12 +633,13 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
     return true;
 }
 
-static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code)
+static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code, size_t code_len)
 {
     AllocatorState tmp_state = allocator_get_state(&ctx->tmp_mem);
     HMap seen_includes = hmap(3, &ctx->tmp_mem);
 
-    bool ret = parse_code_recursive(ctx, mod, mod->cpath_lit->str, mod->cpath_lit->len, code, &seen_includes, 0);
+    bool ret =
+        parse_code_recursive(ctx, mod, mod->cpath_lit->str, mod->cpath_lit->len, code, code_len, &seen_includes, 0);
     allocator_restore_state(tmp_state);
 
     return ret;
@@ -587,17 +688,19 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
     mod->is_parsing = true;
 
-    const char* code = NULL;
-
     AllocatorState mem_state = allocator_get_state(&ctx->tmp_mem);
 
     // Parse the code text
     Path mod_ospath;
     cpath_str_to_ospath(&ctx->tmp_mem, &mod_ospath, mod->cpath_lit->str, mod->cpath_lit->len, &ctx->base_ospath);
 
-    code = slurp_file(&ctx->gen_mem, mod_ospath.str);
+    StringView code;
 
-    if (!parse_code(ctx, mod, code)) {
+    if (!slurp_file(&code, &ctx->gen_mem, mod_ospath.str)) {
+        return false;
+    }
+
+    if (!parse_code(ctx, mod, code.str, code.len)) {
         return false;
     }
 
@@ -820,10 +923,9 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     //////////////////////////////////////////
     //                Parse
     //////////////////////////////////////////
-    ftprint_out("[INFO]: Parsing builtin module\n");
-
     const size_t num_builtin_types = ARRAY_LEN(builtin_types);
-    bool parse_ok = parse_code(nibble, builtin_mod, builtin_code);
+    const size_t builtin_code_len = cstr_len(builtin_code);
+    bool parse_ok = parse_code(nibble, builtin_mod, builtin_code, builtin_code_len);
 
     if (!parse_ok) {
         ftprint_err("[ERROR]: Failed to parse builtin code\n");
@@ -850,16 +952,23 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     // Look for main to have been parsed and installed as an unresolved proc symbol.
     Symbol* main_sym = lookup_symbol(&main_mod->scope, main_proc_ident);
 
-    if (!main_sym || (main_sym->kind != SYMBOL_PROC)) {
-        ftprint_err("[ERROR]: Program entry file must define a main() procedure.\n");
+    if (!main_sym) {
+        ProgRange err_range = {.start = builtin_code_len, .end = builtin_code_len + 1};
+        report_error(err_range, "Program entry file must define a main() procedure.");
+        print_errors(&nibble->errors);
+        return false;
+    }
+
+    if (main_sym->kind != SYMBOL_PROC) {
+        report_error(main_sym->decl->range, "Identifier `%s` must be a procedure, but found a %s.",
+                     main_proc_ident->str, sym_kind_names[main_sym->kind]);
+        print_errors(&nibble->errors);
         return false;
     }
 
     //////////////////////////////////////////
     //          Resolve/Typecheck
     //////////////////////////////////////////
-    ftprint_out("[INFO]: Type-checking ...\n");
-
     Resolver resolver = {.ctx = nibble};
 
     if (!resolve_module(&resolver, main_mod)) {
@@ -878,8 +987,12 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     Type* main_ret_type = main_type->as_proc.ret;
 
     if (main_ret_type != builtin_types[BUILTIN_TYPE_INT].type) {
-        ftprint_err("[ERROR]: Main procedure must return an `int` (`%s`) type, but found `%s`.\n",
-                    type_name(builtin_types[BUILTIN_TYPE_INT].type), type_name(main_ret_type));
+        DeclProc* main_decl = (DeclProc*)main_sym->decl;
+        ProgRange err_range = main_decl->ret ? main_decl->ret->range : main_decl->super.range;
+
+        report_error(err_range, "Main procedure must return an `int` (`%s`) type, but found `%s`.",
+                     type_name(builtin_types[BUILTIN_TYPE_INT].type), type_name(main_ret_type));
+        print_errors(&nibble->errors);
         return false;
     }
 
@@ -887,30 +1000,36 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
 
     // Check that params are either main(argc: int) or main(argc: int, argv: ^^char)
     if (main_num_params > 0) {
+        DeclProc* main_decl = (DeclProc*)main_sym->decl;
         Type** param_types = main_type->as_proc.params;
 
         if (param_types[0] != builtin_types[BUILTIN_TYPE_INT].type) {
-            ftprint_err("[ERROR]: Main procedure's first paramater must be an `int` (`%s`) type, but found `%s`.\n",
-                        type_name(builtin_types[BUILTIN_TYPE_INT].type), type_name(param_types[0]));
+            DeclVar* param = (DeclVar*)list_entry(main_decl->params.next, Decl, lnode);
+
+            report_error(param->typespec->range,
+                         "Main procedure's first paramater must be an `int` (`%s`) type, but found `%s`.",
+                         type_name(builtin_types[BUILTIN_TYPE_INT].type), type_name(param_types[0]));
+            print_errors(&nibble->errors);
             return false;
         }
 
         // TODO: Allow argv : []^char
         if ((main_num_params == 2) && (param_types[1] != type_ptr_ptr_char)) {
-            ftprint_err("[ERROR]: Main procedure's second paramater must be a `^^char` type, but found `%s`.\n",
-                        type_name(param_types[0]));
+            DeclVar* param = (DeclVar*)list_entry(main_decl->params.next->next, Decl, lnode);
+
+            report_error(param->typespec->range,
+                         "Main procedure's second paramater must be a `^^char` type, but found `%s`.",
+                         type_name(param_types[1]));
+            print_errors(&nibble->errors);
             return false;
         }
 
         // TODO: Allow/check for envp param
     }
 
-    ftprint_out("[INFO]: global vars: %u\tglobal procs: %u\n", nibble->vars.num_elems, nibble->procs.num_elems);
-
     //////////////////////////////////////////
     //          Gen IR bytecode
     //////////////////////////////////////////
-    ftprint_out("[INFO]: Generating IR bytecode\n");
     IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->procs, &nibble->type_cache);
 
     //////////////////////////////////////////
@@ -1001,7 +1120,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
 
 void nibble_cleanup(void)
 {
-#ifndef NDEBUG
+#ifdef NIBBLE_PRINT_DECLS
     print_allocator_stats(&nibble->gen_mem, "GEN mem stats");
     print_allocator_stats(&nibble->ast_mem, "AST mem stats");
     print_allocator_stats(&nibble->tmp_mem, "TMP mem stats");

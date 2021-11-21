@@ -22,13 +22,13 @@ static void parser_on_error(Parser* parser, ProgRange range, const char* format,
 }
 
 void parser_init(Parser* parser, Allocator* ast_arena, Allocator* tmp_arena, const char* str, ProgPos pos,
-                 ErrorStream* errors)
+                 ErrorStream* errors, ProgPos** line_pos)
 {
     memset(parser, 0, sizeof(Parser));
 
     parser->ast_arena = ast_arena;
     parser->errors = errors;
-    parser->lexer = lexer_create(str, pos, tmp_arena, errors);
+    parser->lexer = lexer_create(str, pos, tmp_arena, errors, line_pos);
 }
 
 bool next_token(Parser* parser)

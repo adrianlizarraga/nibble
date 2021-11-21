@@ -2555,7 +2555,10 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
     IR_pop_scope(builder);
     builder->curr_proc = NULL;
 
+#ifdef NIBBLE_PRINT_DECLS
     IR_print_out_proc(builder->tmp_arena, sym);
+#endif
+
 #if 0
     ftprint_out("Lifetime intervals:\n");
     LifetimeInterval* intervals = sym->as_proc.reg_intervals;
