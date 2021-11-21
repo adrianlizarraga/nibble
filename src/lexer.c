@@ -459,7 +459,7 @@ static TokenInt scan_char(Lexer* lexer)
     return tint;
 }
 
-Lexer lexer_create(const char* str, ProgPos start, Allocator* arena, ByteStream* errors)
+Lexer lexer_create(const char* str, ProgPos start, Allocator* arena, ErrorStream* errors)
 {
     Lexer lexer = {0};
     lexer.str = str;
@@ -917,11 +917,12 @@ top:
     case '\0':
         token.kind = TKN_EOF;
         break;
-    default:
+    default: {
         ProgRange range = {.start = token.range.start, .end = token.range.start + 1};
         lexer_on_error(lexer, range, "Unexpected token character: %c", lexer->at[0]);
         lexer->at++;
         goto top;
+    }
     }
 
     token.range.end = lexer_at_pos(lexer);

@@ -6,27 +6,7 @@
 #include "hash_map.h"
 #include "ast.h"
 
-typedef struct Error Error;
-typedef struct ErrorStream ErrorStream;
 typedef struct NibbleCtx NibbleCtx;
-
-struct Error {
-    Error* next;
-    ProgRange range;
-    size_t size;
-    char msg[];
-};
-
-struct ErrorStream {
-    Error* first;
-    Error* last;
-    size_t count;
-    Allocator* allocator;
-};
-
-void error_stream_init(ErrorStream* stream, Allocator* allocator);
-void error_stream_free(ErrorStream* stream);
-void error_stream_add(ErrorStream* stream, ProgRange range, const char* buf, size_t size);
 
 struct NibbleCtx {
     Allocator gen_mem;

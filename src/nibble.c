@@ -68,22 +68,14 @@ char* slurp_file(Allocator* allocator, const char* filename)
     return buf;
 }
 
-void report_error(const char* filename, ProgRange range, const char* format, ...)
+void report_error(ProgRange range, const char* format, ...)
 {
-    // TODO: Use an allocator + string writer.
     char buf[MAX_ERROR_LEN];
     va_list vargs;
 
-    size_t size = snprintf(buf, MAX_ERROR_LEN, "%s:0:0 ", filename);
-
-    if (size < MAX_ERROR_LEN) {
-        size_t rem = MAX_ERROR_LEN - size;
-        char* ptr = buf + size;
-
-        va_start(vargs, format);
-        size += vsnprintf(ptr, rem, format, vargs) + 1;
-        va_end(vargs);
-    }
+    va_start(vargs, format);
+    size_t size = vsnprintf(buf, MAX_ERROR_LEN, format, vargs) + 1;
+    va_end(vargs);
 
     if (size >= MAX_ERROR_LEN) {
         buf[MAX_ERROR_LEN - 1] = '\0';
@@ -93,17 +85,56 @@ void report_error(const char* filename, ProgRange range, const char* format, ...
     error_stream_add(&nibble->errors, range, buf, size);
 }
 
-static void print_errors(ByteStream* errors)
+void error_stream_init(ErrorStream* stream, Allocator* allocator)
+{
+    memset(stream, 0, sizeof(ErrorStream));
+    stream->allocator = allocator;
+}
+
+void error_stream_free(ErrorStream* stream)
+{
+    Error* err = stream->first;
+
+    while (err) {
+        Error* next = err->next;
+        mem_free(stream->allocator, err);
+        err = next;
+    }
+
+    stream->first = stream->last = NULL;
+}
+
+void error_stream_add(ErrorStream* stream, ProgRange range, const char* msg, size_t size)
+{
+    if (stream) {
+        size_t err_size = offsetof(Error, msg) + size;
+        Error* err = mem_allocate(stream->allocator, err_size, DEFAULT_ALIGN, false);
+
+        if (err) {
+            memcpy(err->msg, msg, size);
+            err->size = size;
+            err->next = NULL;
+            err->range = range;
+
+            if (!stream->first)
+                stream->last = stream->first = err;
+            else
+                stream->last = stream->last->next = err;
+
+            stream->count += 1;
+        }
+    }
+}
+
+static void print_errors(ErrorStream* errors)
 {
     if (errors->count > 0) {
-        ftprint_out("\nErrors: %lu\n", errors->count);
+        Error* err = errors->first;
 
-        ByteStreamChunk* chunk = errors->first;
+        while (err) {
+            ftprint_out("%s\n", err->msg);
 
-        while (chunk) {
-            ftprint_out("%s\n", chunk->buf);
-
-            chunk = chunk->next;
+            err = err->next;
         }
     }
 }
@@ -310,8 +341,7 @@ static bool add_builtin_type_symbol(NibbleCtx* ctx, const char* name, Type* type
 
     if (lookup_scope_symbol(&builtin_mod->scope, sym_name)) {
         ProgRange range = {0};
-        report_error(builtin_mod->cpath_lit->str, range, "[INTERNAL ERROR] Duplicate definition of builtin `%s`",
-                     sym_name);
+        report_error(range, "[INTERNAL ERROR] Duplicate definition of builtin `%s`", sym_name);
         return false;
     }
 
@@ -363,7 +393,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
             cpath_str_to_ospath(&ctx->tmp_mem, &file_ospath, cpath_str, cpath_len, &ctx->base_ospath);
 
             if (include_depth > NIBBLE_INCLUDE_LIMIT) {
-                report_error(file_ospath.str, stmt->range,
+                report_error(stmt->range,
                              "Include limit exceeded. File include chain exceeded the current threshold of `%d`.",
                              NIBBLE_INCLUDE_LIMIT);
                 return false;
@@ -375,14 +405,13 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
 
             // Check if included file's path exists somewhere.
             if (ret == NIB_PATH_INV_PATH) {
-                report_error(file_ospath.str, stmt->range, "Invalid include file path \"%s\"",
-                             stmt_include->file_pathname->str);
+                report_error(stmt->range, "Invalid include file path \"%s\"", stmt_include->file_pathname->str);
                 return false;
             }
 
             // Check for .nib extension.
             if (ret == NIB_PATH_INV_EXT) {
-                report_error(file_ospath.str, stmt->range, "Included file \"%s\" does not end in `.%s`",
+                report_error(stmt->range, "Included file \"%s\" does not end in `.%s`",
                              stmt_include->file_pathname->str, nib_ext);
                 return false;
             }
@@ -393,8 +422,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
 
             // Check that include path is inside the project's root directory.
             if (ret == NIB_PATH_OUTSIDE_ROOT) {
-                report_error(file_ospath.str, stmt->range,
-                             "Relative include path \"%s\" is outside of project root dir \"%s\"",
+                report_error(stmt->range, "Relative include path \"%s\" is outside of project root dir \"%s\"",
                              stmt_include->file_pathname->str, ctx->base_ospath.str);
                 return false;
             }
@@ -403,8 +431,8 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
 
             // Check that the include file is not the same as the current file.
             if (cstr_ncmp(cpath_str, include_cpath.str, include_cpath.len) == 0) {
-                report_error(file_ospath.str, stmt->range,
-                             "Cyclic file inclusion detected at file `%s`. Cannot include self.", file_ospath.str);
+                report_error(stmt->range, "Cyclic file inclusion detected at file `%s`. Cannot include self.",
+                             file_ospath.str);
                 return false;
             }
 
@@ -433,8 +461,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
             }
 
             if (seen) {
-                report_error(file_ospath.str, stmt->range,
-                             "Cyclic file inclusion detected.\nFile `%s` was first included by `%s`",
+                report_error(stmt->range, "Cyclic file inclusion detected.\nFile `%s` was first included by `%s`",
                              include_ospath.str, cached_include->includer_ospath->str);
                 return false;
             }
@@ -615,14 +642,13 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                                                       &mod_ospath, &ctx->tmp_mem);
             // Check if imported module's path exists somewhere.
             if (ret_err == NIB_PATH_INV_PATH) {
-                report_error(mod_ospath.str, stmt->range, "Invalid module import path \"%s\"",
-                             simport->mod_pathname->str);
+                report_error(stmt->range, "Invalid module import path \"%s\"", simport->mod_pathname->str);
                 return false;
             }
 
             // Check for .nib extension.
             if (ret_err == NIB_PATH_INV_EXT) {
-                report_error(mod_ospath.str, stmt->range, "Imported module file \"%s\" does not end in `.%s`",
+                report_error(stmt->range, "Imported module file \"%s\" does not end in `.%s`",
                              simport->mod_pathname->str, nib_ext);
                 return false;
             }
@@ -635,8 +661,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
             // Check that import module path is inside the project's root directory.
             if (ret_err == NIB_PATH_OUTSIDE_ROOT) {
-                report_error(mod_ospath.str, stmt->range,
-                             "Relative module import path \"%s\" is outside of project root dir \"%s\"",
+                report_error(stmt->range, "Relative module import path \"%s\" is outside of project root dir \"%s\"",
                              simport->mod_pathname->str, ctx->base_ospath.str);
                 return false;
             }
@@ -654,7 +679,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             }
 
             if (import_mod->is_parsing) {
-                report_error(mod_ospath.str, stmt->range, "Cyclic import \"%s\" detected", simport->mod_pathname->str);
+                report_error(stmt->range, "Cyclic import \"%s\" detected", simport->mod_pathname->str);
                 return false;
             }
 
@@ -701,19 +726,19 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                 Symbol* sym = lookup_scope_symbol(&mod->scope, esym->name);
 
                 if (!sym) {
-                    report_error(mod_ospath.str, esym->range, "Unknown export symbol `%s`", esym->name->str);
+                    report_error(esym->range, "Unknown export symbol `%s`", esym->name->str);
                     return false;
                 }
 
                 // Prevent users from exporting builtin symbols.
                 if (sym->home == ctx->builtin_mod) {
-                    report_error(mod_ospath.str, esym->range, "Cannot export builtin symbol `%s`", esym->name->str);
+                    report_error(esym->range, "Cannot export builtin symbol `%s`", esym->name->str);
                     return false;
                 }
 
                 // Add symbol to the module's export table
                 if (!module_add_export_sym(mod, esym->rename ? esym->rename : esym->name, sym)) {
-                    report_error(mod_ospath.str, esym->range, "Conflicting export symbol name `%s`", esym->name->str);
+                    report_error(esym->range, "Conflicting export symbol name `%s`", esym->name->str);
                     return false;
                 }
             }
@@ -740,8 +765,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
 
     const char* outf_ext = path_ext(&outf_ospath);
 
-    if ((nibble->target_os == OS_WIN32) &&
-        (cstr_cmp(outf_ext, exe_ext) != 0 || outf_ext == outf_ospath.str)) {
+    if ((nibble->target_os == OS_WIN32) && (cstr_cmp(outf_ext, exe_ext) != 0 || outf_ext == outf_ospath.str)) {
         path_append(&outf_ospath, dot_exe_ext, sizeof(dot_exe_ext) - 1);
     }
 
@@ -950,8 +974,8 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
 
     char* ld_cmd_linux[] = {"ld", "-o", outf_name_dup, obj_fname.str, NULL};
     // link /entry:_start /nodefaultlib /subsystem:console .\out.obj kernel32.lib user32.lib Shell32.lib
-    char* ld_cmd_windows[] = {
-        "link.exe", obj_fname.str, "/entry:_start", "/nodefaultlib", "/subsystem:console", win_linker_out, "kernel32.lib", "user32.lib", "Shell32.lib", NULL};
+    char* ld_cmd_windows[] = {"link.exe",     obj_fname.str,  "/entry:_start", "/nodefaultlib", "/subsystem:console",
+                              win_linker_out, "kernel32.lib", "user32.lib",    "Shell32.lib",   NULL};
 
     char** ld_cmd;
     int ld_cmd_argc;
