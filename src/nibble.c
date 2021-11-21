@@ -174,7 +174,7 @@ static SourceFile* get_src_file(NibbleCtx* ctx, ProgPos pos)
 }
 
 typedef struct LineCol {
-    unsigned line; // zero-indexed
+    unsigned line;
     unsigned col;
 } LineCol;
 
