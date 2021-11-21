@@ -829,6 +829,7 @@ bool import_all_mod_syms(Module* dst_mod, Module* src_mod);
 ///////////////////////////////
 
 struct Module {
+    ProgRange range;
     StrLit* cpath_lit;
     List import_stmts;
     List export_stmts;

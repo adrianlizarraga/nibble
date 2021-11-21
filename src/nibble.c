@@ -638,8 +638,13 @@ static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code, size_t cod
     AllocatorState tmp_state = allocator_get_state(&ctx->tmp_mem);
     HMap seen_includes = hmap(3, &ctx->tmp_mem);
 
-    bool ret =
-        parse_code_recursive(ctx, mod, mod->cpath_lit->str, mod->cpath_lit->len, code, code_len, &seen_includes, 0);
+    mod->range.start = ctx->src_pos;
+
+    bool ret = parse_code_recursive(ctx, mod, mod->cpath_lit->str, mod->cpath_lit->len,
+                                    code, code_len, &seen_includes, 0);
+
+    mod->range.end = ctx->src_pos;
+
     allocator_restore_state(tmp_state);
 
     return ret;
@@ -953,8 +958,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     Symbol* main_sym = lookup_symbol(&main_mod->scope, main_proc_ident);
 
     if (!main_sym) {
-        ProgRange err_range = {.start = builtin_code_len, .end = builtin_code_len + 1};
-        report_error(err_range, "Program entry file must define a main() procedure.");
+        report_error(main_mod->range, "Program entry file must define a main() procedure.");
         print_errors(&nibble->errors);
         return false;
     }

@@ -1199,8 +1199,7 @@ bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
     if (old_sym && (is_imported || (old_sym->home == mod))) {
         // TODO: Handle module symbols?
 
-        // TODO: If no decl, use module's base ProgPos
-        ProgRange range = sym->decl ? sym->decl->range : (ProgRange){0};
+        ProgRange range = sym->decl ? sym->decl->range : mod->range;
 
         if (sym->home == mod) {
             report_error(range, "Duplicate definition of symbol `%s`", name->str);
