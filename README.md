@@ -1,55 +1,143 @@
 # Nibble
-A programming language based on C. The goal is to create a language with much of the expressive power of C and 
-- Generics
-- Function overloading
-- Default/named function parameters
-- Defer statement
-- Multiple return values
-- Module import system
+A programming language based on C. The goal is to create a compiled, statically-typed programming language that adds the following features to C:
 
-The syntax is based on C and rust, but is very much subject to change.
+- [x] Order-independent declarations
+- [x] Module import system (based on javascript ES6)
+- [x] Type inference
+- [ ] Multiple return values (return anonymous structure object)
+- [ ] Defer statement (like go)
+- [ ] Default procedure arguments
+- [ ] Named procedure arguments
+- [ ] Generic procedures (like c++ templates)
 
-Example:
-```
-struct T {
-    a : int32;
-}
+The Nibble compiler currently generates an assembly file that is assembled with NASM and then linked with the OS linker.
 
+Nibble supports the followng operating systems:
+- [x] x64 linux
+- [x] x64 windows
 
-const MAX_LEN : int32 = 20;
+## Examples
+Note that Nibble provides a builtin procedure called `#writeout()` that writes bytes to stdout.
 
-var g : int32 = 10;
-
-proc add_ints(a : int32, b : int32) => int32 {
-    return a + b;
-}
-
-proc main(argc : int32, argv : [] ^char) => int32
+Hello, World:
+```c
+proc main(argc : int, argv : ^^char) => int
 {
-    var t : T;
-    t.a = 10;
+    var msg : []char = "Hello, World\n";
+    var len : usize = #sizeof(#typeof(msg)) - 1;
 
-    var b : int32 = 2;
-    var c : int32 = add_ints(t.a, b);
+    #writeout(msg, len);
+    return 0;
+}
+```
 
-    var t2 := {10 : T};
-    var t3 : T = {10};
-    var t4 : T = {a = 10 : T};
+Merge sort:
+```c
+proc min(a: int, b: int) => int {
+    var r := a;
 
-    var d : float32 = 10:>float + 1.0;
+    if (b < a) {
+        r = b;
+    }
+
+    return r;
+}
+
+proc merge(a: ^int, l: int, m: int, r: int, b: ^int) {
+    var i := l;
+    var j := m;
+
+    var k := l;
+
+    while (k < r) {
+        if (i < m && (j >= r || a[i] <= a[j])) {
+            b[k] = a[i];
+            i = i + 1;
+        }
+        else {
+            b[k] = a[j];
+            j = j + 1;
+        }
+
+        k = k + 1;
+    }
+}
+
+proc merge_sort(a: ^int, b: ^int, n : int) => ^int {
+    var width := 1;
+
+    while (width < n) {
+        var d := width * 2;
+        var i := 0;
+
+        while (i < n) {
+            var m := min(i + width, n);
+            var r := min(i + d, n);
+
+            merge(a, i, m, r, b);
+
+            i = i + d;
+        }
+
+        // Swap.
+        var t := a;
+        a = b;
+        b = t;
+
+        width = d;
+    }
+
+    return a;
+}
+
+proc main() => int {
+    var a : [6]int = {5, 4, 3, 2, 1, 0};
+    var b : [6]int;
+
+    var c : ^int = merge_sort(a, b, 6);
+   
+    var i := 1;
+    while (i < 6) {
+        var ch : char = c[i] + '0';
+
+        #writeout(^ch, 1);
+        #writeout(" ", 1);
+    }
 
     return 0;
 }
 ```
 
-### Why not just use C++, D, Odin, or another language? 
-I really enjoy using C, but I've always wanted a few features typically found in higher-level languages. That said, I don't claim to have any innovative ideas. I'm doing this primarily for fun. I learned many of the techniques employed in this project from Per Vognsen's Bitwise project and Niklaus Wirth's Compiler Construction textbook.
+## Quickstart
+### Compiling
+TODO
+### Testing
+TODO
 
-### Status of the project
-I've just started. This is not even close to being done. I've written a basic lexer and parser, and am currently working on type checking/resolution. The first usable version of this compiler will feature an unoptimized x64 backend. Afterwards, I may consider adding an LLVM backend (who knows).
+## Status of the project
 
-### Build/run
-- build: `gcc -o nibble src/main.c`
-- run: `./nibble main.nib`
+Nibble does not yet support all basic C features:
+- [x] Integer types
+- [ ] Floating-point types
+- [ ] Structure types
+- [ ] Union types
+- [ ] Enum types
+- [ ] Procedures
+    - [x] Basic procedures with non-variadic parameters
+    - [ ] Varidic parameters
+- [ ] Statements
+    - [x] if/else
+    - [x] while 
+    - [x] do while
+    - [ ] for loop
+    - [ ] switch
+    - [ ] break
+    - [ ] continue
+    - [ ] goto! (yes, I will)
+    - [x] return 
+    - [x] Expressions
+    - [x] Assignments
+- [x] Ternary operator
+- [x] Binary operators
+- [x] Unary operators
 
-At the moment this just prints a program's AST. To call this a compiler at this point would be wishful thinking.
