@@ -191,6 +191,7 @@ typedef struct Identifier {
     char str[];
 } Identifier;
 
+
 extern const char* keyword_names[KW_COUNT];
 extern const char* annotation_names[ANNOTATION_COUNT];
 extern const char* intrinsic_names[INTRINSIC_COUNT];
@@ -200,9 +201,29 @@ extern Identifier* main_proc_ident;
 StrLit* intern_str_lit(const char* str, size_t len);
 Identifier* intern_ident(const char* str, size_t len);
 
-char* slurp_file(Allocator* allocator, const char* filename);
+bool slurp_file(StringView* contents, Allocator* allocator, const char* filename);
 
-void report_error(const char* file, ProgRange range, const char* format, ...);
+typedef struct Error Error;
+typedef struct ErrorStream ErrorStream;
+
+struct Error {
+    Error* next;
+    ProgRange range;
+    size_t size;
+    char msg[];
+};
+
+struct ErrorStream {
+    Error* first;
+    Error* last;
+    size_t count;
+    Allocator* allocator;
+};
+
+void error_stream_init(ErrorStream* stream, Allocator* allocator);
+void error_stream_free(ErrorStream* stream);
+void error_stream_add(ErrorStream* stream, ProgRange range, const char* buf, size_t size);
+void report_error(ProgRange range, const char* format, ...);
 
 #define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit((f), ##__VA_ARGS__)
 void nibble_fatal_exit(const char* format, ...);

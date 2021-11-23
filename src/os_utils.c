@@ -41,6 +41,12 @@ int run_cmd(Allocator* allocator, char* argv[], int argc)
         return ret;
     }
 }
+
+bool is_stderr_atty()
+{
+    return isatty(STDERR_FILENO);
+}
+
 #elif defined(NIBBLE_HOST_WINDOWS)
 #include "array.h"
 
@@ -83,6 +89,14 @@ int run_cmd(Allocator* allocator, char* argv[], int argc)
     CloseHandle(pi.hProcess);
 
     return ec;
+}
+
+bool is_stderr_atty()
+{
+    // Refer to: https://stackoverflow.com/questions/3648711/detect-nul-file-descriptor-isatty-is-bogus
+    CONSOLE_SCREEN_BUFFER_INFO sbi;
+
+    return GetConsoleScreenBufferInfo(GetStdHandle(STD_ERROR_HANDLE), &sbi);
 }
 #else
 #endif

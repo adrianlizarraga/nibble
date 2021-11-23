@@ -127,12 +127,13 @@ typedef struct Lexer {
     const char* at;
     ProgPos start;
     Allocator* arena;
-    ByteStream* errors;
+    ErrorStream* errors;
+    ProgPos** line_pos; // Pointer to stretchy array
 } Lexer;
 
 extern const char* token_kind_names[];
 
-Lexer lexer_create(const char* str, ProgPos start, Allocator* arena, ByteStream* errors);
+Lexer lexer_create(const char* str, ProgPos start, Allocator* arena, ErrorStream* errors, ProgPos** line_pos);
 
 int print_token(Token* token, char* buf, size_t size);
 Token scan_token(Lexer* lexer);

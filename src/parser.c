@@ -6,7 +6,7 @@
 #define PARSER_ARENA_BLOCK_SIZE 512
 //#define NIBBLE_PRINT_DECLS
 
-static void parser_on_error(Parser* parser, const char* format, ...)
+static void parser_on_error(Parser* parser, ProgRange range, const char* format, ...)
 {
     if (parser->errors) {
         char buf[MAX_ERROR_LEN];
@@ -17,18 +17,18 @@ static void parser_on_error(Parser* parser, const char* format, ...)
         size = vsnprintf(buf, MAX_ERROR_LEN, format, vargs) + 1;
         va_end(vargs);
 
-        add_byte_stream_chunk(parser->errors, buf, size > sizeof(buf) ? sizeof(buf) : size);
+        error_stream_add(parser->errors, range, buf, size > sizeof(buf) ? sizeof(buf) : size);
     }
 }
 
 void parser_init(Parser* parser, Allocator* ast_arena, Allocator* tmp_arena, const char* str, ProgPos pos,
-                 ByteStream* errors)
+                 ErrorStream* errors, ProgPos** line_pos)
 {
     memset(parser, 0, sizeof(Parser));
 
     parser->ast_arena = ast_arena;
     parser->errors = errors;
-    parser->lexer = lexer_create(str, pos, tmp_arena, errors);
+    parser->lexer = lexer_create(str, pos, tmp_arena, errors, line_pos);
 }
 
 bool next_token(Parser* parser)
@@ -121,7 +121,7 @@ static void parser_unexpected_token(Parser* parser, TokenKind expected_kind, con
     char tmp[32];
 
     print_token(&parser->token, tmp, sizeof(tmp));
-    parser_on_error(parser, "%s: wanted token `%s`, but got token `%s`.",
+    parser_on_error(parser, parser->token.range, "%s: wanted token `%s`, but got token `%s`.",
                     error_prefix ? error_prefix : "Unexpected token", token_kind_names[expected_kind], tmp);
 }
 
@@ -148,7 +148,7 @@ bool expect_keyword(Parser* parser, Keyword kw, const char* error_prefix)
         char tmp[32];
 
         print_token(&parser->token, tmp, sizeof(tmp));
-        parser_on_error(parser, "%s : wanted keyword `%s`, but got token `%s`",
+        parser_on_error(parser, parser->token.range, "%s : wanted keyword `%s`, but got token `%s`",
                         error_prefix ? error_prefix : "Unexpected token", keyword_names[kw], tmp);
     }
 
@@ -213,27 +213,28 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
                                           NewTypeSpecAggregateProc* new_typespec_aggregate)
 {
     assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
-
-    TypeSpec* typespec = NULL;
     ProgRange range = {.start = parser->token.range.start};
 
     next_token(parser);
 
-    if (expect_token(parser, TKN_LBRACE, error_prefix)) {
-        List fields = {0};
-
-        if (parse_fill_aggregate_body(parser, &fields) && expect_token(parser, TKN_RBRACE, error_prefix)) {
-            if (!list_empty(&fields)) {
-                range.end = parser->ptoken.range.end;
-                typespec = new_typespec_aggregate(parser->ast_arena, &fields, range);
-            }
-            else {
-                parser_on_error(parser, "%s: must have at least one field", error_prefix);
-            }
-        }
+    if (!expect_token(parser, TKN_LBRACE, error_prefix)) {
+        return NULL;
     }
 
-    return typespec;
+    List fields = {0};
+
+    if (!parse_fill_aggregate_body(parser, &fields) || !expect_token(parser, TKN_RBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    if (list_empty(&fields)) {
+        parser_on_error(parser, range, "%s: must have at least one field", error_prefix);
+        return NULL;
+    }
+
+    return new_typespec_aggregate(parser->ast_arena, &fields, range);
 }
 
 // typespec_proc_param = (name ':')? typespec
@@ -244,7 +245,6 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
 
     if (typespec && match_token(parser, TKN_COLON)) {
         if (typespec->kind == CST_TypeSpecIdent) {
-            // NOTE: I wish this was truly LL1
             ProgRange range = {.start = typespec->range.start};
             TypeSpecIdent* tident = (TypeSpecIdent*)typespec;
             Identifier* name = tident->name;
@@ -259,7 +259,7 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
             }
         }
         else {
-            parser_on_error(parser, "Parameter's name must be an alphanumeric identifier");
+            parser_on_error(parser, typespec->range, "Parameter's name must be an alphanumeric identifier");
         }
     }
     else if (typespec) {
@@ -404,8 +404,8 @@ static TypeSpec* parse_typespec_base(Parser* parser)
     // If we got here, we have an unexpected token.
     char tmp[32];
 
-    print_token(&parser->token, tmp, sizeof(tmp));
-    parser_on_error(parser, "Unexpected token `%s` in type specification", tmp);
+    print_token(&token, tmp, sizeof(tmp));
+    parser_on_error(parser, token.range, "Unexpected token `%s` in type specification", tmp);
 
     return NULL;
 }
@@ -520,7 +520,7 @@ static MemberInitializer* parse_member_initializer(Parser* parser)
                 }
             }
             else {
-                parser_on_error(parser, "Initializer designator name must be alphanumeric");
+                parser_on_error(parser, expr->range, "Initializer designator name must be alphanumeric");
             }
         }
         else if (expr) {
@@ -663,9 +663,11 @@ static Expr* parse_expr_base(Parser* parser)
 
         Expr* enclosed = parse_expr(parser);
 
-        if (enclosed && expect_token(parser, TKN_RPAREN, NULL)) {
-            return enclosed;
+        if (!enclosed || !expect_token(parser, TKN_RPAREN, NULL)) {
+            return NULL;
         }
+
+        return enclosed;
     } break;
     case TKN_LBRACE:
         return parse_expr_compound_lit(parser);
@@ -687,8 +689,8 @@ static Expr* parse_expr_base(Parser* parser)
     // If we got here, we have an unexpected token.
     char tmp[32];
 
-    print_token(&parser->token, tmp, sizeof(tmp));
-    parser_on_error(parser, "Unexpected token `%s` in expression", tmp);
+    print_token(&token, tmp, sizeof(tmp));
+    parser_on_error(parser, token.range, "Unexpected token `%s` in expression", tmp);
 
     return NULL;
 }
@@ -712,7 +714,7 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
             }
         }
         else {
-            parser_on_error(parser, "Procedure argument's name must be an alphanumeric identifier");
+            parser_on_error(parser, expr->range, "Procedure argument's name must be an alphanumeric identifier");
         }
     }
     else if (expr) {
@@ -1189,7 +1191,7 @@ static Stmt* parse_stmt_switch(Parser* parser)
         bool is_default = !swcase->start && !swcase->end;
 
         if (has_default && is_default) {
-            parser_on_error(parser, "Switch statement can have at most one default case");
+            parser_on_error(parser, swcase->range, "Switch statement can have at most one default case");
             bad_case = true;
             break;
         }
@@ -1379,7 +1381,8 @@ static Stmt* parse_stmt_return(Parser* parser)
     // This seems like a common error, so we can try to look for it.
     // However, this is not a complete check, or even necessary. Bikeshedding!!
     if (is_token_kind(parser, TKN_RBRACE)) {
-        parser_on_error(parser, "Failed to parse return statement: wanted `;` or expression, but got `}`");
+        parser_on_error(parser, parser->token.range,
+                        "Failed to parse return statement: wanted `;` or expression, but got `}`");
 
         return NULL;
     }
@@ -1482,7 +1485,6 @@ static Stmt* parse_stmt_label(Parser* parser)
     Stmt* stmt = parse_stmt(parser);
 
     if (!stmt) {
-        parser_on_error(parser, "Label must be attached to a statement");
         return NULL;
     }
 
@@ -1596,7 +1598,6 @@ static Stmt* parse_stmt_export(Parser* parser)
     PortSymbol* esym_1 = parse_port_symbol(parser);
 
     if (!esym_1) {
-        parser_on_error(parser, "Export statement must export at least one symbol");
         return NULL;
     }
 
@@ -1647,7 +1648,6 @@ static Stmt* parse_stmt_import(Parser* parser)
         PortSymbol* isym_1 = parse_port_symbol(parser);
 
         if (!isym_1) {
-            parser_on_error(parser, "Import statement must import at least one symbol");
             return NULL;
         }
 
@@ -1683,7 +1683,8 @@ static Stmt* parse_stmt_import(Parser* parser)
 
     // TODO: Support non-relative module paths (when support a node_modules-like module repository).
     if (!is_mod_path_relative(mod_pathname->str, mod_pathname->len)) {
-        parser_on_error(parser, "Module import path must be relative (i.e., starts with `./`, `../`, or `/`)");
+        parser_on_error(parser, parser->ptoken.range,
+                        "Module import path must be relative (i.e., starts with `./`, `../`, or `/`)");
         return NULL;
     }
 
@@ -1722,7 +1723,8 @@ static Stmt* parse_stmt_include(Parser* parser)
     StrLit* file_pathname = parser->ptoken.as_str.str_lit;
 
     if (!is_mod_path_relative(file_pathname->str, file_pathname->len)) {
-        parser_on_error(parser, "Include path must be relative (i.e., starts with `./`, `../`, or `/`)");
+        parser_on_error(parser, parser->ptoken.range,
+                        "Include path must be relative (i.e., starts with `./`, `../`, or `/`)");
         return NULL;
     }
 
@@ -1822,7 +1824,8 @@ Stmt* parse_global_stmt(Parser* parser)
     char tmp[32];
 
     print_token(&parser->token, tmp, sizeof(tmp));
-    parser_on_error(parser, "Only declarations or compile-time statements are allowed at global scope."
+    parser_on_error(parser, parser->token.range,
+                    "Only declarations or compile-time statements are allowed at global scope."
                     " Found token `%s`", tmp);
 
     return NULL;
@@ -1907,7 +1910,8 @@ static Decl* parse_decl_var(Parser* parser)
                     }
                 }
                 else {
-                    parser_on_error(parser, "A var declaration must have either a type or an initial value");
+                    range.end = parser->ptoken.range.end;
+                    parser_on_error(parser, range, "A var declaration must have either a type or an initial value");
                 }
             }
         }
@@ -2015,30 +2019,34 @@ static Decl* parse_decl_proc(Parser* parser)
 static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, NewDeclAggregateProc* new_decl_aggregate)
 {
     assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
-    Decl* decl = NULL;
     ProgRange range = {.start = parser->token.range.start};
 
     next_token(parser);
 
-    if (expect_token(parser, TKN_IDENT, error_prefix)) {
-        Identifier* name = parser->ptoken.as_ident.ident;
-
-        if (expect_token(parser, TKN_LBRACE, error_prefix)) {
-            List fields = {0};
-
-            if (parse_fill_aggregate_body(parser, &fields) && expect_token(parser, TKN_RBRACE, error_prefix)) {
-                if (!list_empty(&fields)) {
-                    range.end = parser->ptoken.range.end;
-                    decl = new_decl_aggregate(parser->ast_arena, name, &fields, range);
-                }
-                else {
-                    parser_on_error(parser, "%s: must have at least one field", error_prefix);
-                }
-            }
-        }
+    if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+        return NULL;
     }
 
-    return decl;
+    Identifier* name = parser->ptoken.as_ident.ident;
+
+    if (!expect_token(parser, TKN_LBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    List fields = {0};
+
+    if (!parse_fill_aggregate_body(parser, &fields) || !expect_token(parser, TKN_RBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    if (list_empty(&fields)) {
+        parser_on_error(parser, range, "%s: must have at least one field", error_prefix);
+        return NULL;
+    }
+
+    return new_decl_aggregate(parser->ast_arena, name, &fields, range);
 }
 
 // enum_item  = TKN_IDENT ('=' expr)?
@@ -2110,12 +2118,14 @@ static Decl* parse_decl_enum(Parser* parser)
             }
 
             if (!bad_item && expect_token(parser, TKN_RBRACE, error_prefix)) {
+                range.end = parser->ptoken.range.end;
+
                 if (num_items) {
-                    range.end = parser->ptoken.range.end;
                     decl = new_decl_enum(parser->ast_arena, name, typespec, &items, range);
                 }
                 else {
-                    parser_on_error(parser, "%s: must have at least one enumeration constant", error_prefix);
+                    parser_on_error(parser, range,
+                                    "%s: must have at least one enumeration constant", error_prefix);
                 }
             }
         }
@@ -2227,7 +2237,7 @@ static Decl* parse_decl_no_annotations(Parser* parser)
     char tmp[32];
 
     print_token(&parser->token, tmp, sizeof(tmp));
-    parser_on_error(parser, "Unexpected token: wanted a declaration keyword, but got `%s`", tmp);
+    parser_on_error(parser, parser->token.range, "Unexpected token: wanted a declaration keyword, but got `%s`", tmp);
 
     return NULL;
 }
@@ -2259,7 +2269,7 @@ Decl* parse_decl(Parser* parser)
 
             if (name == annotation_names[ANNOTATION_FOREIGN]) {
                 if (decl->flags & DECL_IS_FOREIGN) {
-                    parser_on_error(parser, "Duplicate @foreign annotations");
+                    parser_on_error(parser, a->range, "Duplicate @foreign annotations");
                     return NULL;
                 }
 
@@ -2267,7 +2277,7 @@ Decl* parse_decl(Parser* parser)
             }
             else if (name == annotation_names[ANNOTATION_EXPORTED]) {
                 if (decl->flags & DECL_IS_EXPORTED) {
-                    parser_on_error(parser, "Duplicate @exported annotations");
+                    parser_on_error(parser, a->range, "Duplicate @exported annotations");
                     return NULL;
                 }
 

@@ -6,7 +6,9 @@
 #include "hash_map.h"
 #include "ast.h"
 
-typedef struct NibbleCtx {
+typedef struct NibbleCtx NibbleCtx;
+
+struct NibbleCtx {
     Allocator gen_mem;
     Allocator ast_mem;
     Allocator tmp_mem;
@@ -15,7 +17,10 @@ typedef struct NibbleCtx {
     HMap str_lit_map;
     HMap mod_map;
 
-    ByteStream errors;
+    BucketList src_files;
+    ProgPos src_pos;
+
+    ErrorStream errors;
 
     TypeCache type_cache;
 
@@ -30,7 +35,7 @@ typedef struct NibbleCtx {
 
     BucketList vars;
     BucketList procs;
-} NibbleCtx;
+};
 
 bool nibble_init(OS target_os, Arch target_arch);
 bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_name, size_t outf_len);

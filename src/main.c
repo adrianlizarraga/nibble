@@ -113,8 +113,17 @@ int main(int argc, char* argv[])
     const char* mainf_name = NULL;
     const char* outf_name = "out";
 
+    // Set default target os/arch.
+#if defined(NIBBLE_HOST_WINDOWS)
+    OS target_os = OS_WIN32;
+    Arch target_arch = ARCH_X64;
+#elif defined(NIBBLE_HOST_LINUX)
     OS target_os = OS_LINUX;
     Arch target_arch = ARCH_X64;
+#else
+    OS target_os = OS_INVALID;
+    Arch target_arch = ARCH_INVALID;
+#endif
 
     while (argc > 0) {
         const char* arg = consume_arg(&argc, &argv);

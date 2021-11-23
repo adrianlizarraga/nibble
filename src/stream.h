@@ -2,24 +2,6 @@
 #define NIBBLE_STREAM_H
 #include <stddef.h>
 #include "llist.h"
-typedef struct ByteStreamChunk ByteStreamChunk;
-typedef struct ByteStream ByteStream;
-
-struct ByteStreamChunk {
-    ByteStreamChunk* next;
-    size_t size;
-    char buf[];
-};
-
-struct ByteStream {
-    ByteStreamChunk* first;
-    ByteStreamChunk* last;
-    size_t count;
-    Allocator* allocator;
-};
-
-ByteStream byte_stream_create(Allocator* allocator);
-void add_byte_stream_chunk(ByteStream* stream, const char* buf, size_t size);
 
 typedef struct Bucket Bucket;
 typedef struct BucketList BucketList;

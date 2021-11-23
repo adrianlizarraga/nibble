@@ -996,6 +996,14 @@ const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT] = {
     [CST_DeclProc] = SYMBOL_PROC,  [CST_DeclTypedef] = SYMBOL_TYPE,
 };
 
+const char* sym_kind_names[SYMBOL_KIND_COUNT] = {
+    [SYMBOL_VAR] = "variable",
+    [SYMBOL_CONST] = "constant",
+    [SYMBOL_PROC] = "procedure",
+    [SYMBOL_TYPE] = "type",
+    [SYMBOL_MODULE] = "module",
+};
+
 Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod)
 {
     Symbol* sym = alloc_type(allocator, Symbol, true);
@@ -1159,15 +1167,14 @@ bool install_module_decls(Allocator* allocator, Module* mod)
             Symbol* sym = add_unresolved_symbol(allocator, mod_scope, mod, decl);
 
             if (!sym) {
-                report_error(mod->cpath_lit->str, decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
+                report_error(decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
                 return false;
             }
 
             // Add to export table if decl is exported.
             if (decl->flags & DECL_IS_EXPORTED) {
                 if (!module_add_export_sym(mod, sym->name, sym)) {
-                    report_error(mod->cpath_lit->str, decl->range, "Conflicting export symbol name `%s`",
-                                 sym->name->str);
+                    report_error(decl->range, "Conflicting export symbol name `%s`", sym->name->str);
                     return false;
                 }
             }
@@ -1192,15 +1199,13 @@ bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym)
     if (old_sym && (is_imported || (old_sym->home == mod))) {
         // TODO: Handle module symbols?
 
-        ProgRange range = sym->decl ? sym->decl->range : (ProgRange){0};
+        ProgRange range = sym->decl ? sym->decl->range : mod->range;
 
         if (sym->home == mod) {
-            // TODO: Module path is NOT the file's OS path. FIXME
-            report_error(mod->cpath_lit->str, range, "Duplicate definition of symbol `%s`", name->str);
+            report_error(range, "Duplicate definition of symbol `%s`", name->str);
         }
         else {
-            // TODO: Module path is NOT the file's OS path. FIXME
-            report_error(mod->cpath_lit->str, range, "Conflicting import name `%s`", name->str);
+            report_error(range, "Conflicting import name `%s`", name->str);
         }
 
         return false;
@@ -1244,7 +1249,7 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
         Symbol* sym = module_get_export_sym(src_mod, isym->name);
 
         if (!sym) {
-            report_error(dst_mod->cpath_lit->str, stmt->super.range,
+            report_error(stmt->super.range,
                          "Importing unknown or private symbol `%s` from module `%s`", isym->name->str,
                          src_mod->cpath_lit->str); // TODO: mod_path is not an OS path
             return false;
