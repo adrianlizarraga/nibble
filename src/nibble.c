@@ -208,13 +208,12 @@ static LineCol get_src_linecol(SourceFile* src_file, ProgPos pos)
 #define RED_COLOR_CODE "\x1B[31m"
 #define RESET_COLOR_CODE "\x1B[0m"
 
-static void print_error(Error* error)
+static void print_error(Error* error, bool use_colors)
 {
     SourceFile* src_file = get_src_file(nibble, error->range.start);
     assert(src_file);
 
     LineCol linecol_s = get_src_linecol(src_file, error->range.start);
-    //LineCol linecol_e = get_src_linecol(src_file, error->range.end);
 
     Path src_ospath;
     cpath_str_to_ospath(&nibble->tmp_mem, &src_ospath, src_file->cpath_str, src_file->cpath_len, &nibble->base_ospath);
@@ -238,7 +237,9 @@ static void print_error(Error* error)
         }
     }
 
-    ftprint_err(RED_COLOR_CODE);
+    if (use_colors) {
+        ftprint_err(RED_COLOR_CODE);
+    }
 
     for (ProgPos p = error->range.start; p < error->range.end; p += 1) {
         size_t i = p - src_file->range.start;
@@ -246,14 +247,22 @@ static void print_error(Error* error)
 
         if (ch == '\n') {
             line += 1;
-            ftprint_err(RESET_COLOR_CODE " %5d | " RED_COLOR_CODE, line);
+
+            if (use_colors) {
+                ftprint_err(RESET_COLOR_CODE " %5d | " RED_COLOR_CODE, line);
+            }
+            else {
+                ftprint_err(" %5d | ", line);
+            }
         }
         else {
             ftprint_err("%c", src_file->code[i]);
         }
     }
 
-    ftprint_err(RESET_COLOR_CODE);
+    if (use_colors) {
+        ftprint_err(RESET_COLOR_CODE);
+    }
 
     const char* p = src_file->code + (error->range.end - src_file->range.start);
 
@@ -268,11 +277,14 @@ static void print_error(Error* error)
 static void print_errors(ErrorStream* errors)
 {
     if (errors->count > 0) {
+        // TODO: Will not work on Windows
+        bool is_atty = isatty(STDERR_FILENO);
+
         ftprint_err("\n%u errors:\n\n", errors->count);
         Error* err = errors->first;
 
         while (err) {
-            print_error(err);
+            print_error(err, is_atty);
             err = err->next;
         }
     }
