@@ -93,6 +93,7 @@ int run_cmd(Allocator* allocator, char* argv[], int argc)
 
 bool is_stderr_atty()
 {
+    // Refer to: https://stackoverflow.com/questions/3648711/detect-nul-file-descriptor-isatty-is-bogus
     CONSOLE_SCREEN_BUFFER_INFO sbi;
 
     return GetConsoleScreenBufferInfo(GetStdHandle(STD_ERROR_HANDLE), &sbi);
