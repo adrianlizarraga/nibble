@@ -4,4 +4,5 @@
 #include "allocator.h"
 
 int run_cmd(Allocator* allocator, char* argv[], int argc);
+bool is_stderr_atty();
 #endif

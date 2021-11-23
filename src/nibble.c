@@ -277,14 +277,13 @@ static void print_error(Error* error, bool use_colors)
 static void print_errors(ErrorStream* errors)
 {
     if (errors->count > 0) {
-        // TODO: Will not work on Windows
-        bool is_atty = isatty(STDERR_FILENO);
+        bool use_colors = is_stderr_atty();
 
         ftprint_err("\n%u errors:\n\n", errors->count);
         Error* err = errors->first;
 
         while (err) {
-            print_error(err, is_atty);
+            print_error(err, use_colors);
             err = err->next;
         }
     }
