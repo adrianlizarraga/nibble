@@ -10,16 +10,48 @@ A programming language based on C. The goal is to create a compiled, statically-
 - [ ] Named procedure arguments
 - [ ] Generic procedures (like c++ templates)
 
-The Nibble compiler currently generates an assembly file that is assembled with NASM and then linked with the OS linker.
-
 Nibble supports the followng operating systems:
 - [x] x64 linux
 - [x] x64 windows
 
-## Examples
+## Quickstart
+### Build the Nibble compiler
+The only library required to build the Nibble compiler is the C standard library.
+#### Linux
+The following generates an executable called `nibble` in the root project directory.
+```console
+$ gcc -O2 -o nibble src/main.c
+```
+#### Windows
+The following generates an executable called `nibble.exe` in the root project directory. Note that you must [install C11/C17 support in Visual Studio](https://docs.microsoft.com/en-us/cpp/overview/install-c17-support?view=msvc-170).
+```console
+$ cl.exe -std:c11 /Fe:nibble.exe .\src\main.c
+```
+### Compiling a nibble program
+The Nibble compiler currently generates an assembly file that is assembled with NASM and then linked with your operating system's linker. Therefore, you'll need to install [NASM assembler](https://nasm.us/) and add it to your system `PATH`. The compiler will report an error if it cannot find either NASM or a linker.
+
+To compile a Nibble program, the compiler only needs the file (i.e., module) containing your program's `main()` procedure. The compiler can automatically pickup any imported or included files. Refer to the language reference to learn more about importing or including other files. Here's an example that compiles a "Hello World" program on linux.
+
+```console
+$ ./nibble my_main.nib -o hello_world
+[INFO]: Parsing module /main.nib ...
+[INFO]: Generating NASM assembly output: hello_world.s ...
+[CMD]: nasm -f elf64 hello_world.s -o hello_world.o
+[CMD]: ld -o hello_world hello_world.o
+$ ./hello_world
+Hello, World
+
+```
+
+### Running tests
+TODO
+
+## Code examples
 Note that Nibble provides a builtin procedure called `#writeout()` that writes bytes to stdout.
 
-Hello, World:
+### Hello, World
+
+main.nib:
 ```c
 proc main(argc : int, argv : ^^char) => int
 {
@@ -31,38 +63,48 @@ proc main(argc : int, argv : ^^char) => int
 }
 ```
 
-Merge sort:
+```console
+$ ./nibble main.nib
+[INFO]: Parsing module /main.nib ...
+[INFO]: Generating NASM assembly output: out.s ...
+[CMD]: nasm -f elf64 out.s -o out.o
+[CMD]: ld -o out out.o
+$ ./out
+Hello, World
+
+```
+### Merge sort
+
+main.nib:
 ```c
-proc min(a: int, b: int) => int {
-    var r := a;
+import { merge_sort } from "./sort.nib";
 
-    if (b < a) {
-        r = b;
+proc main() => int {
+    var a : []int = {5, 4, 3, 2, 1, 0};
+    var b : [6]int;
+
+    var c : ^int = merge_sort(a, b, 6);
+
+    var i := 0;
+    while (i < 6) {
+        var ch : char = c[i] + '0';
+
+        #writeout(^ch, 1);
+        #writeout(" ", 1);
+
+        i = i + 1;
     }
 
-    return r;
+    #writeout("\n", 1);
+
+    return 0;
 }
+```
 
-proc merge(a: ^int, l: int, m: int, r: int, b: ^int) {
-    var i := l;
-    var j := m;
-
-    var k := l;
-
-    while (k < r) {
-        if (i < m && (j >= r || a[i] <= a[j])) {
-            b[k] = a[i];
-            i = i + 1;
-        }
-        else {
-            b[k] = a[j];
-            j = j + 1;
-        }
-
-        k = k + 1;
-    }
-}
-
+sort.nib:
+```c
+// Returns a pointer to the sorted array (either a or b).
+@exported
 proc merge_sort(a: ^int, b: ^int, n : int) => ^int {
     var width := 1;
 
@@ -90,29 +132,53 @@ proc merge_sort(a: ^int, b: ^int, n : int) => ^int {
     return a;
 }
 
-proc main() => int {
-    var a : [6]int = {5, 4, 3, 2, 1, 0};
-    var b : [6]int;
+//
+// Internal procedures.
+//
 
-    var c : ^int = merge_sort(a, b, 6);
-   
-    var i := 1;
-    while (i < 6) {
-        var ch : char = c[i] + '0';
+proc merge(a: ^int, l: int, m: int, r: int, b: ^int) {
+    var i := l;
+    var j := m;
 
-        #writeout(^ch, 1);
-        #writeout(" ", 1);
+    var k := l;
+
+    while (k < r) {
+        if (i < m && (j >= r || a[i] <= a[j])) {
+            b[k] = a[i];
+            i = i + 1;
+        }
+        else {
+            b[k] = a[j];
+            j = j + 1;
+        }
+
+        k = k + 1;
+    }
+}
+
+proc min(a: int, b: int) => int {
+    var r := a;
+
+    if (b < a) {
+        r = b;
     }
 
-    return 0;
+    return r;
 }
 ```
 
-## Quickstart
-### Compiling
-TODO
-### Testing
-TODO
+```console
+$ ./nibble main.nib
+[INFO]: Parsing module /main.nib ...
+[INFO]: Parsing module /sort.nib ...
+[INFO]: Generating NASM assembly output: out.s ...
+[CMD]: nasm -f elf64 out.s -o out.o
+[CMD]: ld -o out out.o
+$ ./out
+0 1 2 3 4 5 
+
+```
+
 
 ## Status of the project
 
@@ -141,3 +207,5 @@ Nibble does not yet support all basic C features:
 - [x] Binary operators
 - [x] Unary operators
 
+## Language reference
+TODO
