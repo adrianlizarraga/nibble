@@ -1,3 +1,4 @@
+**THIS PROGRAMMING LANGUAGE IS A WORK IN PROGRESS. ANYTHING CAN CHANGE AT ANY MOMENT. USE AT YOUR OWN RISK!**
 # Nibble
 A programming language based on C. The goal is to create a compiled, statically-typed programming language that adds the following features to C:
 
@@ -42,7 +43,18 @@ $ ./hello_world
 Hello, World
 
 ```
+### Commnad-line options
+Run `./nibble -h` for available command-line options.
 
+```console
+$ ./nibble -h
+Usage: ./nibble [OPTIONS] <input.nib>
+OPTIONS:
+    -h                              Print this help message
+    -os   [linux | win32 | osx]     Target OS
+    -arch [x64 | x86]               Target architecture
+    -o    <output_file>             Output binary file name. Defaults to `out`
+```
 ### Running tests
 TODO
 
