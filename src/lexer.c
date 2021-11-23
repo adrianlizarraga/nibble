@@ -21,9 +21,10 @@ static void skip_char(Lexer* lexer, char c)
         lexer->at += 1;
 }
 
-static ProgPos lexer_at_pos(Lexer* lexer)
+#define LEXER_POS(l) (lexer_calc_pos((l), (l)->at))
+static ProgPos lexer_calc_pos(Lexer* lexer, const char* at)
 {
-    return (ProgPos)(lexer->at - lexer->str) + lexer->start;
+    return (ProgPos)(at - lexer->str) + lexer->start;
 }
 
 static void lexer_on_error(Lexer* lexer, ProgRange range, const char* format, ...)
@@ -48,7 +49,7 @@ static void lexer_on_line(Lexer* lexer)
     ProgPos** line_pos = lexer->line_pos;
 
     if (line_pos) {
-        array_push(*line_pos, lexer_at_pos(lexer) + 1);
+        array_push(*line_pos, LEXER_POS(lexer) + 1);
     }
 }
 
@@ -56,7 +57,7 @@ static void skip_c_comment(Lexer* lexer)
 {
     assert(lexer->at[0] == '/');
     assert(lexer->at[1] == '*');
-    ProgPos start = lexer_at_pos(lexer);
+    ProgPos start = LEXER_POS(lexer);
 
     lexer->at += 2;
 
@@ -65,7 +66,7 @@ static void skip_c_comment(Lexer* lexer)
     while (lexer->at[0] && (level > 0)) {
         // Nested c-style comment
         if ((lexer->at[0] == '/') && (lexer->at[1] == '*')) {
-            start = lexer_at_pos(lexer);
+            start = LEXER_POS(lexer);
             level += 1;
             lexer->at += 2;
         }
@@ -121,7 +122,7 @@ static TokenInt scan_int(Lexer* lexer)
     unsigned int biased = biased_digit(lexer->at[0]);
 
     if ((biased == 0) && (base != 10)) {
-        ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+        ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
         lexer_on_error(lexer, range, "Invalid integer literal character '%c' after base specifier", lexer->at[0]);
         skip_word_end(lexer);
         return tint;
@@ -132,8 +133,9 @@ static TokenInt scan_int(Lexer* lexer)
         unsigned int digit = biased - 1;
 
         if (digit >= base) {
-            ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
-            lexer_on_error(lexer, range, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0], base);
+            ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
+            lexer_on_error(lexer, range, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0],
+                           base);
             tint.value = 0;
             skip_word_end(lexer);
             return tint;
@@ -141,8 +143,9 @@ static TokenInt scan_int(Lexer* lexer)
 
         // Detect overflow if 10*val + digt > MAX
         if (tint.value > (UINT64_MAX - digit) / base) {
-            ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
-            lexer_on_error(lexer, range, "Integer literal %.*s is too large for its type", (size_t)(lexer->at - start), start);
+            ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
+            lexer_on_error(lexer, range, "Integer literal %.*s is too large for its type", (size_t)(lexer->at - start),
+                           start);
             tint.value = 0;
             skip_word_end(lexer);
             return tint;
@@ -200,7 +203,7 @@ static TokenInt scan_int(Lexer* lexer)
     tint.suffix = suffix;
 
     if (is_alphanum(lexer->at[0])) {
-        ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+        ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
         lexer_on_error(lexer, range, "Invalid integer literal character '%c'", lexer->at[0]);
         skip_word_end(lexer);
     }
@@ -232,8 +235,9 @@ static TokenFloat scan_float(Lexer* lexer)
             lexer->at++;
 
         if (!is_dec_digit(lexer->at[0])) {
-            ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
-            lexer_on_error(lexer, range, "Unexpected character '%c' after floating point literal's exponent", lexer->at[0]);
+            ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
+            lexer_on_error(lexer, range, "Unexpected character '%c' after floating point literal's exponent",
+                           lexer->at[0]);
             skip_word_end(lexer);
             return tfloat;
         }
@@ -253,7 +257,7 @@ static TokenFloat scan_float(Lexer* lexer)
         assert((end + 1) == lexer->at);
 
         if (value == HUGE_VALF) {
-            ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+            ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
             lexer_on_error(lexer, range, "32-bit floating-point literal is too large");
             return tfloat;
         }
@@ -268,7 +272,7 @@ static TokenFloat scan_float(Lexer* lexer)
         assert(end == lexer->at);
 
         if (value == HUGE_VAL) {
-            ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+            ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
             lexer_on_error(lexer, range, "64-bit floating-point literal is too large");
             return tfloat;
         }
@@ -289,7 +293,7 @@ static int scan_hex_escape(Lexer* lexer)
     unsigned int digit = biased - 1;
 
     if (!biased || (digit >= 16)) {
-        ProgPos s = (start - lexer->str) + lexer->start;
+        ProgPos s = lexer_calc_pos(lexer, start);
         ProgRange range = {.start = s, .end = s + 1};
         lexer_on_error(lexer, range, "Invalid hex character digit '%c'", lexer->at[0]);
         return -1;
@@ -308,7 +312,7 @@ static int scan_hex_escape(Lexer* lexer)
         digit = biased - 1;
 
         if (digit >= 16) {
-            ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+            ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
             lexer_on_error(lexer, range, "Invalid hex character digit '0x%X' is larger than 0x%X", lexer->at[0], 15);
             return -1;
         }
@@ -357,8 +361,7 @@ static TokenStr scan_string(Lexer* lexer)
                 c = unescape_char(lexer->at[0]);
 
                 if (!c && (lexer->at[0] != '0')) {
-                    ProgRange range = {.start = (start - lexer->str) + lexer->start,
-                        .end = lexer_at_pos(lexer) + 1};
+                    ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
                     lexer_on_error(lexer, range, "Invalid escaped character '\\%c'", lexer->at[0]);
                 }
 
@@ -376,14 +379,14 @@ static TokenStr scan_string(Lexer* lexer)
         lexer->at++;
     }
     else if (lexer->at[0] == '\n') {
-        ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+        ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
         lexer_on_error(lexer, range, "String literal cannot span multiple lines");
         lexer_on_line(lexer);
         lexer->at++;
         skip_char(lexer, '"');
     }
     else {
-        ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+        ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
         lexer_on_error(lexer, range, "Encountered end-of-file while parsing string literal");
     }
 
@@ -405,14 +408,14 @@ static TokenInt scan_char(Lexer* lexer)
 
     // Check for empty character literal.
     if (lexer->at[0] == '\'') {
-        ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+        ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
         lexer_on_error(lexer, range, "Character literal cannot be empty");
         lexer->at++;
         return tint;
     }
 
     if (lexer->at[0] == '\n') {
-        ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+        ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
         lexer_on_error(lexer, range, "Character literal cannot contain a newline character");
         lexer_on_line(lexer);
         lexer->at++;
@@ -436,7 +439,7 @@ static TokenInt scan_char(Lexer* lexer)
             int32_t val = unescape_char(lexer->at[0]);
 
             if (!val && (lexer->at[0] != '0')) {
-                ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+                ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
                 lexer_on_error(lexer, range, "Invalid escaped character '\\%c'", lexer->at[0]);
             }
 
@@ -451,7 +454,7 @@ static TokenInt scan_char(Lexer* lexer)
 
     // Check for a closing quote
     if (lexer->at[0] != '\'') {
-        ProgRange range = {.start = (start - lexer->str) + lexer->start, .end = lexer_at_pos(lexer) + 1};
+        ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
         lexer_on_error(lexer, range, "Missing closing character quote (found '%c' instead)", lexer->at[0]);
         skip_word_end(lexer);
         skip_char(lexer, '\'');
@@ -564,7 +567,7 @@ Token scan_token(Lexer* lexer)
     Token token = {0};
 
 top:
-    token.range.start = lexer_at_pos(lexer);
+    token.range.start = LEXER_POS(lexer);
 
     switch (lexer->at[0]) {
     case ' ':
@@ -912,7 +915,7 @@ top:
             token.as_ident.ident = ident;
 
             if ((ident->str[0] == '#') && (ident->kind != IDENTIFIER_INTRINSIC)) {
-                ProgRange range = {.start = token.range.start, .end = lexer_at_pos(lexer)};
+                ProgRange range = {.start = token.range.start, .end = LEXER_POS(lexer)};
                 lexer_on_error(lexer, range, "Only intrinsics can begin with a `#` character");
             }
         }
@@ -930,7 +933,7 @@ top:
     }
     }
 
-    token.range.end = lexer_at_pos(lexer);
+    token.range.end = LEXER_POS(lexer);
 
     return token;
 }
