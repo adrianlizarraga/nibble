@@ -47,7 +47,7 @@ Hello, World
 
 ```
 
-To compile a Nibble program, the compiler only needs the file (i.e., module) containing your program's `main()` procedure. The compiler can automatically pickup any imported or included files. Refer to the language reference to learn more about importing or including other files.
+To compile a Nibble program, the compiler only needs the file (i.e., module) containing your program's `main()` procedure. The compiler can automatically detect any imported or included files. Refer to the language reference to learn more about importing or including other files.
 
 ### Command-line options
 Run `./nibble -h` for available command-line options.
