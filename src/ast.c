@@ -1141,8 +1141,11 @@ void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list
 
 Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl)
 {
-    if (lookup_symbol(scope, decl->name))
+    Symbol* old_sym = lookup_symbol(scope, decl->name);
+
+    if (old_sym) {
         return NULL; // Shadows a symbol in the current scope or a parent scope.
+    }
 
     Symbol* sym = new_symbol_decl(allocator, decl, mod);
     sym->status = SYMBOL_STATUS_UNRESOLVED;

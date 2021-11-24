@@ -2250,6 +2250,10 @@ static void IR_emit_stmt_expr_assign(IR_Builder* builder, StmtExprAssign* stmt)
 
 static void IR_emit_stmt_decl(IR_Builder* builder, StmtDecl* sdecl)
 {
+    if (sdecl->decl->kind == CST_DeclConst) {
+        return;
+    }
+
     assert(sdecl->decl->kind == CST_DeclVar);
 
     DeclVar* dvar = (DeclVar*)sdecl->decl;

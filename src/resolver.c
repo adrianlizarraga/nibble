@@ -90,10 +90,6 @@ static ModuleState enter_module(Resolver* resolver, Module* mod)
 {
     ModuleState old_state = resolver->state;
 
-    if (mod == old_state.mod) {
-        return old_state;
-    }
-
     resolver->state.mod = mod;
     resolver->state.scope = &mod->scope;
 
@@ -2344,11 +2340,11 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         Decl* decl = sdecl->decl;
         Scope* scope = resolver->state.scope;
 
-        if (decl->kind == CST_DeclVar) {
+        if (decl->kind == CST_DeclVar || decl->kind == CST_DeclConst) {
             Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, decl);
 
             if (!sym)
-                resolver_on_error(resolver, stmt->range, "Variable `%s` shadows a previous local declaration",
+                resolver_on_error(resolver, stmt->range, "Identifier `%s` shadows a previous local declaration",
                                   decl->name->str);
             else if (resolve_decl_var(resolver, sym))
                 ret = RESOLVE_STMT_SUCCESS;

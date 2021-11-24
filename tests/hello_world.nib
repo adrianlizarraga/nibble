@@ -1,0 +1,8 @@
+proc main(argc : int, argv : ^^char) => int
+{
+    var msg : []char = "Hello, World\n";
+    const len : usize = #sizeof(#typeof(msg)) - 1;
+
+    #writeout(msg, len);
+    return 0;
+}
