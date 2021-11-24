@@ -32,7 +32,9 @@ The following terminal command generates an executable called `nibble.exe` in th
 $ cl.exe -std:c11 /Fe:nibble.exe .\src\main.c
 ```
 ### 2. Install NASM
-The Nibble compiler currently generates an assembly file that is assembled with NASM and then linked with your operating system's linker. Therefore, you'll need to install the [NASM assembler](https://nasm.us/) and add it to your system `PATH`.
+The Nibble compiler currently generates an assembly file that is assembled with NASM and then linked with your operating system's linker. Therefore, you'll need to install the [NASM assembler](https://nasm.us/) and add it to your system `PATH`. 
+
+Refer to the wiki page on [How to install NASM](https://github.com/adrianlizarraga/nibble/wiki/How-to-install-NASM) for more detailed instructions.
 
 ### 3. Compile a nibble program
 Here's an example that compiles the ["Hello World" example program](examples/hello_world/main.nib) on linux.
