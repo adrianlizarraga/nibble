@@ -32,12 +32,14 @@ The following generates an executable called `nibble.exe` in the root project di
 $ cl.exe -std:c11 /Fe:nibble.exe .\src\main.c
 ```
 ### Compiling a nibble program
-The Nibble compiler currently generates an assembly file that is assembled with NASM and then linked with your operating system's linker. Therefore, you'll need to install [NASM assembler](https://nasm.us/) and add it to your system `PATH`. The compiler will report an error if it cannot find either NASM or a linker.
+The Nibble compiler currently generates an assembly file that is assembled with NASM and then linked with your operating system's linker. Therefore, you'll need to install the [NASM assembler](https://nasm.us/) and add it to your system `PATH`. The compiler will report an error if it cannot find either NASM or a linker.
 
-To compile a Nibble program, the compiler only needs the file (i.e., module) containing your program's `main()` procedure. The compiler can automatically pickup any imported or included files. Refer to the language reference to learn more about importing or including other files. Here's an example that compiles a "Hello World" program on linux.
+To compile a Nibble program, the compiler only needs the file (i.e., module) containing your program's `main()` procedure. The compiler can automatically pickup any imported or included files. Refer to the language reference to learn more about importing or including other files.
+
+Here's an example that compiles the ["Hello World" example program](examples/hello_world/main.nib) on linux.
 
 ```console
-$ ./nibble my_main.nib -o hello_world
+$ ./nibble examples/hello_world/main.nib -o hello_world
 [INFO]: Parsing module /main.nib ...
 [INFO]: Generating NASM assembly output: hello_world.s ...
 [CMD]: nasm -f elf64 hello_world.s -o hello_world.o
@@ -46,7 +48,7 @@ $ ./hello_world
 Hello, World
 
 ```
-### Commnad-line options
+### Command-line options
 Run `./nibble -h` for available command-line options.
 
 ```console
@@ -62,7 +64,7 @@ OPTIONS:
 TODO
 
 ## Code examples
-Note that Nibble provides a builtin procedure called `#writeout()` that writes bytes to stdout.
+Note that Nibble provides a builtin procedure called `#writeout()` that writes bytes to stdout. Refer to the language reference for a description of all builtin procedures.
 
 ### Hello, World
 
@@ -89,6 +91,7 @@ Hello, World
 
 ```
 ### Merge sort
+This [example](examples/merge_sort/) demonstrates basic use of the module import system. Refer to the language reference to learn more about importing.
 
 main.nib:
 ```c
