@@ -71,7 +71,7 @@ main.nib:
 proc main(argc : int, argv : ^^char) => int
 {
     var msg : []char = "Hello, World\n";
-    var len : usize = #sizeof(#typeof(msg)) - 1;
+    const len : usize = #sizeof(#typeof(msg)) - 1;
 
     #writeout(msg, len);
     return 0;
@@ -218,7 +218,7 @@ Nibble does not yet support all basic C features:
     - [x] return 
     - [x] Expressions
     - [x] Assignments
-- [x] Ternary operator
+- [ ] Ternary operator
 - [x] Binary operators
 - [x] Unary operators
 
