@@ -24,7 +24,7 @@ The only library required to build the Nibble compiler is the C standard library
 #### Linux
 The following generates an executable called `nibble` in the root project directory.
 ```console
-$ gcc -O2 -o nibble src/main.c
+$ gcc -I./src -O2 -o nibble src/main.c
 ```
 #### Windows
 The following generates an executable called `nibble.exe` in the root project directory. Note that you must [install C11/C17 support in Visual Studio](https://docs.microsoft.com/en-us/cpp/overview/install-c17-support?view=msvc-170).
