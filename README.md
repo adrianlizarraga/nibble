@@ -40,7 +40,7 @@ Refer to the wiki page on [How to install NASM](https://github.com/adrianlizarra
 Here's an example that compiles the ["Hello World" example program](examples/hello_world/main.nib) on linux.
 
 ```console
-$ ./nibble examples/hello_world/main.nib -o hello_world
+$ ./nibble -o hello_world examples/hello_world/main.nib
 [INFO]: Parsing module /main.nib ...
 [INFO]: Generating NASM assembly output: hello_world.s ...
 [CMD]: nasm -f elf64 hello_world.s -o hello_world.o
@@ -52,7 +52,7 @@ Hello, World
 
 To compile a Nibble program, the compiler only needs the file (i.e., module) containing your program's `main()` procedure. The compiler can automatically detect any imported or included files. Refer to the [language reference](https://github.com/adrianlizarraga/nibble/wiki/Language-reference) to learn more about importing or including other files.
 
-### Command-line options
+## Command-line options
 Run `./nibble -h` for available command-line options.
 
 ```console
@@ -64,7 +64,7 @@ OPTIONS:
     -arch [x64 | x86]               Target architecture
     -o    <output_file>             Output binary file name. Defaults to `out`
 ```
-### Running tests
+## Running tests
 TODO
 
 ## Code examples
@@ -200,7 +200,6 @@ $ ./out
 0 1 2 3 4 5 
 
 ```
-
 
 ## Status of the project
 
