@@ -19,21 +19,22 @@ Nibble supports the followng operating systems:
 - [ ] arm64 macOS
 
 ## Quickstart
-### Build the Nibble compiler
+### 1. Build the Nibble compiler
 The only library required to build the Nibble compiler is the C standard library.
 #### Linux
-The following generates an executable called `nibble` in the root project directory.
+The following terminal command generates an executable called `nibble` in the root project directory.
 ```console
 $ gcc -I./src -O2 -o nibble src/main.c
 ```
 #### Windows
-The following generates an executable called `nibble.exe` in the root project directory. Note that you must [install C11/C17 support in Visual Studio](https://docs.microsoft.com/en-us/cpp/overview/install-c17-support?view=msvc-170).
+The following terminal command generates an executable called `nibble.exe` in the root project directory. Note that you must [enable C11/C17 support in Visual Studio](https://docs.microsoft.com/en-us/cpp/overview/install-c17-support?view=msvc-170) prior to running this command.
 ```console
 $ cl.exe -std:c11 /Fe:nibble.exe .\src\main.c
 ```
-### Compiling a nibble program
+### 2. Install NASM
 The Nibble compiler currently generates an assembly file that is assembled with NASM and then linked with your operating system's linker. Therefore, you'll need to install the [NASM assembler](https://nasm.us/) and add it to your system `PATH`.
 
+### 3. Compile a nibble program
 Here's an example that compiles the ["Hello World" example program](examples/hello_world/main.nib) on linux.
 
 ```console
