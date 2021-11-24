@@ -50,7 +50,7 @@ Hello, World
 
 ```
 
-To compile a Nibble program, the compiler only needs the file (i.e., module) containing your program's `main()` procedure. The compiler can automatically detect any imported or included files. Refer to the [language reference](https://github.com/adrianlizarraga/nibble/wiki/Language-reference) to learn more about importing or including other files.
+To compile a Nibble program, the compiler only needs the file (i.e., module) containing your program's `main()` procedure. The compiler can automatically detect any imported or included files. Refer to the [language reference](https://github.com/adrianlizarraga/nibble/wiki/Language-reference#module-importexport-system) to learn more about importing or including other files.
 
 ## Command-line options
 Run `./nibble -h` for available command-line options.
@@ -68,7 +68,7 @@ OPTIONS:
 TODO
 
 ## Code examples
-Note that Nibble does not have a standard library _yet_. Instead, Nibble provides a builtin procedure called `#writeout()` that writes bytes to stdout. Refer to the [language reference](https://github.com/adrianlizarraga/nibble/wiki/Language-reference) for a description of all builtin procedures.
+Note that Nibble does not have a standard library _yet_. Instead, Nibble provides a builtin procedure called `#writeout()` that writes bytes to stdout. Refer to the [language reference](https://github.com/adrianlizarraga/nibble/wiki/Language-reference#standard-library) for a description of all builtin procedures.
 
 ### Hello, World
 
