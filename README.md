@@ -68,7 +68,7 @@ OPTIONS:
 TODO
 
 ## Code examples
-Note that Nibble provides a builtin procedure called `#writeout()` that writes bytes to stdout. Refer to the [language reference](https://github.com/adrianlizarraga/nibble/wiki/Language-reference) for a description of all builtin procedures.
+Note that Nibble does not have a standard library _yet_. Instead, Nibble provides a builtin procedure called `#writeout()` that writes bytes to stdout. Refer to the [language reference](https://github.com/adrianlizarraga/nibble/wiki/Language-reference) for a description of all builtin procedures.
 
 ### Hello, World
 
