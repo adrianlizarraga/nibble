@@ -1191,7 +1191,7 @@ static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
             // TODO: This range is wrong! Consider using a custom expr_enum_inc that does not require dummy ranges.
             ProgRange dummy_range = enum_item->range;
 
-            // Use the explicit enum item initilialization value.
+            // Use the explicit enum item initialization value.
             if (enum_item->value) {
                 enum_item_val = enum_item->value;
             }

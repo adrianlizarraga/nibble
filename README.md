@@ -208,7 +208,8 @@ Nibble does not yet support all basic C features:
 - [ ] Floating-point types
 - [ ] Structure types
 - [ ] Union types
-- [ ] Enum types
+- [x] Enum types
+- [x] Typedefs
 - [ ] Procedures
     - [x] Basic procedures with non-variadic parameters
     - [ ] Varidic parameters
