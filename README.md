@@ -209,10 +209,12 @@ Nibble does not yet support all basic C features:
 - [ ] Structure types
 - [ ] Union types
 - [ ] Enum types
+- [x] Typedefs
 - [ ] Procedures
     - [x] Basic procedures with non-variadic parameters
     - [ ] Varidic parameters
 - [ ] Statements
+    - [x] static_assert 
     - [x] if/else
     - [x] while 
     - [x] do while
