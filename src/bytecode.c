@@ -993,7 +993,13 @@ static void IR_op_to_r(IR_Builder* builder, IR_Operand* operand, bool commit_ptr
         }
         else {
             IR_Reg reg = IR_next_reg(builder);
-            IR_emit_instr_load_sym(builder, operand->type, reg, operand->sym);
+
+            if (operand->kind == IR_OPERAND_PROC) {
+                IR_emit_instr_laddr_sym(builder, reg, operand->type, operand->sym);
+            }
+            else {
+                IR_emit_instr_load_sym(builder, operand->type, reg, operand->sym);
+            }
 
             operand->kind = IR_OPERAND_REG;
             operand->reg = reg;

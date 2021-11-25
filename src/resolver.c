@@ -47,12 +47,14 @@ static bool resolve_cond_expr(Resolver* resolver, Expr* expr, ExprOperand* expr_
 
 static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec);
 
-enum ResolveStmtRetFlags {
+enum ResolveStmtRetFlags
+{
     RESOLVE_STMT_SUCCESS = 0x1,
     RESOLVE_STMT_RETURNS = 0x2,
 };
 
-enum ResolveStmtInFlags {
+enum ResolveStmtInFlags
+{
     RESOLVE_STMT_BREAK_ALLOWED = 0x1,
     RESOLVE_STMT_CONTINUE_ALLOWED = 0x2,
 };
@@ -1678,6 +1680,16 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 return NULL;
             }
 
+            param = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, param);
+
+            if (param->kind == TYPE_ARRAY) {
+                resolver_on_error(
+                    resolver, proc_param->range,
+                    "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
+                allocator_restore_state(mem_state);
+                return NULL;
+            }
+
             if (param == builtin_types[BUILTIN_TYPE_VOID].type) {
                 resolver_on_error(resolver, proc_param->range, "Procedure parameter cannot be of type `void`");
                 allocator_restore_state(mem_state);
@@ -1697,6 +1709,16 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 allocator_restore_state(mem_state);
                 return NULL;
             }
+
+            ret = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, ret);
+        }
+
+        if (ret->kind == TYPE_ARRAY) {
+            assert(ts->ret);
+            resolver_on_error(resolver, ts->ret->range, "Procedure return type cannot be an array, but found `%s`.",
+                              type_name(ret));
+            allocator_restore_state(mem_state);
+            return NULL;
         }
 
         Type* type =
@@ -1760,10 +1782,13 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 return false;
             }
 
+            // TODO: If inferred expr type is a ptr, decay incomplete array type
+
             decl->init = try_wrap_cast_expr(resolver, &right_eop, decl->init);
             type = declared_type;
         }
         else {
+            // TODO: Maybe accept incomplete arrays like []char. Just decay incomplete types.
             if ((declared_type->kind == TYPE_ARRAY) && !declared_type->as_array.len) {
                 resolver_on_error(resolver, typespec->range,
                                   "Cannot infer the number of elements in array type specification");
@@ -1784,12 +1809,19 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
             return false;
         }
 
+        // TODO: If inferred expr type is a ptr, decay incomplete array type
         type = expr->type;
     }
 
     assert(type);
 
     // TODO: Complete incomplete aggregate type
+
+    if (type->size == 0) {
+        resolver_on_error(resolver, expr->range, "Cannot declare a variable of zero size.");
+        return false;
+    }
+
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
 
@@ -1830,7 +1862,8 @@ static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
 
     if (type->kind != TYPE_INTEGER) {
         assert(decl_enum->typespec);
-        resolver_on_error(resolver, decl_enum->typespec->range, "Enum must be an integer type, but found `%s`.", type_name(type));
+        resolver_on_error(resolver, decl_enum->typespec->range, "Enum must be an integer type, but found `%s`.",
+                          type_name(type));
         return false;
     }
 

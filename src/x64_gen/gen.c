@@ -1854,9 +1854,26 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
 
         break;
     }
-    case IR_INSTR_CALL: {
-        u32 num_args = instr->call.num_args;
-        IR_InstrCallArg* args = instr->call.args;
+    case IR_INSTR_CALL:
+    case IR_INSTR_CALL_R: {
+        u32 num_args;
+        IR_InstrCallArg* args;
+        Type* proc_type;
+        IR_Reg dst_vreg;
+
+        if (instr->kind == IR_INSTR_CALL) {
+            num_args = instr->call.num_args;
+            args = instr->call.args;
+            proc_type = instr->call.sym->type;
+            dst_vreg = instr->call.dst;
+        }
+        else {
+            assert(instr->kind == IR_INSTR_CALL_R);
+            num_args = instr->call_r.num_args;
+            args = instr->call_r.args;
+            proc_type = instr->call_r.proc_type;
+            dst_vreg = instr->call_r.dst;
+        }
 
         // NOTE: Stack frame must be 16-byte aligned before procedure call.
         // If the number of stack args + caller-saved regs is not even (16-byte aligned),
@@ -1907,13 +1924,23 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         // Stack should now be aligned properly for procedure call.
         assert((total_stack_size & (X64_STACK_ALIGN - 1)) == 0);
 
-        X64_emit_text(generator, "    call %s", symbol_mangled_name(generator->tmp_mem, instr->call.sym));
+        if (instr->kind == IR_INSTR_CALL) {
+            X64_emit_text(generator, "    call %s", symbol_mangled_name(generator->tmp_mem, instr->call.sym));
+        }
+        else {
+            X64_VRegLoc proc_reg_loc = X64_vreg_loc(generator, instr->call_r.proc_loc);
+            const char* call_op_str = proc_reg_loc.kind == X64_VREG_LOC_REG ?
+                x64_reg_names[PTR_SIZE][proc_reg_loc.reg] :
+                X64_print_stack_offset(generator->tmp_mem, proc_reg_loc.offset, PTR_SIZE);
+
+            X64_emit_text(generator, "    call %s", call_op_str);
+        }
 
         // Move return value (if any) to appropriate register.
-        Type* ret_type = instr->call.sym->type->as_proc.ret;
+        Type* ret_type = proc_type->as_proc.ret;
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->call.dst);
+            X64_VRegLoc dst_loc = X64_vreg_loc(generator, dst_vreg);
 
             if (dst_loc.kind == X64_VREG_LOC_STACK) {
                 // Move result (in RAX) to stack offset.

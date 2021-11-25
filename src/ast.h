@@ -714,10 +714,12 @@ bool type_is_arithmetic(Type* type);
 bool type_is_scalar(Type* type);
 bool type_is_ptr_like(Type* type);
 bool type_is_aggregate(Type* type);
+bool type_is_incomplete_array(Type* type);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len);
 Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
+Type* type_incomplete_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
 Type* type_unsigned_int(Type* type_int);
 

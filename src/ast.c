@@ -710,6 +710,11 @@ bool type_is_aggregate(Type* type)
     return (kind == TYPE_STRUCT) || (kind == TYPE_UNION);
 }
 
+bool type_is_incomplete_array(Type* type)
+{
+    return (type->kind == TYPE_ARRAY) && (type->as_array.len == 0);
+}
+
 Type* type_unsigned_int(Type* type_int)
 {
     assert(type_int->kind == TYPE_INTEGER);
@@ -738,6 +743,26 @@ Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type)
         return type_ptr(allocator, type_ptr_cache, type->as_array.base);
 
     return type;
+}
+
+// Recursively decay incomplete array types into pointers. Other types are returned unchanged.
+// Examples:
+//     []char => ^char
+//     [][]char => ^^char
+//     ^[]char => ^^char
+//     ^^[]char => ^^^char
+Type* type_incomplete_decay(Allocator* alloc, HMap* type_ptr_cache, Type* type)
+{
+    Type* result = type;
+
+    if (type_is_incomplete_array(type)) {
+        result = type_ptr(alloc, type_ptr_cache, type_incomplete_decay(alloc, type_ptr_cache, type->as_array.base));
+    }
+    else if (type->kind == TYPE_PTR) {
+        result = type_ptr(alloc, type_ptr_cache, type_incomplete_decay(alloc, type_ptr_cache, type->as_ptr.base));
+    }
+
+    return result;
 }
 
 static Type* type_alloc(Allocator* allocator, TypeKind kind)
@@ -998,11 +1023,8 @@ const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT] = {
 };
 
 const char* sym_kind_names[SYMBOL_KIND_COUNT] = {
-    [SYMBOL_VAR] = "variable",
-    [SYMBOL_CONST] = "constant",
-    [SYMBOL_PROC] = "procedure",
-    [SYMBOL_TYPE] = "type",
-    [SYMBOL_MODULE] = "module",
+    [SYMBOL_VAR] = "variable", [SYMBOL_CONST] = "constant", [SYMBOL_PROC] = "procedure",
+    [SYMBOL_TYPE] = "type",    [SYMBOL_MODULE] = "module",
 };
 
 Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod)
@@ -1209,7 +1231,8 @@ static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
                 enum_item_val = new_expr_int(allocator, token_zero, dummy_range);
             }
 
-            Decl* enum_item_const = new_decl_const(allocator, enum_item->name, enum_item_typespec, enum_item_val, enum_item->range);
+            Decl* enum_item_const =
+                new_decl_const(allocator, enum_item->name, enum_item_typespec, enum_item_val, enum_item->range);
 
             if (!install_module_decl(allocator, mod, enum_item_const)) {
                 return false;
@@ -1310,8 +1333,8 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
         Symbol* sym = module_get_export_sym(src_mod, isym->name);
 
         if (!sym) {
-            report_error(stmt->super.range,
-                         "Importing unknown or private symbol `%s` from module `%s`", isym->name->str,
+            report_error(stmt->super.range, "Importing unknown or private symbol `%s` from module `%s`",
+                         isym->name->str,
                          src_mod->cpath_lit->str); // TODO: mod_path is not an OS path
             return false;
         }
