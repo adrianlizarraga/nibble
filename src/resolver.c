@@ -1812,6 +1812,34 @@ static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
     return true;
 }
 
+static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
+{
+    DeclEnum* decl_enum = (DeclEnum*)sym->decl;
+    Type* type;
+
+    if (decl_enum->typespec) {
+        type = resolve_typespec(resolver, decl_enum->typespec);
+
+        if (!type) {
+            return false;
+        }
+    }
+    else {
+        type = builtin_types[BUILTIN_TYPE_INT].type;
+    }
+
+    if (type->kind != TYPE_INTEGER) {
+        assert(decl_enum->typespec);
+        resolver_on_error(resolver, decl_enum->typespec->range, "Enum must be an integer type, but found `%s`.", type_name(type));
+        return false;
+    }
+
+    sym->type = type;
+    sym->status = SYMBOL_STATUS_RESOLVED;
+
+    return true;
+}
+
 static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 {
     DeclConst* decl = (DeclConst*)sym->decl;
@@ -2437,8 +2465,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
             success = resolve_decl_typedef(resolver, sym);
         }
         else if (decl->kind == CST_DeclEnum) {
-            resolver_on_error(resolver, decl->range, "Enum declarations are not supported _yet_.");
-            success = false;
+            success = resolve_decl_enum(resolver, sym);
         }
         else {
             assert(decl->kind == CST_DeclStruct || decl->kind == CST_DeclUnion);

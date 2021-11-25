@@ -1,0 +1,13 @@
+enum TokenKind : s16 {
+    TK_NONE,
+    TK_INT,
+    TK_IDENT = 10,
+    TK_PLUS
+}
+
+#static_assert(#sizeof(#typeof(TK_INT)) == 2);
+
+proc main() => int {
+    #writeout("Enum\n", 5);
+    return TK_NONE + TK_INT + TK_IDENT + TK_PLUS; // 0 + 1 + 10 + 11 = 22
+}

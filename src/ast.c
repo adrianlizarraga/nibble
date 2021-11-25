@@ -304,9 +304,10 @@ Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* typespec, 
     return (Decl*)decl;
 }
 
-EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value)
+EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range)
 {
     EnumItem* item = alloc_type(allocator, EnumItem, true);
+    item->range = range;
     item->name = name;
     item->value = value;
 
@@ -1156,10 +1157,77 @@ Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, D
     return sym;
 }
 
+static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
+{
+    Symbol* sym = add_unresolved_symbol(allocator, &mod->scope, mod, decl);
+
+    if (!sym) {
+        report_error(decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
+        return false;
+    }
+
+    // Add to export table if decl is exported.
+    if (decl->flags & DECL_IS_EXPORTED) {
+        if (!module_add_export_sym(mod, sym->name, sym)) {
+            report_error(decl->range, "Conflicting export symbol name `%s`", sym->name->str);
+            return false;
+        }
+    }
+
+    // If this is an enum, create const decls for each enum item.
+    if (decl->kind == CST_DeclEnum) {
+        DeclEnum* decl_enum = (DeclEnum*)decl;
+
+        TypeSpec* enum_item_typespec = new_typespec_ident(allocator, decl->name, decl->range); // TODO: Range is wrong
+
+        List* head = &decl_enum->items;
+        List* it = head->next;
+        EnumItem* prev_enum_item = NULL;
+
+        while (it != head) {
+            EnumItem* enum_item = list_entry(it, EnumItem, lnode);
+            Expr* enum_item_val;
+
+            // TODO: This range is wrong! Consider using a custom expr_enum_inc that does not require dummy ranges.
+            ProgRange dummy_range = enum_item->range;
+
+            // Use the explicit enum item initialization value.
+            if (enum_item->value) {
+                enum_item_val = enum_item->value;
+            }
+            // Add one to the previous enum item value.
+            else if (prev_enum_item) {
+                Expr* prev_enum_val = new_expr_ident(allocator, NULL, prev_enum_item->name, dummy_range);
+                TokenInt token_one = {.value = 1, .rep = TKN_INT_DEC, .suffix = TKN_INT_SUFFIX_NONE};
+                Expr* expr_one = new_expr_int(allocator, token_one, dummy_range);
+
+                enum_item_val = new_expr_binary(allocator, TKN_PLUS, prev_enum_val, expr_one);
+            }
+            // Initialize to zero.
+            else {
+                TokenInt token_zero = {.value = 0, .rep = TKN_INT_DEC, .suffix = TKN_INT_SUFFIX_NONE};
+                enum_item_val = new_expr_int(allocator, token_zero, dummy_range);
+            }
+
+            Decl* enum_item_const = new_decl_const(allocator, enum_item->name, enum_item_typespec, enum_item_val, enum_item->range);
+
+            if (!install_module_decl(allocator, mod, enum_item_const)) {
+                return false;
+            }
+
+            // Track the previous enum item so that we know what value to assign the next enum item.
+            prev_enum_item = enum_item;
+
+            it = it->next;
+        }
+    }
+
+    return true;
+}
+
 bool install_module_decls(Allocator* allocator, Module* mod)
 {
     List* head = &mod->stmts;
-    Scope* mod_scope = &mod->scope;
 
     // Install decls in global symbol table.
     for (List* it = head->next; it != head; it = it->next) {
@@ -1167,19 +1235,9 @@ bool install_module_decls(Allocator* allocator, Module* mod)
 
         if (stmt->kind == CST_StmtDecl) {
             Decl* decl = ((StmtDecl*)stmt)->decl;
-            Symbol* sym = add_unresolved_symbol(allocator, mod_scope, mod, decl);
 
-            if (!sym) {
-                report_error(decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
+            if (!install_module_decl(allocator, mod, decl)) {
                 return false;
-            }
-
-            // Add to export table if decl is exported.
-            if (decl->flags & DECL_IS_EXPORTED) {
-                if (!module_add_export_sym(mod, sym->name, sym)) {
-                    report_error(decl->range, "Conflicting export symbol name `%s`", sym->name->str);
-                    return false;
-                }
             }
         }
     }

@@ -2052,23 +2052,25 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, NewD
 // enum_item  = TKN_IDENT ('=' expr)?
 static EnumItem* parse_enum_item(Parser* parser)
 {
-    EnumItem* item = NULL;
-
-    if (expect_token(parser, TKN_IDENT, "Failed to parse enum value")) {
-        Identifier* name = parser->ptoken.as_ident.ident;
-        Expr* value = NULL;
-        bool bad_value = false;
-
-        if (match_token(parser, TKN_ASSIGN)) {
-            value = parse_expr(parser);
-            bad_value = !value;
-        }
-
-        if (!bad_value)
-            item = new_enum_item(parser->ast_arena, name, value);
+    if (!expect_token(parser, TKN_IDENT, "Failed to parse enum value")) {
+        return NULL;
     }
 
-    return item;
+    ProgRange range = parser->ptoken.range;
+    Identifier* name = parser->ptoken.as_ident.ident;
+    Expr* value = NULL;
+
+    if (match_token(parser, TKN_ASSIGN)) {
+        value = parse_expr(parser);
+
+        if (!value) {
+            return NULL;
+        }
+
+        range.end = parser->ptoken.range.end;
+    }
+
+    return new_enum_item(parser->ast_arena, name, value, range);
 }
 
 // decl_enum  = 'enum' TKN_IDENT (':' typespec)? '{' decl_enum_items? '}'

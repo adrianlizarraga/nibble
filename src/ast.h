@@ -520,6 +520,7 @@ typedef struct DeclConst {
 } DeclConst;
 
 typedef struct EnumItem {
+    ProgRange range;
     Identifier* name;
     Expr* value;
     ListNode lnode;
@@ -564,7 +565,7 @@ Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr*
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* type, List* items, ProgRange range);
-EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value);
+EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range);
 
 typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
