@@ -5,6 +5,7 @@ A programming language based on C. The goal is to create a compiled, statically-
 - [x] Order-independent declarations
 - [x] Module import system (based on javascript ES6)
 - [x] Type inference
+- [x] Typed enumerations
 - [ ] Multiple return values (return anonymous structure object)
 - [ ] Defer statement (like go)
 - [ ] Default procedure arguments
