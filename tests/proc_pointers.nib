@@ -1,0 +1,17 @@
+
+proc add(a:int, b:int) => int {
+    return a + b;
+}
+
+proc sub(a:int, b:int) => int {
+    return a - b;
+}
+
+typedef BinaryProc = proc(int, int) =>int;
+
+proc main() => int {
+    var p : proc(int, int) => int = add; 
+    var p2 : BinaryProc = sub; 
+
+    return p(1, 3) + p2(1, 3); //4 + -2 = 2
+}
