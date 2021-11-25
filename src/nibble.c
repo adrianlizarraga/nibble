@@ -230,7 +230,7 @@ static void print_error(Error* error, bool use_colors)
 
         if (ch == '\n') {
             line += 1;
-            ftprint_err(" %5d | ", line);
+            ftprint_err("\n %5d | ", line);
         }
         else {
             ftprint_err("%c", src_file->code[i]);
@@ -249,10 +249,10 @@ static void print_error(Error* error, bool use_colors)
             line += 1;
 
             if (use_colors) {
-                ftprint_err(RESET_COLOR_CODE " %5d | " RED_COLOR_CODE, line);
+                ftprint_err(RESET_COLOR_CODE "\n %5d | " RED_COLOR_CODE, line);
             }
             else {
-                ftprint_err(" %5d | ", line);
+                ftprint_err("\n %5d | ", line);
             }
         }
         else {

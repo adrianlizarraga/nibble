@@ -1,0 +1,7 @@
+typedef uint8_t = u8;
+#static_assert(#sizeof(uint8_t) == #sizeof(u8), "Typedef works");
+
+proc main() => int {
+    const len : uint8_t = 8;
+    return #writeout("typedef\n", len);
+}

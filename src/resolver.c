@@ -1796,6 +1796,22 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
     return true;
 }
 
+static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
+{
+    DeclTypedef* decl = (DeclTypedef*)sym->decl;
+    Type* type = resolve_typespec(resolver, decl->typespec);
+
+    if (!type) {
+        return false;
+    }
+
+    // TODO: Complete incomplete aggregate type
+    sym->type = type;
+    sym->status = SYMBOL_STATUS_RESOLVED;
+
+    return true;
+}
+
 static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 {
     DeclConst* decl = (DeclConst*)sym->decl;
@@ -1820,6 +1836,9 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 
     if (typespec) {
         Type* declared_type = resolve_typespec(resolver, typespec);
+
+        if (!declared_type)
+            return false;
 
         ExprOperand init_eop = OP_FROM_EXPR(init);
 
@@ -2410,6 +2429,25 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
             bucket_list_add_elem(&resolver->ctx->procs, sym);
         }
         break;
+    case SYMBOL_TYPE: {
+        assert(sym->decl);
+        Decl* decl = sym->decl;
+
+        if (decl->kind == CST_DeclTypedef) {
+            success = resolve_decl_typedef(resolver, sym);
+        }
+        else if (decl->kind == CST_DeclEnum) {
+            resolver_on_error(resolver, decl->range, "Enum declarations are not supported _yet_.");
+            success = false;
+        }
+        else {
+            assert(decl->kind == CST_DeclStruct || decl->kind == CST_DeclUnion);
+            resolver_on_error(resolver, decl->range, "Aggregate type declarations are not supported _yet_.");
+            success = false;
+        }
+
+        break;
+    }
     default:
         ftprint_err("Unhandled symbol kind `%d`\n", sym->kind);
         assert(0);
