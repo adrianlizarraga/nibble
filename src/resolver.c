@@ -1428,14 +1428,20 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
 static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
 {
     assert(type->kind == TYPE_ARRAY);
+    Type* elem_type = type->as_array.base;
 
-    if (type->as_array.base == builtin_types[BUILTIN_TYPE_VOID].type) {
+    if (elem_type == builtin_types[BUILTIN_TYPE_VOID].type) {
         ProgRange r = expr->typespec ? expr->typespec->range : expr->super.range;
         resolver_on_error(resolver, r, "Cannot declare an array of `void` elements");
         return false;
     }
 
-    Type* elem_type = type->as_array.base;
+    if (type_is_incomplete_array(elem_type)) {
+        ProgRange r = expr->typespec ? expr->typespec->range : expr->super.range;
+        resolver_on_error(resolver, r, "Array cannot have an incomplete element type (`%s`).", type_name(elem_type)); 
+        return false;
+    }
+
     u64 array_len = type->as_array.len;
     u64 elem_index = 0;
     bool infer_len = array_len == 0;
@@ -1749,6 +1755,14 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 
         if (!declared_type)
             return false;
+        
+        Type* incomplete_elem_type = type_has_incomplete_elem(declared_type);
+
+        if (incomplete_elem_type) {
+            resolver_on_error(resolver, typespec->range, "Array cannot have an incomplete element type (`%s`).",
+                              type_name(incomplete_elem_type));
+            return false;
+        }
 
         if (expr) {
             if (!resolve_expr(resolver, expr, declared_type))
@@ -1770,9 +1784,6 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 resolver_on_error(resolver, expr->range, "Invalid array initializer");
                 return false;
             }
-
-            // TODO: Typecheck nested array types.
-            // Ex: var buf : [][]char = {{0, 1}, {2, 3}};
 
             if ((declared_type->kind == TYPE_ARRAY) && !declared_type->as_array.len) {
                 // Get complete array type (with length) from right-hand-side expression.
@@ -1806,7 +1817,7 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
         }
     }
     else {
-        assert(expr); // NOTE: Parser should catch this.
+        assert(expr);
 
         if (!resolve_expr(resolver, expr, NULL))
             return false;
