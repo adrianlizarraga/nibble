@@ -1480,7 +1480,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
             return false;
         }
 
-        if (!resolve_expr(resolver, initzer->init, NULL))
+        if (!resolve_expr(resolver, initzer->init, elem_type))
             return false;
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
@@ -1755,25 +1755,32 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 return false;
 
             ExprOperand right_eop = OP_FROM_EXPR(expr);
+            bool is_valid_array_init = (expr->kind == CST_ExprCompoundLit) || (expr->kind == CST_ExprStr);
 
-            // If assigning an array to a pointer, try to decay the right-hand-side expression.
-            if ((declared_type->kind == TYPE_PTR) && !eop_decay(resolver, &right_eop, expr->range))
+            // If assigning an array to a pointer, try to decay the right-hand-side expression into a pointer.
+            // Ex: var p : ^char = bytes_array;
+            if ((declared_type->kind == TYPE_PTR) && !eop_decay(resolver, &right_eop, expr->range)) {
                 return false;
+            }
+
+            // If the declared type is an array, rhs must be a vaild array initializer.
+            // Ex: var buf : [4]char = {0,1,2,3};
+            // Ex: var buf : []char = "Hello";
+            if ((declared_type->kind == TYPE_ARRAY) && !is_valid_array_init) {
+                resolver_on_error(resolver, expr->range, "Invalid array initializer");
+                return false;
+            }
+
+            // TODO: Typecheck nested array types.
+            // Ex: var buf : [][]char = {{0, 1}, {2, 3}};
 
             if ((declared_type->kind == TYPE_ARRAY) && !declared_type->as_array.len) {
-                declared_type =
-                    right_eop.type; // Get complete array type (with length) from right-hand-side expression.
+                // Get complete array type (with length) from right-hand-side expression.
+                declared_type = right_eop.type; 
             }
             else if (!convert_eop(&right_eop, declared_type)) {
                 resolver_on_error(resolver, sym->decl->range, "Incompatible types. Cannot convert `%s` to `%s`",
                                   type_name(right_eop.type), type_name(declared_type));
-                return false;
-            }
-
-            bool is_valid_array_init = (expr->kind == CST_ExprCompoundLit) || (expr->kind == CST_ExprStr);
-
-            if ((declared_type->kind == TYPE_ARRAY) && !is_valid_array_init) {
-                resolver_on_error(resolver, expr->range, "Invalid array initializer");
                 return false;
             }
 
