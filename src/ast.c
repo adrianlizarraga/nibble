@@ -715,6 +715,27 @@ bool type_is_incomplete_array(Type* type)
     return (type->kind == TYPE_ARRAY) && (type->as_array.len == 0);
 }
 
+bool type_has_incomplete_array(Type* type)
+{
+    Type* t = type;
+
+    while (t->kind == TYPE_ARRAY || t->kind == TYPE_PTR) {
+        if (t->kind == TYPE_ARRAY) {
+
+            if (t->as_array.len == 0) {
+                return true;
+            }
+
+            t = t->as_array.base;
+        }
+        else {
+            t = t->as_ptr.base;
+        }
+    }
+
+    return false;
+}
+
 Type* type_has_incomplete_elem(Type* type)
 {
     Type* t = type;

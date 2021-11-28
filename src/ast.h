@@ -715,6 +715,7 @@ bool type_is_scalar(Type* type);
 bool type_is_ptr_like(Type* type);
 bool type_is_aggregate(Type* type);
 bool type_is_incomplete_array(Type* type);
+bool type_has_incomplete_array(Type* type);
 Type* type_has_incomplete_elem(Type* type);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);

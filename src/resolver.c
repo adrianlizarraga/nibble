@@ -1785,6 +1785,16 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 return false;
             }
 
+            // If the declared type has any incomplete, try to use the
+            // rhs type (as long as it is complete and matches).
+            if (type_has_incomplete_array(declared_type)) {
+                assert(!type_has_incomplete_array(right_eop.type));
+
+                // Check if the incomplete declared type is compatible with the rhs type.
+
+
+            }
+
             if ((declared_type->kind == TYPE_ARRAY) && !declared_type->as_array.len) {
                 // Get complete array type (with length) from right-hand-side expression.
                 declared_type = right_eop.type; 
