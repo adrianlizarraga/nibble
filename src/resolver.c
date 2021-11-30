@@ -47,14 +47,12 @@ static bool resolve_cond_expr(Resolver* resolver, Expr* expr, ExprOperand* expr_
 
 static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec);
 
-enum ResolveStmtRetFlags
-{
+enum ResolveStmtRetFlags {
     RESOLVE_STMT_SUCCESS = 0x1,
     RESOLVE_STMT_RETURNS = 0x2,
 };
 
-enum ResolveStmtInFlags
-{
+enum ResolveStmtInFlags {
     RESOLVE_STMT_BREAK_ALLOWED = 0x1,
     RESOLVE_STMT_CONTINUE_ALLOWED = 0x2,
 };
@@ -776,8 +774,8 @@ static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
 
 static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
 {
-    expr->super.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays,
-                                  builtin_types[BUILTIN_TYPE_CHAR].type, expr->str_lit->len + 1);
+    expr->super.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, builtin_types[BUILTIN_TYPE_CHAR].type,
+                                  expr->str_lit->len + 1);
     expr->super.is_constexpr = true;
     expr->super.is_lvalue = true;
 
@@ -802,8 +800,7 @@ static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOper
 {
     // Convert ^void to ^s8
     if (ptr->type->as_ptr.base == builtin_types[BUILTIN_TYPE_VOID].type) {
-        ptr->type =
-            type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, builtin_types[BUILTIN_TYPE_S8].type);
+        ptr->type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, builtin_types[BUILTIN_TYPE_S8].type);
     }
     // Ensure base pointer type has non-zero size
     else if (ptr->type->as_ptr.base->size == 0) {
@@ -846,8 +843,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         }
         else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
             if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op, &right_op)) {
-                resolver_on_error(resolver, ebinary->left->range,
-                                  "Cannot add to a pointer with a base type (%s) of zero size",
+                resolver_on_error(resolver, ebinary->left->range, "Cannot add to a pointer with a base type (%s) of zero size",
                                   type_name(left_op.type->as_ptr.base));
 
                 return false;
@@ -855,8 +851,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         }
         else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR)) {
             if (!resolve_ptr_int_arith(resolver, &dst_op, &right_op, &left_op)) {
-                resolver_on_error(resolver, ebinary->right->range,
-                                  "Cannot add to a pointer with a base type (%s) of zero size",
+                resolver_on_error(resolver, ebinary->right->range, "Cannot add to a pointer with a base type (%s) of zero size",
                                   type_name(right_op.type->as_ptr.base));
 
                 return false;
@@ -878,8 +873,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         // ptr - int
         else if (left_is_ptr && type_is_integer_like(right_op.type)) {
             if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op, &right_op)) {
-                resolver_on_error(resolver, ebinary->left->range,
-                                  "Cannot subtract from a pointer with a base type (%s) of zero size",
+                resolver_on_error(resolver, ebinary->left->range, "Cannot subtract from a pointer with a base type (%s) of zero size",
                                   type_name(left_op.type->as_ptr.base));
 
                 return false;
@@ -892,20 +886,18 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
             if ((left_base_type == builtin_types[BUILTIN_TYPE_VOID].type) &&
                 (right_base_type == builtin_types[BUILTIN_TYPE_VOID].type)) {
-                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
-                                        builtin_types[BUILTIN_TYPE_S8].type);
-                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
-                                         builtin_types[BUILTIN_TYPE_S8].type);
+                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, builtin_types[BUILTIN_TYPE_S8].type);
+                right_op.type =
+                    type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, builtin_types[BUILTIN_TYPE_S8].type);
             }
             else if ((left_base_type == builtin_types[BUILTIN_TYPE_VOID].type) &&
                      (right_base_type == builtin_types[BUILTIN_TYPE_S8].type)) {
-                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
-                                        builtin_types[BUILTIN_TYPE_S8].type);
+                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, builtin_types[BUILTIN_TYPE_S8].type);
             }
             else if ((left_base_type == builtin_types[BUILTIN_TYPE_S8].type) &&
                      (right_base_type == builtin_types[BUILTIN_TYPE_VOID].type)) {
-                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
-                                         builtin_types[BUILTIN_TYPE_S8].type);
+                right_op.type =
+                    type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, builtin_types[BUILTIN_TYPE_S8].type);
             }
 
             if (left_op.type != right_op.type) {
@@ -919,8 +911,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             dst_op.is_lvalue = false;
         }
         else {
-            resolver_on_error(resolver, expr->range,
-                              "Can only subtract arithmetic types, pointers, and integers from pointers");
+            resolver_on_error(resolver, expr->range, "Can only subtract arithmetic types, pointers, and integers from pointers");
             return false;
         }
 
@@ -1007,8 +998,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             dst_op.is_lvalue = false;
         }
         else {
-            resolver_on_error(resolver, expr->range,
-                              "Can only compare arithmetic types, or compatible pointer types with `%s`",
+            resolver_on_error(resolver, expr->range, "Can only compare arithmetic types, or compatible pointer types with `%s`",
                               token_kind_names[ebinary->op]);
             return false;
         }
@@ -1033,10 +1023,9 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             Type* right_base_type = right_op.type->as_ptr.base;
 
             if (left_base_type != right_base_type) {
-                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
-                                        builtin_types[BUILTIN_TYPE_S8].type);
-                right_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs,
-                                         builtin_types[BUILTIN_TYPE_S8].type);
+                left_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, builtin_types[BUILTIN_TYPE_S8].type);
+                right_op.type =
+                    type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, builtin_types[BUILTIN_TYPE_S8].type);
             }
 
             dst_op.type = left_op.type;
@@ -1049,8 +1038,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             dst_op.is_lvalue = false;
         }
         else {
-            resolver_on_error(resolver, expr->range,
-                              "Can only compare arithmetic types, or compatible pointer types with `%s`",
+            resolver_on_error(resolver, expr->range, "Can only compare arithmetic types, or compatible pointer types with `%s`",
                               token_kind_names[ebinary->op]);
             return false;
         }
@@ -1080,8 +1068,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
         }
         else {
-            resolver_on_error(resolver, expr->range,
-                              "Can only compare arithmetic types, or compatible pointer types with `%s`",
+            resolver_on_error(resolver, expr->range, "Can only compare arithmetic types, or compatible pointer types with `%s`",
                               token_kind_names[ebinary->op]);
             return false;
         }
@@ -1257,8 +1244,7 @@ static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr)
         Symbol* sym_modns = resolve_name(resolver, expr->mod_ns);
 
         if (!sym_modns || (sym_modns->kind != SYMBOL_MODULE)) {
-            resolver_on_error(resolver, expr->super.range, "Unknown module namespace `%s::` in expression",
-                              expr->mod_ns->str);
+            resolver_on_error(resolver, expr->super.range, "Unknown module namespace `%s::` in expression", expr->mod_ns->str);
             return NULL;
         }
 
@@ -1267,8 +1253,8 @@ static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr)
 
         if (!sym_name) {
             resolver_on_error(resolver, expr->super.range,
-                              "Identifier `%s` is not among the imported symbols in module namespace `%s`",
-                              expr->name->str, sym_modns->name->str);
+                              "Identifier `%s` is not among the imported symbols in module namespace `%s`", expr->name->str,
+                              sym_modns->name->str);
             return NULL;
         }
 
@@ -1323,8 +1309,8 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
         break;
     }
 
-    resolver_on_error(resolver, expr->range,
-                      "Expression identifier `%s` must refer to a var, const, or proc declaration", eident->name->str);
+    resolver_on_error(resolver, expr->range, "Expression identifier `%s` must refer to a var, const, or proc declaration",
+                      eident->name->str);
     return false;
 }
 
@@ -1340,15 +1326,13 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
 
     // Verifty that we're calling an actual procedure type.
     if (proc_type->kind != TYPE_PROC) {
-        resolver_on_error(resolver, ecall->proc->range,
-                          "Cannot use procedure call syntax on a value with a non-procedure type");
+        resolver_on_error(resolver, ecall->proc->range, "Cannot use procedure call syntax on a value with a non-procedure type");
         return false;
     }
 
     // Verify that the number of arguments match number of parameters.
     if (proc_type->as_proc.num_params != ecall->num_args) {
-        resolver_on_error(resolver, expr->range,
-                          "Incorrect number of procedure call arguments. Expected `%d` arguments, but got `%d`",
+        resolver_on_error(resolver, expr->range, "Incorrect number of procedure call arguments. Expected `%d` arguments, but got `%d`",
                           proc_type->as_proc.num_params, ecall->num_args);
         return false;
     }
@@ -1365,8 +1349,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         if (!resolve_expr(resolver, arg->expr, NULL))
             return false;
 
-        // TODO: Cast at site?
-        Type* param_type = type_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, params[i]);
+        Type* param_type = params[i];
         ExprOperand arg_eop = OP_FROM_EXPR(arg->expr);
 
         if (!eop_decay(resolver, &arg_eop, arg->range))
@@ -1374,8 +1357,8 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
 
         if (!convert_eop(&arg_eop, param_type)) {
             resolver_on_error(resolver, arg->range,
-                              "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`",
-                              (i + 1), type_name(params[i]), type_name(arg->expr->type));
+                              "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`", (i + 1),
+                              type_name(params[i]), type_name(arg->expr->type));
             return false;
         }
 
@@ -1410,8 +1393,8 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
         return false;
 
     if (!cast_eop(&src_eop, cast_type)) {
-        resolver_on_error(resolver, expr->range, "Cannot cast from type `%s` to type `%s`",
-                          type_name(ecast->expr->type), type_name(cast_type));
+        resolver_on_error(resolver, expr->range, "Cannot cast from type `%s` to type `%s`", type_name(ecast->expr->type),
+                          type_name(cast_type));
         return false;
     }
 
@@ -1438,7 +1421,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
 
     if (type_is_incomplete_array(elem_type)) {
         ProgRange r = expr->typespec ? expr->typespec->range : expr->super.range;
-        resolver_on_error(resolver, r, "Array cannot have an incomplete element type (`%s`).", type_name(elem_type)); 
+        resolver_on_error(resolver, r, "Cannot use an incomplete array element type `%s`", type_name(elem_type));
         return false;
     }
 
@@ -1459,8 +1442,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
         // Cannot use a name designator.
         if (designator.kind == DESIGNATOR_NAME) {
             // TODO: Range for name designator.
-            resolver_on_error(resolver, initzer->range,
-                              "Cannot use a name designator (`%s`) for an array compound literal",
+            resolver_on_error(resolver, initzer->range, "Cannot use a name designator (`%s`) for an array compound literal",
                               designator.name->str);
             return false;
         }
@@ -1480,9 +1462,8 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
         }
 
         if (!infer_len && elem_index >= array_len) {
-            resolver_on_error(resolver, designator.index->range,
-                              "Array index designator `%llu` is not within the expected array bounds (`%llu`)",
-                              elem_index, array_len);
+            resolver_on_error(resolver, initzer->range, "Too many elements in array initializer. Expected at most %llu elements.",
+                              array_len);
             return false;
         }
 
@@ -1491,10 +1472,20 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
 
+        if ((elem_type->kind == TYPE_PTR) && !eop_decay(resolver, &init_op, initzer->init->range)) {
+            return false;
+        }
+
+        bool is_valid_array_init = (initzer->init->kind == CST_ExprCompoundLit) || (initzer->init->kind == CST_ExprStr);
+
+        if ((elem_type->kind == TYPE_ARRAY) && !is_valid_array_init) {
+            resolver_on_error(resolver, initzer->init->range, "Invalid array initializer");
+            return false;
+        }
+
         // Initializer expression should be convertible to the element type.
         if (!convert_eop(&init_op, elem_type)) {
-            resolver_on_error(resolver, initzer->init->range,
-                              "Array initializer of type `%s` cannot be converted to `%s`",
+            resolver_on_error(resolver, initzer->init->range, "Array initializer of type `%s` cannot be converted to `%s`",
                               type_name(initzer->init->type), type_name(elem_type));
             return false;
         }
@@ -1533,9 +1524,8 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
         type = resolve_typespec(resolver, expr->typespec);
 
         if (expected_type && type != expected_type) {
-            resolver_on_error(resolver, expr->typespec->range,
-                              "Compound literal type `%s` does not match expected type `%s`", type_name(type),
-                              type_name(expected_type));
+            resolver_on_error(resolver, expr->typespec->range, "Compound literal type `%s` does not match expected type `%s`",
+                              type_name(type), type_name(expected_type));
             return false;
         }
     }
@@ -1689,15 +1679,15 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             param = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, param);
 
             if (param->kind == TYPE_ARRAY) {
-                resolver_on_error(
-                    resolver, proc_param->range,
-                    "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
+                resolver_on_error(resolver, proc_param->range,
+                                  "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
                 allocator_restore_state(mem_state);
                 return NULL;
             }
 
-            if (param == builtin_types[BUILTIN_TYPE_VOID].type) {
-                resolver_on_error(resolver, proc_param->range, "Procedure parameter cannot be of type `void`");
+            if (param->size == 0) {
+                resolver_on_error(resolver, proc_param->range, "Invalid procedure paramater type `%s` of zero size.",
+                                  type_name(param));
                 allocator_restore_state(mem_state);
                 return NULL;
             }
@@ -1717,18 +1707,22 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             }
 
             ret = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, ret);
+
+            if (ret->kind == TYPE_ARRAY) {
+                assert(ts->ret);
+                resolver_on_error(resolver, ts->ret->range, "Procedure return type cannot be an array, but found `%s`.",
+                                  type_name(ret));
+                allocator_restore_state(mem_state);
+                return NULL;
+            }
+
+            if (ret->size == 0) {
+                resolver_on_error(resolver, ts->ret->range, "Invalid procedure return type `%s` of zero size.", type_name(ret));
+                return NULL;
+            }
         }
 
-        if (ret->kind == TYPE_ARRAY) {
-            assert(ts->ret);
-            resolver_on_error(resolver, ts->ret->range, "Procedure return type cannot be an array, but found `%s`.",
-                              type_name(ret));
-            allocator_restore_state(mem_state);
-            return NULL;
-        }
-
-        Type* type =
-            type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret);
+        Type* type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret);
         allocator_restore_state(mem_state);
 
         return type;
@@ -1755,18 +1749,21 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 
         if (!declared_type)
             return false;
-        
-        Type* incomplete_elem_type = type_has_incomplete_elem(declared_type);
 
-        if (incomplete_elem_type) {
-            resolver_on_error(resolver, typespec->range, "Array cannot have an incomplete element type (`%s`).",
-                              type_name(incomplete_elem_type));
+        if (declared_type == builtin_types[BUILTIN_TYPE_VOID].type) {
+            resolver_on_error(resolver, typespec->range, "Cannot declare a variable of type `%s`.", type_name(declared_type));
             return false;
         }
 
         if (expr) {
             if (!resolve_expr(resolver, expr, declared_type))
                 return false;
+
+            if (type_has_incomplete_array(expr->type)) {
+                resolver_on_error(resolver, expr->range, "Expression type `%s` contains array of unknown size.",
+                                  type_name(expr->type));
+                return false;
+            }
 
             ExprOperand right_eop = OP_FROM_EXPR(expr);
             bool is_valid_array_init = (expr->kind == CST_ExprCompoundLit) || (expr->kind == CST_ExprStr);
@@ -1785,19 +1782,17 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 return false;
             }
 
-            // If the declared type has any incomplete, try to use the
-            // rhs type (as long as it is complete and matches).
+            // If the declared type contains an incomplete array type, try to use the
+            // rhs type if the types are compatible.
             if (type_has_incomplete_array(declared_type)) {
-                assert(!type_has_incomplete_array(right_eop.type));
+                if (!types_are_compatible(declared_type, right_eop.type)) {
+                    resolver_on_error(resolver, expr->range,
+                                      "Incomplete variable type `%s` is not compatible with expression of type `%s`.",
+                                      type_name(declared_type), type_name(right_eop.type));
+                    return false;
+                }
 
-                // Check if the incomplete declared type is compatible with the rhs type.
-
-
-            }
-
-            if ((declared_type->kind == TYPE_ARRAY) && !declared_type->as_array.len) {
-                // Get complete array type (with length) from right-hand-side expression.
-                declared_type = right_eop.type; 
+                declared_type = right_eop.type;
             }
             else if (!convert_eop(&right_eop, declared_type)) {
                 resolver_on_error(resolver, sym->decl->range, "Incompatible types. Cannot convert `%s` to `%s`",
@@ -1810,16 +1805,12 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 return false;
             }
 
-            // TODO: If inferred expr type is a ptr, decay incomplete array type
-
             decl->init = try_wrap_cast_expr(resolver, &right_eop, decl->init);
             type = declared_type;
         }
         else {
-            // TODO: Maybe accept incomplete arrays like []char. Just decay incomplete types.
-            if ((declared_type->kind == TYPE_ARRAY) && !declared_type->as_array.len) {
-                resolver_on_error(resolver, typespec->range,
-                                  "Cannot infer the number of elements in array type specification");
+            if (type_has_incomplete_array(declared_type)) {
+                resolver_on_error(resolver, typespec->range, "Cannot infer the number of elements in array type specification");
                 return false;
             }
 
@@ -1837,11 +1828,13 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
             return false;
         }
 
-        // TODO: If inferred expr type is a ptr, decay incomplete array type
+        if (type_has_incomplete_array(expr->type)) {
+            resolver_on_error(resolver, expr->range, "Expression type `%s` contains array of unknown size.", type_name(expr->type));
+            return false;
+        }
+
         type = expr->type;
     }
-
-    assert(type);
 
     // TODO: Complete incomplete aggregate type
 
@@ -1875,27 +1868,26 @@ static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
 static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
 {
     DeclEnum* decl_enum = (DeclEnum*)sym->decl;
-    Type* type;
+    Type* base_type;
 
     if (decl_enum->typespec) {
-        type = resolve_typespec(resolver, decl_enum->typespec);
+        base_type = resolve_typespec(resolver, decl_enum->typespec);
 
-        if (!type) {
+        if (!base_type) {
             return false;
         }
     }
     else {
-        type = builtin_types[BUILTIN_TYPE_INT].type;
+        base_type = builtin_types[BUILTIN_TYPE_INT].type;
     }
 
-    if (type->kind != TYPE_INTEGER) {
+    if (base_type->kind != TYPE_INTEGER) {
         assert(decl_enum->typespec);
-        resolver_on_error(resolver, decl_enum->typespec->range, "Enum must be an integer type, but found `%s`.",
-                          type_name(type));
+        resolver_on_error(resolver, decl_enum->typespec->range, "Enum must be an integer type, but found `%s`.", type_name(base_type));
         return false;
     }
 
-    sym->type = type;
+    sym->type = type_enum(&resolver->ctx->ast_mem, base_type, decl_enum);
     sym->status = SYMBOL_STATUS_RESOLVED;
 
     return true;
@@ -1911,8 +1903,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
         return false;
 
     if (!init->is_constexpr) {
-        resolver_on_error(resolver, init->range, "Value for const decl `%s` must be a constant expression",
-                          decl->super.name->str);
+        resolver_on_error(resolver, init->range, "Value for const decl `%s` must be a constant expression", decl->super.name->str);
         return false;
     }
 
@@ -1935,8 +1926,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
             return false;
 
         if (!convert_eop(&init_eop, declared_type)) {
-            resolver_on_error(resolver, typespec->range,
-                              "Incompatible types. Cannot convert expression of type `%s` to `%s`",
+            resolver_on_error(resolver, typespec->range, "Incompatible types. Cannot convert expression of type `%s` to `%s`",
                               type_name(init->type), type_name(declared_type));
             return false;
         }
@@ -1950,6 +1940,38 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
     }
 
     assert(type);
+
+    sym->type = type;
+    sym->status = SYMBOL_STATUS_RESOLVED;
+
+    return true;
+}
+
+static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
+{
+    DeclVar* decl = (DeclVar*)sym->decl;
+    TypeSpec* typespec = decl->typespec;
+
+    assert(typespec);
+
+    Type* type = resolve_typespec(resolver, typespec);
+
+    if (!type) {
+        return false;
+    }
+
+    type = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type);
+
+    if (type->kind == TYPE_ARRAY) {
+        resolver_on_error(resolver, typespec->range,
+                          "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
+        return false;
+    }
+
+    if (type->size == 0) {
+        resolver_on_error(resolver, decl->super.range, "Cannot declare a parameter of zero size.");
+        return false;
+    }
 
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
@@ -1988,19 +2010,12 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 
         assert(param_sym);
 
-        if (!resolve_decl_var(resolver, param_sym)) {
+        if (!resolve_proc_param(resolver, param_sym)) {
             allocator_restore_state(mem_state);
             return false;
         }
 
-        // TODO: recursive ptr decay on param type
         // TODO: complete incomplete param type (struct, union)
-
-        if (param_sym->type == builtin_types[BUILTIN_TYPE_VOID].type) {
-            resolver_on_error(resolver, proc_param->range, "Procedure parameter cannot be void");
-            allocator_restore_state(mem_state);
-            return false;
-        }
 
         array_push(params, param_sym->type);
     }
@@ -2014,12 +2029,25 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     if (decl->ret) {
         ret_type = resolve_typespec(resolver, decl->ret);
 
-        if (!ret_type)
+        if (!ret_type) {
             return false;
+        }
+
+        ret_type = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, ret_type);
+
+        if (ret_type->kind == TYPE_ARRAY) {
+            resolver_on_error(resolver, decl->ret->range,
+                              "Procedure return type cannot be an array type. Use a pointer or an incomplete array type.");
+            return false;
+        }
+
+        if (ret_type->size == 0) {
+            resolver_on_error(resolver, decl->super.range, "Invalid procedure return type `%s` of zero size.", type_name(ret_type));
+            return false;
+        }
     }
 
-    sym->type =
-        type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type);
+    sym->type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type);
     sym->status = SYMBOL_STATUS_RESOLVED;
 
     return true;
@@ -2043,8 +2071,7 @@ static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym)
     dproc->returns = returns;
 
     if ((ret_type != builtin_types[BUILTIN_TYPE_VOID].type) && !returns && success) {
-        resolver_on_error(resolver, dproc->super.range, "Not all code paths in procedure `%s` return a value",
-                          dproc->super.name->str);
+        resolver_on_error(resolver, dproc->super.range, "Not all code paths in procedure `%s` return a value", dproc->super.name->str);
         return false;
     }
 
@@ -2095,8 +2122,7 @@ static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* r
         Stmt* child_stmt = list_entry(it, Stmt, lnode);
 
         if (ret_success & RESOLVE_STMT_RETURNS) {
-            resolver_on_error(resolver, child_stmt->range,
-                              "Statement will never be executed; all previous control paths return");
+            resolver_on_error(resolver, child_stmt->range, "Statement will never be executed; all previous control paths return");
 
             ret_success &= ~RESOLVE_STMT_SUCCESS;
             break;
@@ -2194,8 +2220,7 @@ static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_typ
     swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
 
     // Resolve loop body.
-    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type,
-                                flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
+    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
 
     // NOTE: Because while loops don't have an "else" path, we can't say that all control paths return.
     // TODO: Add else to while loop!!
@@ -2216,13 +2241,11 @@ static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_
     swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
 
     // Resolve loop body.
-    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type,
-                                flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
+    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
 
     // Report an error if the do-while loop always returns before the condition check.
     if (ret & RESOLVE_STMT_RETURNS) {
-        resolver_on_error(resolver, swhile->cond->range,
-                          "All paths in do-while loop's body return before condition check.");
+        resolver_on_error(resolver, swhile->cond->range, "All paths in do-while loop's body return before condition check.");
         ret &= ~RESOLVE_STMT_SUCCESS;
     }
 
@@ -2291,8 +2314,7 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 
     // TODO: Support other assignment operators.
     if (sassign->op_assign != TKN_ASSIGN) {
-        resolver_on_error(resolver, stmt->range,
-                          "Sorry! Only the `=` assignment operator is currently supported. Soon!");
+        resolver_on_error(resolver, stmt->range, "Sorry! Only the `=` assignment operator is currently supported. Soon!");
         return 0;
     }
 
@@ -2302,8 +2324,7 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         return false;
 
     if (!convert_eop(&right_eop, left_expr->type)) {
-        resolver_on_error(resolver, right_expr->range,
-                          "Type mismatch in assignment statement: expected type `%s`, but got `%s`",
+        resolver_on_error(resolver, right_expr->range, "Type mismatch in assignment statement: expected type `%s`, but got `%s`",
                           type_name(left_expr->type), type_name(right_eop.type));
         return 0;
     }
@@ -2320,8 +2341,7 @@ static bool resolve_static_assert(Resolver* resolver, StmtStaticAssert* sassert)
     }
 
     if (!sassert->cond->is_constexpr) {
-        resolver_on_error(resolver, sassert->cond->range,
-                          "#static_assert condition must be a compile-time constant expression");
+        resolver_on_error(resolver, sassert->cond->range, "#static_assert condition must be a compile-time constant expression");
         return false;
     }
 
@@ -2377,8 +2397,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         StmtReturn* sret = (StmtReturn*)stmt;
 
         if (!sret->expr && (ret_type != builtin_types[BUILTIN_TYPE_VOID].type)) {
-            resolver_on_error(resolver, stmt->range, "Return statement is missing a return value of type `%s`",
-                              type_name(ret_type));
+            resolver_on_error(resolver, stmt->range, "Return statement is missing a return value of type `%s`", type_name(ret_type));
             break;
         }
 
@@ -2392,8 +2411,8 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
                 return false;
 
             if (!convert_eop(&ret_eop, ret_type)) {
-                resolver_on_error(resolver, sret->expr->range, "Invalid return type. Wanted `%s`, but got `%s`",
-                                  type_name(ret_type), type_name(ret_eop.type));
+                resolver_on_error(resolver, sret->expr->range, "Invalid return type. Wanted `%s`, but got `%s`", type_name(ret_type),
+                                  type_name(ret_eop.type));
                 break;
             }
 
@@ -2452,15 +2471,13 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
             Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, decl);
 
             if (!sym)
-                resolver_on_error(resolver, stmt->range, "Identifier `%s` shadows a previous local declaration",
-                                  decl->name->str);
+                resolver_on_error(resolver, stmt->range, "Identifier `%s` shadows a previous local declaration", decl->name->str);
             else if (resolve_decl_var(resolver, sym))
                 ret = RESOLVE_STMT_SUCCESS;
         }
         else {
             // TODO: Support other declaration kinds.
-            resolver_on_error(resolver, stmt->range,
-                              "Only variable and type declarations are supported inside procedures");
+            resolver_on_error(resolver, stmt->range, "Only variable and type declarations are supported inside procedures");
         }
 
         break;
@@ -2486,8 +2503,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
 
     if (sym->status == SYMBOL_STATUS_RESOLVING) {
         assert(sym->decl);
-        resolver_on_error(resolver, sym->decl->range, "Cannot resolve symbol `%s` due to cyclic dependency",
-                          sym->name->str);
+        resolver_on_error(resolver, sym->decl->range, "Cannot resolve symbol `%s` due to cyclic dependency", sym->name->str);
         return false;
     }
 

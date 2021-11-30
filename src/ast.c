@@ -294,10 +294,11 @@ Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* typespe
     return (Decl*)decl;
 }
 
-Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* typespec, List* items, ProgRange range)
+Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* typespec, size_t num_items, List* items, ProgRange range)
 {
     DeclEnum* decl = new_decl(allocator, DeclEnum, name, range);
     decl->typespec = typespec;
+    decl->num_items = num_items;
 
     list_replace(items, &decl->items);
 
@@ -736,25 +737,56 @@ bool type_has_incomplete_array(Type* type)
     return false;
 }
 
-Type* type_has_incomplete_elem(Type* type)
+bool types_are_compatible(Type* t, Type* u)
 {
-    Type* t = type;
-
-    while (t->kind == TYPE_ARRAY || t->kind == TYPE_PTR) {
-        if (t->kind == TYPE_ARRAY) {
-
-            if (type_is_incomplete_array(t->as_array.base)) {
-                return t->as_array.base;
-            }
-
-            t = t->as_array.base;
-        }
-        else {
-            t = t->as_ptr.base;
-        }
+    if (t == u) {
+        return true;
     }
 
-    return NULL;
+    if (t->kind == TYPE_PTR && u->kind == TYPE_PTR) {
+        return types_are_compatible(t->as_ptr.base, u->as_ptr.base);
+    }
+
+    if (t->kind == TYPE_ARRAY && u->kind == TYPE_ARRAY) {
+        TypeArray* t_arr = &t->as_array;
+        TypeArray* u_arr = &u->as_array;
+
+        bool elems_compat = types_are_compatible(t_arr->base, u_arr->base);
+        bool sizes_compat = (!t_arr->len || !u_arr->len || t_arr->len == u_arr->len);
+
+        return elems_compat && sizes_compat;
+    }
+
+    if (t->kind == TYPE_ENUM && u->kind == TYPE_INTEGER) {
+        return t->as_enum.base == u;
+    }
+
+    if (t->kind == TYPE_INTEGER && u->kind == TYPE_ENUM) {
+        return t == u->as_enum.base;
+    }
+
+    if (t->kind == TYPE_PROC && u->kind == TYPE_PROC) {
+        TypeProc* t_proc = &t->as_proc;
+        TypeProc* u_proc = &u->as_proc;
+
+        if (!types_are_compatible(t_proc->ret, u_proc->ret)) {
+            return false;
+        }
+
+        if (t_proc->num_params != u_proc->num_params) {
+            return false;
+        }
+
+        for (size_t i = 0; i < t_proc->num_params; i += 1) {
+            if (!types_are_compatible(t_proc->params[i], u_proc->params[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    return false;
 }
 
 Type* type_unsigned_int(Type* type_int)
@@ -834,6 +866,18 @@ static Type* type_float_alloc(Allocator* allocator, FloatKind kind, size_t size)
     type->size = size;
     type->align = size;
     type->as_float.kind = kind;
+
+    return type;
+}
+
+Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl)
+{
+    assert(base);
+    Type* type = type_alloc(allocator, TYPE_ENUM);
+    type->size = base->size;
+    type->align = base->align;
+    type->as_enum.base = base;
+    type->as_enum.decl = decl;
 
     return type;
 }

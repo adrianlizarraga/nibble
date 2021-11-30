@@ -1,0 +1,17 @@
+
+proc main() => int {
+    var a : [2][2]int = {
+        {0, 1},
+        {2, 3}
+    };
+
+    var b : [2][3]char = {
+        "aa",
+        "bb"
+    };
+
+    #writeout(b[1], 2);
+    #writeout("\n", 1);
+
+    return a[1][1];
+}

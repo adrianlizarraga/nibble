@@ -529,6 +529,7 @@ typedef struct EnumItem {
 typedef struct DeclEnum {
     Decl super;
     TypeSpec* typespec;
+    size_t num_items;
     List items;
 } DeclEnum;
 
@@ -564,7 +565,7 @@ DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRang
 Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
-Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* type, List* items, ProgRange range);
+Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* type, size_t num_items, List* items, ProgRange range);
 EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range);
 
 typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fields, ProgRange range);
@@ -626,6 +627,7 @@ typedef struct TypePtr {
 
 typedef struct TypeEnum {
     Type* base;
+    DeclEnum* decl;
 } TypeEnum;
 
 typedef struct TypeAggregateField {
@@ -716,7 +718,7 @@ bool type_is_ptr_like(Type* type);
 bool type_is_aggregate(Type* type);
 bool type_is_incomplete_array(Type* type);
 bool type_has_incomplete_array(Type* type);
-Type* type_has_incomplete_elem(Type* type);
+bool types_are_compatible(Type* t, Type* u);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len);
@@ -724,6 +726,7 @@ Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
 Type* type_incomplete_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
 Type* type_unsigned_int(Type* type_int);
+Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl);
 
 ///////////////////////////////
 //       Symbols

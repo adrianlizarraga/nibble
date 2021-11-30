@@ -1800,6 +1800,13 @@ static void IR_decay_array(IR_Builder* builder, IR_Operand* dst, Type* dst_type,
             dst->addr.base_kind = IR_MEM_BASE_REG;
             dst->addr.base.reg = dst_reg;
         }
+
+        dst->addr.index_reg = IR_REG_COUNT;
+        dst->addr.disp = 0;
+        dst->addr.scale = 0;
+    }
+    else if (src->kind == IR_OPERAND_DEREF_ADDR) {
+        dst->addr = src->addr;
     }
     else {
         assert(src->kind == IR_OPERAND_STR_LIT);
@@ -1809,13 +1816,13 @@ static void IR_decay_array(IR_Builder* builder, IR_Operand* dst, Type* dst_type,
 
         dst->addr.base_kind = IR_MEM_BASE_REG;
         dst->addr.base.reg = dst_reg;
+        dst->addr.index_reg = IR_REG_COUNT;
+        dst->addr.disp = 0;
+        dst->addr.scale = 0;
     }
 
     dst->type = dst_type;
     dst->kind = IR_OPERAND_MEM_ADDR;
-    dst->addr.index_reg = IR_REG_COUNT;
-    dst->addr.disp = 0;
-    dst->addr.scale = 0;
 }
 
 static void IR_emit_expr_cast(IR_Builder* builder, ExprCast* expr_cast, IR_Operand* dst_op)
@@ -2049,7 +2056,7 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
 //    var a: [11] int = {0, 1, 2, 3};
 static void IR_emit_array_init(IR_Builder* builder, IR_Operand* array_op, IR_Operand* init_op)
 {
-    assert(array_op->kind == IR_OPERAND_VAR);
+    assert(array_op->kind == IR_OPERAND_VAR || array_op->kind == IR_OPERAND_DEREF_ADDR);
     assert(init_op->kind == IR_OPERAND_ARRAY_INIT);
     assert(array_op->type->kind == TYPE_ARRAY);
 
@@ -2088,6 +2095,8 @@ static void IR_emit_array_init(IR_Builder* builder, IR_Operand* array_op, IR_Ope
         elem_ptr_op.addr.disp += elem_type->size * elem_index;
 
         IR_emit_assign(builder, &elem_ptr_op, &initzer->op);
+
+        IR_try_free_op_reg(builder, &initzer->op);
     }
 
     // For each array element, compute the pointer to the corresponding element and assign it
@@ -2109,6 +2118,8 @@ static void IR_emit_array_init(IR_Builder* builder, IR_Operand* array_op, IR_Ope
         IR_emit_assign(builder, &elem_ptr_op, &zero_op);
     }
 
+    IR_try_free_op_reg(builder, &base_ptr_op);
+
     // TODO: Reduce the number of assignment (mov) instructions by initializing
     // multiple elements at a time (one machine word's worth).
 }
@@ -2121,7 +2132,7 @@ static void IR_emit_array_init(IR_Builder* builder, IR_Operand* array_op, IR_Ope
 //    var a: [6] char = {'H', 'e', 'l', 'l', 'o', '\0'};
 static void IR_emit_array_str_init(IR_Builder* builder, IR_Operand* array_op, IR_Operand* init_op)
 {
-    assert(array_op->kind == IR_OPERAND_VAR);
+    assert(array_op->kind == IR_OPERAND_VAR || array_op->kind == IR_OPERAND_DEREF_ADDR);
     assert(init_op->kind == IR_OPERAND_STR_LIT);
     assert(array_op->type->kind == TYPE_ARRAY);
 
@@ -2147,6 +2158,8 @@ static void IR_emit_array_str_init(IR_Builder* builder, IR_Operand* array_op, IR
 
         IR_emit_assign(builder, &elem_ptr_op, &char_op);
     }
+
+    IR_try_free_op_reg(builder, &base_ptr_op);
 
     // TODO: Reduce the number of assignment (mov) instructions by initializing
     // multiple elements at a time (one machine word's worth).
@@ -2177,6 +2190,12 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
     case IR_OPERAND_DEREF_ADDR: {
         if (rhs->kind == IR_OPERAND_IMM) {
             IR_emit_instr_store_i(builder, lhs->type, lhs->addr, rhs->imm);
+        }
+        else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
+            IR_emit_array_init(builder, lhs, rhs);
+        }
+        else if (rhs->kind == IR_OPERAND_STR_LIT) {
+            IR_emit_array_str_init(builder, lhs, rhs);
         }
         else {
             IR_op_to_r(builder, rhs, true);
