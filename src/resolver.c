@@ -1922,9 +1922,6 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 
         ExprOperand init_eop = OP_FROM_EXPR(init);
 
-        if ((declared_type->kind == TYPE_PTR) && !eop_decay(resolver, &init_eop, init->range))
-            return false;
-
         if (!convert_eop(&init_eop, declared_type)) {
             resolver_on_error(resolver, typespec->range, "Incompatible types. Cannot convert expression of type `%s` to `%s`",
                               type_name(init->type), type_name(declared_type));
