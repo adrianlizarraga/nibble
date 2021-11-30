@@ -65,8 +65,6 @@ OPTIONS:
     -arch [x64 | x86]               Target architecture
     -o    <output_file>             Output binary file name. Defaults to `out`
 ```
-## Running tests
-TODO
 
 ## Code examples
 Note that Nibble does not have a standard library _yet_. Instead, Nibble provides a builtin procedure called `#writeout()` that writes bytes to stdout. Refer to the [language reference](https://github.com/adrianlizarraga/nibble/wiki/Language-reference#standard-library) for a description of all builtin procedures.
