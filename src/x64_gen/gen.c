@@ -240,6 +240,91 @@ static char** X64_emit_data(X64_Generator* gen, const char* format, ...)
     return line;
 }
 
+static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** line, char end_sep);
+
+static void X64_print_global_arr_init(Allocator* allocator, ExprCompoundLit* init, char** line, char end_sep)
+{
+    Type* type = init->super.type;
+    assert(type->kind == TYPE_ARRAY);
+    assert(init->super.is_constexpr);
+
+    Type* elem_type = type->as_array.base;
+    size_t num_elems = type->as_array.len;
+    Expr** init_vals = alloc_array(allocator, Expr*, num_elems, true); // Initialized to NULL
+
+    // Iterate through initializers and overwrite appropriate elements in init_vals array with
+    // the specified initializer value.
+    u64 elem_index = 0;
+    List* head = &init->initzers;
+    List* it = head->next;
+
+    while (it != head) {
+        assert(elem_index < num_elems);
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+
+        if (initzer->designator.kind == DESIGNATOR_INDEX) {
+            assert(initzer->designator.index->is_constexpr);
+            elem_index = initzer->designator.index->const_val.as_int._u64;
+        }
+
+        assert(initzer->init->is_constexpr);
+        init_vals[elem_index] = initzer->init;
+
+        elem_index += 1;
+        it = it->next;
+    }
+
+    // Print an initial value for each element.
+    for (u64 i = 0; i < num_elems; i += 1) {
+        char sep = (i == num_elems - 1) ? end_sep : ',';
+
+        if (init_vals[i]) {
+            X64_print_global_arr_elem(allocator, init_vals[i], line, sep);
+        }
+        else {
+            // Just print zero bytes if elem has no explicit initializer.
+            for (size_t j = 0; j < elem_type->size; j += 1) {
+                char inner_sep = (j == elem_type->size - 1) ? sep : ',';
+
+                ftprint_char_array(line, false, "0x%.2X%c", 0, inner_sep);
+            }
+        }
+    }
+}
+
+static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** line, char end_sep)
+{
+    assert(elem->is_constexpr);
+
+    if (elem->type->kind == TYPE_INTEGER) {
+        size_t num_bytes = elem->type->size;
+        u64 elem_val = elem->const_val.as_int._u64;
+        u64 mask = 0xFFLL;
+
+        // Print each byte of the value (comma-separated)
+        for (size_t i = 0; i < num_bytes; i += 1) {
+            u64 val = elem_val & mask;
+            char sep = (i == num_bytes - 1) ? end_sep : ',';
+
+            ftprint_char_array(line, false, "0x%.2X%c", val, sep);
+
+            mask = mask << 8;
+        }
+
+        return;
+    }
+
+    switch (elem->kind) {
+    case CST_ExprCompoundLit: {
+        X64_print_global_arr_init(allocator, (ExprCompoundLit*)elem, line, end_sep);
+        break;
+    }
+    default:
+        assert(0);
+        break;
+    }
+}
+
 static void X64_emit_global_data(X64_Generator* generator, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_VAR);
@@ -291,42 +376,11 @@ static void X64_emit_global_data(X64_Generator* generator, Symbol* sym)
             assert(init->kind == CST_ExprCompoundLit);
 
             AllocatorState mem_state = allocator_get_state(tmp_mem);
-            // TODO: Support nested array initialization
-            Scalar* init_vals = alloc_array(tmp_mem, Scalar, num_elems, true); // Initialized to zero
+            char* line = array_create(tmp_mem, char, num_elems << 3);
 
-            // Iterate through initializers and overwrite appropriate elements in init_vals array with
-            // the specified initializer value.
-            u64 elem_index = 0;
-            List* head = &(((ExprCompoundLit*)init)->initzers);
-            List* it = head->next;
+            ftprint_char_array(&line, false, "%s ", x64_data_size_label[1]);
 
-            while (it != head) {
-                assert(elem_index < num_elems);
-                MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
-
-                if (initzer->designator.kind == DESIGNATOR_INDEX) {
-                    assert(initzer->designator.index->is_constexpr);
-                    elem_index = initzer->designator.index->const_val.as_int._u64;
-                }
-
-                assert(initzer->init->is_constexpr);
-                init_vals[elem_index].as_int._u64 = initzer->init->const_val.as_int._u64;
-
-                elem_index += 1;
-                it = it->next;
-            }
-
-            // Print an initial value for each element.
-            char* line = array_create(tmp_mem, char, num_elems << 1);
-
-            ftprint_char_array(&line, false, "%s ", x64_data_size_label[elem_type->size]);
-
-            for (u64 i = 0; i < num_elems; i += 1) {
-                char sep = (i == num_elems - 1) ? '\n' : ',';
-                const char* val_str = X64_print_imm(tmp_mem, init_vals[i], elem_type->size);
-
-                ftprint_char_array(&line, false, "%s%c", val_str, sep);
-            }
+            X64_print_global_arr_init(tmp_mem, (ExprCompoundLit*)init, &line, '\n');
 
             array_push(line, '\0');
             X64_emit_data(generator, "%s\n", line);
