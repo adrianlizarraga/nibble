@@ -1,3 +1,7 @@
+var g_a : []int = {1,2,3,[5]=4};
+var g_b : [][2]int = {
+    {0, 1}, {2, 3}
+};
 
 proc main() => int {
     var a : [2][2]int = {
@@ -13,5 +17,5 @@ proc main() => int {
     #writeout(b[1], 2);
     #writeout("\n", 1);
 
-    return a[1][1];
+    return a[1][1] + g_a[5] + g_b[1][0]; // 3 + 4 + 2 = 9
 }
