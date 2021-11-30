@@ -2123,7 +2123,7 @@ static Decl* parse_decl_enum(Parser* parser)
                 range.end = parser->ptoken.range.end;
 
                 if (num_items) {
-                    decl = new_decl_enum(parser->ast_arena, name, typespec, &items, range);
+                    decl = new_decl_enum(parser->ast_arena, name, typespec, num_items, &items, range);
                 }
                 else {
                     parser_on_error(parser, range,

@@ -291,6 +291,7 @@ static void X64_emit_global_data(X64_Generator* generator, Symbol* sym)
             assert(init->kind == CST_ExprCompoundLit);
 
             AllocatorState mem_state = allocator_get_state(tmp_mem);
+            // TODO: Support nested array initialization
             Scalar* init_vals = alloc_array(tmp_mem, Scalar, num_elems, true); // Initialized to zero
 
             // Iterate through initializers and overwrite appropriate elements in init_vals array with

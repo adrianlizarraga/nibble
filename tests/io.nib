@@ -1,6 +1,4 @@
-import "./cstr.nib" as CStr;
 
-@exported
 proc cstr_len(s : ^char) => usize
 {
     if (!s) {
@@ -17,7 +15,7 @@ proc cstr_len(s : ^char) => usize
     return count;
 }
 
-proc main(argc : int, argv : ^^char) => int
+proc main(argc : int, argv : []^char) => int
 {
     var i := 0;
     var ln : char = '\n';
