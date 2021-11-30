@@ -319,6 +319,19 @@ static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** l
         X64_print_global_arr_init(allocator, (ExprCompoundLit*)elem, line, end_sep);
         break;
     }
+    case CST_ExprStr: {
+        StrLit* str_lit = ((ExprStr*)elem)->str_lit;
+        size_t len = str_lit->len;
+        const char* str = str_lit->str;
+
+        for (size_t i = 0; i < len; i += 1) {
+            ftprint_char_array(line, false, "0x%.2X,", str[i]);
+        }
+
+        ftprint_char_array(line, false, "0x00%c", end_sep);
+
+        break;
+    }
     default:
         assert(0);
         break;

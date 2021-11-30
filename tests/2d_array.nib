@@ -1,6 +1,9 @@
-var g_a : []int = {1,2,3,[5]=4};
-var g_b : [][2]int = {
+var g_a : [][2]int = {
     {0, 1}, {2, 3}
+};
+
+var g_b : [2][3]char = {
+    "cc", {'d', 'd'}
 };
 
 proc main() => int {
@@ -16,6 +19,10 @@ proc main() => int {
 
     #writeout(b[1], 2);
     #writeout("\n", 1);
+    #writeout(g_b[0], 2);
+    #writeout("\n", 1);
+    #writeout(g_b[1], 2);
+    #writeout("\n", 1);
 
-    return a[1][1] + g_a[5] + g_b[1][0]; // 3 + 4 + 2 = 9
+    return a[1][1] + g_a[1][0]; // 3 + 2 = 5
 }
