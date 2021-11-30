@@ -240,9 +240,9 @@ static char** X64_emit_data(X64_Generator* gen, const char* format, ...)
     return line;
 }
 
-static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** line, char end_sep);
+static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** line);
 
-static void X64_print_global_arr_init(Allocator* allocator, ExprCompoundLit* init, char** line, char end_sep)
+static void X64_print_global_arr_init(Allocator* allocator, ExprCompoundLit* init, char** line)
 {
     Type* type = init->super.type;
     assert(type->kind == TYPE_ARRAY);
@@ -276,15 +276,15 @@ static void X64_print_global_arr_init(Allocator* allocator, ExprCompoundLit* ini
 
     // Print an initial value for each element.
     for (u64 i = 0; i < num_elems; i += 1) {
-        char sep = (i == num_elems - 1) ? end_sep : ',';
-
         if (init_vals[i]) {
-            X64_print_global_arr_elem(allocator, init_vals[i], line, sep);
+            X64_print_global_arr_elem(allocator, init_vals[i], line);
         }
         else {
+            ftprint_char_array(line, false, "%s ", x64_data_size_label[1]);
+
             // Just print zero bytes if elem has no explicit initializer.
             for (size_t j = 0; j < elem_type->size; j += 1) {
-                char inner_sep = (j == elem_type->size - 1) ? sep : ',';
+                char inner_sep = (j == elem_type->size - 1) ? '\n' : ',';
 
                 ftprint_char_array(line, false, "0x%.2X%c", 0, inner_sep);
             }
@@ -292,7 +292,7 @@ static void X64_print_global_arr_init(Allocator* allocator, ExprCompoundLit* ini
     }
 }
 
-static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** line, char end_sep)
+static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** line)
 {
     assert(elem->is_constexpr);
 
@@ -301,10 +301,12 @@ static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** l
         u64 elem_val = elem->const_val.as_int._u64;
         u64 mask = 0xFFLL;
 
+        ftprint_char_array(line, false, "%s ", x64_data_size_label[1]);
+
         // Print each byte of the value (comma-separated)
         for (size_t i = 0; i < num_bytes; i += 1) {
             u64 val = elem_val & mask;
-            char sep = (i == num_bytes - 1) ? end_sep : ',';
+            char sep = (i == num_bytes - 1) ? '\n' : ',';
 
             ftprint_char_array(line, false, "0x%.2X%c", val, sep);
 
@@ -314,9 +316,42 @@ static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** l
         return;
     }
 
+    if (elem->type->kind == TYPE_PTR) {
+        Expr* e = elem;
+        while (e) {
+            if (e->kind == CST_ExprUnary) {
+                ExprUnary* expr_unary = (ExprUnary*)e;
+
+                assert(expr_unary->op == TKN_CARET);
+                e = expr_unary->expr;
+                continue;
+
+            }
+            else if (e->kind == CST_ExprCast) {
+                ExprCast* expr_cast = (ExprCast*)e;
+
+                e = expr_cast->expr;
+                continue;
+            }
+            else if (e->kind == CST_ExprStr) {
+                ExprStr* expr_str = (ExprStr*)e;
+
+                ftprint_char_array(line, false, " %s %s_%llu\n",
+                                   x64_data_size_label[elem->type->size], X64_STR_LIT_PRE, expr_str->str_lit->id);
+                break;
+            }
+            else {
+                assert(0);
+            }
+
+        }
+
+        return;
+    }
+
     switch (elem->kind) {
     case CST_ExprCompoundLit: {
-        X64_print_global_arr_init(allocator, (ExprCompoundLit*)elem, line, end_sep);
+        X64_print_global_arr_init(allocator, (ExprCompoundLit*)elem, line);
         break;
     }
     case CST_ExprStr: {
@@ -324,11 +359,13 @@ static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** l
         size_t len = str_lit->len;
         const char* str = str_lit->str;
 
+        ftprint_char_array(line, false, "%s ", x64_data_size_label[1]);
+
         for (size_t i = 0; i < len; i += 1) {
             ftprint_char_array(line, false, "0x%.2X,", str[i]);
         }
 
-        ftprint_char_array(line, false, "0x00%c", end_sep);
+        ftprint_char_array(line, false, "0x00\n");
 
         break;
     }
@@ -391,9 +428,9 @@ static void X64_emit_global_data(X64_Generator* generator, Symbol* sym)
             AllocatorState mem_state = allocator_get_state(tmp_mem);
             char* line = array_create(tmp_mem, char, num_elems << 3);
 
-            ftprint_char_array(&line, false, "%s ", x64_data_size_label[1]);
+            //ftprint_char_array(&line, false, "%s ", x64_data_size_label[1]);
 
-            X64_print_global_arr_init(tmp_mem, (ExprCompoundLit*)init, &line, '\n');
+            X64_print_global_arr_init(tmp_mem, (ExprCompoundLit*)init, &line);
 
             array_push(line, '\0');
             X64_emit_data(generator, "%s\n", line);

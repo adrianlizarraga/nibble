@@ -35,6 +35,8 @@ static bool can_cast_eop(ExprOperand* eop, Type* dst_type);
 static bool eop_decay(Resolver* resolver, ExprOperand* eop, ProgRange range);
 static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr);
 
+static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr);
+
 static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
 static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right);
@@ -1158,9 +1160,21 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
             return false;
         }
 
+        bool is_constexpr = false;
+
+        // The address of a global variable is a constant expression
+        if (eunary->expr->kind == CST_ExprIdent) {
+            ExprIdent* expr_ident = (ExprIdent*)eunary->expr;
+            Symbol* sym = lookup_ident(resolver, expr_ident);
+
+            assert(sym);
+
+            is_constexpr = !sym->is_local;
+        }
+
         dst_op.type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, src_op.type);
         dst_op.is_lvalue = false;
-        dst_op.is_constexpr = false;
+        dst_op.is_constexpr = is_constexpr;
         break;
     case TKN_ASTERISK: // NOTE: Dereference operator.
         if (!eop_decay(resolver, &src_op, expr->range))
@@ -2283,6 +2297,7 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
     }
 
     expr->is_lvalue = eop->is_lvalue;
+    expr->is_constexpr = eop->is_constexpr; // TODO: IMPORTANT: BREAKS STRINGS in bytecode.c
 
     return expr;
 }
