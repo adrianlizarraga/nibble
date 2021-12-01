@@ -23,7 +23,7 @@
 #include "ast.c"
 #include "parser.c"
 #include "resolver.c"
-#include "bytecode.c"
+#include "bytecode/gen.c"
 #include "print_ir.c"
 #include "code_gen.c"
 #include "x64_gen/gen.c"

@@ -63,7 +63,7 @@ typedef struct IR_ArrayMemberInitializer {
     IR_Operand op;
 } IR_ArrayMemberInitializer;
 
-typedef struct IR_Builder {
+typedef struct IR_ProcBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
     TypeCache* type_cache;
@@ -73,12 +73,12 @@ typedef struct IR_Builder {
     bool next_instr_is_jmp_target;
     IR_DeferredJmpcc* sc_jmp_freelist;
     u32 free_regs;
-} IR_Builder;
+} IR_ProcBuilder;
 
 static const Scalar ir_zero_imm = {.as_int._u64 = 0};
 static const Scalar ir_one_imm = {.as_int._u64 = 1};
 
-static void IR_free_reg(IR_Builder* builder, IR_Reg reg)
+static void IR_free_reg(IR_ProcBuilder* builder, IR_Reg reg)
 {
     Symbol* sym = builder->curr_proc;
     LifetimeInterval* interval = &sym->as_proc.reg_intervals[reg];
@@ -86,7 +86,7 @@ static void IR_free_reg(IR_Builder* builder, IR_Reg reg)
     interval->end = array_len(sym->as_proc.instrs) - 1;
 }
 
-static IR_Reg IR_next_reg(IR_Builder* builder)
+static IR_Reg IR_next_reg(IR_ProcBuilder* builder)
 {
     Symbol* sym = builder->curr_proc;
     LifetimeInterval interval = {.start = array_len(sym->as_proc.instrs)};
@@ -95,7 +95,7 @@ static IR_Reg IR_next_reg(IR_Builder* builder)
     return array_len(sym->as_proc.reg_intervals) - 1;
 }
 
-static void IR_mark_reg_as_arg(IR_Builder* builder, IR_Reg reg, u32 arg_index)
+static void IR_mark_reg_as_arg(IR_ProcBuilder* builder, IR_Reg reg, u32 arg_index)
 {
     Symbol* sym = builder->curr_proc;
     LifetimeInterval* interval = &sym->as_proc.reg_intervals[reg];
@@ -104,7 +104,7 @@ static void IR_mark_reg_as_arg(IR_Builder* builder, IR_Reg reg, u32 arg_index)
     interval->arg_index = arg_index;
 }
 
-static void IR_mark_reg_as_ret(IR_Builder* builder, IR_Reg reg)
+static void IR_mark_reg_as_ret(IR_ProcBuilder* builder, IR_Reg reg)
 {
     Symbol* sym = builder->curr_proc;
     LifetimeInterval* interval = &sym->as_proc.reg_intervals[reg];
@@ -112,7 +112,7 @@ static void IR_mark_reg_as_ret(IR_Builder* builder, IR_Reg reg)
     interval->is_ret = true;
 }
 
-static void IR_try_free_op_reg(IR_Builder* builder, IR_Operand* op)
+static void IR_try_free_op_reg(IR_ProcBuilder* builder, IR_Operand* op)
 {
     switch (op->kind) {
     case IR_OPERAND_REG:
@@ -141,7 +141,7 @@ static void IR_try_free_op_reg(IR_Builder* builder, IR_Operand* op)
 //         Create IR instructions
 //
 //////////////////////////////////////////////////////
-static void IR_add_instr(IR_Builder* builder, IR_Instr* instr)
+static void IR_add_instr(IR_ProcBuilder* builder, IR_Instr* instr)
 {
     if (builder->next_instr_is_jmp_target) {
         instr->is_jmp_target = true;
@@ -159,7 +159,7 @@ static IR_Instr* IR_new_instr(Allocator* arena, IR_InstrKind kind)
     return instr;
 }
 
-static void IR_emit_instr_add(IR_Builder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
+static void IR_emit_instr_add(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
 {
     IR_Instr* instr = NULL;
 
@@ -197,7 +197,7 @@ static void IR_emit_instr_add(IR_Builder* builder, Type* type, IR_Reg dst, IR_Op
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_add_r_i(IR_Builder* builder, Type* type, IR_Reg dst, Scalar src)
+static void IR_emit_instr_add_r_i(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Scalar src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_ADD_R_I);
     instr->add_r_i.type = type;
@@ -207,7 +207,7 @@ static void IR_emit_instr_add_r_i(IR_Builder* builder, Type* type, IR_Reg dst, S
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_sub(IR_Builder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
+static void IR_emit_instr_sub(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
 {
     IR_Instr* instr = NULL;
 
@@ -245,7 +245,7 @@ static void IR_emit_instr_sub(IR_Builder* builder, Type* type, IR_Reg dst, IR_Op
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_mul(IR_Builder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
+static void IR_emit_instr_mul(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
 {
     IR_Instr* instr = NULL;
 
@@ -283,7 +283,7 @@ static void IR_emit_instr_mul(IR_Builder* builder, Type* type, IR_Reg dst, IR_Op
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_mul_r_i(IR_Builder* builder, Type* type, IR_Reg dst, Scalar src)
+static void IR_emit_instr_mul_r_i(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Scalar src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
     instr->mul_r_i.type = type;
@@ -293,7 +293,7 @@ static void IR_emit_instr_mul_r_i(IR_Builder* builder, Type* type, IR_Reg dst, S
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_div(IR_Builder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
+static void IR_emit_instr_div(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
 {
     assert(type->kind == TYPE_INTEGER);
 
@@ -342,7 +342,7 @@ static void IR_emit_instr_div(IR_Builder* builder, Type* type, IR_Reg dst, IR_Op
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_sar(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Operand* src_op)
+static void IR_emit_instr_sar(IR_ProcBuilder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Operand* src_op)
 {
     IR_Instr* instr = NULL;
 
@@ -384,7 +384,7 @@ static void IR_emit_instr_sar(IR_Builder* builder, Type* dst_type, IR_Reg dst, T
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_sar_r_i(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, Scalar src)
+static void IR_emit_instr_sar_r_i(IR_ProcBuilder* builder, Type* dst_type, IR_Reg dst, Type* src_type, Scalar src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SAR_R_I);
     instr->sar_r_i.dst_type = dst_type;
@@ -395,7 +395,7 @@ static void IR_emit_instr_sar_r_i(IR_Builder* builder, Type* dst_type, IR_Reg ds
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_shl(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Operand* src_op)
+static void IR_emit_instr_shl(IR_ProcBuilder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Operand* src_op)
 {
     IR_Instr* instr = NULL;
 
@@ -437,7 +437,7 @@ static void IR_emit_instr_shl(IR_Builder* builder, Type* dst_type, IR_Reg dst, T
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_neg(IR_Builder* builder, Type* type, IR_Reg dst)
+static void IR_emit_instr_neg(IR_ProcBuilder* builder, Type* type, IR_Reg dst)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_NEG);
     instr->neg.type = type;
@@ -446,7 +446,7 @@ static void IR_emit_instr_neg(IR_Builder* builder, Type* type, IR_Reg dst)
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_not(IR_Builder* builder, Type* type, IR_Reg dst)
+static void IR_emit_instr_not(IR_ProcBuilder* builder, Type* type, IR_Reg dst)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_NOT);
     instr->not .type = type;
@@ -455,7 +455,7 @@ static void IR_emit_instr_not(IR_Builder* builder, Type* type, IR_Reg dst)
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_limm(IR_Builder* builder, Type* type, IR_Reg dst, Scalar src)
+static void IR_emit_instr_limm(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Scalar src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LIMM);
     instr->limm.type = type;
@@ -465,7 +465,7 @@ static void IR_emit_instr_limm(IR_Builder* builder, Type* type, IR_Reg dst, Scal
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst, Type* type, IR_MemAddr addr)
+static void IR_emit_instr_laddr(IR_ProcBuilder* builder, IR_Reg dst, Type* type, IR_MemAddr addr)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
     instr->laddr.dst = dst;
@@ -475,7 +475,7 @@ static void IR_emit_instr_laddr(IR_Builder* builder, IR_Reg dst, Type* type, IR_
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_laddr_sym(IR_Builder* builder, IR_Reg dst, Type* type, Symbol* sym)
+static void IR_emit_instr_laddr_sym(IR_ProcBuilder* builder, IR_Reg dst, Type* type, Symbol* sym)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
     instr->laddr.dst = dst;
@@ -486,7 +486,7 @@ static void IR_emit_instr_laddr_sym(IR_Builder* builder, IR_Reg dst, Type* type,
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_laddr_str_lit(IR_Builder* builder, IR_Reg dst, Type* type, StrLit* str_lit)
+static void IR_emit_instr_laddr_str_lit(IR_ProcBuilder* builder, IR_Reg dst, Type* type, StrLit* str_lit)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LADDR);
     instr->laddr.dst = dst;
@@ -497,7 +497,7 @@ static void IR_emit_instr_laddr_str_lit(IR_Builder* builder, IR_Reg dst, Type* t
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_trunc_r_r(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Reg src)
+static void IR_emit_instr_trunc_r_r(IR_ProcBuilder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Reg src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_TRUNC_R_R);
     instr->trunc_r_r.dst_type = dst_type;
@@ -508,7 +508,7 @@ static void IR_emit_instr_trunc_r_r(IR_Builder* builder, Type* dst_type, IR_Reg 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_trunc_r_m(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, Symbol* sym)
+static void IR_emit_instr_trunc_r_m(IR_ProcBuilder* builder, Type* dst_type, IR_Reg dst, Type* src_type, Symbol* sym)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_TRUNC_R_M);
     instr->trunc_r_m.dst_type = dst_type;
@@ -520,7 +520,7 @@ static void IR_emit_instr_trunc_r_m(IR_Builder* builder, Type* dst_type, IR_Reg 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_zext_r_r(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Reg src)
+static void IR_emit_instr_zext_r_r(IR_ProcBuilder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Reg src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_ZEXT_R_R);
     instr->zext_r_r.dst_type = dst_type;
@@ -531,7 +531,7 @@ static void IR_emit_instr_zext_r_r(IR_Builder* builder, Type* dst_type, IR_Reg d
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_zext_r_m(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, Symbol* sym)
+static void IR_emit_instr_zext_r_m(IR_ProcBuilder* builder, Type* dst_type, IR_Reg dst, Type* src_type, Symbol* sym)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_ZEXT_R_M);
     instr->zext_r_m.dst_type = dst_type;
@@ -543,7 +543,7 @@ static void IR_emit_instr_zext_r_m(IR_Builder* builder, Type* dst_type, IR_Reg d
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_sext_r_r(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Reg src)
+static void IR_emit_instr_sext_r_r(IR_ProcBuilder* builder, Type* dst_type, IR_Reg dst, Type* src_type, IR_Reg src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SEXT_R_R);
     instr->sext_r_r.dst_type = dst_type;
@@ -554,7 +554,7 @@ static void IR_emit_instr_sext_r_r(IR_Builder* builder, Type* dst_type, IR_Reg d
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_sext_r_m(IR_Builder* builder, Type* dst_type, IR_Reg dst, Type* src_type, Symbol* sym)
+static void IR_emit_instr_sext_r_m(IR_ProcBuilder* builder, Type* dst_type, IR_Reg dst, Type* src_type, Symbol* sym)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SEXT_R_M);
     instr->sext_r_m.dst_type = dst_type;
@@ -566,7 +566,7 @@ static void IR_emit_instr_sext_r_m(IR_Builder* builder, Type* dst_type, IR_Reg d
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_load(IR_Builder* builder, Type* type, IR_Reg dst, IR_MemAddr src)
+static void IR_emit_instr_load(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR_MemAddr src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LOAD);
     instr->load.type = type;
@@ -576,7 +576,7 @@ static void IR_emit_instr_load(IR_Builder* builder, Type* type, IR_Reg dst, IR_M
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_load_sym(IR_Builder* builder, Type* type, IR_Reg dst, Symbol* src_sym)
+static void IR_emit_instr_load_sym(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Symbol* src_sym)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_LOAD);
     instr->load.type = type;
@@ -587,7 +587,7 @@ static void IR_emit_instr_load_sym(IR_Builder* builder, Type* type, IR_Reg dst, 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_store_r(IR_Builder* builder, Type* type, IR_MemAddr dst, IR_Reg src)
+static void IR_emit_instr_store_r(IR_ProcBuilder* builder, Type* type, IR_MemAddr dst, IR_Reg src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_STORE_R);
     instr->store_r.type = type;
@@ -597,7 +597,7 @@ static void IR_emit_instr_store_r(IR_Builder* builder, Type* type, IR_MemAddr ds
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_store_i(IR_Builder* builder, Type* type, IR_MemAddr dst, Scalar src)
+static void IR_emit_instr_store_i(IR_ProcBuilder* builder, Type* type, IR_MemAddr dst, Scalar src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_STORE_I);
     instr->store_i.type = type;
@@ -607,7 +607,7 @@ static void IR_emit_instr_store_i(IR_Builder* builder, Type* type, IR_MemAddr ds
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_cmp_r_r(IR_Builder* builder, Type* type, IR_Reg op1, IR_Reg op2)
+static void IR_emit_instr_cmp_r_r(IR_ProcBuilder* builder, Type* type, IR_Reg op1, IR_Reg op2)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CMP_R_R);
     instr->cmp_r_r.type = type;
@@ -617,7 +617,7 @@ static void IR_emit_instr_cmp_r_r(IR_Builder* builder, Type* type, IR_Reg op1, I
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_cmp_r_m(IR_Builder* builder, Type* type, IR_Reg op1, Symbol* sym)
+static void IR_emit_instr_cmp_r_m(IR_ProcBuilder* builder, Type* type, IR_Reg op1, Symbol* sym)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CMP_R_M);
     instr->cmp_r_m.type = type;
@@ -628,7 +628,7 @@ static void IR_emit_instr_cmp_r_m(IR_Builder* builder, Type* type, IR_Reg op1, S
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_cmp_r_i(IR_Builder* builder, Type* type, IR_Reg op1, Scalar op2)
+static void IR_emit_instr_cmp_r_i(IR_ProcBuilder* builder, Type* type, IR_Reg op1, Scalar op2)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CMP_R_I);
     instr->cmp_r_i.type = type;
@@ -638,7 +638,7 @@ static void IR_emit_instr_cmp_r_i(IR_Builder* builder, Type* type, IR_Reg op1, S
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_cmp_m_r(IR_Builder* builder, Type* type, Symbol* sym, IR_Reg op2)
+static void IR_emit_instr_cmp_m_r(IR_ProcBuilder* builder, Type* type, Symbol* sym, IR_Reg op2)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CMP_M_R);
     instr->cmp_m_r.type = type;
@@ -649,7 +649,7 @@ static void IR_emit_instr_cmp_m_r(IR_Builder* builder, Type* type, Symbol* sym, 
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_cmp_m_i(IR_Builder* builder, Type* type, Symbol* sym, Scalar op2)
+static void IR_emit_instr_cmp_m_i(IR_ProcBuilder* builder, Type* type, Symbol* sym, Scalar op2)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CMP_M_I);
     instr->cmp_m_i.type = type;
@@ -660,7 +660,7 @@ static void IR_emit_instr_cmp_m_i(IR_Builder* builder, Type* type, Symbol* sym, 
     IR_add_instr(builder, instr);
 }
 
-static IR_Instr* IR_emit_instr_jmp(IR_Builder* builder, u32 jmp_target)
+static IR_Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, u32 jmp_target)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_JMP);
     instr->jmp.jmp_target = jmp_target;
@@ -670,7 +670,7 @@ static IR_Instr* IR_emit_instr_jmp(IR_Builder* builder, u32 jmp_target)
     return instr;
 }
 
-static IR_Instr* IR_emit_instr_jmpcc(IR_Builder* builder, IR_ConditionKind cond, u32 jmp_target)
+static IR_Instr* IR_emit_instr_jmpcc(IR_ProcBuilder* builder, IR_ConditionKind cond, u32 jmp_target)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_JMPCC);
     instr->jmpcc.cond = cond;
@@ -681,7 +681,7 @@ static IR_Instr* IR_emit_instr_jmpcc(IR_Builder* builder, IR_ConditionKind cond,
     return instr;
 }
 
-static void IR_emit_instr_setcc(IR_Builder* builder, IR_ConditionKind cond, IR_Reg dst)
+static void IR_emit_instr_setcc(IR_ProcBuilder* builder, IR_ConditionKind cond, IR_Reg dst)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_SETCC);
     instr->setcc.cond = cond;
@@ -690,7 +690,7 @@ static void IR_emit_instr_setcc(IR_Builder* builder, IR_ConditionKind cond, IR_R
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_ret(IR_Builder* builder, Type* type, IR_Reg src)
+static void IR_emit_instr_ret(IR_ProcBuilder* builder, Type* type, IR_Reg src)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_RET);
     instr->ret.type = type;
@@ -699,7 +699,7 @@ static void IR_emit_instr_ret(IR_Builder* builder, Type* type, IR_Reg src)
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_call(IR_Builder* builder, Symbol* sym, IR_Reg dst, u32 num_args, IR_InstrCallArg* args)
+static void IR_emit_instr_call(IR_ProcBuilder* builder, Symbol* sym, IR_Reg dst, u32 num_args, IR_InstrCallArg* args)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CALL);
     instr->call.sym = sym;
@@ -710,7 +710,7 @@ static void IR_emit_instr_call(IR_Builder* builder, Symbol* sym, IR_Reg dst, u32
     IR_add_instr(builder, instr);
 }
 
-static void IR_emit_instr_call_r(IR_Builder* builder, Type* proc_type, IR_Reg proc_loc, IR_Reg dst, u32 num_args,
+static void IR_emit_instr_call_r(IR_ProcBuilder* builder, Type* proc_type, IR_Reg proc_loc, IR_Reg dst, u32 num_args,
                                  IR_InstrCallArg* args)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_CALL_R);
@@ -738,7 +738,7 @@ static void IR_patch_jmp_target(IR_Instr* jmp_instr, u32 jmp_target)
     }
 }
 
-static u32 IR_get_jmp_target(IR_Builder* builder)
+static u32 IR_get_jmp_target(IR_ProcBuilder* builder)
 {
     builder->next_instr_is_jmp_target = true;
     return (u32)array_len(builder->curr_proc->as_proc.instrs);
@@ -750,7 +750,7 @@ static u32 IR_get_jmp_target(IR_Builder* builder)
 //
 //////////////////////////////////////////////////////
 
-static void IR_new_deferred_sc_jmp(IR_Builder* builder, IR_DeferredCmp* cmp, IR_ConditionKind cond, bool result, IR_Instr* instr)
+static void IR_new_deferred_sc_jmp(IR_ProcBuilder* builder, IR_DeferredCmp* cmp, IR_ConditionKind cond, bool result, IR_Instr* instr)
 {
     IR_DeferredJmpcc* new_node = NULL;
 
@@ -780,7 +780,7 @@ static void IR_new_deferred_sc_jmp(IR_Builder* builder, IR_DeferredCmp* cmp, IR_
     new_node->jmp = instr;
 }
 
-static void IR_del_deferred_sc_jmp(IR_Builder* builder, IR_DeferredCmp* cmp, IR_DeferredJmpcc* prev_jmp, IR_DeferredJmpcc* jmp)
+static void IR_del_deferred_sc_jmp(IR_ProcBuilder* builder, IR_DeferredCmp* cmp, IR_DeferredJmpcc* prev_jmp, IR_DeferredJmpcc* jmp)
 {
     IR_DeferredJmpcc* next_jmp = jmp->next;
 
@@ -819,7 +819,7 @@ static void IR_mov_deferred_sc_jmp_list(IR_DeferredCmp* dst_cmp, IR_DeferredCmp*
     src_cmp->last_sc_jmp = NULL;
 }
 
-static void IR_copy_sc_jmp(IR_Builder* builder, IR_DeferredJmpcc* dst_jmp, IR_DeferredJmpcc* src_jmp, bool desired_result)
+static void IR_copy_sc_jmp(IR_ProcBuilder* builder, IR_DeferredJmpcc* dst_jmp, IR_DeferredJmpcc* src_jmp, bool desired_result)
 {
     *dst_jmp = *src_jmp;
 
@@ -835,7 +835,7 @@ static void IR_copy_sc_jmp(IR_Builder* builder, IR_DeferredJmpcc* dst_jmp, IR_De
         dst_jmp->jmp = IR_emit_instr_jmpcc(builder, dst_jmp->cond, 0);
 }
 
-static void IR_execute_deferred_cmp(IR_Builder* builder, IR_Operand* operand)
+static void IR_execute_deferred_cmp(IR_ProcBuilder* builder, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEFERRED_CMP);
 
@@ -881,7 +881,7 @@ static void IR_execute_deferred_cmp(IR_Builder* builder, IR_Operand* operand)
     operand->reg = dst_reg;
 }
 
-static void IR_execute_deref(IR_Builder* builder, IR_Operand* operand)
+static void IR_execute_deref(IR_ProcBuilder* builder, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEREF_ADDR);
 
@@ -914,7 +914,7 @@ static void IR_execute_deref(IR_Builder* builder, IR_Operand* operand)
         IR_free_reg(builder, index_reg);
 }
 
-static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
+static void IR_execute_lea(IR_ProcBuilder* builder, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_MEM_ADDR);
 
@@ -954,7 +954,7 @@ static void IR_execute_lea(IR_Builder* builder, IR_Operand* operand)
     operand->reg = dst_reg;
 }
 
-static void IR_op_to_r(IR_Builder* builder, IR_Operand* operand, bool commit_ptr)
+static void IR_op_to_r(IR_ProcBuilder* builder, IR_Operand* operand, bool commit_ptr)
 {
     if (commit_ptr && (operand->kind == IR_OPERAND_MEM_ADDR)) {
         IR_execute_lea(builder, operand);
@@ -1003,7 +1003,7 @@ static void IR_op_to_r(IR_Builder* builder, IR_Operand* operand, bool commit_ptr
     }
 }
 
-static void IR_op_to_rv(IR_Builder* builder, IR_Operand* op)
+static void IR_op_to_rv(IR_ProcBuilder* builder, IR_Operand* op)
 {
     switch (op->kind) {
     case IR_OPERAND_IMM: {
@@ -1033,7 +1033,7 @@ static void IR_op_to_rv(IR_Builder* builder, IR_Operand* op)
     }
 }
 
-static void IR_op_to_ri(IR_Builder* builder, IR_Operand* op)
+static void IR_op_to_ri(IR_ProcBuilder* builder, IR_Operand* op)
 {
     switch (op->kind) {
     case IR_OPERAND_DEREF_ADDR:
@@ -1063,7 +1063,7 @@ static void IR_op_to_ri(IR_Builder* builder, IR_Operand* op)
     }
 }
 
-static void IR_op_to_rvi(IR_Builder* builder, IR_Operand* op)
+static void IR_op_to_rvi(IR_ProcBuilder* builder, IR_Operand* op)
 {
     switch (op->kind) {
     case IR_OPERAND_DEREF_ADDR:
@@ -1108,9 +1108,9 @@ static void IR_operand_from_sym(IR_Operand* op, Symbol* sym)
     }
 }
 
-static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst);
+static void IR_emit_expr(IR_ProcBuilder* builder, Expr* expr, IR_Operand* dst);
 
-static void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operand* dst)
+static void IR_emit_expr_ident(IR_ProcBuilder* builder, ExprIdent* eident, IR_Operand* dst)
 {
     Symbol* sym = NULL;
 
@@ -1132,7 +1132,7 @@ static void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operan
     IR_operand_from_sym(dst, sym);
 }
 
-static void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
+static void IR_emit_ptr_int_add(IR_ProcBuilder* builder, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
 {
     u64 base_size = ptr_op->type->as_ptr.base->size;
 
@@ -1169,7 +1169,7 @@ static void IR_emit_ptr_int_add(IR_Builder* builder, IR_Operand* dst, IR_Operand
     *dst = *ptr_op;
 }
 
-static void IR_emit_binary_cmp(IR_Builder* builder, IR_ConditionKind cond_kind, Type* dst_type, IR_Operand* dst_op,
+static void IR_emit_binary_cmp(IR_ProcBuilder* builder, IR_ConditionKind cond_kind, Type* dst_type, IR_Operand* dst_op,
                                IR_Operand* left_op, IR_Operand* right_op)
 {
     assert(left_op->type == right_op->type);
@@ -1223,7 +1223,7 @@ static void IR_emit_binary_cmp(IR_Builder* builder, IR_ConditionKind cond_kind, 
     IR_try_free_op_reg(builder, right_op);
 }
 
-static void IR_emit_short_circuit_cmp(IR_Builder* builder, IR_Operand* dst_op, ExprBinary* expr)
+static void IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, IR_Operand* dst_op, ExprBinary* expr)
 {
     //
     // NOTE: This procedure will create a deferred comparison containing an array of short-circuit jumps and one final
@@ -1343,7 +1343,7 @@ static void IR_emit_short_circuit_cmp(IR_Builder* builder, IR_Operand* dst_op, E
     }
 }
 
-static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operand* dst)
+static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Operand* dst)
 {
     Type* result_type = expr->super.type;
     IR_Operand left = {0};
@@ -1573,7 +1573,7 @@ static void IR_emit_expr_binary(IR_Builder* builder, ExprBinary* expr, IR_Operan
     }
 }
 
-static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand* dst)
+static void IR_emit_expr_unary(IR_ProcBuilder* builder, ExprUnary* expr, IR_Operand* dst)
 {
     Type* result_type = expr->super.type;
 
@@ -1683,7 +1683,7 @@ static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand*
     }
 }
 
-static void IR_emit_expr_index(IR_Builder* builder, ExprIndex* expr_index, IR_Operand* dst)
+static void IR_emit_expr_index(IR_ProcBuilder* builder, ExprIndex* expr_index, IR_Operand* dst)
 {
     IR_Operand array_op = {0};
     IR_Operand index_op = {0};
@@ -1699,7 +1699,7 @@ static void IR_emit_expr_index(IR_Builder* builder, ExprIndex* expr_index, IR_Op
     dst->type = expr_index->super.type;
 }
 
-static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand* dst_op)
+static void IR_emit_int_cast(IR_ProcBuilder* builder, IR_Operand* src_op, IR_Operand* dst_op)
 {
     // NOTE:
     // This function treats pointers like integers. The IR currently implements "opaque" pointers, so
@@ -1778,7 +1778,7 @@ static void IR_emit_int_cast(IR_Builder* builder, IR_Operand* src_op, IR_Operand
     }
 }
 
-static void IR_decay_array(IR_Builder* builder, IR_Operand* dst, Type* dst_type, IR_Operand* src)
+static void IR_decay_array(IR_ProcBuilder* builder, IR_Operand* dst, Type* dst_type, IR_Operand* src)
 {
     assert(src->type->kind == TYPE_ARRAY);
     assert(dst_type->kind == TYPE_PTR);
@@ -1820,7 +1820,7 @@ static void IR_decay_array(IR_Builder* builder, IR_Operand* dst, Type* dst_type,
     dst->kind = IR_OPERAND_MEM_ADDR;
 }
 
-static void IR_emit_expr_cast(IR_Builder* builder, ExprCast* expr_cast, IR_Operand* dst_op)
+static void IR_emit_expr_cast(IR_ProcBuilder* builder, ExprCast* expr_cast, IR_Operand* dst_op)
 {
     // Emit instructions for source expression that will be casted.
     IR_Operand src_op = {0};
@@ -1846,7 +1846,7 @@ static bool IR_type_fits_in_reg(Type* type)
     return type->size <= PTR_SIZE;
 }
 
-static IR_InstrCallArg* IR_setup_call_args(IR_Builder* builder, ExprCall* expr_call)
+static IR_InstrCallArg* IR_setup_call_args(IR_ProcBuilder* builder, ExprCall* expr_call)
 {
     u32 num_args = (u32)expr_call->num_args;
     IR_InstrCallArg* args = alloc_array(builder->arena, IR_InstrCallArg, num_args, false);
@@ -1883,7 +1883,7 @@ static IR_InstrCallArg* IR_setup_call_args(IR_Builder* builder, ExprCall* expr_c
     return args;
 }
 
-static void IR_setup_call_ret(IR_Builder* builder, ExprCall* expr_call, IR_Operand* dst_op)
+static void IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, IR_Operand* dst_op)
 {
     dst_op->type = expr_call->super.type;
 
@@ -1904,14 +1904,14 @@ static void IR_setup_call_ret(IR_Builder* builder, ExprCall* expr_call, IR_Opera
     }
 }
 
-static void IR_cleanup_call_args(IR_Builder* builder, u32 num_args, IR_InstrCallArg* args)
+static void IR_cleanup_call_args(IR_ProcBuilder* builder, u32 num_args, IR_InstrCallArg* args)
 {
     for (u32 i = 0; i < num_args; i += 1) {
         IR_free_reg(builder, args[i].loc);
     }
 }
 
-static void IR_emit_expr_call(IR_Builder* builder, ExprCall* expr_call, IR_Operand* dst_op)
+static void IR_emit_expr_call(IR_ProcBuilder* builder, ExprCall* expr_call, IR_Operand* dst_op)
 {
     u32 num_args = (u32)expr_call->num_args;
     IR_InstrCallArg* args = IR_setup_call_args(builder, expr_call);
@@ -1941,7 +1941,7 @@ static void IR_emit_expr_call(IR_Builder* builder, ExprCall* expr_call, IR_Opera
     builder->curr_proc->as_proc.is_nonleaf = true;
 }
 
-static void IR_emit_expr_compound_lit(IR_Builder* builder, ExprCompoundLit* expr, IR_Operand* dst)
+static void IR_emit_expr_compound_lit(IR_ProcBuilder* builder, ExprCompoundLit* expr, IR_Operand* dst)
 {
     // TODO: Currently only support array initializers.
     assert(expr->super.type->kind == TYPE_ARRAY);
@@ -1983,7 +1983,7 @@ static void IR_emit_expr_compound_lit(IR_Builder* builder, ExprCompoundLit* expr
     dst->array_initzer.initzers = ir_initzers;
 }
 
-static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
+static void IR_emit_expr(IR_ProcBuilder* builder, Expr* expr, IR_Operand* dst)
 {
     if (expr->is_constexpr && expr->is_imm) {
         assert(type_is_scalar(expr->type));
@@ -2033,23 +2033,23 @@ static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
 }
 
 // Forward declare
-static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt);
+static void IR_emit_stmt(IR_ProcBuilder* builder, Stmt* stmt);
 
-static void IR_push_scope(IR_Builder* builder, Scope* scope)
+static void IR_push_scope(IR_ProcBuilder* builder, Scope* scope)
 {
     builder->curr_scope = scope;
 }
 
-static void IR_pop_scope(IR_Builder* builder)
+static void IR_pop_scope(IR_ProcBuilder* builder)
 {
     builder->curr_scope = builder->curr_scope->parent;
 }
 
-static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs);
+static void IR_emit_assign(IR_ProcBuilder* builder, IR_Operand* lhs, IR_Operand* rhs);
 
 // Emit code for initializing an array with an initializer.
 //    var a: [11] int = {0, 1, 2, 3};
-static void IR_emit_array_init(IR_Builder* builder, IR_Operand* array_op, IR_Operand* init_op)
+static void IR_emit_array_init(IR_ProcBuilder* builder, IR_Operand* array_op, IR_Operand* init_op)
 {
     assert(array_op->kind == IR_OPERAND_VAR || array_op->kind == IR_OPERAND_DEREF_ADDR);
     assert(init_op->kind == IR_OPERAND_ARRAY_INIT);
@@ -2125,7 +2125,7 @@ static void IR_emit_array_init(IR_Builder* builder, IR_Operand* array_op, IR_Ope
 //    Equivalent to:
 //
 //    var a: [6] char = {'H', 'e', 'l', 'l', 'o', '\0'};
-static void IR_emit_array_str_init(IR_Builder* builder, IR_Operand* array_op, IR_Operand* init_op)
+static void IR_emit_array_str_init(IR_ProcBuilder* builder, IR_Operand* array_op, IR_Operand* init_op)
 {
     assert(array_op->kind == IR_OPERAND_VAR || array_op->kind == IR_OPERAND_DEREF_ADDR);
     assert(init_op->kind == IR_OPERAND_STR_LIT);
@@ -2160,7 +2160,7 @@ static void IR_emit_array_str_init(IR_Builder* builder, IR_Operand* array_op, IR
     // multiple elements at a time (one machine word's worth).
 }
 
-static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs)
+static void IR_emit_assign(IR_ProcBuilder* builder, IR_Operand* lhs, IR_Operand* rhs)
 {
     switch (lhs->kind) {
     case IR_OPERAND_VAR: {
@@ -2205,7 +2205,7 @@ static void IR_emit_assign(IR_Builder* builder, IR_Operand* lhs, IR_Operand* rhs
     }
 }
 
-static void IR_emit_stmt_block_body(IR_Builder* builder, List* stmts)
+static void IR_emit_stmt_block_body(IR_ProcBuilder* builder, List* stmts)
 {
     List* head = stmts;
     List* it = head->next;
@@ -2219,14 +2219,14 @@ static void IR_emit_stmt_block_body(IR_Builder* builder, List* stmts)
     }
 }
 
-static void IR_emit_stmt_block(IR_Builder* builder, StmtBlock* sblock)
+static void IR_emit_stmt_block(IR_ProcBuilder* builder, StmtBlock* sblock)
 {
     IR_push_scope(builder, sblock->scope);
     IR_emit_stmt_block_body(builder, &sblock->stmts);
     IR_pop_scope(builder);
 }
 
-static void IR_emit_stmt_return(IR_Builder* builder, StmtReturn* sret)
+static void IR_emit_stmt_return(IR_ProcBuilder* builder, StmtReturn* sret)
 {
     IR_Operand expr_op = {0};
     IR_emit_expr(builder, sret->expr, &expr_op);
@@ -2238,7 +2238,7 @@ static void IR_emit_stmt_return(IR_Builder* builder, StmtReturn* sret)
     IR_free_reg(builder, expr_op.reg);
 }
 
-static void IR_emit_stmt_expr(IR_Builder* builder, StmtExpr* sexpr)
+static void IR_emit_stmt_expr(IR_ProcBuilder* builder, StmtExpr* sexpr)
 {
     IR_Operand expr_op = {0};
     IR_emit_expr(builder, sexpr->expr, &expr_op);
@@ -2246,7 +2246,7 @@ static void IR_emit_stmt_expr(IR_Builder* builder, StmtExpr* sexpr)
     IR_try_free_op_reg(builder, &expr_op);
 }
 
-static void IR_emit_stmt_expr_assign(IR_Builder* builder, StmtExprAssign* stmt)
+static void IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, StmtExprAssign* stmt)
 {
     switch (stmt->op_assign) {
     case TKN_ASSIGN: {
@@ -2268,7 +2268,7 @@ static void IR_emit_stmt_expr_assign(IR_Builder* builder, StmtExprAssign* stmt)
     }
 }
 
-static void IR_emit_stmt_decl(IR_Builder* builder, StmtDecl* sdecl)
+static void IR_emit_stmt_decl(IR_ProcBuilder* builder, StmtDecl* sdecl)
 {
     if (sdecl->decl->kind == CST_DeclConst) {
         return;
@@ -2292,7 +2292,7 @@ static void IR_emit_stmt_decl(IR_Builder* builder, StmtDecl* sdecl)
     }
 }
 
-static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
+static void IR_emit_stmt_if(IR_ProcBuilder* builder, StmtIf* stmt)
 {
     Expr* cond_expr = stmt->if_blk.cond;
     Stmt* if_body = stmt->if_blk.body;
@@ -2376,7 +2376,7 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
     }
 }
 
-static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
+static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
 {
     Expr* cond_expr = stmt->cond;
     Stmt* body = stmt->body;
@@ -2450,7 +2450,7 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
     }
 }
 
-static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
+static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, StmtDoWhile* stmt)
 {
     Expr* cond_expr = stmt->cond;
     Stmt* body = stmt->body;
@@ -2516,7 +2516,7 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
     }
 }
 
-static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt)
+static void IR_emit_stmt(IR_ProcBuilder* builder, Stmt* stmt)
 {
     switch (stmt->kind) {
     case CST_StmtBlock:
@@ -2553,7 +2553,7 @@ static void IR_emit_stmt(IR_Builder* builder, Stmt* stmt)
     }
 }
 
-static void IR_build_proc(IR_Builder* builder, Symbol* sym)
+static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
 {
     DeclProc* dproc = (DeclProc*)sym->decl;
 
@@ -2600,9 +2600,9 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 #endif
 }
 
-void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache)
+static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache)
 {
-    IR_Builder builder =
+    IR_ProcBuilder builder =
         {.arena = arena, .tmp_arena = tmp_arena, .type_cache = type_cache, .curr_proc = NULL, .curr_scope = NULL, .free_regs = -1};
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
@@ -2621,3 +2621,4 @@ void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* procs, 
 
     allocator_restore_state(tmp_mem_state);
 }
+
