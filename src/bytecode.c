@@ -1627,17 +1627,15 @@ static void IR_emit_expr_unary(IR_Builder* builder, ExprUnary* expr, IR_Operand*
             dst->cmp.final_jmp.result = !inner_op.cmp.final_jmp.result;
         }
         else {
-            assert(inner_op.type == result_type);
-
             IR_op_to_rv(builder, &inner_op);
 
             if (inner_op.kind == IR_OPERAND_REG) {
-                IR_emit_instr_cmp_r_i(builder, result_type, inner_op.reg, ir_zero_imm);
+                IR_emit_instr_cmp_r_i(builder, inner_op.type, inner_op.reg, ir_zero_imm);
                 IR_free_reg(builder, inner_op.reg);
             }
             else {
                 assert(inner_op.kind == IR_OPERAND_VAR);
-                IR_emit_instr_cmp_m_i(builder, result_type, inner_op.sym, ir_zero_imm);
+                IR_emit_instr_cmp_m_i(builder, inner_op.type, inner_op.sym, ir_zero_imm);
             }
 
             dst->cmp.final_jmp.cond = IR_COND_EQ;
@@ -1991,7 +1989,8 @@ static void IR_emit_expr_compound_lit(IR_Builder* builder, ExprCompoundLit* expr
 
 static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
 {
-    if (expr->is_constexpr && type_is_scalar(expr->type)) {
+    if (expr->is_constexpr && expr->is_imm) {
+        assert(type_is_scalar(expr->type));
         dst->kind = IR_OPERAND_IMM;
         dst->type = expr->type;
         dst->imm = expr->const_val;
@@ -2304,7 +2303,8 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
     Stmt* else_body = stmt->else_blk.body;
 
     // If expr is a compile-time constant, do not generate the unneeded branch!!
-    if (cond_expr->is_constexpr && type_is_scalar(cond_expr->type)) {
+    if (cond_expr->is_constexpr && cond_expr->is_imm) {
+        assert(type_is_scalar(cond_expr->type));
         bool cond_val = cond_expr->const_val.as_int._u64 != 0;
 
         if (cond_val)
@@ -2385,7 +2385,8 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
     Expr* cond_expr = stmt->cond;
     Stmt* body = stmt->body;
 
-    if (cond_expr->is_constexpr && type_is_scalar(cond_expr->type)) {
+    if (cond_expr->is_constexpr && cond_expr->is_imm) {
+        assert(type_is_scalar(cond_expr->type));
         bool cond_val = cond_expr->const_val.as_int._u64 != 0;
 
         // Emit infinite loop
@@ -2458,7 +2459,8 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
     Expr* cond_expr = stmt->cond;
     Stmt* body = stmt->body;
 
-    if (cond_expr->is_constexpr && type_is_scalar(cond_expr->type)) {
+    if (cond_expr->is_constexpr && cond_expr->is_imm) {
+        assert(type_is_scalar(cond_expr->type));
         bool cond_val = cond_expr->const_val.as_int._u64 != 0;
 
         // Emit infinite loop

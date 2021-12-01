@@ -264,6 +264,7 @@ static void X64_print_global_arr_init(Allocator* allocator, ExprCompoundLit* ini
 
         if (initzer->designator.kind == DESIGNATOR_INDEX) {
             assert(initzer->designator.index->is_constexpr);
+            assert(initzer->designator.index->is_imm);
             elem_index = initzer->designator.index->const_val.as_int._u64;
         }
 

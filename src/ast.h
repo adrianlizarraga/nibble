@@ -144,6 +144,7 @@ struct Expr {
     Type* type;
     bool is_constexpr;
     bool is_lvalue;
+    bool is_imm;
     Scalar const_val;
 };
 
