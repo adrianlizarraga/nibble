@@ -218,8 +218,6 @@ typedef struct ExprIdent {
     Expr super;
     Identifier* mod_ns;
     Identifier* name;
-    // TODO: Remove. This is messy.
-    Symbol* sym;
 } ExprIdent;
 
 typedef struct ExprCast {
@@ -782,7 +780,6 @@ struct ConstAddr {
         StrLit* str_lit;
     };
 
-    u8 scale;
     u32 disp;
 };
 

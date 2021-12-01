@@ -237,45 +237,31 @@ static char** X64_emit_data(X64_Generator* gen, const char* format, ...)
     return line;
 }
 
-static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** line);
+static void X64_print_global_val(Allocator* allocator, ConstExpr* const_expr, char** line);
 
-static void X64_print_global_arr_init(Allocator* allocator, ExprCompoundLit* init, char** line)
+static void X64_print_global_arr_init(Allocator* allocator, ConstExpr* const_expr, char** line)
 {
-    Type* type = init->super.type;
+    Type* type = const_expr->type;
     assert(type->kind == TYPE_ARRAY);
-    assert(init->super.is_constexpr);
 
     Type* elem_type = type->as_array.base;
     size_t num_elems = type->as_array.len;
-    Expr** init_vals = alloc_array(allocator, Expr*, num_elems, true); // Initialized to NULL
+    ConstExpr** init_vals = alloc_array(allocator, ConstExpr*, num_elems, true); // Initialized to NULL
 
     // Iterate through initializers and overwrite appropriate elements in init_vals array with
     // the specified initializer value.
-    u64 elem_index = 0;
-    List* head = &init->initzers;
-    List* it = head->next;
+    ConstArrayInitzer* init = &const_expr->array_initzer;
 
-    while (it != head) {
-        assert(elem_index < num_elems);
-        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+    for (size_t i = 0; i < init->num_initzers; i += 1) {
+        ConstArrayMemberInitzer* initzer = init->initzers + i;
 
-        if (initzer->designator.kind == DESIGNATOR_INDEX) {
-            assert(initzer->designator.index->is_constexpr);
-            assert(initzer->designator.index->is_imm);
-            elem_index = initzer->designator.index->imm.as_int._u64;
-        }
-
-        assert(initzer->init->is_constexpr);
-        init_vals[elem_index] = initzer->init;
-
-        elem_index += 1;
-        it = it->next;
+        init_vals[initzer->index] = &initzer->const_expr;
     }
 
     // Print an initial value for each element.
     for (u64 i = 0; i < num_elems; i += 1) {
         if (init_vals[i]) {
-            X64_print_global_arr_elem(allocator, init_vals[i], line);
+            X64_print_global_val(allocator, init_vals[i], line);
         }
         else {
             ftprint_char_array(line, false, "%s ", x64_data_size_label[1]);
@@ -308,68 +294,48 @@ static void X64_print_global_int_bytes(Scalar imm, size_t size, char** line)
     }
 }
 
-static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** line)
+static void X64_print_global_val(Allocator* allocator, ConstExpr* const_expr, char** line)
 {
-    assert(elem->is_constexpr);
+    switch (const_expr->kind) {
+    case CONST_EXPR_NONE: {
+        size_t size = const_expr->type->size;
 
-    if (elem->is_imm) {
-        X64_print_global_int_bytes(elem->imm, elem->type->size, line);
+        ftprint_char_array(line, false, "%s ", x64_data_size_label[1]);
 
-        return;
-    }
+        // Print each byte of the value (comma-separated)
+        for (size_t i = 0; i < size; i += 1) {
+            char sep = (i == size - 1) ? '\n' : ',';
 
-    if (elem->type->kind == TYPE_PTR) {
-        Expr* e = elem;
-
-        // Must be a pointer to the contents of a string literal or a pointer to
-        // a global variable. Therefore, must visit expression tree nodes until find a string literal or an
-        // identifier.
-        while (e) {
-            if (e->kind == CST_ExprUnary) {
-                ExprUnary* expr_unary = (ExprUnary*)e;
-
-                assert(expr_unary->op == TKN_CARET);
-                e = expr_unary->expr;
-                continue;
-            }
-            else if (e->kind == CST_ExprCast) {
-                ExprCast* expr_cast = (ExprCast*)e;
-
-                e = expr_cast->expr;
-                continue;
-            }
-            else if (e->kind == CST_ExprStr) {
-                ExprStr* expr_str = (ExprStr*)e;
-
-                ftprint_char_array(line, false, "%s %s_%llu\n", x64_data_size_label[elem->type->size], X64_STR_LIT_PRE,
-                                   expr_str->str_lit->id);
-                break;
-            }
-            else if (e->kind == CST_ExprIdent) {
-                ExprIdent* expr_ident = (ExprIdent*)e;
-                Symbol* sym = expr_ident->sym;
-
-                assert(sym);
-
-                ftprint_char_array(line, false, "%s %s\n", x64_data_size_label[elem->type->size], symbol_mangled_name(allocator, sym));
-                break;
-            }
-            else {
-                assert(0);
-                break;
-            }
+            ftprint_char_array(line, false, "0x00%c", sep);
         }
-
-        return;
-    }
-
-    switch (elem->kind) {
-    case CST_ExprCompoundLit: {
-        X64_print_global_arr_init(allocator, (ExprCompoundLit*)elem, line);
         break;
     }
-    case CST_ExprStr: {
-        StrLit* str_lit = ((ExprStr*)elem)->str_lit;
+    case CONST_EXPR_IMM: {
+        X64_print_global_int_bytes(const_expr->imm, const_expr->type->size, line);
+        break;
+    }
+    case CONST_EXPR_MEM_ADDR: {
+        ConstAddr* addr = &const_expr->addr;
+
+        if (addr->kind == CONST_ADDR_SYM) {
+            ftprint_char_array(line, false, "%s %s", x64_data_size_label[const_expr->type->size],
+                               symbol_mangled_name(allocator, addr->sym));
+        }
+        else {
+            assert(addr->kind == CONST_ADDR_STR_LIT);
+            ftprint_char_array(line, false, "%s %s_%llu", x64_data_size_label[const_expr->type->size], X64_STR_LIT_PRE,
+                               addr->str_lit->id);
+        }
+
+        if (addr->disp) {
+            ftprint_char_array(line, false, "+ %d", (s32)addr->disp);
+        }
+
+        ftprint_char_array(line, false, "\n");
+        break;
+    }
+    case CONST_EXPR_STR_LIT: {
+        StrLit* str_lit = const_expr->str_lit;
         size_t len = str_lit->len;
         const char* str = str_lit->str;
 
@@ -381,6 +347,10 @@ static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** l
 
         ftprint_char_array(line, false, "0x00\n");
 
+        break;
+    }
+    case CONST_EXPR_ARRAY_INIT: {
+        X64_print_global_arr_init(allocator, const_expr, line);
         break;
     }
     default:
@@ -395,70 +365,18 @@ static void X64_emit_global_data(X64_Generator* generator, Symbol* sym)
 
     Allocator* tmp_mem = generator->tmp_mem;
     Type* type = sym->type;
-    Expr* init = ((DeclVar*)sym->decl)->init;
 
     X64_emit_data(generator, "ALIGN %d", type->align);
     X64_emit_data(generator, "%s: ", symbol_mangled_name(tmp_mem, sym));
 
-    switch (type->kind) {
-    case TYPE_INTEGER: {
-        Scalar val = init ? init->imm : (Scalar){0};
-        X64_emit_data(generator, "%s %s\n", x64_data_size_label[type->size], X64_print_imm(tmp_mem, val, type->size));
-        break;
-    }
-    case TYPE_ARRAY: {
-        Type* elem_type = type->as_array.base;
-        u64 num_elems = type->as_array.len;
+    AllocatorState mem_state = allocator_get_state(tmp_mem);
+    char* line = array_create(tmp_mem, char, type->size << 3);
 
-        // Initialize array with zeros
-        if (!init) {
-            Scalar zero_val = {0};
-            AllocatorState mem_state = allocator_get_state(tmp_mem);
-            char* line = array_create(tmp_mem, char, num_elems << 1);
+    X64_print_global_val(tmp_mem, &sym->as_var.const_expr, &line);
 
-            ftprint_char_array(&line, false, "%s ", x64_data_size_label[elem_type->size]);
-
-            // Print a zero for each element.
-            for (u64 i = 0; i < num_elems; i += 1) {
-                char sep = (i == num_elems - 1) ? '\n' : ',';
-                const char* val_str = X64_print_imm(tmp_mem, zero_val, elem_type->size);
-
-                ftprint_char_array(&line, false, "%s%c", val_str, sep);
-            }
-
-            array_push(line, '\0');
-            X64_emit_data(generator, "%s\n", line);
-            allocator_restore_state(mem_state);
-        }
-        else if (init->kind == CST_ExprStr) {
-            StrLit* str_lit = ((ExprStr*)init)->str_lit;
-            const char* escaped_str = cstr_escape(tmp_mem, str_lit->str, str_lit->len, '`');
-
-            X64_emit_data(generator, "%s `%s\\0`\n", x64_data_size_label[elem_type->size], escaped_str);
-        }
-        else {
-            assert(init->kind == CST_ExprCompoundLit);
-
-            AllocatorState mem_state = allocator_get_state(tmp_mem);
-            char* line = array_create(tmp_mem, char, num_elems << 3);
-
-            X64_print_global_arr_init(tmp_mem, (ExprCompoundLit*)init, &line);
-
-            array_push(line, '\0');
-            X64_emit_data(generator, "%s\n", line);
-            allocator_restore_state(mem_state);
-        }
-        break;
-    }
-    case TYPE_PTR: {
-        assert(!"Global ptr vars not supported yet");
-        break;
-    }
-    default:
-        ftprint_err("Cannot generate NASM global data value for type: %s\n", type_name(type));
-        assert(0);
-        break;
-    }
+    array_push(line, '\0');
+    X64_emit_data(generator, "%s\n", line);
+    allocator_restore_state(mem_state);
 }
 
 static void X64_fill_line(X64_Generator* gen, char** line, const char* format, ...)

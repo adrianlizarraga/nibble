@@ -63,7 +63,6 @@ static void IR_emit_global_expr_cast(IR_VarBuilder* builder, ExprCast* expr_cast
 
         dst->addr.kind = CONST_ADDR_SYM;
         dst->addr.sym = src.sym;
-        dst->addr.scale = 0;
         dst->addr.disp = 0;
     }
     else if (src.kind == CONST_EXPR_DEREF_ADDR) {
@@ -74,7 +73,6 @@ static void IR_emit_global_expr_cast(IR_VarBuilder* builder, ExprCast* expr_cast
 
         dst->addr.kind = CONST_ADDR_STR_LIT;
         dst->addr.str_lit = src.str_lit;
-        dst->addr.scale = 0;
         dst->addr.disp = 0;
     }
 }
@@ -100,7 +98,6 @@ static void IR_emit_global_expr_unary(IR_VarBuilder* builder, ExprUnary* expr_un
 
             dst->addr.kind = CONST_ADDR_SYM;
             dst->addr.sym = src.sym;
-            dst->addr.scale = 0;
             dst->addr.disp = 0;
         }
         break;
@@ -109,6 +106,11 @@ static void IR_emit_global_expr_unary(IR_VarBuilder* builder, ExprUnary* expr_un
         assert(0);
         break;
     }
+}
+
+static void IR_emit_global_expr_binary(IR_VarBuilder* builder, ExprBinary* expr_binary, ConstExpr* dst)
+{
+
 }
 
 // TODO: Refactor wet code. Very similar to code used in bytecode/procs.c

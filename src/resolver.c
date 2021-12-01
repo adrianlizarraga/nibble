@@ -1438,9 +1438,6 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
         return false;
     }
 
-    // TODO: Remove. This is messy.
-    eident->sym = sym;
-
     switch (sym->kind) {
     case SYMBOL_VAR:
         expr->type = sym->type;

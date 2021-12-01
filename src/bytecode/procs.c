@@ -1117,7 +1117,6 @@ static void IR_emit_expr_ident(IR_ProcBuilder* builder, ExprIdent* eident, IR_Op
     if (eident->mod_ns) {
         Symbol* sym_modns = lookup_symbol(builder->curr_scope, eident->mod_ns);
         StmtImport* stmt = (StmtImport*)sym_modns->as_mod.stmt;
-
         Identifier* sym_name = get_import_sym_name(stmt, eident->name);
 
         sym = module_get_export_sym(sym_modns->as_mod.mod, sym_name);
@@ -1127,7 +1126,6 @@ static void IR_emit_expr_ident(IR_ProcBuilder* builder, ExprIdent* eident, IR_Op
     }
 
     assert(sym);
-    assert(sym == eident->sym);
 
     IR_operand_from_sym(dst, sym);
 }
