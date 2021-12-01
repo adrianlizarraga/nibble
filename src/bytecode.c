@@ -1127,6 +1127,7 @@ static void IR_emit_expr_ident(IR_Builder* builder, ExprIdent* eident, IR_Operan
     }
 
     assert(sym);
+    assert(sym == eident->sym);
 
     IR_operand_from_sym(dst, sym);
 }

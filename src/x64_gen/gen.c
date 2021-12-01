@@ -290,32 +290,40 @@ static void X64_print_global_arr_init(Allocator* allocator, ExprCompoundLit* ini
     }
 }
 
+static void X64_print_global_int_bytes(Scalar imm, size_t size, char** line)
+{
+    u64 elem_val = imm.as_int._u64;
+    u64 mask = 0xFFLL;
+
+    ftprint_char_array(line, false, "%s ", x64_data_size_label[1]);
+
+    // Print each byte of the value (comma-separated)
+    for (size_t i = 0; i < size; i += 1) {
+        u64 val = (elem_val & mask) >> (i << 3);
+        char sep = (i == size - 1) ? '\n' : ',';
+
+        ftprint_char_array(line, false, "0x%.2X%c", val, sep);
+
+        mask = mask << 8;
+    }
+}
+
 static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** line)
 {
     assert(elem->is_constexpr);
 
-    if (elem->type->kind == TYPE_INTEGER) {
-        size_t num_bytes = elem->type->size;
-        u64 elem_val = elem->imm.as_int._u64;
-        u64 mask = 0xFFLL;
-
-        ftprint_char_array(line, false, "%s ", x64_data_size_label[1]);
-
-        // Print each byte of the value (comma-separated)
-        for (size_t i = 0; i < num_bytes; i += 1) {
-            u64 val = elem_val & mask;
-            char sep = (i == num_bytes - 1) ? '\n' : ',';
-
-            ftprint_char_array(line, false, "0x%.2X%c", val, sep);
-
-            mask = mask << 8;
-        }
+    if (elem->is_imm) {
+        X64_print_global_int_bytes(elem->imm, elem->type->size, line);
 
         return;
     }
 
     if (elem->type->kind == TYPE_PTR) {
         Expr* e = elem;
+
+        // Must be a pointer to the contents of a string literal or a pointer to
+        // a global variable. Therefore, must visit expression tree nodes until find a string literal or an
+        // identifier.
         while (e) {
             if (e->kind == CST_ExprUnary) {
                 ExprUnary* expr_unary = (ExprUnary*)e;
@@ -333,12 +341,22 @@ static void X64_print_global_arr_elem(Allocator* allocator, Expr* elem, char** l
             else if (e->kind == CST_ExprStr) {
                 ExprStr* expr_str = (ExprStr*)e;
 
-                ftprint_char_array(line, false, " %s %s_%llu\n", x64_data_size_label[elem->type->size], X64_STR_LIT_PRE,
+                ftprint_char_array(line, false, "%s %s_%llu\n", x64_data_size_label[elem->type->size], X64_STR_LIT_PRE,
                                    expr_str->str_lit->id);
+                break;
+            }
+            else if (e->kind == CST_ExprIdent) {
+                ExprIdent* expr_ident = (ExprIdent*)e;
+                Symbol* sym = expr_ident->sym;
+
+                assert(sym);
+
+                ftprint_char_array(line, false, "%s %s\n", x64_data_size_label[elem->type->size], symbol_mangled_name(allocator, sym));
                 break;
             }
             else {
                 assert(0);
+                break;
             }
         }
 
@@ -424,14 +442,16 @@ static void X64_emit_global_data(X64_Generator* generator, Symbol* sym)
             AllocatorState mem_state = allocator_get_state(tmp_mem);
             char* line = array_create(tmp_mem, char, num_elems << 3);
 
-            // ftprint_char_array(&line, false, "%s ", x64_data_size_label[1]);
-
             X64_print_global_arr_init(tmp_mem, (ExprCompoundLit*)init, &line);
 
             array_push(line, '\0');
             X64_emit_data(generator, "%s\n", line);
             allocator_restore_state(mem_state);
         }
+        break;
+    }
+    case TYPE_PTR: {
+        assert(!"Global ptr vars not supported yet");
         break;
     }
     default:

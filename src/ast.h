@@ -214,6 +214,8 @@ typedef struct ExprIdent {
     Expr super;
     Identifier* mod_ns;
     Identifier* name;
+    // TODO: Remove. This is messy.
+    Symbol* sym;
 } ExprIdent;
 
 typedef struct ExprCast {
