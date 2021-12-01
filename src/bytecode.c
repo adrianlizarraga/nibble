@@ -4,10 +4,9 @@
 #include "stream.h"
 
 static const IR_ConditionKind ir_opposite_cond[] = {
-    [IR_COND_U_LT] = IR_COND_U_GTEQ, [IR_COND_S_LT] = IR_COND_S_GTEQ, [IR_COND_U_LTEQ] = IR_COND_U_GT,
-    [IR_COND_S_LTEQ] = IR_COND_S_GT, [IR_COND_U_GT] = IR_COND_U_LTEQ, [IR_COND_S_GT] = IR_COND_S_LTEQ,
-    [IR_COND_U_GTEQ] = IR_COND_U_LT, [IR_COND_S_GTEQ] = IR_COND_S_LT, [IR_COND_EQ] = IR_COND_NEQ,
-    [IR_COND_NEQ] = IR_COND_EQ,
+    [IR_COND_U_LT] = IR_COND_U_GTEQ, [IR_COND_S_LT] = IR_COND_S_GTEQ, [IR_COND_U_LTEQ] = IR_COND_U_GT, [IR_COND_S_LTEQ] = IR_COND_S_GT,
+    [IR_COND_U_GT] = IR_COND_U_LTEQ, [IR_COND_S_GT] = IR_COND_S_LTEQ, [IR_COND_U_GTEQ] = IR_COND_U_LT, [IR_COND_S_GTEQ] = IR_COND_S_LT,
+    [IR_COND_EQ] = IR_COND_NEQ,      [IR_COND_NEQ] = IR_COND_EQ,
 };
 
 typedef enum IR_OperandKind {
@@ -751,8 +750,7 @@ static u32 IR_get_jmp_target(IR_Builder* builder)
 //
 //////////////////////////////////////////////////////
 
-static void IR_new_deferred_sc_jmp(IR_Builder* builder, IR_DeferredCmp* cmp, IR_ConditionKind cond, bool result,
-                                   IR_Instr* instr)
+static void IR_new_deferred_sc_jmp(IR_Builder* builder, IR_DeferredCmp* cmp, IR_ConditionKind cond, bool result, IR_Instr* instr)
 {
     IR_DeferredJmpcc* new_node = NULL;
 
@@ -782,8 +780,7 @@ static void IR_new_deferred_sc_jmp(IR_Builder* builder, IR_DeferredCmp* cmp, IR_
     new_node->jmp = instr;
 }
 
-static void IR_del_deferred_sc_jmp(IR_Builder* builder, IR_DeferredCmp* cmp, IR_DeferredJmpcc* prev_jmp,
-                                   IR_DeferredJmpcc* jmp)
+static void IR_del_deferred_sc_jmp(IR_Builder* builder, IR_DeferredCmp* cmp, IR_DeferredJmpcc* prev_jmp, IR_DeferredJmpcc* jmp)
 {
     IR_DeferredJmpcc* next_jmp = jmp->next;
 
@@ -822,8 +819,7 @@ static void IR_mov_deferred_sc_jmp_list(IR_DeferredCmp* dst_cmp, IR_DeferredCmp*
     src_cmp->last_sc_jmp = NULL;
 }
 
-static void IR_copy_sc_jmp(IR_Builder* builder, IR_DeferredJmpcc* dst_jmp, IR_DeferredJmpcc* src_jmp,
-                           bool desired_result)
+static void IR_copy_sc_jmp(IR_Builder* builder, IR_DeferredJmpcc* dst_jmp, IR_DeferredJmpcc* src_jmp, bool desired_result)
 {
     *dst_jmp = *src_jmp;
 
@@ -1951,8 +1947,7 @@ static void IR_emit_expr_compound_lit(IR_Builder* builder, ExprCompoundLit* expr
     assert(!expr->typespec);
 
     u64 initzer_index = 0;
-    IR_ArrayMemberInitializer* ir_initzers =
-        alloc_array(builder->tmp_arena, IR_ArrayMemberInitializer, expr->num_initzers, true);
+    IR_ArrayMemberInitializer* ir_initzers = alloc_array(builder->tmp_arena, IR_ArrayMemberInitializer, expr->num_initzers, true);
 
     List* head = &expr->initzers;
     List* it = head->next;
@@ -1993,7 +1988,7 @@ static void IR_emit_expr(IR_Builder* builder, Expr* expr, IR_Operand* dst)
         assert(type_is_scalar(expr->type));
         dst->kind = IR_OPERAND_IMM;
         dst->type = expr->type;
-        dst->imm = expr->const_val;
+        dst->imm = expr->imm;
 
         return;
     }
@@ -2305,7 +2300,7 @@ static void IR_emit_stmt_if(IR_Builder* builder, StmtIf* stmt)
     // If expr is a compile-time constant, do not generate the unneeded branch!!
     if (cond_expr->is_constexpr && cond_expr->is_imm) {
         assert(type_is_scalar(cond_expr->type));
-        bool cond_val = cond_expr->const_val.as_int._u64 != 0;
+        bool cond_val = cond_expr->imm.as_int._u64 != 0;
 
         if (cond_val)
             IR_emit_stmt(builder, if_body);
@@ -2387,7 +2382,7 @@ static void IR_emit_stmt_while(IR_Builder* builder, StmtWhile* stmt)
 
     if (cond_expr->is_constexpr && cond_expr->is_imm) {
         assert(type_is_scalar(cond_expr->type));
-        bool cond_val = cond_expr->const_val.as_int._u64 != 0;
+        bool cond_val = cond_expr->imm.as_int._u64 != 0;
 
         // Emit infinite loop
         if (cond_val) {
@@ -2461,7 +2456,7 @@ static void IR_emit_stmt_do_while(IR_Builder* builder, StmtDoWhile* stmt)
 
     if (cond_expr->is_constexpr && cond_expr->is_imm) {
         assert(type_is_scalar(cond_expr->type));
-        bool cond_val = cond_expr->const_val.as_int._u64 != 0;
+        bool cond_val = cond_expr->imm.as_int._u64 != 0;
 
         // Emit infinite loop
         if (cond_val) {
@@ -2606,12 +2601,8 @@ static void IR_build_proc(IR_Builder* builder, Symbol* sym)
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache)
 {
-    IR_Builder builder = {.arena = arena,
-                          .tmp_arena = tmp_arena,
-                          .type_cache = type_cache,
-                          .curr_proc = NULL,
-                          .curr_scope = NULL,
-                          .free_regs = -1};
+    IR_Builder builder =
+        {.arena = arena, .tmp_arena = tmp_arena, .type_cache = type_cache, .curr_proc = NULL, .curr_scope = NULL, .free_regs = -1};
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 

@@ -145,7 +145,7 @@ struct Expr {
     bool is_constexpr;
     bool is_lvalue;
     bool is_imm;
-    Scalar const_val;
+    Scalar imm;
 };
 
 typedef struct ExprTernary {
