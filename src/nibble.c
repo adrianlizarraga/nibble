@@ -1182,7 +1182,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
 
 void nibble_cleanup(void)
 {
-#ifndef NDEBUG
+#ifdef NIBBLE_PRINT_MEM_USAGE
     print_allocator_stats(&nibble->gen_mem, "GEN mem stats");
     print_allocator_stats(&nibble->ast_mem, "AST mem stats");
     print_allocator_stats(&nibble->tmp_mem, "TMP mem stats");

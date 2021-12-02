@@ -7,6 +7,7 @@
 
 //#define NDEBUG
 //#define NIBBLE_PRINT_DECLS
+//#define NIBBLE_PRINT_MEM_USAGE
 
 // This is a "unity build".
 // Having a single compilation unit makes building trivial.
