@@ -9,7 +9,7 @@ proc first_char(str: ^char) => char {
 
 proc main() => int
 {
-    var a : ^char = "Hello";
+    var a : ^char = "Hello\n";
 
     //"Hello"[1] = 'Z'; // Segfaults because literals are stored in readonly memory.
 
@@ -19,7 +19,12 @@ proc main() => int
     //var t : [6]char;
     //t = "12345";
 
-    #writeout(a, 6);
+    #writeout(a, 7);
+
+    var p : ^char = "hi\n";
+    var pp : ^^char = ^p;
+
+    #writeout(*pp + 1, 2);
 
     // 'S' + 'e' - '5' + 'E' - 0 - '4' <=> 83 + 101 - 53 + 69 - 0 - 52 = 148
     return first_char("Sailor\n`") + a[1] - s[4] + g_s[1] - g_a[2] - g_b[2]; 

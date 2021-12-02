@@ -667,6 +667,8 @@ static Expr* parse_expr_base(Parser* parser)
             return NULL;
         }
 
+        enclosed->range.start = token.range.start;
+        enclosed->range.end = parser->token.range.end;
         return enclosed;
     } break;
     case TKN_LBRACE:

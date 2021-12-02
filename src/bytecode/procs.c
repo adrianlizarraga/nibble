@@ -892,7 +892,7 @@ static void IR_execute_deref(IR_ProcBuilder* builder, IR_Operand* operand)
     IR_Reg index_reg = addr.scale ? addr.index_reg : IR_REG_COUNT;
 
     bool has_base_reg = base_reg < IR_REG_COUNT;
-    bool has_index_reg = addr.index_reg < IR_REG_COUNT;
+    bool has_index_reg = index_reg < IR_REG_COUNT;
 
     IR_Reg dst_reg;
 
@@ -925,7 +925,7 @@ static void IR_execute_lea(IR_ProcBuilder* builder, IR_Operand* operand)
     IR_Reg index_reg = addr.scale ? addr.index_reg : IR_REG_COUNT;
 
     bool has_base_reg = base_reg < IR_REG_COUNT;
-    bool has_index_reg = addr.index_reg < IR_REG_COUNT;
+    bool has_index_reg = index_reg < IR_REG_COUNT;
     bool has_disp = addr.disp != 0;
 
     IR_Reg dst_reg;
@@ -1135,6 +1135,23 @@ static void IR_emit_ptr_int_add(IR_ProcBuilder* builder, IR_Operand* dst, IR_Ope
     u64 base_size = ptr_op->type->as_ptr.base->size;
 
     IR_op_to_r(builder, ptr_op, false);
+
+    // Occurs when dereferencing a pointer to a pointer.
+    // Ex:
+    //     var p  : ^char = "hi";
+    //     var pp : ^^char = ^p;
+    //     #writeout(*pp + 1, 1); // Happens for expression `*pp + 1`
+    if (ptr_op->kind != IR_OPERAND_MEM_ADDR) {
+        assert(ptr_op->kind == IR_OPERAND_REG);
+        IR_Reg base_reg = ptr_op->reg;
+
+        ptr_op->kind = IR_OPERAND_MEM_ADDR;
+        ptr_op->addr.base_kind = IR_MEM_BASE_REG;
+        ptr_op->addr.base.reg = base_reg;
+        ptr_op->addr.index_reg = IR_REG_COUNT;
+        ptr_op->addr.disp = 0;
+        ptr_op->addr.scale = 0;
+    }
 
     if (int_op->kind == IR_OPERAND_IMM) {
         if (add)
@@ -1358,10 +1375,12 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         if (left_is_ptr) {
             assert(result_type == left.type);
             IR_emit_ptr_int_add(builder, dst, &left, &right, true);
+            IR_try_free_op_reg(builder, &right);
         }
         else if (right_is_ptr) {
             assert(result_type == right.type);
             IR_emit_ptr_int_add(builder, dst, &right, &left, true);
+            IR_try_free_op_reg(builder, &left);
         }
         else {
             assert(left.type == right.type);
@@ -1398,6 +1417,7 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         if (left_is_ptr && !right_is_ptr) {
             assert(result_type == left.type);
             IR_emit_ptr_int_add(builder, dst, &left, &right, false);
+            IR_try_free_op_reg(builder, &right);
         }
         // ptr - ptr => s64
         else if (left_is_ptr && right_is_ptr) {

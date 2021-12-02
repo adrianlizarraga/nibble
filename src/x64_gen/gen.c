@@ -328,7 +328,7 @@ static void X64_print_global_val(Allocator* allocator, ConstExpr* const_expr, ch
         }
 
         if (addr->disp) {
-            ftprint_char_array(line, false, "+ %d", (s32)addr->disp);
+            ftprint_char_array(line, false, " + %d", (s32)addr->disp);
         }
 
         ftprint_char_array(line, false, "\n");

@@ -1300,9 +1300,12 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
             return false;
         }
 
+        // The following determines whether this expression is a `constexpr`.
+        // Ex: The address of a global variable is a constant expression
+        //
+        // This does not seem like the best way to do this, so this code will probably go away.
         bool is_constexpr = false;
 
-        // The address of a global variable is a constant expression
         if (eunary->expr->kind == CST_ExprIdent) {
             ExprIdent* expr_ident = (ExprIdent*)eunary->expr;
             Symbol* sym = lookup_ident(resolver, expr_ident);

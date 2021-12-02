@@ -66,7 +66,7 @@ static void IR_emit_global_expr_cast(IR_VarBuilder* builder, ExprCast* expr_cast
         dst->addr.disp = 0;
     }
     else if (src.kind == CONST_EXPR_DEREF_ADDR) {
-        dst->addr = src.addr;        
+        dst->addr = src.addr;
     }
     else {
         assert(src.kind == CONST_EXPR_STR_LIT);
@@ -108,9 +108,58 @@ static void IR_emit_global_expr_unary(IR_VarBuilder* builder, ExprUnary* expr_un
     }
 }
 
+static void IR_emit_global_ptr_int_add(ConstExpr* dst, ConstExpr* ptr_op, ConstExpr* int_op, bool add)
+{
+    assert(int_op->kind == CONST_EXPR_IMM);
+    assert(ptr_op->kind == CONST_EXPR_MEM_ADDR);
+
+    u64 base_size = ptr_op->type->as_ptr.base->size;
+
+    if (add) {
+        ptr_op->addr.disp += base_size * int_op->imm.as_int._u64;
+    }
+    else {
+        ptr_op->addr.disp -= base_size * int_op->imm.as_int._u64;
+    }
+
+    *dst = *ptr_op;
+}
+
 static void IR_emit_global_expr_binary(IR_VarBuilder* builder, ExprBinary* expr_binary, ConstExpr* dst)
 {
+    Type* result_type = expr_binary->super.type;
+    ConstExpr left = {0};
+    ConstExpr right = {0};
 
+    IR_emit_global_expr(builder, expr_binary->left, &left);
+    IR_emit_global_expr(builder, expr_binary->right, &right);
+
+    bool left_is_ptr = left.type->kind == TYPE_PTR;
+    bool right_is_ptr = right.type->kind == TYPE_PTR;
+
+    switch (expr_binary->op) {
+    case TKN_PLUS: {
+        if (left_is_ptr) {
+            assert(result_type == left.type);
+            IR_emit_global_ptr_int_add(dst, &left, &right, true);
+        }
+        else {
+            assert(result_type == right.type);
+            assert(right_is_ptr);
+            IR_emit_global_ptr_int_add(dst, &right, &left, true);
+        }
+        break;
+    }
+    case TKN_MINUS: {
+        assert(left_is_ptr && !right_is_ptr);
+        assert(result_type == left.type);
+        IR_emit_global_ptr_int_add(dst, &left, &right, false);
+        break;
+    }
+    default:
+        assert(0);
+        break;
+    }
 }
 
 // TODO: Refactor wet code. Very similar to code used in bytecode/procs.c
@@ -175,15 +224,10 @@ static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* d
         IR_emit_global_expr_cast(builder, (ExprCast*)expr, dst);
         break;
     case CST_ExprBinary:
-        //IR_emit_expr_binary(builder, (ExprBinary*)expr, dst);
-        assert(0);
+        IR_emit_global_expr_binary(builder, (ExprBinary*)expr, dst);
         break;
     case CST_ExprUnary:
         IR_emit_global_expr_unary(builder, (ExprUnary*)expr, dst);
-        break;
-    case CST_ExprIndex:
-        //IR_emit_expr_index(builder, (ExprIndex*)expr, dst);
-        assert(0);
         break;
     case CST_ExprCompoundLit:
         IR_emit_global_expr_compound_lit(builder, (ExprCompoundLit*)expr, dst);
@@ -219,12 +263,7 @@ static void IR_build_var(IR_VarBuilder* builder, Symbol* sym)
 
 static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, BucketList* vars, TypeCache* type_cache)
 {
-    IR_VarBuilder builder = {
-        .arena = arena,
-        .tmp_arena = tmp_arena,
-        .type_cache = type_cache,
-        .curr_mod = NULL
-    };
+    IR_VarBuilder builder = {.arena = arena, .tmp_arena = tmp_arena, .type_cache = type_cache, .curr_mod = NULL};
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 
@@ -242,4 +281,3 @@ static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, BucketList* va
 
     allocator_restore_state(tmp_mem_state);
 }
-
