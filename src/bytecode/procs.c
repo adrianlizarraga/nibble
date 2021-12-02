@@ -2454,15 +2454,6 @@ static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
         IR_emit_expr(builder, cond_expr, &cond_op);
 
         if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
-            u32 loop_bottom = IR_get_jmp_target(builder);
-
-            // Patch short-circuit jumps to the top or bottom of the loop.
-            for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
-                if (it->result)
-                    IR_patch_jmp_target(it->jmp, loop_top);
-                else
-                    IR_patch_jmp_target(it->jmp, loop_bottom);
-            }
 
             // Path final jump to the top of the loop (create one if jump does not exist).
             if (cond_op.cmp.final_jmp.jmp)
@@ -2473,6 +2464,16 @@ static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
             // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
                 cond_op.cmp.final_jmp.jmp->jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
+
+            u32 loop_bottom = IR_get_jmp_target(builder);
+
+            // Patch short-circuit jumps to the top or bottom of the loop.
+            for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
+                if (it->result)
+                    IR_patch_jmp_target(it->jmp, loop_top);
+                else
+                    IR_patch_jmp_target(it->jmp, loop_bottom);
+            }
         }
         else {
             IR_op_to_r(builder, &cond_op, true);
@@ -2521,15 +2522,6 @@ static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, StmtDoWhile* stmt)
         IR_emit_expr(builder, cond_expr, &cond_op);
 
         if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
-            u32 loop_bottom = IR_get_jmp_target(builder);
-
-            // Patch short-circuit jumps to the top or bottom of the loop.
-            for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
-                if (it->result)
-                    IR_patch_jmp_target(it->jmp, loop_top);
-                else
-                    IR_patch_jmp_target(it->jmp, loop_bottom);
-            }
 
             // Path final jump to the top of the loop (create one if jump does not exist).
             if (cond_op.cmp.final_jmp.jmp)
@@ -2540,6 +2532,16 @@ static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, StmtDoWhile* stmt)
             // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
                 cond_op.cmp.final_jmp.jmp->jmpcc.cond = ir_opposite_cond[cond_op.cmp.final_jmp.cond];
+
+            u32 loop_bottom = IR_get_jmp_target(builder);
+
+            // Patch short-circuit jumps to the top or bottom of the loop.
+            for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
+                if (it->result)
+                    IR_patch_jmp_target(it->jmp, loop_top);
+                else
+                    IR_patch_jmp_target(it->jmp, loop_bottom);
+            }
         }
         else {
             IR_op_to_r(builder, &cond_op, true);
