@@ -219,8 +219,8 @@ Nibble does not yet support all basic C features:
     - [x] do while
     - [ ] for loop
     - [ ] switch
-    - [ ] break
-    - [ ] continue
+    - [x] break
+    - [x] continue
     - [ ] goto! (yes, I will)
     - [x] return 
     - [x] Expressions
