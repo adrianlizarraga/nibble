@@ -392,6 +392,6 @@ typedef struct IR_Instr {
     };
 } IR_Instr;
 
-void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache);
+void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, TypeCache* type_cache);
 
 #endif

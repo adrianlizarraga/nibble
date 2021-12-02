@@ -1,0 +1,47 @@
+var g_a : [][2]int = {
+    {0, 1}, {2, 3}
+};
+
+var g_b : [2][3]char = {
+    "cc", {'d', 'd'}
+};
+
+var g_c : [4]^char = {
+    "ee", "ff", (0xdeadbeef :> ^char), ^g_ch
+};
+
+var g_d : []char = "copy\n";
+
+var g_ch : char = 'g';
+var g_str : ^char = "global\n";
+//var g_str_off : ^char = ^g_str[1]; // Not allowed. Equivalent to ^*(g_str + 1);
+
+var g_p_var : ^^char = ^g_str;
+var g_p_imm : ^char = 0xdeadbeef :> ^char;
+
+proc main() => int {
+    var nl : char = '\n';
+
+    #writeout(g_b[0], 2);
+    #writeout("\n", 1);
+    #writeout(g_b[1], 2);
+    #writeout("\n", 1);
+    #writeout(g_c[0], 2);
+    #writeout(^nl, 1);
+    #writeout(g_c[1], 2);
+    #writeout(^nl, 1);
+    #writeout(g_c[3], 1);
+    #writeout(^nl, 1);
+
+    #writeout(g_str, 7);
+    #writeout(*g_p_var, 7);
+
+    // Print out g_d (contains copy of str lit)
+    #writeout(g_d, 5);
+
+    // Modify g_d and then print again
+    g_d[0] = 'k';
+    #writeout(g_d, 5);
+
+    return g_a[1][0]; // 2
+}

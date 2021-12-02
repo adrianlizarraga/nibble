@@ -7,6 +7,7 @@
 
 //#define NDEBUG
 //#define NIBBLE_PRINT_DECLS
+//#define NIBBLE_PRINT_MEM_USAGE
 
 // This is a "unity build".
 // Having a single compilation unit makes building trivial.
@@ -23,7 +24,7 @@
 #include "ast.c"
 #include "parser.c"
 #include "resolver.c"
-#include "bytecode.c"
+#include "bytecode/gen.c"
 #include "print_ir.c"
 #include "code_gen.c"
 #include "x64_gen/gen.c"

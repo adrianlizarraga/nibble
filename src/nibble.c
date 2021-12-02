@@ -1092,7 +1092,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     //////////////////////////////////////////
     //          Gen IR bytecode
     //////////////////////////////////////////
-    IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->procs, &nibble->type_cache);
+    IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->type_cache);
 
     //////////////////////////////////////////
     //          Gen NASM output
@@ -1182,7 +1182,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
 
 void nibble_cleanup(void)
 {
-#ifdef NIBBLE_PRINT_DECLS
+#ifdef NIBBLE_PRINT_MEM_USAGE
     print_allocator_stats(&nibble->gen_mem, "GEN mem stats");
     print_allocator_stats(&nibble->ast_mem, "AST mem stats");
     print_allocator_stats(&nibble->tmp_mem, "TMP mem stats");

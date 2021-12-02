@@ -23,6 +23,10 @@ typedef struct SymbolModule SymbolModule;
 typedef struct Scope Scope;
 typedef struct Module Module;
 
+typedef struct ConstAddr ConstAddr;
+typedef struct ConstArrayMemberInitzer ConstArrayMemberInitzer;
+typedef struct ConstArrayInitzer ConstArrayInitzer;
+typedef struct ConstExpr ConstExpr;
 ///////////////////////////////
 //       Type Specifiers
 //////////////////////////////
@@ -144,7 +148,8 @@ struct Expr {
     Type* type;
     bool is_constexpr;
     bool is_lvalue;
-    Scalar const_val;
+    bool is_imm;
+    Scalar imm;
 };
 
 typedef struct ExprTernary {
@@ -751,10 +756,65 @@ typedef enum SymbolStatus {
     SYMBOL_STATUS_RESOLVED,
 } SymbolStatus;
 
+typedef enum ConstExprKind {
+    CONST_EXPR_NONE = 0,
+    CONST_EXPR_IMM,
+    CONST_EXPR_MEM_ADDR,
+    CONST_EXPR_DEREF_ADDR,
+    CONST_EXPR_ARRAY_INIT,
+    CONST_EXPR_VAR,
+    CONST_EXPR_PROC,
+    CONST_EXPR_STR_LIT
+} ConstExprKind;
+
+typedef enum ConstAddrKind {
+    CONST_ADDR_SYM,
+    CONST_ADDR_STR_LIT
+} ConstAddrKind;
+
+struct ConstAddr {
+    ConstAddrKind kind;
+
+    union {
+        Symbol* sym;
+        StrLit* str_lit;
+    };
+
+    u32 disp;
+};
+
+struct ConstArrayInitzer {
+    size_t num_initzers;
+    ConstArrayMemberInitzer* initzers;
+};
+
+struct ConstExpr {
+    ConstExprKind kind;
+    Type* type;
+
+    union {
+        Scalar imm;
+        ConstAddr addr;
+        Symbol* sym;
+        StrLit* str_lit;
+        ConstArrayInitzer array_initzer;
+    };
+};
+
+struct ConstArrayMemberInitzer {
+    size_t index;
+    ConstExpr const_expr;
+};
+
 struct SymbolVar {
-    // Used by backends to store this var's
-    // location in the stack.
-    s32 offset;
+    union {
+        // Used by backends to store this var's
+        // location in the stack.
+        s32 offset;
+
+        // Used to describe initial value (constexpr) for global variable
+        ConstExpr const_expr;
+    };
 };
 
 typedef struct LifetimeInterval {

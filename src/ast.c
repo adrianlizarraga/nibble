@@ -233,8 +233,7 @@ MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Desi
     return initzer;
 }
 
-Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num_initzers, List* initzers,
-                            ProgRange range)
+Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num_initzers, List* initzers, ProgRange range)
 {
     ExprCompoundLit* expr = new_expr(allocator, ExprCompoundLit, range);
     expr->typespec = typespec;
@@ -255,8 +254,7 @@ DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRang
 }
 
 #define new_decl(a, k, n, r) (k*)new_decl_((a), sizeof(k), alignof(k), CST_##k, (n), (r))
-static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, Identifier* name,
-                       ProgRange range)
+static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, Identifier* name, ProgRange range)
 {
     Decl* decl = mem_allocate(allocator, size, align, true);
     decl->kind = kind;
@@ -343,8 +341,8 @@ AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, Type
     return field;
 }
 
-Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, bool is_incomplete, ProgRange range)
+Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts, u32 num_decls,
+                    bool is_incomplete, ProgRange range)
 {
     DeclProc* decl = new_decl(allocator, DeclProc, name, range);
     decl->ret = ret;
@@ -394,8 +392,8 @@ PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* 
     return psym;
 }
 
-Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname,
-                      Identifier* mod_namespace, ProgRange range)
+Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
+                      ProgRange range)
 {
     StmtImport* stmt = new_stmt(allocator, StmtImport, range);
     stmt->mod_pathname = mod_pathname;
@@ -644,9 +642,8 @@ int type_integer_ranks[] = {
 };
 
 static const char* type_names[] = {
-    [TYPE_VOID] = "void",     [TYPE_INTEGER] = "_integer_", [TYPE_FLOAT] = "_float_",
-    [TYPE_ENUM] = "_enum_",   [TYPE_PTR] = "_ptr_",         [TYPE_PROC] = "_proc_",
-    [TYPE_ARRAY] = "_array_", [TYPE_STRUCT] = "_struct_",   [TYPE_UNION] = "_union_",
+    [TYPE_VOID] = "void",   [TYPE_INTEGER] = "_integer_", [TYPE_FLOAT] = "_float_",   [TYPE_ENUM] = "_enum_",   [TYPE_PTR] = "_ptr_",
+    [TYPE_PROC] = "_proc_", [TYPE_ARRAY] = "_array_",     [TYPE_STRUCT] = "_struct_", [TYPE_UNION] = "_union_",
 };
 
 static const char* type_integer_names[] = {
@@ -722,7 +719,6 @@ bool type_has_incomplete_array(Type* type)
 
     while (t->kind == TYPE_ARRAY || t->kind == TYPE_PTR) {
         if (t->kind == TYPE_ARRAY) {
-
             if (t->as_array.len == 0) {
                 return true;
             }
@@ -982,18 +978,12 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     bool invalid_os_arch = false;
 
     builtin_types[BUILTIN_TYPE_VOID] = (BuiltinType){.name = "void", .type = type_alloc(ast_mem, TYPE_VOID)};
-    builtin_types[BUILTIN_TYPE_U8] =
-        (BuiltinType){.name = "u8", .type = type_int_alloc(ast_mem, INTEGER_U8, 1, false, 0xFF)};
-    builtin_types[BUILTIN_TYPE_S8] =
-        (BuiltinType){.name = "s8", .type = type_int_alloc(ast_mem, INTEGER_S8, 1, true, 0x7F)};
-    builtin_types[BUILTIN_TYPE_U16] =
-        (BuiltinType){.name = "u16", .type = type_int_alloc(ast_mem, INTEGER_U16, 2, false, 0xFFFF)};
-    builtin_types[BUILTIN_TYPE_S16] =
-        (BuiltinType){.name = "s16", .type = type_int_alloc(ast_mem, INTEGER_S16, 2, true, 0x7FFF)};
-    builtin_types[BUILTIN_TYPE_U32] =
-        (BuiltinType){.name = "u32", .type = type_int_alloc(ast_mem, INTEGER_U32, 4, false, 0xFFFFFFFF)};
-    builtin_types[BUILTIN_TYPE_S32] =
-        (BuiltinType){.name = "s32", .type = type_int_alloc(ast_mem, INTEGER_S32, 4, true, 0x7FFFFFFF)};
+    builtin_types[BUILTIN_TYPE_U8] = (BuiltinType){.name = "u8", .type = type_int_alloc(ast_mem, INTEGER_U8, 1, false, 0xFF)};
+    builtin_types[BUILTIN_TYPE_S8] = (BuiltinType){.name = "s8", .type = type_int_alloc(ast_mem, INTEGER_S8, 1, true, 0x7F)};
+    builtin_types[BUILTIN_TYPE_U16] = (BuiltinType){.name = "u16", .type = type_int_alloc(ast_mem, INTEGER_U16, 2, false, 0xFFFF)};
+    builtin_types[BUILTIN_TYPE_S16] = (BuiltinType){.name = "s16", .type = type_int_alloc(ast_mem, INTEGER_S16, 2, true, 0x7FFF)};
+    builtin_types[BUILTIN_TYPE_U32] = (BuiltinType){.name = "u32", .type = type_int_alloc(ast_mem, INTEGER_U32, 4, false, 0xFFFFFFFF)};
+    builtin_types[BUILTIN_TYPE_S32] = (BuiltinType){.name = "s32", .type = type_int_alloc(ast_mem, INTEGER_S32, 4, true, 0x7FFFFFFF)};
     builtin_types[BUILTIN_TYPE_U64] =
         (BuiltinType){.name = "u64", .type = type_int_alloc(ast_mem, INTEGER_U64, 8, false, 0xFFFFFFFFFFFFFFFF)};
     builtin_types[BUILTIN_TYPE_S64] =
@@ -1103,9 +1093,8 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 //////////////////////////////
 
 const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT] = {
-    [CST_DECL_NONE] = SYMBOL_NONE, [CST_DeclVar] = SYMBOL_VAR,      [CST_DeclConst] = SYMBOL_CONST,
-    [CST_DeclEnum] = SYMBOL_TYPE,  [CST_DeclUnion] = SYMBOL_TYPE,   [CST_DeclStruct] = SYMBOL_TYPE,
-    [CST_DeclProc] = SYMBOL_PROC,  [CST_DeclTypedef] = SYMBOL_TYPE,
+    [CST_DECL_NONE] = SYMBOL_NONE, [CST_DeclVar] = SYMBOL_VAR,     [CST_DeclConst] = SYMBOL_CONST, [CST_DeclEnum] = SYMBOL_TYPE,
+    [CST_DeclUnion] = SYMBOL_TYPE, [CST_DeclStruct] = SYMBOL_TYPE, [CST_DeclProc] = SYMBOL_PROC,   [CST_DeclTypedef] = SYMBOL_TYPE,
 };
 
 const char* sym_kind_names[SYMBOL_KIND_COUNT] = {
@@ -1317,8 +1306,7 @@ static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
                 enum_item_val = new_expr_int(allocator, token_zero, dummy_range);
             }
 
-            Decl* enum_item_const =
-                new_decl_const(allocator, enum_item->name, enum_item_typespec, enum_item_val, enum_item->range);
+            Decl* enum_item_const = new_decl_const(allocator, enum_item->name, enum_item_typespec, enum_item_val, enum_item->range);
 
             if (!install_module_decl(allocator, mod, enum_item_const)) {
                 return false;
@@ -1419,8 +1407,7 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
         Symbol* sym = module_get_export_sym(src_mod, isym->name);
 
         if (!sym) {
-            report_error(stmt->super.range, "Importing unknown or private symbol `%s` from module `%s`",
-                         isym->name->str,
+            report_error(stmt->super.range, "Importing unknown or private symbol `%s` from module `%s`", isym->name->str,
                          src_mod->cpath_lit->str); // TODO: mod_path is not an OS path
             return false;
         }
@@ -1525,8 +1512,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
                     ProcParam* param = list_entry(it, ProcParam, lnode);
 
                     if (param->name->str)
-                        ftprint_char_array(&dstr, false, "(%s %s)", param->name->str,
-                                           ftprint_typespec(allocator, param->typespec));
+                        ftprint_char_array(&dstr, false, "(%s %s)", param->name->str, ftprint_typespec(allocator, param->typespec));
                     else
                         ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->typespec));
 
@@ -1554,8 +1540,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
                 for (ListNode* it = head->next; it != head; it = it->next) {
                     AggregateField* field = list_entry(it, AggregateField, lnode);
 
-                    ftprint_char_array(&dstr, false, "(%s %s)", field->name->str,
-                                       ftprint_typespec(allocator, field->typespec));
+                    ftprint_char_array(&dstr, false, "(%s %s)", field->name->str, ftprint_typespec(allocator, field->typespec));
 
                     if (it->next != head)
                         ftprint_char_array(&dstr, false, " ");
@@ -1613,8 +1598,8 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case CST_ExprTernary: {
             ExprTernary* e = (ExprTernary*)expr;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(? %s %s %s)", ftprint_expr(allocator, e->cond),
-                               ftprint_expr(allocator, e->then_expr), ftprint_expr(allocator, e->else_expr));
+            ftprint_char_array(&dstr, false, "(? %s %s %s)", ftprint_expr(allocator, e->cond), ftprint_expr(allocator, e->then_expr),
+                               ftprint_expr(allocator, e->else_expr));
         } break;
         case CST_ExprBinary: {
             ExprBinary* e = (ExprBinary*)expr;
@@ -1657,8 +1642,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case CST_ExprIndex: {
             ExprIndex* e = (ExprIndex*)expr;
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(index %s %s)", ftprint_expr(allocator, e->array),
-                               ftprint_expr(allocator, e->index));
+            ftprint_char_array(&dstr, false, "(index %s %s)", ftprint_expr(allocator, e->array), ftprint_expr(allocator, e->index));
         } break;
         case CST_ExprField: {
             ExprField* e = (ExprField*)expr;
@@ -1815,22 +1799,19 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
             dstr = array_create(allocator, char, 32);
             const char* op = token_kind_names[s->op_assign];
 
-            ftprint_char_array(&dstr, false, "(%s %s %s)", op, ftprint_expr(allocator, s->left),
-                               ftprint_expr(allocator, s->right));
+            ftprint_char_array(&dstr, false, "(%s %s %s)", op, ftprint_expr(allocator, s->left), ftprint_expr(allocator, s->right));
         } break;
         case CST_StmtWhile: {
             StmtWhile* s = (StmtWhile*)stmt;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, s->cond),
-                               ftprint_stmt(allocator, s->body));
+            ftprint_char_array(&dstr, false, "(while %s %s)", ftprint_expr(allocator, s->cond), ftprint_stmt(allocator, s->body));
         } break;
         case CST_StmtDoWhile: {
             StmtDoWhile* s = (StmtDoWhile*)stmt;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, s->cond),
-                               ftprint_stmt(allocator, s->body));
+            ftprint_char_array(&dstr, false, "(do-while %s %s)", ftprint_expr(allocator, s->cond), ftprint_stmt(allocator, s->body));
         } break;
         case CST_StmtFor: {
             StmtFor* s = (StmtFor*)stmt;
@@ -2080,8 +2061,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
         case CST_DeclTypedef: {
             DeclTypedef* d = (DeclTypedef*)decl;
             dstr = array_create(allocator, char, 32);
-            ftprint_char_array(&dstr, false, "(typedef %s %s)", decl->name->str,
-                               ftprint_typespec(allocator, d->typespec));
+            ftprint_char_array(&dstr, false, "(typedef %s %s)", decl->name->str, ftprint_typespec(allocator, d->typespec));
         } break;
         case CST_DeclEnum: {
             DeclEnum* d = (DeclEnum*)decl;
@@ -2117,8 +2097,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
             DeclAggregate* d = (DeclAggregate*)decl;
             dstr = array_create(allocator, char, 32);
 
-            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"),
-                               decl->name->str);
+            ftprint_char_array(&dstr, false, "(%s %s", (decl->kind == CST_DeclStruct ? "struct" : "union"), decl->name->str);
 
             if (!list_empty(&d->fields)) {
                 ftprint_char_array(&dstr, false, " ");
@@ -2128,8 +2107,7 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 for (List* it = head->next; it != head; it = it->next) {
                     AggregateField* field = list_entry(it, AggregateField, lnode);
 
-                    ftprint_char_array(&dstr, false, "(%s %s)", field->name->str,
-                                       ftprint_typespec(allocator, field->typespec));
+                    ftprint_char_array(&dstr, false, "(%s %s)", field->name->str, ftprint_typespec(allocator, field->typespec));
 
                     if (it->next != head)
                         ftprint_char_array(&dstr, false, " ");
