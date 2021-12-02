@@ -1460,7 +1460,7 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     case SYMBOL_PROC:
         expr->type = sym->type;
         expr->is_lvalue = false;
-        expr->is_constexpr = false;
+        expr->is_constexpr = true;
         expr->is_imm = false;
 
         return true;

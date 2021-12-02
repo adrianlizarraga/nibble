@@ -349,6 +349,11 @@ static void X64_print_global_val(Allocator* allocator, ConstExpr* const_expr, ch
 
         break;
     }
+    case CONST_EXPR_PROC: {
+        ftprint_char_array(line, false, "%s %s", x64_data_size_label[const_expr->type->size],
+                           symbol_mangled_name(allocator, const_expr->sym));
+        break;
+    }
     case CONST_EXPR_ARRAY_INIT: {
         X64_print_global_arr_init(allocator, const_expr, line);
         break;
