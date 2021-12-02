@@ -1820,12 +1820,12 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         break;
     }
     case IR_INSTR_JMP: {
-        X64_emit_text(generator, "    jmp %s", X64_get_label(generator, instr->jmp.jmp_target));
+        X64_emit_text(generator, "    jmp %s", X64_get_label(generator, *instr->jmp.jmp_target));
         break;
     }
     case IR_INSTR_JMPCC: {
         X64_emit_text(generator, "    j%s %s", x64_condition_codes[instr->jmpcc.cond],
-                      X64_get_label(generator, instr->jmpcc.jmp_target));
+                      X64_get_label(generator, *instr->jmpcc.jmp_target));
         break;
     }
     case IR_INSTR_SETCC: {

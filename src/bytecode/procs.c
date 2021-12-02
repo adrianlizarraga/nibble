@@ -660,7 +660,15 @@ static void IR_emit_instr_cmp_m_i(IR_ProcBuilder* builder, Type* type, Symbol* s
     IR_add_instr(builder, instr);
 }
 
-static IR_Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, u32 jmp_target)
+static u32* IR_alloc_jmp_target(IR_ProcBuilder* builder, u32 init_val)
+{
+    u32* jmp_target = alloc_type(builder->arena, u32, false);
+    *jmp_target = init_val;
+
+    return jmp_target;
+}
+
+static IR_Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, u32* jmp_target)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_JMP);
     instr->jmp.jmp_target = jmp_target;
@@ -670,7 +678,7 @@ static IR_Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, u32 jmp_target)
     return instr;
 }
 
-static IR_Instr* IR_emit_instr_jmpcc(IR_ProcBuilder* builder, IR_ConditionKind cond, u32 jmp_target)
+static IR_Instr* IR_emit_instr_jmpcc(IR_ProcBuilder* builder, IR_ConditionKind cond, u32* jmp_target)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_JMPCC);
     instr->jmpcc.cond = cond;
@@ -727,10 +735,10 @@ static void IR_patch_jmp_target(IR_Instr* jmp_instr, u32 jmp_target)
 {
     switch (jmp_instr->kind) {
     case IR_INSTR_JMP:
-        jmp_instr->jmp.jmp_target = jmp_target;
+        *(jmp_instr->jmp.jmp_target) = jmp_target;
         break;
     case IR_INSTR_JMPCC:
-        jmp_instr->jmpcc.jmp_target = jmp_target;
+        *(jmp_instr->jmpcc.jmp_target) = jmp_target;
         break;
     default:
         assert(0);
@@ -832,7 +840,7 @@ static void IR_copy_sc_jmp(IR_ProcBuilder* builder, IR_DeferredJmpcc* dst_jmp, I
     }
 
     if (!dst_jmp->jmp)
-        dst_jmp->jmp = IR_emit_instr_jmpcc(builder, dst_jmp->cond, 0);
+        dst_jmp->jmp = IR_emit_instr_jmpcc(builder, dst_jmp->cond, IR_alloc_jmp_target(builder, 0));
 }
 
 static void IR_execute_deferred_cmp(IR_ProcBuilder* builder, IR_Operand* operand)
@@ -1320,7 +1328,7 @@ static void IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, IR_Operand* dst_o
             IR_emit_instr_cmp_m_i(builder, left_op.type, left_op.sym, ir_zero_imm);
         }
 
-        IR_Instr* jmpcc_instr = IR_emit_instr_jmpcc(builder, short_circuit_cond, 0);
+        IR_Instr* jmpcc_instr = IR_emit_instr_jmpcc(builder, short_circuit_cond, IR_alloc_jmp_target(builder, 0));
 
         IR_new_deferred_sc_jmp(builder, &dst_op->cmp, short_circuit_cond, short_circuit_val, jmpcc_instr);
     }
@@ -1353,7 +1361,7 @@ static void IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, IR_Operand* dst_o
         }
 
         dst_op->cmp.final_jmp.result = false;
-        dst_op->cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, IR_COND_EQ, 0);
+        dst_op->cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, IR_COND_EQ, IR_alloc_jmp_target(builder, 0));
         dst_op->cmp.final_jmp.cond = IR_COND_EQ;
     }
 }
@@ -2051,7 +2059,7 @@ static void IR_emit_expr(IR_ProcBuilder* builder, Expr* expr, IR_Operand* dst)
 }
 
 // Forward declare
-static void IR_emit_stmt(IR_ProcBuilder* builder, Stmt* stmt);
+static void IR_emit_stmt(IR_ProcBuilder* builder, Stmt* stmt, u32* break_target, u32* continue_target);
 
 static void IR_push_scope(IR_ProcBuilder* builder, Scope* scope)
 {
@@ -2223,7 +2231,7 @@ static void IR_emit_assign(IR_ProcBuilder* builder, IR_Operand* lhs, IR_Operand*
     }
 }
 
-static void IR_emit_stmt_block_body(IR_ProcBuilder* builder, List* stmts)
+static void IR_emit_stmt_block_body(IR_ProcBuilder* builder, List* stmts, u32* break_target, u32* continue_target)
 {
     List* head = stmts;
     List* it = head->next;
@@ -2231,16 +2239,16 @@ static void IR_emit_stmt_block_body(IR_ProcBuilder* builder, List* stmts)
     while (it != head) {
         Stmt* s = list_entry(it, Stmt, lnode);
 
-        IR_emit_stmt(builder, s);
+        IR_emit_stmt(builder, s, break_target, continue_target);
 
         it = it->next;
     }
 }
 
-static void IR_emit_stmt_block(IR_ProcBuilder* builder, StmtBlock* sblock)
+static void IR_emit_stmt_block(IR_ProcBuilder* builder, StmtBlock* sblock, u32* break_target, u32* continue_target)
 {
     IR_push_scope(builder, sblock->scope);
-    IR_emit_stmt_block_body(builder, &sblock->stmts);
+    IR_emit_stmt_block_body(builder, &sblock->stmts, break_target, continue_target);
     IR_pop_scope(builder);
 }
 
@@ -2310,7 +2318,7 @@ static void IR_emit_stmt_decl(IR_ProcBuilder* builder, StmtDecl* sdecl)
     }
 }
 
-static void IR_emit_stmt_if(IR_ProcBuilder* builder, StmtIf* stmt)
+static void IR_emit_stmt_if(IR_ProcBuilder* builder, StmtIf* stmt, u32* break_target, u32* continue_target)
 {
     Expr* cond_expr = stmt->if_blk.cond;
     Stmt* if_body = stmt->if_blk.body;
@@ -2322,9 +2330,9 @@ static void IR_emit_stmt_if(IR_ProcBuilder* builder, StmtIf* stmt)
         bool cond_val = cond_expr->imm.as_int._u64 != 0;
 
         if (cond_val)
-            IR_emit_stmt(builder, if_body);
+            IR_emit_stmt(builder, if_body, break_target, continue_target);
         else
-            IR_emit_stmt(builder, else_body);
+            IR_emit_stmt(builder, else_body, break_target, continue_target);
     }
     else {
         IR_Operand cond_op = {0};
@@ -2344,7 +2352,7 @@ static void IR_emit_stmt_if(IR_ProcBuilder* builder, StmtIf* stmt)
 
             // Create a jump to the "false" path if it doesn't yet exist.
             if (!cond_op.cmp.final_jmp.jmp)
-                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, 0);
+                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, IR_alloc_jmp_target(builder, 0));
         }
         // If the condition is some computation, compare the condition to zero and create a conditional
         // jump to the "false" path.
@@ -2353,17 +2361,17 @@ static void IR_emit_stmt_if(IR_ProcBuilder* builder, StmtIf* stmt)
             IR_emit_instr_cmp_r_i(builder, cond_op.type, cond_op.reg, ir_zero_imm);
 
             // Emit conditional jump without a jump target. The jump target will be filled in below.
-            jmpcc_false = IR_emit_instr_jmpcc(builder, IR_COND_EQ, 0);
+            jmpcc_false = IR_emit_instr_jmpcc(builder, IR_COND_EQ, IR_alloc_jmp_target(builder, 0));
 
             IR_free_reg(builder, cond_op.reg);
         }
 
         // Emit instructions for if-block body.
-        IR_emit_stmt(builder, if_body);
+        IR_emit_stmt(builder, if_body, break_target, continue_target);
 
         // Code path from if-block needs to jump over the else block. However, this jump instruction is only necessary
         // if a non-empty else block exists and if not all code paths within the if-block return.
-        IR_Instr* jmp_end_instr = else_body && !if_body->returns ? IR_emit_instr_jmp(builder, 0) : NULL;
+        IR_Instr* jmp_end_instr = else_body && !if_body->returns ? IR_emit_instr_jmp(builder, IR_alloc_jmp_target(builder, 0)) : NULL;
 
         // Patch conditional jmp instruction(s) that jump over the if-block when the condition is false.
         if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
@@ -2385,13 +2393,28 @@ static void IR_emit_stmt_if(IR_ProcBuilder* builder, StmtIf* stmt)
 
         if (else_body) {
             // Emit instructions for else-block body.
-            IR_emit_stmt(builder, else_body);
+            IR_emit_stmt(builder, else_body, break_target, continue_target);
 
             // Patch jmp instruction that jumps to the end of the else-block.
             if (jmp_end_instr)
                 IR_patch_jmp_target(jmp_end_instr, IR_get_jmp_target(builder));
         }
     }
+}
+
+static void IR_emit_inf_loop(IR_ProcBuilder* builder, Stmt* body)
+{
+    u32 loop_top = IR_get_jmp_target(builder);
+    u32* continue_target = IR_alloc_jmp_target(builder, loop_top);
+    u32* break_target = IR_alloc_jmp_target(builder, 0);
+
+    // Emit loop body statements.
+    IR_emit_stmt(builder, body, break_target, continue_target);
+
+    // Jump back to the top of the loop.
+    IR_emit_instr_jmp(builder, IR_alloc_jmp_target(builder, loop_top));
+
+    *break_target = IR_get_jmp_target(builder);
 }
 
 static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
@@ -2405,29 +2428,26 @@ static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
 
         // Emit infinite loop
         if (cond_val) {
-            u32 loop_top = IR_get_jmp_target(builder);
-
-            // Emit loop body statements.
-            IR_emit_stmt(builder, body);
-
-            // Jump back to the top of the loop.
-            IR_emit_instr_jmp(builder, loop_top);
+            IR_emit_inf_loop(builder, body);
         }
     }
     else {
         // Emit jmp instruction to the loop's condition check. Target adddress
         // will be patched.
-        IR_Instr* jmp_instr = IR_emit_instr_jmp(builder, 0);
+        IR_Instr* jmp_instr = IR_emit_instr_jmp(builder, IR_alloc_jmp_target(builder, 0));
 
         // Save the current instruction index to enable jumps to the top of the loop.
         u32 loop_top = IR_get_jmp_target(builder);
 
         // Emit instructions for the loop body.
-        IR_emit_stmt(builder, body);
+        u32* break_target = IR_alloc_jmp_target(builder, 0);
+        u32* continue_target = IR_alloc_jmp_target(builder, 0);
+        IR_emit_stmt(builder, body, break_target, continue_target);
 
-        // Patch initial jmp instruction with the location of the condition check.
+        // Patch both the initial jmp instruction and the continue target with the location of the condition check.
         u32 loop_cond_check = IR_get_jmp_target(builder);
         IR_patch_jmp_target(jmp_instr, loop_cond_check);
+        *continue_target = loop_cond_check;
 
         // Emit condition expression.
         IR_Operand cond_op = {0};
@@ -2448,7 +2468,7 @@ static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
             if (cond_op.cmp.final_jmp.jmp)
                 IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
             else
-                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, loop_top);
+                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, IR_alloc_jmp_target(builder, loop_top));
 
             // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
@@ -2461,10 +2481,12 @@ static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
             IR_emit_instr_cmp_r_i(builder, cond_op.type, cond_op.reg, ir_zero_imm);
 
             // Emit conditional jump to the top of the loop.
-            IR_emit_instr_jmpcc(builder, IR_COND_NEQ, loop_top);
+            IR_emit_instr_jmpcc(builder, IR_COND_NEQ, IR_alloc_jmp_target(builder, loop_top));
 
             IR_free_reg(builder, cond_op.reg);
         }
+
+        *break_target = IR_get_jmp_target(builder);
     }
 }
 
@@ -2479,13 +2501,7 @@ static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, StmtDoWhile* stmt)
 
         // Emit infinite loop
         if (cond_val) {
-            u32 loop_top = IR_get_jmp_target(builder);
-
-            // Emit loop body statements.
-            IR_emit_stmt(builder, body);
-
-            // Jump back to the top of the loop.
-            IR_emit_instr_jmp(builder, loop_top);
+            IR_emit_inf_loop(builder, body);
         }
     }
     else {
@@ -2493,7 +2509,12 @@ static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, StmtDoWhile* stmt)
         u32 loop_top = IR_get_jmp_target(builder);
 
         // Emit instructions for the loop body.
-        IR_emit_stmt(builder, body);
+        u32* break_target = IR_alloc_jmp_target(builder, 0);
+        u32* continue_target = IR_alloc_jmp_target(builder, 0);
+        IR_emit_stmt(builder, body, break_target, continue_target);
+
+        // Patch continue target to the location of the condition check.
+        *continue_target = IR_get_jmp_target(builder);
 
         // Emit condition expression.
         IR_Operand cond_op = {0};
@@ -2514,7 +2535,7 @@ static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, StmtDoWhile* stmt)
             if (cond_op.cmp.final_jmp.jmp)
                 IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
             else
-                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, loop_top);
+                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, IR_alloc_jmp_target(builder, loop_top));
 
             // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
@@ -2527,18 +2548,20 @@ static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, StmtDoWhile* stmt)
             IR_emit_instr_cmp_r_i(builder, cond_op.type, cond_op.reg, ir_zero_imm);
 
             // Emit conditional jump to the top of the loop.
-            IR_emit_instr_jmpcc(builder, IR_COND_NEQ, loop_top);
+            IR_emit_instr_jmpcc(builder, IR_COND_NEQ, IR_alloc_jmp_target(builder, loop_top));
 
             IR_free_reg(builder, cond_op.reg);
         }
+
+        *break_target = IR_get_jmp_target(builder);
     }
 }
 
-static void IR_emit_stmt(IR_ProcBuilder* builder, Stmt* stmt)
+static void IR_emit_stmt(IR_ProcBuilder* builder, Stmt* stmt, u32* break_target, u32* continue_target)
 {
     switch (stmt->kind) {
     case CST_StmtBlock:
-        IR_emit_stmt_block(builder, (StmtBlock*)stmt);
+        IR_emit_stmt_block(builder, (StmtBlock*)stmt, break_target, continue_target);
         break;
     case CST_StmtReturn:
         IR_emit_stmt_return(builder, (StmtReturn*)stmt);
@@ -2553,13 +2576,19 @@ static void IR_emit_stmt(IR_ProcBuilder* builder, Stmt* stmt)
         IR_emit_stmt_expr_assign(builder, (StmtExprAssign*)stmt);
         break;
     case CST_StmtIf:
-        IR_emit_stmt_if(builder, (StmtIf*)stmt);
+        IR_emit_stmt_if(builder, (StmtIf*)stmt, break_target, continue_target);
         break;
     case CST_StmtWhile:
         IR_emit_stmt_while(builder, (StmtWhile*)stmt);
         break;
     case CST_StmtDoWhile:
         IR_emit_stmt_do_while(builder, (StmtDoWhile*)stmt);
+        break;
+    case CST_StmtBreak:
+        IR_emit_instr_jmp(builder, break_target);
+        break;
+    case CST_StmtContinue:
+        IR_emit_instr_jmp(builder, continue_target);
         break;
     case CST_StmtStaticAssert:
         // Do nothing.
@@ -2586,7 +2615,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     sym->as_proc.instrs = array_create(builder->arena, IR_Instr*, 32);
     sym->as_proc.reg_intervals = array_create(builder->arena, LifetimeInterval, 16);
 
-    IR_emit_stmt_block_body(builder, &dproc->stmts);
+    IR_emit_stmt_block_body(builder, &dproc->stmts, NULL, NULL);
     assert(builder->free_regs == (u32)-1);
 
     // If proc doesn't have explicit returns, add one at the end.

@@ -264,12 +264,12 @@ typedef enum IR_ConditionKind {
 } IR_ConditionKind;
 
 typedef struct IR_InstrJmpCC {
-    u32 jmp_target;
+    u32* jmp_target;
     IR_ConditionKind cond;
 } IR_InstrJmpCC;
 
 typedef struct IR_InstrJmp {
-    u32 jmp_target;
+    u32* jmp_target;
 } IR_InstrJmp;
 
 typedef struct IR_InstrSetCC {
