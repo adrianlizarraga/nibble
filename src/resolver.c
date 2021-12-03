@@ -711,14 +711,8 @@ static bool try_complete_aggregate_type(Resolver* resolver, Type* type)
 
     assert(sym->decl->kind == CST_DeclStruct || sym->decl->kind == CST_DeclUnion);
 
-    DeclAggregate* decl_aggregate = (DeclAggregate*)sym->decl;
-
-    if (decl_aggregate->is_incomplete) {
-        resolver_on_error(resolver, sym->decl->range, "Cannot resolve type `%s` without a body", sym->name->str);
-        return false;
-    }
-
     bool success;
+    DeclAggregate* decl_aggregate = (DeclAggregate*)sym->decl;
 
     ModuleState mod_state = enter_module(resolver, sym->home);
     {

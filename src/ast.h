@@ -542,8 +542,6 @@ typedef struct DeclEnum {
 typedef struct DeclAggregate {
     Decl super;
     List fields;
-    // TODO: initialize during parsing.
-    bool is_incomplete;
 } DeclAggregate;
 
 typedef DeclAggregate DeclUnion;
