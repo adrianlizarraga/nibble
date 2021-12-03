@@ -721,17 +721,6 @@ static bool try_complete_aggregate_type(Resolver* resolver, Type* type)
     }
     exit_module(resolver, mod_state);
 
-#if 1
-    if (success) {
-        ftprint_out("Completed type %s\n", sym->name->str);
-        ftprint_out("\tsize: %llu, align: %llu\n", type->size, type->align);
-        ftprint_out("\tnum_fields: %llu\n", type->as_aggregate.num_fields);
-    }
-    else {
-        ftprint_out("Failed to complete type %s\n", sym->name->str);
-    }
-#endif
-
     return success;
 }
 
