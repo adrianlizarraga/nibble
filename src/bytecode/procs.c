@@ -78,6 +78,8 @@ typedef struct IR_ProcBuilder {
 static const Scalar ir_zero_imm = {.as_int._u64 = 0};
 static const Scalar ir_one_imm = {.as_int._u64 = 1};
 
+static void IR_get_object_addr(IR_ProcBuilder* builder, IR_MemAddr* dst, IR_Operand* src);
+
 static void IR_free_reg(IR_ProcBuilder* builder, IR_Reg reg)
 {
     Symbol* sym = builder->curr_proc;
@@ -1712,68 +1714,51 @@ static void IR_emit_expr_unary(IR_ProcBuilder* builder, ExprUnary* expr, IR_Oper
 static void IR_emit_expr_field(IR_ProcBuilder* builder, ExprField* expr_field, IR_Operand* dst)
 {
     IR_Operand obj_op = {0};
-
     IR_emit_expr(builder, expr_field->object, &obj_op);
 
-    if (obj_op.type->kind == TYPE_PTR) {
+    Type* obj_type;
+    IR_MemAddr obj_addr;
 
-        // Load ptr to object.
+    if (obj_op.type->kind == TYPE_PTR) {
+        //
+        // This pointer points to the actual object.
+        //
+
+        obj_type = obj_op.type->as_ptr.base;
+
+        // Get address to the object.
         IR_op_to_r(builder, &obj_op, false);
 
-        if (obj_op.kind != IR_OPERAND_MEM_ADDR) {
-            assert(obj_op.kind == IR_OPERAND_REG);
-            IR_Reg base_reg = obj_op.reg;
-
-            obj_op.kind = IR_OPERAND_MEM_ADDR;
-            obj_op.addr.base_kind = IR_MEM_BASE_REG;
-            obj_op.addr.base.reg = base_reg;
-            obj_op.addr.index_reg = IR_REG_COUNT;
-            obj_op.addr.disp = 0;
-            obj_op.addr.scale = 0;
-        }
-
-        Type* obj_type = obj_op.type->as_ptr.base;
-        size_t field_offset = get_type_aggregate_field(obj_type, expr_field->field)->offset;
-
-        dst->kind = IR_OPERAND_DEREF_ADDR;
-        dst->type = expr_field->super.type;
-        dst->addr = obj_op.addr;
-        dst->addr.disp += (u32)field_offset;
-    }
-    else {
-        // Get operand with pointer to the object
-        if (obj_op.kind == IR_OPERAND_VAR) {
-           if (obj_op.sym->is_local) {
-                dst->kind = IR_OPERAND_MEM_ADDR;
-                dst->addr.base_kind = IR_MEM_BASE_SYM;
-                dst->addr.base.sym = obj_op.sym;
-           }
-           else {
-                IR_Reg dst_reg = IR_next_reg(builder);
-                IR_emit_instr_laddr_sym(builder, dst_reg, obj_op.type, obj_op.sym);
-
-                dst->addr.base_kind = IR_MEM_BASE_REG;
-                dst->addr.base.reg = dst_reg;
-           }
-
-           //dst->type = ?
-           dst->addr.index_reg = IR_REG_COUNT;
-           dst->addr.disp = 0;
-           dst->addr.scale = 0;
+        if (obj_op.kind == IR_OPERAND_MEM_ADDR) {
+            obj_addr = obj_op.addr;
         }
         else {
-            assert(obj_op.kind == IR_OPERAND_DEREF_ADDR);
-            dst->kind = IR_OPERAND_MEM_ADDR;
-            dst->addr = obj_op.addr;
-            //dst->type = 
+            assert(obj_op.kind == IR_OPERAND_REG);
+            obj_addr.base_kind = IR_MEM_BASE_REG;
+            obj_addr.base.reg = obj_op.reg;
+            obj_addr.index_reg = IR_REG_COUNT;
+            obj_addr.disp = 0;
+            obj_addr.scale = 0;
         }
-
-        size_t field_offset = get_type_aggregate_field(obj_op.type, expr_field->field)->offset;
-
-        dst->kind = IR_OPERAND_DEREF_ADDR;
-        dst->type = expr_field->super.type;
-        dst->addr.disp += (u32)field_offset;
     }
+    else {
+        //
+        // Accessing the object field directly.
+        //
+
+        obj_type = obj_op.type;
+
+        IR_get_object_addr(builder, &obj_addr, &obj_op);
+    }
+
+    size_t field_offset = get_type_aggregate_field(obj_type, expr_field->field)->offset;
+
+    dst->kind = IR_OPERAND_DEREF_ADDR;
+    dst->type = expr_field->super.type;
+    dst->addr = obj_addr;
+
+    // Add in the field's byte offset from the beginning of the object.
+    dst->addr.disp += (u32)field_offset;
 }
 
 static void IR_emit_expr_index(IR_ProcBuilder* builder, ExprIndex* expr_index, IR_Operand* dst)
@@ -1871,46 +1856,44 @@ static void IR_emit_int_cast(IR_ProcBuilder* builder, IR_Operand* src_op, IR_Ope
     }
 }
 
-static void IR_decay_array(IR_ProcBuilder* builder, IR_Operand* dst, Type* dst_type, IR_Operand* src)
+static void IR_get_object_addr(IR_ProcBuilder* builder, IR_MemAddr* dst, IR_Operand* src)
 {
-    assert(src->type->kind == TYPE_ARRAY);
-    assert(dst_type->kind == TYPE_PTR);
+    Type* src_type = src->type;
+
+    assert(src_type->kind == TYPE_ARRAY || src_type->kind == TYPE_STRUCT || src_type->kind == TYPE_UNION);
 
     if (src->kind == IR_OPERAND_VAR) {
         if (src->sym->is_local) {
-            dst->addr.base_kind = IR_MEM_BASE_SYM;
-            dst->addr.base.sym = src->sym;
+            dst->base_kind = IR_MEM_BASE_SYM;
+            dst->base.sym = src->sym;
         }
         else {
             IR_Reg dst_reg = IR_next_reg(builder);
-            IR_emit_instr_laddr_sym(builder, dst_reg, src->type, src->sym);
+            IR_emit_instr_laddr_sym(builder, dst_reg, src_type, src->sym);
 
-            dst->addr.base_kind = IR_MEM_BASE_REG;
-            dst->addr.base.reg = dst_reg;
+            dst->base_kind = IR_MEM_BASE_REG;
+            dst->base.reg = dst_reg;
         }
 
-        dst->addr.index_reg = IR_REG_COUNT;
-        dst->addr.disp = 0;
-        dst->addr.scale = 0;
+        dst->index_reg = IR_REG_COUNT;
+        dst->disp = 0;
+        dst->scale = 0;
     }
     else if (src->kind == IR_OPERAND_DEREF_ADDR) {
-        dst->addr = src->addr;
+        *dst = src->addr;
     }
     else {
         assert(src->kind == IR_OPERAND_STR_LIT);
 
         IR_Reg dst_reg = IR_next_reg(builder);
-        IR_emit_instr_laddr_str_lit(builder, dst_reg, src->type, src->str_lit);
+        IR_emit_instr_laddr_str_lit(builder, dst_reg, src_type, src->str_lit);
 
-        dst->addr.base_kind = IR_MEM_BASE_REG;
-        dst->addr.base.reg = dst_reg;
-        dst->addr.index_reg = IR_REG_COUNT;
-        dst->addr.disp = 0;
-        dst->addr.scale = 0;
+        dst->base_kind = IR_MEM_BASE_REG;
+        dst->base.reg = dst_reg;
+        dst->index_reg = IR_REG_COUNT;
+        dst->disp = 0;
+        dst->scale = 0;
     }
-
-    dst->type = dst_type;
-    dst->kind = IR_OPERAND_MEM_ADDR;
 }
 
 static void IR_emit_expr_cast(IR_ProcBuilder* builder, ExprCast* expr_cast, IR_Operand* dst_op)
@@ -1927,7 +1910,9 @@ static void IR_emit_expr_cast(IR_ProcBuilder* builder, ExprCast* expr_cast, IR_O
     assert(src_op.type != dst_op->type); // Should be prevented by resolver.
 
     if (src_op.type->kind == TYPE_ARRAY && dst_op->type->kind == TYPE_PTR) {
-        IR_decay_array(builder, dst_op, dst_op->type, &src_op);
+        dst_op->kind = IR_OPERAND_MEM_ADDR;
+
+        IR_get_object_addr(builder, &dst_op->addr, &src_op);
     }
     else {
         IR_emit_int_cast(builder, &src_op, dst_op);
@@ -2156,8 +2141,8 @@ static void IR_emit_array_init(IR_ProcBuilder* builder, IR_Operand* array_op, IR
     Type* elem_type = ptr_type->as_ptr.base;
 
     // Decay array into pointer to the first elem.
-    IR_Operand base_ptr_op = {0};
-    IR_decay_array(builder, &base_ptr_op, ptr_type, array_op);
+    IR_Operand base_ptr_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_type};
+    IR_get_object_addr(builder, &base_ptr_op.addr, array_op);
 
     IR_ArrayMemberInitializer* initzers = init_op->array_initzer.initzers;
     u64 num_initzers = init_op->array_initzer.num_initzers;
@@ -2238,8 +2223,8 @@ static void IR_emit_array_str_init(IR_ProcBuilder* builder, IR_Operand* array_op
     assert((str_lit->len + 1) == num_elems);
 
     // Decay array into pointer to the first elem.
-    IR_Operand base_ptr_op = {0};
-    IR_decay_array(builder, &base_ptr_op, ptr_type, array_op);
+    IR_Operand base_ptr_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_type};
+    IR_get_object_addr(builder, &base_ptr_op.addr, array_op);
 
     for (u64 elem_index = 0; elem_index < num_elems; elem_index += 1) {
         IR_Operand char_op = {.kind = IR_OPERAND_IMM, .type = elem_type, .imm.as_int._u64 = str[elem_index]};
@@ -2524,12 +2509,12 @@ static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
         IR_emit_expr(builder, cond_expr, &cond_op);
 
         if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
-
             // Path final jump to the top of the loop (create one if jump does not exist).
             if (cond_op.cmp.final_jmp.jmp)
                 IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
             else
-                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, IR_alloc_jmp_target(builder, loop_top));
+                cond_op.cmp.final_jmp.jmp =
+                    IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, IR_alloc_jmp_target(builder, loop_top));
 
             // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
@@ -2592,12 +2577,12 @@ static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, StmtDoWhile* stmt)
         IR_emit_expr(builder, cond_expr, &cond_op);
 
         if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
-
             // Path final jump to the top of the loop (create one if jump does not exist).
             if (cond_op.cmp.final_jmp.jmp)
                 IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
             else
-                cond_op.cmp.final_jmp.jmp = IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, IR_alloc_jmp_target(builder, loop_top));
+                cond_op.cmp.final_jmp.jmp =
+                    IR_emit_instr_jmpcc(builder, cond_op.cmp.final_jmp.cond, IR_alloc_jmp_target(builder, loop_top));
 
             // Reverse jump condition so that it goes to the "true" path.
             if (!cond_op.cmp.final_jmp.result)
@@ -2740,4 +2725,3 @@ static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* p
 
     allocator_restore_state(tmp_mem_state);
 }
-
