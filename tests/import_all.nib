@@ -6,11 +6,12 @@ import "./cstring.nib";
 
 proc main(argc : int, argv : ^^char) => int
 {
-    var a : ^char = "Hello\n";
-    var num_chars := len(a);
+    var msg : StringView;
+    msg.str = "Hello!\n";
+    msg.len = len(msg.str);
 
-    #writeout(a, num_chars);
+    #writeout(msg.str, msg.len);
 
-    return num_chars + CSTR_CONST + cstr_var + get_rand(1);
+    return msg.len + CSTR_CONST + cstr_var + get_rand(1);
 }
 

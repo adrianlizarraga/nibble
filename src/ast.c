@@ -12,9 +12,10 @@ static TypeSpec* new_typespec_(Allocator* allocator, size_t size, size_t align, 
     return typespec;
 }
 
-TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* name, ProgRange range)
+TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range)
 {
     TypeSpecIdent* typespec = new_typespec(allocator, TypeSpecIdent, range);
+    typespec->mod_ns = mod_ns;
     typespec->name = name;
 
     return (TypeSpec*)typespec;
@@ -644,6 +645,7 @@ int type_integer_ranks[] = {
 static const char* type_names[] = {
     [TYPE_VOID] = "void",   [TYPE_INTEGER] = "_integer_", [TYPE_FLOAT] = "_float_",   [TYPE_ENUM] = "_enum_",   [TYPE_PTR] = "_ptr_",
     [TYPE_PROC] = "_proc_", [TYPE_ARRAY] = "_array_",     [TYPE_STRUCT] = "_struct_", [TYPE_UNION] = "_union_",
+    [TYPE_INCOMPLETE_AGGREGATE] = "_incomplete_aggregate_",
 };
 
 static const char* type_integer_names[] = {
@@ -807,7 +809,7 @@ Type* type_unsigned_int(Type* type_int)
     return NULL;
 }
 
-Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type)
+Type* try_array_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type)
 {
     if (type->kind == TYPE_ARRAY)
         return type_ptr(allocator, type_ptr_cache, type->as_array.base);
@@ -821,15 +823,15 @@ Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type)
 //     [][]char => ^^char
 //     ^[]char => ^^char
 //     ^^[]char => ^^^char
-Type* type_incomplete_decay(Allocator* alloc, HMap* type_ptr_cache, Type* type)
+Type* try_incomplete_array_decay(Allocator* alloc, HMap* type_ptr_cache, Type* type)
 {
     Type* result = type;
 
     if (type_is_incomplete_array(type)) {
-        result = type_ptr(alloc, type_ptr_cache, type_incomplete_decay(alloc, type_ptr_cache, type->as_array.base));
+        result = type_ptr(alloc, type_ptr_cache, try_incomplete_array_decay(alloc, type_ptr_cache, type->as_array.base));
     }
     else if (type->kind == TYPE_PTR) {
-        result = type_ptr(alloc, type_ptr_cache, type_incomplete_decay(alloc, type_ptr_cache, type->as_ptr.base));
+        result = type_ptr(alloc, type_ptr_cache, try_incomplete_array_decay(alloc, type_ptr_cache, type->as_ptr.base));
     }
 
     return result;
@@ -876,6 +878,106 @@ Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl)
     type->as_enum.decl = decl;
 
     return type;
+}
+
+Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym)
+{
+    Type* type = type_alloc(allocator, TYPE_INCOMPLETE_AGGREGATE);
+    type->as_incomplete.sym = sym;
+
+    return type;
+}
+
+TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name)
+{
+    assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
+    TypeAggregate* type_aggregate = &type->as_aggregate;
+    size_t num_fields = type_aggregate->num_fields;
+    TypeAggregateField* fields = type_aggregate->fields;
+
+    for (size_t i = 0; i < num_fields; i += 1) {
+        TypeAggregateField* field = fields + i;
+
+        if (field->name == name) {
+            return field;
+        }
+    }
+    
+    return NULL;
+}
+
+void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields)
+{
+    size_t size = 0;
+    size_t align = 0;
+
+    TypeAggregateField* fields_cpy = mem_dup_array(allocator, TypeAggregateField, fields, num_fields);
+
+    for (size_t i = 0; i < num_fields; i += 1) {
+        TypeAggregateField* field = fields_cpy + i;
+        size_t field_align = field->type->align;
+        size_t field_size = field->type->size;
+
+        // Make sure the field is placed at an offset that is divisible by its alignment.
+        size = ALIGN_UP(size, field_align);
+        field->offset = size;
+
+        // Increase the struct's size by the field's size.
+        size += field_size;
+
+        // Update the struct to use the maximum field alignment.
+        if (field_align > align) {
+            align = field_align;
+        }
+    }
+
+    // Align-up struct size by the largest field alignment (to ensure an array of struct elems is correctly aligned).
+    size = ALIGN_UP(size, align);
+
+    // Update the previously incomplete type into a proper struct type.
+    type->kind = TYPE_STRUCT;
+    type->size = size;
+    type->align = align;
+
+    type->as_aggregate.num_fields = num_fields;
+    type->as_aggregate.fields = fields_cpy;
+}
+
+void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields)
+{
+    size_t size = 0;
+    size_t align = 0;
+
+    TypeAggregateField* fields_cpy = mem_dup_array(allocator, TypeAggregateField, fields, num_fields);
+
+    for (size_t i = 0; i < num_fields; i += 1) {
+        TypeAggregateField* field = fields_cpy + i;
+        size_t field_align = field->type->align;
+        size_t field_size = field->type->size;
+
+        // All union fields start at offset 0 (share the same memory region).
+        field->offset = 0;
+
+        // Update the union to use the maximum field alignment and size.
+        if (field_align > align) {
+            align = field_align;
+        }
+
+        if (field_size > size) {
+            size = field_size;
+        }
+    }
+
+    // Align-up union size by the largest field alignment (to ensure an array of union elems is correctly aligned).
+    size = ALIGN_UP(size, align);
+
+    // Update the previously incomplete type into a proper union type.
+    type->kind = TYPE_UNION;
+    type->size = size;
+    type->align = align;
+
+    type->as_aggregate.num_fields = num_fields;
+    type->as_aggregate.fields = fields_cpy;
 }
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base)
@@ -1275,7 +1377,7 @@ static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
     if (decl->kind == CST_DeclEnum) {
         DeclEnum* decl_enum = (DeclEnum*)decl;
 
-        TypeSpec* enum_item_typespec = new_typespec_ident(allocator, decl->name, decl->range); // TODO: Range is wrong
+        TypeSpec* enum_item_typespec = new_typespec_ident(allocator, NULL, decl->name, decl->range); // TODO: Range is wrong
 
         List* head = &decl_enum->items;
         List* it = head->next;
@@ -1489,7 +1591,13 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
         case CST_TypeSpecIdent: {
             TypeSpecIdent* t = (TypeSpecIdent*)typespec;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(:ident %s)", t->name->str);
+            ftprint_char_array(&dstr, false, "(:ident ");
+
+            if (t->mod_ns) {
+                ftprint_char_array(&dstr, false, "%s::", t->mod_ns->str);
+            }
+
+            ftprint_char_array(&dstr, false, "%s", t->name->str);
         } break;
         case CST_TypeSpecTypeof: {
             TypeSpecTypeof* t = (TypeSpecTypeof*)typespec;

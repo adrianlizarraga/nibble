@@ -33,10 +33,10 @@ static bool convert_eop(ExprOperand* eop, Type* dst_type);
 static bool eop_is_null_ptr(ExprOperand eop);
 static bool can_convert_eop(ExprOperand* operand, Type* dst_type);
 static bool can_cast_eop(ExprOperand* eop, Type* dst_type);
-static bool eop_decay(Resolver* resolver, ExprOperand* eop, ProgRange range);
+static bool try_eop_array_decay(Resolver* resolver, ExprOperand* eop, ProgRange range);
 static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr);
 
-static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr);
+static Symbol* lookup_ident(Resolver* resolver, Identifier* mod_ns, Identifier* name, ProgRange range);
 
 static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
@@ -624,6 +624,117 @@ static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scal
     }
 }
 
+static bool try_complete_aggregate_type(Resolver* resolver, Type* type);
+
+typedef struct SeenField {
+    Identifier* name;
+    ProgRange range;
+} SeenField;
+
+static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregate* decl_aggregate)
+{
+    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem); 
+
+    // Resolve each parsed aggregate field into a field type.
+    TypeAggregateField* field_types = array_create(&resolver->ctx->tmp_mem, TypeAggregateField, 16);
+    HMap seen_fields = hmap(3, &resolver->ctx->tmp_mem); // Used to check for duplicate field names
+
+    List* head = &decl_aggregate->fields;
+
+    for (List* it = head->next; it != head; it = it->next) {
+        AggregateField* field = list_entry(it, AggregateField, lnode);
+
+        // Check for duplicate field names.
+        SeenField* seen_field = hmap_get_obj(&seen_fields, PTR_UINT(field->name));
+
+        if (seen_field) {
+            assert(seen_field->name == field->name);
+            resolver_on_error(resolver, seen_field->range, "Duplicate member field name `%s`.", field->name->str);
+            return false;
+        }
+
+        seen_field = alloc_type(&resolver->ctx->tmp_mem, SeenField, false);
+        seen_field->name = field->name;
+        seen_field->range = field->range;
+
+        hmap_put(&seen_fields, PTR_UINT(field->name), PTR_UINT(seen_field));
+
+        // Resolve field's type.
+        Type* field_type = resolve_typespec(resolver, field->typespec);
+
+        if (!try_complete_aggregate_type(resolver, field_type)) {
+            return false;
+        }
+
+        if (type_has_incomplete_array(field_type)) {
+            resolver_on_error(resolver, field->range, "Member field has an array type of unknown size");
+            return false;
+        }
+
+        if (field_type->size == 0) {
+            resolver_on_error(resolver, field->range, "Member field has zero size");
+            return false;
+        }
+
+        TypeAggregateField field_type_info = {.type = field_type, .name = field->name};
+
+        array_push(field_types, field_type_info);
+    }
+
+    // Call the appropriate procedure to fill in the aggregate type's size and alignment.
+    if (decl_aggregate->super.kind == CST_DeclStruct) {
+        complete_struct_type(&resolver->ctx->ast_mem, type, array_len(field_types), field_types);
+    }
+    else if (decl_aggregate->super.kind == CST_DeclUnion) {
+        complete_union_type(&resolver->ctx->ast_mem, type, array_len(field_types), field_types);
+    }
+
+    assert(type->kind != TYPE_INCOMPLETE_AGGREGATE);
+
+    allocator_restore_state(mem_state);
+
+    return true;
+}
+
+static bool try_complete_aggregate_type(Resolver* resolver, Type* type)
+{
+    if (type->kind != TYPE_INCOMPLETE_AGGREGATE) {
+        return true;
+    }
+
+    Symbol* sym = type->as_incomplete.sym;
+
+    if (type->as_incomplete.is_completing) {
+        resolver_on_error(resolver, sym->decl->range, "Cannot resolve type `%s` due to cyclic dependency", sym->name->str);
+        return false; 
+    }
+
+    assert(sym->decl->kind == CST_DeclStruct || sym->decl->kind == CST_DeclUnion);
+
+    bool success;
+    DeclAggregate* decl_aggregate = (DeclAggregate*)sym->decl;
+
+    ModuleState mod_state = enter_module(resolver, sym->home);
+    {
+        type->as_incomplete.is_completing = true; // Mark as `completing` to detect dependency cycles.
+        success = complete_aggregate_type(resolver, type, decl_aggregate);
+    }
+    exit_module(resolver, mod_state);
+
+#if 1
+    if (success) {
+        ftprint_out("Completed type %s\n", sym->name->str);
+        ftprint_out("\tsize: %llu, align: %llu\n", type->size, type->align);
+        ftprint_out("\tnum_fields: %llu\n", type->as_aggregate.num_fields);
+    }
+    else {
+        ftprint_out("Failed to complete type %s\n", sym->name->str);
+    }
+#endif
+
+    return success;
+}
+
 static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
 {
     assert(num_types);
@@ -790,6 +901,10 @@ static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
         return false;
     }
 
+    if (!try_complete_aggregate_type(resolver, type)) {
+        return false;
+    }
+
     expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
     expr->super.is_constexpr = true;
     expr->super.is_imm = true;
@@ -870,10 +985,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
     ExprOperand left_op = OP_FROM_EXPR(ebinary->left);
     ExprOperand right_op = OP_FROM_EXPR(ebinary->right);
 
-    if (!eop_decay(resolver, &left_op, ebinary->left->range))
+    if (!try_eop_array_decay(resolver, &left_op, ebinary->left->range))
         return false;
 
-    if (!eop_decay(resolver, &right_op, ebinary->right->range))
+    if (!try_eop_array_decay(resolver, &right_op, ebinary->right->range))
         return false;
 
     switch (ebinary->op) {
@@ -882,6 +997,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             resolve_binary_eop(TKN_PLUS, &dst_op, &left_op, &right_op);
         }
         else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
+            if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
+                return false;
+            }
+
             if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op, &right_op)) {
                 resolver_on_error(resolver, ebinary->left->range, "Cannot add to a pointer with a base type (%s) of zero size",
                                   type_name(left_op.type->as_ptr.base));
@@ -890,6 +1009,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
         }
         else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR)) {
+            if (!try_complete_aggregate_type(resolver, right_op.type->as_ptr.base)) {
+                return false;
+            }
+
             if (!resolve_ptr_int_arith(resolver, &dst_op, &right_op, &left_op)) {
                 resolver_on_error(resolver, ebinary->right->range, "Cannot add to a pointer with a base type (%s) of zero size",
                                   type_name(right_op.type->as_ptr.base));
@@ -912,6 +1035,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         }
         // ptr - int
         else if (left_is_ptr && type_is_integer_like(right_op.type)) {
+            if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
+                return false;
+            }
+
             if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op, &right_op)) {
                 resolver_on_error(resolver, ebinary->left->range, "Cannot subtract from a pointer with a base type (%s) of zero size",
                                   type_name(left_op.type->as_ptr.base));
@@ -923,6 +1050,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         else if (left_is_ptr && right_is_ptr) {
             Type* left_base_type = left_op.type->as_ptr.base;
             Type* right_base_type = right_op.type->as_ptr.base;
+
+            if (!try_complete_aggregate_type(resolver, left_base_type) || !try_complete_aggregate_type(resolver, right_base_type)) {
+                return false;
+            }
 
             if ((left_base_type == builtin_types[BUILTIN_TYPE_VOID].type) &&
                 (right_base_type == builtin_types[BUILTIN_TYPE_VOID].type)) {
@@ -1244,7 +1375,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
     switch (eunary->op) {
     case TKN_PLUS:
     case TKN_MINUS:
-        if (!eop_decay(resolver, &src_op, expr->range))
+        if (!try_eop_array_decay(resolver, &src_op, expr->range))
             return false;
 
         if (!type_is_arithmetic(src_op.type)) {
@@ -1256,7 +1387,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
         break;
     case TKN_NEG:
-        if (!eop_decay(resolver, &src_op, expr->range))
+        if (!try_eop_array_decay(resolver, &src_op, expr->range))
             return false;
 
         if (!type_is_integer_like(src_op.type)) {
@@ -1268,7 +1399,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
         break;
     case TKN_NOT:
-        if (!eop_decay(resolver, &src_op, expr->range))
+        if (!try_eop_array_decay(resolver, &src_op, expr->range))
             return false;
 
         if (!type_is_scalar(src_op.type)) {
@@ -1308,9 +1439,13 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
 
         if (eunary->expr->kind == CST_ExprIdent) {
             ExprIdent* expr_ident = (ExprIdent*)eunary->expr;
-            Symbol* sym = lookup_ident(resolver, expr_ident);
+            Symbol* sym = lookup_ident(resolver, expr_ident->mod_ns, expr_ident->name, expr_ident->super.range);
 
-            assert(sym);
+            if (!sym) {
+                // TODO: Print full identifier name (with module namespace).
+                resolver_on_error(resolver, expr_ident->super.range, "Unknown symbol `%s` in expression", expr_ident->name->str);
+                return false;
+            }
 
             is_constexpr = !sym->is_local;
         }
@@ -1319,7 +1454,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         dst_op.is_constexpr = is_constexpr;
         break;
     case TKN_ASTERISK: // NOTE: Dereference operator.
-        if (!eop_decay(resolver, &src_op, expr->range))
+        if (!try_eop_array_decay(resolver, &src_op, expr->range))
             return false;
 
         if (src_op.type->kind != TYPE_PTR) {
@@ -1343,6 +1478,63 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
     return true;
 }
 
+static bool resolve_expr_field(Resolver* resolver, ExprField* expr_field)
+{
+    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to
+    // an aggregate type.
+    if (!resolve_expr(resolver, expr_field->object, NULL)) {
+        return false;
+    }
+
+    bool is_lvalue = expr_field->object->is_lvalue;
+    Type* obj_type = expr_field->object->type;
+
+    if (obj_type->kind == TYPE_PTR) {
+        obj_type = obj_type->as_ptr.base;
+        is_lvalue = true;
+    }
+
+    if (!try_complete_aggregate_type(resolver, obj_type)) {
+        return false;
+    }
+
+    if (!type_is_aggregate(obj_type)) {
+        resolver_on_error(resolver, expr_field->object->range,
+                          "Cannot access field on non-aggregate (i.e., struct or union) type `%s`.", type_name(obj_type));
+        return false;
+    }
+
+    // Check that the accessed field exists.
+    Type* field_type = NULL;
+
+    TypeAggregate* type_aggregate = &obj_type->as_aggregate;
+    size_t num_fields = type_aggregate->num_fields;
+
+    for (size_t i = 0; i < num_fields; i += 1) {
+        TypeAggregateField* f = type_aggregate->fields + i;
+
+        if (f->name == expr_field->field) {
+            field_type = f->type;
+            break;
+        }
+    }
+
+    if (!field_type) {
+        // TODO: Range on field identifier
+        resolver_on_error(resolver, expr_field->super.range, "Type `%s` does not have a field named `%s`.",
+                          type_name(obj_type), expr_field->field->str);
+        return false;
+    }
+
+    // Set overall expression type and attributes.
+    expr_field->super.type = field_type;
+    expr_field->super.is_lvalue = is_lvalue;
+    expr_field->super.is_constexpr = false;
+    expr_field->super.is_imm = false;
+
+    return true;
+}
+
 static bool resolve_expr_index(Resolver* resolver, Expr* expr)
 {
     ExprIndex* eindex = (ExprIndex*)expr;
@@ -1353,7 +1545,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
 
     ExprOperand array_op = OP_FROM_EXPR(eindex->array);
 
-    if (!eop_decay(resolver, &array_op, eindex->array->range))
+    if (!try_eop_array_decay(resolver, &array_op, eindex->array->range))
         return false;
 
     if (array_op.type->kind != TYPE_PTR) {
@@ -1387,7 +1579,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     return true;
 }
 
-static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr)
+static Symbol* lookup_ident(Resolver* resolver, Identifier* mod_ns, Identifier* name, ProgRange range)
 {
     //
     // Tries to lookup a symbol for an identifier in the form <module_namespace>::<identifier_name>
@@ -1395,21 +1587,21 @@ static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr)
 
     Symbol* sym = NULL;
 
-    if (expr->mod_ns) {
+    if (mod_ns) {
         // Lookup namespace symbol.
-        Symbol* sym_modns = resolve_name(resolver, expr->mod_ns);
+        Symbol* sym_modns = resolve_name(resolver, mod_ns);
 
         if (!sym_modns || (sym_modns->kind != SYMBOL_MODULE)) {
-            resolver_on_error(resolver, expr->super.range, "Unknown module namespace `%s::` in expression", expr->mod_ns->str);
+            resolver_on_error(resolver, range, "Unknown module namespace `%s::` in expression", mod_ns->str);
             return NULL;
         }
 
         StmtImport* stmt = (StmtImport*)sym_modns->as_mod.stmt;
-        Identifier* sym_name = get_import_sym_name(stmt, expr->name);
+        Identifier* sym_name = get_import_sym_name(stmt, name);
 
         if (!sym_name) {
-            resolver_on_error(resolver, expr->super.range,
-                              "Identifier `%s` is not among the imported symbols in module namespace `%s`", expr->name->str,
+            resolver_on_error(resolver, range,
+                              "Identifier `%s` is not among the imported symbols in module namespace `%s`", name->str,
                               sym_modns->name->str);
             return NULL;
         }
@@ -1420,13 +1612,7 @@ static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr)
         exit_module(resolver, mod_state);
     }
     else {
-        sym = resolve_name(resolver, expr->name);
-    }
-
-    if (!sym) {
-        // TODO: Print full identifier name (with module namespace).
-        resolver_on_error(resolver, expr->super.range, "Unknown symbol `%s` in expression", expr->name->str);
-        return NULL;
+        sym = resolve_name(resolver, name);
     }
 
     return sym;
@@ -1435,9 +1621,11 @@ static Symbol* lookup_ident(Resolver* resolver, ExprIdent* expr)
 static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
 {
     ExprIdent* eident = (ExprIdent*)expr;
-    Symbol* sym = lookup_ident(resolver, eident);
+    Symbol* sym = lookup_ident(resolver, eident->mod_ns, eident->name, expr->range);
 
     if (!sym) {
+        // TODO: Print full identifier name (with module namespace).
+        resolver_on_error(resolver, expr->range, "Unknown symbol `%s` in expression", eident->name->str);
         return false;
     }
 
@@ -1511,7 +1699,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         Type* param_type = params[i];
         ExprOperand arg_eop = OP_FROM_EXPR(arg->expr);
 
-        if (!eop_decay(resolver, &arg_eop, arg->range))
+        if (!try_eop_array_decay(resolver, &arg_eop, arg->range))
             return false;
 
         if (!convert_eop(&arg_eop, param_type)) {
@@ -1549,7 +1737,7 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
 
     ExprOperand src_eop = OP_FROM_EXPR(ecast->expr);
 
-    if (!eop_decay(resolver, &src_eop, ecast->expr->range))
+    if (!try_eop_array_decay(resolver, &src_eop, ecast->expr->range))
         return false;
 
     if (!cast_eop(&src_eop, cast_type)) {
@@ -1633,7 +1821,7 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
 
-        if ((elem_type->kind == TYPE_PTR) && !eop_decay(resolver, &init_op, initzer->init->range)) {
+        if ((elem_type->kind == TYPE_PTR) && !try_eop_array_decay(resolver, &init_op, initzer->init->range)) {
             return false;
         }
 
@@ -1697,6 +1885,10 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
         return false;
     }
 
+    if (!try_complete_aggregate_type(resolver, type)) {
+        return false;
+    }
+
     // For now, only allow array types.
     // TODO: Support struct types
     if (type->kind == TYPE_ARRAY) {
@@ -1721,6 +1913,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_unary(resolver, expr);
     case CST_ExprIndex:
         return resolve_expr_index(resolver, expr);
+    case CST_ExprField:
+        return resolve_expr_field(resolver, (ExprField*)expr);
     case CST_ExprCall:
         return resolve_expr_call(resolver, expr);
     case CST_ExprCast:
@@ -1748,19 +1942,16 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
     switch (typespec->kind) {
     case CST_TypeSpecIdent: {
         TypeSpecIdent* ts = (TypeSpecIdent*)typespec;
-
-        // TODO: Support module path
-
-        Identifier* ident_name = ts->name;
-        Symbol* ident_sym = resolve_name(resolver, ident_name);
+        Symbol* ident_sym = lookup_ident(resolver, ts->mod_ns, ts->name, typespec->range);
 
         if (!ident_sym) {
-            resolver_on_error(resolver, typespec->range, "Undefined type `%s`", ident_name->str);
+            // TODO: Print full namespaced name
+            resolver_on_error(resolver, typespec->range, "Undefined type `%s`", ts->name->str);
             return NULL;
         }
 
         if (ident_sym->kind != SYMBOL_TYPE) {
-            resolver_on_error(resolver, typespec->range, "Identifier `%s` is not a type", ident_name->str);
+            resolver_on_error(resolver, typespec->range, "Identifier `%s` is not a type", ts->name->str);
             return NULL;
         }
 
@@ -1838,7 +2029,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 return NULL;
             }
 
-            param = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, param);
+            param = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, param);
 
             if (param->kind == TYPE_ARRAY) {
                 resolver_on_error(resolver, proc_param->range,
@@ -1868,7 +2059,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 return NULL;
             }
 
-            ret = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, ret);
+            ret = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, ret);
 
             if (ret->kind == TYPE_ARRAY) {
                 assert(ts->ret);
@@ -1932,7 +2123,7 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 
             // If assigning an array to a pointer, try to decay the right-hand-side expression into a pointer.
             // Ex: var p : ^char = bytes_array;
-            if ((declared_type->kind == TYPE_PTR) && !eop_decay(resolver, &right_eop, expr->range)) {
+            if ((declared_type->kind == TYPE_PTR) && !try_eop_array_decay(resolver, &right_eop, expr->range)) {
                 return false;
             }
 
@@ -1998,7 +2189,9 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
         type = expr->type;
     }
 
-    // TODO: Complete incomplete aggregate type
+    if (!try_complete_aggregate_type(resolver, type)) {
+        return false;
+    }
 
     if (type->size == 0) {
         resolver_on_error(resolver, expr->range, "Cannot declare a variable of zero size.");
@@ -2020,7 +2213,6 @@ static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
         return false;
     }
 
-    // TODO: Complete incomplete aggregate type
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
 
@@ -2119,11 +2311,15 @@ static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
         return false;
     }
 
-    type = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type);
+    type = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type);
 
     if (type->kind == TYPE_ARRAY) {
         resolver_on_error(resolver, typespec->range,
                           "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
+        return false;
+    }
+
+    if (!try_complete_aggregate_type(resolver, type)) {
         return false;
     }
 
@@ -2174,8 +2370,6 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
             return false;
         }
 
-        // TODO: complete incomplete param type (struct, union)
-
         array_push(params, param_sym->type);
     }
 
@@ -2192,7 +2386,11 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
             return false;
         }
 
-        ret_type = type_incomplete_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, ret_type);
+        if (!try_complete_aggregate_type(resolver, ret_type)) {
+            return false;
+        }
+
+        ret_type = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, ret_type);
 
         if (ret_type->kind == TYPE_ARRAY) {
             resolver_on_error(resolver, decl->ret->range,
@@ -2325,7 +2523,7 @@ static bool resolve_cond_expr(Resolver* resolver, Expr* expr, ExprOperand* expr_
     expr_eop->is_lvalue = expr->is_lvalue;
     expr_eop->imm = expr->imm;
 
-    if (!eop_decay(resolver, expr_eop, expr->range))
+    if (!try_eop_array_decay(resolver, expr_eop, expr->range))
         return false;
 
     if (!type_is_scalar(expr_eop->type)) {
@@ -2412,7 +2610,7 @@ static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_
     return ret;
 }
 
-static bool eop_decay(Resolver* resolver, ExprOperand* eop, ProgRange range)
+static bool try_eop_array_decay(Resolver* resolver, ExprOperand* eop, ProgRange range)
 {
     if (eop->type->kind != TYPE_ARRAY) {
         return true;
@@ -2483,7 +2681,7 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 
     ExprOperand right_eop = OP_FROM_EXPR(right_expr);
 
-    if ((left_expr->type->kind == TYPE_PTR) && !eop_decay(resolver, &right_eop, right_expr->range))
+    if ((left_expr->type->kind == TYPE_PTR) && !try_eop_array_decay(resolver, &right_eop, right_expr->range))
         return false;
 
     if (!convert_eop(&right_eop, left_expr->type)) {
@@ -2570,7 +2768,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
 
             ExprOperand ret_eop = OP_FROM_EXPR(sret->expr);
 
-            if (!eop_decay(resolver, &ret_eop, sret->expr->range))
+            if (!try_eop_array_decay(resolver, &ret_eop, sret->expr->range))
                 return false;
 
             if (!convert_eop(&ret_eop, ret_type)) {
@@ -2709,8 +2907,15 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
         }
         else {
             assert(decl->kind == CST_DeclStruct || decl->kind == CST_DeclUnion);
-            resolver_on_error(resolver, decl->range, "Aggregate type declarations are not supported _yet_.");
-            success = false;
+
+            sym->type = type_incomplete_aggregate(&resolver->ctx->ast_mem, sym);
+            sym->status = SYMBOL_STATUS_RESOLVED;
+
+            if (is_global) {
+                bucket_list_add_elem(&resolver->ctx->aggregate_types, sym);
+            }
+
+            success = true;
         }
 
         break;
@@ -2792,6 +2997,7 @@ bool resolve_module(Resolver* resolver, Module* mod)
 bool resolve_reachable_sym_defs(Resolver* resolver)
 {
     BucketList* procs = &resolver->ctx->procs;
+    BucketList* aggregate_types = &resolver->ctx->aggregate_types;
 
     // NOTE: The procs bucket-list may grow during iteration if new proc symbols are encountered
     // while resolving proc/struct/union bodies.
@@ -2804,6 +3010,17 @@ bool resolve_reachable_sym_defs(Resolver* resolver)
         assert(sym->kind == SYMBOL_PROC);
 
         if (!resolve_global_proc_body(resolver, sym)) {
+            return false;
+        }
+    }
+
+    for (size_t i = 0; i < aggregate_types->num_elems; i += 1) {
+        void** sym_ptr = bucket_list_get_elem_packed(aggregate_types, i);
+        assert(sym_ptr);
+        Symbol* sym = (Symbol*)(*sym_ptr);
+        assert(sym->kind == SYMBOL_TYPE);
+
+        if (!try_complete_aggregate_type(resolver, sym->type)) {
             return false;
         }
     }

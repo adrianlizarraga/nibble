@@ -174,3 +174,10 @@ uint64_t* hmap_get(HMap* map, uint64_t key)
     return NULL;
 }
 
+void* hmap_get_obj(HMap* map, uint64_t key)
+{
+    uint64_t* obj_ptr = hmap_get(map, key);
+
+    return obj_ptr ? (void*)*obj_ptr : NULL;
+}
+

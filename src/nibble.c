@@ -456,6 +456,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     bucket_list_init(&nibble->src_files, &nibble->gen_mem, 16);
     bucket_list_init(&nibble->vars, &nibble->ast_mem, 32);
     bucket_list_init(&nibble->procs, &nibble->ast_mem, 32);
+    bucket_list_init(&nibble->aggregate_types, &nibble->ast_mem, 16);
 
     error_stream_init(&nibble->errors, &nibble->gen_mem);
 
