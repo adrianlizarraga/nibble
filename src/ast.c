@@ -12,9 +12,10 @@ static TypeSpec* new_typespec_(Allocator* allocator, size_t size, size_t align, 
     return typespec;
 }
 
-TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* name, ProgRange range)
+TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range)
 {
     TypeSpecIdent* typespec = new_typespec(allocator, TypeSpecIdent, range);
+    typespec->mod_ns = mod_ns;
     typespec->name = name;
 
     return (TypeSpec*)typespec;
@@ -1376,7 +1377,7 @@ static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
     if (decl->kind == CST_DeclEnum) {
         DeclEnum* decl_enum = (DeclEnum*)decl;
 
-        TypeSpec* enum_item_typespec = new_typespec_ident(allocator, decl->name, decl->range); // TODO: Range is wrong
+        TypeSpec* enum_item_typespec = new_typespec_ident(allocator, NULL, decl->name, decl->range); // TODO: Range is wrong
 
         List* head = &decl_enum->items;
         List* it = head->next;
@@ -1590,7 +1591,13 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
         case CST_TypeSpecIdent: {
             TypeSpecIdent* t = (TypeSpecIdent*)typespec;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(:ident %s)", t->name->str);
+            ftprint_char_array(&dstr, false, "(:ident ");
+
+            if (t->mod_ns) {
+                ftprint_char_array(&dstr, false, "%s::", t->mod_ns->str);
+            }
+
+            ftprint_char_array(&dstr, false, "%s", t->name->str);
         } break;
         case CST_TypeSpecTypeof: {
             TypeSpecTypeof* t = (TypeSpecTypeof*)typespec;

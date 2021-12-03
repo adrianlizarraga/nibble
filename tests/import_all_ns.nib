@@ -2,11 +2,12 @@ import "./cstring.nib" as CString;
 
 proc main(argc : int, argv : ^^char) => int
 {
-    var a : ^char = "Hello\n";
-    var num_chars := CString::len(a);
+    var msg : CString::StringView;
+    msg.str = "Hello!\n";
+    msg.len = CString::len(msg.str);
 
-    #writeout(a, num_chars);
+    #writeout(msg.str, msg.len);
 
-    return num_chars + CString::CSTR_CONST + CString::cstr_var + CString::get_rand(2);
+    return msg.len + CString::CSTR_CONST + CString::cstr_var + CString::get_rand(2);
 }
 

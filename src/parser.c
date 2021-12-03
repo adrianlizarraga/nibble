@@ -321,14 +321,53 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
     return typespec;
 }
 
-static TypeSpec* parse_typespec_ident(Parser* parser)
+typedef struct NamespacedIdent {
+    ProgRange range;
+    Identifier* mod_ns;
+    Identifier* name;
+} NamespacedIdent;
+
+// namespaced_ident = (TKN_IDENT '::')? TKN_IDENT
+static bool parse_namespaced_ident(Parser* parser, NamespacedIdent* ns_ident)
 {
     assert(is_token_kind(parser, TKN_IDENT));
-    Token token = parser->token;
+    ProgRange range = parser->token.range;
+
+    Identifier* name = parser->token.as_ident.ident;
+    Identifier* mod_ns = NULL;
 
     next_token(parser);
 
-    return new_typespec_ident(parser->ast_arena, token.as_ident.ident, token.range);
+    if (match_token(parser, TKN_DBL_COLON)) {
+        mod_ns = name; // The first identifier was actually a module namespace.
+
+        if (!expect_token(parser, TKN_IDENT, "Failed to parse identifier name after module namespace")) {
+            return false;
+        }
+
+        Token ptoken = parser->ptoken;
+
+        name = ptoken.as_ident.ident; // Update the identifier name.
+        range.end = ptoken.range.end;
+    }
+
+    ns_ident->range = range;
+    ns_ident->name = name;
+    ns_ident->mod_ns = mod_ns;
+
+    return true;
+}
+
+// typespec_ident = namespaced_ident
+static TypeSpec* parse_typespec_ident(Parser* parser)
+{
+    NamespacedIdent ns_ident = {0};
+
+    if (!parse_namespaced_ident(parser, &ns_ident)) {
+        return NULL;
+    }
+
+    return new_typespec_ident(parser->ast_arena, ns_ident.mod_ns, ns_ident.name, ns_ident.range);
 }
 
 static TypeSpec* parse_typespec_typeof(Parser* parser)
@@ -610,29 +649,13 @@ static Expr* parse_expr_sizeof(Parser* parser)
 // mod_namespace = (TKN_IDENT '::')
 static Expr* parse_expr_ident(Parser* parser)
 {
-    assert(is_token_kind(parser, TKN_IDENT));
-    ProgRange range = parser->token.range;
-    List mod_path = list_head_create(mod_path);
+    NamespacedIdent ns_ident = {0};
 
-    Identifier* name = parser->token.as_ident.ident;
-    Identifier* mod_ns = NULL;
-
-    next_token(parser);
-
-    if (match_token(parser, TKN_DBL_COLON)) {
-        mod_ns = name; // The first identifier was actually a module namespace.
-
-        if (!expect_token(parser, TKN_IDENT, "Failed to parse identifier name after module namespace")) {
-            return NULL;
-        }
-
-        Token ptoken = parser->ptoken;
-
-        name = ptoken.as_ident.ident; // Update the identifier name.
-        range.end = ptoken.range.end;
+    if (!parse_namespaced_ident(parser, &ns_ident)) {
+        return NULL;
     }
 
-    return new_expr_ident(parser->ast_arena, mod_ns, name, range);
+    return new_expr_ident(parser->ast_arena, ns_ident.mod_ns, ns_ident.name, ns_ident.range);
 }
 
 // expr_base = TKN_INT

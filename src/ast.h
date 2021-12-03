@@ -50,7 +50,7 @@ struct TypeSpec {
 
 typedef struct TypeSpecIdent {
     TypeSpec super;
-    // TODO: support module namespace
+    Identifier* mod_ns;
     Identifier* name;
 } TypeSpecIdent;
 
@@ -106,7 +106,7 @@ typedef struct TypeSpecConst {
 
 AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 
-TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* name, ProgRange range);
+TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
 TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range);
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
