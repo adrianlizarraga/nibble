@@ -19,6 +19,7 @@ Nibble supports the followng operating systems:
 - [ ] x86 windows
 - [ ] arm64 macOS
 
+Refer to the [language reference document](https://github.com/adrianlizarraga/nibble/wiki/Language-reference) for details. It is very much a work in progress.
 ## Quickstart
 ### 1. Build the Nibble compiler
 The only library required to build the Nibble compiler is the C standard library.
