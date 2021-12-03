@@ -1,0 +1,71 @@
+import "./cstring.nib" as CStr;
+
+proc test_cstr_cmp() => bool {
+    var s : []char = "123";
+
+    if (CStr::cstr_cmp("123", s) != 0) {
+        return 0;
+    }
+
+    if (CStr::cstr_cmp("123", "124") != -1) {
+        return 0;
+    }
+
+    if (CStr::cstr_cmp("125", "124") != 1) {
+        return 0;
+    }
+
+    return 1;
+}
+
+proc test_cstr_ncmp() => bool {
+    var s : []char = "123";
+
+    if (CStr::cstr_ncmp("123", s, 3) != 0) {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("123", "124", 3) != -1) {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("125", "124", 3) != 1) {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("123", "124", 2) != 0) {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("1234567", "123", 7) != '4') {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("123", "1234567", 7) != -'4') {
+        return 0;
+    }
+
+    return 1;
+}
+
+proc test_cstr_len() => bool {
+    if (CStr::cstr_len("Hello") != 5) {
+        return 0;
+    }
+
+    return 1;
+}
+
+proc main() => int {
+    var pass : bool = test_cstr_cmp() &&
+                      test_cstr_ncmp();
+
+    if (!pass) {
+        #writeout("Fail\n", 5);
+    }
+    else {
+        #writeout("Pass\n", 5);
+    }
+
+    return !pass;
+}
