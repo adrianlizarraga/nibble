@@ -205,8 +205,8 @@ $ ./out
 Nibble does not yet support all basic C features:
 - [x] Integer types
 - [ ] Floating-point types
-- [ ] Structure types
-- [ ] Union types
+- [x] Structure types
+- [x] Union types
 - [x] Enum types
 - [x] Typedefs
 - [ ] Procedures
