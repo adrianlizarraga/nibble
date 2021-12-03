@@ -1,19 +1,20 @@
-struct Lexer {
-    x : char;
-    id : int;
-    str: ^char;
-    at : ^char;
+struct Vec3 {
+    x : int;
+    y : int;
+    z : int;
 }
 
 proc main() => int {
     #writeout("Structs\n", 8);
 
-    var lexer : Lexer;
-    lexer.id = 10;
+    var v : Vec3;
+    v.x = 10;
 
-    var p_lexer : ^Lexer = ^lexer;
-    p_lexer.x = 5;
+    var p_v : ^Vec3 = ^v;
+    p_v.y = 20;
 
-    // 10 + 5 + 5 + 5 + 100 = 125
-    return lexer.id + p_lexer.x + lexer.x + (*p_lexer).x + 100;
+    (*p_v).z = 30;
+
+    // 10 + 20 + 30 = 60
+    return v.x + p_v.y + (*p_v).z;
 }
