@@ -869,6 +869,9 @@ static void IR_execute_deferred_cmp(IR_ProcBuilder* builder, IR_Operand* operand
         // This is the "true" control path. Move the literal 1 into destination register.
         IR_emit_instr_limm(builder, operand->type, dst_reg, ir_one_imm);
 
+        // Create a jump to skip the false control path.
+        IR_Instr* jmp_skip_false = IR_emit_instr_jmp(builder, IR_alloc_jmp_target(builder, 0));
+
         // Patch short-circuit jumps that jump to the "false" control path.
         for (IR_DeferredJmpcc* it = def_cmp->first_sc_jmp; it; it = it->next) {
             if (!it->result)
@@ -885,6 +888,9 @@ static void IR_execute_deferred_cmp(IR_ProcBuilder* builder, IR_Operand* operand
 
         // This is the "false" control path. Move the literal 0 into destination register.
         IR_emit_instr_limm(builder, operand->type, dst_reg, ir_zero_imm);
+
+        // Patch jump that skips "false" control path.
+        IR_patch_jmp_target(jmp_skip_false, IR_get_jmp_target(builder));
     }
 
     operand->kind = IR_OPERAND_REG;
@@ -1431,7 +1437,7 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         }
         // ptr - ptr => s64
         else if (left_is_ptr && right_is_ptr) {
-            assert(result_type == left.type);
+            assert(result_type != left.type);
 
             u64 base_size = left.type->as_ptr.base->size;
             u32 base_size_log2 = (u32)clp2(base_size);
