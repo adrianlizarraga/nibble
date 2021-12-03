@@ -1332,6 +1332,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
     expr->type = dst_op.type;
     expr->is_lvalue = dst_op.is_lvalue;
     expr->is_constexpr = dst_op.is_constexpr;
+    expr->is_imm = dst_op.is_imm;
     expr->imm = dst_op.imm;
 
     return true;
@@ -1462,6 +1463,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
     expr->type = dst_op.type;
     expr->is_lvalue = dst_op.is_lvalue;
     expr->is_constexpr = dst_op.is_constexpr;
+    expr->is_imm = dst_op.is_imm;
     expr->imm = dst_op.imm;
 
     return true;
