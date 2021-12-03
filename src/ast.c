@@ -645,7 +645,7 @@ int type_integer_ranks[] = {
 static const char* type_names[] = {
     [TYPE_VOID] = "void",   [TYPE_INTEGER] = "_integer_", [TYPE_FLOAT] = "_float_",   [TYPE_ENUM] = "_enum_",   [TYPE_PTR] = "_ptr_",
     [TYPE_PROC] = "_proc_", [TYPE_ARRAY] = "_array_",     [TYPE_STRUCT] = "_struct_", [TYPE_UNION] = "_union_",
-    [TYPE_INCOMPLETE_AGGREGATE] = "_incomplete_aggregate",
+    [TYPE_INCOMPLETE_AGGREGATE] = "_incomplete_aggregate_",
 };
 
 static const char* type_integer_names[] = {
