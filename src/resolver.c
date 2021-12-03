@@ -626,18 +626,40 @@ static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scal
 
 static bool try_complete_aggregate_type(Resolver* resolver, Type* type);
 
+typedef struct SeenField {
+    Identifier* name;
+    ProgRange range;
+} SeenField;
+
 static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregate* decl_aggregate)
 {
     AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem); 
 
     // Resolve each parsed aggregate field into a field type.
     TypeAggregateField* field_types = array_create(&resolver->ctx->tmp_mem, TypeAggregateField, 16);
+    HMap seen_fields = hmap(3, &resolver->ctx->tmp_mem); // Used to check for duplicate field names
 
     List* head = &decl_aggregate->fields;
 
     for (List* it = head->next; it != head; it = it->next) {
         AggregateField* field = list_entry(it, AggregateField, lnode);
 
+        // Check for duplicate field names.
+        SeenField* seen_field = hmap_get_obj(&seen_fields, PTR_UINT(field->name));
+
+        if (seen_field) {
+            assert(seen_field->name == field->name);
+            resolver_on_error(resolver, seen_field->range, "Duplicate member field name `%s`.", field->name->str);
+            return false;
+        }
+
+        seen_field = alloc_type(&resolver->ctx->tmp_mem, SeenField, false);
+        seen_field->name = field->name;
+        seen_field->range = field->range;
+
+        hmap_put(&seen_fields, PTR_UINT(field->name), PTR_UINT(seen_field));
+
+        // Resolve field's type.
         Type* field_type = resolve_typespec(resolver, field->typespec);
 
         if (!try_complete_aggregate_type(resolver, field_type)) {
@@ -704,6 +726,17 @@ static bool try_complete_aggregate_type(Resolver* resolver, Type* type)
         success = complete_aggregate_type(resolver, type, decl_aggregate);
     }
     exit_module(resolver, mod_state);
+
+#if 1
+    if (success) {
+        ftprint_out("Completed type %s\n", sym->name->str);
+        ftprint_out("\tsize: %llu, align: %llu\n", type->size, type->align);
+        ftprint_out("\tnum_fields: %llu\n", type->as_aggregate.num_fields);
+    }
+    else {
+        ftprint_out("Failed to complete type %s\n", sym->name->str);
+    }
+#endif
 
     return success;
 }
@@ -874,6 +907,10 @@ static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
         return false;
     }
 
+    if (!try_complete_aggregate_type(resolver, type)) {
+        return false;
+    }
+
     expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
     expr->super.is_constexpr = true;
     expr->super.is_imm = true;
@@ -966,6 +1003,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             resolve_binary_eop(TKN_PLUS, &dst_op, &left_op, &right_op);
         }
         else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
+            if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
+                return false;
+            }
+
             if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op, &right_op)) {
                 resolver_on_error(resolver, ebinary->left->range, "Cannot add to a pointer with a base type (%s) of zero size",
                                   type_name(left_op.type->as_ptr.base));
@@ -974,6 +1015,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             }
         }
         else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR)) {
+            if (!try_complete_aggregate_type(resolver, right_op.type->as_ptr.base)) {
+                return false;
+            }
+
             if (!resolve_ptr_int_arith(resolver, &dst_op, &right_op, &left_op)) {
                 resolver_on_error(resolver, ebinary->right->range, "Cannot add to a pointer with a base type (%s) of zero size",
                                   type_name(right_op.type->as_ptr.base));
@@ -996,6 +1041,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         }
         // ptr - int
         else if (left_is_ptr && type_is_integer_like(right_op.type)) {
+            if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
+                return false;
+            }
+
             if (!resolve_ptr_int_arith(resolver, &dst_op, &left_op, &right_op)) {
                 resolver_on_error(resolver, ebinary->left->range, "Cannot subtract from a pointer with a base type (%s) of zero size",
                                   type_name(left_op.type->as_ptr.base));
@@ -1007,6 +1056,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         else if (left_is_ptr && right_is_ptr) {
             Type* left_base_type = left_op.type->as_ptr.base;
             Type* right_base_type = right_op.type->as_ptr.base;
+
+            if (!try_complete_aggregate_type(resolver, left_base_type) || !try_complete_aggregate_type(resolver, right_base_type)) {
+                return false;
+            }
 
             if ((left_base_type == builtin_types[BUILTIN_TYPE_VOID].type) &&
                 (right_base_type == builtin_types[BUILTIN_TYPE_VOID].type)) {
@@ -1427,6 +1480,63 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
     return true;
 }
 
+static bool resolve_expr_field(Resolver* resolver, ExprField* expr_field)
+{
+    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to
+    // an aggregate type.
+    if (!resolve_expr(resolver, expr_field->object, NULL)) {
+        return false;
+    }
+
+    bool is_lvalue = expr_field->object->is_lvalue;
+    Type* obj_type = expr_field->object->type;
+
+    if (obj_type->kind == TYPE_PTR) {
+        obj_type = obj_type->as_ptr.base;
+        is_lvalue = true;
+    }
+
+    if (!try_complete_aggregate_type(resolver, obj_type)) {
+        return false;
+    }
+
+    if (!type_is_aggregate(obj_type)) {
+        resolver_on_error(resolver, expr_field->object->range,
+                          "Cannot access field on non-aggregate (i.e., struct or union) type `%s`.", type_name(obj_type));
+        return false;
+    }
+
+    // Check that the accessed field exists.
+    Type* field_type = NULL;
+
+    TypeAggregate* type_aggregate = &obj_type->as_aggregate;
+    size_t num_fields = type_aggregate->num_fields;
+
+    for (size_t i = 0; i < num_fields; i += 1) {
+        TypeAggregateField* f = type_aggregate->fields + i;
+
+        if (f->name == expr_field->field) {
+            field_type = f->type;
+            break;
+        }
+    }
+
+    if (!field_type) {
+        // TODO: Range on field identifier
+        resolver_on_error(resolver, expr_field->super.range, "Type `%s` does not have a field named `%s`.",
+                          type_name(obj_type), expr_field->field->str);
+        return false;
+    }
+
+    // Set overall expression type and attributes.
+    expr_field->super.type = field_type;
+    expr_field->super.is_lvalue = is_lvalue;
+    expr_field->super.is_constexpr = false;
+    expr_field->super.is_imm = false;
+
+    return true;
+}
+
 static bool resolve_expr_index(Resolver* resolver, Expr* expr)
 {
     ExprIndex* eindex = (ExprIndex*)expr;
@@ -1781,6 +1891,10 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
         return false;
     }
 
+    if (!try_complete_aggregate_type(resolver, type)) {
+        return false;
+    }
+
     // For now, only allow array types.
     // TODO: Support struct types
     if (type->kind == TYPE_ARRAY) {
@@ -1805,6 +1919,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_unary(resolver, expr);
     case CST_ExprIndex:
         return resolve_expr_index(resolver, expr);
+    case CST_ExprField:
+        return resolve_expr_field(resolver, (ExprField*)expr);
     case CST_ExprCall:
         return resolve_expr_call(resolver, expr);
     case CST_ExprCast:
@@ -2082,7 +2198,9 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
         type = expr->type;
     }
 
-    // TODO: Complete incomplete aggregate type
+    if (!try_complete_aggregate_type(resolver, type)) {
+        return false;
+    }
 
     if (type->size == 0) {
         resolver_on_error(resolver, expr->range, "Cannot declare a variable of zero size.");
@@ -2104,7 +2222,6 @@ static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
         return false;
     }
 
-    // TODO: Complete incomplete aggregate type
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
 
@@ -2211,6 +2328,10 @@ static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
         return false;
     }
 
+    if (!try_complete_aggregate_type(resolver, type)) {
+        return false;
+    }
+
     if (type->size == 0) {
         resolver_on_error(resolver, decl->super.range, "Cannot declare a parameter of zero size.");
         return false;
@@ -2258,8 +2379,6 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
             return false;
         }
 
-        // TODO: complete incomplete param type (struct, union)
-
         array_push(params, param_sym->type);
     }
 
@@ -2273,6 +2392,10 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         ret_type = resolve_typespec(resolver, decl->ret);
 
         if (!ret_type) {
+            return false;
+        }
+
+        if (!try_complete_aggregate_type(resolver, ret_type)) {
             return false;
         }
 
@@ -2909,12 +3032,6 @@ bool resolve_reachable_sym_defs(Resolver* resolver)
         if (!try_complete_aggregate_type(resolver, sym->type)) {
             return false;
         }
-
-#if 0
-        ftprint_out("Completed type %s\n", sym->name->str);
-        ftprint_out("\tsize: %llu, align: %llu\n", sym->type->size, sym->type->align);
-        ftprint_out("\tnum_fields: %llu\n", sym->type->as_aggregate.num_fields);
-#endif
     }
 
     return true;

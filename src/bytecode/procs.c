@@ -1709,6 +1709,73 @@ static void IR_emit_expr_unary(IR_ProcBuilder* builder, ExprUnary* expr, IR_Oper
     }
 }
 
+static void IR_emit_expr_field(IR_ProcBuilder* builder, ExprField* expr_field, IR_Operand* dst)
+{
+    IR_Operand obj_op = {0};
+
+    IR_emit_expr(builder, expr_field->object, &obj_op);
+
+    if (obj_op.type->kind == TYPE_PTR) {
+
+        // Load ptr to object.
+        IR_op_to_r(builder, &obj_op, false);
+
+        if (obj_op.kind != IR_OPERAND_MEM_ADDR) {
+            assert(obj_op.kind == IR_OPERAND_REG);
+            IR_Reg base_reg = obj_op.reg;
+
+            obj_op.kind = IR_OPERAND_MEM_ADDR;
+            obj_op.addr.base_kind = IR_MEM_BASE_REG;
+            obj_op.addr.base.reg = base_reg;
+            obj_op.addr.index_reg = IR_REG_COUNT;
+            obj_op.addr.disp = 0;
+            obj_op.addr.scale = 0;
+        }
+
+        Type* obj_type = obj_op.type->as_ptr.base;
+        size_t field_offset = get_type_aggregate_field(obj_type, expr_field->field)->offset;
+
+        dst->kind = IR_OPERAND_DEREF_ADDR;
+        dst->type = expr_field->super.type;
+        dst->addr = obj_op.addr;
+        dst->addr.disp += (u32)field_offset;
+    }
+    else {
+        // Get operand with pointer to the object
+        if (obj_op.kind == IR_OPERAND_VAR) {
+           if (obj_op.sym->is_local) {
+                dst->kind = IR_OPERAND_MEM_ADDR;
+                dst->addr.base_kind = IR_MEM_BASE_SYM;
+                dst->addr.base.sym = obj_op.sym;
+           }
+           else {
+                IR_Reg dst_reg = IR_next_reg(builder);
+                IR_emit_instr_laddr_sym(builder, dst_reg, obj_op.type, obj_op.sym);
+
+                dst->addr.base_kind = IR_MEM_BASE_REG;
+                dst->addr.base.reg = dst_reg;
+           }
+
+           //dst->type = ?
+           dst->addr.index_reg = IR_REG_COUNT;
+           dst->addr.disp = 0;
+           dst->addr.scale = 0;
+        }
+        else {
+            assert(obj_op.kind == IR_OPERAND_DEREF_ADDR);
+            dst->kind = IR_OPERAND_MEM_ADDR;
+            dst->addr = obj_op.addr;
+            //dst->type = 
+        }
+
+        size_t field_offset = get_type_aggregate_field(obj_op.type, expr_field->field)->offset;
+
+        dst->kind = IR_OPERAND_DEREF_ADDR;
+        dst->type = expr_field->super.type;
+        dst->addr.disp += (u32)field_offset;
+    }
+}
+
 static void IR_emit_expr_index(IR_ProcBuilder* builder, ExprIndex* expr_index, IR_Operand* dst)
 {
     IR_Operand array_op = {0};
@@ -2038,6 +2105,9 @@ static void IR_emit_expr(IR_ProcBuilder* builder, Expr* expr, IR_Operand* dst)
         break;
     case CST_ExprIndex:
         IR_emit_expr_index(builder, (ExprIndex*)expr, dst);
+        break;
+    case CST_ExprField:
+        IR_emit_expr_field(builder, (ExprField*)expr, dst);
         break;
     case CST_ExprCompoundLit:
         IR_emit_expr_compound_lit(builder, (ExprCompoundLit*)expr, dst);

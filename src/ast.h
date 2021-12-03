@@ -50,6 +50,7 @@ struct TypeSpec {
 
 typedef struct TypeSpecIdent {
     TypeSpec super;
+    // TODO: support module namespace
     Identifier* name;
 } TypeSpecIdent;
 
@@ -732,6 +733,8 @@ Type* try_incomplete_array_decay(Allocator* allocator, HMap* type_ptr_cache, Typ
 
 void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields);
 void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields);
+
+TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len);

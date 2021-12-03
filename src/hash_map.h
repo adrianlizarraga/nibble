@@ -38,6 +38,7 @@ void hmap_destroy(HMap* map);
 
 uint64_t* hmap_put(HMap* map, uint64_t key, uint64_t value);
 uint64_t* hmap_get(HMap* map, uint64_t key);
+void* hmap_get_obj(HMap* map, uint64_t key);
 
 uint64_t hash_uint64(uint64_t h);
 uint64_t hash_ptr(const void* ptr);

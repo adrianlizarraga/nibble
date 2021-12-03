@@ -887,6 +887,24 @@ Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym)
     return type;
 }
 
+TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name)
+{
+    assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
+    TypeAggregate* type_aggregate = &type->as_aggregate;
+    size_t num_fields = type_aggregate->num_fields;
+    TypeAggregateField* fields = type_aggregate->fields;
+
+    for (size_t i = 0; i < num_fields; i += 1) {
+        TypeAggregateField* field = fields + i;
+
+        if (field->name == name) {
+            return field;
+        }
+    }
+    
+    return NULL;
+}
+
 void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields)
 {
     size_t size = 0;
