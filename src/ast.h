@@ -59,9 +59,9 @@ typedef struct TypeSpecTypeof {
 } TypeSpecTypeof;
 
 typedef struct AggregateField {
+    ProgRange range;
     Identifier* name;
     TypeSpec* typespec;
-    ProgRange range;
     ListNode lnode;
 } AggregateField;
 
@@ -541,6 +541,8 @@ typedef struct DeclEnum {
 typedef struct DeclAggregate {
     Decl super;
     List fields;
+    // TODO: initialize during parsing.
+    bool is_incomplete;
 } DeclAggregate;
 
 typedef DeclAggregate DeclUnion;
@@ -595,13 +597,8 @@ typedef enum TypeKind {
     TYPE_ARRAY,
     TYPE_STRUCT,
     TYPE_UNION,
+    TYPE_INCOMPLETE_AGGREGATE,
 } TypeKind;
-
-typedef enum TypeStatus {
-    TYPE_STATUS_COMPLETE,
-    TYPE_STATUS_INCOMPLETE,
-    TYPE_STATUS_COMPLETING,
-} TypeStatus;
 
 typedef struct Type Type;
 
@@ -646,9 +643,13 @@ typedef struct TypeAggregate {
     TypeAggregateField* fields;
 } TypeAggregate;
 
+typedef struct TypeIncompleteAggregate {
+    Symbol* sym;
+    bool is_completing;
+} TypeIncompleteAggregate;
+
 struct Type {
     TypeKind kind;
-    TypeStatus status;
     int id;
     size_t size;
     size_t align;
@@ -661,6 +662,7 @@ struct Type {
         TypeProc as_proc;
         TypeArray as_array;
         TypeAggregate as_aggregate;
+        TypeIncompleteAggregate as_incomplete;
     };
 };
 
@@ -725,13 +727,18 @@ bool type_is_incomplete_array(Type* type);
 bool type_has_incomplete_array(Type* type);
 bool types_are_compatible(Type* t, Type* u);
 
+Type* try_array_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
+Type* try_incomplete_array_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
+
+void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields);
+void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields);
+
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len);
-Type* type_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
-Type* type_incomplete_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
 Type* type_unsigned_int(Type* type_int);
 Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl);
+Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym);
 
 ///////////////////////////////
 //       Symbols

@@ -2082,7 +2082,7 @@ static void IR_emit_array_init(IR_ProcBuilder* builder, IR_Operand* array_op, IR
     assert(array_op->type->kind == TYPE_ARRAY);
 
     Type* arr_type = array_op->type;
-    Type* ptr_type = type_decay(builder->arena, &builder->type_cache->ptrs, arr_type);
+    Type* ptr_type = try_array_decay(builder->arena, &builder->type_cache->ptrs, arr_type);
     Type* elem_type = ptr_type->as_ptr.base;
 
     // Decay array into pointer to the first elem.
@@ -2158,7 +2158,7 @@ static void IR_emit_array_str_init(IR_ProcBuilder* builder, IR_Operand* array_op
     assert(array_op->type->kind == TYPE_ARRAY);
 
     Type* arr_type = array_op->type;
-    Type* ptr_type = type_decay(builder->arena, &builder->type_cache->ptrs, arr_type);
+    Type* ptr_type = try_array_decay(builder->arena, &builder->type_cache->ptrs, arr_type);
     Type* elem_type = ptr_type->as_ptr.base;
     u64 num_elems = arr_type->as_array.len;
 

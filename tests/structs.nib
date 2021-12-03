@@ -1,0 +1,16 @@
+struct Lexer {
+    id : int;
+    str: ^char;
+    at : ^char;
+}
+
+union Val {
+    _u8: u8;
+    _u16: u16;
+    _u32: u32;
+    _u64: u64;
+}
+
+proc main() => int {
+    return #writeout("Structs\n", 8);
+}
