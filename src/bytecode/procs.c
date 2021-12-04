@@ -439,6 +439,150 @@ static void IR_emit_instr_shl(IR_ProcBuilder* builder, Type* dst_type, IR_Reg ds
     IR_add_instr(builder, instr);
 }
 
+static void IR_emit_instr_and(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
+{
+    IR_Instr* instr = NULL;
+
+    switch (src_op->kind) {
+    case IR_OPERAND_REG:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_R);
+        instr->and_r_r.type = type;
+        instr->and_r_r.dst = dst;
+        instr->and_r_r.src = src_op->reg;
+        break;
+    case IR_OPERAND_MEM_ADDR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr->and_r_m.type = type;
+        instr->and_r_m.dst = dst;
+        instr->and_r_m.src = src_op->addr;
+        break;
+    case IR_OPERAND_VAR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr->and_r_m.type = type;
+        instr->and_r_m.dst = dst;
+        instr->and_r_m.src.base_kind = IR_MEM_BASE_SYM;
+        instr->and_r_m.src.base.sym = src_op->sym;
+        break;
+    case IR_OPERAND_IMM:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+        instr->and_r_i.type = type;
+        instr->and_r_i.dst = dst;
+        instr->and_r_i.src = src_op->imm;
+        break;
+    default:
+        assert(!0);
+        break;
+    }
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_and_r_i(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Scalar src)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+    instr->and_r_i.type = type;
+    instr->and_r_i.dst = dst;
+    instr->and_r_i.src = src;
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_or(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
+{
+    IR_Instr* instr = NULL;
+
+    switch (src_op->kind) {
+    case IR_OPERAND_REG:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_R);
+        instr->or_r_r.type = type;
+        instr->or_r_r.dst = dst;
+        instr->or_r_r.src = src_op->reg;
+        break;
+    case IR_OPERAND_MEM_ADDR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr->or_r_m.type = type;
+        instr->or_r_m.dst = dst;
+        instr->or_r_m.src = src_op->addr;
+        break;
+    case IR_OPERAND_VAR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr->or_r_m.type = type;
+        instr->or_r_m.dst = dst;
+        instr->or_r_m.src.base_kind = IR_MEM_BASE_SYM;
+        instr->or_r_m.src.base.sym = src_op->sym;
+        break;
+    case IR_OPERAND_IMM:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+        instr->or_r_i.type = type;
+        instr->or_r_i.dst = dst;
+        instr->or_r_i.src = src_op->imm;
+        break;
+    default:
+        assert(!0);
+        break;
+    }
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_or_r_i(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Scalar src)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+    instr->or_r_i.type = type;
+    instr->or_r_i.dst = dst;
+    instr->or_r_i.src = src;
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_xor(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR_Operand* src_op)
+{
+    IR_Instr* instr = NULL;
+
+    switch (src_op->kind) {
+    case IR_OPERAND_REG:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_R);
+        instr->xor_r_r.type = type;
+        instr->xor_r_r.dst = dst;
+        instr->xor_r_r.src = src_op->reg;
+        break;
+    case IR_OPERAND_MEM_ADDR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr->xor_r_m.type = type;
+        instr->xor_r_m.dst = dst;
+        instr->xor_r_m.src = src_op->addr;
+        break;
+    case IR_OPERAND_VAR:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr->xor_r_m.type = type;
+        instr->xor_r_m.dst = dst;
+        instr->xor_r_m.src.base_kind = IR_MEM_BASE_SYM;
+        instr->xor_r_m.src.base.sym = src_op->sym;
+        break;
+    case IR_OPERAND_IMM:
+        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+        instr->xor_r_i.type = type;
+        instr->xor_r_i.dst = dst;
+        instr->xor_r_i.src = src_op->imm;
+        break;
+    default:
+        assert(!0);
+        break;
+    }
+
+    IR_add_instr(builder, instr);
+}
+
+static void IR_emit_instr_xor_r_i(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Scalar src)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+    instr->xor_r_i.type = type;
+    instr->xor_r_i.dst = dst;
+    instr->xor_r_i.src = src;
+
+    IR_add_instr(builder, instr);
+}
+
 static void IR_emit_instr_neg(IR_ProcBuilder* builder, Type* type, IR_Reg dst)
 {
     IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_NEG);
@@ -1546,6 +1690,87 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
 
         *dst = left;
         IR_try_free_op_reg(builder, &right);
+        break;
+    }
+    case TKN_AND: {
+        IR_emit_expr(builder, expr->left, &left);
+        IR_emit_expr(builder, expr->right, &right);
+
+        assert(left.type == right.type);
+        assert(result_type == left.type);
+        assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
+
+        if (left.kind == IR_OPERAND_IMM) {
+            IR_op_to_r(builder, &right, true);
+
+            IR_emit_instr_and_r_i(builder, result_type, right.reg, left.imm);
+
+            *dst = right;
+        }
+        else {
+            IR_op_to_r(builder, &left, true);
+            IR_op_to_rvi(builder, &right);
+
+            IR_emit_instr_and(builder, result_type, left.reg, &right);
+
+            *dst = left;
+            IR_try_free_op_reg(builder, &right);
+        }
+
+        break;
+    }
+    case TKN_OR: {
+        IR_emit_expr(builder, expr->left, &left);
+        IR_emit_expr(builder, expr->right, &right);
+
+        assert(left.type == right.type);
+        assert(result_type == left.type);
+        assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
+
+        if (left.kind == IR_OPERAND_IMM) {
+            IR_op_to_r(builder, &right, true);
+
+            IR_emit_instr_or_r_i(builder, result_type, right.reg, left.imm);
+
+            *dst = right;
+        }
+        else {
+            IR_op_to_r(builder, &left, true);
+            IR_op_to_rvi(builder, &right);
+
+            IR_emit_instr_or(builder, result_type, left.reg, &right);
+
+            *dst = left;
+            IR_try_free_op_reg(builder, &right);
+        }
+
+        break;
+    }
+    case TKN_CARET: {
+        IR_emit_expr(builder, expr->left, &left);
+        IR_emit_expr(builder, expr->right, &right);
+
+        assert(left.type == right.type);
+        assert(result_type == left.type);
+        assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
+
+        if (left.kind == IR_OPERAND_IMM) {
+            IR_op_to_r(builder, &right, true);
+
+            IR_emit_instr_xor_r_i(builder, result_type, right.reg, left.imm);
+
+            *dst = right;
+        }
+        else {
+            IR_op_to_r(builder, &left, true);
+            IR_op_to_rvi(builder, &right);
+
+            IR_emit_instr_xor(builder, result_type, left.reg, &right);
+
+            *dst = left;
+            IR_try_free_op_reg(builder, &right);
+        }
+
         break;
     }
     case TKN_EQ: {

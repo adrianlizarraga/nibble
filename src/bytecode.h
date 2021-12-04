@@ -50,6 +50,21 @@ typedef enum IR_InstrKind {
     IR_INSTR_SHL_R_M,
     IR_INSTR_SHL_R_I,
 
+    // Bitwise AND
+    IR_INSTR_AND_R_R,
+    IR_INSTR_AND_R_M,
+    IR_INSTR_AND_R_I,
+
+    // Bitwise OR
+    IR_INSTR_OR_R_R,
+    IR_INSTR_OR_R_M,
+    IR_INSTR_OR_R_I,
+
+    // Bitwise XOR
+    IR_INSTR_XOR_R_R,
+    IR_INSTR_XOR_R_M,
+    IR_INSTR_XOR_R_I,
+
     // Bitwise NOT
     IR_INSTR_NOT,
 
@@ -331,6 +346,21 @@ typedef struct IR_Instr {
         IR_InstrShift_R_R shl_r_r;
         IR_InstrShift_R_M shl_r_m;
         IR_InstrShift_R_I shl_r_i;
+
+        // Bitwise AND
+        IR_InstrBinary_R_R and_r_r;
+        IR_InstrBinary_R_M and_r_m;
+        IR_InstrBinary_R_I and_r_i;
+
+        // Bitwise OR
+        IR_InstrBinary_R_R or_r_r;
+        IR_InstrBinary_R_M or_r_m;
+        IR_InstrBinary_R_I or_r_i;
+
+        // Bitwise XOR
+        IR_InstrBinary_R_R xor_r_r;
+        IR_InstrBinary_R_M xor_r_m;
+        IR_InstrBinary_R_I xor_r_i;
 
         // Two's complement negation
         IR_InstrUnary neg;
