@@ -1693,6 +1693,60 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         X64_emit_text(generator, "    shl %s, %d", dst_op_str, instr->shl_r_i.src.as_int._u8);
         break;
     }
+    case IR_INSTR_AND_R_R: {
+        u32 size = (u32)instr->and_r_r.type->size;
+
+        X64_emit_rr_instr(generator, "and", true, size, instr->and_r_r.dst, size, instr->and_r_r.src);
+        break;
+    }
+    case IR_INSTR_AND_R_M: {
+        u32 size = (u32)instr->and_r_m.type->size;
+
+        X64_emit_rm_instr(generator, "and", true, size, instr->and_r_m.dst, size, &instr->and_r_m.src);
+        break;
+    }
+    case IR_INSTR_AND_R_I: {
+        u32 size = (u32)instr->and_r_i.type->size;
+
+        X64_emit_ri_instr(generator, "and", size, instr->and_r_i.dst, size, instr->and_r_i.src);
+        break;
+    }
+    case IR_INSTR_OR_R_R: {
+        u32 size = (u32)instr->or_r_r.type->size;
+
+        X64_emit_rr_instr(generator, "or", true, size, instr->or_r_r.dst, size, instr->or_r_r.src);
+        break;
+    }
+    case IR_INSTR_OR_R_M: {
+        u32 size = (u32)instr->or_r_m.type->size;
+
+        X64_emit_rm_instr(generator, "or", true, size, instr->or_r_m.dst, size, &instr->or_r_m.src);
+        break;
+    }
+    case IR_INSTR_OR_R_I: {
+        u32 size = (u32)instr->or_r_i.type->size;
+
+        X64_emit_ri_instr(generator, "or", size, instr->or_r_i.dst, size, instr->or_r_i.src);
+        break;
+    }
+    case IR_INSTR_XOR_R_R: {
+        u32 size = (u32)instr->xor_r_r.type->size;
+
+        X64_emit_rr_instr(generator, "xor", true, size, instr->xor_r_r.dst, size, instr->xor_r_r.src);
+        break;
+    }
+    case IR_INSTR_XOR_R_M: {
+        u32 size = (u32)instr->xor_r_m.type->size;
+
+        X64_emit_rm_instr(generator, "xor", true, size, instr->xor_r_m.dst, size, &instr->xor_r_m.src);
+        break;
+    }
+    case IR_INSTR_XOR_R_I: {
+        u32 size = (u32)instr->xor_r_i.type->size;
+
+        X64_emit_ri_instr(generator, "xor", size, instr->xor_r_i.dst, size, instr->xor_r_i.src);
+        break;
+    }
     case IR_INSTR_NEG: {
         Type* type = instr->neg.type;
         X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->neg.dst);
