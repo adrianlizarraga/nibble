@@ -1,0 +1,12 @@
+
+proc main() => int {
+    const FLAG_A : uint = 0x1;
+    const FLAG_B : uint = 0x2;
+    const FLAG_C : uint = 0x4;
+
+    var flags : uint = 0x3;
+
+    // 1 + 2 + 0 + 7 + 2= 12
+    return (flags & FLAG_A) + (flags & FLAG_B) + (flags & FLAG_C) + (flags | FLAG_C) + 
+           (flags ^ FLAG_A);
+}

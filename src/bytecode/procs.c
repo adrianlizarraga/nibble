@@ -445,26 +445,26 @@ static void IR_emit_instr_and(IR_ProcBuilder* builder, Type* type, IR_Reg dst, I
 
     switch (src_op->kind) {
     case IR_OPERAND_REG:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_R);
+        instr = IR_new_instr(builder->arena, IR_INSTR_AND_R_R);
         instr->and_r_r.type = type;
         instr->and_r_r.dst = dst;
         instr->and_r_r.src = src_op->reg;
         break;
     case IR_OPERAND_MEM_ADDR:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr = IR_new_instr(builder->arena, IR_INSTR_AND_R_M);
         instr->and_r_m.type = type;
         instr->and_r_m.dst = dst;
         instr->and_r_m.src = src_op->addr;
         break;
     case IR_OPERAND_VAR:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr = IR_new_instr(builder->arena, IR_INSTR_AND_R_M);
         instr->and_r_m.type = type;
         instr->and_r_m.dst = dst;
         instr->and_r_m.src.base_kind = IR_MEM_BASE_SYM;
         instr->and_r_m.src.base.sym = src_op->sym;
         break;
     case IR_OPERAND_IMM:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+        instr = IR_new_instr(builder->arena, IR_INSTR_AND_R_I);
         instr->and_r_i.type = type;
         instr->and_r_i.dst = dst;
         instr->and_r_i.src = src_op->imm;
@@ -479,7 +479,7 @@ static void IR_emit_instr_and(IR_ProcBuilder* builder, Type* type, IR_Reg dst, I
 
 static void IR_emit_instr_and_r_i(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Scalar src)
 {
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_AND_R_I);
     instr->and_r_i.type = type;
     instr->and_r_i.dst = dst;
     instr->and_r_i.src = src;
@@ -493,26 +493,26 @@ static void IR_emit_instr_or(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR
 
     switch (src_op->kind) {
     case IR_OPERAND_REG:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_R);
+        instr = IR_new_instr(builder->arena, IR_INSTR_OR_R_R);
         instr->or_r_r.type = type;
         instr->or_r_r.dst = dst;
         instr->or_r_r.src = src_op->reg;
         break;
     case IR_OPERAND_MEM_ADDR:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr = IR_new_instr(builder->arena, IR_INSTR_OR_R_M);
         instr->or_r_m.type = type;
         instr->or_r_m.dst = dst;
         instr->or_r_m.src = src_op->addr;
         break;
     case IR_OPERAND_VAR:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr = IR_new_instr(builder->arena, IR_INSTR_OR_R_M);
         instr->or_r_m.type = type;
         instr->or_r_m.dst = dst;
         instr->or_r_m.src.base_kind = IR_MEM_BASE_SYM;
         instr->or_r_m.src.base.sym = src_op->sym;
         break;
     case IR_OPERAND_IMM:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+        instr = IR_new_instr(builder->arena, IR_INSTR_OR_R_I);
         instr->or_r_i.type = type;
         instr->or_r_i.dst = dst;
         instr->or_r_i.src = src_op->imm;
@@ -527,7 +527,7 @@ static void IR_emit_instr_or(IR_ProcBuilder* builder, Type* type, IR_Reg dst, IR
 
 static void IR_emit_instr_or_r_i(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Scalar src)
 {
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_OR_R_I);
     instr->or_r_i.type = type;
     instr->or_r_i.dst = dst;
     instr->or_r_i.src = src;
@@ -541,26 +541,26 @@ static void IR_emit_instr_xor(IR_ProcBuilder* builder, Type* type, IR_Reg dst, I
 
     switch (src_op->kind) {
     case IR_OPERAND_REG:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_R);
+        instr = IR_new_instr(builder->arena, IR_INSTR_XOR_R_R);
         instr->xor_r_r.type = type;
         instr->xor_r_r.dst = dst;
         instr->xor_r_r.src = src_op->reg;
         break;
     case IR_OPERAND_MEM_ADDR:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr = IR_new_instr(builder->arena, IR_INSTR_XOR_R_M);
         instr->xor_r_m.type = type;
         instr->xor_r_m.dst = dst;
         instr->xor_r_m.src = src_op->addr;
         break;
     case IR_OPERAND_VAR:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_M);
+        instr = IR_new_instr(builder->arena, IR_INSTR_XOR_R_M);
         instr->xor_r_m.type = type;
         instr->xor_r_m.dst = dst;
         instr->xor_r_m.src.base_kind = IR_MEM_BASE_SYM;
         instr->xor_r_m.src.base.sym = src_op->sym;
         break;
     case IR_OPERAND_IMM:
-        instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+        instr = IR_new_instr(builder->arena, IR_INSTR_XOR_R_I);
         instr->xor_r_i.type = type;
         instr->xor_r_i.dst = dst;
         instr->xor_r_i.src = src_op->imm;
@@ -575,7 +575,7 @@ static void IR_emit_instr_xor(IR_ProcBuilder* builder, Type* type, IR_Reg dst, I
 
 static void IR_emit_instr_xor_r_i(IR_ProcBuilder* builder, Type* type, IR_Reg dst, Scalar src)
 {
-    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MUL_R_I);
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_XOR_R_I);
     instr->xor_r_i.type = type;
     instr->xor_r_i.dst = dst;
     instr->xor_r_i.src = src;
@@ -1520,15 +1520,20 @@ static void IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, IR_Operand* dst_o
 
 static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Operand* dst)
 {
+    if (expr->op == TKN_LOGIC_AND || expr->op == TKN_LOGIC_OR) {
+        IR_emit_short_circuit_cmp(builder, dst, expr);
+        return;
+    }
+
     Type* result_type = expr->super.type;
     IR_Operand left = {0};
     IR_Operand right = {0};
 
+    IR_emit_expr(builder, expr->left, &left);
+    IR_emit_expr(builder, expr->right, &right);
+
     switch (expr->op) {
     case TKN_PLUS: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         bool left_is_ptr = left.type->kind == TYPE_PTR;
         bool right_is_ptr = right.type->kind == TYPE_PTR;
 
@@ -1549,7 +1554,6 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
 
             if (left.kind == IR_OPERAND_IMM) {
                 IR_op_to_r(builder, &right, true);
-
                 IR_emit_instr_add_r_i(builder, result_type, right.reg, left.imm);
 
                 *dst = right;
@@ -1557,7 +1561,6 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
             else {
                 IR_op_to_r(builder, &left, true);
                 IR_op_to_rvi(builder, &right);
-
                 IR_emit_instr_add(builder, result_type, left.reg, &right);
 
                 *dst = left;
@@ -1567,9 +1570,6 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         break;
     }
     case TKN_MINUS: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         bool left_is_ptr = left.type->kind == TYPE_PTR;
         bool right_is_ptr = right.type->kind == TYPE_PTR;
 
@@ -1588,7 +1588,6 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
 
             IR_op_to_r(builder, &left, true);
             IR_op_to_rvi(builder, &right);
-
             IR_emit_instr_sub(builder, result_type, left.reg, &right);
 
             if (base_size_log2) {
@@ -1607,7 +1606,6 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
 
             IR_op_to_r(builder, &left, true);
             IR_op_to_rvi(builder, &right);
-
             IR_emit_instr_sub(builder, result_type, left.reg, &right);
 
             *dst = left;
@@ -1616,16 +1614,12 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         break;
     }
     case TKN_ASTERISK: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         assert(left.type == right.type);
         assert(result_type == left.type);
         assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
 
         if (left.kind == IR_OPERAND_IMM) {
             IR_op_to_r(builder, &right, true);
-
             IR_emit_instr_mul_r_i(builder, result_type, right.reg, left.imm);
 
             *dst = right;
@@ -1633,7 +1627,6 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         else {
             IR_op_to_r(builder, &left, true);
             IR_op_to_rvi(builder, &right);
-
             IR_emit_instr_mul(builder, result_type, left.reg, &right);
 
             *dst = left;
@@ -1643,16 +1636,12 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         break;
     }
     case TKN_DIV: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         assert(left.type == right.type);
         assert(result_type == left.type);
         assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
 
         IR_op_to_r(builder, &left, true);
         IR_op_to_rvi(builder, &right);
-
         IR_emit_instr_div(builder, result_type, left.reg, &right);
 
         *dst = left;
@@ -1661,15 +1650,11 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         break;
     }
     case TKN_RSHIFT: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         assert(result_type == left.type);
         assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
 
         IR_op_to_r(builder, &left, true);
         IR_op_to_rvi(builder, &right);
-
         IR_emit_instr_sar(builder, result_type, left.reg, right.type, &right);
 
         *dst = left;
@@ -1677,15 +1662,11 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         break;
     }
     case TKN_LSHIFT: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         assert(result_type == left.type);
         assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
 
         IR_op_to_r(builder, &left, true);
         IR_op_to_rvi(builder, &right);
-
         IR_emit_instr_shl(builder, result_type, left.reg, right.type, &right);
 
         *dst = left;
@@ -1693,16 +1674,12 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         break;
     }
     case TKN_AND: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         assert(left.type == right.type);
         assert(result_type == left.type);
         assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
 
         if (left.kind == IR_OPERAND_IMM) {
             IR_op_to_r(builder, &right, true);
-
             IR_emit_instr_and_r_i(builder, result_type, right.reg, left.imm);
 
             *dst = right;
@@ -1710,7 +1687,6 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         else {
             IR_op_to_r(builder, &left, true);
             IR_op_to_rvi(builder, &right);
-
             IR_emit_instr_and(builder, result_type, left.reg, &right);
 
             *dst = left;
@@ -1720,16 +1696,12 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         break;
     }
     case TKN_OR: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         assert(left.type == right.type);
         assert(result_type == left.type);
         assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
 
         if (left.kind == IR_OPERAND_IMM) {
             IR_op_to_r(builder, &right, true);
-
             IR_emit_instr_or_r_i(builder, result_type, right.reg, left.imm);
 
             *dst = right;
@@ -1737,7 +1709,6 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         else {
             IR_op_to_r(builder, &left, true);
             IR_op_to_rvi(builder, &right);
-
             IR_emit_instr_or(builder, result_type, left.reg, &right);
 
             *dst = left;
@@ -1747,16 +1718,12 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         break;
     }
     case TKN_CARET: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         assert(left.type == right.type);
         assert(result_type == left.type);
         assert(!(left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM));
 
         if (left.kind == IR_OPERAND_IMM) {
             IR_op_to_r(builder, &right, true);
-
             IR_emit_instr_xor_r_i(builder, result_type, right.reg, left.imm);
 
             *dst = right;
@@ -1764,7 +1731,6 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         else {
             IR_op_to_r(builder, &left, true);
             IR_op_to_rvi(builder, &right);
-
             IR_emit_instr_xor(builder, result_type, left.reg, &right);
 
             *dst = left;
@@ -1774,56 +1740,35 @@ static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Op
         break;
     }
     case TKN_EQ: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
         IR_emit_binary_cmp(builder, IR_COND_EQ, result_type, dst, &left, &right);
         break;
     }
     case TKN_NOTEQ: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
         IR_emit_binary_cmp(builder, IR_COND_NEQ, result_type, dst, &left, &right);
         break;
     }
     case TKN_LT: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         IR_ConditionKind cond_kind = left.type->as_integer.is_signed ? IR_COND_S_LT : IR_COND_U_LT;
 
         IR_emit_binary_cmp(builder, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_LTEQ: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         IR_ConditionKind cond_kind = left.type->as_integer.is_signed ? IR_COND_S_LTEQ : IR_COND_U_LTEQ;
 
         IR_emit_binary_cmp(builder, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_GT: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         IR_ConditionKind cond_kind = left.type->as_integer.is_signed ? IR_COND_S_GT : IR_COND_U_GT;
 
         IR_emit_binary_cmp(builder, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_GTEQ: {
-        IR_emit_expr(builder, expr->left, &left);
-        IR_emit_expr(builder, expr->right, &right);
-
         IR_ConditionKind cond_kind = left.type->as_integer.is_signed ? IR_COND_S_GTEQ : IR_COND_U_GTEQ;
 
         IR_emit_binary_cmp(builder, cond_kind, result_type, dst, &left, &right);
-        break;
-    }
-    case TKN_LOGIC_AND:
-    case TKN_LOGIC_OR: {
-        IR_emit_short_circuit_cmp(builder, dst, expr);
         break;
     }
     default:
