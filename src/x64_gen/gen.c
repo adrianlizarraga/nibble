@@ -440,10 +440,30 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, IR_Reg vreg, u32 size, bool stor
     assert(vreg_loc.kind == X64_VREG_LOC_STACK);
     assert(group->num_tmp_regs < num_scratch_regs);
 
+    X64_Reg x64_reg = X64_REG_COUNT;
+
+    // Try to use a scratch register that is not currently being used as a tmp register
+    for (u32 r = 0; r < num_scratch_regs; r += 1) {
+        X64_Reg reg = scratch_regs[r];
+
+        bool is_used_as_tmp = u32_is_bit_set(group->used_tmp_reg_mask, reg);
+
+        if (!is_used_as_tmp) {
+            x64_reg = reg;
+            break;
+        }
+    }
+
+    assert(x64_reg != X64_REG_COUNT);
+
+    // Record register in group
+    group->num_tmp_regs += 1;
+    u32_set_bit(&group->used_tmp_reg_mask, x64_reg);
+
     Allocator* tmp_mem = group->generator->tmp_mem;
 
     X64_TmpReg* tmp_reg = alloc_type(tmp_mem, X64_TmpReg, true);
-    tmp_reg->reg = scratch_regs[group->num_tmp_regs++]; // Use the next scratch register.
+    tmp_reg->reg = x64_reg;
     tmp_reg->offset = vreg_loc.offset;
     tmp_reg->size = size;
     tmp_reg->store = store;
@@ -455,9 +475,6 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, IR_Reg vreg, u32 size, bool stor
     // Add scratch register to the list (stack) of regs in group.
     tmp_reg->next = group->first_tmp_reg;
     group->first_tmp_reg = tmp_reg;
-
-    // Record register in group
-    u32_set_bit(&group->used_tmp_reg_mask, tmp_reg->reg);
 
     return tmp_reg->reg;
 }
@@ -487,6 +504,13 @@ static void X64_push_reg(X64_RegGroup* group, X64_Reg reg, bool allow_dup)
     group->num_tmp_regs += 1;
 }
 
+static void X64_try_use_reg(X64_RegGroup* group, X64_Reg reg, u32 live_regs)
+{
+    if (u32_is_bit_set(live_regs, reg)) {
+        X64_push_reg(group, reg, false);
+    }
+}
+
 static X64_Reg X64_get_tmp_reg(X64_RegGroup* reg_group, u32 banned_regs, u32 live_regs)
 {
     X64_Reg tmp_src_reg = X64_REG_COUNT;
@@ -498,8 +522,10 @@ static X64_Reg X64_get_tmp_reg(X64_RegGroup* reg_group, u32 banned_regs, u32 liv
         bool is_live = u32_is_bit_set(live_regs, reg);
         bool is_banned = u32_is_bit_set(banned_regs, reg);
         bool is_caller_saved = X64_is_caller_saved_reg(reg);
+        bool is_used_as_tmp = u32_is_bit_set(reg_group->used_tmp_reg_mask, reg);
 
-        if (is_caller_saved && !is_live && !is_banned) {
+        if (is_caller_saved && !is_live && !is_banned && !is_used_as_tmp) {
+            u32_set_bit(&reg_group->used_tmp_reg_mask, reg);
             tmp_src_reg = reg;
             break;
         }
@@ -513,8 +539,9 @@ static X64_Reg X64_get_tmp_reg(X64_RegGroup* reg_group, u32 banned_regs, u32 liv
 
             bool is_banned = u32_is_bit_set(banned_regs, reg);
             bool is_caller_saved = X64_is_caller_saved_reg(reg);
+            bool is_used_as_tmp = u32_is_bit_set(reg_group->used_tmp_reg_mask, reg);
 
-            if (!is_banned && is_caller_saved) {
+            if (!is_banned && !is_used_as_tmp && is_caller_saved) {
                 tmp_src_reg = reg;
                 break;
             }
@@ -1761,7 +1788,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
         break;
     }
     case IR_INSTR_NOT: {
-        Type* type = instr->not .type;
+        Type* type = instr->not.type;
         X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->not .dst);
 
         if (dst_loc.kind == X64_VREG_LOC_REG) {
@@ -1771,6 +1798,52 @@ static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_ind
             assert(dst_loc.kind == X64_VREG_LOC_STACK);
             X64_emit_text(generator, "    not %s", X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, (u32)type->size));
         }
+        break;
+    }
+    case IR_INSTR_MEMCPY: {
+        size_t size = instr->memcpy.type->size;
+
+        X64_RegGroup group = X64_begin_reg_group(generator);
+        bool rdi_live = u32_is_bit_set(live_regs, X64_RDI);
+        bool rsi_live = u32_is_bit_set(live_regs, X64_RSI);
+
+        // Load dst address into RDI and src address into RSI.
+        // We have to be careful about properly saving and restoring these registers if either is "live".
+        if (rdi_live && rsi_live) {
+            X64_push_reg(&group, X64_RDI, false);
+            X64_push_reg(&group, X64_RSI, false);
+
+            u32 banned_regs = (1 << X64_RDI) | (1 << X64_RSI);
+            X64_Reg dst_tmp = X64_get_tmp_reg(&group, banned_regs, live_regs);
+            X64_Reg src_tmp = X64_get_tmp_reg(&group, banned_regs, live_regs);
+            const char* dst_tmp_name = x64_reg_names[PTR_SIZE][dst_tmp];
+            const char* src_tmp_name = x64_reg_names[PTR_SIZE][src_tmp];
+
+            X64_emit_text(generator, "    lea %s, %s", dst_tmp_name, X64_print_mem(&group, &instr->memcpy.dst, PTR_SIZE));
+            X64_emit_text(generator, "    lea %s, %s", src_tmp_name, X64_print_mem(&group, &instr->memcpy.src, PTR_SIZE));
+
+            X64_emit_text(generator, "    mov rdi, %s", dst_tmp_name);
+            X64_emit_text(generator, "    mov rsi, %s", src_tmp_name);
+        }
+        else if (rdi_live) {
+            X64_push_reg(&group, X64_RDI, false);
+            X64_emit_text(generator, "    lea rsi, %s", X64_print_mem(&group, &instr->memcpy.src, PTR_SIZE));
+            X64_emit_text(generator, "    lea rdi, %s", X64_print_mem(&group, &instr->memcpy.dst, PTR_SIZE));
+        }
+        else {
+            // Either rsi is live or none are live.
+            X64_try_use_reg(&group, X64_RSI, live_regs);
+            X64_emit_text(generator, "    lea rdi, %s", X64_print_mem(&group, &instr->memcpy.dst, PTR_SIZE));
+            X64_emit_text(generator, "    lea rsi, %s", X64_print_mem(&group, &instr->memcpy.src, PTR_SIZE));
+        }
+
+        X64_try_use_reg(&group, X64_RCX, live_regs);
+        X64_emit_text(generator, "    mov rcx, %llu", size);
+
+        X64_emit_text(generator, "    rep movsb");
+
+        X64_end_reg_group(&group);
+
         break;
     }
     case IR_INSTR_LIMM: {

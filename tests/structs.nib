@@ -26,15 +26,18 @@ proc main() => int {
     a.y = 2;
     a.z = 3;
 
-    var b : Vec3;
-    b.x = 9;
-    b.y = 8;
-    b.z = 7;
+    // Copy a into b
+    var b : Vec3 = a;
 
+    // Copy a into c (via pointer)
     var c : Vec3;
-    vec3_add(^a, ^b, ^c);
-    //vec3_add2(a, b, ^c);
+    var p_c : ^Vec3 = ^c;
+    *p_c = a;
 
-    // 10 + 10 + 10 = 30
-    return c.x + c.y + c.z;
+    var d : Vec3;
+    vec3_add(^a, ^b, ^d);  // d = a + b
+    vec3_add(^d, p_c, ^d); // d = d + c
+
+    // 3 + 6 + 9 = 18
+    return d.x + d.y + d.z;
 }

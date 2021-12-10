@@ -120,6 +120,9 @@ typedef enum IR_InstrKind {
 
     // Call a procedure indirectly (register has procedure address)
     IR_INSTR_CALL_R,
+
+    // Copy memory (compile-time known size)
+    IR_INSTR_MEMCPY,
 } IR_InstrKind;
 
 typedef enum IR_MemBaseKind {
@@ -312,6 +315,12 @@ typedef struct IR_InstrCall_R {
     IR_InstrCallArg* args;
 } IR_InstrCall_R;
 
+typedef struct IR_InstrMemcpy {
+    Type* type;
+    IR_MemAddr dst;
+    IR_MemAddr src;
+} IR_InstrMemcpy;
+
 typedef struct IR_Instr {
     IR_InstrKind kind;
     bool is_jmp_target;
@@ -419,6 +428,9 @@ typedef struct IR_Instr {
 
         // Call a procedure indirectly (register contains procedure address)
         IR_InstrCall_R call_r;
+
+        // Copy memory
+        IR_InstrMemcpy memcpy;
     };
 } IR_Instr;
 

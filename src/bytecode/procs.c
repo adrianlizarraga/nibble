@@ -877,6 +877,16 @@ static void IR_emit_instr_call_r(IR_ProcBuilder* builder, Type* proc_type, IR_Re
     IR_add_instr(builder, instr);
 }
 
+static void IR_emit_instr_memcpy(IR_ProcBuilder* builder, Type* type, IR_MemAddr dst, IR_MemAddr src)
+{
+    IR_Instr* instr = IR_new_instr(builder->arena, IR_INSTR_MEMCPY);
+    instr->memcpy.type = type;
+    instr->memcpy.dst = dst;
+    instr->memcpy.src = src;
+
+    IR_add_instr(builder, instr);
+}
+
 static void IR_patch_jmp_target(IR_Instr* jmp_instr, u32 jmp_target)
 {
     switch (jmp_instr->kind) {
@@ -2417,48 +2427,36 @@ static void IR_emit_array_str_init(IR_ProcBuilder* builder, IR_Operand* array_op
     // multiple elements at a time (one machine word's worth).
 }
 
+static IR_MemAddr IR_get_lvalue_addr(IR_Operand* op)
+{
+    if (op->kind == IR_OPERAND_VAR) {
+        return (IR_MemAddr){.base_kind = IR_MEM_BASE_SYM, .base.sym = op->sym};
+    }
+    else {
+        assert(op->kind == IR_OPERAND_DEREF_ADDR);
+        return op->addr;
+    }
+}
+
 static void IR_emit_assign(IR_ProcBuilder* builder, IR_Operand* lhs, IR_Operand* rhs)
 {
-    switch (lhs->kind) {
-    case IR_OPERAND_VAR: {
-        IR_MemAddr var_addr = {.base_kind = IR_MEM_BASE_SYM, .base.sym = lhs->sym};
+    IR_MemAddr dst_addr = IR_get_lvalue_addr(lhs);
 
-        if (rhs->kind == IR_OPERAND_IMM) {
-            IR_emit_instr_store_i(builder, lhs->type, var_addr, rhs->imm);
-        }
-        else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
-            IR_emit_array_init(builder, lhs, rhs);
-        }
-        else if (rhs->kind == IR_OPERAND_STR_LIT) {
-            IR_emit_array_str_init(builder, lhs, rhs);
-        }
-        else {
-            IR_op_to_r(builder, rhs, true);
-            IR_emit_instr_store_r(builder, lhs->type, var_addr, rhs->reg);
-        }
-
-        break;
+    if (rhs->kind == IR_OPERAND_IMM) {
+        IR_emit_instr_store_i(builder, lhs->type, dst_addr, rhs->imm);
     }
-    case IR_OPERAND_DEREF_ADDR: {
-        if (rhs->kind == IR_OPERAND_IMM) {
-            IR_emit_instr_store_i(builder, lhs->type, lhs->addr, rhs->imm);
-        }
-        else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
-            IR_emit_array_init(builder, lhs, rhs);
-        }
-        else if (rhs->kind == IR_OPERAND_STR_LIT) {
-            IR_emit_array_str_init(builder, lhs, rhs);
-        }
-        else {
-            IR_op_to_r(builder, rhs, true);
-            IR_emit_instr_store_r(builder, lhs->type, lhs->addr, rhs->reg);
-        }
-
-        break;
+    else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
+        IR_emit_array_init(builder, lhs, rhs);
     }
-    default:
-        assert(0);
-        break;
+    else if (rhs->kind == IR_OPERAND_STR_LIT) {
+        IR_emit_array_str_init(builder, lhs, rhs);
+    }
+    else if (IR_type_fits_in_reg(rhs->type)) {
+        IR_op_to_r(builder, rhs, true);
+        IR_emit_instr_store_r(builder, lhs->type, dst_addr, rhs->reg);
+    }
+    else {
+        IR_emit_instr_memcpy(builder, lhs->type, dst_addr, IR_get_lvalue_addr(rhs));
     }
 }
 
