@@ -41,45 +41,51 @@ typedef struct MemAddr {
     MemBaseKind base_kind;
 
     union {
-        Reg reg;
+        int reg;
         Symbol* sym;
         StrLit* str_lit;
     } base;
 
-    Reg index_reg;
+    int index_reg;
     u8 scale;
     u32 disp;
 } MemAddr;
 
-typedef struct InstrIBinary {
-    u8 size;
-    Reg r;
-    Reg a;
-    Reg b;
+typedef struct InstrBinary {
+    Type* type;
+    int r;
+    int a;
+    int b;
 } InstrIBinary;
 
-typedef struct InstrIUnary {
-    u8 size;
-    Reg r;
-    Reg a;
+typedef struct InstrUnary {
+    Type* type;
+    int r;
+    int a;
 } InstrIUnary;
 
 typedef struct InstrLImm {
     u8 size;
-    Reg r;
+    int r;
     Scalar imm;
 } InstrLImm;
 
 typedef struct InstrLoad {
-    u8 size;
-    Reg r;
+    Type* type;
+    int r;
     MemAddr addr;
 } InstrLoad;
 
 typedef struct InstrStore {
-    u8 size;
+    Type* type;
     MemAddr addr;
-    Reg a;
+    int a;
 } InstrStore;
+
+typedef struct InstrRet {
+    Type* type;
+    int a;
+} InstrRet;
+
 
 #endif
