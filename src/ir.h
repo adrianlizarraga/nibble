@@ -32,7 +32,8 @@ typedef enum InstrKind {
     INSTR_LADDR, // Load from an address.
     INSTR_SVAR,  // Store to a variable.
     INSTR_SADDR, // Store to an address.
-    INSTR_CMPCC,
+    INSTR_LEA,
+    INSTR_CMP,
     INSTR_JMP,
     INSTR_RET,
     INSTR_CALL,
@@ -110,6 +111,12 @@ typedef struct InstrSAddr {
     NIR_Reg a;
 } InstrSAddr;
 
+typedef struct InstrLEA {
+    Type* type;
+    NIR_Reg r;
+    MemAddr addr;
+} InstrLEA;
+
 typedef struct InstrRet {
     Type* type;
     NIR_Reg a;
@@ -161,12 +168,6 @@ typedef struct InstrCallIndirect {
     InstrCallArg* args;
 } InstrCallIndirect;
 
-typedef struct InstrMemcpy {
-    Type* type;
-    MemAddr dst;
-    MemAddr src;
-} InstrMemcpy;
-
 typedef struct Instr {
     InstrKind kind;
     bool is_jmp_target;
@@ -177,14 +178,15 @@ typedef struct Instr {
         InstrConvert convert;
         InstrLImm limm;
         InstrLAddr laddr;
-        InstrLoad load;
-        InstrStore store;
+        InstrLVar lvar;
+        InstrSVar svar;
+        InstrSAddr saddr;
+        InstrLEA lea;
         InstrRet ret;
         InstrCmp cmp;
         InstrJmp jmp;
         InstrCall call;
         InstrCallIndirect calli;
-        InstrMemcpy memcpy;
     } u;
 } Instr;
 

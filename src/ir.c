@@ -10,7 +10,6 @@ typedef struct NIR_ProcBuilder {
     Scope* curr_scope;
 
     bool next_instr_is_jmp_target;
-    u32 free_regs;
 } NIR_ProcBuilder;
 
 typedef enum NIR_OperandKind {
@@ -66,62 +65,12 @@ typedef struct NIR_ArrayMemberInitializer {
     NIR_Operand op;
 } NIR_ArrayMemberInitializer;
 
-static void NIR_free_reg(NIR_ProcBuilder* builder, IR_Reg reg)
-{
-    Symbol* sym = builder->curr_proc;
-    LifetimeInterval* interval = &sym->as_proc.reg_intervals[reg];
-
-    interval->end = array_len(sym->as_proc.instrs) - 1;
-}
-
 static NIR_Reg NIR_next_reg(NIR_ProcBuilder* builder)
 {
     Symbol* sym = builder->curr_proc;
-    LifetimeInterval interval = {.start = array_len(sym->as_proc.instrs)};
-    array_push(sym->as_proc.reg_intervals, interval);
+    NIR_Reg next_reg = sym->as_proc.num_regs++;
 
-    return array_len(sym->as_proc.reg_intervals) - 1;
-}
-
-static void NIR_mark_reg_as_arg(NIR_ProcBuilder* builder, NIR_Reg reg, u32 arg_index)
-{
-    Symbol* sym = builder->curr_proc;
-    LifetimeInterval* interval = &sym->as_proc.reg_intervals[reg];
-
-    interval->is_arg = true;
-    interval->arg_index = arg_index;
-}
-
-static void NIR_mark_reg_as_ret(NIR_ProcBuilder* builder, IR_Reg reg)
-{
-    Symbol* sym = builder->curr_proc;
-    LifetimeInterval* interval = &sym->as_proc.reg_intervals[reg];
-
-    interval->is_ret = true;
-}
-
-static void NIR_try_free_op_reg(NIR_ProcBuilder* builder, NIR_Operand* op)
-{
-    switch (op->kind) {
-    case NIR_OPERAND_REG:
-        NIR_free_reg(builder, op->reg);
-        break;
-    case NIR_OPERAND_DEREF_ADDR:
-    case NIR_OPERAND_MEM_ADDR: {
-        NIR_Reg base_reg = op->addr.base_kind == MEM_BASE_REG ? op->addr.base.reg : NIR_REG_COUNT;
-        NIR_Reg index_reg = op->addr.index_reg;
-
-        if (base_reg < NIR_REG_COUNT)
-            NIR_free_reg(builder, base_reg);
-
-        if (index_reg < NIR_REG_COUNT)
-            NIR_free_reg(builder, index_reg);
-
-        break;
-    }
-    default:
-        break;
-    }
+    return next_reg;
 }
 
 static void NIR_op_to_r(NIR_ProcBuilder* builder, NIR_Operand* operand, bool commit_ptr)
@@ -208,9 +157,6 @@ static void NIR_emit_stmt_return(NIR_ProcBuilder* builder, StmtReturn* sret)
     NIR_op_to_r(builder, &expr_op, true);
 
     NIR_emit_instr_ret(builder, expr_op.type, expr_op.reg);
-
-    NIR_mark_reg_as_ret(builder, expr_op.reg);
-    NIR_free_reg(builder, expr_op.reg);
 }
 
 static void NIR_emit_stmt(NIR_ProcBuilder* builder, Stmt* stmt, u32* break_target, u32* continue_target)
