@@ -28,8 +28,10 @@ typedef enum InstrKind {
     INSTR_TRUNC,
     INSTR_ZEXT,
     INSTR_SEXT,
-    INSTR_LOAD,
-    INSTR_STORE,
+    INSTR_LVAR,  // Load from variable.
+    INSTR_LADDR, // Load from an address.
+    INSTR_SVAR,  // Store to a variable.
+    INSTR_SADDR, // Store to an address.
     INSTR_CMPCC,
     INSTR_JMP,
     INSTR_RET,
@@ -84,23 +86,29 @@ typedef struct InstrLImm {
     Scalar imm;
 } InstrLImm;
 
+typedef struct InstrLVar {
+    Type* type;
+    NIR_Reg r;
+    Symbol* sym;
+} InstrLVar;
+
 typedef struct InstrLAddr {
     Type* type;
     NIR_Reg r;
     MemAddr addr;
 } InstrLAddr;
 
-typedef struct InstrLoad {
+typedef struct InstrSVar {
     Type* type;
-    NIR_Reg r;
-    MemAddr addr;
-} InstrLoad;
+    Symbol* sym;
+    NIR_Reg a;
+} InstrSVar;
 
-typedef struct InstrStore {
+typedef struct InstrSAddr {
     Type* type;
     MemAddr addr;
     NIR_Reg a;
-} InstrStore;
+} InstrSAddr;
 
 typedef struct InstrRet {
     Type* type;
