@@ -24,19 +24,19 @@ typedef enum InstrKind {
     INSTR_XOR,
     INSTR_NOT,
     INSTR_NEG,
-    INSTR_LIMM,
     INSTR_TRUNC,
     INSTR_ZEXT,
     INSTR_SEXT,
-    INSTR_LVAR,  // Load from variable.
-    INSTR_LADDR, // Load from an address.
-    INSTR_SVAR,  // Store to a variable.
-    INSTR_SADDR, // Store to an address.
-    INSTR_LEA,
+    INSTR_LIMM,
+    INSTR_LOAD,
+    INSTR_LADDR,
+    INSTR_STORE,
     INSTR_CMP,
     INSTR_JMP,
+    INSTR_COND_JMP,
     INSTR_RET,
     INSTR_CALL,
+    INSTR_CALL_INDIRECT,
     INSTR_MEMCPY,
 } InstrKind;
 
@@ -87,11 +87,11 @@ typedef struct InstrLImm {
     Scalar imm;
 } InstrLImm;
 
-typedef struct InstrLVar {
+typedef struct InstrLoad {
     Type* type;
     NIR_Reg r;
-    Symbol* sym;
-} InstrLVar;
+    MemAddr addr;
+} InstrLoad;
 
 typedef struct InstrLAddr {
     Type* type;
@@ -99,23 +99,11 @@ typedef struct InstrLAddr {
     MemAddr addr;
 } InstrLAddr;
 
-typedef struct InstrSVar {
-    Type* type;
-    Symbol* sym;
-    NIR_Reg a;
-} InstrSVar;
-
-typedef struct InstrSAddr {
+typedef struct InstrStore {
     Type* type;
     MemAddr addr;
     NIR_Reg a;
-} InstrSAddr;
-
-typedef struct InstrLEA {
-    Type* type;
-    NIR_Reg r;
-    MemAddr addr;
-} InstrLEA;
+} InstrStore;
 
 typedef struct InstrRet {
     Type* type;
@@ -145,8 +133,12 @@ typedef struct InstrCmp {
 
 typedef struct InstrJmp {
     u32* jmp_target;
-    NIR_Reg a;
 } InstrJmp;
+
+typedef struct InstrCondJmp {
+    u32* jmp_target;
+    NIR_Reg a;
+} InstrCondJmp;
 
 typedef struct InstrCallArg {
     Type* type;
@@ -168,6 +160,12 @@ typedef struct InstrCallIndirect {
     InstrCallArg* args;
 } InstrCallIndirect;
 
+typedef struct InstrMemcpy {
+    Type* type;
+    IR_MemAddr dst;
+    IR_MemAddr src;
+} InstrMemcpy;
+
 typedef struct Instr {
     InstrKind kind;
     bool is_jmp_target;
@@ -177,17 +175,17 @@ typedef struct Instr {
         InstrUnary unary;
         InstrConvert convert;
         InstrLImm limm;
+        InstrLoad load;
+        InstrStore store;
         InstrLAddr laddr;
-        InstrLVar lvar;
-        InstrSVar svar;
-        InstrSAddr saddr;
-        InstrLEA lea;
         InstrRet ret;
         InstrCmp cmp;
+        InstrCondJmp cond_jmp;
         InstrJmp jmp;
         InstrCall call;
         InstrCallIndirect calli;
-    } u;
+        InstrMemcpy memcpy;
+    };
 } Instr;
 
 #endif
