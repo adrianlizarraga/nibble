@@ -162,8 +162,8 @@ typedef struct InstrCallIndirect {
 
 typedef struct InstrMemcpy {
     Type* type;
-    IR_MemAddr dst;
-    IR_MemAddr src;
+    MemAddr dst;
+    MemAddr src;
 } InstrMemcpy;
 
 typedef struct Instr {

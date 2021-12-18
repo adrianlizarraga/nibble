@@ -10,6 +10,7 @@ typedef struct NIR_ProcBuilder {
     Scope* curr_scope;
 
     bool next_instr_is_jmp_target;
+    struct NIR_DeferredJmpcc* sc_jmp_freelist;
 } NIR_ProcBuilder;
 
 typedef enum NIR_OperandKind {
@@ -379,12 +380,95 @@ static void NIR_ptr_to_mem_op(NIR_ProcBuilder* builder, NIR_Operand* operand)
     operand->addr.disp = 0;
 }
 
-static void NIR_operand_from_sym(IR_Operand* op, Symbol* sym)
+static void NIR_operand_from_sym(NIR_Operand* op, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_VAR || sym->kind == SYMBOL_PROC);
     op->kind = (sym->kind == SYMBOL_VAR) ? NIR_OPERAND_VAR : NIR_OPERAND_PROC;
     op->type = sym->type;
     op->sym = sym;
+}
+
+static void NIR_new_deferred_sc_jmp(NIR_ProcBuilder* builder, NIR_DeferredCmp* cmp, Instr* cmp_instr, bool result, Instr* jmp_instr)
+{
+    NIR_DeferredJmpcc* new_node = NULL;
+
+    // Pop a node off the freelist.
+    if (builder->sc_jmp_freelist) {
+        new_node = builder->sc_jmp_freelist;
+        builder->sc_jmp_freelist = new_node->next;
+    }
+    // Create a new node.
+    else {
+        new_node = alloc_type(builder->tmp_arena, NIR_DeferredJmpcc, true);
+    }
+
+    // Add node to the end of the linked-list.
+    new_node->next = NULL;
+
+    if (cmp->last_sc_jmp)
+        cmp->last_sc_jmp->next = new_node;
+    else
+        cmp->first_sc_jmp = new_node;
+
+    cmp->last_sc_jmp = new_node;
+
+    // Initialize data.
+    new_node->cmp = cmp_instr;
+    new_node->result = result;
+    new_node->jmp = jmp_instr;
+}
+
+static void NIR_del_deferred_sc_jmp(NIR_ProcBuilder* builder, NIR_DeferredCmp* cmp, NIR_DeferredJmpcc* prev_jmp, NIR_DeferredJmpcc* jmp)
+{
+    NIR_DeferredJmpcc* next_jmp = jmp->next;
+
+    // Remove short-circuit jump from list.
+    if (prev_jmp)
+        prev_jmp->next = next_jmp;
+    else
+        cmp->first_sc_jmp = next_jmp;
+
+    // Fix last element in list.
+    if (jmp == cmp->last_sc_jmp)
+        cmp->last_sc_jmp = prev_jmp;
+
+    // Add to the head of the freelist.
+    jmp->next = builder->sc_jmp_freelist;
+    builder->sc_jmp_freelist = jmp;
+}
+
+static void NIR_mov_deferred_sc_jmp_list(NIR_DeferredCmp* dst_cmp, NIR_DeferredCmp* src_cmp)
+{
+    // Just copy list if dst is empty.
+    if (!dst_cmp->first_sc_jmp) {
+        assert(!dst_cmp->last_sc_jmp);
+        dst_cmp->first_sc_jmp = src_cmp->first_sc_jmp;
+        dst_cmp->last_sc_jmp = src_cmp->last_sc_jmp;
+    }
+    // Move non-empty source list to the end of the destination list.
+    else if (src_cmp->first_sc_jmp) {
+        assert(src_cmp->last_sc_jmp);
+        dst_cmp->last_sc_jmp->next = src_cmp->first_sc_jmp;
+        dst_cmp->last_sc_jmp = src_cmp->last_sc_jmp;
+    }
+
+    // Clear src list.
+    src_cmp->first_sc_jmp = NULL;
+    src_cmp->last_sc_jmp = NULL;
+}
+
+static void NIR_copy_sc_jmp(NIR_ProcBuilder* builder, NIR_DeferredJmpcc* dst_jmp, NIR_DeferredJmpcc* src_jmp, bool desired_result)
+{
+    *dst_jmp = *src_jmp;
+
+    if (dst_jmp->result != desired_result) {
+        dst_jmp->cmp.cmp.cond = nir_opposite_cond[dst_jmp->cmp.cmp.cond];
+        dst_jmp->result = desired_result;
+    }
+
+    if (!dst_jmp->jmp) {
+        dst_jmp->jmp = NIR_emit_instr_cond_jmp(builder, NIR_alloc_jmp_target(builder, 0), dst_jmp->cmp.cmp.r);
+    }
 }
 
 static void NIR_execute_deferred_cmp(NIR_ProcBuilder* builder, NIR_Operand* operand)
@@ -564,7 +648,7 @@ static void NIR_emit_array_init(NIR_ProcBuilder* builder, NIR_Operand* array_op,
 
     // For each array element, compute the pointer to the corresponding element and assign it
     // an default value if not yet initialized.
-    NIR_Operand zero_op = {.kind = IR_OPERAND_IMM, .type = elem_type, .imm = nir_zero_imm};
+    NIR_Operand zero_op = {.kind = NIR_OPERAND_IMM, .type = elem_type, .imm = nir_zero_imm};
 
     for (u64 elem_index = 0; elem_index < num_elems; elem_index += 1) {
         size_t flag_index = elem_index / num_bits;
@@ -635,13 +719,13 @@ static void NIR_emit_assign(NIR_ProcBuilder* builder, NIR_Operand* lhs, NIR_Oper
         NIR_emit_instr_limm(builder, rhs->type->size, r, rhs->imm);
         NIR_emit_instr_store(builder, lhs->type, dst_addr, r);
     }
-    else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
+    else if (rhs->kind == NIR_OPERAND_ARRAY_INIT) {
         NIR_emit_array_init(builder, lhs, rhs);
     }
-    else if (rhs->kind == IR_OPERAND_STR_LIT) {
+    else if (rhs->kind == NIR_OPERAND_STR_LIT) {
         NIR_emit_array_str_init(builder, lhs, rhs);
     }
-    else if (IR_type_fits_in_reg(rhs->type)) {
+    else if (NIR_type_fits_in_reg(rhs->type)) {
         NIR_op_to_r(builder, rhs);
         NIR_emit_instr_store(builder, lhs->type, dst_addr, rhs->reg);
     }
@@ -705,16 +789,16 @@ static void NIR_emit_ptr_int_add(NIR_ProcBuilder* builder, NIR_Operand* dst, NIR
     }
     else {
         if (ptr_op->addr.scale) {
-            IR_op_to_r(builder, int_op);
+            NIR_op_to_r(builder, int_op);
 
             NIR_Reg r = NIR_next_reg(builder);
             NIR_Reg a = ptr_op->addr.index_reg;
             NIR_Reg b = int_op->reg;
 
             if (add)
-                IR_emit_instr_add(builder, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
+                NIR_emit_instr_add(builder, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
             else
-                IR_emit_instr_sub(builder, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
+                NIR_emit_instr_sub(builder, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
 
             ptr_op->addr.index_reg = r;
         }
@@ -725,7 +809,7 @@ static void NIR_emit_ptr_int_add(NIR_ProcBuilder* builder, NIR_Operand* dst, NIR
                 NIR_Reg a = int_op->reg;
 
                 int_op->reg = NIR_next_reg(builder);
-                IR_emit_instr_neg(builder, int_op->type, int_op->reg, a);
+                NIR_emit_instr_neg(builder, int_op->type, int_op->reg, a);
             }
 
             ptr_op->addr.scale = base_size;
@@ -757,8 +841,372 @@ static void NIR_emit_binary_cmp(NIR_ProcBuilder* builder, ConditionKind cond_kin
 
 static void NIR_emit_short_circuit_cmp(NIR_ProcBuilder* builder, NIR_Operand* dst_op, ExprBinary* expr)
 {
-    // TODO: Left off here!
+    //
+    // NOTE: This procedure will create a deferred comparison containing an array of short-circuit jumps and one final
+    // jump. If the left and right subexpressions are themselves deferred comparisons, then they will be merged into
+    // this parent expression's deferred comparison. Otherwise, subexpressions that are not deferred comparisons will be
+    // compared to zero and converted to either a short-circuit jump (left subexpression) or a final jump (right
+    // subexpression).
+    //
+
+    dst_op->kind = NIR_OPERAND_DEFERRED_CMP;
+    dst_op->type = expr->super.type;
+
+    NIR_Operand left_op = {0};
+    NIR_Operand right_op = {0};
+
+    bool short_circuit_val;
+    ConditionKind short_circuit_cond;
+
+    if (expr->op == TKN_LOGIC_AND) {
+        short_circuit_val = false;
+        short_circuit_cond = COND_EQ;
+    }
+    else {
+        assert(expr->op == TKN_LOGIC_OR);
+        short_circuit_val = true;
+        short_circuit_cond = COND_NEQ;
+    }
+
+    // Emit instructions for the left expression.
+    NIR_emit_expr(builder, expr->left, &left_op);
+
+    // If the left subexpression is a deferred comparison, merge into this deferred comparison result.
+    //
+    // Short-circuit jumps from the left subexpression with the same "short-circuit value" are kept as-is.
+    //
+    // Short-circuit jumps from the left subexpression with the opposite "short-circuit value" are patched
+    // with the current instruction index as the jump target and removed. This ensures that short-circuit jumps
+    // with the opposite "short-circuit value" are compared to the right subexpression.
+    //
+    // The left subexpression's final jump is added as a short-circuit jump.
+    if (left_op.kind == NIR_OPERAND_DEFERRED_CMP) {
+        // Copy list of short-circuit jumps.
+        dst_op->cmp.first_sc_jmp = left_op.cmp.first_sc_jmp;
+        dst_op->cmp.last_sc_jmp = left_op.cmp.last_sc_jmp;
+
+        // Patch and remove short-circuit jumps with the opposite "short-circuit value".
+        NIR_DeferredJmpcc* it = dst_op->cmp.first_sc_jmp;
+        NIR_DeferredJmpcc* prev_it = NULL;
+
+        while (it) {
+            NIR_DeferredJmpcc* next_it = it->next;
+
+            if (it->result != short_circuit_val) {
+                NIR_patch_jmp_target(it->jmp, NIR_get_jmp_target(builder));
+                NIR_del_deferred_sc_jmp(builder, &dst_op->cmp, prev_it, it);
+            }
+
+            it = next_it;
+            prev_it = it;
+        }
+
+        // Convert left expression's final jmp to a short-circuit jmp.
+        NIR_DeferredJmpcc j;
+        NIR_copy_sc_jmp(builder, &j, &left_op.cmp.final_jmp, short_circuit_val);
+        NIR_new_deferred_sc_jmp(builder, &dst_op->cmp, j.cmp, j.result, j.jmp);
+    }
+
+    // The left subexpression is some computation (not a deferred comparison). Compare the left subexpression to zero
+    // and create a short-circuit jmp.
+    else {
+        NIR_op_to_r(builder, &left_op);
+
+        NIR_Reg imm_reg = NIR_next_reg(builder);
+        NIR_emit_instr_limm(builder, left_op.type->size, imm_reg, nir_zero_imm);
+
+        NIR_Reg cmp_reg = NIR_next_reg(builder);
+        Instr* cmp_instr = NIR_emit_instr_cmp(builder, left_op.type, short_circuit_cond, cmp_reg, left_op.reg, imm_reg);
+        Instr* jmp_instr = NIR_emit_instr_cond_jmp(builder, NIR_alloc_jmp_target(builder, 0), cmp_reg);
+
+        NIR_new_deferred_sc_jmp(builder, &dst_op->cmp, cmp_instr, short_circuit_val, jmp_instr);
+    }
+
+    // Emit instructions for the right expression.
+    NIR_emit_expr(builder, expr->right, &right_op);
+
+    // If the right subexpression is a deferred comparison, merge into this deferred comparison result.
+    // The right subexpression's short-circuit jumps are kept as-is.
+    // The right subexpression's final jump is converted to a final jump to the "false" control path.
+    if (right_op.kind == NIR_OPERAND_DEFERRED_CMP) {
+        // Merge lists of short-circuit jumps.
+        NIR_mov_deferred_sc_jmp_list(&dst_op->cmp, &right_op.cmp);
+
+        // Convert the right expression's final jmp into a final jmp to the "false" path.
+        NIR_copy_sc_jmp(builder, &dst_op->cmp.final_jmp, &right_op.cmp.final_jmp, false);
+    }
+    // The right subexpression is some computation (not a deferred comparison). Compare the right subexpression to zero
+    // and create a final jump.
+    else {
+        NIR_op_to_r(builder, &right_op);
+
+        NIR_Reg imm_reg = NIR_next_reg(builder);
+        NIR_emit_instr_limm(builder, right_op.type->size, imm_reg, nir_zero_imm);
+
+        NIR_Reg cmp_reg = NIR_next_reg(builder);
+        Instr* cmp_instr = NIR_emit_instr_cmp(builder, right_op.type, COND_EQ, cmp_reg, right_op.reg, imm_reg);
+        Instr* jmp_instr = NIR_emit_instr_cond_jmp(builder, NIR_alloc_jmp_target(builder, 0), cmp_reg);
+
+        dst_op->cmp.final_jmp.result = false;
+        dst_op->cmp.final_jmp.jmp = jmp_instr;
+        dst_op->cmp.final_jmp.cmp = cmp_instr;
+    }
 }
+
+static void NIR_emit_int_cast(NIR_ProcBuilder* builder, NIR_Operand* src_op, NIR_Operand* dst_op)
+{
+    // NOTE:
+    // This function treats pointers like integers. The IR currently implements "opaque" pointers, so
+    // there are no explicit instructions for converting from one ptr type to another, or converting to/from int/ptr.
+    assert(src_op->kind != NIR_OPERAND_IMM); // Should be prevented by resolver.
+
+    // We need the src expression to be in a register.
+    NIR_op_to_r(builder, src_op);
+
+    NIR_Reg dst_reg = NIR_REG_COUNT;
+    NIR_Reg src_reg = src_op->reg;
+
+    Type* src_type = src_op->type;
+    Type* dst_type = dst_op->type;
+    size_t src_size = src_type->size;
+    size_t dst_size = dst_type->size;
+
+    // Integers are the same size. This is a NO-OP even if any of the types is a ptr type.
+    if (src_size == dst_size) {
+        dst_reg = src_reg;
+    }
+    // Truncate from larger type to smaller type.
+    else if (src_size > dst_size) {
+        dst_reg = NIR_next_reg(builder);
+        NIR_emit_instr_trunc(builder, dst_type, src_type, dst_reg, src_reg);
+    }
+    // Extend (sign or zero) src to larger type.
+    else {
+        dst_reg = NIR_next_reg(builder);
+        InstrKind instr_kind = (src_type->kind == TYPE_INTEGER) && src_type->as_integer.is_signed ? INSTR_SEXT : INSTR_ZEXT;
+        NIR_emit_instr_convert(builder, instr_kind, dst_type, src_type, dst_reg, src_reg);
+    }
+
+    if (dst_op->type->kind == TYPE_PTR) {
+        dst_op->kind = NIR_OPERAND_MEM_ADDR;
+        dst_op->addr.base_kind = MEM_BASE_REG;
+        dst_op->addr.base.reg = dst_reg;
+        dst_op->addr.index_reg = NIR_REG_COUNT;
+        dst_op->addr.scale = 0;
+        dst_op->addr.disp = 0;
+    }
+    else {
+        dst_op->kind = NIR_OPERAND_REG;
+        dst_op->reg = dst_reg;
+    }
+}
+
+static void NIR_emit_expr_cast(NIR_ProcBuilder* builder, ExprCast* expr_cast, NIR_Operand* dst_op)
+{
+    // Emit instructions for source expression that will be casted.
+    NIR_Operand src_op = {0};
+    NIR_emit_expr(builder, expr_cast->expr, &src_op);
+
+    dst_op->type = expr_cast->super.type;
+
+    // TODO: Support floats.
+    assert(src_op.type->kind != TYPE_FLOAT);
+    assert(dst_op->type->kind != TYPE_FLOAT);
+    assert(src_op.type != dst_op->type); // Should be prevented by resolver.
+
+    if (src_op.type->kind == TYPE_ARRAY && dst_op->type->kind == TYPE_PTR) {
+        dst_op->kind = NIR_OPERAND_MEM_ADDR;
+
+        NIR_get_object_addr(builder, &dst_op->addr, &src_op);
+    }
+    else {
+        NIR_emit_int_cast(builder, &src_op, dst_op);
+    }
+}
+
+
+static bool NIR_type_fits_in_reg(Type* type)
+{
+    return type->size <= PTR_SIZE;
+}
+
+static void NIR_setup_call_ret(NIR_ProcBuilder* builder, ExprCall* expr_call, NIR_Operand* dst_op)
+{
+    dst_op->type = expr_call->super.type;
+
+    // Allocate register if procedure returns a value.
+    if (dst_op->type != builtin_types[BUILTIN_TYPE_VOID].type) {
+        if (NIR_type_fits_in_reg(dst_op->type)) {
+            dst_op->kind = NIR_OPERAND_REG;
+            dst_op->reg = NIR_next_reg(builder);
+        }
+        else {
+            // TODO: Support returning structs
+            assert(0);
+        }
+    }
+    else {
+        dst_op->kind = NIR_OPERAND_NONE;
+        dst_op->reg = NIR_REG_COUNT;
+    }
+}
+
+static NIR_InstrCallArg* NIR_setup_call_args(NIR_ProcBuilder* builder, ExprCall* expr_call)
+{
+    u32 num_args = (u32)expr_call->num_args;
+    NIR_InstrCallArg* args = alloc_array(builder->arena, NIR_InstrCallArg, num_args, false);
+
+    // Emit instructions for each argument expression and collect the resulting expression values
+    // into an `args` array.
+    u32 arg_index = 0;
+    List* head = &expr_call->args;
+    List* it = head->next;
+
+    while (it != head) {
+        ProcCallArg* ast_arg = list_entry(it, ProcCallArg, lnode);
+        NIR_Operand arg_op = {0};
+
+        NIR_emit_expr(builder, ast_arg->expr, &arg_op);
+
+        if (NIR_type_fits_in_reg(arg_op.type)) {
+            NIR_op_to_r(builder, &arg_op);
+
+            assert(arg_index < num_args);
+            args[arg_index].type = arg_op.type;
+            args[arg_index].loc = arg_op.reg;
+        }
+        else {
+            // TODO: Support struct types
+            assert(0);
+        }
+
+        arg_index += 1;
+        it = it->next;
+    }
+
+    return args;
+}
+
+static void NIR_emit_expr_call(NIR_ProcBuilder* builder, ExprCall* expr_call, NIR_Operand* dst_op)
+{
+    u32 num_args = (u32)expr_call->num_args;
+    NIR_InstrCallArg* args = NIR_setup_call_args(builder, expr_call);
+
+    // Emit instructions for the procedure pointer/name.
+    NIR_Operand proc_op = {0};
+    NIR_emit_expr(builder, expr_call->proc, &proc_op);
+
+    // Allocate register for return value, emit call instruction, and then cleanup.
+    if (proc_op.kind == NIR_OPERAND_PROC) {
+        // Direct procedure call.
+        NIR_setup_call_ret(builder, expr_call, dst_op);
+        NIR_emit_instr_call(builder, proc_op.sym, dst_op->reg, num_args, args);
+    }
+    else {
+        // Indirect procedure call through register.
+        NIR_op_to_r(builder, &proc_op);
+        NIR_setup_call_ret(builder, expr_call, dst_op);
+        NIR_emit_instr_call_indirect(builder, proc_op.type, proc_op.reg, dst_op->reg, num_args, args);
+    }
+
+    // Mark current procedure as non-leaf.
+    builder->curr_proc->as_proc.is_nonleaf = true;
+}
+
+static void NIR_emit_expr_compound_lit(NIR_ProcBuilder* builder, ExprCompoundLit* expr, NIR_Operand* dst)
+{
+    // TODO: Currently only support array initializers.
+    assert(expr->super.type->kind == TYPE_ARRAY);
+    assert(!expr->typespec);
+
+    u64 initzer_index = 0;
+    NIR_ArrayMemberInitializer* ir_initzers = alloc_array(builder->tmp_arena, NIR_ArrayMemberInitializer, expr->num_initzers, true);
+
+    List* head = &expr->initzers;
+    List* it = head->next;
+    u64 elem_index = 0;
+
+    while (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        NIR_ArrayMemberInitializer* ir_initzer = ir_initzers + initzer_index;
+
+        if (initzer->designator.kind == DESIGNATOR_INDEX) {
+            NIR_Operand desig_op = {0};
+            NIR_emit_expr(builder, initzer->designator.index, &desig_op);
+
+            assert(desig_op.kind == NIR_OPERAND_IMM);
+            elem_index = desig_op.imm.as_int._u64;
+        }
+        else {
+            assert(initzer->designator.kind == DESIGNATOR_NONE);
+        }
+
+        ir_initzer->index = elem_index;
+        NIR_emit_expr(builder, initzer->init, &ir_initzer->op);
+
+        elem_index += 1;
+        initzer_index += 1;
+        it = it->next;
+    }
+
+    dst->kind = NIR_OPERAND_ARRAY_INIT;
+    dst->type = expr->super.type;
+    dst->array_initzer.num_initzers = expr->num_initzers;
+    dst->array_initzer.initzers = ir_initzers;
+}
+
+static void NIR_emit_expr(NIR_ProcBuilder* builder, Expr* expr, NIR_Operand* dst)
+{
+    if (expr->is_constexpr && expr->is_imm) {
+        assert(type_is_scalar(expr->type));
+        dst->kind = NIR_OPERAND_IMM;
+        dst->type = expr->type;
+        dst->imm = expr->imm;
+
+        return;
+    }
+
+    switch (expr->kind) {
+    case CST_ExprIdent:
+        NIR_emit_expr_ident(builder, (ExprIdent*)expr, dst);
+        break;
+    case CST_ExprCall:
+        NIR_emit_expr_call(builder, (ExprCall*)expr, dst);
+        break;
+    case CST_ExprCast:
+        NIR_emit_expr_cast(builder, (ExprCast*)expr, dst);
+        break;
+    case CST_ExprBinary:
+        NIR_emit_expr_binary(builder, (ExprBinary*)expr, dst);
+        break;
+    case CST_ExprUnary:
+        NIR_emit_expr_unary(builder, (ExprUnary*)expr, dst);
+        break;
+    case CST_ExprIndex:
+        NIR_emit_expr_index(builder, (ExprIndex*)expr, dst);
+        break;
+    case CST_ExprField:
+        NIR_emit_expr_field(builder, (ExprField*)expr, dst);
+        break;
+    case CST_ExprCompoundLit:
+        NIR_emit_expr_compound_lit(builder, (ExprCompoundLit*)expr, dst);
+        break;
+    case CST_ExprStr: {
+        ExprStr* expr_str_lit = (ExprStr*)expr;
+
+        dst->kind = NIR_OPERAND_STR_LIT;
+        dst->type = expr_str_lit->super.type;
+        dst->str_lit = expr_str_lit->str_lit;
+
+        break;
+    }
+    default:
+        ftprint_err("Unsupported expr kind %d during code generation\n", expr->kind);
+        assert(0);
+        break;
+    }
+}
+
 
 static void NIR_emit_stmt_block_body(NIR_ProcBuilder* builder, List* stmts, u32* break_target, u32* continue_target)
 {
