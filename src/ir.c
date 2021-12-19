@@ -953,6 +953,219 @@ static void NIR_emit_short_circuit_cmp(NIR_ProcBuilder* builder, NIR_Operand* ds
     }
 }
 
+static void NIR_emit_expr_binary(NIR_ProcBuilder* builder, ExprBinary* expr, NIR_Operand* dst)
+{
+    if (expr->op == TKN_LOGIC_AND || expr->op == TKN_LOGIC_OR) {
+        NIR_emit_short_circuit_cmp(builder, dst, expr);
+        return;
+    }
+
+    Type* result_type = expr->super.type;
+    NIR_Operand left = {0};
+    NIR_Operand right = {0};
+
+    NIR_emit_expr(builder, expr->left, &left);
+    NIR_emit_expr(builder, expr->right, &right);
+
+    switch (expr->op) {
+    case TKN_PLUS: {
+        bool left_is_ptr = left.type->kind == TYPE_PTR;
+        bool right_is_ptr = right.type->kind == TYPE_PTR;
+
+        if (left_is_ptr) {
+            NIR_emit_ptr_int_add(builder, dst, &left, &right, true);
+        }
+        else if (right_is_ptr) {
+            NIR_emit_ptr_int_add(builder, dst, &right, &left, true);
+        }
+        else {
+            NIR_op_to_r(builder, &left);
+            NIR_op_to_r(builder, &right);
+
+            NIR_Reg dst_reg = NIR_next_reg(builder);
+
+            NIR_emit_instr_add(builder, result_type, dst_reg, left.reg, right.reg);
+
+            dst->kind = NIR_OPERAND_REG;
+            dst->type = result_type;
+            dst->reg = dst_reg;
+        }
+        break;
+    }
+    case TKN_MINUS: {
+        bool left_is_ptr = left.type->kind == TYPE_PTR;
+        bool right_is_ptr = right.type->kind == TYPE_PTR;
+
+        // ptr - int => ptr
+        if (left_is_ptr && !right_is_ptr) {
+            IR_emit_ptr_int_add(builder, dst, &left, &right, false);
+        }
+        // ptr - ptr => s64
+        else if (left_is_ptr && right_is_ptr) {
+            u64 base_size = left.type->as_ptr.base->size;
+            u32 base_size_log2 = (u32)clp2(base_size);
+
+            NIR_op_to_r(builder, &left);
+            NIR_op_to_r(builder, &right);
+            NIR_Reg dst_reg = NIR_next_reg(builder);
+
+            NIR_emit_instr_sub(builder, result_type, dst_reg, left.reg, right.reg);
+
+            if (base_size_log2 > 0) {
+
+                // Load shift amount into a register.
+                Scalar shift_arg = {.as_int._u32 = base_size_log2};
+                NIR_Reg shift_reg = NIR_next_reg(builder);
+                NIR_emit_instr_limm(builder, 1, shift_reg, shift_arg);
+
+                // Shift result of subtraction by the shift amount.
+                NIR_Reg tmp_reg = dst_reg;
+                dst_reg = NIR_next_reg(builder);
+                NIR_emit_instr_sar(builder, result_type, dst_reg, tmp_reg, shift_reg);
+            }
+
+            dst->kind = NIR_OPERAND_REG;
+            dst->type = result_type;
+            dst->reg = dst_reg;
+        }
+        // int - int => int
+        else {
+            NIR_op_to_r(builder, &left);
+            NIR_op_to_r(builder, &right);
+            NIR_Reg dst_reg = NIR_next_reg(builder);
+            NIR_emit_instr_sub(builder, result_type, dst_reg, left.reg, right.reg);
+
+            dst->kind = NIR_OPERAND_REG;
+            dst->type = result_type;
+            dst->reg = dst_reg;
+        }
+        break;
+    }
+    case TKN_ASTERISK: {
+        NIR_op_to_r(builder, &left);
+        NIR_op_to_r(builder, &right);
+        NIR_Reg dst_reg = NIR_next_reg(builder);
+
+        // TODO: Emit a shift instruction if one of the operands is a power-of-two immediate.
+        NIR_emit_instr_mul(builder, result_type, dst_reg, left.reg, right.reg);
+
+        dst->kind = NIR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_DIV: {
+        NIR_op_to_r(builder, &left);
+        NIR_op_to_r(builder, &right);
+        NIR_Reg dst_reg = NIR_next_reg(builder);
+
+        // TODO: Emit a shift instruction if the second operand is a power-of-two immediate.
+        NIR_emit_instr_div(builder, result_type, dst_reg, left.reg, right.reg);
+
+        dst->kind = NIR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_RSHIFT: {
+        NIR_op_to_r(builder, &left);
+        NIR_op_to_r(builder, &right);
+        NIR_Reg dst_reg = NIR_next_reg(builder);
+
+        NIR_emit_instr_sar(builder, result_type, dst_reg, left.reg, right.reg);
+
+        dst->kind = NIR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_LSHIFT: {
+        NIR_op_to_r(builder, &left);
+        NIR_op_to_r(builder, &right);
+        NIR_Reg dst_reg = NIR_next_reg(builder);
+
+        NIR_emit_instr_shl(builder, result_type, dst_reg, left.reg, right.reg);
+
+        dst->kind = NIR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_AND: {
+        NIR_op_to_r(builder, &left);
+        NIR_op_to_r(builder, &right);
+        NIR_Reg dst_reg = NIR_next_reg(builder);
+
+        NIR_emit_instr_and(builder, result_type, dst_reg, left.reg, right.reg);
+
+        dst->kind = NIR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_OR: {
+        NIR_op_to_r(builder, &left);
+        NIR_op_to_r(builder, &right);
+        NIR_Reg dst_reg = NIR_next_reg(builder);
+
+        NIR_emit_instr_or(builder, result_type, dst_reg, left.reg, right.reg);
+
+        dst->kind = NIR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_CARET: {
+        NIR_op_to_r(builder, &left);
+        NIR_op_to_r(builder, &right);
+        NIR_Reg dst_reg = NIR_next_reg(builder);
+
+        NIR_emit_instr_xor(builder, result_type, dst_reg, left.reg, right.reg);
+
+        dst->kind = NIR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_EQ: {
+        NIR_emit_binary_cmp(builder, COND_EQ, result_type, dst, &left, &right);
+        break;
+    }
+    case TKN_NOTEQ: {
+        NIR_emit_binary_cmp(builder, COND_NEQ, result_type, dst, &left, &right);
+        break;
+    }
+    case TKN_LT: {
+        ConditionKind cond_kind = left.type->as_integer.is_signed ? COND_S_LT : COND_U_LT;
+
+        NIR_emit_binary_cmp(builder, cond_kind, result_type, dst, &left, &right);
+        break;
+    }
+    case TKN_LTEQ: {
+        ConditionKind cond_kind = left.type->as_integer.is_signed ? COND_S_LTEQ : COND_U_LTEQ;
+
+        NIR_emit_binary_cmp(builder, cond_kind, result_type, dst, &left, &right);
+        break;
+    }
+    case TKN_GT: {
+        ConditionKind cond_kind = left.type->as_integer.is_signed ? COND_S_GT : COND_U_GT;
+
+        NIR_emit_binary_cmp(builder, cond_kind, result_type, dst, &left, &right);
+        break;
+    }
+    case TKN_GTEQ: {
+        ConditionKind cond_kind = left.type->as_integer.is_signed ? COND_S_GTEQ : COND_U_GTEQ;
+
+        NIR_emit_binary_cmp(builder, cond_kind, result_type, dst, &left, &right);
+        break;
+    }
+    default:
+        assert(0);
+        break;
+    }
+    }
+}
+
 static void NIR_emit_int_cast(NIR_ProcBuilder* builder, NIR_Operand* src_op, NIR_Operand* dst_op)
 {
     // NOTE:
