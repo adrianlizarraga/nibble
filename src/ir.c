@@ -483,7 +483,7 @@ static void NIR_execute_deferred_cmp(NIR_ProcBuilder* builder, NIR_Operand* oper
 
     if (!has_sc_jmps && !has_final_jmp) {
         NIR_emit_instr_zext(builder, operand->type, builtin_types[BUILTIN_TYPE_U8].type, dst_reg,
-                            def_cmp->final_jmp.cmp.cmp.cond);
+                            def_cmp->final_jmp.cmp->cmp.cond);
     }
     else {
         // Patch short-circuit jumps that jump to the "true" control path.
@@ -998,7 +998,7 @@ static void NIR_emit_expr_binary(NIR_ProcBuilder* builder, ExprBinary* expr, NIR
 
         // ptr - int => ptr
         if (left_is_ptr && !right_is_ptr) {
-            IR_emit_ptr_int_add(builder, dst, &left, &right, false);
+            NIR_emit_ptr_int_add(builder, dst, &left, &right, false);
         }
         // ptr - ptr => s64
         else if (left_is_ptr && right_is_ptr) {
@@ -1164,6 +1164,178 @@ static void NIR_emit_expr_binary(NIR_ProcBuilder* builder, ExprBinary* expr, NIR
         break;
     }
     }
+}
+
+static void NIR_emit_expr_unary(NIR_ProcBuilder* builder, ExprUnary* expr, NIR_Operand* dst)
+{
+    Type* result_type = expr->super.type;
+
+    switch (expr->op) {
+    case TKN_PLUS: {
+        NIR_emit_expr(builder, expr->expr, dst);
+        break;
+    }
+    case TKN_MINUS: // Two's compliment negation.
+    {
+        NIR_Operand src;
+
+        NIR_emit_expr(builder, expr->expr, &src);
+        NIR_op_to_r(builder, &src);
+
+        NIR_Reg dst_reg = NIR_next_reg(builder);
+
+        NIR_emit_instr_neg(builder, result_type, dst_reg, src.reg);
+
+        dst->kind = NIR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_NEG: // Bitwise not
+    {
+        NIR_Operand src;
+
+        NIR_emit_expr(builder, expr->expr, &src);
+        NIR_op_to_r(builder, &src);
+
+        NIR_Reg dst_reg = NIR_next_reg(builder);
+
+        NIR_emit_instr_not(builder, result_type, dst_reg, src.reg);
+
+        dst->kind = NIR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_NOT: // Logical not
+    {
+        dst->kind = NIR_OPERAND_DEFERRED_CMP;
+        dst->type = result_type;
+
+        NIR_Operand inner_op = {0};
+        NIR_emit_expr(builder, expr->expr, &inner_op);
+
+        if (inner_op.kind == NIR_OPERAND_DEFERRED_CMP) {
+            // Reverse control paths for all jumps.
+            // Ex: if a jmp instruction jumps to the "true" path, make it jump to the "false" path.
+            dst->cmp.first_sc_jmp = inner_op.cmp.first_sc_jmp;
+            dst->cmp.last_sc_jmp = inner_op.cmp.last_sc_jmp;
+
+            for (NIR_DeferredJmpcc* it = dst->cmp.first_sc_jmp; it; it = it->next) {
+                it->result = !(it->result);
+            }
+
+            dst->cmp.final_jmp = inner_op.cmp.final_jmp;
+            dst->cmp.final_jmp.result = !inner_op.cmp.final_jmp.result;
+        }
+        else {
+            NIR_op_to_r(builder, &inner_op);
+
+            NIR_Reg imm_reg = NIR_next_reg(builder);
+            NIR_emit_instr_limm(builder, inner_op.type->size, imm_reg, nir_zero_imm);
+
+            NIR_Reg dst_reg = NIR_next_reg(builder);
+            Instr* cmp_instr = NIR_emit_instr_cmp(builder, inner_op.type, COND_EQ, dst_reg, inner_op.reg, imm_reg);
+
+            dst->cmp.final_jmp.cmp = cmp_instr;
+            dst->cmp.final_jmp.result = true;
+            dst->cmp.first_sc_jmp = NULL;
+            dst->cmp.last_sc_jmp = NULL;
+            dst->cmp.final_jmp.jmp = NULL;
+        }
+
+        break;
+    }
+    case TKN_ASTERISK: {
+        NIR_emit_expr(builder, expr->expr, dst);
+        NIR_ptr_to_mem_op(builder, dst);
+
+        dst->kind = NIR_OPERAND_DEREF_ADDR;
+        dst->type = result_type;
+        break;
+    }
+    case TKN_CARET: // Address-of operator
+    {
+        NIR_Operand src;
+        NIR_emit_expr(builder, expr->expr, &src);
+
+        dst->kind = NIR_OPERAND_MEM_ADDR;
+        dst->type = result_type;
+
+        if (src.kind == NIR_OPERAND_DEREF_ADDR) {
+            dst->addr = src.addr;
+        }
+        else {
+            assert(src.kind == NIR_OPERAND_VAR);
+
+            NIR_Reg dst_reg = NIR_next_reg(builder);
+
+            NIR_emit_instr_laddr(builder, src.type, dst_reg, NIR_sym_as_addr(src.sym));
+
+            dst->addr.base_kind = NIR_MEM_BASE_REG;
+            dst->addr.base.reg = dst_reg;
+            dst->addr.index_reg = NIR_REG_COUNT;
+            dst->addr.disp = 0;
+            dst->addr.scale = 0;
+        }
+        break;
+    }
+    default:
+        assert(0);
+        break;
+    }
+}
+
+static void NIR_emit_expr_field(NIR_ProcBuilder* builder, ExprField* expr_field, NIR_Operand* dst)
+{
+    NIR_Operand obj_op = {0};
+    NIR_emit_expr(builder, expr_field->object, &obj_op);
+
+    Type* obj_type;
+    MemAddr obj_addr;
+
+    if (obj_op.type->kind == TYPE_PTR) {
+        //
+        // This pointer points to the actual object.
+        //
+
+        obj_type = obj_op.type->as_ptr.base;
+        NIR_ptr_to_mem_op(builder, &obj_op);
+        obj_addr = obj_op.addr;
+    }
+    else {
+        //
+        // Accessing the object field directly.
+        //
+
+        obj_type = obj_op.type;
+        NIR_get_object_addr(builder, &obj_addr, &obj_op);
+    }
+
+    size_t field_offset = get_type_aggregate_field(obj_type, expr_field->field)->offset;
+
+    dst->kind = NIR_OPERAND_DEREF_ADDR;
+    dst->type = expr_field->super.type;
+    dst->addr = obj_addr;
+
+    // Add in the field's byte offset from the beginning of the object.
+    dst->addr.disp += (u32)field_offset;
+}
+
+static void NIR_emit_expr_index(NIR_ProcBuilder* builder, ExprIndex* expr_index, NIR_Operand* dst)
+{
+    NIR_Operand array_op = {0};
+    NIR_Operand index_op = {0};
+
+    NIR_emit_expr(builder, expr_index->array, &array_op);
+    NIR_emit_expr(builder, expr_index->index, &index_op);
+
+    assert(array_op.type->kind == TYPE_PTR);
+
+    NIR_emit_ptr_int_add(builder, dst, &array_op, &index_op, true);
+
+    dst->kind = NIR_OPERAND_DEREF_ADDR;
+    dst->type = expr_index->super.type;
 }
 
 static void NIR_emit_int_cast(NIR_ProcBuilder* builder, NIR_Operand* src_op, NIR_Operand* dst_op)
@@ -1503,6 +1675,94 @@ static void NIR_emit_stmt_expr_assign(NIR_ProcBuilder* builder, StmtExprAssign* 
     default:
         assert(!"Unsupported assignment operator in IR generation");
         break;
+    }
+}
+
+static void NIR_emit_stmt_if(NIR_ProcBuilder* builder, StmtIf* stmt, u32* break_target, u32* continue_target)
+{
+    Expr* cond_expr = stmt->if_blk.cond;
+    Stmt* if_body = stmt->if_blk.body;
+    Stmt* else_body = stmt->else_blk.body;
+
+    // If expr is a compile-time constant, do not generate the unneeded branch!!
+    if (cond_expr->is_constexpr && cond_expr->is_imm) {
+        assert(type_is_scalar(cond_expr->type));
+        bool cond_val = cond_expr->imm.as_int._u64 != 0;
+
+        if (cond_val)
+            NIR_emit_stmt(builder, if_body, break_target, continue_target);
+        else
+            NIR_emit_stmt(builder, else_body, break_target, continue_target);
+    }
+    else {
+        NIR_Operand cond_op = {0};
+        NIR_emit_expr(builder, cond_expr, &cond_op);
+
+        Instr* jmpcc_false = NULL;
+
+        // If the condition is a chain of deferred comparisons, patch the jump targets
+        // for all short-circuit jumps that jump to the "true" path to the
+        // current instruction index.
+        if (cond_op.kind == NIR_OPERAND_DEFERRED_CMP) {
+            // Patch the jump target for all short-circuit jmps that jump to the "true" control path.
+            for (NIR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
+                if (it->result)
+                    NIR_patch_jmp_target(it->jmp, NIR_get_jmp_target(builder));
+            }
+
+            // Create a jump to the "false" path if it doesn't yet exist.
+            if (!cond_op.cmp.final_jmp.jmp)
+                cond_op.cmp.final_jmp.jmp = NIR_emit_instr_cond_jmp(builder, NIR_alloc_jmp_target(builder, 0),
+                                                                    cond_op.cmp.final_jmp.cmp->cmp.r);
+        }
+        // If the condition is some computation, compare the condition to zero and create a conditional
+        // jump to the "false" path.
+        else {
+            NIR_op_to_r(builder, &cond_op);
+
+            NIR_Reg imm_reg = NIR_next_reg(builder);
+            NIR_emit_instr_limm(builder, cond_op.type->size, imm_reg, nir_zero_imm);
+
+            NIR_Reg cmp_reg = NIR_next_reg(builder);
+            NIR_emit_instr_cmp(builder, cond_op.type, COND_EQ, cmp_reg, cond_op.reg, imm_reg);
+
+            // Emit conditional jump without a jump target. The jump target will be filled in below.
+            jmpcc_false = NIR_emit_instr_cond_jmp(builder, NIR_alloc_jmp_target(builder, 0), cmp_reg);
+        }
+
+        // Emit instructions for if-block body.
+        NIR_emit_stmt(builder, if_body, break_target, continue_target);
+
+        // Code path from if-block needs to jump over the else block. However, this jump instruction is only necessary
+        // if a non-empty else block exists and if not all code paths within the if-block return.
+        Instr* jmp_end_instr = else_body && !if_body->returns ? NIR_emit_instr_jmp(builder, NIR_alloc_jmp_target(builder, 0)) : NULL;
+
+        // Patch conditional jmp instruction(s) that jump over the if-block when the condition is false.
+        if (cond_op.kind == NIR_OPERAND_DEFERRED_CMP) {
+            // Patch the jump target for all short-circuit jmps that jump to the "false" control path.
+            for (NIR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
+                if (!it->result)
+                    NIR_patch_jmp_target(it->jmp, NIR_get_jmp_target(builder));
+            }
+
+            // Patch final jmp to "false" control path.
+            if (cond_op.cmp.final_jmp.result)
+                cond_op.cmp.final_jmp.cmp->cmp.cond = nir_opposite_cond[cond_op.cmp.final_jmp.cmp->cmp.cond];
+
+            NIR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, NIR_get_jmp_target(builder));
+        }
+        else {
+            NIR_patch_jmp_target(jmpcc_false, NIR_get_jmp_target(builder));
+        }
+
+        if (else_body) {
+            // Emit instructions for else-block body.
+            NIR_emit_stmt(builder, else_body, break_target, continue_target);
+
+            // Patch jmp instruction that jumps to the end of the else-block.
+            if (jmp_end_instr)
+                NIR_patch_jmp_target(jmp_end_instr, NIR_get_jmp_target(builder));
+        }
     }
 }
 
