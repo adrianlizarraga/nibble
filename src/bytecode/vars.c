@@ -1,4 +1,4 @@
-#include "bytecode.h"
+#include "ast.h"
 
 typedef struct IR_VarBuilder {
     Allocator* arena;
