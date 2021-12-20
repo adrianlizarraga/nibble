@@ -31,6 +31,15 @@ static char* NIR_print_reg(Allocator* arena, NIR_Reg reg)
     return dstr;
 }
 
+static char* NIR_print_regimm(Allocator* arena, RegOrImm a)
+{
+    if (a.is_imm) {
+        return NIR_print_imm(arena, a.imm);
+    }
+
+    return NIR_print_reg(arena, a.reg);
+}
+
 static char* NIR_print_mem(Allocator* arena, MemAddr* addr)
 {
     char* dstr = array_create(arena, char, 16);
@@ -118,8 +127,8 @@ char* NIR_print_instr(Allocator* arena, Instr* instr)
     case INSTR_XOR: {
         const char* op_name = binary_kind_name[instr->kind];
         ftprint_char_array(&dstr, false, "%s <%s> %s, %s, %s", op_name, type_name(instr->binary.type),
-                           NIR_print_reg(arena, instr->binary.r), NIR_print_reg(arena, instr->binary.a),
-                           NIR_print_reg(arena, instr->binary.b));
+                           NIR_print_reg(arena, instr->binary.r), NIR_print_regimm(arena, instr->binary.a),
+                           NIR_print_regimm(arena, instr->binary.b));
         break;
     }
     case INSTR_NEG:
@@ -161,12 +170,12 @@ char* NIR_print_instr(Allocator* arena, Instr* instr)
     }
     case INSTR_STORE: {
         ftprint_char_array(&dstr, false, "store <%s> %s, %s", type_name(instr->store.type), NIR_print_mem(arena, &instr->store.addr),
-                           NIR_print_reg(arena, instr->store.a));
+                           NIR_print_regimm(arena, instr->store.a));
         break;
     }
     case INSTR_CMP: {
         ftprint_char_array(&dstr, false, "cmp <%s> %s, %s, %s, %s", type_name(instr->cmp.type), NIR_print_reg(arena, instr->cmp.r),
-                           NIR_print_reg(arena, instr->cmp.a), nir_cond_names[instr->cmp.cond], NIR_print_reg(arena, instr->cmp.b));
+                           NIR_print_regimm(arena, instr->cmp.a), nir_cond_names[instr->cmp.cond], NIR_print_regimm(arena, instr->cmp.b));
         break;
     }
     case INSTR_JMP: {
