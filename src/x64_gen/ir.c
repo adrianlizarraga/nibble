@@ -20,7 +20,9 @@
 
     if size >= 2 bytes
 
-    mov _ax, r0
+    mov _ax, r0 // reserve rax and rdx (if size >= 2)
     cqo ; sign extend into _dx
-
+    div r1
+    mov r2, _ax
+    
 */
