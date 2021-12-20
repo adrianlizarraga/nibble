@@ -1,4 +1,5 @@
 #include "ir.h"
+#include "print_nir.h"
 
 typedef struct NIR_ProcBuilder {
     Allocator* arena;
@@ -159,10 +160,10 @@ static void NIR_emit_instr_convert(NIR_ProcBuilder* builder, InstrKind kind, Typ
     NIR_add_instr(builder, instr);
 }
 
-static void NIR_emit_instr_limm(NIR_ProcBuilder* builder, u8 size, NIR_Reg r, Scalar imm)
+static void NIR_emit_instr_limm(NIR_ProcBuilder* builder, Type* type, NIR_Reg r, Scalar imm)
 {
     Instr* instr = NIR_new_instr(builder->arena, INSTR_LIMM);
-    instr->limm.size = size;
+    instr->limm.type = type;
     instr->limm.r = r;
     instr->limm.imm = imm;
 
@@ -320,21 +321,19 @@ static NIR_Reg NIR_next_reg(NIR_ProcBuilder* builder)
 
 static MemAddr NIR_sym_as_addr(Symbol* sym)
 {
-    MemAddr addr = {.base_kind = MEM_BASE_SYM, .base.sym = sym};
+    MemAddr addr = {.base_kind = MEM_BASE_SYM, .base.sym = sym, .index_reg = NIR_REG_COUNT};
     return addr;
 }
 
 static MemAddr NIR_strlit_as_addr(StrLit* str_lit)
 {
-    MemAddr addr = {.base_kind = MEM_BASE_STR_LIT, .base.str_lit = str_lit};
+    MemAddr addr = {.base_kind = MEM_BASE_STR_LIT, .base.str_lit = str_lit, .index_reg = NIR_REG_COUNT};
     return addr;
 }
 
 static void NIR_get_object_addr(NIR_ProcBuilder* builder, MemAddr* dst, NIR_Operand* src)
 {
     Type* src_type = src->type;
-
-    assert(src_type->kind == TYPE_ARRAY || src_type->kind == TYPE_STRUCT || src_type->kind == TYPE_UNION);
 
     if (src->kind == NIR_OPERAND_VAR) {
         if (src->sym->is_local) {
@@ -488,7 +487,7 @@ static void NIR_execute_deferred_cmp(NIR_ProcBuilder* builder, NIR_Operand* oper
         }
 
         // This is the "true" control path. Move the literal 1 into destination register.
-        NIR_emit_instr_limm(builder, operand->type->size, dst_reg, nir_one_imm);
+        NIR_emit_instr_limm(builder, operand->type, dst_reg, nir_one_imm);
 
         // Create a jump to skip the false control path.
         Instr* jmp_skip_false = NIR_emit_instr_jmp(builder, NIR_alloc_jmp_target(builder, 0));
@@ -506,7 +505,7 @@ static void NIR_execute_deferred_cmp(NIR_ProcBuilder* builder, NIR_Operand* oper
         NIR_patch_jmp_target(final_jmp->jmp, NIR_get_jmp_target(builder));
 
         // This is the "false" control path. Move the literal 0 into destination register.
-        NIR_emit_instr_limm(builder, operand->type->size, dst_reg, nir_zero_imm);
+        NIR_emit_instr_limm(builder, operand->type, dst_reg, nir_zero_imm);
 
         // Patch jump that skips "false" control path.
         NIR_patch_jmp_target(jmp_skip_false, NIR_get_jmp_target(builder));
@@ -594,6 +593,10 @@ static void NIR_ptr_to_mem_op(NIR_ProcBuilder* builder, NIR_Operand* operand)
 
 static void NIR_op_to_r(NIR_ProcBuilder* builder, NIR_Operand* operand)
 {
+    if (operand->kind == NIR_OPERAND_REG) {
+        return;
+    }
+
     switch (operand->kind) {
     case NIR_OPERAND_MEM_ADDR:
         NIR_execute_lea(builder, operand);
@@ -607,7 +610,7 @@ static void NIR_op_to_r(NIR_ProcBuilder* builder, NIR_Operand* operand)
     case NIR_OPERAND_IMM: {
         NIR_Reg reg = NIR_next_reg(builder);
 
-        NIR_emit_instr_limm(builder, operand->type->size, reg, operand->imm);
+        NIR_emit_instr_limm(builder, operand->type, reg, operand->imm);
 
         operand->kind = NIR_OPERAND_REG;
         operand->reg = reg;
@@ -619,6 +622,7 @@ static void NIR_op_to_r(NIR_ProcBuilder* builder, NIR_Operand* operand)
         break;
     }
     default: {
+        assert(operand->kind == NIR_OPERAND_VAR);
         NIR_Reg reg = NIR_next_reg(builder);
         NIR_emit_instr_load(builder, operand->type, reg, NIR_sym_as_addr(operand->sym));
 
@@ -746,7 +750,7 @@ static void NIR_emit_assign(NIR_ProcBuilder* builder, NIR_Operand* lhs, NIR_Oper
     if (rhs->kind == NIR_OPERAND_IMM) {
         NIR_Reg r = NIR_next_reg(builder);
 
-        NIR_emit_instr_limm(builder, rhs->type->size, r, rhs->imm);
+        NIR_emit_instr_limm(builder, rhs->type, r, rhs->imm);
         NIR_emit_instr_store(builder, lhs->type, dst_addr, r);
     }
     else if (rhs->kind == NIR_OPERAND_ARRAY_INIT) {
@@ -943,7 +947,7 @@ static void NIR_emit_short_circuit_cmp(NIR_ProcBuilder* builder, NIR_Operand* ds
         NIR_op_to_r(builder, &left_op);
 
         NIR_Reg imm_reg = NIR_next_reg(builder);
-        NIR_emit_instr_limm(builder, left_op.type->size, imm_reg, nir_zero_imm);
+        NIR_emit_instr_limm(builder, left_op.type, imm_reg, nir_zero_imm);
 
         NIR_Reg cmp_reg = NIR_next_reg(builder);
         Instr* cmp_instr = NIR_emit_instr_cmp(builder, left_op.type, short_circuit_cond, cmp_reg, left_op.reg, imm_reg);
@@ -971,7 +975,7 @@ static void NIR_emit_short_circuit_cmp(NIR_ProcBuilder* builder, NIR_Operand* ds
         NIR_op_to_r(builder, &right_op);
 
         NIR_Reg imm_reg = NIR_next_reg(builder);
-        NIR_emit_instr_limm(builder, right_op.type->size, imm_reg, nir_zero_imm);
+        NIR_emit_instr_limm(builder, right_op.type, imm_reg, nir_zero_imm);
 
         NIR_Reg cmp_reg = NIR_next_reg(builder);
         Instr* cmp_instr = NIR_emit_instr_cmp(builder, right_op.type, COND_EQ, cmp_reg, right_op.reg, imm_reg);
@@ -1046,7 +1050,7 @@ static void NIR_emit_expr_binary(NIR_ProcBuilder* builder, ExprBinary* expr, NIR
                 // Load shift amount into a register.
                 Scalar shift_arg = {.as_int._u32 = base_size_log2};
                 NIR_Reg shift_reg = NIR_next_reg(builder);
-                NIR_emit_instr_limm(builder, 1, shift_reg, shift_arg);
+                NIR_emit_instr_limm(builder, builtin_types[BUILTIN_TYPE_U8].type, shift_reg, shift_arg);
 
                 // Shift result of subtraction by the shift amount.
                 NIR_Reg tmp_reg = dst_reg;
@@ -1261,7 +1265,7 @@ static void NIR_emit_expr_unary(NIR_ProcBuilder* builder, ExprUnary* expr, NIR_O
             NIR_op_to_r(builder, &inner_op);
 
             NIR_Reg imm_reg = NIR_next_reg(builder);
-            NIR_emit_instr_limm(builder, inner_op.type->size, imm_reg, nir_zero_imm);
+            NIR_emit_instr_limm(builder, inner_op.type, imm_reg, nir_zero_imm);
 
             NIR_Reg dst_reg = NIR_next_reg(builder);
             Instr* cmp_instr = NIR_emit_instr_cmp(builder, inner_op.type, COND_EQ, dst_reg, inner_op.reg, imm_reg);
@@ -1744,7 +1748,7 @@ static void NIR_emit_stmt_if(NIR_ProcBuilder* builder, StmtIf* stmt, u32* break_
             NIR_op_to_r(builder, &cond_op);
 
             NIR_Reg imm_reg = NIR_next_reg(builder);
-            NIR_emit_instr_limm(builder, cond_op.type->size, imm_reg, nir_zero_imm);
+            NIR_emit_instr_limm(builder, cond_op.type, imm_reg, nir_zero_imm);
 
             NIR_Reg cmp_reg = NIR_next_reg(builder);
             NIR_emit_instr_cmp(builder, cond_op.type, COND_EQ, cmp_reg, cond_op.reg, imm_reg);
@@ -1869,7 +1873,7 @@ static void NIR_emit_stmt_while(NIR_ProcBuilder* builder, StmtWhile* stmt)
 
             // Load zero into a register.
             NIR_Reg imm_reg = NIR_next_reg(builder);
-            NIR_emit_instr_limm(builder, cond_op.type->size, imm_reg, nir_zero_imm);
+            NIR_emit_instr_limm(builder, cond_op.type, imm_reg, nir_zero_imm);
 
             // Compare condition expression to zero.
             NIR_Reg cmp_reg = NIR_next_reg(builder);
@@ -1943,7 +1947,7 @@ static void NIR_emit_stmt_do_while(NIR_ProcBuilder* builder, StmtDoWhile* stmt)
 
             // Load zero into a register.
             NIR_Reg imm_reg = NIR_next_reg(builder);
-            NIR_emit_instr_limm(builder, cond_op.type->size, imm_reg, nir_zero_imm);
+            NIR_emit_instr_limm(builder, cond_op.type, imm_reg, nir_zero_imm);
 
             // Compare condition expression to zero.
             NIR_Reg cmp_reg = NIR_next_reg(builder);
@@ -2026,6 +2030,10 @@ static void NIR_build_proc(NIR_ProcBuilder* builder, Symbol* sym)
 
     NIR_pop_scope(builder);
     builder->curr_proc = NULL;
+
+#ifdef NIBBLE_PRINT_DECLS
+    NIR_print_out_proc(builder->tmp_arena, sym);
+#endif
 }
 
 static void NIR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache)

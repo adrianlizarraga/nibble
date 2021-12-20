@@ -297,11 +297,11 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
         break;
     }
     case IR_INSTR_JMP: {
-        ftprint_char_array(&dstr, false, "jmp %u", instr->jmp.jmp_target);
+        ftprint_char_array(&dstr, false, "jmp %u", *instr->jmp.jmp_target);
         break;
     }
     case IR_INSTR_JMPCC: {
-        ftprint_char_array(&dstr, false, "jmp_%s %u", ir_cond_names[instr->jmpcc.cond], instr->jmpcc.jmp_target);
+        ftprint_char_array(&dstr, false, "jmp_%s %u", ir_cond_names[instr->jmpcc.cond], *instr->jmpcc.jmp_target);
         break;
     }
     case IR_INSTR_SETCC: {

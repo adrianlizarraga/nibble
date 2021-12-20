@@ -6,7 +6,7 @@
 #include <string.h>
 
 //#define NDEBUG
-//#define NIBBLE_PRINT_DECLS
+#define NIBBLE_PRINT_DECLS
 //#define NIBBLE_PRINT_MEM_USAGE
 
 // This is a "unity build".
@@ -26,6 +26,7 @@
 #include "resolver.c"
 #include "bytecode/gen.c"
 #include "ir.c"
+#include "print_nir.c"
 #include "print_ir.c"
 #include "code_gen.c"
 #include "x64_gen/gen.c"

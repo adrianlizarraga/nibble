@@ -82,7 +82,7 @@ typedef struct InstrConvert {
 } InstrConvert;
 
 typedef struct InstrLImm {
-    u8 size;
+    Type* type;
     NIR_Reg r;
     Scalar imm;
 } InstrLImm;
@@ -104,11 +104,6 @@ typedef struct InstrStore {
     MemAddr addr;
     NIR_Reg a;
 } InstrStore;
-
-typedef struct InstrRet {
-    Type* type;
-    NIR_Reg a;
-} InstrRet;
 
 typedef enum ConditionKind {
     COND_U_LT,
@@ -160,6 +155,11 @@ typedef struct InstrCallIndirect {
     InstrCallArg* args;
 } InstrCallIndirect;
 
+typedef struct InstrRet {
+    Type* type;
+    NIR_Reg a;
+} InstrRet;
+
 typedef struct InstrMemcpy {
     Type* type;
     MemAddr dst;
@@ -178,12 +178,12 @@ typedef struct Instr {
         InstrLoad load;
         InstrStore store;
         InstrLAddr laddr;
-        InstrRet ret;
         InstrCmp cmp;
         InstrCondJmp cond_jmp;
         InstrJmp jmp;
         InstrCall call;
         InstrCallIndirect calli;
+        InstrRet ret;
         InstrMemcpy memcpy;
     };
 } Instr;

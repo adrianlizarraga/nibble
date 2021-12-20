@@ -1094,6 +1094,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     //          Gen IR bytecode
     //////////////////////////////////////////
     IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->type_cache);
+    NIR_build_procs(&nibble->ast_mem, &nibble->tmp_mem, &nibble->procs, &nibble->type_cache);
 
     //////////////////////////////////////////
     //          Gen NASM output
