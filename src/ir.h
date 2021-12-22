@@ -10,15 +10,6 @@
 
 typedef u32 NIR_Reg;
 
-typedef struct RegOrImm {
-    bool is_imm;
-    
-    union {
-        NIR_Reg reg;
-        Scalar imm;
-    };
-} RegOrImm;
-
 typedef enum InstrKind {
     INSTR_NONE = 0,
     INSTR_ADD,
@@ -73,8 +64,8 @@ typedef struct MemAddr {
 typedef struct InstrBinary {
     Type* type;
     NIR_Reg r;
-    RegOrImm a;
-    RegOrImm b;
+    NIR_Reg a;
+    NIR_Reg b;
 } InstrBinary;
 
 typedef struct InstrUnary {
@@ -111,7 +102,7 @@ typedef struct InstrLAddr {
 typedef struct InstrStore {
     Type* type;
     MemAddr addr;
-    RegOrImm a;
+    NIR_Reg a;
 } InstrStore;
 
 typedef enum ConditionKind {
@@ -131,8 +122,8 @@ typedef struct InstrCmp {
     Type* type;
     ConditionKind cond;
     NIR_Reg r;
-    RegOrImm a;
-    RegOrImm b;
+    NIR_Reg a;
+    NIR_Reg b;
 } InstrCmp;
 
 typedef struct InstrJmp {
