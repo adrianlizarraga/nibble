@@ -32,8 +32,16 @@ typedef struct X64_RegRange {
     u32 start;
     u32 end;
     X64_Reg reg;
+    bool locked;
     struct X64_RegRange* next;
+    struct X64_RegRange* prev;
 } X64_RegRange;
+
+typedef struct X64_RegRangeList {
+    int count;
+    X64_RegRange sentinel;
+    Allocator* arena;
+} X64_RegRangeList;
 
 typedef struct X64_LLIRBuilder {
     Allocator* arena;

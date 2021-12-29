@@ -167,6 +167,13 @@ typedef struct InstrMemcpy {
     MemAddr src;
 } InstrMemcpy;
 
+typedef struct InstrPhi {
+    Type* type;
+    NIR_Reg r;
+    NIR_Reg a;
+    NIR_Reg b;
+} InstrPhi;
+
 typedef struct Instr {
     InstrKind kind;
     bool is_jmp_target;
@@ -186,6 +193,7 @@ typedef struct Instr {
         InstrCallIndirect calli;
         InstrRet ret;
         InstrMemcpy memcpy;
+        InstrPhi phi;
     };
 } Instr;
 

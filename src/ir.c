@@ -277,6 +277,17 @@ static void NIR_emit_instr_memcpy(NIR_ProcBuilder* builder, Type* type, MemAddr 
     NIR_add_instr(builder, instr);
 }
 
+static void NIR_emit_instr_phi(NIR_ProcBuilder* builder, Type* type, NIR_Reg r, NIR_Reg a, NIR_Reg b)
+{
+    Instr* instr = NIR_new_instr(builder->arena, INSTR_PHI);
+    instr->phi.type = type;
+    instr->phi.r = r;
+    instr->phi.a = a;
+    instr->phi.b = b;
+
+    NIR_add_instr(builder, instr);
+}
+
 static void NIR_patch_jmp_target(Instr* jmp_instr, u32 jmp_target)
 {
     switch (jmp_instr->kind) {
@@ -470,12 +481,13 @@ static void NIR_execute_deferred_cmp(NIR_ProcBuilder* builder, NIR_Operand* oper
     assert(operand->kind == NIR_OPERAND_DEFERRED_CMP);
 
     NIR_DeferredCmp* def_cmp = &operand->cmp;
-    NIR_Reg dst_reg = NIR_next_reg(builder);
+    NIR_Reg dst_reg;
 
     bool has_sc_jmps = def_cmp->first_sc_jmp != NULL;
     bool has_final_jmp = def_cmp->final_jmp.jmp != NULL;
 
     if (!has_sc_jmps && !has_final_jmp) {
+        dst_reg = NIR_next_reg(builder);
         NIR_emit_instr_zext(builder, operand->type, builtin_types[BUILTIN_TYPE_U8].type, dst_reg,
                             def_cmp->final_jmp.cmp->cmp.cond);
     }
@@ -513,6 +525,7 @@ static void NIR_execute_deferred_cmp(NIR_ProcBuilder* builder, NIR_Operand* oper
         NIR_patch_jmp_target(jmp_skip_false, NIR_get_jmp_target(builder));
 
         // Emit PHI instruction.
+        dst_reg = NIR_next_reg(builder);
         NIR_emit_instr_phi(builder, operand->type, dst_reg, one_reg, zero_reg);
     }
 
