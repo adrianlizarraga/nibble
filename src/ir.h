@@ -38,6 +38,7 @@ typedef enum InstrKind {
     INSTR_CALL,
     INSTR_CALL_INDIRECT,
     INSTR_MEMCPY,
+    INSTR_PHI,
 } InstrKind;
 
 typedef enum MemBaseKind {

@@ -195,8 +195,8 @@ static void X64_emit_llir_instr(X64_LLIRBuilder* builder, Instr* ir_instr)
 
         // EX: r = a / b
         //
-        // mov _ax, a
-        // cqo        ; sign extend into _dx if size >= 2 bytes
+        // mov _ax, a ; Only if `a` is not already in `_ax`
+        // cqo        ; sign extend into `_dx` if size >= 2 bytes
         // div b
         // mov r, _ax
 
@@ -226,11 +226,10 @@ static void X64_emit_llir_instr(X64_LLIRBuilder* builder, Instr* ir_instr)
                 X64_emit_sext_ax_to_dx(builder, size);
             }
 
+            u32 b = X64_get_llir_reg(builder, ir_instr->binary.b);
+            X64_emit_div_r(builder, div_kind[ir_instr->kind], size, b);
         }
 
-        u32 b = X64_get_llir_reg(builder, ir_instr->binary.b);
-        X64_emit_div_r(builder, div_kind[ir_instr->kind], size, b);
-        
         u32 r = X64_get_llir_reg(builder, ir_instr->binary.r);
         X64_emit_mov_r_r(builder, size, r, ax);
         break;

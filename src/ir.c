@@ -487,7 +487,8 @@ static void NIR_execute_deferred_cmp(NIR_ProcBuilder* builder, NIR_Operand* oper
         }
 
         // This is the "true" control path. Move the literal 1 into destination register.
-        NIR_emit_instr_limm(builder, operand->type, dst_reg, nir_one_imm);
+        NIR_Reg one_reg = NIR_next_reg(builder);
+        NIR_emit_instr_limm(builder, operand->type, one_reg, nir_one_imm);
 
         // Create a jump to skip the false control path.
         Instr* jmp_skip_false = NIR_emit_instr_jmp(builder, NIR_alloc_jmp_target(builder, 0));
@@ -505,10 +506,14 @@ static void NIR_execute_deferred_cmp(NIR_ProcBuilder* builder, NIR_Operand* oper
         NIR_patch_jmp_target(final_jmp->jmp, NIR_get_jmp_target(builder));
 
         // This is the "false" control path. Move the literal 0 into destination register.
-        NIR_emit_instr_limm(builder, operand->type, dst_reg, nir_zero_imm);
+        NIR_Reg zero_reg = NIR_next_reg(builder);
+        NIR_emit_instr_limm(builder, operand->type, zero_reg, nir_zero_imm);
 
         // Patch jump that skips "false" control path.
         NIR_patch_jmp_target(jmp_skip_false, NIR_get_jmp_target(builder));
+
+        // Emit PHI instruction.
+        NIR_emit_instr_phi(builder, operand->type, dst_reg, one_reg, zero_reg);
     }
 
     operand->kind = NIR_OPERAND_REG;
