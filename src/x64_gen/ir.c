@@ -187,6 +187,16 @@ static void X64_emit_llir_instr(X64_LLIRBuilder* builder, Instr* ir_instr)
         [INSTR_SDIV] = X64_INSTR_IDIV
     };
 
+    static X64_InstrKind shift_kind[] = {
+        [INSTR_SHL] = X64_INSTR_SHL,
+        [INSTR_SAR] = X64_INSTR_SAR
+    };
+
+    static X64_InstrKind unary_kind[] = {
+        [INSTR_NEG] = X64_INSTR_NEG,
+        [INSTR_NOT] = X64_INSTR_NOT
+    };
+
     switch (ir_instr->kind) {
     case INSTR_ADD:
     case INSTR_SUB:
@@ -250,6 +260,46 @@ static void X64_emit_llir_instr(X64_LLIRBuilder* builder, Instr* ir_instr)
         X64_end_reg_range(builder, ax);
         break;
     }
+    case INSTR_SAR:
+    case INSTR_SHL: {
+        size_t size = ir_instr->binary.type->size;
+
+        // mov r, a
+        u32 r = X64_def_llir_reg(builder, ir_instr->binary.r);
+        u32 a = X64_get_llir_reg(builder, ir_instr->binary.a);
+        X64_emit_mov_r_r(builder, size, r, a);
+
+        // mov _cx, b
+        u32 b = X64_get_llir_reg(builder, ir_instr->binary.b);
+        u32 cx = X64_def_phys_reg(builder, X64_RCX);
+
+        X64_emit_mov_r_r(builder, size, cx, b);
+
+        // shl r, _cx
+        X64_emit_shift_r_r(builder, shift_kind[ir_instr->kind], size, r, cx);
+
+        X64_end_reg_range(builder, cx);
+
+        break;
+    }
+    case INSTR_NEG:
+    case INSTR_NOT: {
+        // EX: r = ~neg
+        //
+        // mov r, a
+        // neg r
+        size_t size = ir_instr->unary.type->size;
+
+        u32 r = X64_def_llir_reg(builder, ir_instr->unary.r);
+        u32 a = X64_get_llir_reg(builder, ir_instr->unary.a);
+
+        X64_emit_mov_r_r(builder, size, r, a);
+        X64_emit_unary_r_r(builder, unary_kind[ir_instr->kind], size, r);
+        break;
+    }
+    default:
+        NIBBLE_FATAL_EXIT("[INTERNAL ERROR]: Unable to convert IR instruction %d to an X64 LLIR instruction", ir_instr->kind);
+        break;
     }
 }
 
