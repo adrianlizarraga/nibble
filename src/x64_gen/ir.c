@@ -33,15 +33,7 @@ typedef struct X64_RegRange {
     u32 end;
     X64_Reg reg;
     bool locked;
-    struct X64_RegRange* next;
-    struct X64_RegRange* prev;
 } X64_RegRange;
-
-typedef struct X64_RegRangeList {
-    int count;
-    X64_RegRange sentinel;
-    Allocator* arena;
-} X64_RegRangeList;
 
 typedef struct X64_LLIRBuilder {
     Allocator* arena;
@@ -67,6 +59,14 @@ static void X64_init_llir_builder(X64_LLIRBuilder* builder, Allocator* arena, u3
     memset(builder->reg_map, 0xFF, num_iiregs * sizeof(u32));
 }
 
+static void X64_end_reg_range(X64_LLIRBuilder* builder, u32 r)
+{
+    X64_RegRange* range = builder->llir_ranges + r;
+    assert(!range->locked);
+    range->end = array_len(builder->instrs) - 1;
+    range->locked = true;
+}
+
 static void X64_merge_ranges(X64_RegRange* dst_range, X64_RegRange* src_range)
 {
     dst_range->start = dst_range->start <= src_range->start ? dst_range->start : src_range->start;
@@ -76,6 +76,8 @@ static void X64_merge_ranges(X64_RegRange* dst_range, X64_RegRange* src_range)
         assert(dst_range->reg == X64_REG_COUNT);
         dst_range->reg = src_range->reg;
     }
+
+    dst_range->locked = dst_range->locked || src_range->locked;
 }
 
 static u32 X64_find_alias_reg(X64_LLIRBuilder* builder, u32 r)
@@ -122,10 +124,8 @@ static void X64_alias_llir_regs(X64_LLIRBuilder* builder, u32 u, u32 v)
 static u32 X64_next_llir_reg(X64_LLIRBuilder* builder)
 {
     size_t next_ip = array_len(builder->instrs);
-    X64_Range range = {.start = next_ip, .end = next_ip};
 
-    array_push(builder->llir_ranges, range);
-    array_push(builder->phys_reg_map, X64_REG_COUNT);
+    array_push(builder->llir_ranges, (X64_RegRange){.start = next_ip, .end = next_ip, .reg = X64_REG_COUNT});
 
     u32 next_reg = array_len(builder->llir_ranges) - 1;
     assert(next_reg < (u32)-1);
@@ -136,28 +136,39 @@ static u32 X64_next_llir_reg(X64_LLIRBuilder* builder)
     return next_reg;
 }
 
+static u32 X64_def_llir_reg(X64_LLIRBuilder* builder, u32 irreg)
+{
+    assert(builder->reg_map[iireg] == (u32)-1);
+    u32 result = X64_next_llir_reg(builder);
+    builder->reg_map[irreg] = result;
+
+    return result;
+}
+
 static u32 X64_get_llir_reg(X64_LLIRBuilder* builder, u32 irreg)
 {
     size_t next_ip = array_len(builder->instrs);
 
     u32 result = builder->reg_map[irreg];
 
-    if (result < (u32)-1) {
-        builder->llir_ranges[result].end = next_ip;
-    }
-    else {
-        result = X64_next_llir_reg(builder);
-        builder->reg_map[irreg] = result;
-    }
+    assert(result != (u32)-1);
+
+    result = X64_find_alias_reg(builder, result);
+
+    X64_RegRange* range = &builder->llir_ranges[result];
+    assert(!range->locked);
+
+    range->end = next_ip;
 
     return result;
 }
 
-static u32 X64_get_phys_reg(X64_LLIRBuilder* builder, X64_Reg phys_reg)
+static u32 X64_def_phys_reg(X64_LLIRBuilder* builder, X64_Reg phys_reg)
 {
     u32 result = X64_next_llir_reg(builder);
+    X64_RegRange* range = &builder->llir_ranges[result];
 
-    builder->phys_reg_map[result] = phys_reg;
+    range->reg = phys_reg;
 }
 
 static void X64_emit_llir_instr(X64_LLIRBuilder* builder, Instr* ir_instr)
@@ -189,7 +200,7 @@ static void X64_emit_llir_instr(X64_LLIRBuilder* builder, Instr* ir_instr)
         // add r, b
         size_t size = ir_instr->binary.type->size;
 
-        u32 r = X64_get_llir_reg(builder, ir_instr->binary.r);
+        u32 r = X64_def_llir_reg(builder, ir_instr->binary.r);
         u32 a = X64_get_llir_reg(builder, ir_instr->binary.a);
         u32 b = X64_get_llir_reg(builder, ir_instr->binary.b);
 
@@ -209,37 +220,34 @@ static void X64_emit_llir_instr(X64_LLIRBuilder* builder, Instr* ir_instr)
         // mov r, _ax
 
         size_t size = ir_instr->binary.type->size;
+        bool uses_dx = size >= 2;
 
+        // mov _ax, a
         u32 a = X64_get_llir_reg(builder, ir_instr->binary.a);
+        u32 ax = X64_def_phys_reg(builder, X64_RAX);
 
-        if (builder->phys_reg_map[a] == X64_REG_COUNT) {
-            builder->phys_reg_map[a] = X64_RAX; // Lock a to use RAX
+        X64_emit_mov_r_r(builder, size, ax, a);
 
-            if (size >= 2) { // Reserve rdx
-                X64_get_phys_reg(builder, X64_RDX);
-                X64_emit_sext_ax_to_dx(builder, size);
-            }
-
-            u32 b = X64_get_llir_reg(builder, ir_instr->binary.b);
-            X64_emit_div_r(builder, div_kind[ir_instr->kind], size, b);
-
-            builder->llir_ranges[a].end = array_len(builder->instrs) - 1; // Unlock a from RAX
-        }
-        else {
-            u32 ax = X64_get_phys_reg(builder, X64_RAX);
-            X64_emit_mov_r_r(builder, size, ax, a);
-
-            if (size >= 2) { // Reserve rdx
-                X64_get_phys_reg(builder, X64_RDX);
-                X64_emit_sext_ax_to_dx(builder, size);
-            }
-
-            u32 b = X64_get_llir_reg(builder, ir_instr->binary.b);
-            X64_emit_div_r(builder, div_kind[ir_instr->kind], size, b);
+        // cqo
+        u32 dx;
+        if (uses_dx) { // Reserve rdx
+            dx = X64_def_phys_reg(builder, X64_RDX);
+            X64_emit_sext_ax_to_dx(builder, size);
         }
 
-        u32 r = X64_get_llir_reg(builder, ir_instr->binary.r);
+        // div b
+        u32 b = X64_get_llir_reg(builder, ir_instr->binary.b);
+        X64_emit_div_r(builder, div_kind[ir_instr->kind], size, b);
+
+        if (uses_dx) {
+            X64_end_reg_range(builder, dx);
+        }
+
+        // mov r, _ax
+        u32 r = X64_def_llir_reg(builder, ir_instr->binary.r);
         X64_emit_mov_r_r(builder, size, r, ax);
+
+        X64_end_reg_range(builder, ax);
         break;
     }
     }
