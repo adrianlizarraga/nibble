@@ -7,6 +7,16 @@ typedef struct X64_RegRange {
     X64_Reg reg;
 } X64_RegRange;
 
+typedef struct X64_InstrCallArg {
+    Type* type;
+    bool in_reg;
+    
+    union {
+        u32 reg;
+        u32 offset;
+    };
+} X64_InstrCallArg;
+
 typedef struct X64_LLIRBuilder {
     Allocator* arena;
 
@@ -575,26 +585,11 @@ static void X64_emit_llir_instrs(X64_LLIRBuilder* builder, size_t num_ir_instrs,
 
             break;
         }
-        case INSTR_CALL:
-        case INSTR_CALL_INDIRECT: {
-            u32 num_args;
-            InstrCallArg* args;
-            Type* proc_type;
-            NIR_Reg ir_r;
-
-            if (ir_instr->kind == INSTR_CALL) {
-                num_args = ir_instr->call.num_args;
-                args = ir_instr->call.args;
-                proc_type = ir_instr->call.sym->type;
-                ir_r = ir_instr->call.r;
-            }
-            else {
-                assert(ir_instr->kind == INSTR_CALL_INDIRECT);
-                num_args = instr->calli.num_args;
-                args = instr->calli.args;
-                proc_type = instr->calli.proc_type;
-                ir_r = instr->calli.r;
-            }
+        case INSTR_CALL: {
+            u32 num_args = ir_instr->call.num_args;
+            InstrCallArgs* args = ir_instr->call.args;
+            Type* proc_type = ir_instr->call.sym->type;
+            NIR_Reg ir_r = ir_instr->call.r;
 
             if (x64_target.os == OS_LINUX) {
                 u32 arg_reg_index = 0;
