@@ -692,9 +692,25 @@ static void X64_emit_llir_instrs(X64_LLIRBuilder* builder, size_t num_ir_instrs,
             X64_InstrCallArg* x64_args = alloc_array(builder->arena, X64_InstrCallArg, num_args, false);
             X64_StackArgsInfo stack_info = X64_convert_call_args(builder, num_args, args, x64_args);
 
+            X64_emit_call(builder, ir_instr->call.sym, num_args, x64_args, stack_info);
 
-            // TODO: Iterate through arg infos and call X64_end_reg_range() on each arg so that it lasts through the call
+            // Iterate through arg infos and call X64_end_reg_range() on each arg so that it lasts through the call
+            for (u32 i = 0; i < num_args; i++) {
+                X64_InstrCallArg* arg = x64_args + i;
 
+                if (arg->in_reg) {
+                    X64_end_reg_range(builder, arg->reg);
+                }
+            }
+
+            Type* ret_type = proc_type->as_proc.ret;
+
+            if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
+                u32 r = X64_def_llir_reg(builder, ir_r);
+                u32 ax = X64_def_phys_reg(builder, X64_RAX);
+
+                X64_emit_mov_r_r(builder, ret_type->size, ax, a);
+            }
             break;
         }
         default:
