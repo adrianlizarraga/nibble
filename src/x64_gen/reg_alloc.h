@@ -23,7 +23,7 @@ typedef struct X64_VRegIntervalList {
     Allocator* arena;
 } X64_VRegIntervalList;
 
-// Linear scan register allocation from Poletto et al (1999)
+// Modified linear scan register allocation adapted from Poletto et al (1999)
 X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, LifetimeInterval* vreg_intervals,
                                              X64_VRegLoc* vreg_locs, u32 num_x64_regs, X64_Reg* x64_scratch_regs,
                                              u32 init_stack_offset);
