@@ -221,9 +221,9 @@ static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u3
 
         if (arg_reg_index >= x64_target.num_arg_regs) {
             arg_info->in_reg = false;
-            arg_info->offset = stack_info.args_size;
+            arg_info->offset = stack_info.size;
 
-            stack_info.args_size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
+            stack_info.size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
         }
         else {
             X64_Reg phys_reg = x64_target.arg_regs[arg_reg_index++];
@@ -246,7 +246,7 @@ static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u3
 static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, u32 num_args, InstrCallArg* args,
                                                        X64_InstrCallArg* x64_args)
 {
-    X64_StackArgsInfo stack_info = {.args_size = X64_WINDOWS_SHADOW_SPACE, .args_offset = X64_WINDOWS_SHADOW_SPACE};
+    X64_StackArgsInfo stack_info = {.size = X64_WINDOWS_SHADOW_SPACE, .offset = X64_WINDOWS_SHADOW_SPACE};
 
     for (u32 i = 0; i < num_args; i++) {
         InstrCallArg* arg = args + i;
@@ -257,9 +257,9 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
 
         if (i >= x64_target.num_arg_regs) {
             arg_info->in_reg = false;
-            arg_info->offset = stack_info.args_size;
+            arg_info->offset = stack_info.size;
 
-            stack_info.args_size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
+            stack_info.size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
         }
         else {
             X64_Reg phys_reg = x64_target.arg_regs[i];

@@ -4,6 +4,11 @@
 #include "hash_map.h"
 #include "regs.h"
 
+typedef struct X64_StackArgsInfo {
+    u64 size;
+    u64 offset;
+} X64_StackArgsInfo;
+
 typedef enum X64_InstrKind {
     X64_INSTR_NONE = 0,
 

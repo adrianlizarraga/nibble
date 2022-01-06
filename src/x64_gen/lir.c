@@ -41,9 +41,9 @@ void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_InstrKind kind, size
 void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
-    instr->binary_r_r.size = size;
-    instr->binary_r_r.dst = dst;
-    instr->binary_r_r.src = src;
+    instr->shift_r_r.size = size;
+    instr->shift_r_r.dst = dst;
+    instr->shift_r_r.src = src;
 
     X64_add_lir_instr(builder, instr);
 }
@@ -51,9 +51,9 @@ void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_
 void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, Scalar src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
-    instr->binary_r_i.size = size;
-    instr->binary_r_i.dst = dst;
-    instr->binary_r_i.src = src;
+    instr->shift_r_i.size = size;
+    instr->shift_r_i.dst = dst;
+    instr->shift_r_i.src = src;
 
     X64_add_lir_instr(builder, instr);
 }
