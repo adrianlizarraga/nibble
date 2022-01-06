@@ -1,5 +1,8 @@
 #ifndef NIBBLE_X64_LIR_H
 #define NIBBLE_X64_LIR_H
+#include "allocator.h"
+#include "hash_map.h"
+#include "regs.h"
 
 typedef enum X64_InstrKind {
     X64_INSTR_NONE = 0,
@@ -60,6 +63,7 @@ typedef enum X64_InstrKind {
 
     // Sign-extend
     X64_INSTR_MOVSX_R_R,
+    X64_INSTR_SEXT_AX_TO_DX,
 
     // Load an address computation into a register.
     X64_INSTR_LEA,
@@ -175,6 +179,10 @@ typedef struct X64_InstrConvert_R_R {
     u32 src;
 } X64_InstrConvert_R_R;
 
+typedef struct X64_InstrSExtAxToDx {
+    size_t size;
+} X64_InstrSExtAxToDx;
+
 typedef struct X64_InstrLEA {
     u32 dst;
     X64_MemAddr mem;
@@ -220,6 +228,7 @@ typedef struct X64_InstrCall {
     Symbol* sym;
     u32 num_args;
     X64_InstrCallArg* args;
+    X64_StackArgsInfo stack_info;
 } X64_InstrCall;
 
 typedef struct X64_InstrCall_R {
@@ -227,6 +236,7 @@ typedef struct X64_InstrCall_R {
     u32 proc_loc;
     u32 num_args;
     X64_InstrCallArg* args;
+    X64_StackArgsInfo stack_info;
 } X64_InstrCall_R;
 
 typedef struct X64_Instr {
@@ -251,6 +261,8 @@ typedef struct X64_Instr {
 
         X64_InstrConvert_R_R convert_r_r;
 
+        X64_InstrSExtAxToDx sext_ax_to_dx;
+
         X64_InstrLEA lea;
 
         X64_InstrCmp_R_R cmp_r_r;
@@ -267,4 +279,52 @@ typedef struct X64_Instr {
         X64_InstrCall_R call_r;
     };
 } X64_Instr;
+
+typedef struct X64_RegRange {
+    u32 start;
+    u32 end;
+    X64_Reg reg;
+} X64_RegRange;
+
+typedef struct X64_LIRBuilder {
+    Allocator* arena;
+    Allocator* tmp_arena;
+
+    X64_Instr** instrs; // Stretchy buf
+    X64_RegRange* lir_ranges; // Stretchy buf
+    u32* reg_map; // Map IR reg -> LIR reg; size: num_iregs
+
+    HMap jmp_map;
+    bool next_instr_is_jmp_target;
+
+    u32* call_sites; // lir call sites. Used for reg allocation
+
+    // Disjoint Set Union data structure for register renaming/aliasing.
+    u32* lir_aliases; // Root alias node for each lir reg. size: num_lirregs
+    u32* lir_sizes;   // Size for each lir reg aliasing set. size: num_lirregs
+} X64_LIRBuilder;
+
+void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, u32 src);
+void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
+void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, u32 src);
+void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
+void X64_emit_instr_div_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 src);
+void X64_emit_instr_unary(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst);
+void X64_emit_instr_mov_r_r(X64_LIRBuilder* builder, size_t size, u32 dst, u32 src);
+void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, size_t size, u32 dst, X64_MemAddr src);
+void X64_emit_instr_mov_r_i(X64_LIRBuilder* builder, size_t size, u32 dst, Scalar src);
+void X64_emit_instr_mov_m_r(X64_LIRBuilder* builder, size_t size, X64_MemAddr dst, u32 src);
+void X64_emit_instr_convert_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t dst_size, u32 dst, size_t src_size, u32 src);
+void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, size_t size);
+void X64_emit_instr_lea(X64_LIRBuilder* builder, u32 dst, X64_MemAddr mem);
+void X64_emit_instr_cmp_r_r(X64_LIRBuilder* builder, size_t size, u32 op1, u32 op2);
+void X64_emit_instr_cmp_r_i(X64_LIRBuilder* builder, size_t size, u32 op1, Scalar op2);
+void X64_emit_instr_jmp(X64_LIRBuilder* builder, u32 target);
+void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, ConditionKind cond, u32 target);
+void X64_emit_instr_setcc(X64_LIRBuilder* builder, ConditionKind cond, u32 dst);
+void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder);
+void X64_emit_instr_ret(X64_LIRBuilder* builder);
+void X64_emit_instr_call(X64_LIRBuilder* builder, Symbol* sym, u32 num_args, X64_InstrCallArg* args, X64_StackArgsInfo stack_info);
+void X64_emit_instr_call_r(X64_LIRBuilder* builder, Type* proc_type, u32 proc_loc, u32 num_args, X64_InstrCallArg* args,
+                           X64_StackArgsInfo stack_info);
 #endif

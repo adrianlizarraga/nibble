@@ -1,26 +1,5 @@
 #include "ir.h"
-#include "regs.h"
-
-typedef struct X64_RegRange {
-    u32 start;
-    u32 end;
-    X64_Reg reg;
-} X64_RegRange;
-
-typedef struct X64_LIRBuilder {
-    Allocator* arena;
-    Allocator* tmp_arena;
-
-    X64_Instr** instrs; // Stretchy buf
-    X64_RegRange* lir_ranges; // Stretchy buf
-    u32* reg_map; // Map IR reg -> LIR reg; size: num_iregs
-
-    u32* call_sites; // lir call sites. Used for reg allocation
-
-    // Disjoint Set Union data structure for register renaming/aliasing.
-    u32* lir_aliases; // Root alias node for each lir reg. size: num_lirregs
-    u32* lir_sizes;   // Size for each lir reg aliasing set. size: num_lirregs
-} X64_LIRBuilder;
+#include "lir.h"
 
 static X64_InstrKind binary_kind[] = {
     [INSTR_ADD] = X64_INSTR_ADD_R_R,
@@ -58,11 +37,12 @@ static void X64_init_lir_builder(X64_LIRBuilder* builder, Allocator* arena, Allo
     builder->tmp_arena = tmp_arena;
     builder->instrs = array_create(arena, X64_Instr*, 32);
     builder->call_sites = array_create(tmp_arena, u32, 8);
-    builder->lir_ranges = array_create(arena, X64_RegRange, 16);
-    builder->lir_aliases = array_create(arena, u32, 16);
-    builder->lir_sizes = array_create(arena, u32, 16);
+    builder->jmp_map = hmap(4, tmp_arena);
+    builder->lir_ranges = array_create(tmp_arena, X64_RegRange, 16);
+    builder->lir_aliases = array_create(tmp_arena, u32, 16);
+    builder->lir_sizes = array_create(tmp_arena, u32, 16);
 
-    builder->reg_map = alloc_array(arena, u32, num_irregs, false);
+    builder->reg_map = alloc_array(tmp_arena, u32, num_irregs, false);
     memset(builder->reg_map, 0xFF, num_iiregs * sizeof(u32));
 }
 
@@ -256,6 +236,8 @@ static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u3
             arg_info->in_reg = true;
             arg_info->reg = a;
         }
+
+        arg_info->type = arg->type;
     }
 
     return stack_info;
@@ -290,6 +272,8 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
             arg_info->in_reg = true;
             arg_info->reg = a;
         }
+
+        arg_info->type = arg->type;
     }
 
     return stack_info;
@@ -361,8 +345,8 @@ static bool X64_try_combine_limm(X64_LIRBuilder* builder, size_t* ip, size_t num
         size_t size = t_instr->binary.type->size;
 
         u32 r = X64_get_lir_reg(builder, t_instr->binary.r);
-        X64_emit_mov_r_r(builder, size, r, a);
-        X64_emit_binary_r_i(builder, binary_kind[t_kind], size, r, ir_instr->limm.imm);
+        X64_emit_instr_mov_r_r(builder, size, r, a);
+        X64_emit_instr_binary_r_i(builder, binary_kind[t_kind], size, r, ir_instr->limm.imm);
 
         *ip = t_ip;
         return true;
@@ -379,7 +363,8 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
     if (ir_instr->is_jmp_target) {
         builder->next_instr_is_jmp_target = true;
 
-        // TODO: Map IR jmp target to LIR target
+        // Map IR jmp target to LIR target
+        hmap_put(&builder->jmp_map, *ip, array_len(builder->instrs));
     }
 
     switch (ir_instr->kind) {
@@ -399,8 +384,8 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         u32 a = X64_get_lir_reg(builder, ir_instr->binary.a);
         u32 b = X64_get_lir_reg(builder, ir_instr->binary.b);
 
-        X64_emit_mov_r_r(builder, size, r, a);
-        X64_emit_binary_r_r(builder, binary_kind[ir_instr->kind], size, r, b);
+        X64_emit_instr_mov_r_r(builder, size, r, a);
+        X64_emit_instr_binary_r_r(builder, binary_kind[ir_instr->kind], size, r, b);
 
         break;
     }
@@ -426,12 +411,12 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         u32 dx;
         if (uses_dx) { // Reserve rdx
             dx = X64_def_phys_reg(builder, X64_RDX);
-            X64_emit_sext_ax_to_dx(builder, size);
+            X64_emit_instr_sext_ax_to_dx(builder, size);
         }
 
         // div b
         u32 b = X64_get_lir_reg(builder, ir_instr->binary.b);
-        X64_emit_div_r(builder, div_kind[ir_instr->kind], size, b);
+        X64_emit_instr_div_r(builder, div_kind[ir_instr->kind], size, b);
 
         if (uses_dx) {
             X64_end_reg_range(builder, dx);
@@ -439,7 +424,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
 
         // mov r, a
         u32 r = X64_def_lir_reg(builder, ir_instr->binary.r);
-        X64_emit_mov_r_r(builder, size, r, a);
+        X64_emit_instr_mov_r_r(builder, size, r, a);
 
         X64_end_reg_range(builder, a);
         break;
@@ -451,7 +436,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         // mov r, a
         u32 r = X64_def_lir_reg(builder, ir_instr->binary.r);
         u32 a = X64_get_lir_reg(builder, ir_instr->binary.a);
-        X64_emit_mov_r_r(builder, size, r, a);
+        X64_emit_instr_mov_r_r(builder, size, r, a);
 
         u32 b = X64_get_lir_reg(builder, ir_instr->binary.b);
         X64_RegRange* b_rng = &builder->lir_ranges[b];
@@ -460,7 +445,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         b_rng->reg = X64_RCX; // Force `cx`
 
         // shift r, b
-        X64_emit_shift_r_r(builder, shift_kind[ir_instr->kind], size, r, b);
+        X64_emit_instr_shift_r_r(builder, shift_kind[ir_instr->kind], size, r, b);
 
         break;
     }
@@ -475,8 +460,8 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         u32 r = X64_def_lir_reg(builder, ir_instr->unary.r);
         u32 a = X64_get_lir_reg(builder, ir_instr->unary.a);
 
-        X64_emit_mov_r_r(builder, size, r, a);
-        X64_emit_unary_r_r(builder, unary_kind[ir_instr->kind], size, r);
+        X64_emit_instr_mov_r_r(builder, size, r, a);
+        X64_emit_instr_unary_r_r(builder, unary_kind[ir_instr->kind], size, r);
         break;
     }
     case INSTR_TRUNC:
@@ -492,7 +477,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         u32 r = X64_def_lir_reg(builder, ir_instr->convert.r);
         u32 a = X64_get_lir_reg(builder, ir_instr->convert.a);
 
-        X64_emit_convert_r_r(builder, convert_kind[ir_instr->kind], dst_size, r, src_size, a);
+        X64_emit_instr_convert_r_r(builder, convert_kind[ir_instr->kind], dst_size, r, src_size, a);
         break;
     }
     case INSTR_LIMM: {
@@ -505,7 +490,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         if (!X64_try_combine_limm(builder, ip, num_ir_instrs, ir_instrs)) {
             u32 r = X64_def_lir_reg(builder, ir_instr->limm.r);
             
-            X64_emit_mov_r_i(builder, size, r, ir_instr->limm.imm);
+            X64_emit_instr_mov_r_i(builder, size, r, ir_instr->limm.imm);
         }
 
         break;
@@ -521,7 +506,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         X64_get_lir_addr(builder, &addr, &ir_instr->load.addr);
 
         u32 r = X64_def_lir_reg(builder, ir_instr->load.r);
-        X64_emit_mov_r_m(builder, size, r, addr);
+        X64_emit_instr_mov_r_m(builder, size, r, addr);
         break;
     }
     case INSTR_LADDR: {
@@ -533,7 +518,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         X64_get_lir_addr(builder, &addr, &ir_instr->laddr.addr);
 
         u32 r = X64_def_lir_reg(builder, ir_instr->laddr.r);
-        X64_emit_lea(builder, r, addr);
+        X64_emit_instr_lea(builder, r, addr);
         break;
     }
     case INSTR_STORE: {
@@ -547,7 +532,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         X64_get_lir_addr(builder, &addr, &ir_instr->store.addr);
 
         u32 a = X64_def_lir_reg(builder, ir_instr->store.a);
-        X64_emit_mov_m_r(builder, size, addr, a);
+        X64_emit_instr_mov_m_r(builder, size, addr, a);
         break;
     }
     case INSTR_CMP: {
@@ -556,7 +541,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         u32 a = X64_get_lir_reg(builder, ir_instr->cmp.a);
         u32 b = X64_get_lir_reg(builder, ir_instr->cmp.b);
 
-        X64_emit_cmp_r_r(builder, size, a, b);
+        X64_emit_instr_cmp_r_r(builder, size, a, b);
 
         bool combine_next = false;
 
@@ -579,8 +564,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
             
             *ip += 1;
             Instr* next_ir_instr = ir_instrs[*ip];
-            // TODO: Jump target is wrong
-            X64_emit_jmpcc(builder, ir_instr->cmp.cond, *next_ir_instr->cond_jmp.jmp_target);
+            X64_emit_instr_jmpcc(builder, ir_instr->cmp.cond, *next_ir_instr->cond_jmp.jmp_target);
         }
         else {
             // EX: r = a <cond> b
@@ -589,14 +573,13 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
             // set_<cond> r
 
             u32 r = X64_def_lir_reg(builder, ir_instr->cmp.r);
-            X64_emit_setcc(builder, ir_instr->cmp.cond, r);
+            X64_emit_instr_setcc(builder, ir_instr->cmp.cond, r);
         }
 
         break;
     }
     case INSTR_JMP: {
-        // TODO: Jump target is wrong
-        X64_emit_jmp(builder, *ir_instr->jmp.jmp_target);
+        X64_emit_instr_jmp(builder, *ir_instr->jmp.jmp_target);
         break;
     }
     case INSTR_COND_JMP: {
@@ -610,9 +593,8 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         u32 a = X64_get_lir_reg(builder, ir_instr->cond_jmp.a);
         Scalar zero = {0};
 
-        X64_emit_cmp_r_i(builder, 1, a, zero);
-        // TODO: Jump target is wrong
-        X64_emit_jmpcc(builder, COND_NEQ, *ir_instr->cond_jmp.jmp_target);
+        X64_emit_instr_cmp_r_i(builder, 1, a, zero);
+        X64_emit_instr_jmpcc(builder, COND_NEQ, *ir_instr->cond_jmp.jmp_target);
         break;
     }
     case INSTR_PHI: {
@@ -640,19 +622,19 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         X64_get_lir_addr(builder, &dst_addr, &ir_instr->memcpy.dst);
 
         u32 rdi = X64_def_phys_reg(builder, X64_RDI);
-        X64_emit_lea(builder, rdi, dst_addr);
+        X64_emit_instr_lea(builder, rdi, dst_addr);
 
         X64_MemAddr src_addr;
         X64_get_lir_addr(builder, &src_addr, &ir_instr->memcpy.src);
 
         u32 rsi = X64_def_phys_reg(builder, X64_RSI);
-        X64_emit_lea(builder, rsi, src_addr);
+        X64_emit_instr_lea(builder, rsi, src_addr);
 
         Scalar num_bytes = {.as_int._u64 = ir_instr->memcpy.type->size};
         u32 rcx = X64_def_phys_reg(builder, X64_RCX);
-        X64_emit_mov_r_i(builder, PTR_SIZE, rcx, num_bytes);
+        X64_emit_instr_mov_r_i(builder, PTR_SIZE, rcx, num_bytes);
 
-        X64_emit_rep_movsb(builder);
+        X64_emit_instr_rep_movsb(builder);
 
         X64_end_reg_range(builder, rdi);
         X64_end_reg_range(builder, rsi);
@@ -676,7 +658,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
             a_rng->reg = X64_RAX; // Force ax
         }
 
-        X64_emit_ret(builder);
+        X64_emit_instr_ret(builder);
 
         break;
     }
@@ -706,11 +688,11 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         array_push(builder->call_sites, array_len(builder->instrs));
 
         if (ir_instr->kind == INSTR_CALL) {
-            X64_emit_call(builder, ir_instr->call.sym, num_args, x64_args, stack_info);
+            X64_emit_instr_call(builder, ir_instr->call.sym, num_args, x64_args, stack_info);
         }
         else {
             u32 proc_r = X64_get_lir_reg(builder, ir_instr->calli.loc);
-            X64_emit_call_r(builder, proc_r, num_args, x64_args, stack_info);
+            X64_emit_instr_call_r(builder, proc_type, proc_r, num_args, x64_args, stack_info);
         }
 
         for (u32 i = 0; i < num_args; i++) {
@@ -725,7 +707,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
             u32 r = X64_def_lir_reg(builder, ir_r);
             u32 ax = X64_def_phys_reg(builder, X64_RAX);
 
-            X64_emit_mov_r_r(builder, ret_type->size, r, ax);
+            X64_emit_instr_mov_r_r(builder, ret_type->size, r, ax);
         }
 
         break;
@@ -744,7 +726,20 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_ir_instrs, I
         X64_emit_lir_instr(builder, &ip, num_ir_instrs, ir_instrs);
         ip += 1;
     }
-}
 
+    // Fixup jump targets.
+    size_t num_lir_instrs = array_len(builder->instrs);
+
+    for (size_t lip = 0; lip < num_lir_instrs; lip++) {
+        X64_Instr* ins = builder->instrs[lip];
+
+        if (ins->kind == X64_INSTR_JMP) {
+            ins->jmp.jmp_target = builder->jmp_map[ins->jmp.jmp_target];
+        }
+        else if (ins->kind == X64_INSTR_JMPCC) {
+            ins->jmpcc.jmp_target = builder->jmp_map[ins->jmpcc.jmp_target];
+        }
+    }
+}
 
 
