@@ -1,5 +1,17 @@
 #include "x64_gen/reg_alloc.h"
 
+typedef struct X64_LRegInterval {
+    X64_LRegRange* interval;
+    struct X64_LRegInterval* next;
+    struct X64_LRegInterval* prev;
+} X64_LRegInterval;
+
+typedef struct X64_LRegIntervalList {
+    X64_LRegInterval sentinel;
+    u32 count;
+    Allocator* arena;
+} X64_LRegIntervalList;
+
 static void X64_free_reg(u32* free_regs, X64_Reg reg)
 {
     u32_set_bit(free_regs, (u8)reg);
@@ -14,29 +26,8 @@ static void X64_alloc_reg(u32* free_regs, u32* used_callee_regs, X64_Reg reg)
     }
 }
 
-static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* free_regs, u32* used_callee_regs,
-                            bool is_ret, bool is_arg, u32 arg_index)
+static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* free_regs, u32* used_callee_regs)
 {
-    // Try to allocate RAX if this is a return value.
-    if (is_ret) {
-        X64_Reg ret_reg = X64_RAX;
-
-        if (u32_is_bit_set(*free_regs, (u8)ret_reg)) {
-            X64_alloc_reg(free_regs, used_callee_regs, ret_reg);
-            return ret_reg;
-        }
-    }
-
-    // Try to allocate an argument register if available.
-    if (is_arg && (arg_index < x64_target.num_arg_regs)) {
-        X64_Reg arg_reg = x64_target.arg_regs[arg_index];
-
-        if (u32_is_bit_set(*free_regs, (u8)arg_reg)) {
-            X64_alloc_reg(free_regs, used_callee_regs, arg_reg);
-            return arg_reg;
-        }
-    }
-
     // Get the first available scratch register.
     X64_Reg reg = X64_REG_COUNT;
 
@@ -45,11 +36,6 @@ static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* fr
             reg = x64_scratch_regs[i];
             break;
         }
-    }
-
-    // Do not assign an argument register to an argument that should be passed via the stack.
-    if (is_arg && (arg_index >= x64_target.num_arg_regs) && u32_is_bit_set(x64_target.arg_reg_mask, reg)) {
-        reg = X64_REG_COUNT;
     }
 
     if (reg != X64_REG_COUNT) {
@@ -66,12 +52,12 @@ static void X64_init_free_regs(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32*
     }
 }
 
-void X64_vreg_interval_list_rm(X64_VRegIntervalList* list, X64_VRegInterval* node)
+static void X64_lreg_interval_list_rm(X64_LRegIntervalList* list, X64_LRegInterval* node)
 {
     assert(node != &list->sentinel);
 
-    X64_VRegInterval* prev = node->prev;
-    X64_VRegInterval* next = node->next;
+    X64_LRegInterval* prev = node->prev;
+    X64_LRegInterval* next = node->next;
 
     prev->next = next;
     next->prev = prev;
@@ -81,16 +67,15 @@ void X64_vreg_interval_list_rm(X64_VRegIntervalList* list, X64_VRegInterval* nod
     list->count -= 1;
 }
 
-void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInterval* interval, u32 index)
+static void X64_lreg_interval_list_add(X64_LRegIntervalList* list, X64_LRegRange* interval)
 {
-    X64_VRegInterval* new_node = alloc_type(list->arena, X64_VRegInterval, true);
-    new_node->interval = *interval;
-    new_node->index = index;
+    X64_LRegInterval* new_node = alloc_type(list->arena, X64_LRegInterval, true);
+    new_node->interval = interval;
 
     // Insert sorted by increasing end point.
 
-    X64_VRegInterval* head = &list->sentinel;
-    X64_VRegInterval* it = head->next;
+    X64_LRegInterval* head = &list->sentinel;
+    X64_LRegInterval* it = head->next;
 
     while (it != head) {
         if (new_node->interval.end < it->interval.end) {
@@ -101,7 +86,7 @@ void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInterval* in
     }
 
     // Insert before `it`
-    X64_VRegInterval* prev = it->prev;
+    X64_LRegInterval* prev = it->prev;
 
     prev->next = new_node;
     new_node->prev = prev;
@@ -111,27 +96,44 @@ void X64_vreg_interval_list_add(X64_VRegIntervalList* list, LifetimeInterval* in
     list->count += 1;
 }
 
-X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, LifetimeInterval* vreg_intervals,
-                                             X64_VRegLoc* vreg_locs, u32 num_x64_regs, X64_Reg* x64_scratch_regs,
-                                             u32 init_stack_offset)
+// Modified linear scan register allocation adapted from Poletto et al (1999)
+//
+// Assumptions:
+//  - One interval per LIR register.
+//  - SSA (each LIR register is set only once)
+//  - "Single-use": Each LIR register is only used once! This will have to change once we do properly SSA-based optimizations.
+//
+// This register allocator is pretty basic and not very good, but we just need something that works for now.
+//
+// NOTE: LIR registers needed across procedure calls will NOT be assigned a physical register.
+X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32 init_stack_offset)
 {
     X64_RegAllocResult result = {.stack_offset = init_stack_offset};
     X64_init_free_regs(num_x64_regs, x64_scratch_regs, &result.free_regs);
 
-    X64_VRegIntervalList active = {.arena = arena};
+    X64_LRegIntervalList active = {.arena = builder->arena};
     active.sentinel.next = &active.sentinel;
     active.sentinel.prev = &active.sentinel;
 
-    for (size_t i = 0; i < num_vregs; i += 1) {
-        LifetimeInterval* interval = vreg_intervals + i;
+    size_t num_lreg_ranges = array_len(builder->lreg_ranges);
+    size_t call_idx = 0;
+
+    for (size_t i = 0; i < num_lreg_ranges; i += 1) {
+
+        // Skip intervals for registers that have been aliased to another register.
+        if (X64_find_alias_reg(builder, i) != i) {
+            continue;
+        }
+
+        X64_LRegRange* interval = builder->lreg_ranges + i;
 
         // Expire old intervals
         {
-            X64_VRegInterval* head = &active.sentinel;
-            X64_VRegInterval* it = head->next;
+            X64_LRegInterval* head = &active.sentinel;
+            X64_LRegInterval* it = head->next;
 
             while (it != head) {
-                X64_VRegInterval* next = it->next;
+                X64_LRegInterval* next = it->next;
 
                 if (it->interval.end >= interval->start) {
                     break;
@@ -140,11 +142,11 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, Li
                 // This active interval ends before the current interval.
                 //
                 // Remove active interval from active list and free its register.
-                X64_vreg_interval_list_rm(&active, it);
+                X64_lreg_interval_list_rm(&active, it);
 
-                X64_VRegLoc* loc = vreg_locs + it->index;
+                X64_LRegLoc* loc = &it->interval->loc;
 
-                if (loc->kind == X64_VREG_LOC_REG) {
+                if (loc->kind == X64_LREG_LOC_REG) {
                     X64_free_reg(&result.free_regs, loc->reg);
                 }
 
@@ -152,52 +154,74 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(Allocator* arena, u32 num_vregs, Li
             }
         }
 
-        // Check if need to spill
-        if (active.count == num_x64_regs) {
-            X64_VRegInterval* last_active = active.sentinel.prev;
+        // Set `call_idx` to the index of the next upcoming call site.
+        while (builder->call_sites[call_idx] < interval->start) {
+            call_idx++;
+        }
+
+        //
+        // Check if need to spill OR if can allocate a register.
+        //
+        
+        if (interval->loc.kind == X64_LREG_LOC_REG) {
+            //
+            // Interval is forced to reside in a specific register.
+            //
+            assert(interval->loc.reg != X64_REG_COUNT);
+            assert(u32_is_bit_set(result.free_regs, interval->loc.reg));
+            
+            X64_alloc_reg(&result.free_regs, &result.used_callee_regs, interval->loc.reg);
+            X64_lreg_interval_list_add(&active, interval);
+        }
+        else if (interval->end > builder->call_sites[call_idx]) {
+            //
+            // Spill any intervals needed across procedure calls. (For simplicity)
+            //
+            X64_LRegLoc* loc = &interval->loc;
+
+            loc->kind = X64_LREG_LOC_STACK;
+            loc->offset = result.stack_offset;
+            result.stack_offset += X64_MAX_INT_REG_SIZE;
+        }
+        else if (active.count == num_x64_regs) {
+            //
+            // Exhausted available registers.
+            //
+
+            X64_LRegInterval* last_active = active.sentinel.prev;
+            X64_LRegLoc* loc = interval->loc;
 
             // Spill interval that ends the latest
             if (last_active->interval.end > interval->end) {
+                X64_LRegLoc* p_loc = &last_active->interval->loc;
+
                 // Steal last_active's register.
-                vreg_locs[i].kind = X64_VREG_LOC_REG;
-                vreg_locs[i].reg = vreg_locs[last_active->index].reg;
+                loc->kind = X64_LREG_LOC_REG;
+                loc->reg = p_loc->reg;
 
                 // Spill the last active interval.
-                vreg_locs[last_active->index].kind = X64_VREG_LOC_STACK;
-                vreg_locs[last_active->index].offset = result.stack_offset;
+                p_loc->kind = X64_LREG_LOC_STACK;
+                p_loc->offset = result.stack_offset;
                 result.stack_offset += X64_MAX_INT_REG_SIZE;
 
-                X64_vreg_interval_list_rm(&active, last_active);
-                X64_vreg_interval_list_add(&active, interval, i);
+                X64_lreg_interval_list_rm(&active, last_active);
+                X64_lreg_interval_list_add(&active, interval);
             }
             else {
-                vreg_locs[i].kind = X64_VREG_LOC_STACK;
-                vreg_locs[i].offset = result.stack_offset;
+                loc->kind = X64_LREG_LOC_STACK;
+                loc->offset = result.stack_offset;
                 result.stack_offset += X64_MAX_INT_REG_SIZE;
             }
         }
         else {
-            // Try to allocate the next free reg. This will only fail if this interval corresponds to a procedure call
-            // argument AND 1) the argument should be passed via the stack and 2) we can only assign an X64 argument
-            // register.
-            //
-            // We want to prevent arguments that should be passed via the stack from being assigned an argument
-            // register. Refer to the logic for emitting X64 call instructions for more info.
-            X64_Reg reg = X64_next_reg(num_x64_regs, x64_scratch_regs, &result.free_regs, &result.used_callee_regs,
-                                       interval->is_ret, interval->is_arg, interval->arg_index);
+            // Try to allocate the next free reg.
+            X64_Reg reg = X64_next_reg(num_x64_regs, x64_scratch_regs, &result.free_regs, &result.used_callee_regs);
 
-            if (reg != X64_REG_COUNT) {
-                vreg_locs[i].kind = X64_VREG_LOC_REG;
-                vreg_locs[i].reg = reg;
+            assert(reg != X64_REG_COUNT);
+            interval->loc.kind = X64_LREG_LOC_REG;
+            interval->loc.reg = reg;
 
-                X64_vreg_interval_list_add(&active, interval, i);
-            }
-            else {
-                // This is a call argument that we refused to assign to a free register.
-                vreg_locs[i].kind = X64_VREG_LOC_STACK;
-                vreg_locs[i].offset = result.stack_offset;
-                result.stack_offset += X64_MAX_INT_REG_SIZE;
-            }
+            X64_lreg_interval_list_add(&active, interval);
         }
     }
 

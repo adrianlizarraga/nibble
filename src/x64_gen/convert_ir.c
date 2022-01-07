@@ -31,41 +31,41 @@ static X64_InstrKind convert_kind[] = {
     [INSTR_ZEXT] = X64_INSTR_MOVZX_R_R
 };
 
-static void X64_init_lir_builder(X64_LIRBuilder* builder, Allocator* arena, Allocator* tmp_arena, u32 num_irregs)
+static void X64_init_lir_builder(X64_LIRBuilder* builder, Allocator* arena, u32 num_iregs)
 {
     builder->arena = arena;
-    builder->tmp_arena = tmp_arena;
     builder->instrs = array_create(arena, X64_Instr*, 32);
-    builder->call_sites = array_create(tmp_arena, u32, 8);
-    builder->jmp_map = hmap(4, tmp_arena);
-    builder->lir_ranges = array_create(tmp_arena, X64_RegRange, 16);
-    builder->lir_aliases = array_create(tmp_arena, u32, 16);
-    builder->lir_sizes = array_create(tmp_arena, u32, 16);
+    builder->call_sites = array_create(arena, u32, 8);
+    builder->jmp_map = hmap(4, arena);
+    builder->lreg_ranges = array_create(arena, X64_LRegRange, 16);
+    builder->lreg_aliases = array_create(arena, u32, 16);
+    builder->lreg_sizes = array_create(arena, u32, 16);
 
-    builder->reg_map = alloc_array(tmp_arena, u32, num_irregs, false);
-    memset(builder->reg_map, 0xFF, num_iiregs * sizeof(u32));
+    builder->reg_map = alloc_array(arena, u32, num_iregs, false);
+    memset(builder->reg_map, 0xFF, num_iregs * sizeof(u32));
 }
 
 static void X64_end_reg_range(X64_LIRBuilder* builder, u32 r)
 {
-    X64_RegRange* range = builder->lir_ranges + r;
+    X64_LRegRange* range = builder->lreg_ranges + r;
     range->end = array_len(builder->instrs) - 1;
 }
 
-static void X64_merge_ranges(X64_RegRange* dst_range, X64_RegRange* src_range)
+static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
 {
     dst_range->start = dst_range->start <= src_range->start ? dst_range->start : src_range->start;
     dst_range->end = dst_range->end >= src_range->end ? dst_range->end : src_range->end;
 
-    if (src_range->reg != X64_REG_COUNT) {
-        assert(dst_range->reg == X64_REG_COUNT);
+    if (src_range->loc.kind != X64_LREG_LOC_UNASSIGNED) {
+        assert(src_range->loc.kind == X64_LREG_LOC_REG);
+        assert(dst_range->loc.kind == X64_LREG_LOC_UNASSIGNED);
         dst_range->reg = src_range->reg;
     }
 }
 
-static u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r)
+u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r)
 {
-    u32* roots = builder->lir_aliases;
+    u32* roots = builder->lreg_aliases;
 
     while (roots[r] != r) {
         u32 next_r = roots[r];
@@ -85,21 +85,21 @@ static void X64_alias_lir_regs(X64_LIRBuilder* builder, u32 u, u32 v)
         return;
     }
 
-    u32* roots = builder->lir_aliases;
-    u32* sizes = builder->lir_sizes;
+    u32* roots = builder->lreg_aliases;
+    u32* sizes = builder->lreg_sizes;
 
     if (sizes[root_u] > sizes[root_v]) {
         roots[root_v] = root_u;
         sizes[root_u] += sizes[root_v];
 
-        X64_RegRange* ranges = builder->lir_ranges;
+        X64_LRegRange* ranges = builder->lreg_ranges;
         X64_merge_ranges(ranges + root_u, ranges + root_v);
     }
     else {
         roots[root_u] = root_v;
         sizes[root_v] += sizes[root_u];
 
-        X64_RegRange* ranges = builder->lir_ranges;
+        X64_LRegRange* ranges = builder->lreg_ranges;
         X64_merge_ranges(ranges + root_v, ranges + root_u);
     }
 }
@@ -108,38 +108,35 @@ static u32 X64_next_lir_reg(X64_LIRBuilder* builder)
 {
     size_t next_ip = array_len(builder->instrs);
 
-    array_push(builder->lir_ranges, (X64_RegRange){.start = next_ip, .end = next_ip, .reg = X64_REG_COUNT});
+    array_push(builder->lreg_ranges, (X64_LRegRange){.start = next_ip, .end = next_ip});
 
-    u32 next_reg = array_len(builder->lir_ranges) - 1;
+    u32 next_reg = array_len(builder->lreg_ranges) - 1;
     assert(next_reg < (u32)-1);
 
-    array_push(builder->lir_aliases, next_reg);
-    array_push(builder->lir_sizes, 1);
+    array_push(builder->lreg_aliases, next_reg);
+    array_push(builder->lreg_sizes, 1);
 
     return next_reg;
 }
 
-static u32 X64_def_lir_reg(X64_LIRBuilder* builder, u32 irreg)
+static u32 X64_def_lir_reg(X64_LIRBuilder* builder, u32 ireg)
 {
     assert(builder->reg_map[iireg] == (u32)-1);
     u32 result = X64_next_lir_reg(builder);
-    builder->reg_map[irreg] = result;
+    builder->reg_map[ireg] = result;
 
     return result;
 }
 
-static u32 X64_get_lir_reg(X64_LIRBuilder* builder, u32 irreg)
+static u32 X64_get_lir_reg(X64_LIRBuilder* builder, u32 ireg)
 {
     size_t next_ip = array_len(builder->instrs);
-
-    u32 result = builder->reg_map[irreg];
+    u32 result = builder->reg_map[ireg];
 
     assert(result != (u32)-1);
 
     result = X64_find_alias_reg(builder, result);
-
-    X64_RegRange* range = &builder->lir_ranges[result];
-
+    X64_LRegRange* range = &builder->lreg_ranges[result];
     range->end = next_ip;
 
     return result;
@@ -148,7 +145,7 @@ static u32 X64_get_lir_reg(X64_LIRBuilder* builder, u32 irreg)
 static u32 X64_def_phys_reg(X64_LIRBuilder* builder, X64_Reg phys_reg)
 {
     u32 result = X64_next_lir_reg(builder);
-    X64_RegRange* range = &builder->lir_ranges[result];
+    X64_LRegRange* range = &builder->lreg_ranges[result];
 
     range->reg = phys_reg;
 }
@@ -228,10 +225,11 @@ static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u3
         else {
             X64_Reg phys_reg = x64_target.arg_regs[arg_reg_index++];
             u32 a = X64_get_lir_reg(builder, arg->loc);
-            X64_RegRange* a_rng = &builder->lir_ranges[a];
+            X64_LRegRange* a_rng = &builder->lreg_ranges[a];
 
-            assert(a_rng->reg == X64_REG_COUNT);
-            a_rng->reg = phys_reg;
+            assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
+            a_rng->loc.kind = X64_LREG_LOC_REG;
+            a_rng->loc.reg = phys_reg;
 
             arg_info->in_reg = true;
             arg_info->reg = a;
@@ -264,10 +262,11 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
         else {
             X64_Reg phys_reg = x64_target.arg_regs[i];
             u32 a = X64_get_lir_reg(builder, arg->loc);
-            X64_RegRange* a_rng = &builder->lir_ranges[a];
+            X64_LRegRange* a_rng = &builder->lreg_ranges[a];
 
-            assert(a_rng->reg == X64_REG_COUNT);
-            a_rng->reg = phys_reg;
+            assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
+            a_rng->loc.kind = X64_LREG_LOC_REG;
+            a_rng->loc.reg = phys_reg;
 
             arg_info->in_reg = true;
             arg_info->reg = a;
@@ -402,10 +401,11 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         bool uses_dx = size >= 2;
 
         u32 a = X64_get_lir_reg(builder, ir_instr->binary.a);
-        X64_RegRange* a_rng = &builder->lir_ranges[a];
+        X64_LRegRange* a_rng = &builder->lreg_ranges[a];
 
-        assert(a_rng->reg == X64_REG_COUNT);
-        a_rng->reg = X64_RAX;
+        assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
+        a_rng->loc.kind = X64_LREG_LOC_REG;
+        a_rng->loc.reg = X64_RAX;
 
         // cqo
         u32 dx;
@@ -439,10 +439,11 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         X64_emit_instr_mov_r_r(builder, size, r, a);
 
         u32 b = X64_get_lir_reg(builder, ir_instr->binary.b);
-        X64_RegRange* b_rng = &builder->lir_ranges[b];
+        X64_LRegRange* b_rng = &builder->lreg_ranges[b];
 
-        assert(b_rng->reg == X64_REG_COUNT);
-        b_rng->reg = X64_RCX; // Force `cx`
+        assert(b_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
+        b_rng->loc.kind = X64_LREG_LOC_REG;
+        b_rng->loc.reg = X64_RCX; // Force `cx`
 
         // shift r, b
         X64_emit_instr_shift_r_r(builder, shift_kind[ir_instr->kind], size, r, b);
@@ -652,10 +653,11 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
             u32 a = X64_get_lir_reg(builder, ir_instr->ret.a);
-            X64_RegRange* a_rng = &builder->lir_ranges[a];
+            X64_LRegRange* a_rng = &builder->lreg_ranges[a];
 
-            assert(a_rng->reg == X64_REG_COUNT);
-            a_rng->reg = X64_RAX; // Force ax
+            assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
+            a_rng->loc.kind = X64_LREG_LOC_REG;
+            a_rng->loc.reg = X64_RAX; // Force ax
         }
 
         X64_emit_instr_ret(builder);

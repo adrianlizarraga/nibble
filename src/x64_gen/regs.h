@@ -56,19 +56,19 @@ bool X64_is_arg_reg(X64_Reg reg);
 // Data structures used to track the "location" of a virtual IR register.
 // A virtual register could be assigned to a physical register, or could be assigned
 // to a stack offset.
-typedef enum X64_VRegLocKind {
-    X64_VREG_LOC_UNASSIGNED = 0,
-    X64_VREG_LOC_REG,
-    X64_VREG_LOC_STACK,
-} X64_VRegLocKind;
+typedef enum X64_LRegLocKind {
+    X64_LREG_LOC_UNASSIGNED = 0,
+    X64_LREG_LOC_REG,
+    X64_LREG_LOC_STACK,
+} X64_LRegLocKind;
 
-typedef struct X64_VRegLoc {
-    X64_VRegLocKind kind;
+typedef struct X64_LRegLoc {
+    X64_LRegLocKind kind;
 
     union {
         X64_Reg reg;
         s32 offset;
     };
-} X64_VRegLoc;
+} X64_LRegLoc;
 
 #endif

@@ -2,7 +2,7 @@
 #define NIBBLE_X64_LIR_H
 #include "allocator.h"
 #include "hash_map.h"
-#include "regs.h"
+#include "x64_gen/regs.h"
 
 typedef struct X64_StackArgsInfo {
     u64 size;
@@ -285,18 +285,18 @@ typedef struct X64_Instr {
     };
 } X64_Instr;
 
-typedef struct X64_RegRange {
+typedef struct X64_LRegRange {
     u32 start;
     u32 end;
-    X64_Reg reg;
-} X64_RegRange;
+    X64_LRegLoc loc;
+} X64_LRegRange;
 
 typedef struct X64_LIRBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
 
     X64_Instr** instrs; // Stretchy buf
-    X64_RegRange* lir_ranges; // Stretchy buf
+    X64_LRegRange* lreg_ranges; // Stretchy buf
     u32* reg_map; // Map IR reg -> LIR reg; size: num_iregs
 
     HMap jmp_map;
@@ -305,9 +305,11 @@ typedef struct X64_LIRBuilder {
     u32* call_sites; // lir call sites. Used for reg allocation
 
     // Disjoint Set Union data structure for register renaming/aliasing.
-    u32* lir_aliases; // Root alias node for each lir reg. size: num_lirregs
-    u32* lir_sizes;   // Size for each lir reg aliasing set. size: num_lirregs
+    u32* lreg_aliases; // Root alias node for each lir reg. size: num_lirregs
+    u32* lreg_sizes;   // Size for each lir reg aliasing set. size: num_lirregs
 } X64_LIRBuilder;
+
+u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r);
 
 void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, u32 src);
 void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
