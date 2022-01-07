@@ -143,9 +143,9 @@ typedef struct X64_Generator {
     Allocator* tmp_mem;
 } X64_Generator;
 
-static X64_VRegLoc X64_vreg_loc(X64_Generator* generator, IR_Reg ir_reg)
+static X64_LRegLoc X64_lreg_loc(X64_Generator* generator, u32 lreg)
 {
-    X64_VRegLoc reg_loc = generator->curr_proc.vreg_map[ir_reg];
+    X64_LRegLoc reg_loc = generator->curr_proc.lreg_ranges[lreg].loc;
 
     assert(reg_loc.kind != X64_VREG_LOC_UNASSIGNED);
 
@@ -1164,20 +1164,20 @@ static char* X64_print_mem(X64_RegGroup* group, IR_MemAddr* addr, u32 size)
     return X64_print_sibd_addr(group->generator->tmp_mem, &sibd_addr, size);
 }
 
-static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, IR_Reg op1_vreg,
-                              u32 op2_size, IR_Reg op2_vreg)
+static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, u32 op1_lreg,
+                              u32 op2_size, u32 op2_lreg)
 {
-    X64_VRegLoc op1_loc = X64_vreg_loc(generator, op1_vreg);
-    X64_VRegLoc op2_loc = X64_vreg_loc(generator, op2_vreg);
+    X64_LRegLoc op1_loc = X64_lreg_loc(generator, op1_lreg);
+    X64_LRegLoc op2_loc = X64_lreg_loc(generator, op2_lreg);
 
     switch (op1_loc.kind) {
-    case X64_VREG_LOC_REG: {
+    case X64_LREG_LOC_REG: {
         switch (op2_loc.kind) {
-        case X64_VREG_LOC_REG:
+        case X64_LREG_LOC_REG:
             X64_emit_text(generator, "    %s %s, %s", instr, x64_reg_names[op1_size][op1_loc.reg],
                           x64_reg_names[op2_size][op2_loc.reg]);
             break;
-        case X64_VREG_LOC_STACK:
+        case X64_LREG_LOC_STACK:
             X64_emit_text(generator, "    %s %s, %s", instr, x64_reg_names[op1_size][op1_loc.reg],
                           X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op2_size));
             break;
@@ -1187,13 +1187,13 @@ static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool 
         }
         break;
     }
-    case X64_VREG_LOC_STACK: {
+    case X64_LREG_LOC_STACK: {
         switch (op2_loc.kind) {
-        case X64_VREG_LOC_REG:
+        case X64_LREG_LOC_REG:
             X64_emit_text(generator, "    %s %s, %s", instr, X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size),
                           x64_reg_names[op2_size][op2_loc.reg]);
             break;
-        case X64_VREG_LOC_STACK: {
+        case X64_LREG_LOC_STACK: {
             const char* op1_op_str = X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size);
             const char* op2_op_str = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op2_size);
             const char* tmp_reg_str = x64_reg_names[op1_size][X64_RAX];
@@ -1229,17 +1229,17 @@ static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool 
     }
 }
 
-static void X64_emit_ri_instr(X64_Generator* generator, const char* instr, u32 op1_size, IR_Reg op1_vreg, u32 op2_size, Scalar op2_imm)
+static void X64_emit_ri_instr(X64_Generator* generator, const char* instr, u32 op1_size, u32 op1_lreg, u32 op2_size, Scalar op2_imm)
 {
-    X64_VRegLoc op1_loc = X64_vreg_loc(generator, op1_vreg);
+    X64_LRegLoc op1_loc = X64_lreg_loc(generator, op1_lreg);
 
     switch (op1_loc.kind) {
-    case X64_VREG_LOC_REG: {
+    case X64_LREG_LOC_REG: {
         X64_emit_text(generator, "    %s %s, %s", instr, x64_reg_names[op1_size][op1_loc.reg],
                       X64_print_imm(generator->tmp_mem, op2_imm, op2_size));
         break;
     }
-    case X64_VREG_LOC_STACK: {
+    case X64_LREG_LOC_STACK: {
         X64_emit_text(generator, "    %s %s, %s", instr, X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size),
                       X64_print_imm(generator->tmp_mem, op2_imm, op2_size));
         break;
@@ -1337,199 +1337,74 @@ static void X64_emit_div_instr(X64_Generator* generator, const char* instr_name,
     }
 }
 
-static void X64_gen_instr(X64_Generator* generator, u32 live_regs, u32 instr_index, bool is_last_instr, IR_Instr* instr)
+static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_last_instr, X64_Instr* instr)
 {
+    static const char* binary_r_r_name[] = {
+        [X64_INSTR_ADD_R_R] = "add",
+        [X64_INSTR_SUB_R_R] = "sub",
+        [X64_INSTR_IMUL_R_R] = "imul",
+        [X64_INSTR_AND_R_R] = "and",
+        [X64_INSTR_OR_R_R] = "or",
+        [X64_INSTR_XOR_R_R] = "xor"
+    };
+
+    static const char* binary_r_i_name[] = {
+        [X64_INSTR_ADD_R_I] = "add",
+        [X64_INSTR_SUB_R_I] = "sub",
+        [X64_INSTR_IMUL_R_I] = "imul",
+        [X64_INSTR_AND_R_I] = "and",
+        [X64_INSTR_OR_R_I] = "or",
+        [X64_INSTR_XOR_R_I] = "xor"
+    };
+
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
     if (instr->is_jmp_target)
         X64_emit_text(generator, "    %s:", X64_get_label(generator, instr_index));
 
     switch (instr->kind) {
-    case IR_INSTR_ADD_R_R: {
-        u32 size = (u32)instr->add_r_r.type->size;
+    case X64_INSTR_ADD_R_R:
+    case X64_INSTR_SUB_R_R:
+    case X64_INSTR_IMUL_R_R:
+    case X64_INSTR_AND_R_R:
+    case X64_INSTR_OR_R_R:
+    case X64_INSTR_XOR_R_R: {
+        u32 size = (u32)instr->binary_r_r.size;
 
-        X64_emit_rr_instr(generator, "add", true, size, instr->add_r_r.dst, size, instr->add_r_r.src);
+        X64_emit_rr_instr(generator, binary_r_r_name[instr->kind], true, size, instr->binary_r_r.dst, size, instr->binary_r_r.src);
         break;
     }
-    case IR_INSTR_ADD_R_M: {
-        u32 size = (u32)instr->add_r_m.type->size;
+    case X64_INSTR_ADD_R_I:
+    case X64_INSTR_SUB_R_I:
+    case X64_INSTR_IMUL_R_I:
+    case X64_INSTR_AND_R_I:
+    case X64_INSTR_OR_R_I:
+    case X64_INSTR_XOR_R_I: {
+        u32 size = (u32)instr->binary_r_i.size;
 
-        X64_emit_rm_instr(generator, "add", true, size, instr->add_r_m.dst, size, &instr->add_r_m.src);
+        X64_emit_ri_instr(generator, binary_r_i_name[instr->kind], size, instr->binary_r_i.dst, size, instr->binary_r_i.src);
         break;
     }
-    case IR_INSTR_ADD_R_I: {
-        u32 size = (u32)instr->add_r_i.type->size;
+    case X64_INSTR_DIV:
+    case X64_INSTR_IDIV: {
+        const char* instr_name = instr->kind == X64_INSTR_IDIV ? "idiv" : "div";
+        u32 size = (u32)instr->div.size;
 
-        X64_emit_ri_instr(generator, "add", size, instr->add_r_i.dst, size, instr->add_r_i.src);
-        break;
-    }
-    case IR_INSTR_SUB_R_R: {
-        u32 size = (u32)instr->sub_r_r.type->size;
-
-        X64_emit_rr_instr(generator, "sub", true, size, instr->sub_r_r.dst, size, instr->sub_r_r.src);
-        break;
-    }
-    case IR_INSTR_SUB_R_M: {
-        u32 size = (u32)instr->sub_r_m.type->size;
-
-        X64_emit_rm_instr(generator, "sub", true, size, instr->sub_r_m.dst, size, &instr->sub_r_m.src);
-        break;
-    }
-    case IR_INSTR_SUB_R_I: {
-        u32 size = (u32)instr->sub_r_i.type->size;
-
-        X64_emit_ri_instr(generator, "sub", size, instr->sub_r_i.dst, size, instr->sub_r_i.src);
-        break;
-    }
-    case IR_INSTR_MUL_R_R: {
-        u32 size = (u32)instr->mul_r_r.type->size;
-
-        X64_emit_rr_instr(generator, "imul", true, size, instr->mul_r_r.dst, size, instr->mul_r_r.src);
-
-        break;
-    }
-    case IR_INSTR_MUL_R_M: {
-        u32 size = (u32)instr->mul_r_m.type->size;
-
-        X64_emit_rm_instr(generator, "imul", true, size, instr->mul_r_m.dst, size, &instr->mul_r_m.src);
-        break;
-    }
-    case IR_INSTR_MUL_R_I: {
-        u32 size = (u32)instr->mul_r_i.type->size;
-
-        X64_emit_ri_instr(generator, "imul", size, instr->mul_r_i.dst, size, instr->mul_r_i.src);
-        break;
-    }
-    case IR_INSTR_SDIV_R_R:
-    case IR_INSTR_UDIV_R_R: {
-        const char* instr_name = instr->kind == IR_INSTR_SDIV_R_R ? "idiv" : "div";
-        u32 size = (u32)instr->div_r_r.type->size;
-        bool uses_rdx = size >= 2;
-
-        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->div_r_r.dst);
-        X64_VRegLoc src_loc = X64_vreg_loc(generator, instr->div_r_r.src);
+        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->div.src);
         bool src_is_reg = src_loc.kind == X64_VREG_LOC_REG;
         const char* src_op_str =
             src_is_reg ? x64_reg_names[size][src_loc.reg] : X64_print_stack_offset(generator->tmp_mem, src_loc.offset, size);
-        bool move_src_op = src_is_reg && ((src_loc.reg == X64_RAX) || (src_loc.reg == X64_RDX && uses_rdx));
 
-        // Swap if the source operand is currently in rax or rdx.
-        // Why? Because division writes result into _dx:_ax (if size >= 2 bytes), or ah:al (if 1 byte).
-        if (move_src_op) {
-            X64_Reg dst_reg = dst_loc.kind == X64_VREG_LOC_REG ? dst_loc.reg : X64_REG_COUNT;
-            u32 banned_regs = (1 << dst_reg) | (1 << X64_RAX);
-
-            if (uses_rdx) {
-                banned_regs |= (1 << X64_RDX);
-            }
-
-            X64_RegGroup reg_group = X64_begin_reg_group(generator);
-            X64_Reg tmp_src_reg = X64_get_tmp_reg(&reg_group, banned_regs, live_regs);
-            const char* tmp_src_op_str = x64_reg_names[size][tmp_src_reg];
-
-            // Move source val into temporary register, emit division, and then restore source reg.
-            X64_emit_text(generator, "    mov %s, %s", tmp_src_op_str, src_op_str);
-            X64_emit_div_instr(generator, instr_name, size, dst_loc, tmp_src_op_str, live_regs);
-            X64_emit_text(generator, "    mov %s, %s", src_op_str, tmp_src_op_str);
-            X64_end_reg_group(&reg_group);
-        }
-        else {
-            X64_emit_div_instr(generator, instr_name, size, dst_loc, src_op_str, live_regs);
-        }
+        X64_emit_text(generator, "    %s %s", instr_name, src_op_str);
 
         break;
     }
-    case IR_INSTR_SDIV_R_M:
-    case IR_INSTR_UDIV_R_M: {
-        const char* instr_name = instr->kind == IR_INSTR_SDIV_R_M ? "idiv" : "div";
-        u32 size = (u32)instr->div_r_m.type->size;
-        bool uses_rdx = size >= 2;
-
-        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->div_r_m.dst);
-        X64_Reg dst_reg = dst_loc.kind == X64_VREG_LOC_REG ? dst_loc.reg : X64_REG_COUNT;
-
-        X64_RegGroup src_tmp_group = X64_begin_reg_group(generator);
-        X64_SIBDAddr src_addr = X64_get_sibd_addr(&src_tmp_group, &instr->div_r_m.src);
-
-        X64_Reg base_reg = src_addr.local.base_reg;
-        X64_Reg index_reg = src_addr.local.index_reg;
-        X64_Reg tmp_base_reg = X64_REG_COUNT;
-        X64_Reg tmp_index_reg = X64_REG_COUNT;
-
-        // May have to assign temporary regs to addressing registers if they are assigned to RAX or RDX.
-        if (src_addr.kind == X64_SIBD_ADDR_LOCAL) {
-            u32 banned_regs = (1 << X64_RAX) | (1 << dst_reg);
-
-            if (uses_rdx) {
-                banned_regs |= (1 << X64_RDX);
-            }
-
-            if ((base_reg == X64_RAX) || (base_reg == X64_RDX && uses_rdx)) {
-                banned_regs |= (1 << index_reg);
-                tmp_base_reg = X64_get_tmp_reg(&src_tmp_group, banned_regs, live_regs);
-                src_addr.local.base_reg = tmp_base_reg;
-            }
-
-            if ((index_reg == X64_RAX) || (index_reg == X64_RDX && uses_rdx)) {
-                banned_regs |= (1 << base_reg) | (1 << tmp_base_reg);
-                tmp_index_reg = X64_get_tmp_reg(&src_tmp_group, banned_regs, live_regs);
-                src_addr.local.index_reg = tmp_index_reg;
-            }
-        }
-
-        // Move addressing regs to temporary regs if necessary, emit div instruction, and then restore addressing regs.
-        if (tmp_base_reg != X64_REG_COUNT) {
-            assert(base_reg != X64_REG_COUNT);
-            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[size][tmp_base_reg], x64_reg_names[size][base_reg]);
-        }
-
-        if (tmp_index_reg != X64_REG_COUNT) {
-            assert(index_reg != X64_REG_COUNT);
-            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[size][tmp_index_reg], x64_reg_names[size][index_reg]);
-        }
-
-        X64_emit_div_instr(generator, instr_name, size, dst_loc, X64_print_sibd_addr(generator->tmp_mem, &src_addr, size), live_regs);
-
-        if (tmp_base_reg != X64_REG_COUNT) {
-            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[size][base_reg], x64_reg_names[size][tmp_base_reg]);
-        }
-
-        if (tmp_index_reg != X64_REG_COUNT) {
-            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[size][index_reg], x64_reg_names[size][tmp_index_reg]);
-        }
-
-        X64_end_reg_group(&src_tmp_group);
+    case X64_INSTR_SEXT_AX_TO_DX: {
+        u32 size = (u32)instr->sext_ax_to_dx.size;
+        X64_emit_text(generator, "    %s", x64_sext_ax_into_dx[size]);
         break;
     }
-    case IR_INSTR_SDIV_R_I:
-    case IR_INSTR_UDIV_R_I: {
-        const char* instr_name = instr->kind == IR_INSTR_SDIV_R_I ? "idiv" : "div";
-        u32 size = (u32)instr->div_r_i.type->size;
-
-        X64_VRegLoc dst_loc = X64_vreg_loc(generator, instr->div_r_i.dst);
-        X64_Reg dst_reg = dst_loc.kind == X64_VREG_LOC_REG ? dst_loc.reg : X64_REG_COUNT;
-        u32 banned_regs = (1 << dst_reg) | (1 << X64_RAX);
-
-        if (size >= 2) {
-            banned_regs |= (1 << X64_RDX);
-        }
-
-        // NOTE: Div instructions don't take an immediate operand, so need to move immediate into a register.
-        // NOTE: Div instructions require rax as destination.
-        // NOTE: Div instructions store remainder in rdx if size >= 2
-
-        X64_RegGroup reg_group = X64_begin_reg_group(generator);
-        X64_Reg imm_reg = X64_get_tmp_reg(&reg_group, banned_regs, live_regs);
-        const char* src_op_str = x64_reg_names[size][imm_reg];
-
-        X64_emit_text(generator, "    mov %s, %s", src_op_str, X64_print_imm(generator->tmp_mem, instr->div_r_i.src, size));
-
-        X64_emit_div_instr(generator, instr_name, size, dst_loc, src_op_str, live_regs);
-
-        X64_end_reg_group(&reg_group);
-
-        break;
-    }
+    // TODO: LEFT OFF HERE
     case IR_INSTR_SAR_R_R: {
         u32 dst_size = (u32)instr->sar_r_r.dst_type->size;
         u32 src_size = (u32)instr->sar_r_r.src_type->size;
@@ -2176,15 +2051,15 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     ftprint_out("Register allocation for %s (%s):\n", sym->name, is_nonleaf ? "nonleaf": "leaf");
     for (u32 i = 0; i < num_lreg_ranges; i += 1)
     {
-        X64_VRegLoc* loc = &lreg_ranges[i].loc;
+        X64_LRegLoc* loc = &lreg_ranges[i].loc;
 
-        if (loc->kind == X64_VREG_LOC_REG)
+        if (loc->kind == X64_LREG_LOC_REG)
         {
             ftprint_out("\tr%u -> %s\n", i, x64_reg_names[8][loc->reg]);
         }
         else
         {
-            assert(loc->kind == X64_VREG_LOC_STACK);
+            assert(loc->kind == X64_LREG_LOC_STACK);
             ftprint_out("\tr%u -> RBP - %d\n", i, loc->offset);
         }
     }
@@ -2209,6 +2084,8 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     for (uint32_t r = 0; r < X64_REG_COUNT; r += 1) {
         X64_Reg reg = (X64_Reg)r;
+
+        if (reg == X64_RBP || reg == X64_RSP) continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
             ftprint_char_array(&tmp_line, false, "    push %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);

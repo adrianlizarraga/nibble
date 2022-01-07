@@ -47,9 +47,9 @@ static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* fr
 
 static void X64_init_free_regs(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* free_regs)
 {
-    for (u32 i = 0; i < num_x64_regs; i += 1) {
-        X64_free_reg(free_regs, x64_scratch_regs[i]);
-    }
+    (void)num_x64_regs;
+    (void)x64_scratch_regs;
+    *free_regs = (u32)-1;
 }
 
 static void X64_lreg_interval_list_rm(X64_LRegIntervalList* list, X64_LRegInterval* node)

@@ -58,11 +58,11 @@ void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_InstrKind kind, size_
     X64_add_lir_instr(builder, instr);
 }
 
-void X64_emit_instr_div_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 src)
+void X64_emit_instr_div(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
-    instr->div_r.size = size;
-    instr->div_r.src = src;
+    instr->div.size = size;
+    instr->div.src = src;
 
     X64_add_lir_instr(builder, instr);
 }

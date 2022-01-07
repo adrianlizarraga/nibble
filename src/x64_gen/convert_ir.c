@@ -416,7 +416,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
 
         // div b
         u32 b = X64_get_lir_reg(builder, ir_instr->binary.b);
-        X64_emit_instr_div_r(builder, div_kind[ir_instr->kind], size, b);
+        X64_emit_instr_div(builder, div_kind[ir_instr->kind], size, b);
 
         if (uses_dx) {
             X64_end_reg_range(builder, dx);

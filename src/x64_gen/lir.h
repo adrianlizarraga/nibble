@@ -25,10 +25,10 @@ typedef enum X64_InstrKind {
     X64_INSTR_IMUL_R_I,
 
     // Unsigned division
-    X64_INSTR_DIV_R_R,
+    X64_INSTR_DIV,
 
     // Signed division
-    X64_INSTR_IDIV_R_R,
+    X64_INSTR_IDIV,
 
     // Bitwise AND
     X64_INSTR_AND_R_R,
@@ -143,10 +143,10 @@ typedef struct X64_InstrShift_R_I {
     Scalar src;
 } X64_InstrShift_R_I;
 
-typedef struct X64_InstrDiv_R {
+typedef struct X64_InstrDiv {
     size_t size;
     u32 src;
-} X64_InstrDiv_R;
+} X64_InstrDiv;
 
 typedef struct X64_InstrUnary {
     size_t size;
@@ -255,7 +255,7 @@ typedef struct X64_Instr {
         X64_InstrShift_R_R shift_r_r;
         X64_InstrShift_R_I shift_r_i;
 
-        X64_InstrDiv_R div_r;
+        X64_InstrDiv div;
 
         X64_InstrUnary unary;
 
@@ -315,7 +315,7 @@ void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size
 void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
 void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, u32 src);
 void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
-void X64_emit_instr_div_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 src);
+void X64_emit_instr_div(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 src);
 void X64_emit_instr_unary(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst);
 void X64_emit_instr_mov_r_r(X64_LIRBuilder* builder, size_t size, u32 dst, u32 src);
 void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, size_t size, u32 dst, X64_MemAddr src);
