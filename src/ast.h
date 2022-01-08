@@ -825,18 +825,8 @@ struct SymbolVar {
     };
 };
 
-typedef struct LifetimeInterval {
-    u32 start;
-    u32 end;
-    bool is_ret;
-    bool is_arg;
-    u32 arg_index;
-} LifetimeInterval;
-
 struct SymbolProc {
-    struct IR_Instr** instrs; // NOTE: stretchy buf
-    struct Instr** nir_instrs; // NOTE: stretchy buf
-    LifetimeInterval* reg_intervals;
+    struct Instr** instrs; // NOTE: stretchy buf
     u32 num_regs;
     bool is_nonleaf;
 };

@@ -1,4 +1,4 @@
-#include "ir.h"
+#include "bytecode.h"
 #include "x64_gen/lir.h"
 
 static X64_InstrKind binary_kind[] = {
@@ -59,7 +59,7 @@ static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
     if (src_range->loc.kind != X64_LREG_LOC_UNASSIGNED) {
         assert(src_range->loc.kind == X64_LREG_LOC_REG);
         assert(dst_range->loc.kind == X64_LREG_LOC_UNASSIGNED);
-        dst_range->reg = src_range->reg;
+        dst_range->loc.reg = src_range->loc.reg;
     }
 }
 
@@ -121,7 +121,9 @@ static u32 X64_next_lir_reg(X64_LIRBuilder* builder)
 
 static u32 X64_def_lir_reg(X64_LIRBuilder* builder, u32 ireg)
 {
-    assert(builder->reg_map[iireg] == (u32)-1);
+    // TODO: THIS FAILS
+    ftprint_out("DEF LIR REG %d (mapped to %d)\n", ireg, builder->reg_map[ireg]);
+    assert(builder->reg_map[ireg] == (u32)-1);
     u32 result = X64_next_lir_reg(builder);
     builder->reg_map[ireg] = result;
 
@@ -147,18 +149,21 @@ static u32 X64_def_phys_reg(X64_LIRBuilder* builder, X64_Reg phys_reg)
     u32 result = X64_next_lir_reg(builder);
     X64_LRegRange* range = &builder->lreg_ranges[result];
 
-    range->reg = phys_reg;
+    range->loc.kind = X64_LREG_LOC_REG;
+    range->loc.reg = phys_reg;
+
+    return result;
 }
 
 static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr* src)
 {
     bool has_base = src->base_kind != MEM_BASE_NONE;
-    bool has_index = src->scale && (src->index_reg < NIR_REG_COUNT);
+    bool has_index = src->scale && (src->index_reg < IR_REG_COUNT);
     assert(has_base || has_index);
 
     if (has_base) {
         if (src->base_kind == MEM_BASE_STR_LIT) {
-            dst->kind = X64_LIR_ADDR_STR_LIT;
+            dst->kind = X64_ADDR_STR_LIT;
             dst->str_lit = src->base.str_lit;
 
             return;
@@ -169,19 +174,19 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
 
             // Early exit for global variable addresses.
             if (!sym->is_local) {
-                dst->kind = X64_LIR_ADDR_GLOBAL;
+                dst->kind = X64_ADDR_GLOBAL;
                 dst->global = sym;
 
                 return;
             }
 
-            dst->kind = X64_LIR_ADDR_LOCAL;
+            dst->kind = X64_ADDR_LOCAL;
             dst->local.base_reg = X64_def_phys_reg(builder, X64_RBP);
             dst->local.disp = src->disp + sym->as_var.offset;
             dst->local.scale = src->scale;
         }
         else {
-            dst->kind = X64_LIR_ADDR_LOCAL;
+            dst->kind = X64_ADDR_LOCAL;
             dst->local.base_reg = X64_get_lir_reg(builder, src->base.reg);
             dst->local.disp = src->disp;
             dst->local.scale = src->scale;
@@ -195,7 +200,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
         }
     }
     else {
-        dst->kind = X64_LIR_ADDR_LOCAL;
+        dst->kind = X64_ADDR_LOCAL;
         dst->local.base_reg = (u32)-1;
         dst->local.disp = src->disp;
         dst->local.scale = src->scale;
@@ -304,10 +309,9 @@ static bool X64_try_combine_limm(X64_LIRBuilder* builder, size_t* ip, size_t num
     };
 
     Instr* ir_instr = ir_instrs[*ip];
-    NIR_Reg imm_reg = ir_instr->limm.r;
+    IR_Reg imm_reg = ir_instr->limm.r;
 
     // Look for an instruction to combine with
-    bool can_combine = false;
     size_t t_ip = *ip + 1;
 
     if (t_ip >= num_ir_instrs) {
@@ -315,7 +319,8 @@ static bool X64_try_combine_limm(X64_LIRBuilder* builder, size_t* ip, size_t num
     }
 
     Instr* t_instr = ir_instrs[t_ip];
-    u32 flags = instr_kind_flags[t_instr->kind];
+    InstrKind t_kind = t_instr->kind;
+    u32 flags = instr_kind_flags[t_kind];
 
     bool is_binary = flags & INSTR_IS_BINARY;
     bool is_comm = flags & INSTR_IS_COMM;
@@ -462,7 +467,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         u32 a = X64_get_lir_reg(builder, ir_instr->unary.a);
 
         X64_emit_instr_mov_r_r(builder, size, r, a);
-        X64_emit_instr_unary_r_r(builder, unary_kind[ir_instr->kind], size, r);
+        X64_emit_instr_unary(builder, unary_kind[ir_instr->kind], size, r);
         break;
     }
     case INSTR_TRUNC:
@@ -667,9 +672,9 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
     case INSTR_CALL_INDIRECT:
     case INSTR_CALL: {
         u32 num_args;
-        InstrCallArgs* args;
+        InstrCallArg* args;
         Type* proc_type;
-        NIR_Reg ir_r;
+        IR_Reg ir_r;
 
         if (ir_instr->kind == INSTR_CALL) {
             num_args = ir_instr->call.num_args;
@@ -731,10 +736,14 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_ir_instrs, I
         X64_Instr* ins = builder->instrs[lip];
 
         if (ins->kind == X64_INSTR_JMP) {
-            ins->jmp.jmp_target = builder->jmp_map[ins->jmp.jmp_target];
+            u64* ptarget = hmap_get(&builder->jmp_map, ins->jmp.jmp_target);
+            if (!ptarget) NIBBLE_FATAL_EXIT("[INTERNAL ERROR]: Unable to convert IR jmp target to LIR target");
+            ins->jmp.jmp_target = *ptarget;
         }
         else if (ins->kind == X64_INSTR_JMPCC) {
-            ins->jmpcc.jmp_target = builder->jmp_map[ins->jmpcc.jmp_target];
+            u64* ptarget = hmap_get(&builder->jmp_map, ins->jmpcc.jmp_target);
+            if (!ptarget) NIBBLE_FATAL_EXIT("[INTERNAL ERROR]: Unable to convert IR jmp target to LIR target");
+            ins->jmpcc.jmp_target = *ptarget;
         }
     }
 }

@@ -190,7 +190,7 @@ void X64_emit_instr_setcc(X64_LIRBuilder* builder, ConditionKind cond, u32 dst)
 
 void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder)
 {
-    X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_REP_MOSVB);
+    X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_REP_MOVSB);
     X64_add_lir_instr(builder, instr);
 }
 
@@ -217,7 +217,7 @@ void X64_emit_instr_call_r(X64_LIRBuilder* builder, Type* proc_type, u32 proc_lo
                            X64_StackArgsInfo stack_info)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CALL_R);
-    instr->call_r.proc_type = sym;
+    instr->call_r.proc_type = proc_type;
     instr->call_r.proc_loc = proc_loc;
     instr->call_r.dst = dst;
     instr->call_r.num_args = num_args;

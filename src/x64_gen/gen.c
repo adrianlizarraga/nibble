@@ -740,6 +740,7 @@ static X64_SIBDAddr X64_get_sibd_addr(X64_RegGroup* group, X64_MemAddr* vaddr)
         if (has_base) {
             sibd_addr.local.base_reg = X64_get_reg(group, vaddr->local.base_reg, X64_MAX_INT_REG_SIZE, false);
             sibd_addr.local.index_reg = has_index ? X64_get_reg(group, vaddr->local.index_reg, X64_MAX_INT_REG_SIZE, false) :
+                X64_REG_COUNT;
         }
         else {
             sibd_addr.local.base_reg = X64_REG_COUNT;
@@ -918,6 +919,7 @@ static void X64_emit_mr_instr(X64_Generator* generator, const char* instr, u32 o
     X64_end_reg_group(&tmp_group);
 }
 
+/*
 static void X64_emit_mi_instr(X64_Generator* generator, const char* instr, u32 op1_size, X64_MemAddr* op1_vaddr, u32 op2_size,
                               Scalar op2_imm)
 {
@@ -928,6 +930,7 @@ static void X64_emit_mi_instr(X64_Generator* generator, const char* instr, u32 o
 
     X64_end_reg_group(&tmp_group);
 }
+*/
 
 static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_last_instr, X64_Instr* instr)
 {
@@ -1077,18 +1080,18 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
         break;
     }
     case X64_INSTR_MOVZX_R_R: {
-        size_t dst_size = instr->movzx_r_r.dst_size;
-        size_t src_size = instr->movzx_r_r.src_size;
+        size_t dst_size = instr->convert_r_r.dst_size;
+        size_t src_size = instr->convert_r_r.src_size;
 
-        X64_emit_rr_instr(generator, "movzx", true, dst_size, instr->movzx_r_r.dst, src_size, instr->movzx_r_r.src);
+        X64_emit_rr_instr(generator, "movzx", true, dst_size, instr->convert_r_r.dst, src_size, instr->convert_r_r.src);
         break;
     }
     case X64_INSTR_MOVSX_R_R: {
-        size_t dst_size = instr->movsx_r_r.dst_size;
-        size_t src_size = instr->movsx_r_r.src_size;
+        size_t dst_size = instr->convert_r_r.dst_size;
+        size_t src_size = instr->convert_r_r.src_size;
         const char* movsx = src_size >= builtin_types[BUILTIN_TYPE_U32].type->size ? "movsxd" : "movsx";
 
-        X64_emit_rr_instr(generator, movsx, true, dst_size, instr->movsx_r_r.dst, src_size, instr->movsx_r_r.src);
+        X64_emit_rr_instr(generator, movsx, true, dst_size, instr->convert_r_r.dst, src_size, instr->convert_r_r.src);
         break;
     }
     case X64_INSTR_CMP_R_R: {
@@ -1133,23 +1136,17 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
     }
     case X64_INSTR_CALL:
     case X64_INSTR_CALL_R: {
-        u32 num_args;
-        IR_InstrCallArg* args;
         Type* proc_type;
         u32 dst_lreg;
         X64_StackArgsInfo stack_args_info;
 
         if (instr->kind == X64_INSTR_CALL) {
-            num_args = instr->call.num_args;
-            args = instr->call.args;
             proc_type = instr->call.sym->type;
             dst_lreg = instr->call.dst;
             stack_args_info = instr->call.stack_info;
         }
         else {
             assert(instr->kind == X64_INSTR_CALL_R);
-            num_args = instr->call_r.num_args;
-            args = instr->call_r.args;
             proc_type = instr->call_r.proc_type;
             dst_lreg = instr->call_r.dst;
             stack_args_info = instr->call_r.stack_info;
@@ -1177,7 +1174,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
         // Stack should now be aligned properly for procedure call.
         assert((total_stack_size & (X64_STACK_ALIGN - 1)) == 0);
 
-        if (instr->kind == IR_INSTR_CALL) {
+        if (instr->kind == X64_INSTR_CALL) {
             X64_emit_text(generator, "    call %s", symbol_mangled_name(generator->tmp_mem, instr->call.sym));
         }
         else {
@@ -1270,16 +1267,14 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     u32 stack_size = X64_assign_proc_stack_offsets(generator, decl); // NOTE: Spills argument registers.
 
     // Register allocation.
-    Instr** ir_instrs = sym->as_proc.ir_instrs;
+    Instr** ir_instrs = sym->as_proc.instrs;
     size_t num_ir_instrs = array_len(ir_instrs);
-    X64_LIRBuilder* builder = {0};
+    X64_LIRBuilder builder = {0};
 
     X64_init_lir_builder(&builder, generator->tmp_mem, sym->as_proc.num_regs);
     X64_emit_lir_instrs(&builder, num_ir_instrs, ir_instrs);
 
-    X64_LRegRange* lreg_ranges = builder->lir_ranges;
-    u32 num_lreg_ranges = array_len(lreg_ranges);
-
+    X64_LRegRange* lreg_ranges = builder.lreg_ranges;
     X64_RegAllocResult reg_alloc =
         X64_linear_scan_reg_alloc(&builder, generator->curr_proc.num_scratch_regs, generator->curr_proc.scratch_regs, stack_size);
 
@@ -1287,6 +1282,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     generator->curr_proc.lreg_ranges = lreg_ranges;
 
 #if 0
+    u32 num_lreg_ranges = array_len(lreg_ranges);
     ftprint_out("Register allocation for %s (%s):\n", sym->name, is_nonleaf ? "nonleaf": "leaf");
     for (u32 i = 0; i < num_lreg_ranges; i += 1)
     {
@@ -1308,7 +1304,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
         X64_fill_line(generator, sub_rsp_inst, "    sub rsp, %u", stack_size);
 
     // Generate instructions.
-    X64_Instr** instrs = builder->instrs;
+    X64_Instr** instrs = builder.instrs;
     size_t num_instrs = array_len(instrs);
 
     for (size_t instr_index = 0; instr_index < num_instrs; instr_index += 1) {

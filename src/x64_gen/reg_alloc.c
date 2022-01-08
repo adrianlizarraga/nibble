@@ -78,7 +78,7 @@ static void X64_lreg_interval_list_add(X64_LRegIntervalList* list, X64_LRegRange
     X64_LRegInterval* it = head->next;
 
     while (it != head) {
-        if (new_node->interval.end < it->interval.end) {
+        if (new_node->interval->end < it->interval->end) {
             break;
         }
 
@@ -135,7 +135,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             while (it != head) {
                 X64_LRegInterval* next = it->next;
 
-                if (it->interval.end > interval->start) {
+                if (it->interval->end > interval->start) {
                     break;
                 }
 
@@ -189,10 +189,10 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             //
 
             X64_LRegInterval* last_active = active.sentinel.prev;
-            X64_LRegLoc* loc = interval->loc;
+            X64_LRegLoc* loc = &interval->loc;
 
             // Spill interval that ends the latest
-            if (last_active->interval.end > interval->end) {
+            if (last_active->interval->end > interval->end) {
                 X64_LRegLoc* p_loc = &last_active->interval->loc;
 
                 // Steal last_active's register.
