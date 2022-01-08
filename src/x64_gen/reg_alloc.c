@@ -135,11 +135,11 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             while (it != head) {
                 X64_LRegInterval* next = it->next;
 
-                if (it->interval.end >= interval->start) {
+                if (it->interval.end > interval->start) {
                     break;
                 }
 
-                // This active interval ends before the current interval.
+                // This active interval ends before (or at) the current interval.
                 //
                 // Remove active interval from active list and free its register.
                 X64_lreg_interval_list_rm(&active, it);

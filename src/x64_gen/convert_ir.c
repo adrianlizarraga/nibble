@@ -1,5 +1,5 @@
 #include "ir.h"
-#include "lir.h"
+#include "x64_gen/lir.h"
 
 static X64_InstrKind binary_kind[] = {
     [INSTR_ADD] = X64_INSTR_ADD_R_R,
@@ -431,14 +431,14 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
     }
     case INSTR_SAR:
     case INSTR_SHL: {
-        size_t size = ir_instr->binary.type->size;
+        size_t size = ir_instr->shift.type->size;
 
         // mov r, a
-        u32 r = X64_def_lir_reg(builder, ir_instr->binary.r);
-        u32 a = X64_get_lir_reg(builder, ir_instr->binary.a);
+        u32 r = X64_def_lir_reg(builder, ir_instr->shift.r);
+        u32 a = X64_get_lir_reg(builder, ir_instr->shift.a);
         X64_emit_instr_mov_r_r(builder, size, r, a);
 
-        u32 b = X64_get_lir_reg(builder, ir_instr->binary.b);
+        u32 b = X64_get_lir_reg(builder, ir_instr->shift.b);
         X64_LRegRange* b_rng = &builder->lreg_ranges[b];
 
         assert(b_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
@@ -689,27 +689,22 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
 
         array_push(builder->call_sites, array_len(builder->instrs));
 
+        Type* ret_type = proc_type->as_proc.ret;
+
+        u32 r = (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) ? X64_def_lir_reg(builder, ir_r) : (u32)-1;
+
         if (ir_instr->kind == INSTR_CALL) {
-            X64_emit_instr_call(builder, ir_instr->call.sym, num_args, x64_args, stack_info);
+            X64_emit_instr_call(builder, ir_instr->call.sym, r, num_args, x64_args, stack_info);
         }
         else {
             u32 proc_r = X64_get_lir_reg(builder, ir_instr->calli.loc);
-            X64_emit_instr_call_r(builder, proc_type, proc_r, num_args, x64_args, stack_info);
+            X64_emit_instr_call_r(builder, proc_type, proc_r, r, num_args, x64_args, stack_info);
         }
 
         for (u32 i = 0; i < num_args; i++) {
             if (x64_args[i].in_reg) {
                 X64_end_reg_range(builder, x64_args[i].reg);
             }
-        }
-
-        Type* ret_type = proc_type->as_proc.ret;
-
-        if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            u32 r = X64_def_lir_reg(builder, ir_r);
-            u32 ax = X64_def_phys_reg(builder, X64_RAX);
-
-            X64_emit_instr_mov_r_r(builder, ret_type->size, r, ax);
         }
 
         break;

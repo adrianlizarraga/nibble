@@ -71,4 +71,15 @@ typedef struct X64_LRegLoc {
     };
 } X64_LRegLoc;
 
+typedef struct X64_LRegRange {
+    u32 start;
+    u32 end;
+    X64_LRegLoc loc;
+} X64_LRegRange;
+
+typedef struct X64_StackArgsInfo {
+    u64 size;
+    u64 offset;
+} X64_StackArgsInfo;
+
 #endif

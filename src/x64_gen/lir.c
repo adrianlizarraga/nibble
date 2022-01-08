@@ -200,10 +200,12 @@ void X64_emit_instr_ret(X64_LIRBuilder* builder)
     X64_add_lir_instr(builder, instr);
 }
 
-void X64_emit_instr_call(X64_LIRBuilder* builder, Symbol* sym, u32 num_args, X64_InstrCallArg* args, X64_StackArgsInfo stack_info)
+void X64_emit_instr_call(X64_LIRBuilder* builder, Symbol* sym, u32 dst, u32 num_args, X64_InstrCallArg* args,
+                         X64_StackArgsInfo stack_info)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CALL);
     instr->call.sym = sym;
+    instr->call.dst = dst;
     instr->call.num_args = num_args;
     instr->call.args = args;
     instr->call.stack_info = stack_info;
@@ -211,12 +213,13 @@ void X64_emit_instr_call(X64_LIRBuilder* builder, Symbol* sym, u32 num_args, X64
     X64_add_lir_instr(builder, instr);
 }
 
-void X64_emit_instr_call_r(X64_LIRBuilder* builder, Type* proc_type, u32 proc_loc, u32 num_args, X64_InstrCallArg* args,
+void X64_emit_instr_call_r(X64_LIRBuilder* builder, Type* proc_type, u32 proc_loc, u32 dst, u32 num_args, X64_InstrCallArg* args,
                            X64_StackArgsInfo stack_info)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CALL_R);
     instr->call_r.proc_type = sym;
     instr->call_r.proc_loc = proc_loc;
+    instr->call_r.dst = dst;
     instr->call_r.num_args = num_args;
     instr->call_r.args = args;
     instr->call_r.stack_info = stack_info;

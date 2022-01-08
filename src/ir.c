@@ -100,8 +100,6 @@ static Instr* NIR_new_instr(Allocator* arena, InstrKind kind)
 #define NIR_emit_instr_add(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_ADD, (t), (r), (a), (b))
 #define NIR_emit_instr_sub(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_SUB, (t), (r), (a), (b))
 #define NIR_emit_instr_mul(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_MUL, (t), (r), (a), (b))
-#define NIR_emit_instr_sar(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_SAR, (t), (r), (a), (b))
-#define NIR_emit_instr_shl(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_SHL, (t), (r), (a), (b))
 #define NIR_emit_instr_and(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_AND, (t), (r), (a), (b))
 #define NIR_emit_instr_or(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_OR, (t), (r), (a), (b))
 #define NIR_emit_instr_xor(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_XOR, (t), (r), (a), (b))
@@ -113,6 +111,19 @@ static void NIR_emit_instr_binary(NIR_ProcBuilder* builder, InstrKind kind, Type
     instr->binary.r = r;
     instr->binary.a = a;
     instr->binary.b = b;
+
+    NIR_add_instr(builder, instr);
+}
+
+#define NIR_emit_instr_sar(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_SAR, (t), (r), (a), (b))
+#define NIR_emit_instr_shl(bld, t, r, a, b) NIR_emit_instr_binary((bld), INSTR_SHL, (t), (r), (a), (b))
+static void NIR_emit_instr_shift(NIR_ProcBuilder* builder, InstrKind kind, Type* type, NIR_Reg r, NIR_Reg a, NIR_Reg b)
+{
+    Instr* instr = NIR_new_instr(builder->arena, kind);
+    instr->shift.type = type;
+    instr->shift.r = r;
+    instr->shift.a = a;
+    instr->shift.b = b;
 
     NIR_add_instr(builder, instr);
 }

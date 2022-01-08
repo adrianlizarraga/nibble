@@ -70,6 +70,13 @@ typedef struct InstrBinary {
     NIR_Reg b;
 } InstrBinary;
 
+typedef struct InstrShift {
+    Type* type;
+    NIR_Reg r;
+    NIR_Reg a;
+    NIR_Reg b;
+} InstrShift;
+
 typedef struct InstrUnary {
     Type* type;
     NIR_Reg r;
@@ -181,6 +188,7 @@ typedef struct Instr {
 
     union {
         InstrBinary binary;
+        InstrShift shift;
         InstrUnary unary;
         InstrConvert convert;
         InstrLImm limm;

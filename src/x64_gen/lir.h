@@ -4,11 +4,6 @@
 #include "hash_map.h"
 #include "x64_gen/regs.h"
 
-typedef struct X64_StackArgsInfo {
-    u64 size;
-    u64 offset;
-} X64_StackArgsInfo;
-
 typedef enum X64_InstrKind {
     X64_INSTR_NONE = 0,
 
@@ -231,6 +226,7 @@ typedef struct X64_InstrCallArg {
 
 typedef struct X64_InstrCall {
     Symbol* sym;
+    u32 dst;
     u32 num_args;
     X64_InstrCallArg* args;
     X64_StackArgsInfo stack_info;
@@ -239,6 +235,7 @@ typedef struct X64_InstrCall {
 typedef struct X64_InstrCall_R {
     Type* proc_type;
     u32 proc_loc;
+    u32 dst;
     u32 num_args;
     X64_InstrCallArg* args;
     X64_StackArgsInfo stack_info;
@@ -285,15 +282,8 @@ typedef struct X64_Instr {
     };
 } X64_Instr;
 
-typedef struct X64_LRegRange {
-    u32 start;
-    u32 end;
-    X64_LRegLoc loc;
-} X64_LRegRange;
-
 typedef struct X64_LIRBuilder {
     Allocator* arena;
-    Allocator* tmp_arena;
 
     X64_Instr** instrs; // Stretchy buf
     X64_LRegRange* lreg_ranges; // Stretchy buf
@@ -331,7 +321,8 @@ void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, ConditionKind cond, u32 targe
 void X64_emit_instr_setcc(X64_LIRBuilder* builder, ConditionKind cond, u32 dst);
 void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder);
 void X64_emit_instr_ret(X64_LIRBuilder* builder);
-void X64_emit_instr_call(X64_LIRBuilder* builder, Symbol* sym, u32 num_args, X64_InstrCallArg* args, X64_StackArgsInfo stack_info);
-void X64_emit_instr_call_r(X64_LIRBuilder* builder, Type* proc_type, u32 proc_loc, u32 num_args, X64_InstrCallArg* args,
+void X64_emit_instr_call(X64_LIRBuilder* builder, Symbol* sym, u32 dst, u32 num_args, X64_InstrCallArg* args,
+                         X64_StackArgsInfo stack_info);
+void X64_emit_instr_call_r(X64_LIRBuilder* builder, Type* proc_type, u32 proc_loc, u32 dst, u32 num_args, X64_InstrCallArg* args,
                            X64_StackArgsInfo stack_info);
 #endif
