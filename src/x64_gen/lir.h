@@ -289,6 +289,8 @@ typedef struct X64_LIRBuilder {
     X64_LRegRange* lreg_ranges; // Stretchy buf
     u32* reg_map; // Map IR reg -> LIR reg; size: num_iregs
 
+    u32 lreg_rbp;
+
     HMap jmp_map;
     bool next_instr_is_jmp_target;
 

@@ -122,6 +122,12 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
                            IR_print_reg(arena, instr->binary.b));
         break;
     }
+    case INSTR_PHI: {
+        ftprint_char_array(&dstr, false, "phi <%s> %s, %s, %s", type_name(instr->phi.type), 
+                           IR_print_reg(arena, instr->phi.r), IR_print_reg(arena, instr->phi.a),
+                           IR_print_reg(arena, instr->phi.b));
+        break;
+    }
     case INSTR_NEG:
     case INSTR_NOT: {
         const char* op_name = unary_kind_name[instr->kind];
@@ -229,7 +235,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         break;
     }
     default:
-        printf("UNKNOWN_INSTR %d", instr->kind);
+        ftprint_out("UNKNOWN_INSTR %d\n", instr->kind);
         break;
     }
 

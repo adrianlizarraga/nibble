@@ -122,6 +122,7 @@ typedef struct X64_ProcState {
     Symbol* sym;
     u32 id;
     X64_LRegRange* lreg_ranges;
+    X64_LIRBuilder* builder;
 
     X64_Reg* scratch_regs;
     u32 num_scratch_regs;
@@ -139,7 +140,8 @@ typedef struct X64_Generator {
 
 static X64_LRegLoc X64_lreg_loc(X64_Generator* generator, u32 lreg)
 {
-    X64_LRegLoc reg_loc = generator->curr_proc.lreg_ranges[lreg].loc;
+    u32 rng_idx = X64_find_alias_reg(generator->curr_proc.builder, lreg);
+    X64_LRegLoc reg_loc = generator->curr_proc.lreg_ranges[rng_idx].loc;
 
     assert(reg_loc.kind != X64_LREG_LOC_UNASSIGNED);
 
@@ -187,7 +189,7 @@ static char* X64_print_stack_offset(Allocator* arena, s32 offset, u32 size)
 {
     char* dstr = array_create(arena, char, 8);
 
-    ftprint_char_array(&dstr, true, "%s [RBP + %d]", x64_mem_size_label[size], offset);
+    ftprint_char_array(&dstr, true, "%s [rbp + %d]", x64_mem_size_label[size], offset);
 
     return dstr;
 }
@@ -1094,6 +1096,10 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
         X64_emit_rr_instr(generator, movsx, true, dst_size, instr->convert_r_r.dst, src_size, instr->convert_r_r.src);
         break;
     }
+    case X64_INSTR_LEA: {
+        X64_emit_rm_instr(generator, "lea", true, X64_MAX_INT_REG_SIZE, instr->lea.dst, 0, &instr->lea.mem);
+        break;
+    }
     case X64_INSTR_CMP_R_R: {
         u32 size = (u32)instr->cmp_r_r.size;
 
@@ -1221,7 +1227,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
         break;
     }
     default:
-        assert(0);
+        NIBBLE_FATAL_EXIT("Unknown X64 LIR instruction kind %d\n", instr->kind);
         break;
     }
 
@@ -1280,23 +1286,29 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     stack_size = reg_alloc.stack_offset;
     generator->curr_proc.lreg_ranges = lreg_ranges;
+    generator->curr_proc.builder = &builder;
 
-#if 0
+#if 1
     u32 num_lreg_ranges = array_len(lreg_ranges);
-    ftprint_out("Register allocation for %s (%s):\n", sym->name, is_nonleaf ? "nonleaf": "leaf");
+    ftprint_out("Register allocation for %s (%s):\n", sym->name->str, is_nonleaf ? "nonleaf": "leaf");
     for (u32 i = 0; i < num_lreg_ranges; i += 1)
     {
-        X64_LRegLoc* loc = &lreg_ranges[i].loc;
+        if (X64_find_alias_reg(&builder, i) != i) continue;
+
+        X64_LRegRange* rng = lreg_ranges + i;
+        X64_LRegLoc* loc = &rng->loc;
 
         if (loc->kind == X64_LREG_LOC_REG)
         {
-            ftprint_out("\tr%u -> %s\n", i, x64_reg_names[8][loc->reg]);
+            ftprint_out("\tr%u -> %s", i, x64_reg_names[8][loc->reg]);
         }
         else
         {
             assert(loc->kind == X64_LREG_LOC_STACK);
-            ftprint_out("\tr%u -> RBP - %d\n", i, loc->offset);
+            ftprint_out("\tr%u -> RBP - %d", i, loc->offset);
         }
+
+        ftprint_out(", [%u - %u]\n", rng->start, rng->end);
     }
 #endif
 

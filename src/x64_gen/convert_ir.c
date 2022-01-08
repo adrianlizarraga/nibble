@@ -10,6 +10,15 @@ static X64_InstrKind binary_kind[] = {
     [INSTR_XOR] = X64_INSTR_XOR_R_R
 };
 
+static X64_InstrKind binary_r_i_kind[] = {
+    [INSTR_ADD] = X64_INSTR_ADD_R_I,
+    [INSTR_SUB] = X64_INSTR_SUB_R_I,
+    [INSTR_MUL] = X64_INSTR_IMUL_R_I,
+    [INSTR_AND] = X64_INSTR_AND_R_I,
+    [INSTR_OR]  = X64_INSTR_OR_R_I,
+    [INSTR_XOR] = X64_INSTR_XOR_R_I
+};
+
 static X64_InstrKind div_kind[] = {
     [INSTR_UDIV] = X64_INSTR_DIV,
     [INSTR_SDIV] = X64_INSTR_IDIV
@@ -121,8 +130,6 @@ static u32 X64_next_lir_reg(X64_LIRBuilder* builder)
 
 static u32 X64_def_lir_reg(X64_LIRBuilder* builder, u32 ireg)
 {
-    // TODO: THIS FAILS
-    ftprint_out("DEF LIR REG %d (mapped to %d)\n", ireg, builder->reg_map[ireg]);
     assert(builder->reg_map[ireg] == (u32)-1);
     u32 result = X64_next_lir_reg(builder);
     builder->reg_map[ireg] = result;
@@ -148,6 +155,7 @@ static u32 X64_def_phys_reg(X64_LIRBuilder* builder, X64_Reg phys_reg)
 {
     u32 result = X64_next_lir_reg(builder);
     X64_LRegRange* range = &builder->lreg_ranges[result];
+    assert(result == array_len(builder->lreg_ranges) - 1);
 
     range->loc.kind = X64_LREG_LOC_REG;
     range->loc.reg = phys_reg;
@@ -181,7 +189,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
             }
 
             dst->kind = X64_ADDR_LOCAL;
-            dst->local.base_reg = X64_def_phys_reg(builder, X64_RBP);
+            dst->local.base_reg = builder->lreg_rbp;
             dst->local.disp = src->disp + sym->as_var.offset;
             dst->local.scale = src->scale;
         }
@@ -348,9 +356,9 @@ static bool X64_try_combine_limm(X64_LIRBuilder* builder, size_t* ip, size_t num
         //     add r, 12
         size_t size = t_instr->binary.type->size;
 
-        u32 r = X64_get_lir_reg(builder, t_instr->binary.r);
+        u32 r = X64_def_lir_reg(builder, t_instr->binary.r);
         X64_emit_instr_mov_r_r(builder, size, r, a);
-        X64_emit_instr_binary_r_i(builder, binary_kind[t_kind], size, r, ir_instr->limm.imm);
+        X64_emit_instr_binary_r_i(builder, binary_r_i_kind[t_kind], size, r, ir_instr->limm.imm);
 
         *ip = t_ip;
         return true;
@@ -370,6 +378,8 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         // Map IR jmp target to LIR target
         hmap_put(&builder->jmp_map, *ip, array_len(builder->instrs));
     }
+
+    //ftprint_out("Converting IR instr %d\n", ir_instr->kind);
 
     switch (ir_instr->kind) {
     case INSTR_ADD:
@@ -409,6 +419,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         X64_LRegRange* a_rng = &builder->lreg_ranges[a];
 
         assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
+        ftprint_out("\tForcing div op1 to RAX\n");
         a_rng->loc.kind = X64_LREG_LOC_REG;
         a_rng->loc.reg = X64_RAX;
 
@@ -470,7 +481,15 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         X64_emit_instr_unary(builder, unary_kind[ir_instr->kind], size, r);
         break;
     }
-    case INSTR_TRUNC:
+    case INSTR_TRUNC: {
+        size_t dst_size = ir_instr->convert.dst_type->size;
+
+        u32 r = X64_def_lir_reg(builder, ir_instr->convert.r);
+        u32 a = X64_get_lir_reg(builder, ir_instr->convert.a);
+
+        X64_emit_instr_mov_r_r(builder, dst_size, r, a);
+        break;
+    }
     case INSTR_ZEXT:
     case INSTR_SEXT: {
         // EX: r = sext(a)
@@ -537,7 +556,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         X64_MemAddr addr;
         X64_get_lir_addr(builder, &addr, &ir_instr->store.addr);
 
-        u32 a = X64_def_lir_reg(builder, ir_instr->store.a);
+        u32 a = X64_get_lir_reg(builder, ir_instr->store.a);
         X64_emit_instr_mov_m_r(builder, size, addr, a);
         break;
     }
@@ -606,7 +625,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
     case INSTR_PHI: {
         // For now, just force all registers in PHI instruction into the same physical register.
 
-        u32 r = X64_get_lir_reg(builder, ir_instr->phi.r);
+        u32 r = X64_def_lir_reg(builder, ir_instr->phi.r);
         u32 a = X64_get_lir_reg(builder, ir_instr->phi.a);
         u32 b = X64_get_lir_reg(builder, ir_instr->phi.b);
 
@@ -661,6 +680,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
             X64_LRegRange* a_rng = &builder->lreg_ranges[a];
 
             assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
+            ftprint_out("\tForcing ret val to RAX\n");
             a_rng->loc.kind = X64_LREG_LOC_REG;
             a_rng->loc.reg = X64_RAX; // Force ax
         }
@@ -724,10 +744,14 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_ir_instrs, I
 {
     size_t ip = 0;
 
+    builder->lreg_rbp = X64_def_phys_reg(builder, X64_RBP);
+
     while (ip < num_ir_instrs) {
         X64_emit_lir_instr(builder, &ip, num_ir_instrs, ir_instrs);
         ip += 1;
     }
+
+    X64_end_reg_range(builder, builder->lreg_rbp);
 
     // Fixup jump targets.
     size_t num_lir_instrs = array_len(builder->instrs);
@@ -748,4 +772,4 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_ir_instrs, I
     }
 }
 
-
+// FAILING test programs: arrays.nib, short_circuit_*.nib

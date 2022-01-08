@@ -42,6 +42,9 @@ static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* fr
         X64_alloc_reg(free_regs, used_callee_regs, reg);
     }
 
+    assert(reg != X64_RBP);
+    assert(reg != X64_RSP);
+
     return reg;
 }
 
@@ -135,7 +138,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             while (it != head) {
                 X64_LRegInterval* next = it->next;
 
-                if (it->interval->end > interval->start) {
+                if (it->interval->end >= interval->start) {
                     break;
                 }
 
@@ -159,6 +162,8 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             call_idx++;
         }
 
+        u32 call_site = builder->call_sites[call_idx];
+
         //
         // Check if need to spill OR if can allocate a register.
         //
@@ -168,12 +173,16 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             // Interval is forced to reside in a specific register.
             //
             assert(interval->loc.reg != X64_REG_COUNT);
-            assert(u32_is_bit_set(result.free_regs, interval->loc.reg));
+            if (!u32_is_bit_set(result.free_regs, interval->loc.reg)) {
+                // TODO: Swap register!!!!
+                ftprint_out("TRYING to force phys reg %u for interval %d, but FAILING\n", interval->loc.reg, i);
+                assert(0);
+            }
             
             X64_alloc_reg(&result.free_regs, &result.used_callee_regs, interval->loc.reg);
             X64_lreg_interval_list_add(&active, interval);
         }
-        else if (interval->end > builder->call_sites[call_idx]) {
+        else if ((interval->start < call_site) && (interval->end > call_site)) {
             //
             // Spill any intervals needed across procedure calls. (For simplicity)
             //
