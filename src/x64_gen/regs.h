@@ -75,6 +75,7 @@ typedef struct X64_LRegRange {
     u32 start;
     u32 end;
     X64_LRegLoc loc;
+    ListNode lnode;
 } X64_LRegRange;
 
 typedef struct X64_StackArgsInfo {

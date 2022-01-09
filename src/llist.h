@@ -52,4 +52,15 @@ static inline bool list_empty(List* list)
     return (list->next == list);
 }
 
+static inline void list_rm(ListNode* node)
+{
+    ListNode* prev = node->prev;
+    ListNode* next = node->next;
+
+    next->prev = prev;
+    prev->next = next;
+
+    node->next = node->prev = NULL;
+}
+
 #endif

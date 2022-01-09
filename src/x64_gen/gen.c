@@ -740,6 +740,9 @@ static X64_SIBDAddr X64_get_sibd_addr(X64_RegGroup* group, X64_MemAddr* vaddr)
         sibd_addr.local.scale = vaddr->local.scale;
 
         if (has_base) {
+            // TODO: THIS DOESN'T WORK. Clobbers registers in use.
+            //
+            // tests/ptr_arith.nib DOES NOT WORK
             sibd_addr.local.base_reg = X64_get_reg(group, vaddr->local.base_reg, X64_MAX_INT_REG_SIZE, false);
             sibd_addr.local.index_reg = has_index ? X64_get_reg(group, vaddr->local.index_reg, X64_MAX_INT_REG_SIZE, false) :
                 X64_REG_COUNT;
@@ -933,6 +936,71 @@ static void X64_emit_mi_instr(X64_Generator* generator, const char* instr, u32 o
     X64_end_reg_group(&tmp_group);
 }
 */
+
+static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo stack_args_info, u32 num_args, X64_InstrCallArg* args)
+{
+    u64 stack_args_size = stack_args_info.size;
+
+    // Push stack arguments (if any)
+    if (stack_args_size) {
+        // Make room in the stack for arguments
+        X64_emit_text(generator, "    sub rsp, %d", stack_args_size);
+
+        // 1st pass: Move args that are currently in registers into their stack slots.
+        // This ensures that we can freely use RAX as a temporary register in the second pass.
+        u64 stack_offset = stack_args_info.offset;
+
+        for (u32 i = 0; i < num_args; i += 1) {
+            X64_InstrCallArg* arg_info = args + i;
+
+            if (arg_info->in_reg)
+                continue; // Skip register args
+
+            u64 arg_size = arg_info->type->size;
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->loc);
+
+            if (loc.kind == X64_LREG_LOC_REG) {
+                assert(stack_offset == arg_info->sp_offset);
+
+                // Move directly into stack slot.
+                X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], stack_offset,
+                              x64_reg_names[arg_size][loc.reg]);
+            }
+
+            stack_offset += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
+        }
+
+        assert(stack_offset == stack_args_size);
+
+        // 2nd pass: Move args that are currently spilled into their stack slots.
+        stack_offset = stack_args_info.offset;
+
+        for (u32 i = 0; i < num_args; i += 1) {
+            X64_InstrCallArg* arg_info = args + i;
+
+            if (arg_info->in_reg)
+                continue; // Skip register args
+
+            u64 arg_size = arg_info->type->size;
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->loc);
+
+            if (loc.kind == X64_LREG_LOC_STACK) {
+                assert(stack_offset == arg_info->sp_offset);
+                // Move into RAX.
+                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][X64_RAX],
+                              X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
+
+                // Move RAX into stack slot.
+                X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], stack_offset,
+                              x64_reg_names[arg_size][X64_RAX]);
+            }
+
+            stack_offset += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
+        }
+
+        assert(stack_offset == stack_args_size);
+    }
+}
 
 static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_last_instr, X64_Instr* instr)
 {
@@ -1144,36 +1212,47 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
     case X64_INSTR_CALL_R: {
         Type* proc_type;
         u32 dst_lreg;
+        u32 num_args;
+        X64_InstrCallArg* args;
         X64_StackArgsInfo stack_args_info;
 
         if (instr->kind == X64_INSTR_CALL) {
             proc_type = instr->call.sym->type;
             dst_lreg = instr->call.dst;
+            num_args = instr->call.num_args;
+            args = instr->call.args;
             stack_args_info = instr->call.stack_info;
         }
         else {
             assert(instr->kind == X64_INSTR_CALL_R);
             proc_type = instr->call_r.proc_type;
             dst_lreg = instr->call_r.dst;
+            num_args = instr->call_r.num_args;
+            args = instr->call_r.args;
             stack_args_info = instr->call_r.stack_info;
         }
 
-        // NOTE: No need to save caller-saved registers before call because the register allocator currently
-        // spills any values needed across procedure calls.
-
-        // Align stack before call.
-        //
         // NOTE: Stack frame must be 16-byte aligned before procedure call.
         // If the number of stack args + caller-saved regs is not even (16-byte aligned),
         // we MUST subtract 8 from stack BEFORE pushing anything into stack
         // See: https://godbolt.org/z/cM9Encdsc
+        char** rsp_align_instr = X64_emit_text(generator, NULL);
+
+        // NOTE: No need to save caller-saved registers before call because the register allocator currently
+        // spills any values needed across procedure calls.
+
+        // Place stack arguments. Register arguments have already been forced to the correct locations by
+        // the register allocator.
+        X64_place_args_in_stack(generator, stack_args_info, num_args, args);
+
+        // Align stack before call.
         u64 total_stack_size = stack_args_info.size;
         u64 align_stack_size = 0;
 
         if (total_stack_size & (X64_STACK_ALIGN - 1)) {
             align_stack_size = X64_STACK_WORD_SIZE;
 
-            X64_emit_text(generator, "    sub rsp, %lu", align_stack_size);
+            X64_fill_line(generator, rsp_align_instr, "    sub rsp, %lu", align_stack_size);
             total_stack_size += align_stack_size;
         }
 
@@ -1305,7 +1384,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
         else
         {
             assert(loc->kind == X64_LREG_LOC_STACK);
-            ftprint_out("\tr%u -> RBP - %d", i, loc->offset);
+            ftprint_out("\tr%u -> RBP + %d", i, loc->offset);
         }
 
         ftprint_out(", [%u - %u]\n", rng->start, rng->end);

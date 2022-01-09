@@ -229,26 +229,25 @@ static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u3
 
         assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
 
+        arg_info->type = arg->type;
+        arg_info->loc = X64_get_lir_reg(builder, arg->loc);
+
         if (arg_reg_index >= x64_target.num_arg_regs) {
             arg_info->in_reg = false;
-            arg_info->offset = stack_info.size;
+            arg_info->sp_offset = stack_info.size;
 
             stack_info.size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
         }
         else {
             X64_Reg phys_reg = x64_target.arg_regs[arg_reg_index++];
-            u32 a = X64_get_lir_reg(builder, arg->loc);
-            X64_LRegRange* a_rng = &builder->lreg_ranges[a];
+            X64_LRegRange* loc_rng = &builder->lreg_ranges[arg_info->loc];
 
-            assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
-            a_rng->loc.kind = X64_LREG_LOC_REG;
-            a_rng->loc.reg = phys_reg;
+            assert(loc_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
+            loc_rng->loc.kind = X64_LREG_LOC_REG;
+            loc_rng->loc.reg = phys_reg;
 
             arg_info->in_reg = true;
-            arg_info->reg = a;
         }
-
-        arg_info->type = arg->type;
     }
 
     return stack_info;
@@ -265,27 +264,25 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
         X64_InstrCallArg* arg_info = x64_args + i;
 
         assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
+        arg_info->type = arg->type;
+        arg_info->loc = X64_get_lir_reg(builder, arg->loc);
 
         if (i >= x64_target.num_arg_regs) {
             arg_info->in_reg = false;
-            arg_info->offset = stack_info.size;
+            arg_info->sp_offset = stack_info.size;
 
             stack_info.size += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
         }
         else {
             X64_Reg phys_reg = x64_target.arg_regs[i];
-            u32 a = X64_get_lir_reg(builder, arg->loc);
-            X64_LRegRange* a_rng = &builder->lreg_ranges[a];
+            X64_LRegRange* loc_rng = &builder->lreg_ranges[arg_info->loc];
 
-            assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
-            a_rng->loc.kind = X64_LREG_LOC_REG;
-            a_rng->loc.reg = phys_reg;
+            assert(loc_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
+            loc_rng->loc.kind = X64_LREG_LOC_REG;
+            loc_rng->loc.reg = phys_reg;
 
             arg_info->in_reg = true;
-            arg_info->reg = a;
         }
-
-        arg_info->type = arg->type;
     }
 
     return stack_info;
@@ -727,9 +724,7 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         }
 
         for (u32 i = 0; i < num_args; i++) {
-            if (x64_args[i].in_reg) {
-                X64_end_reg_range(builder, x64_args[i].reg);
-            }
+            X64_end_reg_range(builder, x64_args[i].loc);
         }
 
         break;

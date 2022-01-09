@@ -217,11 +217,8 @@ typedef struct X64_InstrSetCC {
 typedef struct X64_InstrCallArg {
     Type* type;
     bool in_reg;
-    
-    union {
-        u32 reg;
-        u32 offset;
-    };
+    u32 loc;
+    u32 sp_offset;
 } X64_InstrCallArg;
 
 typedef struct X64_InstrCall {
