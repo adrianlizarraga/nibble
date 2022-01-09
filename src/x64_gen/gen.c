@@ -1363,6 +1363,11 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     X64_RegAllocResult reg_alloc =
         X64_linear_scan_reg_alloc(&builder, generator->curr_proc.num_scratch_regs, generator->curr_proc.scratch_regs, stack_size);
 
+    if (!reg_alloc.success) {
+        NIBBLE_FATAL_EXIT("Register allocation for procedure `%s` failed.", sym->name->str);
+        return;
+    }
+
     stack_size = reg_alloc.stack_offset;
     generator->curr_proc.lreg_ranges = lreg_ranges;
     generator->curr_proc.builder = &builder;

@@ -8,6 +8,7 @@ typedef struct X64_RegAllocResult {
     u32 stack_offset; // In bytes
     u32 free_regs;
     u32 used_callee_regs;
+    bool success;
 } X64_RegAllocResult;
 
 // Modified linear scan register allocation adapted from Poletto et al (1999)

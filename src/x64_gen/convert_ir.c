@@ -65,10 +65,10 @@ static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
     dst_range->start = dst_range->start <= src_range->start ? dst_range->start : src_range->start;
     dst_range->end = dst_range->end >= src_range->end ? dst_range->end : src_range->end;
 
-    if (src_range->loc.kind != X64_LREG_LOC_UNASSIGNED) {
-        assert(src_range->loc.kind == X64_LREG_LOC_REG);
-        assert(dst_range->loc.kind == X64_LREG_LOC_UNASSIGNED);
-        dst_range->loc.reg = src_range->loc.reg;
+    if (src_range->force_reg) {
+        assert(!dst_range->force_reg);
+        dst_range->force_reg = true;
+        dst_range->forced_reg = src_range->forced_reg;
     }
 }
 
@@ -117,7 +117,7 @@ static u32 X64_next_lir_reg(X64_LIRBuilder* builder)
 {
     size_t next_ip = array_len(builder->instrs);
 
-    array_push(builder->lreg_ranges, (X64_LRegRange){.start = next_ip, .end = next_ip});
+    array_push(builder->lreg_ranges, (X64_LRegRange){.start = next_ip, .end = next_ip, .forced_reg = X64_REG_COUNT});
 
     u32 next_reg = array_len(builder->lreg_ranges) - 1;
     assert(next_reg < (u32)-1);
@@ -157,8 +157,8 @@ static u32 X64_def_phys_reg(X64_LIRBuilder* builder, X64_Reg phys_reg)
     X64_LRegRange* range = &builder->lreg_ranges[result];
     assert(result == array_len(builder->lreg_ranges) - 1);
 
-    range->loc.kind = X64_LREG_LOC_REG;
-    range->loc.reg = phys_reg;
+    range->force_reg = true;
+    range->forced_reg = phys_reg;
 
     return result;
 }
@@ -242,9 +242,9 @@ static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u3
             X64_Reg phys_reg = x64_target.arg_regs[arg_reg_index++];
             X64_LRegRange* loc_rng = &builder->lreg_ranges[arg_info->loc];
 
-            assert(loc_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
-            loc_rng->loc.kind = X64_LREG_LOC_REG;
-            loc_rng->loc.reg = phys_reg;
+            assert(!loc_rng->force_reg);
+            loc_rng->force_reg = true;
+            loc_rng->forced_reg = phys_reg;
 
             arg_info->in_reg = true;
         }
@@ -277,9 +277,9 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
             X64_Reg phys_reg = x64_target.arg_regs[i];
             X64_LRegRange* loc_rng = &builder->lreg_ranges[arg_info->loc];
 
-            assert(loc_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
-            loc_rng->loc.kind = X64_LREG_LOC_REG;
-            loc_rng->loc.reg = phys_reg;
+            assert(!loc_rng->force_reg);
+            loc_rng->force_reg = true;
+            loc_rng->forced_reg = phys_reg;
 
             arg_info->in_reg = true;
         }
@@ -415,10 +415,9 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         u32 a = X64_get_lir_reg(builder, ir_instr->binary.a);
         X64_LRegRange* a_rng = &builder->lreg_ranges[a];
 
-        assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
-        ftprint_out("\tForcing div op1 to RAX\n");
-        a_rng->loc.kind = X64_LREG_LOC_REG;
-        a_rng->loc.reg = X64_RAX;
+        assert(!a_rng->force_reg);
+        a_rng->force_reg = true;
+        a_rng->forced_reg = X64_RAX;
 
         // cqo
         u32 dx;
@@ -454,9 +453,9 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
         u32 b = X64_get_lir_reg(builder, ir_instr->shift.b);
         X64_LRegRange* b_rng = &builder->lreg_ranges[b];
 
-        assert(b_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
-        b_rng->loc.kind = X64_LREG_LOC_REG;
-        b_rng->loc.reg = X64_RCX; // Force `cx`
+        assert(!b_rng->force_reg);
+        b_rng->force_reg = true;
+        b_rng->forced_reg = X64_RCX; // Force `cx`
 
         // shift r, b
         X64_emit_instr_shift_r_r(builder, shift_kind[ir_instr->kind], size, r, b);
@@ -676,10 +675,9 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
             u32 a = X64_get_lir_reg(builder, ir_instr->ret.a);
             X64_LRegRange* a_rng = &builder->lreg_ranges[a];
 
-            assert(a_rng->loc.kind == X64_LREG_LOC_UNASSIGNED);
-            ftprint_out("\tForcing ret val to RAX\n");
-            a_rng->loc.kind = X64_LREG_LOC_REG;
-            a_rng->loc.reg = X64_RAX; // Force ax
+            assert(!a_rng->force_reg);
+            a_rng->force_reg = true;
+            a_rng->forced_reg = X64_RAX; // Force ax
         }
 
         X64_emit_instr_ret(builder);

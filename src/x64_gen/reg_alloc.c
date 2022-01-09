@@ -31,8 +31,7 @@ static void X64_alloc_reg(X64_RegAllocState* state, X64_Reg reg, u32 lreg)
     }
 }
 
-// static X64_Reg X64_next_reg(u32 num_x64_regs, X64_Reg* x64_scratch_regs, u32* free_regs, u32* used_callee_regs)
-static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg)
+static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs)
 {
     // Get the first available scratch register.
     X64_Reg reg = X64_REG_COUNT;
@@ -43,7 +42,8 @@ static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg)
     for (u32 i = 0; i < nregs; i += 1) {
         X64_Reg r = regs[i];
 
-        if (state->rmap[r] == (u32)-1) {
+        // Try to get a physical register that is free and is not banned.
+        if ((state->rmap[r] == (u32)-1) && !u32_is_bit_set(banned_regs, r)) {
             reg = r;
             break;
         }
@@ -184,69 +184,110 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             }
         }
 
-        // Set `call_idx` to the index of the next upcoming call site.
-        while (builder->call_sites[call_idx] < interval->start) {
-            call_idx++;
-        }
-
-        u32 call_site = builder->call_sites[call_idx];
-
-        //
-        // Check if need to spill OR if can allocate a register.
-        //
-
-        if (interval->loc.kind == X64_LREG_LOC_REG) {
+        if (interval->force_reg) {
             //
             // Interval is forced to reside in a specific register.
             //
-            assert(interval->loc.reg != X64_REG_COUNT);
 
-            u32 assigned_lreg = state.rmap[interval->loc.reg];
+            X64_Reg forced_reg = interval->forced_reg;
 
-            if (assigned_lreg != (u32)-1) {
-                X64_LRegRange* steal_from = builder->lreg_ranges + assigned_lreg;
+            assert(forced_reg != X64_REG_COUNT);
+            assert(state.rmap[forced_reg] == (u32)-1);
 
-                // TODO: NEED TO DO BETTER. This likely unnecessarily spills an interval that just
-                // could have used a different register.
-                //
-                // Potential fix: Keep a "forward" bitset of intersecting forced-reg intervals that should NOT 
-                // be used by current interval.
-                X64_steal_reg(&state, steal_from, interval, i);
-            }
-            else {
-                X64_alloc_reg(&state, interval->loc.reg, i);
-                X64_lreg_interval_list_add(&state, interval);
-            }
-        }
-        else if ((interval->start < call_site) && (interval->end > call_site)) {
-            // Spill any intervals needed across procedure calls. (For simplicity)
-            X64_spill_reg_loc(&state, &interval->loc);
-        }
-        else if (state.num_active == state.num_scratch_regs) {
-            // Exhausted available registers. Spill the longest interval.
+            interval->loc.kind = X64_LREG_LOC_REG;
+            interval->loc.reg = forced_reg;
 
-            X64_LRegRange* last_active = list_entry(state.active.prev, X64_LRegRange, lnode);
-
-            // Spill interval that ends the latest
-            if (last_active->end > interval->end) {
-                X64_steal_reg(&state, last_active, interval, i);
-            }
-            else {
-                X64_spill_reg_loc(&state, &interval->loc);
-            }
+            X64_alloc_reg(&state, forced_reg, i);
+            X64_lreg_interval_list_add(&state, interval);
         }
         else {
-            // Try to allocate the next free reg.
-            X64_Reg reg = X64_next_reg(&state, i);
+            //
+            // Check if need to spill OR if can allocate a register.
+            //
 
-            assert(reg != X64_REG_COUNT);
-            interval->loc.kind = X64_LREG_LOC_REG;
-            interval->loc.reg = reg;
-            X64_lreg_interval_list_add(&state, interval);
+            // Scan forward to determine which registers we cannot use
+            // (due to future intersecting intervals that are forced into regs)
+            u32 banned_regs = 0;
+
+            for (size_t j = i + 1; j < num_lreg_ranges; j += 1) {
+                if (X64_find_alias_reg(builder, j) != j) {
+                    continue;
+                }
+
+                X64_LRegRange* j_rng = builder->lreg_ranges + j;
+
+                // Stop scanning once intervals no longer intersect.
+                if (j_rng->start > interval->end) {
+                    break;
+                }
+
+                // Add this interval's forced register to the bit-set of registers the current interval cannot use.
+                if (j_rng->force_reg && j_rng->forced_reg != X64_REG_COUNT) {
+                    u32_set_bit(&banned_regs, j_rng->forced_reg);
+                }
+            }
+
+            // Set `call_idx` to the index of the next upcoming call site.
+            // TODO: REMOVE THIS LOGIC. We MUST deal with this correctly.
+            while (builder->call_sites[call_idx] < interval->start) {
+                call_idx++;
+            }
+
+            u32 call_site = builder->call_sites[call_idx];
+
+            if ((interval->start < call_site) && (interval->end > call_site)) {
+                // Spill any intervals needed across procedure calls. (For simplicity)
+                X64_spill_reg_loc(&state, &interval->loc);
+            }
+            else if (state.num_active == state.num_scratch_regs) {
+                // Exhausted all available free registers. Spill the longest interval that IS NOT forced into a register.
+
+                // Look for the latest active interval that is not forced into a register.
+                List* head = &state.active;
+                List* it = head->prev;
+
+                while (it != head) {
+                    X64_LRegRange* it_e = list_entry(it, X64_LRegRange, lnode);
+
+                    if (!it_e->force_reg) {
+                        break;
+                    }
+
+                    it = it->prev;
+                }
+
+                if (it == head) { // All active intervals are forced into registers, so spill this one.
+                    X64_spill_reg_loc(&state, &interval->loc);
+                }
+                else { // Spill interval that ends the latest
+                    X64_LRegRange* last_active = list_entry(it, X64_LRegRange, lnode);
+
+                    if (last_active->end > interval->end) {
+                        X64_steal_reg(&state, last_active, interval, i);
+                    }
+                    else {
+                        X64_spill_reg_loc(&state, &interval->loc);
+                    }
+                }
+            }
+            else {
+                // Try to allocate the next free reg.
+                X64_Reg reg = X64_next_reg(&state, i, banned_regs);
+
+                if (reg == X64_REG_COUNT) {
+                    state.result.success = false;
+                    return state.result;
+                }
+
+                interval->loc.kind = X64_LREG_LOC_REG;
+                interval->loc.reg = reg;
+                X64_lreg_interval_list_add(&state, interval);
+            }
         }
     }
 
     state.result.stack_offset = ALIGN_UP(state.result.stack_offset, X64_STACK_ALIGN);
+    state.result.success = true;
 
     return state.result;
 }
