@@ -99,10 +99,10 @@ static void X64_lreg_interval_list_add(X64_RegAllocState* state, X64_LRegRange* 
 
 static void X64_spill_reg_loc(X64_RegAllocState* state, X64_LRegLoc* loc)
 {
+    state->result.stack_offset += X64_MAX_INT_REG_SIZE;
+
     loc->kind = X64_LREG_LOC_STACK;
     loc->offset = -state->result.stack_offset;
-
-    state->result.stack_offset += X64_MAX_INT_REG_SIZE;
 }
 
 static void X64_steal_reg(X64_RegAllocState* state, X64_LRegRange* from, X64_LRegRange* to, u32 to_lreg)
@@ -166,7 +166,8 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 X64_LRegRange* it_entry = list_entry(it, X64_LRegRange, lnode);
 
-                if (it_entry->end >= interval->start) {
+                //if (it_entry->end >= interval->start) {
+                if (it_entry->end > interval->start) {
                     break;
                 }
 
@@ -184,14 +185,22 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             }
         }
 
-        if (interval->force_reg) {
+        // Set `call_idx` to the index of the next upcoming call site.
+        size_t num_call_sites = array_len(builder->call_sites);
+        while (call_idx < num_call_sites && builder->call_sites[call_idx] < interval->start) {
+            call_idx++;
+        }
+
+        u32 call_site = call_idx < num_call_sites ? builder->call_sites[call_idx] : (u32)-1;
+
+        if (interval->force_reg && (interval->forced_reg != X64_REG_COUNT)) {
             //
             // Interval is forced to reside in a specific register.
             //
 
+            assert((call_site == (u32)-1) || (interval->end <= call_site) || (interval->start >= call_site) || (interval->forced_reg == X64_RBP));
             X64_Reg forced_reg = interval->forced_reg;
 
-            assert(forced_reg != X64_REG_COUNT);
             assert(state.rmap[forced_reg] == (u32)-1);
 
             interval->loc.kind = X64_LREG_LOC_REG;
@@ -217,7 +226,8 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
                 X64_LRegRange* j_rng = builder->lreg_ranges + j;
 
                 // Stop scanning once intervals no longer intersect.
-                if (j_rng->start > interval->end) {
+                //if (j_rng->start > interval->end) {
+                if (j_rng->start >= interval->end) {
                     break;
                 }
 
@@ -227,16 +237,10 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
                 }
             }
 
-            // Set `call_idx` to the index of the next upcoming call site.
-            // TODO: REMOVE THIS LOGIC. We MUST deal with this correctly.
-            while (builder->call_sites[call_idx] < interval->start) {
-                call_idx++;
-            }
-
-            u32 call_site = builder->call_sites[call_idx];
-
-            if ((interval->start < call_site) && (interval->end > call_site)) {
+            if ((call_site != (u32)-1) && (interval->start < call_site) && (interval->end > call_site)) {
                 // Spill any intervals needed across procedure calls. (For simplicity)
+                // TODO: REMOVE THIS LOGIC. We MUST deal with this correctly.
+                assert(!interval->force_reg);
                 X64_spill_reg_loc(&state, &interval->loc);
             }
             else if (state.num_active == state.num_scratch_regs) {
@@ -256,13 +260,23 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
                     it = it->prev;
                 }
 
-                if (it == head) { // All active intervals are forced into registers, so spill this one.
+                if ((it == head) && interval->force_reg) {
+                    // All other active intervals are forced into registers, and we are not able to force this one.
+                    // Fail & exit.
+                    state.result.success = false;
+                    return state.result;
+                }
+
+                if (it == head) {
+                    // All other active intervals are forced into registers, so spill this one.
                     X64_spill_reg_loc(&state, &interval->loc);
                 }
-                else { // Spill interval that ends the latest
+                else {
+                    // If forcing this interval into a register, steal a register from another interval (longest end).
+                    // Otherwise, spill the interval that ends the latest.
                     X64_LRegRange* last_active = list_entry(it, X64_LRegRange, lnode);
 
-                    if (last_active->end > interval->end) {
+                    if (interval->force_reg || (last_active->end > interval->end)) {
                         X64_steal_reg(&state, last_active, interval, i);
                     }
                     else {

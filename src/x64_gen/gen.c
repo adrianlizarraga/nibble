@@ -416,7 +416,7 @@ static X64_RegGroup X64_begin_reg_group(X64_Generator* generator)
     return group;
 }
 
-static X64_Reg X64_get_reg(X64_RegGroup* group, u32 lreg, u32 size, bool store)
+static X64_Reg X64_get_reg(X64_RegGroup* group, u32 lreg, u32 size, bool store, u32 banned_regs)
 {
     X64_LRegLoc lreg_loc = X64_lreg_loc(group->generator, lreg);
 
@@ -438,13 +438,14 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, u32 lreg, u32 size, bool store)
 
     X64_Reg x64_reg = X64_REG_COUNT;
 
-    // Try to use a scratch register that is not currently being used as a tmp register
+    // Try to use a scratch register that is not currently being used as a tmp register and is not banned.
     for (u32 r = 0; r < num_scratch_regs; r += 1) {
         X64_Reg reg = scratch_regs[r];
 
         bool is_used_as_tmp = u32_is_bit_set(group->used_tmp_reg_mask, reg);
+        bool is_banned = u32_is_bit_set(banned_regs, reg);
 
-        if (!is_used_as_tmp) {
+        if (!is_used_as_tmp && !is_banned) {
             x64_reg = reg;
             break;
         }
@@ -718,42 +719,56 @@ static u64 X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* dpr
     return ALIGN_UP(stack_size, X64_STACK_ALIGN);
 }
 
-static X64_SIBDAddr X64_get_sibd_addr(X64_RegGroup* group, X64_MemAddr* vaddr)
+static u32 X64_get_sibd_addr(X64_Generator* generator, X64_SIBDAddr* sibd_addr, X64_MemAddr* vaddr)
 {
-    X64_SIBDAddr sibd_addr = {0};
+    u32 used_regs = 0;
 
     if (vaddr->kind == X64_ADDR_GLOBAL) {
-        sibd_addr.kind = X64_SIBD_ADDR_GLOBAL;
-        sibd_addr.global = vaddr->global;
+        sibd_addr->kind = X64_SIBD_ADDR_GLOBAL;
+        sibd_addr->global = vaddr->global;
     }
     else if (vaddr->kind == X64_ADDR_STR_LIT) {
-        sibd_addr.kind = X64_SIBD_ADDR_STR_LIT;
-        sibd_addr.str_lit = vaddr->str_lit;
+        sibd_addr->kind = X64_SIBD_ADDR_STR_LIT;
+        sibd_addr->str_lit = vaddr->str_lit;
     }
     else {
         bool has_base = vaddr->local.base_reg != (u32)-1;
         bool has_index = vaddr->local.scale && (vaddr->local.index_reg != (u32)-1);
         assert(has_base || has_index);
 
-        sibd_addr.kind = X64_SIBD_ADDR_LOCAL;
-        sibd_addr.local.disp = vaddr->local.disp;
-        sibd_addr.local.scale = vaddr->local.scale;
+        sibd_addr->kind = X64_SIBD_ADDR_LOCAL;
+        sibd_addr->local.disp = vaddr->local.disp;
+        sibd_addr->local.scale = vaddr->local.scale;
 
         if (has_base) {
-            // TODO: THIS DOESN'T WORK. Clobbers registers in use.
-            //
-            // tests/ptr_arith.nib DOES NOT WORK
-            sibd_addr.local.base_reg = X64_get_reg(group, vaddr->local.base_reg, X64_MAX_INT_REG_SIZE, false);
-            sibd_addr.local.index_reg = has_index ? X64_get_reg(group, vaddr->local.index_reg, X64_MAX_INT_REG_SIZE, false) :
-                X64_REG_COUNT;
+            X64_LRegLoc base_loc = X64_lreg_loc(generator, vaddr->local.base_reg);
+            assert(base_loc.kind == X64_LREG_LOC_REG);
+
+            sibd_addr->local.base_reg = base_loc.reg;
+            u32_set_bit(&used_regs, base_loc.reg);
+
+            if (has_index) {
+                X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->local.index_reg);
+                assert(index_loc.kind == X64_LREG_LOC_REG);
+
+                sibd_addr->local.index_reg = index_loc.reg;
+                u32_set_bit(&used_regs, index_loc.reg);
+            }
+            else {
+                sibd_addr->local.index_reg = X64_REG_COUNT;
+            }
         }
         else {
-            sibd_addr.local.base_reg = X64_REG_COUNT;
-            sibd_addr.local.index_reg = X64_get_reg(group, vaddr->local.index_reg, X64_MAX_INT_REG_SIZE, false);
+            X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->local.index_reg);
+            assert(index_loc.kind == X64_LREG_LOC_REG);
+
+            sibd_addr->local.base_reg = X64_REG_COUNT;
+            sibd_addr->local.index_reg = index_loc.reg;
+            u32_set_bit(&used_regs, index_loc.reg);
         }
     }
 
-    return sibd_addr;
+    return used_regs;
 }
 
 static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 mem_label_size)
@@ -809,13 +824,6 @@ static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 m
     return dstr;
 }
 
-static char* X64_print_mem(X64_RegGroup* group, X64_MemAddr* addr, u32 size)
-{
-    X64_SIBDAddr sibd_addr = X64_get_sibd_addr(group, addr);
-
-    return X64_print_sibd_addr(group->generator->tmp_mem, &sibd_addr, size);
-}
-
 static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, u32 op1_lreg,
                               u32 op2_size, u32 op2_lreg)
 {
@@ -849,9 +857,10 @@ static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool 
             const char* op1_op_str = X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size);
             const char* op2_op_str = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op2_size);
             const char* tmp_reg_str = x64_reg_names[op1_size][X64_RAX];
+            const char* tmp_reg_str_lg = x64_reg_names[X64_MAX_INT_REG_SIZE][X64_RAX]; // Can only push 64bit vals into stack.
 
             // Save the contents of a temporary register into the stack.
-            X64_emit_text(generator, "    push %s", tmp_reg_str);
+            X64_emit_text(generator, "    push %s", tmp_reg_str_lg);
 
             // Load dst into the temporary register,
             X64_emit_text(generator, "    mov %s, %s", tmp_reg_str, op1_op_str);
@@ -865,7 +874,7 @@ static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool 
             }
 
             // Restore the contents of the temporary register.
-            X64_emit_text(generator, "    pop %s", tmp_reg_str);
+            X64_emit_text(generator, "    pop %s", tmp_reg_str_lg);
 
             break;
         }
@@ -905,10 +914,14 @@ static void X64_emit_ri_instr(X64_Generator* generator, const char* instr, u32 o
 static void X64_emit_rm_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, u32 op1_lreg,
                               u32 op2_size, X64_MemAddr* op2_vaddr)
 {
-    X64_RegGroup tmp_group = X64_begin_reg_group(generator);
-    X64_Reg op1_reg = X64_get_reg(&tmp_group, op1_lreg, op1_size, writes_op1);
+    X64_SIBDAddr op2_addr = {0};
+    u32 used_regs = X64_get_sibd_addr(generator, &op2_addr, op2_vaddr);
 
-    X64_emit_text(generator, "    %s %s, %s", instr, x64_reg_names[op1_size][op1_reg], X64_print_mem(&tmp_group, op2_vaddr, op2_size));
+    X64_RegGroup tmp_group = X64_begin_reg_group(generator);
+    X64_Reg op1_reg = X64_get_reg(&tmp_group, op1_lreg, op1_size, writes_op1, used_regs);
+
+    X64_emit_text(generator, "    %s %s, %s", instr, x64_reg_names[op1_size][op1_reg],
+                  X64_print_sibd_addr(generator->tmp_mem, &op2_addr, op2_size));
 
     X64_end_reg_group(&tmp_group);
 }
@@ -916,26 +929,17 @@ static void X64_emit_rm_instr(X64_Generator* generator, const char* instr, bool 
 static void X64_emit_mr_instr(X64_Generator* generator, const char* instr, u32 op1_size, X64_MemAddr* op1_vaddr, u32 op2_size,
                               u32 op2_lreg)
 {
-    X64_RegGroup tmp_group = X64_begin_reg_group(generator);
-    X64_Reg op2_reg = X64_get_reg(&tmp_group, op2_lreg, op2_size, false);
+    X64_SIBDAddr op1_addr = {0};
+    u32 used_regs = X64_get_sibd_addr(generator, &op1_addr, op1_vaddr);
 
-    X64_emit_text(generator, "    %s %s, %s", instr, X64_print_mem(&tmp_group, op1_vaddr, op1_size), x64_reg_names[op2_size][op2_reg]);
+    X64_RegGroup tmp_group = X64_begin_reg_group(generator);
+    X64_Reg op2_reg = X64_get_reg(&tmp_group, op2_lreg, op2_size, false, used_regs);
+
+    X64_emit_text(generator, "    %s %s, %s", instr, X64_print_sibd_addr(generator->tmp_mem, &op1_addr, op1_size),
+                  x64_reg_names[op2_size][op2_reg]);
 
     X64_end_reg_group(&tmp_group);
 }
-
-/*
-static void X64_emit_mi_instr(X64_Generator* generator, const char* instr, u32 op1_size, X64_MemAddr* op1_vaddr, u32 op2_size,
-                              Scalar op2_imm)
-{
-    X64_RegGroup tmp_group = X64_begin_reg_group(generator);
-
-    X64_emit_text(generator, "    %s %s, %s", instr, X64_print_mem(&tmp_group, op1_vaddr, op1_size),
-                  X64_print_imm(generator->tmp_mem, op2_imm, op2_size));
-
-    X64_end_reg_group(&tmp_group);
-}
-*/
 
 static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo stack_args_info, u32 num_args, X64_InstrCallArg* args)
 {
@@ -1306,7 +1310,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
         break;
     }
     default:
-        NIBBLE_FATAL_EXIT("Unknown X64 LIR instruction kind %d\n", instr->kind);
+        NIBBLE_FATAL_EXIT("Unknown X64 LIR instruction kind %d at IP %u\n", instr->kind, instr_index);
         break;
     }
 

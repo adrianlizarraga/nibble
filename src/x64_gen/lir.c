@@ -131,6 +131,8 @@ void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, size_t size)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_SEXT_AX_TO_DX);
     instr->sext_ax_to_dx.size = size;
+
+    X64_add_lir_instr(builder, instr);
 }
 
 void X64_emit_instr_lea(X64_LIRBuilder* builder, u32 dst, X64_MemAddr mem)
