@@ -31,7 +31,7 @@ static void X64_alloc_reg(X64_RegAllocState* state, X64_Reg reg, u32 lreg)
     }
 }
 
-static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs)
+static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs, bool callee_saved_only)
 {
     // Get the first available scratch register.
     X64_Reg reg = X64_REG_COUNT;
@@ -43,7 +43,8 @@ static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs)
         X64_Reg r = regs[i];
 
         // Try to get a physical register that is free and is not banned.
-        if ((state->rmap[r] == (u32)-1) && !u32_is_bit_set(banned_regs, r)) {
+        if ((state->rmap[r] == (u32)-1) && !u32_is_bit_set(banned_regs, r) &&
+            (!callee_saved_only || X64_is_callee_saved_reg(r))) {
             reg = r;
             break;
         }
@@ -236,26 +237,31 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             }
 
             if ((call_site != (u32)-1) && (interval->start < call_site) && (interval->end > call_site)) {
-                // Spill any intervals needed across procedure calls. (For simplicity)
-                // TODO: REMOVE THIS LOGIC. We MUST deal with this correctly.
-                assert(!interval->force_reg);
-                X64_spill_reg_loc(&state, &interval->loc);
+                X64_Reg reg = X64_next_reg(&state, i, banned_regs, true); // Try to use a callee-saved register.
+
+                if (reg != X64_REG_COUNT) {
+                    interval->loc.kind = X64_LREG_LOC_REG;
+                    interval->loc.reg = reg;
+                    X64_lreg_interval_list_add(&state, interval);
+                }
+                else {
+                    assert(!interval->force_reg);
+                    X64_spill_reg_loc(&state, &interval->loc);
+                }
             }
             else if (state.num_active == state.num_scratch_regs) {
                 // Exhausted all available free registers. Spill the longest interval that IS NOT forced into a register.
 
-                // Look for the latest active interval that is not forced into a register.
+                // Look for the latest active interval that is not forced into a register and is not using a banned register.
                 List* head = &state.active;
                 List* it = head->prev;
 
-                while (it != head) {
+                for (; it != head; it = it->prev) {
                     X64_LRegRange* it_e = list_entry(it, X64_LRegRange, lnode);
+                    if (it_e->force_reg) continue;
 
-                    if (!it_e->force_reg) {
-                        break;
-                    }
-
-                    it = it->prev;
+                    bool using_banned_reg = (it_e->loc.kind == X64_LREG_LOC_REG) && u32_is_bit_set(banned_regs, it_e->loc.reg);
+                    if (!using_banned_reg) break;
                 }
 
                 if ((it == head) && interval->force_reg) {
@@ -284,7 +290,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             }
             else {
                 // Try to allocate the next free reg.
-                X64_Reg reg = X64_next_reg(&state, i, banned_regs);
+                X64_Reg reg = X64_next_reg(&state, i, banned_regs, false);
 
                 if (reg == X64_REG_COUNT) {
                     state.result.success = false;

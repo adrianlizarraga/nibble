@@ -1376,7 +1376,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     generator->curr_proc.lreg_ranges = lreg_ranges;
     generator->curr_proc.builder = &builder;
 
-#if 1
+#if 0
     u32 num_lreg_ranges = array_len(lreg_ranges);
     ftprint_out("Register allocation for %s (%s):\n", sym->name->str, is_nonleaf ? "nonleaf": "leaf");
     for (u32 i = 0; i < num_lreg_ranges; i += 1)
