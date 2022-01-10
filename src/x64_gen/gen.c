@@ -121,7 +121,6 @@ typedef struct X64_SIBDAddr {
 typedef struct X64_ProcState {
     Symbol* sym;
     u32 id;
-    X64_LRegRange* lreg_ranges;
     X64_LIRBuilder* builder;
 
     X64_Reg* scratch_regs;
@@ -141,7 +140,7 @@ typedef struct X64_Generator {
 static X64_LRegLoc X64_lreg_loc(X64_Generator* generator, u32 lreg)
 {
     u32 rng_idx = X64_find_alias_reg(generator->curr_proc.builder, lreg);
-    X64_LRegLoc reg_loc = generator->curr_proc.lreg_ranges[rng_idx].loc;
+    X64_LRegLoc reg_loc = generator->curr_proc.builder->lreg_ranges[rng_idx].loc;
 
     assert(reg_loc.kind != X64_LREG_LOC_UNASSIGNED);
 
@@ -941,6 +940,16 @@ static void X64_emit_mr_instr(X64_Generator* generator, const char* instr, u32 o
     X64_end_reg_group(&tmp_group);
 }
 
+static void X64_emit_mi_instr(X64_Generator* generator, const char* instr, u32 op1_size, X64_MemAddr* op1_vaddr, u32 op2_size,
+                              Scalar op2_imm)
+{
+    X64_SIBDAddr op1_addr = {0};
+    X64_get_sibd_addr(generator, &op1_addr, op1_vaddr);
+
+    X64_emit_text(generator, "    %s %s, %s", instr, X64_print_sibd_addr(generator->tmp_mem, &op1_addr, op1_size),
+                  X64_print_imm(generator->tmp_mem, op2_imm, op2_size));
+}
+
 static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo stack_args_info, u32 num_args, X64_InstrCallArg* args)
 {
     u64 stack_args_size = stack_args_info.size;
@@ -1153,6 +1162,12 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
         X64_emit_mr_instr(generator, "mov", size, &instr->mov_m_r.dst, size, instr->mov_m_r.src);
         break;
     }
+    case X64_INSTR_MOV_M_I: {
+        u32 size = (u32)instr->mov_m_i.size;
+
+        X64_emit_mi_instr(generator, "mov", size, &instr->mov_m_i.dst, size, instr->mov_m_i.src);
+        break;
+    }
     case X64_INSTR_MOVZX_R_R: {
         size_t dst_size = instr->convert_r_r.dst_size;
         size_t src_size = instr->convert_r_r.src_size;
@@ -1363,7 +1378,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     X64_init_lir_builder(&builder, generator->tmp_mem, sym->as_proc.num_regs);
     X64_emit_lir_instrs(&builder, num_ir_instrs, ir_instrs);
 
-    X64_LRegRange* lreg_ranges = builder.lreg_ranges;
     X64_RegAllocResult reg_alloc =
         X64_linear_scan_reg_alloc(&builder, generator->curr_proc.num_scratch_regs, generator->curr_proc.scratch_regs, stack_size);
 
@@ -1373,42 +1387,49 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     }
 
     stack_size = reg_alloc.stack_offset;
-    generator->curr_proc.lreg_ranges = lreg_ranges;
     generator->curr_proc.builder = &builder;
 
-#if 0
-    u32 num_lreg_ranges = array_len(lreg_ranges);
-    ftprint_out("Register allocation for %s (%s):\n", sym->name->str, is_nonleaf ? "nonleaf": "leaf");
-    for (u32 i = 0; i < num_lreg_ranges; i += 1)
-    {
-        if (X64_find_alias_reg(&builder, i) != i) continue;
 
-        X64_LRegRange* rng = lreg_ranges + i;
-        X64_LRegLoc* loc = &rng->loc;
+    // Remove redunant register moves.
+    // TODO: Fix jump targets when remove instructions.
+    /*
+    List* head = &builder.instrs;
+    List* it = head->next;
 
-        if (loc->kind == X64_LREG_LOC_REG)
-        {
-            ftprint_out("\tr%u -> %s", i, x64_reg_names[8][loc->reg]);
+    while (it != head) {
+        List* next = it->next;
+        X64_Instr* instr = list_entry(it, X64_Instr, lnode);
+
+        if (instr->kind == X64_INSTR_MOV_R_R) {
+            X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_r_r.dst);
+            X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_r_r.src);
+
+            if (dst_loc.kind == src_loc.kind) {
+                if (((dst_loc.kind == X64_LREG_LOC_REG) && (dst_loc.reg == src_loc.reg)) ||
+                    ((dst_loc.kind == X64_LREG_LOC_STACK) && (dst_loc.offset == src_loc.offset))) {
+                    list_rm(it);
+                    builder.num_instrs -= 1;
+                }
+            }
         }
-        else
-        {
-            assert(loc->kind == X64_LREG_LOC_STACK);
-            ftprint_out("\tr%u -> RBP + %d", i, loc->offset);
-        }
 
-        ftprint_out(", [%u - %u]\n", rng->start, rng->end);
+        it = next;
     }
-#endif
+    */
 
     if (stack_size)
         X64_fill_line(generator, sub_rsp_inst, "    sub rsp, %u", stack_size);
 
     // Generate instructions.
-    X64_Instr** instrs = builder.instrs;
-    size_t num_instrs = array_len(instrs);
+    List* head = &builder.instrs;
+    size_t instr_index = 0;
 
-    for (size_t instr_index = 0; instr_index < num_instrs; instr_index += 1) {
-        X64_gen_instr(generator, instr_index, instr_index == num_instrs - 1, instrs[instr_index]);
+    for (List* it = head->next; it != head; it = it->next) {
+        X64_Instr* instr = list_entry(it, X64_Instr, lnode);
+        bool is_last = it->next == head;
+
+        X64_gen_instr(generator, instr_index, is_last, instr);
+        instr_index += 1;
     }
 
     // End label

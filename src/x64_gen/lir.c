@@ -7,7 +7,8 @@ static void X64_add_lir_instr(X64_LIRBuilder* builder, X64_Instr* instr)
         builder->next_instr_is_jmp_target = false;
     }
 
-    array_push(builder->instrs, instr);
+    list_add_last(&builder->instrs, &instr->lnode);
+    builder->num_instrs += 1;
 }
 
 static X64_Instr* X64_new_instr(Allocator* arena, X64_InstrKind kind)
@@ -112,6 +113,16 @@ void X64_emit_instr_mov_m_r(X64_LIRBuilder* builder, size_t size, X64_MemAddr ds
     instr->mov_m_r.size = size;
     instr->mov_m_r.dst = dst;
     instr->mov_m_r.src = src;
+
+    X64_add_lir_instr(builder, instr);
+}
+
+void X64_emit_instr_mov_m_i(X64_LIRBuilder* builder, size_t size, X64_MemAddr dst, Scalar src)
+{
+    X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_MOV_M_I);
+    instr->mov_m_i.size = size;
+    instr->mov_m_i.dst = dst;
+    instr->mov_m_i.src = src;
 
     X64_add_lir_instr(builder, instr);
 }

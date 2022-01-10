@@ -57,6 +57,7 @@ typedef enum X64_InstrKind {
 
     // Store into memory.
     X64_INSTR_MOV_M_R,
+    X64_INSTR_MOV_M_I,
 
     // Zero-extend
     X64_INSTR_MOVZX_R_R,
@@ -172,6 +173,12 @@ typedef struct X64_InstrMov_M_R {
     u32 src;
 } X64_InstrMov_M_R;
 
+typedef struct X64_InstrMov_M_I {
+    size_t size;
+    X64_MemAddr dst;
+    Scalar src;
+} X64_InstrMov_M_I;
+
 typedef struct X64_InstrConvert_R_R {
     size_t dst_size;
     size_t src_size;
@@ -257,6 +264,7 @@ typedef struct X64_Instr {
         X64_InstrMov_R_M mov_r_m;
         X64_InstrMov_R_I mov_r_i;
         X64_InstrMov_M_R mov_m_r;
+        X64_InstrMov_M_I mov_m_i;
 
         X64_InstrConvert_R_R convert_r_r;
 
@@ -277,12 +285,17 @@ typedef struct X64_Instr {
 
         X64_InstrCall_R call_r;
     };
+
+    ListNode lnode;
 } X64_Instr;
 
 typedef struct X64_LIRBuilder {
     Allocator* arena;
 
-    X64_Instr** instrs; // Stretchy buf
+    // List of X64 LIR instructions.
+    size_t num_instrs;
+    List instrs;
+
     X64_LRegRange* lreg_ranges; // Stretchy buf
     u32* reg_map; // Map IR reg -> LIR reg; size: num_iregs
 
