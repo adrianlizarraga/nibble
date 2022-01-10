@@ -129,7 +129,7 @@ static void X64_steal_reg(X64_RegAllocState* state, X64_LRegRange* from, X64_LRe
 //
 // Assumptions:
 //  - One interval per LIR register.
-//  - SSA (each LIR register is set only once)
+//  - SSA (each LIR register is set only once). Allows forcing registers.
 //  - "Single-use": Each LIR register is only used once! This will have to change once we do properly SSA-based optimizations.
 //
 // This register allocator is pretty basic and not very good, but we just need something that works for now.
@@ -166,7 +166,6 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 X64_LRegRange* it_entry = list_entry(it, X64_LRegRange, lnode);
 
-                //if (it_entry->end >= interval->start) {
                 if (it_entry->end > interval->start) {
                     break;
                 }
@@ -225,8 +224,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 X64_LRegRange* j_rng = builder->lreg_ranges + j;
 
-                // Stop scanning once intervals no longer intersect.
-                //if (j_rng->start > interval->end) {
+                // Stop scanning once intervals no longer intersect. (or just intersect at endpoints)
                 if (j_rng->start >= interval->end) {
                     break;
                 }
