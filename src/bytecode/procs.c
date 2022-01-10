@@ -648,6 +648,9 @@ static void IR_op_to_r(IR_ProcBuilder* builder, IR_Operand* operand)
     case IR_OPERAND_PROC: {
         IR_Reg reg = IR_next_reg(builder);
         IR_emit_instr_laddr(builder, operand->type, reg, IR_sym_as_addr(operand->sym));
+
+        operand->kind = IR_OPERAND_REG;
+        operand->reg = reg;
         break;
     }
     default: {

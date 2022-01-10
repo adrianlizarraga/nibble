@@ -198,6 +198,10 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             // Interval is forced to reside in a specific register.
             //
 
+            // TODO: FAILS for proc_pointers.nib!!!! foo(a)bar(b); 
+            ftprint_out("Forcing register %d for interval %d [%d - %d]. Call site at %d\n", interval->forced_reg,
+                        i, interval->start, interval->end,
+                        call_site);
             assert((call_site == (u32)-1) || (interval->end <= call_site) || (interval->start >= call_site) || (interval->forced_reg == X64_RBP));
             X64_Reg forced_reg = interval->forced_reg;
 

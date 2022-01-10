@@ -1619,7 +1619,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
                 for (ListNode* it = head->next; it != head; it = it->next) {
                     ProcParam* param = list_entry(it, ProcParam, lnode);
 
-                    if (param->name->str)
+                    if (param->name)
                         ftprint_char_array(&dstr, false, "(%s %s)", param->name->str, ftprint_typespec(allocator, param->typespec));
                     else
                         ftprint_char_array(&dstr, false, "%s", ftprint_typespec(allocator, param->typespec));

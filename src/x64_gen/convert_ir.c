@@ -152,6 +152,7 @@ static u32 X64_get_lir_reg(X64_LIRBuilder* builder, u32 ireg)
     assert(result != (u32)-1);
 
     result = X64_find_alias_reg(builder, result);
+
     X64_LRegRange* range = &builder->lreg_ranges[result];
     range->end = next_ip;
 

@@ -1357,6 +1357,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
+    ftprint_out("Processing proc %s\n", sym->name->str);
     const char* proc_mangled = symbol_mangled_name(generator->tmp_mem, sym);
     X64_emit_text(generator, "");
     X64_emit_text(generator, "global %s", proc_mangled);
@@ -1417,6 +1418,29 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     }
     */
 
+#if 0
+    u32 num_lreg_ranges = array_len(builder.lreg_ranges);
+    ftprint_out("Register allocation for %s (%s):\n", sym->name->str, is_nonleaf ? "nonleaf": "leaf");
+    for (u32 i = 0; i < num_lreg_ranges; i += 1)
+    {
+        if (X64_find_alias_reg(&builder, i) != i) continue;
+
+        X64_LRegRange* rng = builder.lreg_ranges + i;
+        X64_LRegLoc* loc = &rng->loc;
+
+        if (loc->kind == X64_LREG_LOC_REG)
+        {
+            ftprint_out("\tr%u -> %s", i, x64_reg_names[8][loc->reg]);
+        }
+        else
+        {
+            assert(loc->kind == X64_LREG_LOC_STACK);
+            ftprint_out("\tr%u -> RBP + %d", i, loc->offset);
+        }
+
+        ftprint_out(", [%u - %u]\n", rng->start, rng->end);
+    }
+#endif
     if (stack_size)
         X64_fill_line(generator, sub_rsp_inst, "    sub rsp, %u", stack_size);
 
