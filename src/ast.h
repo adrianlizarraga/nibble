@@ -22,6 +22,7 @@ typedef struct SymbolProc SymbolProc;
 typedef struct SymbolModule SymbolModule;
 typedef struct Scope Scope;
 typedef struct Module Module;
+typedef struct BBlock BBlock;
 
 typedef struct ConstAddr ConstAddr;
 typedef struct ConstArrayMemberInitzer ConstArrayMemberInitzer;
@@ -825,8 +826,21 @@ struct SymbolVar {
     };
 };
 
+struct BBlock {
+    size_t id;
+    size_t num_instrs;
+    Instr* first;
+    Instr* last;
+
+    BBlock** preds; // Stretchy buffer of predecessor basic blocks.
+
+    // TODO: Only 2 successors possible?
+    BBlock** succs; // Stretchy buffer of successor basic blocks.
+};
+
 struct SymbolProc {
-    struct Instr** instrs; // NOTE: stretchy buf
+    BBlock** bblocks; // Stretchy buffer of basic blocks
+
     u32 num_regs;
     bool is_nonleaf;
 };

@@ -136,13 +136,17 @@ typedef struct InstrCmp {
 } InstrCmp;
 
 typedef struct InstrJmp {
-    u32* jmp_target;
+    BBlock* from;
+    BBlock* target;
 } InstrJmp;
 
 typedef struct InstrCondJmp {
-    u32* jmp_target;
+    BBlock* from;
+    BBlock* true_bb;
+    BBlock* false_bb;
     IR_Reg a;
 } InstrCondJmp;
+
 
 typedef struct InstrCallArg {
     Type* type;
@@ -185,6 +189,7 @@ typedef struct InstrPhi {
 typedef struct Instr {
     InstrKind kind;
     bool is_jmp_target;
+    bool is_leader; // TODO: Collapse booleans into a flags field
 
     union {
         InstrBinary binary;
@@ -196,14 +201,17 @@ typedef struct Instr {
         InstrStore store;
         InstrLAddr laddr;
         InstrCmp cmp;
-        InstrCondJmp cond_jmp;
         InstrJmp jmp;
+        InstrCondJmp cond_jmp;
         InstrCall call;
         InstrCallIndirect calli;
         InstrRet ret;
         InstrMemcpy memcpy;
         InstrPhi phi;
     };
+
+    struct Instr* prev;
+    struct Instr* next;
 } Instr;
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, TypeCache* type_cache);

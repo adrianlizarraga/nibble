@@ -79,14 +79,63 @@ static const ConditionKind ir_opposite_cond[] = {
 //         Create IR instructions
 //
 //////////////////////////////////////////////////////
-static void IR_add_instr(IR_ProcBuilder* builder, Instr* instr)
+static void IR_bblock_add_instr(BBlock* bblock, Instr* instr)
+{
+    if (!bblock->first) {
+        bblock->first = instr;
+    }
+    else {
+        bblock->last->next = instr;
+    }
+
+    instr->prev = bblock->last;
+    bblock->last = instr;
+
+    bblock->num_instrs += 1;
+}
+
+static BBlock* IR_alloc_bblock(IR_ProcBuilder* builder)
+{
+    BBlock* block = alloc_type(builder->arena, Block, true);
+
+    block->id = array_len(builder->curr_proc.as_proc.bblocks);
+    block->preds = array_create(builder->arena, BBlock*, 4);
+    block->succs = array_create(builder->arena, BBlock*, 4);
+
+    array_push(builder->curr_proc.as_proc.bblocks, block);
+
+    return block;
+}
+
+static void IR_connect_bblocks(BBlock* pred, BBlock* succ)
+{
+    array_push(pred->succs, succ);
+    array_push(succ->preds, pred);
+}
+
+static void IR_patch_jmp_target(Instr* jmp_instr, BBlock* target)
+{
+    switch (jmp_instr->kind) {
+    case INSTR_JMP:
+        jmp_instr->jmp.target = target;
+        break;
+    case INSTR_COND_JMP:
+        jmp_instr->cond_jmp.true_bb = target; // NOTE: Only patches true path
+        break;
+    default:
+        assert(0);
+        break;
+    }
+}
+
+static void IR_add_instr(IR_ProcBuilder* builder, BBlock* bblock, Instr* instr)
 {
     if (builder->next_instr_is_jmp_target) {
         instr->is_jmp_target = true;
         builder->next_instr_is_jmp_target = false;
     }
 
-    array_push(builder->curr_proc->as_proc.instrs, instr);
+    IR_bblock_add_instr(bblock, instr);
 }
 
 static Instr* IR_new_instr(Allocator* arena, InstrKind kind)
@@ -97,14 +146,14 @@ static Instr* IR_new_instr(Allocator* arena, InstrKind kind)
     return instr;
 }
 
-#define IR_emit_instr_add(bld, t, r, a, b) IR_emit_instr_binary((bld), INSTR_ADD, (t), (r), (a), (b))
-#define IR_emit_instr_sub(bld, t, r, a, b) IR_emit_instr_binary((bld), INSTR_SUB, (t), (r), (a), (b))
-#define IR_emit_instr_mul(bld, t, r, a, b) IR_emit_instr_binary((bld), INSTR_MUL, (t), (r), (a), (b))
-#define IR_emit_instr_and(bld, t, r, a, b) IR_emit_instr_binary((bld), INSTR_AND, (t), (r), (a), (b))
-#define IR_emit_instr_or(bld, t, r, a, b) IR_emit_instr_binary((bld), INSTR_OR, (t), (r), (a), (b))
-#define IR_emit_instr_xor(bld, t, r, a, b) IR_emit_instr_binary((bld), INSTR_XOR, (t), (r), (a), (b))
+#define IR_emit_instr_add(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_ADD, (t), (r), (a), (b))
+#define IR_emit_instr_sub(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_SUB, (t), (r), (a), (b))
+#define IR_emit_instr_mul(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_MUL, (t), (r), (a), (b))
+#define IR_emit_instr_and(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_AND, (t), (r), (a), (b))
+#define IR_emit_instr_or(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_OR, (t), (r), (a), (b))
+#define IR_emit_instr_xor(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_XOR, (t), (r), (a), (b))
 
-static void IR_emit_instr_binary(IR_ProcBuilder* builder, InstrKind kind, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
+static void IR_emit_instr_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
     instr->binary.type = type;
@@ -112,12 +161,12 @@ static void IR_emit_instr_binary(IR_ProcBuilder* builder, InstrKind kind, Type* 
     instr->binary.a = a;
     instr->binary.b = b;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-#define IR_emit_instr_sar(bld, t, r, a, b) IR_emit_instr_shift((bld), INSTR_SAR, (t), (r), (a), (b))
-#define IR_emit_instr_shl(bld, t, r, a, b) IR_emit_instr_shift((bld), INSTR_SHL, (t), (r), (a), (b))
-static void IR_emit_instr_shift(IR_ProcBuilder* builder, InstrKind kind, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
+#define IR_emit_instr_sar(bld, blk, t, r, a, b) IR_emit_instr_shift((bld), (blk), INSTR_SAR, (t), (r), (a), (b))
+#define IR_emit_instr_shl(bld, blk, t, r, a, b) IR_emit_instr_shift((bld), (blk), INSTR_SHL, (t), (r), (a), (b))
+static void IR_emit_instr_shift(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
     instr->shift.type = type;
@@ -125,10 +174,10 @@ static void IR_emit_instr_shift(IR_ProcBuilder* builder, InstrKind kind, Type* t
     instr->shift.a = a;
     instr->shift.b = b;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_div(IR_ProcBuilder* builder, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
+static void IR_emit_instr_div(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
 {
     assert(type->kind == TYPE_INTEGER);
 
@@ -140,27 +189,28 @@ static void IR_emit_instr_div(IR_ProcBuilder* builder, Type* type, IR_Reg r, IR_
     instr->binary.a = a;
     instr->binary.b = b;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-#define IR_emit_instr_not(b, t, r, a) IR_emit_instr_unary((b), INSTR_NOT, (t), (r), (a))
-#define IR_emit_instr_neg(b, t, r, a) IR_emit_instr_unary((b), INSTR_NEG, (t), (r), (a))
+#define IR_emit_instr_not(b, blk, t, r, a) IR_emit_instr_unary((b), (blk), INSTR_NOT, (t), (r), (a))
+#define IR_emit_instr_neg(b, blk, t, r, a) IR_emit_instr_unary((b), (blk), INSTR_NEG, (t), (r), (a))
 
-static void IR_emit_instr_unary(IR_ProcBuilder* builder, InstrKind kind, Type* type, IR_Reg r, IR_Reg a)
+static void IR_emit_instr_unary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, IR_Reg a)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
     instr->unary.type = type;
     instr->unary.r = r;
     instr->unary.a = a;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-#define IR_emit_instr_trunc(b, dt, st, r, a) IR_emit_instr_convert((b), INSTR_TRUNC, (dt), (st), (r), (a)) 
-#define IR_emit_instr_zext(b, dt, st, r, a) IR_emit_instr_convert((b), INSTR_ZEXT, (dt), (st), (r), (a)) 
-#define IR_emit_instr_sext(b, dt, st, r, a) IR_emit_instr_convert((b), INSTR_SEXT, (dt), (st), (r), (a)) 
+#define IR_emit_instr_trunc(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_TRUNC, (dt), (st), (r), (a)) 
+#define IR_emit_instr_zext(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_ZEXT, (dt), (st), (r), (a)) 
+#define IR_emit_instr_sext(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_SEXT, (dt), (st), (r), (a)) 
 
-static void IR_emit_instr_convert(IR_ProcBuilder* builder, InstrKind kind, Type* dst_type, Type* src_type, IR_Reg r, IR_Reg a)
+static void IR_emit_instr_convert(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* dst_type, Type* src_type,
+                                  IR_Reg r, IR_Reg a)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
     instr->convert.dst_type = dst_type;
@@ -168,50 +218,50 @@ static void IR_emit_instr_convert(IR_ProcBuilder* builder, InstrKind kind, Type*
     instr->convert.r = r;
     instr->convert.a = a;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_limm(IR_ProcBuilder* builder, Type* type, IR_Reg r, Scalar imm)
+static void IR_emit_instr_limm(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, Scalar imm)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_LIMM);
     instr->limm.type = type;
     instr->limm.r = r;
     instr->limm.imm = imm;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_load(IR_ProcBuilder* builder, Type* type, IR_Reg r, MemAddr addr)
+static void IR_emit_instr_load(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, MemAddr addr)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_LOAD);
     instr->load.type = type;
     instr->load.r = r;
     instr->load.addr = addr;
     
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_laddr(IR_ProcBuilder* builder, Type* type, IR_Reg r, MemAddr addr)
+static void IR_emit_instr_laddr(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, MemAddr addr)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_LADDR);
     instr->laddr.type = type;
     instr->laddr.r = r;
     instr->laddr.addr = addr;
     
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_store(IR_ProcBuilder* builder, Type* type, MemAddr addr, IR_Reg a)
+static void IR_emit_instr_store(IR_ProcBuilder* builder, BBlock* bblock, Type* type, MemAddr addr, IR_Reg a)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_STORE);
     instr->store.type = type;
     instr->store.addr = addr;
     instr->store.a = a;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static Instr* IR_emit_instr_cmp(IR_ProcBuilder* builder, Type* type, ConditionKind cond, IR_Reg r, IR_Reg a, IR_Reg b)
+static Instr* IR_emit_instr_cmp(IR_ProcBuilder* builder, BBlock* bblock, Type* type, ConditionKind cond, IR_Reg r, IR_Reg a, IR_Reg b)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_CMP);
     instr->cmp.type = type;
@@ -220,33 +270,36 @@ static Instr* IR_emit_instr_cmp(IR_ProcBuilder* builder, Type* type, ConditionKi
     instr->cmp.a = a;
     instr->cmp.b = b;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 
     return instr;
 }
 
-static Instr* IR_emit_instr_cond_jmp(IR_ProcBuilder* builder, u32* jmp_target, IR_Reg a)
+static Instr* IR_emit_instr_cond_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock* true_bb, BBlock* false_bb, IR_Reg a)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_COND_JMP);
-    instr->cond_jmp.jmp_target = jmp_target;
+    instr->cond_jmp.from = bblock;
+    instr->cond_jmp.true_bb = true_bb;
+    instr->cond_jmp.false_bb = false_bb;
     instr->cond_jmp.a = a;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 
     return instr;
 }
 
-static Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, u32* jmp_target)
+static Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock* target)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_JMP);
-    instr->jmp.jmp_target = jmp_target;
+    instr->jmp.from = bblock;
+    instr->jmp.target = target;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 
     return instr;
 }
 
-static void IR_emit_instr_call(IR_ProcBuilder* builder, Symbol* sym, IR_Reg r, u32 num_args, InstrCallArg* args)
+static void IR_emit_instr_call(IR_ProcBuilder* builder, BBlock* bblock, Symbol* sym, IR_Reg r, u32 num_args, InstrCallArg* args)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_CALL);
     instr->call.sym = sym;
@@ -254,10 +307,10 @@ static void IR_emit_instr_call(IR_ProcBuilder* builder, Symbol* sym, IR_Reg r, u
     instr->call.num_args = num_args;
     instr->call.args = args;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, Type* type, IR_Reg loc, IR_Reg r, u32 num_args, InstrCallArg* args)
+static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg loc, IR_Reg r, u32 num_args, InstrCallArg* args)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_CALL_INDIRECT);
     instr->calli.proc_type = type;
@@ -266,29 +319,29 @@ static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, Type* type, IR_
     instr->calli.num_args = num_args;
     instr->calli.args = args;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_ret(IR_ProcBuilder* builder, Type* type, IR_Reg a)
+static void IR_emit_instr_ret(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg a)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_RET);
     instr->ret.type = type;
     instr->ret.a = a;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_memcpy(IR_ProcBuilder* builder, Type* type, MemAddr dst, MemAddr src)
+static void IR_emit_instr_memcpy(IR_ProcBuilder* builder, BBlock* bblock, Type* type, MemAddr dst, MemAddr src)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_MEMCPY);
     instr->memcpy.type = type;
     instr->memcpy.dst = dst;
     instr->memcpy.src = src;
 
-    IR_add_instr(builder, instr);
+    IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_phi(IR_ProcBuilder* builder, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
+static void IR_emit_instr_phi(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_PHI);
     instr->phi.type = type;
@@ -296,36 +349,7 @@ static void IR_emit_instr_phi(IR_ProcBuilder* builder, Type* type, IR_Reg r, IR_
     instr->phi.a = a;
     instr->phi.b = b;
 
-    IR_add_instr(builder, instr);
-}
-
-static void IR_patch_jmp_target(Instr* jmp_instr, u32 jmp_target)
-{
-    switch (jmp_instr->kind) {
-    case INSTR_JMP:
-        *(jmp_instr->jmp.jmp_target) = jmp_target;
-        break;
-    case INSTR_COND_JMP:
-        *(jmp_instr->cond_jmp.jmp_target) = jmp_target;
-        break;
-    default:
-        assert(0);
-        break;
-    }
-}
-
-static u32 IR_get_jmp_target(IR_ProcBuilder* builder)
-{
-    builder->next_instr_is_jmp_target = true;
-    return (u32)array_len(builder->curr_proc->as_proc.instrs);
-}
-
-static u32* IR_alloc_jmp_target(IR_ProcBuilder* builder, u32 init_val)
-{
-    u32* jmp_target = alloc_type(builder->arena, u32, false);
-    *jmp_target = init_val;
-
-    return jmp_target;
+    IR_add_instr(builder, bblock, instr);
 }
 
 static bool IR_type_fits_in_reg(Type* type)
@@ -353,7 +377,7 @@ static MemAddr IR_strlit_as_addr(StrLit* str_lit)
     return addr;
 }
 
-static void IR_get_object_addr(IR_ProcBuilder* builder, MemAddr* dst, IR_Operand* src)
+static void IR_get_object_addr(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* dst, IR_Operand* src)
 {
     Type* src_type = src->type;
 
@@ -364,7 +388,7 @@ static void IR_get_object_addr(IR_ProcBuilder* builder, MemAddr* dst, IR_Operand
         }
         else {
             IR_Reg dst_reg = IR_next_reg(builder);
-            IR_emit_instr_laddr(builder, src_type, dst_reg, IR_sym_as_addr(src->sym));
+            IR_emit_instr_laddr(builder, bblock, src_type, dst_reg, IR_sym_as_addr(src->sym));
 
             dst->base_kind = MEM_BASE_REG;
             dst->base.reg = dst_reg;
@@ -381,7 +405,7 @@ static void IR_get_object_addr(IR_ProcBuilder* builder, MemAddr* dst, IR_Operand
         assert(src->kind == IR_OPERAND_STR_LIT);
 
         IR_Reg dst_reg = IR_next_reg(builder);
-        IR_emit_instr_laddr(builder, src_type, dst_reg, IR_strlit_as_addr(src->str_lit));
+        IR_emit_instr_laddr(builder, bblock, src_type, dst_reg, IR_strlit_as_addr(src->str_lit));
 
         dst->base_kind = MEM_BASE_REG;
         dst->base.reg = dst_reg;
@@ -476,21 +500,23 @@ static void IR_fix_sc_jmp_path(IR_DeferredJmpcc* def_jmp, bool desired_result)
     }
 }
 
-static void IR_copy_sc_jmp(IR_ProcBuilder* builder, IR_DeferredJmpcc* dst_jmp, IR_DeferredJmpcc* src_jmp, bool desired_result)
+static void IR_copy_sc_jmp(IR_ProcBuilder* builder, BBlock* bblock, IR_DeferredJmpcc* dst_jmp, IR_DeferredJmpcc* src_jmp,
+                           bool desired_result)
 {
     *dst_jmp = *src_jmp;
 
     IR_fix_sc_jmp_path(dst_jmp, desired_result);
 
     if (!dst_jmp->jmp) {
-        dst_jmp->jmp = IR_emit_instr_cond_jmp(builder, IR_alloc_jmp_target(builder, 0), dst_jmp->cmp->cmp.r);
+        dst_jmp->jmp = IR_emit_instr_cond_jmp(builder, bblock, NULL, NULL, dst_jmp->cmp->cmp.r);
     }
 }
 
-static void IR_execute_deferred_cmp(IR_ProcBuilder* builder, IR_Operand* operand)
+static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEFERRED_CMP);
 
+    BBlock* e_bblock;
     IR_DeferredCmp* def_cmp = &operand->cmp;
     IR_Reg dst_reg;
 
@@ -498,59 +524,81 @@ static void IR_execute_deferred_cmp(IR_ProcBuilder* builder, IR_Operand* operand
     bool has_final_jmp = def_cmp->final_jmp.jmp != NULL;
 
     if (!has_sc_jmps && !has_final_jmp) {
+        e_bblock = bblock;
         dst_reg = IR_next_reg(builder);
-        IR_emit_instr_zext(builder, operand->type, builtin_types[BUILTIN_TYPE_U8].type, dst_reg,
-                            def_cmp->final_jmp.cmp->cmp.cond);
+
+        IR_emit_instr_zext(builder, bblock, operand->type, builtin_types[BUILTIN_TYPE_U8].type, dst_reg,
+                           def_cmp->final_jmp.cmp->cmp.cond);
     }
     else {
+        BBlock* t_bblock = IR_alloc_bblock(builder);
+        BBlock* f_bblock = IR_alloc_bblock(builder);
+        e_bblock = IR_alloc_bblock(builder);
+
+        IR_connect_bblocks(bblock, t_bblock);
+        IR_connect_bblocks(bblock, f_bblock);
+        IR_connect_bblocks(t_bblock, e_bblock);
+        IR_connect_bblocks(f_bblock, e_bblock);
+
+        //
+        // True control path.
+        //
+
         // Patch short-circuit jumps that jump to the "true" control path.
         for (IR_DeferredJmpcc* it = def_cmp->first_sc_jmp; it; it = it->next) {
             if (it->result)
-                IR_patch_jmp_target(it->jmp, IR_get_jmp_target(builder));
+                IR_patch_jmp_target(it->jmp, t_bblock);
         }
 
-        // This is the "true" control path. Move the literal 1 into destination register.
+        // Move the literal 1 into destination register.
         IR_Reg one_reg = IR_next_reg(builder);
-        IR_emit_instr_limm(builder, operand->type, one_reg, ir_one_imm);
+        IR_emit_instr_limm(builder, t_bblock, operand->type, one_reg, ir_one_imm);
 
         // Create a jump to skip the false control path.
-        Instr* jmp_skip_false = IR_emit_instr_jmp(builder, IR_alloc_jmp_target(builder, 0));
+        Instr* jmp_skip_false = IR_emit_instr_jmp(builder, t_bblock, e_bblock);
+
+        //
+        // False control path.
+        //
 
         // Patch short-circuit jumps that jump to the "false" control path.
         for (IR_DeferredJmpcc* it = def_cmp->first_sc_jmp; it; it = it->next) {
             if (!it->result)
-                IR_patch_jmp_target(it->jmp, IR_get_jmp_target(builder));
+                IR_patch_jmp_target(it->jmp, f_bblock);
         }
 
         // Patch final jmp so that it jumps to "false" control path.
         IR_DeferredJmpcc* final_jmp = &def_cmp->final_jmp;
         IR_fix_sc_jmp_path(final_jmp, false);
-
-        IR_patch_jmp_target(final_jmp->jmp, IR_get_jmp_target(builder));
+        IR_patch_jmp_target(final_jmp->jmp, f_bblock);
 
         // This is the "false" control path. Move the literal 0 into destination register.
         IR_Reg zero_reg = IR_next_reg(builder);
-        IR_emit_instr_limm(builder, operand->type, zero_reg, ir_zero_imm);
+        IR_emit_instr_limm(builder, f_bblock, operand->type, zero_reg, ir_zero_imm);
+        IR_emit_instr_jmp(builder, f_bblock, e_bblock); // NOTE: Not needed in actual assembly (fall-through)
 
-        // Patch jump that skips "false" control path.
-        IR_patch_jmp_target(jmp_skip_false, IR_get_jmp_target(builder));
+        //
+        // End block.
+        //
 
         // Emit PHI instruction.
         dst_reg = IR_next_reg(builder);
-        IR_emit_instr_phi(builder, operand->type, dst_reg, one_reg, zero_reg);
+        IR_emit_instr_phi(builder, e_bblock, operand->type, dst_reg, one_reg, zero_reg);
     }
 
     operand->kind = IR_OPERAND_REG;
     operand->reg = dst_reg;
+
+    return e_bblock;
 }
 
-static void IR_execute_deref(IR_ProcBuilder* builder, IR_Operand* operand)
+static void IR_execute_deref(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEREF_ADDR);
 
     IR_Reg dst_reg = IR_next_reg(builder);
 
-    IR_emit_instr_load(builder, operand->type, dst_reg, operand->addr);
+    IR_emit_instr_load(builder, bblock, operand->type, dst_reg, operand->addr);
 
     operand->kind = IR_OPERAND_REG;
     operand->reg = dst_reg;
@@ -969,6 +1017,7 @@ static void IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, IR_Operand* dst_o
 
         // Convert left expression's final jmp to a short-circuit jmp.
         IR_DeferredJmpcc j;
+        // TODO: Provide from block
         IR_copy_sc_jmp(builder, &j, &left_op.cmp.final_jmp, short_circuit_val);
         IR_new_deferred_sc_jmp(builder, &dst_op->cmp, j.cmp, j.result, j.jmp);
     }
@@ -999,6 +1048,7 @@ static void IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, IR_Operand* dst_o
         IR_mov_deferred_sc_jmp_list(&dst_op->cmp, &right_op.cmp);
 
         // Convert the right expression's final jmp into a final jmp to the "false" path.
+        // TODO: Provide from block
         IR_copy_sc_jmp(builder, &dst_op->cmp.final_jmp, &right_op.cmp.final_jmp, false);
     }
     // The right subexpression is some computation (not a deferred comparison). Compare the right subexpression to zero
@@ -1737,7 +1787,7 @@ static void IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, StmtExprAssign* st
     }
 }
 
-static void IR_emit_stmt_if(IR_ProcBuilder* builder, StmtIf* stmt, u32* break_target, u32* continue_target)
+static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* stmt, BBlock* break_target, BBlock* continue_target)
 {
     Expr* cond_expr = stmt->if_blk.cond;
     Stmt* if_body = stmt->if_blk.body;
@@ -1747,81 +1797,74 @@ static void IR_emit_stmt_if(IR_ProcBuilder* builder, StmtIf* stmt, u32* break_ta
     if (cond_expr->is_constexpr && cond_expr->is_imm) {
         assert(type_is_scalar(cond_expr->type));
         bool cond_val = cond_expr->imm.as_int._u64 != 0;
+        Stmt* body = cond_expr->imm.as_int._u64 != 0 ? if_body : else_body;
 
-        if (cond_val)
-            IR_emit_stmt(builder, if_body, break_target, continue_target);
-        else
-            IR_emit_stmt(builder, else_body, break_target, continue_target);
+        return IR_emit_stmt(builder, bblock, body, break_target, continue_target);
     }
+
+    IR_Operand cond_op = {0};
+    BBlock* hdr_bb = IR_emit_expr(builder, bblock, cond_expr, &cond_op);
+
+    BBlock* true_bb = IR_alloc_bblock(builder);
+    BBlock* false_bb = NULL;
+    BBlock* end_bb = IR_alloc_bblock(builder);
+    BBlock* false_tgt = end_bb;
+
+    IR_connect_bblocks(h_bblock, t_bblock);
+
+    if (else_body) {
+        false_tgt = false_bb = IR_alloc_bblock(builder);
+        IR_connect_bblocks(hdr_bb, false_bb);
+    }
+
+    // If the condition is a chain of deferred comparisons, patch the jump targets
+    if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
+        IR_DeferredJmpcc* final_jmp = &cond_op.cmp.final_jmp;
+
+        // Create a jump to the "false" path if it doesn't yet exist.
+        if (!final_jmp->jmp) {
+            final_jmp->jmp = IR_emit_instr_cond_jmp(builder, hdr_bb, false_tgt, true_bb, cond_op.cmp.final_jmp.cmp->cmp.r);
+        }
+        else {
+            IR_patch_jmp_target(final_jmp->jmp, false_tgt);
+        }
+
+        IR_fix_sc_jmp_path(final_jmp, false);
+
+        // Patch the jump target for all short-circuit jmps that jump to the "true" control path.
+        for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
+            IR_patch_jmp_target(it->jmp, (it->result ? true_bb : false_tgt));
+        }
+
+    }
+    // If the condition is some computation, compare the condition to zero and create a conditional
+    // jump to the "false" path.
     else {
-        IR_Operand cond_op = {0};
-        IR_emit_expr(builder, cond_expr, &cond_op);
+        IR_op_to_r(builder, &cond_op);
 
-        Instr* jmpcc_false = NULL;
+        IR_Reg imm_reg = IR_next_reg(builder);
+        IR_emit_instr_limm(builder, hdr_bb, cond_op.type, imm_reg, ir_zero_imm);
 
-        // If the condition is a chain of deferred comparisons, patch the jump targets
-        // for all short-circuit jumps that jump to the "true" path to the
-        // current instruction index.
-        if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
-            // Patch the jump target for all short-circuit jmps that jump to the "true" control path.
-            for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
-                if (it->result)
-                    IR_patch_jmp_target(it->jmp, IR_get_jmp_target(builder));
-            }
-
-            // Create a jump to the "false" path if it doesn't yet exist.
-            if (!cond_op.cmp.final_jmp.jmp)
-                cond_op.cmp.final_jmp.jmp = IR_emit_instr_cond_jmp(builder, IR_alloc_jmp_target(builder, 0),
-                                                                    cond_op.cmp.final_jmp.cmp->cmp.r);
-        }
-        // If the condition is some computation, compare the condition to zero and create a conditional
-        // jump to the "false" path.
-        else {
-            IR_op_to_r(builder, &cond_op);
-
-            IR_Reg imm_reg = IR_next_reg(builder);
-            IR_emit_instr_limm(builder, cond_op.type, imm_reg, ir_zero_imm);
-
-            IR_Reg cmp_reg = IR_next_reg(builder);
-            IR_emit_instr_cmp(builder, cond_op.type, COND_EQ, cmp_reg, cond_op.reg, imm_reg);
-
-            // Emit conditional jump without a jump target. The jump target will be filled in below.
-            jmpcc_false = IR_emit_instr_cond_jmp(builder, IR_alloc_jmp_target(builder, 0), cmp_reg);
-        }
-
-        // Emit instructions for if-block body.
-        IR_emit_stmt(builder, if_body, break_target, continue_target);
-
-        // Code path from if-block needs to jump over the else block. However, this jump instruction is only necessary
-        // if a non-empty else block exists and if not all code paths within the if-block return.
-        Instr* jmp_end_instr = else_body && !if_body->returns ? IR_emit_instr_jmp(builder, IR_alloc_jmp_target(builder, 0)) : NULL;
-
-        // Patch conditional jmp instruction(s) that jump over the if-block when the condition is false.
-        if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
-            // Patch the jump target for all short-circuit jmps that jump to the "false" control path.
-            for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
-                if (!it->result)
-                    IR_patch_jmp_target(it->jmp, IR_get_jmp_target(builder));
-            }
-
-            // Patch final jmp to "false" control path.
-            IR_DeferredJmpcc* final_jmp = &cond_op.cmp.final_jmp;
-            IR_fix_sc_jmp_path(final_jmp, false);
-            IR_patch_jmp_target(final_jmp->jmp, IR_get_jmp_target(builder));
-        }
-        else {
-            IR_patch_jmp_target(jmpcc_false, IR_get_jmp_target(builder));
-        }
-
-        if (else_body) {
-            // Emit instructions for else-block body.
-            IR_emit_stmt(builder, else_body, break_target, continue_target);
-
-            // Patch jmp instruction that jumps to the end of the else-block.
-            if (jmp_end_instr)
-                IR_patch_jmp_target(jmp_end_instr, IR_get_jmp_target(builder));
-        }
+        // Jump that skips the true path if cond == 0.
+        IR_Reg cmp_reg = IR_next_reg(builder);
+        IR_emit_instr_cmp(builder, hdr_bb, cond_op.type, COND_EQ, cmp_reg, cond_op.reg, imm_reg);
+        IR_emit_instr_cond_jmp(builder, hdr_bb, false_tgt, true_bb, cmp_reg);
     }
+
+    // Emit instructions for if-block body.
+    BBlock* true_end_bb = IR_emit_stmt(builder, true_bb, if_body, break_target, continue_target);
+
+    // Jump to the end bblock
+    IR_emit_instr_jmp(builder, true_end_bb, end_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
+    IR_connect_bblocks(true_end_bb, end_bb);
+
+    if (else_body) {
+        BBlock* false_end_bb = IR_emit_stmt(builder, false_bb, else_body, break_target, continue_target);
+        IR_emit_instr_jmp(builder, false_end_bb, end_bb); // Not really needed in actual assembly (fall-through)
+        IR_connect_bblocks(false_end_bb, end_bb);
+    }
+
+    return end_bb;
 }
 
 static void IR_emit_inf_loop(IR_ProcBuilder* builder, Stmt* body)
