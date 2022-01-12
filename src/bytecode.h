@@ -188,6 +188,7 @@ typedef struct InstrPhi {
 
 typedef struct Instr {
     InstrKind kind;
+    long ino; // Instruction number
     bool is_jmp_target;
     bool is_leader; // TODO: Collapse booleans into a flags field
 

@@ -827,10 +827,14 @@ struct SymbolVar {
 };
 
 struct BBlock {
-    size_t id;
+    long id;
     size_t num_instrs;
+
     Instr* first;
     Instr* last;
+
+    bool is_loop_hdr;
+    BBlock* loop_end;
 
     BBlock** preds; // Stretchy buffer of predecessor basic blocks.
 
@@ -840,6 +844,7 @@ struct BBlock {
 
 struct SymbolProc {
     BBlock** bblocks; // Stretchy buffer of basic blocks
+    size_t num_instrs;
 
     u32 num_regs;
     bool is_nonleaf;

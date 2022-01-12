@@ -98,11 +98,10 @@ static BBlock* IR_alloc_bblock(IR_ProcBuilder* builder)
 {
     BBlock* block = alloc_type(builder->arena, Block, true);
 
-    block->id = array_len(builder->curr_proc.as_proc.bblocks);
     block->preds = array_create(builder->arena, BBlock*, 4);
     block->succs = array_create(builder->arena, BBlock*, 4);
-
-    array_push(builder->curr_proc.as_proc.bblocks, block);
+    bblock->id = array_len(builder->curr_proc.as_proc.bblocks);
+    array_push(builder->curr_proc.as_proc.bblocks, bblock);
 
     return block;
 }
@@ -111,6 +110,13 @@ static void IR_connect_bblocks(BBlock* pred, BBlock* succ)
 {
     array_push(pred->succs, succ);
     array_push(succ->preds, pred);
+}
+
+static void IR_connect_loop_bblocks(BBlock* loop_end, BBlock* loop_hdr)
+{
+    IR_connect_bblocks(loop_end, loop_hdr);
+    loop_hdr->is_loop_hdr = true;
+    loop_hdr->loop_end = loop_end;
 }
 
 static void IR_patch_jmp_target(Instr* jmp_instr, BBlock* target)
@@ -135,6 +141,7 @@ static void IR_add_instr(IR_ProcBuilder* builder, BBlock* bblock, Instr* instr)
         builder->next_instr_is_jmp_target = false;
     }
 
+    instr->ino = builder->curr_proc.num_instrs++;
     IR_bblock_add_instr(bblock, instr);
 }
 
@@ -1805,9 +1812,9 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     IR_Operand cond_op = {0};
     BBlock* hdr_bb = IR_emit_expr(builder, bblock, cond_expr, &cond_op);
 
-    BBlock* true_bb = IR_alloc_bblock(builder);
+    BBlock* true_bb = IR_alloc_bblock(builder, BBLOCK_ADD);
     BBlock* false_bb = NULL;
-    BBlock* end_bb = IR_alloc_bblock(builder);
+    BBlock* end_bb = IR_alloc_bblock(builder, BBLOCK_NO_ADD);
     BBlock* false_tgt = end_bb;
 
     IR_connect_bblocks(h_bblock, t_bblock);
@@ -1867,19 +1874,19 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     return end_bb;
 }
 
-static void IR_emit_inf_loop(IR_ProcBuilder* builder, Stmt* body)
+static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* body)
 {
-    u32 loop_top = IR_get_jmp_target(builder);
-    u32* continue_target = IR_alloc_jmp_target(builder, loop_top);
-    u32* break_target = IR_alloc_jmp_target(builder, 0);
+    BBlock* hdr_bblock = IR_alloc_bblock(builder);
+    BBlock* after_bblock = IR_alloc_bblock(builder);
+    BBlock* loop_end_bblock = IR_emit_stmt(builder, hdr_block, after_bblock, hdr_bblock);
 
-    // Emit loop body statements.
-    IR_emit_stmt(builder, body, break_target, continue_target);
+    IR_emit_instr_jmp(builder, loop_end_bblock, hdr_bblock);
 
-    // Jump back to the top of the loop.
-    IR_emit_instr_jmp(builder, IR_alloc_jmp_target(builder, loop_top));
+    IR_connect_bblocks(bblock, hdr_bblock);
+    IR_connect_loop_bblocks(loop_end_bblock, hdr_bblock);
+    IR_connect_bblocks(loop_end_bblock, after_bblock);
 
-    *break_target = IR_get_jmp_target(builder);
+    return after_bblock;
 }
 
 static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
