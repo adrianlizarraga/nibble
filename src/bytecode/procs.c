@@ -106,27 +106,47 @@ static BBlock* IR_alloc_bblock(IR_ProcBuilder* builder)
     return block;
 }
 
-static void IR_connect_bblocks(BBlock* pred, BBlock* succ)
+static void IR_try_push_bblock_elem(BBlock*** p_array, Block* bblock)
 {
-    array_push(pred->succs, succ);
-    array_push(succ->preds, pred);
+    bool found = false;
+    size_t len = array_len(*p_array);
+
+    for (size_t i = 0; i < len; i++) {
+        if ((*p_array)[i] == bblock) {
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        array_push(*p_array, bblock);
+    }
 }
 
-static void IR_connect_loop_bblocks(BBlock* loop_end, BBlock* loop_hdr)
+static void IR_connect_bblocks(BBlock* pred, BBlock* succ)
 {
-    IR_connect_bblocks(loop_end, loop_hdr);
+    IR_try_push_bblock_elem(&pred->succs, succ);
+    IR_try_push_bblock_elem(&succ->preds, pred);
+}
+
+static void IR_set_loop_bblocks(BBlock* loop_end, BBlock* loop_hdr)
+{
     loop_hdr->is_loop_hdr = true;
     loop_hdr->loop_end = loop_end;
 }
 
 static void IR_patch_jmp_target(Instr* jmp_instr, BBlock* target)
 {
+    assert(target);
+
     switch (jmp_instr->kind) {
     case INSTR_JMP:
         jmp_instr->jmp.target = target;
+        IR_connect_bblocks(jmp_instr->jmp.from, target);
         break;
     case INSTR_COND_JMP:
         jmp_instr->cond_jmp.true_bb = target; // NOTE: Only patches true path
+        IR_connect_bblocks(jmp_instr->cond_jmp.from, target);
         break;
     default:
         assert(0);
@@ -292,6 +312,14 @@ static Instr* IR_emit_instr_cond_jmp(IR_ProcBuilder* builder, BBlock* bblock, BB
 
     IR_add_instr(builder, bblock, instr);
 
+    if (true_bb) {
+        IR_connect_bblocks(bblock, true_bb);
+    }
+
+    if (false_bb) {
+        IR_connect_bblocks(bblock, false_bb);
+    }
+
     return instr;
 }
 
@@ -302,6 +330,10 @@ static Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock*
     instr->jmp.target = target;
 
     IR_add_instr(builder, bblock, instr);
+
+    if (target) {
+        IR_connect_bblocks(bblock, target);
+    }
 
     return instr;
 }
@@ -542,10 +574,8 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
         BBlock* f_bblock = IR_alloc_bblock(builder);
         e_bblock = IR_alloc_bblock(builder);
 
-        IR_connect_bblocks(bblock, t_bblock);
-        IR_connect_bblocks(bblock, f_bblock);
-        IR_connect_bblocks(t_bblock, e_bblock);
-        IR_connect_bblocks(f_bblock, e_bblock);
+        //IR_connect_bblocks(bblock, t_bblock); // TODO: Needed?
+        //IR_connect_bblocks(bblock, f_bblock);
 
         //
         // True control path.
@@ -562,7 +592,7 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
         IR_emit_instr_limm(builder, t_bblock, operand->type, one_reg, ir_one_imm);
 
         // Create a jump to skip the false control path.
-        Instr* jmp_skip_false = IR_emit_instr_jmp(builder, t_bblock, e_bblock);
+        IR_emit_instr_jmp(builder, t_bblock, e_bblock);
 
         //
         // False control path.
@@ -1794,6 +1824,52 @@ static void IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, StmtExprAssign* st
     }
 }
 
+static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* hdr_bb, BBlock* true_bb, BBlock* false_bb)
+{
+    IR_Operand cond_op = {0};
+    BBlock* hdr_end_bb = IR_emit_expr(builder, hdr_bb, expr, &cond_op);
+
+    if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
+        IR_DeferredJmpcc* final_jmp = &cond_op.cmp.final_jmp;
+
+        BBlock* a_bb = true_bb;
+        BBlock* b_bb = false_bb;
+
+        if (!final_jmp->result) {
+            a_bb = false_bb;
+            b_bb = true_bb;
+        }
+
+        // Patch final jump targets or create it if it doesn't exist.
+        if (final_jmp->jmp) {
+            final_jmp->jmp->cond_jmp.true_bb = a_bb;
+            final_jmp->jmp->cond_jmp.false_bb = b_bb;
+        }
+        else {
+            final_jmp->jmp = IR_emit_instr_cond_jmp(builder, hdr_end_bb, a_bb, b_bb, final_jmp->cmp->cmp.r);
+        }
+
+        // Patch short-circuit jumps.
+        for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
+            IR_patch_jmp_target(it->jmp, (it->result ? true_bb : false_bb));
+        }
+    }
+    else {
+        IR_op_to_r(builder, &cond_op);
+
+        // Load zero into a register.
+        IR_Reg imm_reg = IR_next_reg(builder);
+        IR_emit_instr_limm(builder, hdr_end_bb, cond_op.type, imm_reg, ir_zero_imm);
+
+        // Check if cond == 0, if so jump to after_bb, else fall to body_bb
+        IR_Reg cmp_reg = IR_next_reg(builder);
+        IR_emit_instr_cmp(builder, hdr_end_bb, cond_op.type, COND_EQ, cmp_reg, cond_op.reg, imm_reg);
+        IR_emit_instr_cond_jmp(builder, hdr_end_bb, false_bb, true_bb, cmp_reg);
+    }
+
+    return hdr_end_bb;
+}
+
 static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* stmt, BBlock* break_target, BBlock* continue_target)
 {
     Expr* cond_expr = stmt->if_blk.cond;
@@ -1809,66 +1885,28 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
         return IR_emit_stmt(builder, bblock, body, break_target, continue_target);
     }
 
-    IR_Operand cond_op = {0};
-    BBlock* hdr_bb = IR_emit_expr(builder, bblock, cond_expr, &cond_op);
-
-    BBlock* true_bb = IR_alloc_bblock(builder, BBLOCK_ADD);
+    BBlock* true_bb = IR_alloc_bblock(builder);
     BBlock* false_bb = NULL;
-    BBlock* end_bb = IR_alloc_bblock(builder, BBLOCK_NO_ADD);
+    BBlock* end_bb = IR_alloc_bblock(builder);
     BBlock* false_tgt = end_bb;
-
-    IR_connect_bblocks(h_bblock, t_bblock);
 
     if (else_body) {
         false_tgt = false_bb = IR_alloc_bblock(builder);
-        IR_connect_bblocks(hdr_bb, false_bb);
     }
 
-    // If the condition is a chain of deferred comparisons, patch the jump targets
-    if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
-        IR_DeferredJmpcc* final_jmp = &cond_op.cmp.final_jmp;
-
-        // Create a jump to the "false" path if it doesn't yet exist.
-        if (!final_jmp->jmp) {
-            final_jmp->jmp = IR_emit_instr_cond_jmp(builder, hdr_bb, false_tgt, true_bb, cond_op.cmp.final_jmp.cmp->cmp.r);
-        }
-        else {
-            IR_patch_jmp_target(final_jmp->jmp, false_tgt);
-        }
-
-        IR_fix_sc_jmp_path(final_jmp, false);
-
-        // Patch the jump target for all short-circuit jmps that jump to the "true" control path.
-        for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
-            IR_patch_jmp_target(it->jmp, (it->result ? true_bb : false_tgt));
-        }
-
-    }
-    // If the condition is some computation, compare the condition to zero and create a conditional
-    // jump to the "false" path.
-    else {
-        IR_op_to_r(builder, &cond_op);
-
-        IR_Reg imm_reg = IR_next_reg(builder);
-        IR_emit_instr_limm(builder, hdr_bb, cond_op.type, imm_reg, ir_zero_imm);
-
-        // Jump that skips the true path if cond == 0.
-        IR_Reg cmp_reg = IR_next_reg(builder);
-        IR_emit_instr_cmp(builder, hdr_bb, cond_op.type, COND_EQ, cmp_reg, cond_op.reg, imm_reg);
-        IR_emit_instr_cond_jmp(builder, hdr_bb, false_tgt, true_bb, cmp_reg);
-    }
+    // Process condition
+    IR_process_cfg_cond(builder, cond_expr, bblock, true_bb, false_tgt);
 
     // Emit instructions for if-block body.
     BBlock* true_end_bb = IR_emit_stmt(builder, true_bb, if_body, break_target, continue_target);
 
     // Jump to the end bblock
     IR_emit_instr_jmp(builder, true_end_bb, end_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
-    IR_connect_bblocks(true_end_bb, end_bb);
 
     if (else_body) {
         BBlock* false_end_bb = IR_emit_stmt(builder, false_bb, else_body, break_target, continue_target);
+
         IR_emit_instr_jmp(builder, false_end_bb, end_bb); // Not really needed in actual assembly (fall-through)
-        IR_connect_bblocks(false_end_bb, end_bb);
     }
 
     return end_bb;
@@ -1877,212 +1915,118 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
 static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* body)
 {
     BBlock* hdr_bblock = IR_alloc_bblock(builder);
+    IR_emit_instr_jmp(builder, bblock, hdr_bblock);
+
     BBlock* after_bblock = IR_alloc_bblock(builder);
     BBlock* loop_end_bblock = IR_emit_stmt(builder, hdr_block, after_bblock, hdr_bblock);
 
     IR_emit_instr_jmp(builder, loop_end_bblock, hdr_bblock);
-
-    IR_connect_bblocks(bblock, hdr_bblock);
-    IR_connect_loop_bblocks(loop_end_bblock, hdr_bblock);
-    IR_connect_bblocks(loop_end_bblock, after_bblock);
+    IR_set_loop_bblocks(loop_end_bblock, hdr_bblock);
 
     return after_bblock;
 }
 
-static void IR_emit_stmt_while(IR_ProcBuilder* builder, StmtWhile* stmt)
+static BBlock* IR_emit_stmt_while(IR_ProcBuilder* builder, BBlock* bblock, StmtWhile* stmt)
 {
     Expr* cond_expr = stmt->cond;
-    Stmt* body = stmt->body;
+    Stmt* body_stmt = stmt->body;
 
     if (cond_expr->is_constexpr && cond_expr->is_imm) {
         assert(type_is_scalar(cond_expr->type));
         bool cond_val = cond_expr->imm.as_int._u64 != 0;
 
         // Emit infinite loop
-        if (cond_val) {
-            IR_emit_inf_loop(builder, body);
-        }
+        return cond_val ? IR_emit_inf_loop(builder, bblock, body) : bblock;
     }
-    else {
-        // Emit jmp instruction to the loop's condition check. Target adddress
-        // will be patched.
-        Instr* jmp_instr = IR_emit_instr_jmp(builder, IR_alloc_jmp_target(builder, 0));
 
-        // Save the current instruction index to enable jumps to the top of the loop.
-        u32 loop_top = IR_get_jmp_target(builder);
+    BBlock* hdr_bb = IR_alloc_bblock(builder);
+    BBlock* body_bb = IR_alloc_bblock(builder);
+    BBlock* last_bb = IR_alloc_bblock(builder);
 
-        // Emit instructions for the loop body.
-        u32* break_target = IR_alloc_jmp_target(builder, 0);
-        u32* continue_target = IR_alloc_jmp_target(builder, 0);
-        IR_emit_stmt(builder, body, break_target, continue_target);
+    // Jump to the loop header basic block.
+    IR_emit_instr_jmp(builder, bblock, hdr_bb);
 
-        // Patch both the initial jmp instruction and the continue target with the location of the condition check.
-        u32 loop_cond_check = IR_get_jmp_target(builder);
-        IR_patch_jmp_target(jmp_instr, loop_cond_check);
-        *continue_target = loop_cond_check;
+    // Process condition
+    IR_process_cfg_cond(builder, cond_expr, hdr_bb, body_bb, last_bb);
 
-        // Emit condition expression.
-        IR_Operand cond_op = {0};
-        IR_emit_expr(builder, cond_expr, &cond_op);
+    // Emit instructions for the loop body.
+    //   - break target: last_bb
+    //   - continue target: hdr_bb
+    BBlock* body_end_bb = IR_emit_stmt(builder, body_bb, body_stmt, last_bb, hdr_bb); // TODO: Check for NULL when break is only stmt
 
-        if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
+    // Jump back up to the loop header.
+    IR_emit_instr_jmp(builder, body_end_bb, hdr_bb);
 
-            // Patch final jump to the top of the loop (create one if jump does not exist).
-            if (cond_op.cmp.final_jmp.jmp) {
-                IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
-            }
-            else {
-                cond_op.cmp.final_jmp.jmp =
-                    IR_emit_instr_cond_jmp(builder, IR_alloc_jmp_target(builder, loop_top), cond_op.cmp.final_jmp.cmp->cmp.r);
-            }
+    // Explicitly mark basic blocks inside the loop.
+    IR_set_loop_bblocks(body_end_bb, hdr_bb);
 
-            // Reverse jump condition so that it goes to the "true" path.
-            IR_DeferredJmpcc* final_jmp = &cond_op.cmp.final_jmp;
-            IR_fix_sc_jmp_path(final_jmp, true);
-
-            u32 loop_bottom = IR_get_jmp_target(builder);
-
-            // Patch short-circuit jumps to the top or bottom of the loop.
-            for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
-                if (it->result)
-                    IR_patch_jmp_target(it->jmp, loop_top);
-                else
-                    IR_patch_jmp_target(it->jmp, loop_bottom);
-            }
-        }
-        else {
-            IR_op_to_r(builder, &cond_op);
-
-            // Load zero into a register.
-            IR_Reg imm_reg = IR_next_reg(builder);
-            IR_emit_instr_limm(builder, cond_op.type, imm_reg, ir_zero_imm);
-
-            // Compare condition expression to zero.
-            IR_Reg cmp_reg = IR_next_reg(builder);
-            IR_emit_instr_cmp(builder, cond_op.type, COND_NEQ, cmp_reg, cond_op.reg, imm_reg);
-
-            // Emit conditional jump to the top of the loop.
-            IR_emit_instr_cond_jmp(builder, IR_alloc_jmp_target(builder, loop_top), cmp_reg);
-        }
-
-        *break_target = IR_get_jmp_target(builder);
-    }
+    return last_bb;
 }
 
-static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, StmtDoWhile* stmt)
+static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, StmtDoWhile* stmt)
 {
     Expr* cond_expr = stmt->cond;
-    Stmt* body = stmt->body;
+    Stmt* body_stmt = stmt->body;
 
     if (cond_expr->is_constexpr && cond_expr->is_imm) {
         assert(type_is_scalar(cond_expr->type));
         bool cond_val = cond_expr->imm.as_int._u64 != 0;
 
         // Emit infinite loop
-        if (cond_val) {
-            IR_emit_inf_loop(builder, body);
-        }
+        return cond_val ? IR_emit_inf_loop(builder, bblock, body) : bblock;
     }
-    else {
-        // Save the current instruction index to enable jumps to the top of the loop.
-        u32 loop_top = IR_get_jmp_target(builder);
 
-        // Emit instructions for the loop body.
-        u32* break_target = IR_alloc_jmp_target(builder, 0);
-        u32* continue_target = IR_alloc_jmp_target(builder, 0);
-        IR_emit_stmt(builder, body, break_target, continue_target);
+    BBlock* body_bb = IR_alloc_bblock(builder);
+    BBlock* last_bb = IR_alloc_bblock(builder);
 
-        // Patch continue target to the location of the condition check.
-        *continue_target = IR_get_jmp_target(builder);
+    // Jump to the body basic block.
+    IR_emit_instr_jmp(builder, bblock, body_bb);
 
-        // Emit condition expression.
-        IR_Operand cond_op = {0};
-        IR_emit_expr(builder, cond_expr, &cond_op);
+    // Emit instructions for the loop body.
+    //   - break target: last_bb
+    //   - continue target: body_bb
+    BBlock* body_end_bb = IR_emit_stmt(builder, body_bb, body_stmt, last_bb, body_bb);
 
-        if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
+    // Process condition.
+    BBlock* cond_end_bb = IR_process_cfg_cond(builder, cond_expr, body_end_bb, body_bb, last_bb);
 
-            // Path final jump to the top of the loop (create one if jump does not exist).
-            if (cond_op.cmp.final_jmp.jmp) {
-                IR_patch_jmp_target(cond_op.cmp.final_jmp.jmp, loop_top);
-            }
-            else {
-                cond_op.cmp.final_jmp.jmp =
-                    IR_emit_instr_cond_jmp(builder, IR_alloc_jmp_target(builder, loop_top), cond_op.cmp.final_jmp.cmp->cmp.r);
-            }
+    // Explicitly mark basic blocks inside the loop.
+    IR_set_loop_bblocks(cond_end_bb, body_bb);
 
-            // Reverse jump condition so that it goes to the "true" path.
-            IR_DeferredJmpcc* final_jmp = &cond_op.cmp.final_jmp;
-            IR_fix_sc_jmp_path(final_jmp, true);
-
-            u32 loop_bottom = IR_get_jmp_target(builder);
-
-            // Patch short-circuit jumps to the top or bottom of the loop.
-            for (IR_DeferredJmpcc* it = cond_op.cmp.first_sc_jmp; it; it = it->next) {
-                if (it->result)
-                    IR_patch_jmp_target(it->jmp, loop_top);
-                else
-                    IR_patch_jmp_target(it->jmp, loop_bottom);
-            }
-        }
-        else {
-            IR_op_to_r(builder, &cond_op);
-
-            // Load zero into a register.
-            IR_Reg imm_reg = IR_next_reg(builder);
-            IR_emit_instr_limm(builder, cond_op.type, imm_reg, ir_zero_imm);
-
-            // Compare condition expression to zero.
-            IR_Reg cmp_reg = IR_next_reg(builder);
-            IR_emit_instr_cmp(builder, cond_op.type, COND_NEQ, cmp_reg, cond_op.reg, imm_reg);
-
-            // Emit conditional jump to the top of the loop.
-            IR_emit_instr_cond_jmp(builder, IR_alloc_jmp_target(builder, loop_top), cmp_reg);
-        }
-
-        *break_target = IR_get_jmp_target(builder);
-    }
+    return last_bb;
 }
 
-static void IR_emit_stmt(IR_ProcBuilder* builder, Stmt* stmt, u32* break_target, u32* continue_target)
+static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt, BBlock* break_target, BBlock* continue_target)
 {
     switch (stmt->kind) {
     case CST_StmtBlock:
-        IR_emit_stmt_block(builder, (StmtBlock*)stmt, break_target, continue_target);
-        break;
+        return IR_emit_stmt_block(builder, bblock, (StmtBlock*)stmt, break_target, continue_target);
     case CST_StmtReturn:
-        IR_emit_stmt_return(builder, (StmtReturn*)stmt);
-        break;
+        return IR_emit_stmt_return(builder, bblock, (StmtReturn*)stmt);
     case CST_StmtDecl:
-        IR_emit_stmt_decl(builder, (StmtDecl*)stmt);
-        break;
+        return IR_emit_stmt_decl(builder, bblock, (StmtDecl*)stmt);
     case CST_StmtExpr:
-        IR_emit_stmt_expr(builder, (StmtExpr*)stmt);
-        break;
+        return IR_emit_stmt_expr(builder, bblock, (StmtExpr*)stmt);
     case CST_StmtExprAssign:
-        IR_emit_stmt_expr_assign(builder, (StmtExprAssign*)stmt);
-        break;
+        return IR_emit_stmt_expr_assign(builder, bblock, (StmtExprAssign*)stmt);
     case CST_StmtIf:
-        IR_emit_stmt_if(builder, (StmtIf*)stmt, break_target, continue_target);
-        break;
+        return IR_emit_stmt_if(builder, bblock, (StmtIf*)stmt, break_target, continue_target);
     case CST_StmtWhile:
-        IR_emit_stmt_while(builder, (StmtWhile*)stmt);
-        break;
+        return IR_emit_stmt_while(builder, bblock, (StmtWhile*)stmt);
     case CST_StmtDoWhile:
-        IR_emit_stmt_do_while(builder, (StmtDoWhile*)stmt);
-        break;
+        return IR_emit_stmt_do_while(builder, bblock, (StmtDoWhile*)stmt);
     case CST_StmtBreak:
-        IR_emit_instr_jmp(builder, break_target);
-        break;
+        IR_emit_instr_jmp(builder, bblock, break_target);
+        return NULL; // Is this correct?
     case CST_StmtContinue:
-        IR_emit_instr_jmp(builder, continue_target);
-        break;
+        IR_emit_instr_jmp(builder, bblock, continue_target);
+        return NULL; // Is this correct?
     case CST_StmtStaticAssert:
         // Do nothing.
-        break;
+        return bblock;
     default:
-        ftprint_err("Cannot emit bytecode instruction for statement kind `%d`\n", stmt->kind);
-        assert(0);
-        break;
+        NIBBLE_FATAL_EXIT("Cannot emit bytecode instruction for statement kind `%d`\n", stmt->kind);
+        return bblock;
     }
 }
 
