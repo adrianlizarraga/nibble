@@ -1887,8 +1887,8 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
 
     BBlock* true_bb = IR_alloc_bblock(builder);
     BBlock* false_bb = NULL;
-    BBlock* end_bb = IR_alloc_bblock(builder);
-    BBlock* false_tgt = end_bb;
+    BBlock* last_bb = IR_alloc_bblock(builder);
+    BBlock* false_tgt = last_bb;
 
     if (else_body) {
         false_tgt = false_bb = IR_alloc_bblock(builder);
@@ -1901,7 +1901,7 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     BBlock* true_end_bb = IR_emit_stmt(builder, true_bb, if_body, break_target, continue_target);
 
     if (true_end_bb) {
-        IR_emit_instr_jmp(builder, true_end_bb, end_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
+        IR_emit_instr_jmp(builder, true_end_bb, last_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
     }
 
 
@@ -1910,7 +1910,7 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
 
 
         if (false_end_bb) {
-            IR_emit_instr_jmp(builder, false_end_bb, end_bb); // Not really needed in actual assembly (fall-through)
+            IR_emit_instr_jmp(builder, false_end_bb, last_bb); // Not really needed in actual assembly (fall-through)
         }
         else if (!true_end_bb) {
             // Both paths jump out using break/continue.
@@ -1919,7 +1919,7 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
         }
     }
 
-    return end_bb;
+    return last_bb;
 }
 
 static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* body)
@@ -1930,8 +1930,10 @@ static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* b
     BBlock* after_bblock = IR_alloc_bblock(builder);
     BBlock* loop_end_bblock = IR_emit_stmt(builder, hdr_block, after_bblock, hdr_bblock);
 
-    IR_emit_instr_jmp(builder, loop_end_bblock, hdr_bblock);
-    IR_set_loop_bblocks(loop_end_bblock, hdr_bblock);
+    if (loop_end_bblock) {
+        IR_emit_instr_jmp(builder, loop_end_bblock, hdr_bblock);
+        IR_set_loop_bblocks(loop_end_bblock, hdr_bblock);
+    }
 
     return after_bblock;
 }
@@ -1964,11 +1966,13 @@ static BBlock* IR_emit_stmt_while(IR_ProcBuilder* builder, BBlock* bblock, StmtW
     //   - continue target: hdr_bb
     BBlock* body_end_bb = IR_emit_stmt(builder, body_bb, body_stmt, last_bb, hdr_bb); // TODO: Check for NULL when break is only stmt
 
-    // Jump back up to the loop header.
-    IR_emit_instr_jmp(builder, body_end_bb, hdr_bb);
+    if (body_end_bb) {
+        // Jump back up to the loop header.
+        IR_emit_instr_jmp(builder, body_end_bb, hdr_bb);
 
-    // Explicitly mark basic blocks inside the loop.
-    IR_set_loop_bblocks(body_end_bb, hdr_bb);
+        // Explicitly mark basic blocks inside the loop.
+        IR_set_loop_bblocks(body_end_bb, hdr_bb);
+    }
 
     return last_bb;
 }
@@ -1997,11 +2001,13 @@ static void IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, StmtD
     //   - continue target: body_bb
     BBlock* body_end_bb = IR_emit_stmt(builder, body_bb, body_stmt, last_bb, body_bb);
 
-    // Process condition.
-    BBlock* cond_end_bb = IR_process_cfg_cond(builder, cond_expr, body_end_bb, body_bb, last_bb);
+    if (body_end_bb) {
+        // Process condition.
+        BBlock* cond_end_bb = IR_process_cfg_cond(builder, cond_expr, body_end_bb, body_bb, last_bb);
 
-    // Explicitly mark basic blocks inside the loop.
-    IR_set_loop_bblocks(cond_end_bb, body_bb);
+        // Explicitly mark basic blocks inside the loop.
+        IR_set_loop_bblocks(cond_end_bb, body_bb);
+    }
 
     return last_bb;
 }
