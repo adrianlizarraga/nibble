@@ -1900,13 +1900,23 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     // Emit instructions for if-block body.
     BBlock* true_end_bb = IR_emit_stmt(builder, true_bb, if_body, break_target, continue_target);
 
-    // Jump to the end bblock
-    IR_emit_instr_jmp(builder, true_end_bb, end_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
+    if (true_end_bb) {
+        IR_emit_instr_jmp(builder, true_end_bb, end_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
+    }
+
 
     if (else_body) {
         BBlock* false_end_bb = IR_emit_stmt(builder, false_bb, else_body, break_target, continue_target);
 
-        IR_emit_instr_jmp(builder, false_end_bb, end_bb); // Not really needed in actual assembly (fall-through)
+
+        if (false_end_bb) {
+            IR_emit_instr_jmp(builder, false_end_bb, end_bb); // Not really needed in actual assembly (fall-through)
+        }
+        else if (!true_end_bb) {
+            // Both paths jump out using break/continue.
+            // TODO: If scope has other statements after if/else, this should be a compiler error in the resolver.
+            return NULL;
+        }
     }
 
     return end_bb;

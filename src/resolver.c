@@ -2496,6 +2496,7 @@ static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* r
     for (List* it = head->next; it != head; it = it->next) {
         Stmt* child_stmt = list_entry(it, Stmt, lnode);
 
+        // TODO: Also consider statements after break or continue
         if (ret_success & RESOLVE_STMT_RETURNS) {
             resolver_on_error(resolver, child_stmt->range, "Statement will never be executed; all previous control paths return");
 
