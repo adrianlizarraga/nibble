@@ -900,8 +900,8 @@ static void IR_pop_scope(IR_ProcBuilder* builder)
 //
 //////////////////////////////////////////////////////
 
-static void IR_emit_stmt(IR_ProcBuilder* builder, Stmt* stmt, u32* break_target, u32* continue_target);
-static void IR_emit_expr(IR_ProcBuilder* builder, Expr* expr, IR_Operand* dst);
+static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt, BBlock* break_target, BBlock* continue_target);
+static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr, IR_Operand* dst);
 
 static void IR_emit_expr_ident(IR_ProcBuilder* builder, ExprIdent* eident, IR_Operand* dst)
 {
@@ -923,7 +923,7 @@ static void IR_emit_expr_ident(IR_ProcBuilder* builder, ExprIdent* eident, IR_Op
     IR_operand_from_sym(dst, sym);
 }
 
-static void IR_emit_ptr_int_add(IR_ProcBuilder* builder, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
+static void IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
 {
     u64 base_size = ptr_op->type->as_ptr.base->size;
 
@@ -944,9 +944,9 @@ static void IR_emit_ptr_int_add(IR_ProcBuilder* builder, IR_Operand* dst, IR_Ope
             IR_Reg b = int_op->reg;
 
             if (add)
-                IR_emit_instr_add(builder, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
+                IR_emit_instr_add(builder, bblock, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
             else
-                IR_emit_instr_sub(builder, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
+                IR_emit_instr_sub(builder, bblock, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
 
             ptr_op->addr.index_reg = r;
         }
@@ -957,7 +957,7 @@ static void IR_emit_ptr_int_add(IR_ProcBuilder* builder, IR_Operand* dst, IR_Ope
                 IR_Reg a = int_op->reg;
 
                 int_op->reg = IR_next_reg(builder);
-                IR_emit_instr_neg(builder, int_op->type, int_op->reg, a);
+                IR_emit_instr_neg(builder, bblock, int_op->type, int_op->reg, a);
             }
 
             ptr_op->addr.scale = base_size;
@@ -968,15 +968,15 @@ static void IR_emit_ptr_int_add(IR_ProcBuilder* builder, IR_Operand* dst, IR_Ope
     *dst = *ptr_op;
 }
 
-static void IR_emit_binary_cmp(IR_ProcBuilder* builder, ConditionKind cond_kind, Type* dst_type, IR_Operand* dst_op,
-                                IR_Operand* left_op, IR_Operand* right_op)
+static void IR_emit_binary_cmp(IR_ProcBuilder* builder, BBlock* bblock, ConditionKind cond_kind, Type* dst_type, IR_Operand* dst_op,
+                               IR_Operand* left_op, IR_Operand* right_op)
 {
     assert(left_op->type == right_op->type);
     IR_op_to_r(builder, left_op);
     IR_op_to_r(builder, right_op);
 
     IR_Reg cmp_reg = IR_next_reg(builder);
-    Instr* cmp_instr = IR_emit_instr_cmp(builder, left_op->type, cond_kind, cmp_reg, left_op->reg, right_op->reg);
+    Instr* cmp_instr = IR_emit_instr_cmp(builder, bblock, left_op->type, cond_kind, cmp_reg, left_op->reg, right_op->reg);
 
     dst_op->type = dst_type;
     dst_op->kind = IR_OPERAND_DEFERRED_CMP;
@@ -1103,19 +1103,19 @@ static void IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock, I
     }
 }
 
-static void IR_emit_expr_binary(IR_ProcBuilder* builder, ExprBinary* expr, IR_Operand* dst)
+static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, ExprBinary* expr, IR_Operand* dst)
 {
     if (expr->op == TKN_LOGIC_AND || expr->op == TKN_LOGIC_OR) {
         IR_emit_short_circuit_cmp(builder, dst, expr);
-        return;
+        return NULL;
     }
 
     Type* result_type = expr->super.type;
     IR_Operand left = {0};
     IR_Operand right = {0};
 
-    IR_emit_expr(builder, expr->left, &left);
-    IR_emit_expr(builder, expr->right, &right);
+    BBlock* left_bb = IR_emit_expr(builder, bblock, expr->left, &left);
+    BBlock* right_bb = IR_emit_expr(builder, left_bb, expr->right, &right);
 
     switch (expr->op) {
     case TKN_PLUS: {
@@ -1822,7 +1822,6 @@ static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* 
     BBlock* hdr_end_bb = IR_emit_expr(builder, hdr_bb, expr, &cond_op);
 
     if (cond_op.kind == IR_OPERAND_DEFERRED_CMP) {
-        // TODO: Should emitting a short-circuit return a bblock??
         IR_DeferredJmpcc* final_jmp = &cond_op.cmp.final_jmp;
 
         BBlock* a_bb = true_bb;
