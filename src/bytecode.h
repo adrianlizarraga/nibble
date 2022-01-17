@@ -147,7 +147,6 @@ typedef struct InstrCondJmp {
     IR_Reg a;
 } InstrCondJmp;
 
-
 typedef struct InstrCallArg {
     Type* type;
     IR_Reg loc;
@@ -189,8 +188,7 @@ typedef struct InstrPhi {
 typedef struct Instr {
     InstrKind kind;
     long ino; // Instruction number
-    bool is_jmp_target;
-    bool is_leader; // TODO: Collapse booleans into a flags field
+    bool is_leader;
 
     union {
         InstrBinary binary;
@@ -229,6 +227,8 @@ struct BBlock {
 
     // TODO: Only 2 successors possible?
     BBlock** succs; // Stretchy buffer of successor basic blocks.
+
+    bool visited;
 };
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, TypeCache* type_cache);

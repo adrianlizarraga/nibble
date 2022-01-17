@@ -171,16 +171,17 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         break;
     }
     case INSTR_CMP: {
-        ftprint_char_array(&dstr, false, "cmp <%s> %s, %s, %s, %s", type_name(instr->cmp.type), IR_print_reg(arena, instr->cmp.r),
+        ftprint_char_array(&dstr, false, "cmp <%s> %s, %s %s %s", type_name(instr->cmp.type), IR_print_reg(arena, instr->cmp.r),
                            IR_print_reg(arena, instr->cmp.a), ir_cond_names[instr->cmp.cond], IR_print_reg(arena, instr->cmp.b));
         break;
     }
     case INSTR_JMP: {
-        ftprint_char_array(&dstr, false, "jmp %u", *instr->jmp.jmp_target);
+        ftprint_char_array(&dstr, false, "jmp B.%u", (*instr->jmp.target)->id);
         break;
     }
     case INSTR_COND_JMP: {
-        ftprint_char_array(&dstr, false, "jmpcc %s, %u", IR_print_reg(arena, instr->cond_jmp.a), *instr->cond_jmp.jmp_target);
+        ftprint_char_array(&dstr, false, "jmpcc B.%u if %s else B.%u", (*instr->cond_jmp.true_bb)->id,
+                           IR_print_reg(arena, instr->cond_jmp.a), (*instr->cond_jmp.false_bb)->id);
         break;
     }
     case INSTR_RET: {
@@ -244,17 +245,114 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
     return dstr;
 }
 
+typedef struct QueueItem {
+    void* data;
+    struct QueueItem* next;
+    struct QueueItem* prev;
+} QueueItem;
+
+typedef struct Queue {
+    QueueItem* first;
+    QueueItem* last;
+    Allocator* arena;
+} Queue;
+
+static void queue_init(Queue* queue, Allocator* arena)
+{
+    queue->first = queue->last = NULL;
+    queue->arena = arena;
+}
+
+static void queue_push(Queue* queue, void* data)
+{
+    QueueItem* item = alloc_type(queue->arena, QueueItem, false);
+    item->data = data;
+    item->next = NULL;
+
+    if (!queue->first) {
+        queue->first = item;
+    }
+    else {
+        queue->last->next = item;
+    }
+
+    item->prev = queue->last;
+    queue->last = item;
+}
+
+static bool queue_is_empty(Queue* queue)
+{
+    bool is_empty = !queue->first;
+
+    assert(!is_empty || (is_empty && !queue->first));
+
+    return is_empty;
+}
+
+static void* queue_pop(Queue* queue) {
+    QueueItem* item = queue->last;
+
+    queue->last = item->prev;
+
+    if (queue->last) {
+        queue->last->next = NULL;
+    }
+    else {
+        queue->first = NULL;
+    }
+
+    return item->data;
+}
+
+static void IR_print_bblock(Allocator* arena, BBlock* bblock)
+{
+    size_t ii = 0;
+
+    ftprint_out("B.%d:\n", bblock->id);
+
+    for (Instr* it = bblock->first; it; it = it->next, ii++) {
+        ftprint_out("%lu\t%s\n", it->ino, IR_print_instr(arena, it));
+    }
+
+    assert(ii == bblock->num_instrs);
+}
+
 void IR_print_out_proc(Allocator* arena, Symbol* sym)
 {
     ftprint_out("\nproc %s:\n", symbol_mangled_name(arena, sym));
-    ftprint_out("num instrs: %d\n", array_len(sym->as_proc.instrs));
+    ftprint_out("num instrs: %d\n", sym->as_proc.num_instrs);
+
+    if (!sym->as_proc.num_instrs) {
+        return;
+    }
 
     AllocatorState mem_state = allocator_get_state(arena);
     {
-        size_t num_instrs = array_len(sym->as_proc.instrs);
+        Queue queue = {0};
+        queue_init(&queue, arena);
 
-        for (size_t ii = 0; ii < num_instrs; ii += 1)
-            ftprint_out("%lu\t%s\n", ii, IR_print_instr(arena, sym->as_proc.instrs[ii]));
+        // Add the first basic block into the queue.
+        queue_push(&queue, sym->as_proc.bblocks[0]);
+
+        // Iterate basic blocks using BFS.
+        while (!queue_is_empty(&queue)) {
+            BBlock* bblock = queue_pop(&queue);
+            assert(!bblock->visited);
+
+            IR_print_bblock(arena, bblock);
+
+            size_t n = array_len(bblock->succs);
+
+            for (size_t i = 0; i < n; i++) {
+                BBlock* b = bblock->succs[i];
+
+                if (!b->visited) {
+                    queue_push(&queue, b);
+                }
+            }
+
+            bblock->visited = true;
+        }
     }
     allocator_restore_state(mem_state);
 }

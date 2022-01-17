@@ -7,7 +7,7 @@
 
 //#define NDEBUG
 #define NIBBLE_PRINT_DECLS
-//#define NIBBLE_PRINT_MEM_USAGE
+#define NIBBLE_PRINT_MEM_USAGE
 
 // This is a "unity build".
 // Having a single compilation unit makes building trivial.
@@ -25,9 +25,10 @@
 #include "parser.c"
 #include "resolver.c"
 #include "bytecode/gen.c"
-//#include "print_ir.c"
+#include "print_ir.c"
 #include "code_gen.c"
-#include "x64_gen/gen.c"
+//#include "x64_gen/gen.c" // TODO: UNCOMMENT!
+#include "x64_gen/regs.c" // TODO: REMOVE
 #include "nibble.c"
 
 void print_usage(FILE* fd, const char* program_name)

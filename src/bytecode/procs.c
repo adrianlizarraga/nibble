@@ -1,5 +1,5 @@
 #include "bytecode.h"
-//#include "print_ir.h"
+#include "print_ir.h"
 
 typedef struct IR_ProcBuilder {
     Allocator* arena;
@@ -8,7 +8,6 @@ typedef struct IR_ProcBuilder {
     Symbol* curr_proc;
     Scope* curr_scope;
 
-    bool next_instr_is_jmp_target;
     struct IR_DeferredJmpcc* sc_jmp_freelist;
 } IR_ProcBuilder;
 
@@ -83,6 +82,7 @@ static void IR_bblock_add_instr(BBlock* bblock, Instr* instr)
 {
     if (!bblock->first) {
         bblock->first = instr;
+        instr->is_leader = true;
     }
     else {
         bblock->last->next = instr;
@@ -164,11 +164,6 @@ static void IR_patch_jmp_target(Instr* jmp_instr, BBlock* target)
 
 static void IR_add_instr(IR_ProcBuilder* builder, BBlock* bblock, Instr* instr)
 {
-    if (builder->next_instr_is_jmp_target) {
-        instr->is_jmp_target = true;
-        builder->next_instr_is_jmp_target = false;
-    }
-
     instr->ino = builder->curr_proc->as_proc.num_instrs++;
     IR_bblock_add_instr(bblock, instr);
 }
@@ -320,11 +315,11 @@ static Instr* IR_emit_instr_cond_jmp(IR_ProcBuilder* builder, BBlock* bblock, BB
 
     IR_add_instr(builder, bblock, instr);
 
-    if (true_bb) {
+    if (true_bb && *true_bb) {
         IR_connect_bblocks(bblock, *true_bb);
     }
 
-    if (false_bb) {
+    if (false_bb && *false_bb) {
         IR_connect_bblocks(bblock, *false_bb);
     }
 
@@ -2159,7 +2154,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     builder->curr_proc = NULL;
 
 #ifdef NIBBLE_PRINT_DECLS
-    //IR_print_out_proc(builder->tmp_arena, sym);
+    IR_print_out_proc(builder->tmp_arena, sym);
 #endif
 }
 
