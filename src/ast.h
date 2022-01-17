@@ -826,24 +826,8 @@ struct SymbolVar {
     };
 };
 
-struct BBlock {
-    long id;
-    size_t num_instrs;
-
-    Instr* first;
-    Instr* last;
-
-    bool is_loop_hdr;
-    BBlock* loop_end;
-
-    BBlock** preds; // Stretchy buffer of predecessor basic blocks.
-
-    // TODO: Only 2 successors possible?
-    BBlock** succs; // Stretchy buffer of successor basic blocks.
-};
-
 struct SymbolProc {
-    BBlock** bblocks; // Stretchy buffer of basic blocks
+    struct BBlock** bblocks; // Stretchy buffer of basic blocks
     size_t num_instrs;
 
     u32 num_regs;

@@ -137,13 +137,13 @@ typedef struct InstrCmp {
 
 typedef struct InstrJmp {
     BBlock* from;
-    BBlock* target;
+    BBlock** target;
 } InstrJmp;
 
 typedef struct InstrCondJmp {
     BBlock* from;
-    BBlock* true_bb;
-    BBlock* false_bb;
+    BBlock** true_bb;
+    BBlock** false_bb;
     IR_Reg a;
 } InstrCondJmp;
 
@@ -214,6 +214,22 @@ typedef struct Instr {
     struct Instr* prev;
     struct Instr* next;
 } Instr;
+
+struct BBlock {
+    long id;
+    size_t num_instrs;
+
+    Instr* first;
+    Instr* last;
+
+    bool is_loop_hdr;
+    BBlock* loop_end;
+
+    BBlock** preds; // Stretchy buffer of predecessor basic blocks.
+
+    // TODO: Only 2 successors possible?
+    BBlock** succs; // Stretchy buffer of successor basic blocks.
+};
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, TypeCache* type_cache);
 #endif

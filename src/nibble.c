@@ -1095,6 +1095,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     //////////////////////////////////////////
     IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->type_cache);
 
+    /*
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
@@ -1176,6 +1177,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
         ftprint_err("[ERROR]: Linker command failed\n");
         return false;
     }
+    */
 
     allocator_restore_state(mem_state);
     return true;
