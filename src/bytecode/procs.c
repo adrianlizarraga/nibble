@@ -80,6 +80,8 @@ static const ConditionKind ir_opposite_cond[] = {
 //////////////////////////////////////////////////////
 static void IR_bblock_add_instr(BBlock* bblock, Instr* instr)
 {
+    assert(!bblock->closed);
+
     if (!bblock->first) {
         bblock->first = instr;
         instr->is_leader = true;
@@ -92,6 +94,10 @@ static void IR_bblock_add_instr(BBlock* bblock, Instr* instr)
     bblock->last = instr;
 
     bblock->num_instrs += 1;
+
+    if (instr->kind == INSTR_JMP || instr->kind == INSTR_COND_JMP || instr->kind == INSTR_RET) {
+        bblock->closed = true;
+    }
 }
 
 static BBlock** IR_alloc_ptr_bblock(IR_ProcBuilder* builder, BBlock* bblock)
@@ -107,7 +113,7 @@ static BBlock* IR_alloc_bblock(IR_ProcBuilder* builder)
     BBlock* block = alloc_type(builder->arena, BBlock, true);
 
     block->preds = array_create(builder->arena, BBlock*, 4);
-    block->succs = array_create(builder->arena, BBlock*, 4);
+    //block->succs = array_create(builder->arena, BBlock*, 4);
     block->id = array_len(builder->curr_proc->as_proc.bblocks);
     array_push(builder->curr_proc->as_proc.bblocks, block);
 
@@ -126,14 +132,32 @@ static void IR_try_push_bblock_elem(BBlock*** p_array, BBlock* bblock)
         }
     }
 
-    if (!found) {
-        array_push(*p_array, bblock);
+    assert(!found);
+
+    array_push(*p_array, bblock);
+}
+
+static void IR_try_add_succ_elem(BBlock* pred, BBlock* succ)
+{
+    bool found = false;
+    size_t len = pred->num_succs;
+
+    for (size_t i = 0; i < len; i++) {
+        if (pred->succs[i] == succ) {
+            found = true;
+            break;
+        }
     }
+
+    assert(!found);
+
+    pred->succs[pred->num_succs++] = succ;
+    assert(pred->num_succs <= 2);
 }
 
 static void IR_connect_bblocks(BBlock* pred, BBlock* succ)
 {
-    IR_try_push_bblock_elem(&pred->succs, succ);
+    IR_try_add_succ_elem(pred, succ);
     IR_try_push_bblock_elem(&succ->preds, pred);
 }
 
@@ -580,7 +604,11 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
                            def_cmp->final_jmp.cmp->cmp.cond);
     }
     else {
-        BBlock* t_bblock = IR_alloc_bblock(builder);
+        // Fix final jmp condition so that it jumps to "false" control path.
+        IR_DeferredJmpcc* final_jmp = &def_cmp->final_jmp;
+        IR_fix_sc_jmp_path(final_jmp, false);
+
+        BBlock* t_bblock = bblock;
         BBlock* f_bblock = IR_alloc_bblock(builder);
         e_bblock = IR_alloc_bblock(builder);
 
@@ -605,16 +633,14 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
         // False control path.
         //
 
+        assert(final_jmp->jmp);
+        IR_patch_jmp_target(final_jmp->jmp, f_bblock);
+
         // Patch short-circuit jumps that jump to the "false" control path.
         for (IR_DeferredJmpcc* it = def_cmp->first_sc_jmp; it; it = it->next) {
             if (!it->result)
                 IR_patch_jmp_target(it->jmp, f_bblock);
         }
-
-        // Patch final jmp so that it jumps to "false" control path.
-        IR_DeferredJmpcc* final_jmp = &def_cmp->final_jmp;
-        IR_fix_sc_jmp_path(final_jmp, false);
-        IR_patch_jmp_target(final_jmp->jmp, f_bblock);
 
         // This is the "false" control path. Move the literal 0 into destination register.
         IR_Reg zero_reg = IR_next_reg(builder);
@@ -2152,6 +2178,25 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
 
     IR_pop_scope(builder);
     builder->curr_proc = NULL;
+
+    // Sort proc bblocks by starting instruction number.
+    {
+        BBlock** bblocks = sym->as_proc.bblocks;
+        size_t n = array_len(bblocks);
+
+        for (size_t i = 0; i < n; i++) {
+            for (size_t j = 0; j < n - 1; j++) {
+                BBlock* curr = bblocks[j];
+                BBlock* next = bblocks[j + 1];
+
+                if (curr->first->ino > next->first->ino) {
+                    // Swap
+                    bblocks[j] = next;
+                    bblocks[j + 1] = curr;
+                }
+            }
+        }
+    }
 
 #ifdef NIBBLE_PRINT_DECLS
     IR_print_out_proc(builder->tmp_arena, sym);

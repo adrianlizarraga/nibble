@@ -225,10 +225,11 @@ struct BBlock {
 
     BBlock** preds; // Stretchy buffer of predecessor basic blocks.
 
-    // TODO: Only 2 successors possible?
-    BBlock** succs; // Stretchy buffer of successor basic blocks.
+    size_t num_succs;
+    BBlock* succs[2];
 
     bool visited;
+    bool closed;
 };
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, TypeCache* type_cache);

@@ -290,15 +290,15 @@ static bool queue_is_empty(Queue* queue)
 }
 
 static void* queue_pop(Queue* queue) {
-    QueueItem* item = queue->last;
+    QueueItem* item = queue->first;
 
-    queue->last = item->prev;
+    queue->first = item->next;
 
-    if (queue->last) {
-        queue->last->next = NULL;
+    if (queue->first) {
+        queue->first->prev = NULL;
     }
     else {
-        queue->first = NULL;
+        queue->last = NULL;
     }
 
     return item->data;
@@ -329,31 +329,65 @@ void IR_print_out_proc(Allocator* arena, Symbol* sym)
 
     AllocatorState mem_state = allocator_get_state(arena);
     {
+        /*
         Queue queue = {0};
         queue_init(&queue, arena);
 
         // Add the first basic block into the queue.
-        queue_push(&queue, sym->as_proc.bblocks[0]);
+        BBlock* start_bb = sym->as_proc.bblocks[0];
+        start_bb->visited = true;
+        queue_push(&queue, start_bb);
 
         // Iterate basic blocks using BFS.
         while (!queue_is_empty(&queue)) {
             BBlock* bblock = queue_pop(&queue);
-            assert(!bblock->visited);
 
+            assert(bblock->closed);
             IR_print_bblock(arena, bblock);
 
-            size_t n = array_len(bblock->succs);
+            size_t n = bblock->num_succs;
 
-            for (size_t i = 0; i < n; i++) {
-                BBlock* b = bblock->succs[i];
+            assert((n < 3));
+
+            if (n == 1) {
+                BBlock* b = bblock->succs[0];
 
                 if (!b->visited) {
+                    b->visited = true;
                     queue_push(&queue, b);
                 }
             }
+            else if (n == 2) {
+                BBlock* s1 = bblock->succs[0];
+                BBlock* s2 = bblock->succs[1];
+                
+                BBlock* a = s2;
+                BBlock* b = s1;
 
-            bblock->visited = true;
+                if (s1->first->ino < s2->first->ino) {
+                    a = s1; b = s2;
+                }
+
+                if (!a->visited) {
+                    a->visited = true;
+                    queue_push(&queue, a);
+                }
+
+                if (!b->visited) {
+                    b->visited = true;
+                    queue_push(&queue, b);
+                }
+            }
         }
+        */
+
+        BBlock** bblocks = sym->as_proc.bblocks;
+        size_t n = array_len(bblocks);
+
+        for (size_t i = 0; i < n; i++) {
+            IR_print_bblock(arena, bblocks[i]);
+        }
+
     }
     allocator_restore_state(mem_state);
 }
