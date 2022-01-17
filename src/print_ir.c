@@ -308,7 +308,8 @@ static void IR_print_bblock(Allocator* arena, BBlock* bblock)
 {
     size_t ii = 0;
 
-    ftprint_out("B.%d:\n", bblock->id);
+    ftprint_out("B.%d:", bblock->id);
+    ftprint_out(bblock->is_loop_hdr ? "    # Loop header\n" : "\n");
 
     for (Instr* it = bblock->first; it; it = it->next, ii++) {
         ftprint_out("%lu\t%s\n", it->ino, IR_print_instr(arena, it));
