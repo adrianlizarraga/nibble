@@ -4,4 +4,5 @@
 
 char* IR_print_instr(Allocator* arena, Instr* instr);
 void IR_print_out_proc(Allocator* arena, Symbol* sym);
+void IR_dump_proc_dot(Allocator* arena, Symbol* sym);
 #endif

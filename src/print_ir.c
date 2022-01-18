@@ -320,74 +320,69 @@ static void IR_print_bblock(Allocator* arena, BBlock* bblock)
 
 void IR_print_out_proc(Allocator* arena, Symbol* sym)
 {
-    ftprint_out("\nproc %s:\n", symbol_mangled_name(arena, sym));
-    ftprint_out("num instrs: %d\n", sym->as_proc.num_instrs);
-
     if (!sym->as_proc.num_instrs) {
         return;
     }
 
+    ftprint_out("\nproc %s:\n", symbol_mangled_name(arena, sym));
+    ftprint_out("num instrs: %d\n", sym->as_proc.num_instrs);
+
     AllocatorState mem_state = allocator_get_state(arena);
     {
-        /*
-        Queue queue = {0};
-        queue_init(&queue, arena);
-
-        // Add the first basic block into the queue.
-        BBlock* start_bb = sym->as_proc.bblocks[0];
-        start_bb->visited = true;
-        queue_push(&queue, start_bb);
-
-        // Iterate basic blocks using BFS.
-        while (!queue_is_empty(&queue)) {
-            BBlock* bblock = queue_pop(&queue);
-
-            assert(bblock->closed);
-            IR_print_bblock(arena, bblock);
-
-            size_t n = bblock->num_succs;
-
-            assert((n < 3));
-
-            if (n == 1) {
-                BBlock* b = bblock->succs[0];
-
-                if (!b->visited) {
-                    b->visited = true;
-                    queue_push(&queue, b);
-                }
-            }
-            else if (n == 2) {
-                BBlock* s1 = bblock->succs[0];
-                BBlock* s2 = bblock->succs[1];
-                
-                BBlock* a = s2;
-                BBlock* b = s1;
-
-                if (s1->first->ino < s2->first->ino) {
-                    a = s1; b = s2;
-                }
-
-                if (!a->visited) {
-                    a->visited = true;
-                    queue_push(&queue, a);
-                }
-
-                if (!b->visited) {
-                    b->visited = true;
-                    queue_push(&queue, b);
-                }
-            }
-        }
-        */
-
         BBlock** bblocks = sym->as_proc.bblocks;
         size_t n = array_len(bblocks);
 
         for (size_t i = 0; i < n; i++) {
             IR_print_bblock(arena, bblocks[i]);
         }
-
     }
     allocator_restore_state(mem_state);
 }
+
+static void IR_dump_bblock_dot(Allocator* arena, BBlock* bblock)
+{
+    size_t ii = 0;
+
+    ftprint_out("\tB%d [", bblock->id);
+    if (bblock->is_loop_hdr) {
+        ftprint_out("style=filled, color=\".7 .3. 1.0\", label=\"");
+    }
+    else {
+        ftprint_out("label=\"");
+    }
+
+    for (Instr* it = bblock->first; it; it = it->next, ii++) {
+        ftprint_out("%s\\n", IR_print_instr(arena, it));
+    }
+
+    assert(ii == bblock->num_instrs);
+    ftprint_out("\"]\n");
+
+    for (size_t i = 0; i < bblock->num_succs; i++) {
+        BBlock* succ = bblock->succs[i];
+
+        ftprint_out("\tB%d -> B%d\n", bblock->id, succ->id);
+    }
+}
+
+void IR_dump_proc_dot(Allocator* arena, Symbol* sym)
+{
+    if (!sym->as_proc.num_instrs) {
+        return;
+    }
+
+    ftprint_out("\ndigraph %s {\n\tnode [shape=box]\n", symbol_mangled_name(arena, sym));
+
+    AllocatorState mem_state = allocator_get_state(arena);
+    {
+        BBlock** bblocks = sym->as_proc.bblocks;
+        size_t n = array_len(bblocks);
+
+        for (size_t i = 0; i < n; i++) {
+            IR_dump_bblock_dot(arena, bblocks[i]);
+        }
+    }
+    allocator_restore_state(mem_state);
+    ftprint_out("}\n");
+}
+

@@ -358,7 +358,7 @@ static Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock*
 
     IR_add_instr(builder, bblock, instr);
 
-    if (target) {
+    if (target && *target) {
         IR_connect_bblocks(bblock, *target);
     }
 
@@ -2102,14 +2102,14 @@ static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, St
     if (body_end_bb) {
         // Process condition.
         last_bb = IR_process_cfg_cond(builder, cond_expr, body_end_bb, true, body_bb);
-        *break_tgt = last_bb;
+        *break_tgt = last_bb; // TODO: FIX! This does not connect bblocks!
 
         // Explicitly mark basic blocks inside the loop.
         IR_set_loop_bblocks(last_bb, body_bb);
     }
     else {
         last_bb = IR_alloc_bblock(builder);
-        *break_tgt = last_bb;
+        *break_tgt = last_bb; // TODO: FIX! This does not connect bblocks!
     }
 
     return last_bb;
@@ -2199,7 +2199,8 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     }
 
 #ifdef NIBBLE_PRINT_DECLS
-    IR_print_out_proc(builder->tmp_arena, sym);
+    //IR_print_out_proc(builder->tmp_arena, sym);
+    IR_dump_proc_dot(builder->tmp_arena, sym);
 #endif
 }
 
