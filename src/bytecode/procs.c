@@ -9,6 +9,7 @@ typedef struct IR_ProcBuilder {
     Scope* curr_scope;
 
     struct IR_DeferredJmpcc* sc_jmp_freelist;
+    struct IR_UJmpNode* ujmp_freelist;
 } IR_ProcBuilder;
 
 typedef enum IR_OperandKind {
@@ -85,14 +86,49 @@ typedef struct IR_UJmpNode {
 
 typedef struct IR_UJmpList {
     IR_UJmpNode* first;
+    IR_UJmpNode* last;
 } IR_UJmpList;
 
-static void IR_add_ujmp(IR_UJmpList* list, Allocator* arena, Instr* instr)
+static void IR_add_ujmp(IR_ProcBuilder* builder, IR_UJmpList* list, Instr* instr)
 {
-    IR_UJmpNode* node = alloc_type(arena, IR_UJmpNode, false);
+    IR_UJmpNode* node;
+
+    // Try to get a node from the free list. Otherwise, just allocate one.
+    if (builder->ujmp_freelist) {
+        node = builder->ujmp_freelist;
+        builder->ujmp_freelist = node->next;
+    }
+    else {
+        node = alloc_type(builder->tmp_arena, IR_UJmpNode, false);
+    }
+
+    // Init node data
     node->instr = instr;
-    node->next = list->first;
-    list->first = node;
+    node->next = NULL;
+
+    // Add node to the end of the list.
+    if (list->last) {
+        list->last->next = node;
+    }
+    else {
+        list->first = node;
+    }
+
+    list->last = node;
+}
+
+static void IR_ujmp_list_free(IR_ProcBuilder* builder, IR_UJmpList* list)
+{
+    if (!list->last) {
+        return;
+    }
+
+    // Add entire list to the free list.
+    list->last->next = builder->ujmp_freelist;
+    builder->ujmp_freelist = list->first;
+
+    // Clear out list pointers.
+    list->first = list->last = NULL;
 }
 
 static void IR_bblock_add_instr(BBlock* bblock, Instr* instr)
@@ -196,11 +232,13 @@ static void IR_patch_jmp_target(Instr* jmp_instr, BBlock* target)
     }
 }
 
-static void IR_patch_ujmp_list(IR_UJmpList* list, BBlock* target)
+static void IR_patch_ujmp_list(IR_ProcBuilder* builder, IR_UJmpList* list, BBlock* target)
 {
     for (IR_UJmpNode* it = list->first; it; it = it->next) {
         IR_patch_jmp_target(it->instr, target);
     }
+
+    IR_ujmp_list_free(builder, list);
 }
 
 static void IR_add_instr(IR_ProcBuilder* builder, BBlock* bblock, Instr* instr)
@@ -2036,8 +2074,8 @@ static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* b
     IR_UJmpList cont_ujmps = {0};
     BBlock* loop_end_bblock = IR_emit_stmt(builder, hdr_bblock, body, &break_ujmps, &cont_ujmps);
 
-    IR_patch_ujmp_list(&break_ujmps, after_bblock);
-    IR_patch_ujmp_list(&cont_ujmps, hdr_bblock);
+    IR_patch_ujmp_list(builder, &break_ujmps, after_bblock);
+    IR_patch_ujmp_list(builder, &cont_ujmps, hdr_bblock);
 
     if (loop_end_bblock) {
         IR_emit_instr_jmp(builder, loop_end_bblock, hdr_bblock);
@@ -2076,8 +2114,8 @@ static BBlock* IR_emit_stmt_while(IR_ProcBuilder* builder, BBlock* bblock, StmtW
     IR_UJmpList cont_ujmps = {0};
     BBlock* body_end_bb = IR_emit_stmt(builder, body_bb, body_stmt, &break_ujmps, &cont_ujmps);
 
-    IR_patch_ujmp_list(&break_ujmps, last_bb);
-    IR_patch_ujmp_list(&cont_ujmps, hdr_bb);
+    IR_patch_ujmp_list(builder, &break_ujmps, last_bb);
+    IR_patch_ujmp_list(builder, &cont_ujmps, hdr_bb);
 
     if (body_end_bb) {
         // Jump back up to the loop header.
@@ -2115,7 +2153,7 @@ static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, St
     IR_UJmpList cont_ujmps = {0};
     BBlock* body_end_bb = IR_emit_stmt(builder, body_bb, body_stmt, &break_ujmps, &cont_ujmps);
 
-    IR_patch_ujmp_list(&cont_ujmps, body_bb);
+    IR_patch_ujmp_list(builder, &cont_ujmps, body_bb);
 
     if (body_end_bb) {
         // Process condition.
@@ -2154,7 +2192,7 @@ static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, St
         last_bb = IR_alloc_bblock(builder);
     }
 
-    IR_patch_ujmp_list(&break_ujmps, last_bb);
+    IR_patch_ujmp_list(builder, &break_ujmps, last_bb);
 
     return last_bb;
 }
@@ -2180,12 +2218,12 @@ static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt,
         return IR_emit_stmt_do_while(builder, bblock, (StmtDoWhile*)stmt);
     case CST_StmtBreak: {
         Instr* instr = IR_emit_instr_jmp(builder, bblock, NULL);
-        IR_add_ujmp(break_ujmps, builder->tmp_arena, instr); // Add to list of unpatched jumps
+        IR_add_ujmp(builder, break_ujmps, instr); // Add to list of unpatched jumps
         return NULL;
     }
     case CST_StmtContinue: {
         Instr* instr = IR_emit_instr_jmp(builder, bblock, NULL);
-        IR_add_ujmp(cont_ujmps, builder->tmp_arena, instr); // Add to list of unpatched jumps
+        IR_add_ujmp(builder, cont_ujmps, instr); // Add to list of unpatched jumps
         return NULL;
     }
     case CST_StmtStaticAssert:
