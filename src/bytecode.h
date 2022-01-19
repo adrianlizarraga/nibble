@@ -137,13 +137,13 @@ typedef struct InstrCmp {
 
 typedef struct InstrJmp {
     BBlock* from;
-    BBlock** target;
+    BBlock* target;
 } InstrJmp;
 
 typedef struct InstrCondJmp {
     BBlock* from;
-    BBlock** true_bb;
-    BBlock** false_bb;
+    BBlock* true_bb;
+    BBlock* false_bb;
     IR_Reg a;
 } InstrCondJmp;
 
@@ -220,8 +220,9 @@ struct BBlock {
     Instr* first;
     Instr* last;
 
-    bool is_loop_hdr;
     BBlock* loop_end;
+    bool is_loop_hdr;
+    bool is_loop_end;
 
     BBlock** preds; // Stretchy buffer of predecessor basic blocks.
 

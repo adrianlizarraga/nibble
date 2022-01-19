@@ -176,12 +176,12 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         break;
     }
     case INSTR_JMP: {
-        ftprint_char_array(&dstr, false, "jmp B.%u", (*instr->jmp.target)->id);
+        ftprint_char_array(&dstr, false, "jmp B.%u", instr->jmp.target->id);
         break;
     }
     case INSTR_COND_JMP: {
-        ftprint_char_array(&dstr, false, "jmpcc B.%u if %s else B.%u", (*instr->cond_jmp.true_bb)->id,
-                           IR_print_reg(arena, instr->cond_jmp.a), (*instr->cond_jmp.false_bb)->id);
+        ftprint_char_array(&dstr, false, "jmpcc B.%u if %s else B.%u", instr->cond_jmp.true_bb->id,
+                           IR_print_reg(arena, instr->cond_jmp.a), instr->cond_jmp.false_bb->id);
         break;
     }
     case INSTR_RET: {
@@ -345,7 +345,10 @@ static void IR_dump_bblock_dot(Allocator* arena, BBlock* bblock)
 
     ftprint_out("\tB%d [", bblock->id);
     if (bblock->is_loop_hdr) {
-        ftprint_out("style=filled, color=\".7 .3. 1.0\", label=\"");
+        ftprint_out("style=filled, color=lightgrey, label=\"");
+    }
+    else if (bblock->is_loop_end) {
+        ftprint_out("style=filled, color=lightblue, label=\"");
     }
     else {
         ftprint_out("label=\"");
