@@ -123,9 +123,16 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         break;
     }
     case INSTR_PHI: {
-        ftprint_char_array(&dstr, false, "phi <%s> %s, %s, %s", type_name(instr->phi.type), 
-                           IR_print_reg(arena, instr->phi.r), IR_print_reg(arena, instr->phi.a),
-                           IR_print_reg(arena, instr->phi.b));
+        ftprint_char_array(&dstr, false, "phi <%s> %s, ", type_name(instr->phi.type), IR_print_reg(arena, instr->phi.r));
+
+        size_t n = instr->phi.num_args;
+
+        for (size_t i = 0; i < n; i++) {
+            PhiArg* arg = instr->phi.args + i;
+
+            ftprint_char_array(&dstr, false, "B.%u %s%s", arg->bblock->id, IR_print_reg(arena, arg->ireg),
+                               (i == n - 1 ? "" : ", "));
+        }
         break;
     }
     case INSTR_NEG:

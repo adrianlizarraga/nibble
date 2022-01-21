@@ -178,11 +178,17 @@ typedef struct InstrMemcpy {
     MemAddr src;
 } InstrMemcpy;
 
+
+typedef struct PhiArg {
+    BBlock* bblock;
+    IR_Reg ireg;
+} PhiArg;
+
 typedef struct InstrPhi {
     Type* type;
     IR_Reg r;
-    IR_Reg a;
-    IR_Reg b;
+    size_t num_args;
+    PhiArg* args;
 } InstrPhi;
 
 typedef struct Instr {
@@ -217,9 +223,11 @@ struct BBlock {
     long id;
     size_t num_instrs;
 
+    // Doubly-linked list of instructions.
     Instr* first;
     Instr* last;
 
+    // Track whether this is the first or last block in a loop.
     BBlock* loop_end;
     bool is_loop_hdr;
     bool is_loop_end;
@@ -231,6 +239,8 @@ struct BBlock {
 
     bool visited;
     bool closed;
+
+    IR_Reg* livein; // Stretchy buffer of IR registers live at the beginning of this bblock.
 };
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, TypeCache* type_cache);

@@ -462,13 +462,13 @@ static void IR_emit_instr_memcpy(IR_ProcBuilder* builder, BBlock* bblock, Type* 
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_phi(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
+static void IR_emit_instr_phi(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, size_t num_args, PhiArg* args)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_PHI);
     instr->phi.type = type;
     instr->phi.r = r;
-    instr->phi.a = a;
-    instr->phi.b = b;
+    instr->phi.num_args = num_args;
+    instr->phi.args = mem_dup_array(builder->arena, PhiArg, args, num_args);
 
     IR_add_instr(builder, bblock, instr);
 }
@@ -707,7 +707,12 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
 
         // Emit PHI instruction.
         dst_reg = IR_next_reg(builder);
-        IR_emit_instr_phi(builder, e_bblock, operand->type, dst_reg, one_reg, zero_reg);
+        PhiArg phi_args[2] = {
+            {.bblock = t_bblock, .ireg = one_reg},
+            {.bblock = f_bblock, .ireg = zero_reg}
+        };
+
+        IR_emit_instr_phi(builder, e_bblock, operand->type, dst_reg, 2, phi_args);
     }
 
     operand->kind = IR_OPERAND_REG;
@@ -2285,8 +2290,8 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     }
 
 #ifdef NIBBLE_PRINT_DECLS
-    //IR_print_out_proc(builder->tmp_arena, sym);
-    IR_dump_proc_dot(builder->tmp_arena, sym);
+    IR_print_out_proc(builder->tmp_arena, sym);
+    //IR_dump_proc_dot(builder->tmp_arena, sym);
 #endif
 }
 
