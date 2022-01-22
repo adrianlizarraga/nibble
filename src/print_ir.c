@@ -252,65 +252,6 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
     return dstr;
 }
 
-typedef struct QueueItem {
-    void* data;
-    struct QueueItem* next;
-    struct QueueItem* prev;
-} QueueItem;
-
-typedef struct Queue {
-    QueueItem* first;
-    QueueItem* last;
-    Allocator* arena;
-} Queue;
-
-static void queue_init(Queue* queue, Allocator* arena)
-{
-    queue->first = queue->last = NULL;
-    queue->arena = arena;
-}
-
-static void queue_push(Queue* queue, void* data)
-{
-    QueueItem* item = alloc_type(queue->arena, QueueItem, false);
-    item->data = data;
-    item->next = NULL;
-
-    if (!queue->first) {
-        queue->first = item;
-    }
-    else {
-        queue->last->next = item;
-    }
-
-    item->prev = queue->last;
-    queue->last = item;
-}
-
-static bool queue_is_empty(Queue* queue)
-{
-    bool is_empty = !queue->first;
-
-    assert(!is_empty || (is_empty && !queue->first));
-
-    return is_empty;
-}
-
-static void* queue_pop(Queue* queue) {
-    QueueItem* item = queue->first;
-
-    queue->first = item->next;
-
-    if (queue->first) {
-        queue->first->prev = NULL;
-    }
-    else {
-        queue->last = NULL;
-    }
-
-    return item->data;
-}
-
 static void IR_print_bblock(Allocator* arena, BBlock* bblock)
 {
     size_t ii = 0;

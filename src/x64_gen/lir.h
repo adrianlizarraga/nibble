@@ -309,8 +309,11 @@ typedef struct X64_LIRBuilder {
 
     u32 lreg_phys[X64_REG_COUNT]; // LIR register per physical register.
 
-    X64_LRegRange* lreg_ranges; // Stretchy buf
     u32* reg_map; // Map IR reg -> LIR reg; size: num_iregs
+
+    // Disjoint Set Union data structure for register renaming/aliasing.
+    u32* lreg_aliases; // Root alias node for each lir reg. size: num_lirregs
+    u32* lreg_sizes;   // Size for each lir reg aliasing set. size: num_lirregs
 } X64_LIRBuilder;
 
 void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, u32 src);

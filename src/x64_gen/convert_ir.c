@@ -49,34 +49,11 @@ static void X64_init_lir_builder(X64_LIRBuilder* builder, Allocator* arena, u32 
 {
     builder->arena = arena;
     builder->num_instrs = 0;
-    builder->call_sites = array_create(arena, u32, 8);
-    builder->jmp_map = hmap(4, arena);
-    builder->lreg_ranges = array_create(arena, X64_LRegRange, 16);
     builder->lreg_aliases = array_create(arena, u32, 16);
     builder->lreg_sizes = array_create(arena, u32, 16);
 
-    list_head_init(&builder->instrs);
-
     builder->reg_map = alloc_array(arena, u32, num_iregs, false);
     memset(builder->reg_map, 0xFF, num_iregs * sizeof(u32));
-}
-
-static void X64_end_reg_range(X64_LIRBuilder* builder, u32 r)
-{
-    X64_LRegRange* range = builder->lreg_ranges + r;
-    range->end = builder->num_instrs - 1;
-}
-
-static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
-{
-    dst_range->start = dst_range->start <= src_range->start ? dst_range->start : src_range->start;
-    dst_range->end = dst_range->end >= src_range->end ? dst_range->end : src_range->end;
-
-    if (src_range->force_reg) {
-        assert(!dst_range->force_reg);
-        dst_range->force_reg = true;
-        dst_range->forced_reg = src_range->forced_reg;
-    }
 }
 
 u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r)
@@ -107,27 +84,16 @@ static void X64_alias_lir_regs(X64_LIRBuilder* builder, u32 u, u32 v)
     if (sizes[root_u] > sizes[root_v]) {
         roots[root_v] = root_u;
         sizes[root_u] += sizes[root_v];
-
-        X64_LRegRange* ranges = builder->lreg_ranges;
-        X64_merge_ranges(ranges + root_u, ranges + root_v);
     }
     else {
         roots[root_u] = root_v;
         sizes[root_v] += sizes[root_u];
-
-        X64_LRegRange* ranges = builder->lreg_ranges;
-        X64_merge_ranges(ranges + root_v, ranges + root_u);
     }
 }
 
 static u32 X64_next_lir_reg(X64_LIRBuilder* builder)
 {
-    size_t next_ip = builder->num_instrs;
-
-    array_push(builder->lreg_ranges, (X64_LRegRange){.start = next_ip, .end = next_ip, .forced_reg = X64_REG_COUNT});
-
-    u32 next_reg = array_len(builder->lreg_ranges) - 1;
-    assert(next_reg < (u32)-1);
+    u32 next_reg = builder->num_regs++;
 
     array_push(builder->lreg_aliases, next_reg);
     array_push(builder->lreg_sizes, 1);
@@ -146,39 +112,20 @@ static u32 X64_def_lir_reg(X64_LIRBuilder* builder, u32 ireg)
 
 static u32 X64_get_lir_reg(X64_LIRBuilder* builder, u32 ireg)
 {
-    size_t next_ip = builder->num_instrs;
     u32 result = builder->reg_map[ireg];
 
     assert(result != (u32)-1);
 
-    result = X64_find_alias_reg(builder, result);
-
-    X64_LRegRange* range = &builder->lreg_ranges[result];
-    range->end = next_ip;
-
-    return result;
+    return X64_find_alias_reg(builder, result);
 }
 
 static u32 X64_def_phys_reg(X64_LIRBuilder* builder, X64_Reg phys_reg)
 {
     u32 result = X64_next_lir_reg(builder);
-    X64_LRegRange* range = &builder->lreg_ranges[result];
-    assert(result == array_len(builder->lreg_ranges) - 1);
 
-    range->force_reg = true;
-    range->forced_reg = phys_reg;
+    builder->lreg_phys[phys_reg] = result;
 
     return result;
-}
-
-#define X64_force_any_reg(b,l) X64_force_reg((b), (l), X64_REG_COUNT)
-static void X64_force_reg(X64_LIRBuilder* builder, u32 lreg, X64_Reg phys_reg)
-{
-    X64_LRegRange* range = &builder->lreg_ranges[lreg];
-
-    assert(!range->force_reg);
-    range->force_reg = true;
-    range->forced_reg = phys_reg;
 }
 
 static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr* src)
@@ -207,13 +154,13 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
             }
 
             dst->kind = X64_ADDR_LOCAL;
-            dst->local.base_reg = builder->lreg_rbp;
+            dst->local.base_reg = builder->lreg_phys[X64_RBP];
             dst->local.disp = src->disp + sym->as_var.offset;
             dst->local.scale = src->scale;
         }
         else {
             u32 base_reg = X64_get_lir_reg(builder, src->base.reg);
-            X64_force_any_reg(builder, base_reg);
+            //X64_force_any_reg(builder, base_reg);
 
             dst->kind = X64_ADDR_LOCAL;
             dst->local.base_reg = base_reg;
@@ -223,7 +170,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
 
         if (has_index) {
             u32 index_reg = X64_get_lir_reg(builder, src->index_reg);
-            X64_force_any_reg(builder, index_reg);
+            //X64_force_any_reg(builder, index_reg);
 
             dst->local.index_reg = index_reg;
         }
@@ -233,7 +180,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
     }
     else {
         u32 index_reg = X64_get_lir_reg(builder, src->index_reg);
-        X64_force_any_reg(builder, index_reg);
+        //X64_force_any_reg(builder, index_reg);
 
         dst->kind = X64_ADDR_LOCAL;
         dst->local.base_reg = (u32)-1;
@@ -786,37 +733,58 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
     }
 }
 
+static void X64_connect_bblocks(X64_BBlock* pred, X64_BBlock* succ)
+{
+    array_push(succ->preds, pred);
+}
+
+static void X64_add_bblock_succ(X64_LIRBuilder* builder, Queue* queue, HMap* map, BBlock* n, X64_BBlock* xbb)
+{
+    X64_BBlock* xn = hmap_get_obj(map, PTR_UINT(n));
+
+    // Haven't visited this neighbor yet.
+    if (!xn) {
+        xn = X64_make_bblock(builder, n);
+        hmap_put(map, PTR_UINT(n), xn);
+
+        queue_push(queue, n);
+    }
+
+    X64_connect_bblocks(xbb, xn);
+}
+
 static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_bblocks, BBlock** bblocks)
 {
     for (int i = 0; i < X64_REG_COUNT; i++) {
         builder->lreg_phys[i] = X64_def_phys_reg(builder, (X64_Reg)i);
     }
 
-    // TODO: Clone graph using BFS and a map that maps old bblock to new bblock.
-    // Use map[old] to also check if bblock has been visited.
+    // Clone graph using BFS and a map that maps old bblock to new bblock.
+    Queue queue;
+    queue_init(&queue, builder->arena);
 
-    while (ip < num_ir_instrs) {
-        X64_emit_lir_instr(builder, &ip, num_ir_instrs, ir_instrs);
-        ip += 1;
-    }
+    HMap map = hmap(4, builder->arena);
 
-    X64_end_reg_range(builder, builder->lreg_rbp);
+    BBlock* start = bblocks[0];
+    X64_BBlock* xstart = X64_make_bblock(builder, start);
 
-    // Fixup jump targets.
-    List* head = &builder->instrs;
+    queue_push(&queue, start);
+    hmap_put(&map, PTR_UINT(start), PTR_UINT(xstart));
 
-    for (List* it = head->next; it != head; it = it->next) {
-        X64_Instr* ins = list_entry(it, X64_Instr, lnode);
+    while (!queue_is_empty(&queue)) {
+        BBlock* bb = queue_pop(&queue);
 
-        if (ins->kind == X64_INSTR_JMP) {
-            u64* ptarget = hmap_get(&builder->jmp_map, ins->jmp.jmp_target);
-            if (!ptarget) NIBBLE_FATAL_EXIT("[INTERNAL ERROR]: Unable to convert IR jmp target to LIR target");
-            ins->jmp.jmp_target = *ptarget;
+        X64_BBlock* xbb = hmap_get_obj(&map, PTR_UINT(bb));
+        assert(xbb);
+
+        Instr* instr = bb->last;
+
+        if (instr->kind == INSTR_JMP) {
+            X64_add_bblock_succ(builder, &queue, &map, instr->jmp.target, xbb);
         }
-        else if (ins->kind == X64_INSTR_JMPCC) {
-            u64* ptarget = hmap_get(&builder->jmp_map, ins->jmpcc.jmp_target);
-            if (!ptarget) NIBBLE_FATAL_EXIT("[INTERNAL ERROR]: Unable to convert IR jmp target to LIR target");
-            ins->jmpcc.jmp_target = *ptarget;
+        else if (instr->kind == INSTR_COND_JMP) {
+            X64_add_bblock_succ(builder, &queue, &map, instr->cond_jmp.true_bb, xbb);
+            X64_add_bblock_succ(builder, &queue, &map, instr->cond_jmp.false_bb, xbb);
         }
     }
 }
