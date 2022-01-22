@@ -316,7 +316,7 @@ static void IR_print_bblock(Allocator* arena, BBlock* bblock)
     size_t ii = 0;
 
     ftprint_out("B.%d:", bblock->id);
-    ftprint_out(bblock->is_loop_hdr ? "    # Loop header\n" : "\n");
+    ftprint_out((bblock->flags & BBLOCK_IS_LOOP_HDR) ? "    # Loop header\n" : "\n");
 
     for (Instr* it = bblock->first; it; it = it->next, ii++) {
         ftprint_out("%lu\t%s\n", it->ino, IR_print_instr(arena, it));
@@ -351,27 +351,31 @@ static void IR_dump_bblock_dot(Allocator* arena, BBlock* bblock)
     size_t ii = 0;
 
     ftprint_out("\tB%d [", bblock->id);
-    if (bblock->is_loop_hdr) {
+    if (bblock->flags & BBLOCK_IS_LOOP_HDR) {
         ftprint_out("style=filled, color=lightgrey, label=\"");
-    }
-    else if (bblock->is_loop_end) {
-        ftprint_out("style=filled, color=lightblue, label=\"");
     }
     else {
         ftprint_out("label=\"");
     }
 
     for (Instr* it = bblock->first; it; it = it->next, ii++) {
-        ftprint_out("%s\\n", IR_print_instr(arena, it));
+        ftprint_out("%.3lu: %s\\l", it->ino, IR_print_instr(arena, it));
     }
 
     assert(ii == bblock->num_instrs);
     ftprint_out("\"]\n");
 
-    for (size_t i = 0; i < bblock->num_succs; i++) {
-        BBlock* succ = bblock->succs[i];
+    Instr* last_instr = bblock->last;
 
-        ftprint_out("\tB%d -> B%d\n", bblock->id, succ->id);
+    if (last_instr->kind == INSTR_JMP) {
+        ftprint_out("\tB%d -> B%d\n", bblock->id, last_instr->jmp.target->id);
+    }
+    else if (last_instr->kind == INSTR_COND_JMP) {
+        ftprint_out("\tB%d -> B%d\n", bblock->id, last_instr->cond_jmp.true_bb->id);
+        ftprint_out("\tB%d -> B%d\n", bblock->id, last_instr->cond_jmp.false_bb->id);
+    }
+    else {
+        assert(last_instr->kind == INSTR_RET);
     }
 }
 

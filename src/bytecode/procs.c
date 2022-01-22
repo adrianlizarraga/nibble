@@ -181,36 +181,9 @@ static void IR_try_push_bblock_elem(BBlock*** p_array, BBlock* bblock)
     array_push(*p_array, bblock);
 }
 
-static void IR_try_add_succ_elem(BBlock* pred, BBlock* succ)
-{
-    bool found = false;
-    size_t len = pred->num_succs;
-
-    for (size_t i = 0; i < len; i++) {
-        if (pred->succs[i] == succ) {
-            found = true;
-            break;
-        }
-    }
-
-    assert(!found);
-
-    pred->succs[pred->num_succs++] = succ;
-    assert(pred->num_succs <= 2);
-}
-
 static void IR_connect_bblocks(BBlock* pred, BBlock* succ)
 {
-    IR_try_add_succ_elem(pred, succ);
     IR_try_push_bblock_elem(&succ->preds, pred);
-}
-
-static void IR_set_loop_bblocks(BBlock* loop_end, BBlock* loop_hdr)
-{
-    loop_hdr->is_loop_hdr = true;
-    loop_hdr->loop_end = loop_end;
-
-    loop_end->is_loop_end = true;
 }
 
 static void IR_patch_jmp_target(Instr* jmp_instr, BBlock* target)
@@ -2084,7 +2057,7 @@ static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* b
 
     if (loop_end_bblock) {
         IR_emit_instr_jmp(builder, loop_end_bblock, hdr_bblock);
-        IR_set_loop_bblocks(loop_end_bblock, hdr_bblock);
+        hdr_bblock->flags |= BBLOCK_IS_LOOP_HDR;
     }
 
     return after_bblock;
@@ -2126,8 +2099,8 @@ static BBlock* IR_emit_stmt_while(IR_ProcBuilder* builder, BBlock* bblock, StmtW
         // Jump back up to the loop header.
         IR_emit_instr_jmp(builder, body_end_bb, hdr_bb);
 
-        // Explicitly mark basic blocks inside the loop.
-        IR_set_loop_bblocks(body_end_bb, hdr_bb);
+        // Explicitly mark loop header.
+        hdr_bb->flags |= BBLOCK_IS_LOOP_HDR;
     }
 
     return last_bb;
@@ -2161,37 +2134,10 @@ static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, St
     IR_patch_ujmp_list(builder, &cont_ujmps, body_bb);
 
     if (body_end_bb) {
+        body_bb->flags |= BBLOCK_IS_LOOP_HDR;
+
         // Process condition.
         last_bb = IR_process_cfg_cond(builder, cond_expr, body_end_bb, true, body_bb);
-
-        // Explicitly mark basic blocks inside the loop.
-        // First, find the actual end of the loop. A predecessor of `last_bb` should be the end of the loop.
-        BBlock* loop_end_bb = NULL;
-        size_t num_preds = array_len(last_bb->preds);
-
-        for (size_t i = 0; i < num_preds; i++) {
-            BBlock* b = last_bb->preds[i];
-
-            bool is_loop_end = false;
-
-            // BBlock `b` is the "loop end" iff one of its successors is the loop header.
-            for (size_t j = 0; j < b->num_succs; j++) {
-                BBlock* h = b->succs[j];
-                if (h == body_bb) {
-                    is_loop_end = true;
-                    break;
-                }
-            }
-
-            if (is_loop_end) {
-                loop_end_bb = b;
-                break;
-            }
-        }
-
-        assert(loop_end_bb);
-
-        IR_set_loop_bblocks(loop_end_bb, body_bb);
     }
     else {
         last_bb = IR_alloc_bblock(builder);
@@ -2255,20 +2201,96 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     sym->as_proc.bblocks = array_create(builder->arena, BBlock*, 8);
 
     BBlock* start_bb = IR_alloc_bblock(builder);
-    BBlock* end_bb = IR_emit_stmt_block_body(builder, start_bb, &dproc->stmts, NULL, NULL);
+    start_bb->flags |= BBLOCK_IS_START;
+    
+    BBlock* last_bb = IR_emit_stmt_block_body(builder, start_bb, &dproc->stmts, NULL, NULL);
 
     // If proc doesn't have explicit returns, add one at the end.
     // NOTE: This should only apply to procs that return void. The resolver
     // will catch other cases.
     if (!dproc->returns) {
         assert(sym->type->as_proc.ret == builtin_types[BUILTIN_TYPE_VOID].type);
-        assert(end_bb);
+        assert(last_bb);
 
-        IR_emit_instr_ret(builder, end_bb, builtin_types[BUILTIN_TYPE_VOID].type, IR_REG_COUNT);
+        IR_emit_instr_ret(builder, last_bb, builtin_types[BUILTIN_TYPE_VOID].type, IR_REG_COUNT);
     }
 
     IR_pop_scope(builder);
     builder->curr_proc = NULL;
+
+    // Remove redundant jmps and blocks.
+    {
+        for (size_t i = array_len(sym->as_proc.bblocks); i-- > 0;) {
+            BBlock* bb = sym->as_proc.bblocks[i];
+
+            if (bb->num_instrs == 0) {
+                array_remove_swap(sym->as_proc.bblocks, i);
+                continue;
+            }
+
+            if (bb->num_instrs > 1) {
+                continue;
+            }
+
+            assert(bb->num_instrs == 1);
+
+            Instr* instr = bb->first;
+
+            // This basic block only has a single jump instruction, so we can
+            // remove it and make its predecessors jump to the intended target.
+            if (instr->kind == INSTR_JMP) {
+                BBlock* target = instr->jmp.target;
+
+                BBlock** preds = bb->preds;
+                size_t npreds = array_len(preds);
+
+                for (size_t p = 0; p < npreds; p++) {
+                    BBlock* p_bb = preds[p];
+                    Instr* p_instr = p_bb->last;
+
+                    assert(p_bb->last && p_bb->num_instrs);
+                    
+                    // Replace bb's predecessors' jmp targets with `target` instead of `bb`.
+                    if (p_instr->kind == INSTR_JMP) {
+                        assert(p_instr->jmp.target == bb); // Should be jumping to bb.
+                        p_instr->jmp.target = target; // Skip bb and jump directly to the intended target.
+                    }
+                    else {
+                        assert(p_instr->kind == INSTR_COND_JMP);
+
+                        if (p_instr->cond_jmp.true_bb == bb) {
+                            p_instr->cond_jmp.true_bb = target;
+                        }
+                        else {
+                            assert(p_instr->cond_jmp.false_bb == bb);
+                            p_instr->cond_jmp.false_bb = target;
+                        }
+                    }
+
+                    // Add p_bb to target->preds
+                    array_push(target->preds, p_bb);
+                }
+
+                // Remove bb from target->preds (swap with last).
+                size_t bb_i = 0;
+                size_t n_tgt_preds = array_len(target->preds);
+
+                for (size_t t = 0; t < n_tgt_preds; t++) {
+                    BBlock* t_bb = target->preds[t];
+
+                    if (t_bb == bb) {
+                        bb_i = t;
+                        break;
+                    }
+                }
+
+                array_remove_swap(target->preds, bb_i);
+
+                // Remove bb from array by swapping with last elem and decrementing count
+                array_remove_swap(sym->as_proc.bblocks, i);
+            }
+        }
+    }
 
     // Sort proc bblocks by starting instruction number.
     {
@@ -2291,7 +2313,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
 
 #ifdef NIBBLE_PRINT_DECLS
     IR_print_out_proc(builder->tmp_arena, sym);
-    //IR_dump_proc_dot(builder->tmp_arena, sym);
+    IR_dump_proc_dot(builder->tmp_arena, sym);
 #endif
 }
 

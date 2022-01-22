@@ -219,28 +219,23 @@ typedef struct Instr {
     struct Instr* next;
 } Instr;
 
+enum BBlockFlags {
+    BBLOCK_IS_START    = 0x1,
+    BBLOCK_IS_LOOP_HDR = 0x2
+};
+
 struct BBlock {
     long id;
-    size_t num_instrs;
+    u32 flags;
 
     // Doubly-linked list of instructions.
+    size_t num_instrs;
     Instr* first;
     Instr* last;
 
-    // Track whether this is the first or last block in a loop.
-    BBlock* loop_end;
-    bool is_loop_hdr;
-    bool is_loop_end;
-
     BBlock** preds; // Stretchy buffer of predecessor basic blocks.
 
-    size_t num_succs;
-    BBlock* succs[2];
-
-    bool visited;
-    bool closed;
-
-    IR_Reg* livein; // Stretchy buffer of IR registers live at the beginning of this bblock.
+    bool closed; // Currently used for debugging. A BBlock is closed once the final jmp/ret instruction has been added.
 };
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, TypeCache* type_cache);
