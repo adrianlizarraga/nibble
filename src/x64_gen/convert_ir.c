@@ -786,11 +786,14 @@ static void X64_emit_lir_instr(X64_LIRBuilder* builder, size_t* ip, size_t num_i
     }
 }
 
-static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_ir_instrs, Instr** ir_instrs)
+static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_bblocks, BBlock** bblocks)
 {
-    size_t ip = 0;
+    for (int i = 0; i < X64_REG_COUNT; i++) {
+        builder->lreg_phys[i] = X64_def_phys_reg(builder, (X64_Reg)i);
+    }
 
-    builder->lreg_rbp = X64_def_phys_reg(builder, X64_RBP);
+    // TODO: Clone graph using BFS and a map that maps old bblock to new bblock.
+    // Use map[old] to also check if bblock has been visited.
 
     while (ip < num_ir_instrs) {
         X64_emit_lir_instr(builder, &ip, num_ir_instrs, ir_instrs);

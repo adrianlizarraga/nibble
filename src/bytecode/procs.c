@@ -216,7 +216,8 @@ static void IR_patch_ujmp_list(IR_ProcBuilder* builder, IR_UJmpList* list, BBloc
 
 static void IR_add_instr(IR_ProcBuilder* builder, BBlock* bblock, Instr* instr)
 {
-    instr->ino = builder->curr_proc->as_proc.num_instrs++;
+    instr->ino = builder->curr_proc->as_proc.num_instrs << 1;
+    builder->curr_proc->as_proc.num_instrs++;
     IR_bblock_add_instr(bblock, instr);
 }
 
@@ -2219,6 +2220,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     builder->curr_proc = NULL;
 
     // Remove redundant jmps and blocks.
+    bool removed_bblock = false;
     {
         for (size_t i = array_len(sym->as_proc.bblocks); i-- > 0;) {
             BBlock* bb = sym->as_proc.bblocks[i];
@@ -2288,6 +2290,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
 
                 // Remove bb from array by swapping with last elem and decrementing count
                 array_remove_swap(sym->as_proc.bblocks, i);
+                removed_bblock = true;
             }
         }
     }
@@ -2310,6 +2313,23 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
             }
         }
     }
+
+    // Renumber instrs
+    if (removed_bblock) {
+        BBlock** bblocks = sym->as_proc.bblocks;
+        size_t n = array_len(bblocks);
+        long ino = 0;
+
+        for (size_t i = 0; i < n; i++) {
+            BBlock* bb = bblocks[i];
+            
+            for (Instr* it = bb->first; it; it = it->next) {
+                it->ino = ino;
+                ino += 2;
+            }
+        }
+    }
+
 
 #ifdef NIBBLE_PRINT_DECLS
     IR_print_out_proc(builder->tmp_arena, sym);

@@ -289,29 +289,29 @@ typedef struct X64_Instr {
     ListNode lnode;
 } X64_Instr;
 
+typedef struct X64_BBlock {
+    long id;
+    u32 flags;
+
+    // Doubly-linked list of instructions.
+    size_t num_instrs;
+    X64_Instr* first;
+    X64_Instr* last;
+
+    struct X64_BBlock** preds; // Stretchy buffer of predecessor basic blocks.
+} X64_BBlock;
+
 typedef struct X64_LIRBuilder {
     Allocator* arena;
 
-    // List of X64 LIR instructions.
     size_t num_instrs;
-    List instrs;
+    X64_BBlock** bblocks; // Stretchy buf of basic blocks
+
+    u32 lreg_phys[X64_REG_COUNT]; // LIR register per physical register.
 
     X64_LRegRange* lreg_ranges; // Stretchy buf
     u32* reg_map; // Map IR reg -> LIR reg; size: num_iregs
-
-    u32 lreg_rbp;
-
-    HMap jmp_map;
-    bool next_instr_is_jmp_target;
-
-    u32* call_sites; // lir call sites. Used for reg allocation
-
-    // Disjoint Set Union data structure for register renaming/aliasing.
-    u32* lreg_aliases; // Root alias node for each lir reg. size: num_lirregs
-    u32* lreg_sizes;   // Size for each lir reg aliasing set. size: num_lirregs
 } X64_LIRBuilder;
-
-u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r);
 
 void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, u32 src);
 void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_InstrKind kind, size_t size, u32 dst, Scalar src);

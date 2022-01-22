@@ -352,10 +352,10 @@ static void IR_dump_bblock_dot(Allocator* arena, BBlock* bblock)
 
     ftprint_out("\tB%d [", bblock->id);
     if (bblock->flags & BBLOCK_IS_LOOP_HDR) {
-        ftprint_out("style=filled, color=lightgrey, label=\"");
+        ftprint_out("style=filled, color=lightgrey, label=\"B%d\\n\\n", bblock->id);
     }
     else {
-        ftprint_out("label=\"");
+        ftprint_out("label=\"B%d\\n\\n", bblock->id);
     }
 
     for (Instr* it = bblock->first; it; it = it->next, ii++) {
