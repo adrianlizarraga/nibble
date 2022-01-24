@@ -4,6 +4,11 @@
 #include "hash_map.h"
 #include "x64_gen/regs.h"
 
+#define X64_LIR_REG_COUNT 0xFFFFFFFF
+
+typedef struct X64_BBlock X64_BBlock;
+typedef struct X64_Instr X64_Instr;
+
 typedef enum X64_InstrKind
 {
     X64_INSTR_NONE = 0,
@@ -250,9 +255,10 @@ typedef struct X64_InstrCall_R {
     X64_StackArgsInfo stack_info;
 } X64_InstrCall_R;
 
-typedef struct X64_Instr {
+struct X64_Instr {
     X64_InstrKind kind;
-    bool is_jmp_target;
+    long ino;
+    bool is_leader;
 
     union {
         X64_InstrBinary_R_R binary_r_r;
@@ -291,10 +297,11 @@ typedef struct X64_Instr {
         X64_InstrCall_R call_r;
     };
 
-    ListNode lnode;
-} X64_Instr;
+    X64_Instr* prev;
+    X64_Instr* next;
+};
 
-typedef struct X64_BBlock {
+struct X64_BBlock {
     long id;
     u32 flags;
 
@@ -304,10 +311,12 @@ typedef struct X64_BBlock {
     X64_Instr* last;
 
     struct X64_BBlock** preds; // Stretchy buffer of predecessor basic blocks.
-} X64_BBlock;
+};
 
 typedef struct X64_LIRBuilder {
     Allocator* arena;
+
+    u32 num_regs;
 
     size_t num_instrs;
     X64_BBlock** bblocks; // Stretchy buf of basic blocks
@@ -337,8 +346,8 @@ void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, 
 void X64_emit_instr_lea(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr mem);
 void X64_emit_instr_cmp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, u32 op2);
 void X64_emit_instr_cmp_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, Scalar op2);
-void X64_emit_instr_jmp(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_BBlock* from, X64_BBlock* target);
-void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, X64_BBlock* from, X64_BBlock* true_bb,
+void X64_emit_instr_jmp(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_BBlock* target);
+void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, X64_BBlock* true_bb,
                           X64_BBlock* false_bb);
 void X64_emit_instr_setcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, u32 dst);
 void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock);

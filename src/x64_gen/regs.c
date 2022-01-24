@@ -43,6 +43,16 @@ static const u32 x64_windows_arg_reg_mask = 0x0306;
 
 X64_Target x64_target;
 
+const char* x64_mem_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword"};
+const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "db", [2] = "dw", [4] = "dd", [8] = "dq"};
+
+const char* x64_condition_codes[] = {
+    [COND_U_LT] = "b", [COND_S_LT] = "l",    [COND_U_LTEQ] = "be", [COND_S_LTEQ] = "le", [COND_U_GT] = "a",
+    [COND_S_GT] = "g", [COND_U_GTEQ] = "ae", [COND_S_GTEQ] = "ge", [COND_EQ] = "e",      [COND_NEQ] = "ne",
+};
+
+const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
+
 bool init_x64_target(OS target_os)
 {
     x64_target.os = target_os;

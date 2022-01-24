@@ -1095,7 +1095,6 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     //////////////////////////////////////////
     IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->type_cache);
 
-    /*
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
@@ -1109,6 +1108,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     ftprint_out("[INFO]: Generating NASM assembly output: %s ...\n", nasm_fname.str);
     gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lit_map, nasm_fname.str);
 
+    /*
     //////////////////////////////////////////
     //          Run NASM assembler
     //////////////////////////////////////////

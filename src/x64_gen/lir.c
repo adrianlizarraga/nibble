@@ -1,14 +1,27 @@
 #include "x64_gen/lir.h"
 
-static void X64_add_lir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Instr* instr)
+static void X64_bblock_add_instr(X64_BBlock* bblock, X64_Instr* instr)
 {
-    if (builder->next_instr_is_jmp_target) {
-        instr->is_jmp_target = true;
-        builder->next_instr_is_jmp_target = false;
+    if (!bblock->first) {
+        bblock->first = instr;
+        instr->is_leader = true;
+    }
+    else {
+        bblock->last->next = instr;
     }
 
-    list_add_last(&builder->instrs, &instr->lnode);
+    instr->prev = bblock->last;
+    bblock->last = instr;
+
+    bblock->num_instrs += 1;
+}
+
+static void X64_add_lir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Instr* instr)
+{
+    instr->ino = builder->num_instrs << 1;
     builder->num_instrs += 1;
+
+    X64_bblock_add_instr(xbblock, instr);
 }
 
 static X64_Instr* X64_new_instr(Allocator* arena, X64_InstrKind kind)
@@ -176,7 +189,7 @@ void X64_emit_instr_cmp_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_jmp(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 target)
+void X64_emit_instr_jmp(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_BBlock* target)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_JMP);
     instr->jmp.from = xbblock;

@@ -48,6 +48,7 @@ static X64_InstrKind convert_kind[] = {
 static void X64_init_lir_builder(X64_LIRBuilder* builder, Allocator* arena, u32 num_iregs)
 {
     builder->arena = arena;
+    builder->num_regs = 0;
     builder->num_instrs = 0;
     builder->lreg_aliases = array_create(arena, u32, 16);
     builder->lreg_sizes = array_create(arena, u32, 16);
@@ -261,7 +262,7 @@ static X64_StackArgsInfo X64_convert_call_args(X64_LIRBuilder* builder, X64_BBlo
     }
 }
 
-static bool X64_try_combine_limm(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Instr** p_ir_instr)
+static bool X64_try_combine_limm(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr** p_ir_instr)
 {
     static const u32 INSTR_IS_BINARY = 0x1;
     static const u32 INSTR_IS_COMM = 0x2;
@@ -597,11 +598,13 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // For now, just force all registers in PHI instruction into the same physical register.
 
         u32 r = X64_def_lir_reg(builder, ir_instr->phi.r);
-        u32 a = X64_get_lir_reg(builder, ir_instr->phi.a);
-        u32 b = X64_get_lir_reg(builder, ir_instr->phi.b);
+        size_t num_args = ir_instr->phi.num_args;
+        PhiArg* args = ir_instr->phi.args;
 
-        X64_alias_lir_regs(builder, a, r);
-        X64_alias_lir_regs(builder, b, r);
+        for (size_t i = 0; i < num_args; i++) {
+            u32 x = X64_get_lir_reg(builder, args[i].ireg);
+            X64_alias_lir_regs(builder, x, r);
+        }
         break;
     }
     case INSTR_MEMCPY: {
@@ -648,7 +651,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
         }
 
-        X64_emit_instr_ret(builder);
+        X64_emit_instr_ret(builder, xbblock);
         break;
     }
     case INSTR_CALL_INDIRECT:
@@ -672,7 +675,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
 
         X64_InstrCallArg* x64_args = alloc_array(builder->arena, X64_InstrCallArg, num_args, false);
-        X64_StackArgsInfo stack_info = X64_convert_call_args(builder, num_args, args, x64_args);
+        X64_StackArgsInfo stack_info = X64_convert_call_args(builder, xbblock, num_args, args, x64_args);
 
         Type* ret_type = proc_type->as_proc.ret;
 
@@ -708,16 +711,18 @@ static X64_BBlock* X64_make_bblock(X64_LIRBuilder* builder, BBlock* bblock)
     for (Instr* it = bblock->first; it;) {
         it = X64_convert_ir_instr(builder, xbblock, it);
     }
+
+    return xbblock;
 }
 
-static void X64_get_bblock_succ(X64_LIRBuilder* builder, Queue* queue, HMap* map, BBlock* n)
+static X64_BBlock* X64_get_bblock_succ(X64_LIRBuilder* builder, Queue* queue, HMap* map, BBlock* n)
 {
     X64_BBlock* xn = hmap_get_obj(map, PTR_UINT(n));
 
     // Haven't visited this neighbor yet.
     if (!xn) {
         xn = X64_make_bblock(builder, n);
-        hmap_put(map, PTR_UINT(n), xn);
+        hmap_put(map, PTR_UINT(n), PTR_UINT(xn));
 
         queue_push(queue, n);
     }
@@ -728,14 +733,14 @@ static void X64_get_bblock_succ(X64_LIRBuilder* builder, Queue* queue, HMap* map
 static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_bblocks, BBlock** bblocks)
 {
     for (int i = 0; i < X64_REG_COUNT; i++) {
-        builder->lreg_phys[i] = X64_def_phys_reg(builder, (X64_Reg)i);
+        builder->lreg_phys[i] = X64_next_lir_reg(builder);
     }
 
     // Clone graph using BFS and a map that maps old bblock to new bblock.
     Queue queue;
     queue_init(&queue, builder->arena);
 
-    HMap map = hmap(4, builder->arena);
+    HMap map = hmap(clp2(num_bblocks), builder->arena);
 
     BBlock* start = bblocks[0];
     X64_BBlock* xstart = X64_make_bblock(builder, start);
@@ -762,13 +767,47 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_bblocks, BBl
         else if (instr->kind == INSTR_COND_JMP) {
             assert(xinstr->kind == X64_INSTR_JMPCC);
 
-            X64_BBlock* xn_true = X64_add_bblock_succ(builder, &queue, &map, instr->cond_jmp.true_bb);
+            X64_BBlock* xn_true = X64_get_bblock_succ(builder, &queue, &map, instr->cond_jmp.true_bb);
             array_push(xn_true->preds, xbb);
             xinstr->jmpcc.true_bb = xn_true;
 
-            X64_BBlock* xn_false = X64_add_bblock_succ(builder, &queue, &map, instr->cond_jmp.false_bb);
+            X64_BBlock* xn_false = X64_get_bblock_succ(builder, &queue, &map, instr->cond_jmp.false_bb);
             array_push(xn_false->preds, xbb);
             xinstr->jmpcc.false_bb = xn_false;
+        }
+    }
+
+    // Sort these basic blocks by ID.
+    {
+        X64_BBlock** xbblocks = builder->bblocks;
+        size_t n = array_len(xbblocks);
+
+        for (size_t i = 0; i < n; i++) {
+            for (size_t j = 0; j < n - 1; j++) {
+                X64_BBlock* curr = xbblocks[j];
+                X64_BBlock* next = xbblocks[j + 1];
+
+                if (curr->id > next->id) {
+                    xbblocks[j] = next;
+                    xbblocks[j + 1] = curr;
+                }
+            }
+        }
+    }
+
+    // Renumber these instructions.
+    {
+        X64_BBlock** xbblocks = builder->bblocks;
+        size_t n = array_len(xbblocks);
+        long ino = 0;
+
+        for (size_t i = 0; i < n; i++) {
+            X64_BBlock* xbb = xbblocks[i];
+
+            for (X64_Instr* it = xbb->first; it; it = it->next) {
+                it->ino = ino;
+                ino += 2;
+            }
         }
     }
 }

@@ -2149,6 +2149,98 @@ static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, St
     return last_bb;
 }
 
+static bool IR_rm_dead_bblocks(Symbol* sym)
+{
+    bool removed_bblock = false;
+
+    for (size_t i = array_len(sym->as_proc.bblocks); i-- > 0;) {
+        BBlock* bb = sym->as_proc.bblocks[i];
+
+        if (bb->num_instrs == 0) {
+            array_remove_swap(sym->as_proc.bblocks, i);
+            continue;
+        }
+
+        if (bb->num_instrs > 1) {
+            continue;
+        }
+
+        assert(bb->num_instrs == 1);
+
+        Instr* instr = bb->first;
+
+        // This basic block only has a single jump instruction, so we can
+        // remove it and make its predecessors jump to the intended target.
+        if (instr->kind == INSTR_JMP) {
+            BBlock* target = instr->jmp.target;
+
+            BBlock** preds = bb->preds;
+            size_t npreds = array_len(preds);
+
+            // First, check to make sure we're not removing a basic block that is needed by a fall-through conditional jump.
+            bool can_remove = true;
+
+            for (size_t p = 0; p < npreds; p++) {
+                BBlock* p_bb = preds[p];
+                Instr* p_instr = p_bb->last;
+
+                assert(p_bb->last && p_bb->num_instrs);
+
+                if (p_instr->kind == INSTR_COND_JMP && p_instr->cond_jmp.false_bb == bb) {
+                    can_remove = false;
+                    break;
+                }
+            }
+
+            if (!can_remove) {
+                continue;
+            }
+
+            // Now, update jmp targets for predecessors.
+            for (size_t p = 0; p < npreds; p++) {
+                BBlock* p_bb = preds[p];
+                Instr* p_instr = p_bb->last;
+
+                // Replace bb's predecessors' jmp targets with `target` instead of `bb`.
+                if (p_instr->kind == INSTR_JMP) {
+                    assert(p_instr->jmp.target == bb); // Should be jumping to bb.
+                    p_instr->jmp.target = target; // Skip bb and jump directly to the intended target.
+                }
+                else {
+                    assert(p_instr->kind == INSTR_COND_JMP);
+                    assert(p_instr->cond_jmp.true_bb == bb);
+
+                    p_instr->cond_jmp.true_bb = target;
+                }
+
+                // Add p_bb to target->preds
+                array_push(target->preds, p_bb);
+            }
+
+            // Remove bb from target->preds (swap with last).
+            size_t bb_i = 0;
+            size_t n_tgt_preds = array_len(target->preds);
+
+            for (size_t t = 0; t < n_tgt_preds; t++) {
+                BBlock* t_bb = target->preds[t];
+
+                if (t_bb == bb) {
+                    bb_i = t;
+                    break;
+                }
+            }
+
+            array_remove_swap(target->preds, bb_i);
+
+            // Remove bb from array by swapping with last elem and decrementing count
+            array_remove_swap(sym->as_proc.bblocks, i);
+            removed_bblock = true;
+        }
+    }
+
+    return removed_bblock;
+}
+
 static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt, IR_UJmpList* break_ujmps, IR_UJmpList* cont_ujmps)
 {
     switch (stmt->kind) {
@@ -2219,81 +2311,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     IR_pop_scope(builder);
     builder->curr_proc = NULL;
 
-    // Remove redundant jmps and blocks.
-    bool removed_bblock = false;
-    {
-        for (size_t i = array_len(sym->as_proc.bblocks); i-- > 0;) {
-            BBlock* bb = sym->as_proc.bblocks[i];
-
-            if (bb->num_instrs == 0) {
-                array_remove_swap(sym->as_proc.bblocks, i);
-                continue;
-            }
-
-            if (bb->num_instrs > 1) {
-                continue;
-            }
-
-            assert(bb->num_instrs == 1);
-
-            Instr* instr = bb->first;
-
-            // This basic block only has a single jump instruction, so we can
-            // remove it and make its predecessors jump to the intended target.
-            if (instr->kind == INSTR_JMP) {
-                BBlock* target = instr->jmp.target;
-
-                BBlock** preds = bb->preds;
-                size_t npreds = array_len(preds);
-
-                for (size_t p = 0; p < npreds; p++) {
-                    BBlock* p_bb = preds[p];
-                    Instr* p_instr = p_bb->last;
-
-                    assert(p_bb->last && p_bb->num_instrs);
-                    
-                    // Replace bb's predecessors' jmp targets with `target` instead of `bb`.
-                    if (p_instr->kind == INSTR_JMP) {
-                        assert(p_instr->jmp.target == bb); // Should be jumping to bb.
-                        p_instr->jmp.target = target; // Skip bb and jump directly to the intended target.
-                    }
-                    else {
-                        assert(p_instr->kind == INSTR_COND_JMP);
-
-                        if (p_instr->cond_jmp.true_bb == bb) {
-                            p_instr->cond_jmp.true_bb = target;
-                        }
-                        else {
-                            assert(p_instr->cond_jmp.false_bb == bb);
-                            p_instr->cond_jmp.false_bb = target;
-                        }
-                    }
-
-                    // Add p_bb to target->preds
-                    array_push(target->preds, p_bb);
-                }
-
-                // Remove bb from target->preds (swap with last).
-                size_t bb_i = 0;
-                size_t n_tgt_preds = array_len(target->preds);
-
-                for (size_t t = 0; t < n_tgt_preds; t++) {
-                    BBlock* t_bb = target->preds[t];
-
-                    if (t_bb == bb) {
-                        bb_i = t;
-                        break;
-                    }
-                }
-
-                array_remove_swap(target->preds, bb_i);
-
-                // Remove bb from array by swapping with last elem and decrementing count
-                array_remove_swap(sym->as_proc.bblocks, i);
-                removed_bblock = true;
-            }
-        }
-    }
+    IR_rm_dead_bblocks(sym);
 
     // Sort proc bblocks by starting instruction number.
     {
@@ -2306,7 +2324,6 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
                 BBlock* next = bblocks[j + 1];
 
                 if (curr->first->ino > next->first->ino) {
-                    // Swap
                     bblocks[j] = next;
                     bblocks[j + 1] = curr;
                 }
@@ -2314,22 +2331,23 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
         }
     }
 
-    // Renumber instrs
-    if (removed_bblock) {
+    // Renumber bblock IDs and instructions.
+    {
         BBlock** bblocks = sym->as_proc.bblocks;
         size_t n = array_len(bblocks);
         long ino = 0;
 
         for (size_t i = 0; i < n; i++) {
             BBlock* bb = bblocks[i];
-            
+
+            bb->id = i;
+
             for (Instr* it = bb->first; it; it = it->next) {
                 it->ino = ino;
                 ino += 2;
             }
         }
     }
-
 
 #ifdef NIBBLE_PRINT_DECLS
     IR_print_out_proc(builder->tmp_arena, sym);

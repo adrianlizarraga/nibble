@@ -4,7 +4,8 @@
 #include "x64_gen/regs.c"
 #include "x64_gen/lir.c"
 #include "x64_gen/convert_ir.c"
-#include "x64_gen/reg_alloc.c"
+//#include "x64_gen/reg_alloc.c"
+#include "x64_gen/print_lir.c"
 
 #define X64_INIT_LINE_LEN 128
 #define X64_STR_LIT_PRE "__nibble_str_lit_"
@@ -88,16 +89,6 @@ static const char* x64_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUNT] = {
         },
 };
 
-static const char* x64_mem_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword"};
-static const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "db", [2] = "dw", [4] = "dd", [8] = "dq"};
-
-static const char* x64_condition_codes[] = {
-    [COND_U_LT] = "b", [COND_S_LT] = "l",    [COND_U_LTEQ] = "be", [COND_S_LTEQ] = "le", [COND_U_GT] = "a",
-    [COND_S_GT] = "g", [COND_U_GTEQ] = "ae", [COND_S_GTEQ] = "ge", [COND_EQ] = "e",      [COND_NEQ] = "ne",
-};
-
-static const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
-
 typedef enum X64_SIBDAddrKind {
     X64_SIBD_ADDR_GLOBAL,
     X64_SIBD_ADDR_LOCAL,
@@ -140,7 +131,7 @@ typedef struct X64_Generator {
 static X64_LRegLoc X64_lreg_loc(X64_Generator* generator, u32 lreg)
 {
     u32 rng_idx = X64_find_alias_reg(generator->curr_proc.builder, lreg);
-    X64_LRegLoc reg_loc = generator->curr_proc.builder->lreg_ranges[rng_idx].loc;
+    X64_LRegLoc reg_loc = {0};//generator->curr_proc.builder->lreg_ranges[rng_idx].loc; // TODO: Fix
 
     assert(reg_loc.kind != X64_LREG_LOC_UNASSIGNED);
 
@@ -1015,6 +1006,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
     }
 }
 
+/*
 static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_last_instr, X64_Instr* instr)
 {
     static const char* binary_r_r_name[] = {
@@ -1115,7 +1107,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
     case X64_INSTR_SAR_R_I:
     case X64_INSTR_SHL_R_I: {
         u32 dst_size = (u32)instr->shift_r_i.size;
-        X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->shift_r_r.dst);
+        X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->shift_r_i.dst);
         bool dst_in_reg = (dst_loc.kind == X64_LREG_LOC_REG);
         const char* dst_op_str = dst_in_reg ? x64_reg_names[dst_size][dst_loc.reg] :
                                               X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
@@ -1331,6 +1323,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
 
     allocator_restore_state(mem_state);
 }
+*/
 
 static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 {
@@ -1372,13 +1365,35 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     u32 stack_size = X64_assign_proc_stack_offsets(generator, decl); // NOTE: Spills argument registers.
 
     // Register allocation.
-    Instr** ir_instrs = sym->as_proc.instrs;
-    size_t num_ir_instrs = array_len(ir_instrs);
+    BBlock** ir_bblocks = sym->as_proc.bblocks;
+    size_t num_ir_bblocks = array_len(ir_bblocks);
     X64_LIRBuilder builder = {0};
 
     X64_init_lir_builder(&builder, generator->tmp_mem, sym->as_proc.num_regs);
-    X64_emit_lir_instrs(&builder, num_ir_instrs, ir_instrs);
+    X64_emit_lir_instrs(&builder, num_ir_bblocks, ir_bblocks);
 
+    // Sort proc xbblocks by starting instruction number.
+    {
+        X64_BBlock** xbblocks = builder.bblocks;
+        size_t n = array_len(xbblocks);
+
+        for (size_t i = 0; i < n; i++) {
+            for (size_t j = 0; j < n - 1; j++) {
+                X64_BBlock* curr = xbblocks[j];
+                X64_BBlock* next = xbblocks[j + 1];
+
+                if (curr->first->ino > next->first->ino) {
+                    // Swap
+                    xbblocks[j] = next;
+                    xbblocks[j + 1] = curr;
+                }
+            }
+        }
+    }
+
+    LIR_dump_proc_dot(generator->tmp_mem, proc_mangled, builder.bblocks);
+
+    /*
     X64_RegAllocResult reg_alloc =
         X64_linear_scan_reg_alloc(&builder, generator->curr_proc.num_scratch_regs, generator->curr_proc.scratch_regs, stack_size);
 
@@ -1388,6 +1403,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     }
 
     stack_size = reg_alloc.stack_offset;
+    */
     generator->curr_proc.builder = &builder;
 
 
@@ -1445,6 +1461,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
         X64_fill_line(generator, sub_rsp_inst, "    sub rsp, %u", stack_size);
 
     // Generate instructions.
+    /*
     List* head = &builder.instrs;
     size_t instr_index = 0;
 
@@ -1455,11 +1472,13 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
         X64_gen_instr(generator, instr_index, is_last, instr);
         instr_index += 1;
     }
+    */
 
     // End label
     X64_emit_text(generator, "    end.%s:", proc_mangled);
 
     // Save/Restore callee-saved registers.
+    /*
     char* tmp_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
 
     for (uint32_t r = 0; r < X64_REG_COUNT; r += 1) {
@@ -1476,6 +1495,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     array_push(tmp_line, '\0');
 
     *save_regs_inst = mem_dup(generator->gen_mem, tmp_line, array_len(tmp_line), DEFAULT_ALIGN);
+    */
 
     if (stack_size)
         X64_emit_text(generator, "    mov rsp, rbp");

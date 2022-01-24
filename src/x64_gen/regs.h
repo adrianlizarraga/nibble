@@ -90,4 +90,8 @@ typedef struct X64_StackArgsInfo {
     u64 offset;
 } X64_StackArgsInfo;
 
+extern const char* x64_mem_size_label[X64_MAX_INT_REG_SIZE + 1];
+extern const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1];
+extern const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1];
+extern const char* x64_condition_codes[];
 #endif
