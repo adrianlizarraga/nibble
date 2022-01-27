@@ -45,18 +45,6 @@ static X64_InstrKind convert_kind[] = {
     [INSTR_ZEXT] = X64_INSTR_MOVZX_R_R
 };
 
-static void X64_init_lir_builder(X64_LIRBuilder* builder, Allocator* arena, u32 num_iregs)
-{
-    builder->arena = arena;
-    builder->num_regs = 0;
-    builder->num_instrs = 0;
-    builder->lreg_aliases = array_create(arena, u32, 16);
-    builder->lreg_sizes = array_create(arena, u32, 16);
-
-    builder->reg_map = alloc_array(arena, u32, num_iregs, false);
-    memset(builder->reg_map, 0xFF, num_iregs * sizeof(u32));
-}
-
 u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r)
 {
     u32* roots = builder->lreg_aliases;
@@ -699,6 +687,27 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     return ir_instr->next;
 }
 
+static void X64_insert_bblock(X64_LIRBuilder* builder, X64_BBlock* bblock)
+{
+    // Insert at the end
+    builder->bblocks[builder->num_bblocks++] = bblock;
+
+    // Run a single "insertion sort" step to move this bblock to the correct place.
+    X64_BBlock** bblocks = builder->bblocks;
+    size_t n = builder->num_bblocks;
+
+    for (size_t i = n; i-- > 1;) {
+        if (bblocks[i]->id < bblocks[i - 1]->id) {
+            X64_BBlock* tmp = bblocks[i];
+            bblocks[i] = bblocks[i - 1];
+            bblocks[i - 1] = tmp;
+        }
+        else {
+            break;
+        }
+    }
+}
+
 static X64_BBlock* X64_make_bblock(X64_LIRBuilder* builder, BBlock* bblock)
 {
     X64_BBlock* xbblock = alloc_type(builder->arena, X64_BBlock, true);
@@ -706,7 +715,7 @@ static X64_BBlock* X64_make_bblock(X64_LIRBuilder* builder, BBlock* bblock)
     xbblock->flags = bblock->flags;
     xbblock->preds = array_create(builder->arena, X64_BBlock*, array_len(bblock->preds));
 
-    array_push(builder->bblocks, xbblock);
+    X64_insert_bblock(builder, xbblock);
 
     for (Instr* it = bblock->first; it;) {
         it = X64_convert_ir_instr(builder, xbblock, it);
@@ -730,13 +739,30 @@ static X64_BBlock* X64_get_bblock_succ(X64_LIRBuilder* builder, Queue* queue, HM
     return xn;
 }
 
-static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_bblocks, BBlock** bblocks)
+static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_t num_bblocks, BBlock** bblocks)
 {
+    //
+    // Initialize aux data structures for LIR
+    //
+
+    // Data structures used to alias PHI registers.
+    builder->lreg_aliases = array_create(builder->arena, u32, 16);
+    builder->lreg_sizes = array_create(builder->arena, u32, 16);
+
+    // Array of X64 basic blocks. Basic blocks will be inserted in sorted order.
+    builder->num_bblocks = 0;
+    builder->bblocks = alloc_array(builder->arena, X64_BBlock*, num_bblocks, true);
+
+    // Array that maps an IR register to a LIR register.
+    builder->reg_map = alloc_array(builder->arena, u32, num_iregs, false);
+    memset(builder->reg_map, 0xFF, num_iregs * sizeof(u32));
+
+    // Create an LIR register for each physical X64 register.
     for (int i = 0; i < X64_REG_COUNT; i++) {
         builder->lreg_phys[i] = X64_next_lir_reg(builder);
     }
 
-    // Clone graph using BFS and a map that maps old bblock to new bblock.
+    // Create an X64 CFG graph by using BFS and a map that maps an IR bblock to an LIR bblock.
     Queue queue;
     queue_init(&queue, builder->arena);
 
@@ -777,28 +803,12 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_bblocks, BBl
         }
     }
 
-    // Sort these basic blocks by ID.
-    {
-        X64_BBlock** xbblocks = builder->bblocks;
-        size_t n = array_len(xbblocks);
-
-        for (size_t i = 0; i < n; i++) {
-            for (size_t j = 0; j < n - 1; j++) {
-                X64_BBlock* curr = xbblocks[j];
-                X64_BBlock* next = xbblocks[j + 1];
-
-                if (curr->id > next->id) {
-                    xbblocks[j] = next;
-                    xbblocks[j + 1] = curr;
-                }
-            }
-        }
-    }
+    assert(builder->num_bblocks == num_bblocks);
 
     // Renumber these instructions.
     {
         X64_BBlock** xbblocks = builder->bblocks;
-        size_t n = array_len(xbblocks);
+        size_t n = builder->num_bblocks;
         long ino = 0;
 
         for (size_t i = 0; i < n; i++) {

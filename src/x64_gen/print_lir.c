@@ -328,15 +328,13 @@ static void LIR_dump_bblock_dot(Allocator* arena, X64_BBlock* bblock)
     }
 }
 
-void LIR_dump_proc_dot(Allocator* arena, const char* proc_name, X64_BBlock** xbblocks)
+void LIR_dump_proc_dot(Allocator* arena, const char* proc_name, size_t num_xbblocks, X64_BBlock** xbblocks)
 {
     ftprint_out("\ndigraph %s {\n\tnode [shape=box]\n", proc_name);
 
     AllocatorState mem_state = allocator_get_state(arena);
     {
-        size_t n = array_len(xbblocks);
-
-        for (size_t i = 0; i < n; i++) {
+        for (size_t i = 0; i < num_xbblocks; i++) {
             LIR_dump_bblock_dot(arena, xbblocks[i]);
         }
     }

@@ -319,7 +319,8 @@ typedef struct X64_LIRBuilder {
     u32 num_regs;
 
     size_t num_instrs;
-    X64_BBlock** bblocks; // Stretchy buf of basic blocks
+    size_t num_bblocks;
+    X64_BBlock** bblocks;
 
     u32 lreg_phys[X64_REG_COUNT]; // LIR register per physical register.
 

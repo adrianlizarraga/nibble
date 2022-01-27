@@ -1367,31 +1367,11 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     // Register allocation.
     BBlock** ir_bblocks = sym->as_proc.bblocks;
     size_t num_ir_bblocks = array_len(ir_bblocks);
-    X64_LIRBuilder builder = {0};
+    X64_LIRBuilder builder = {.arena = generator->tmp_mem};
 
-    X64_init_lir_builder(&builder, generator->tmp_mem, sym->as_proc.num_regs);
-    X64_emit_lir_instrs(&builder, num_ir_bblocks, ir_bblocks);
+    X64_emit_lir_instrs(&builder, sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks);
 
-    // Sort proc xbblocks by starting instruction number.
-    {
-        X64_BBlock** xbblocks = builder.bblocks;
-        size_t n = array_len(xbblocks);
-
-        for (size_t i = 0; i < n; i++) {
-            for (size_t j = 0; j < n - 1; j++) {
-                X64_BBlock* curr = xbblocks[j];
-                X64_BBlock* next = xbblocks[j + 1];
-
-                if (curr->first->ino > next->first->ino) {
-                    // Swap
-                    xbblocks[j] = next;
-                    xbblocks[j + 1] = curr;
-                }
-            }
-        }
-    }
-
-    LIR_dump_proc_dot(generator->tmp_mem, proc_mangled, builder.bblocks);
+    LIR_dump_proc_dot(generator->tmp_mem, proc_mangled, builder.num_bblocks, builder.bblocks);
 
     /*
     X64_RegAllocResult reg_alloc =
