@@ -224,9 +224,11 @@ void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock)
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock)
+void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, unsigned char regs)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_RET);
+    instr->ret.regs = regs;
+
     X64_add_lir_instr(builder, xbblock, instr);
 }
 

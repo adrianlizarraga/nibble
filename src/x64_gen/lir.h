@@ -231,6 +231,15 @@ typedef struct X64_InstrSetCC {
     u32 dst;
 } X64_InstrSetCC;
 
+enum X64_RetRegFlags {
+    X64_RET_REG_RAX = 0x1,
+    X64_RET_REG_RDX = 0x2
+};
+
+typedef struct X64_InstrRet {
+    unsigned char regs; // Mask denoting which physical registers contain return values.
+} X64_InstrRet;
+
 typedef struct X64_InstrCallArg {
     Type* type;
     bool in_reg;
@@ -292,6 +301,8 @@ struct X64_Instr {
 
         X64_InstrSetCC setcc;
 
+        X64_InstrRet ret;
+
         X64_InstrCall call;
 
         X64_InstrCall_R call_r;
@@ -352,7 +363,7 @@ void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, Conditio
                           X64_BBlock* false_bb);
 void X64_emit_instr_setcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, u32 dst);
 void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock);
-void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock);
+void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, unsigned char regs);
 void X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, u32 dst, u32 num_args, X64_InstrCallArg* args,
                          X64_StackArgsInfo stack_info);
 void X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, u32 dst, u32 num_args,

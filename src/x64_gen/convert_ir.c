@@ -632,14 +632,18 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         //     ret
         Type* ret_type = ir_instr->ret.type;
 
+        unsigned char ret_regs = 0;
+
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
             u32 a = X64_get_lir_reg(builder, ir_instr->ret.a);
             u32 ax = X64_get_lir_phys_reg(builder, X64_RAX);
 
             X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
+
+            ret_regs = X64_RET_REG_RAX; // Only return value via RAX
         }
 
-        X64_emit_instr_ret(builder, xbblock);
+        X64_emit_instr_ret(builder, xbblock, ret_regs);
         break;
     }
     case INSTR_CALL_INDIRECT:
@@ -665,16 +669,50 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_InstrCallArg* x64_args = alloc_array(builder->arena, X64_InstrCallArg, num_args, false);
         X64_StackArgsInfo stack_info = X64_convert_call_args(builder, xbblock, num_args, args, x64_args);
 
-        Type* ret_type = proc_type->as_proc.ret;
+        // NOTE: Stack frame must be 16-byte aligned before procedure call.
+        // If the number of stack args + caller-saved regs is not even (16-byte aligned),
+        // we MUST subtract 8 from stack BEFORE pushing anything into stack
+        // See: https://godbolt.org/z/cM9Encdsc
+        bool stack_aligned = (stack_info.size & (X64_STACK_ALIGN - 1)) == 0;
 
-        u32 r = (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) ? X64_def_lir_reg(builder, ir_r) : (u32)-1;
+        if (!stack_aligned) {
+            Scalar stack_word_size = {.as_int._u64 = X64_STACK_WORD_SIZE};
 
+            X64_emit_instr_binary(builder, xbblock, X64_INSTR_SUB_R_I, X64_get_lir_phys_reg(builder, X64_RSP), stack_word_size);
+        }
+
+        // Place stack arguments.
+        X64_place_args_in_stack(builder, stack_info, num_args, x64_args);
+
+        // Emit actuall call instruction.
         if (ir_instr->kind == INSTR_CALL) {
-            X64_emit_instr_call(builder, xbblock, ir_instr->call.sym, r, num_args, x64_args, stack_info);
+            X64_emit_instr_call(builder, xbblock, ir_instr->call.sym);
         }
         else {
             u32 proc_r = X64_get_lir_reg(builder, ir_instr->calli.loc);
-            X64_emit_instr_call_r(builder, xbblock, proc_type, proc_r, r, num_args, x64_args, stack_info);
+            X64_emit_instr_call_r(builder, xbblock, proc_r);
+        }
+
+        // Handle return value.
+        Type* ret_type = proc_type->as_proc.ret;
+
+        if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
+            u32 r = X64_def_lir_reg(builder, ir_r);
+            u32 ax = X64_get_lir_phys_reg(builder, X64_RAX);
+
+            // mov r, _ax
+            X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, r, ax);
+        }
+
+        // Clean up stack.
+        if (stack_info.size && !stack_aligned) {
+            // add rsp, <stack_args_size> + <stack_word_size>
+        }
+        else if (stack_info.size) {
+            // add rsp, <stack_args_size>
+        }
+        else if (!stack_aligned) {
+            // add rsp, <stack_word_size>
         }
 
         break;
