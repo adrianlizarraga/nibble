@@ -72,10 +72,12 @@ void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_div(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 src)
+void X64_emit_instr_div(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 rdx, u32 rax, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->div.size = size;
+    instr->div.rdx = rdx;
+    instr->div.rax = rax;
     instr->div.src = src;
 
     X64_add_lir_instr(builder, xbblock, instr);
@@ -152,10 +154,12 @@ void X64_emit_instr_convert_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X6
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size)
+void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 rdx, u32 rax)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_SEXT_AX_TO_DX);
     instr->sext_ax_to_dx.size = size;
+    instr->sext_ax_to_dx.rdx = rdx;
+    instr->sext_ax_to_dx.rax = rax;
 
     X64_add_lir_instr(builder, xbblock, instr);
 }
@@ -218,22 +222,27 @@ void X64_emit_instr_setcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, Conditio
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock)
+void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rdi, u32 rsi, u32 rcx)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_REP_MOVSB);
+    instr->rep_movsb.rdi = rdi;
+    instr->rep_movsb.rsi = rsi;
+    instr->rep_movsb.rcx = rcx;
+
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, unsigned char regs)
+void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u32 rdx)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_RET);
-    instr->ret.regs = regs;
+    instr->ret.rax = rax;
+    instr->ret.rdx = rdx;
 
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, u32 dst, u32 num_args, X64_InstrCallArg* args,
-                         X64_StackArgsInfo stack_info)
+X64_Instr* X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, u32 dst, u32 num_args, X64_InstrCallArg* args,
+                               X64_StackArgsInfo stack_info)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CALL);
     instr->call.sym = sym;
@@ -243,10 +252,12 @@ void X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* s
     instr->call.stack_info = stack_info;
 
     X64_add_lir_instr(builder, xbblock, instr);
+
+    return instr;
 }
 
-void X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, u32 dst, u32 num_args,
-                           X64_InstrCallArg* args, X64_StackArgsInfo stack_info)
+X64_Instr* X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, u32 dst, u32 num_args,
+                                 X64_InstrCallArg* args, X64_StackArgsInfo stack_info)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CALL_R);
     instr->call_r.proc_type = proc_type;
@@ -257,4 +268,7 @@ void X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* p
     instr->call_r.stack_info = stack_info;
 
     X64_add_lir_instr(builder, xbblock, instr);
+
+    return instr;
 }
+

@@ -41,6 +41,8 @@ typedef struct X64_Target {
     u32 caller_saved_reg_mask;
     u32 arg_reg_mask;
 
+    u32 scratch_reg_mask;
+
     const char* startup_code;
 
     OS os;
@@ -76,11 +78,25 @@ typedef struct X64_LRegRangeList {
     ListNode lnode;
 } X64_LRegRangeList;
 
+enum X64_RegAllocControlKind {
+    X64_REG_ALLOC_CTRL_NONE = 0,
+    X64_REG_ALLOC_CTRL_FORCE_REG,          // Used for required operand registers (e.g., rcx for shift) and SIBD addr registers
+    X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL, // Used for procedure arguments
+    X64_REG_ALLOC_CTRL_HINT_LIR_REG,       // Used for register to register moves
+    X64_REG_ALLOC_CTRL_HINT_PHYS_REG,      // Used for register to register moves
+};
+
 typedef struct X64_LRegRange {
-    u32 start;
-    u32 end;
-    bool force_reg;
-    X64_Reg forced_reg;
+    long start;
+    long end;
+
+    enum X64_RegAllocControlKind ra_ctrl_kind;
+    union {
+        X64_Reg preg;
+        u32 lreg;
+        unsigned preg_mask;
+    } ra_ctrl;
+
     X64_LRegLoc loc;
     ListNode lnode;
 } X64_LRegRange;

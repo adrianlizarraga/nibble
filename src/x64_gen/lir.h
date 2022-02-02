@@ -148,6 +148,8 @@ typedef struct X64_InstrShift_R_I {
 
 typedef struct X64_InstrDiv {
     size_t size;
+    u32 rdx;
+    u32 rax;
     u32 src;
 } X64_InstrDiv;
 
@@ -186,6 +188,12 @@ typedef struct X64_InstrMov_M_I {
     Scalar src;
 } X64_InstrMov_M_I;
 
+typedef struct X64_InstrRepMovsb {
+    u32 rdi;
+    u32 rsi;
+    u32 rcx;
+} X64_InstrRepMovsb;
+
 typedef struct X64_InstrConvert_R_R {
     size_t dst_size;
     size_t src_size;
@@ -195,6 +203,8 @@ typedef struct X64_InstrConvert_R_R {
 
 typedef struct X64_InstrSExtAxToDx {
     size_t size;
+    u32 rdx;
+    u32 rax;
 } X64_InstrSExtAxToDx;
 
 typedef struct X64_InstrLEA {
@@ -231,20 +241,20 @@ typedef struct X64_InstrSetCC {
     u32 dst;
 } X64_InstrSetCC;
 
-enum X64_RetRegFlags {
-    X64_RET_REG_RAX = 0x1,
-    X64_RET_REG_RDX = 0x2
-};
-
 typedef struct X64_InstrRet {
-    unsigned char regs; // Mask denoting which physical registers contain return values.
+    u32 rax;
+    u32 rdx;
 } X64_InstrRet;
 
 typedef struct X64_InstrCallArg {
     Type* type;
+    u32 lreg;
+
     bool in_reg;
-    u32 loc;
-    u32 sp_offset;
+    union {
+        u32 sp_offset;
+        X64_Reg preg;
+    };
 } X64_InstrCallArg;
 
 typedef struct X64_InstrCall {
@@ -286,6 +296,8 @@ struct X64_Instr {
         X64_InstrMov_M_R mov_m_r;
         X64_InstrMov_M_I mov_m_i;
 
+        X64_InstrRepMovsb rep_movsb;
+
         X64_InstrConvert_R_R convert_r_r;
 
         X64_InstrSExtAxToDx sext_ax_to_dx;
@@ -324,29 +336,38 @@ struct X64_BBlock {
     struct X64_BBlock** preds; // Stretchy buffer of predecessor basic blocks.
 };
 
+typedef struct X64_CallSite {
+    X64_Instr* instr;
+    unsigned save_reg_mask;
+} X64_CallSite;
+
 typedef struct X64_LIRBuilder {
     Allocator* arena;
 
     u32 num_regs;
+    X64_LRegRange* lreg_ranges; // Stretchy buf
+    X64_CallSite* call_sites;   // Stretchy buf
 
     size_t num_instrs;
     size_t num_bblocks;
     X64_BBlock** bblocks;
 
-    u32 lreg_phys[X64_REG_COUNT]; // LIR register per physical register.
-
     u32* reg_map; // Map IR reg -> LIR reg; size: num_iregs
+    u32 lreg_rbp;
+    u32 stack_reg_mask;
 
     // Disjoint Set Union data structure for register renaming/aliasing.
     u32* lreg_aliases; // Root alias node for each lir reg. size: num_lirregs
     u32* lreg_sizes; // Size for each lir reg aliasing set. size: num_lirregs
 } X64_LIRBuilder;
 
+u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r);
+
 void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, u32 src);
 void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
 void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, u32 src);
 void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
-void X64_emit_instr_div(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 src);
+void X64_emit_instr_div(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 rdx, u32 rax, u32 src);
 void X64_emit_instr_unary(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst);
 void X64_emit_instr_mov_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, u32 src);
 void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, X64_MemAddr src);
@@ -354,7 +375,7 @@ void X64_emit_instr_mov_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
 void X64_emit_instr_mov_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr dst, u32 src);
 void X64_emit_instr_convert_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t dst_size, u32 dst,
                                 size_t src_size, u32 src);
-void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size);
+void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 rdx, u32 rax);
 void X64_emit_instr_lea(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr mem);
 void X64_emit_instr_cmp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, u32 op2);
 void X64_emit_instr_cmp_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, Scalar op2);
@@ -362,10 +383,10 @@ void X64_emit_instr_jmp(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_BBlock
 void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, X64_BBlock* true_bb,
                           X64_BBlock* false_bb);
 void X64_emit_instr_setcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, u32 dst);
-void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock);
-void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, unsigned char regs);
-void X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, u32 dst, u32 num_args, X64_InstrCallArg* args,
-                         X64_StackArgsInfo stack_info);
-void X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, u32 dst, u32 num_args,
-                           X64_InstrCallArg* args, X64_StackArgsInfo stack_info);
+void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rdi, u32 rsi, u32 rcx);
+void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u32 rdx);
+X64_Instr* X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, u32 dst, u32 num_args, X64_InstrCallArg* args,
+                               X64_StackArgsInfo stack_info);
+X64_Instr* X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, u32 dst, u32 num_args,
+                                 X64_InstrCallArg* args, X64_StackArgsInfo stack_info);
 #endif

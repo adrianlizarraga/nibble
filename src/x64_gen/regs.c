@@ -57,6 +57,9 @@ bool init_x64_target(OS target_os)
 {
     x64_target.os = target_os;
 
+    // RAX, RCX, RDX, RBX, _, _, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, R15
+    x64_target.scratch_reg_mask = 0xFFCF; // TODO: Not sync'd with actual scratch register arrays.
+
     switch (target_os) {
     case OS_LINUX:
         x64_target.num_arg_regs = ARRAY_LEN(x64_linux_arg_regs);

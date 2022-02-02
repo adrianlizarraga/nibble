@@ -4,6 +4,7 @@
 #include "x64_gen/regs.c"
 #include "x64_gen/lir.c"
 #include "x64_gen/convert_ir.c"
+#include "x64_gen/livevar.c"
 //#include "x64_gen/reg_alloc.c"
 #include "x64_gen/print_lir.c"
 
@@ -961,7 +962,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
                 continue; // Skip register args
 
             u64 arg_size = arg_info->type->size;
-            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->loc);
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->lreg);
 
             if (loc.kind == X64_LREG_LOC_REG) {
                 assert(stack_offset == arg_info->sp_offset);
@@ -986,7 +987,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
                 continue; // Skip register args
 
             u64 arg_size = arg_info->type->size;
-            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->loc);
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->lreg);
 
             if (loc.kind == X64_LREG_LOC_STACK) {
                 assert(stack_offset == arg_info->sp_offset);
@@ -1372,6 +1373,19 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     X64_emit_lir_instrs(&builder, sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks);
 
     LIR_dump_proc_dot(generator->tmp_mem, proc_mangled, builder.num_bblocks, builder.bblocks);
+
+    X64_compute_live_intervals(&builder);
+
+    // TODO: THIS IS NOT SORTED BY START!!!!!!!!!
+    for (size_t i = 0; i < builder.num_regs; i++) {
+        long start = builder.lreg_ranges[i].start;
+        long end = builder.lreg_ranges[i].end;
+
+        assert(start != -1 && end != -1);
+        assert(start <= end);
+
+        ftprint_out("r%d: [%d - %d]\n", i, start, end);
+    }
 
     /*
     X64_RegAllocResult reg_alloc =
