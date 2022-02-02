@@ -100,7 +100,7 @@ static u32 X64_next_lir_reg(X64_LIRBuilder* builder)
 
     assert(next_reg != X64_LIR_REG_COUNT);
 
-    array_push(builder->lreg_ranges, (X64_LRegRange){.start = -1, .end = -1});
+    array_push(builder->lreg_ranges, (X64_LRegRange){.lreg = next_reg, .start = -1, .end = -1});
     array_push(builder->lreg_aliases, next_reg);
     array_push(builder->lreg_sizes, 1);
 

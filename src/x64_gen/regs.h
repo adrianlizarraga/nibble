@@ -87,6 +87,7 @@ enum X64_RegAllocControlKind {
 };
 
 typedef struct X64_LRegRange {
+    u32 lreg;
     long start;
     long end;
 
