@@ -78,13 +78,14 @@ typedef struct X64_LRegRangeList {
     ListNode lnode;
 } X64_LRegRangeList;
 
-enum X64_RegAllocControlKind {
+typedef enum X64_RegAllocControlKind {
     X64_REG_ALLOC_CTRL_NONE = 0,
     X64_REG_ALLOC_CTRL_FORCE_REG,          // Used for required operand registers (e.g., rcx for shift) and SIBD addr registers
+    X64_REG_ALLOC_CTRL_FORCE_ANY_REG,
     X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL, // Used for procedure arguments
     X64_REG_ALLOC_CTRL_HINT_LIR_REG,       // Used for register to register moves
     X64_REG_ALLOC_CTRL_HINT_PHYS_REG,      // Used for register to register moves
-};
+} X64_RegAllocControlKind;
 
 typedef struct X64_LRegRange {
     u32 lreg;

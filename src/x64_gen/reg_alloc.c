@@ -41,8 +41,18 @@ static void X64_alloc_reg(X64_RegAllocState* state, X64_Reg reg, u32 lreg)
     }
 }
 
-static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs, bool callee_saved_only)
+static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs, X64_Reg preg_hint)
 {
+    // Try to allocate hint register first if:
+    // - Provided a hint register
+    // - Hint register is not banned
+    // - Hint register is available
+    if ((preg_hint != X64_REG_COUNT) && !u32_is_bit_set(banned_regs, preg_hint) && (state->rmap[preg_hint] == (u32)-1)) {
+        X64_alloc_reg(state, preg_hint, lreg);
+
+        return preg_hint;
+    }
+
     // Get the first available scratch register.
     X64_Reg reg = X64_REG_COUNT;
 
@@ -53,8 +63,7 @@ static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs,
         X64_Reg r = regs[i];
 
         // Try to get a physical register that is free and is not banned.
-        if ((state->rmap[r] == (u32)-1) && !u32_is_bit_set(banned_regs, r) &&
-            (!callee_saved_only || X64_is_callee_saved_reg(r))) {
+        if ((state->rmap[r] == (u32)-1) && !u32_is_bit_set(banned_regs, r)) {
             reg = r;
             break;
         }
@@ -127,8 +136,9 @@ static void X64_spill_reg_loc(X64_RegAllocState* state, X64_LRegRange* interval)
     X64_lreg_interval_list_add(&state->handled, interval, X64_INTERVAL_SORT_START);
 }
 
-static void X64_steal_reg(X64_RegAllocState* state, X64_LRegRange* from, X64_LRegRange* to, u32 to_lreg)
+static void X64_steal_reg(X64_RegAllocState* state, X64_LRegRange* from, X64_LRegRange* to)
 {
+    u32 to_lreg = to->lreg;
     X64_LRegLoc* f_loc = &from->loc;
     X64_LRegLoc* t_loc = &to->loc;
 
@@ -139,14 +149,12 @@ static void X64_steal_reg(X64_RegAllocState* state, X64_LRegRange* from, X64_LRe
     t_loc->reg = f_loc->reg;
     state->rmap[t_loc->reg] = to_lreg; // Update reg alloc map
 
-    // Spill from's interval to the stack.
-    X64_spill_reg_loc(state, f_loc);
-
     // Update active list
     X64_lreg_interval_list_rm(&state->active, from);
     X64_lreg_interval_list_add(&state->active, to, X64_INTERVAL_SORT_END);
 
-    X64_lreg_interval_list_add(&state->handled, from, X64_INTERVAL_SORT_START);
+    // Spill from's interval to the stack.
+    X64_spill_reg_loc(state, from);
 }
 
 // Modified linear scan register allocation adapted from Poletto et al (1999)
@@ -212,6 +220,9 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
                 assert(loc->kind == X64_LREG_LOC_REG);
                 X64_free_reg(&state, loc->reg);
 
+                // Add to `handled` list
+                X64_lreg_interval_list_add(&state.handled, it_entry, X64_INTERVAL_SORT_START);
+
                 it = next;
             }
         }
@@ -220,10 +231,24 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             //
             // Interval is forced to reside in a specific register.
             //
+            X64_Reg forced_reg = interval->ra_ctrl.preg;
+
+            assert(state.rmap[forced_reg] == (u32)-1);
+
+            interval->loc.kind = X64_LREG_LOC_REG;
+            interval->loc.reg = forced_reg;
+
+            X64_alloc_reg(&state, forced_reg, interval->lreg);
+            X64_lreg_interval_list_add(&state.active, interval, X64_INTERVAL_SORT_END);
+        }
+        else if (interval->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_ANY_REG) {
+            //
+            // Interval is forced to reside in a register.
+            //
 
             assert(interval->ra_ctrl.preg_mask);
 
-            X64_Reg reg = X64_next_reg(&state, interval->lreg, ~interval->ra_ctrl.preg_mask, false);
+            X64_Reg reg = X64_next_reg(&state, interval->lreg, ~interval->ra_ctrl.preg_mask, X64_REG_COUNT);
 
             assert(reg != X64_REG_COUNT);
             interval->loc.kind = X64_LREG_LOC_REG;
@@ -233,7 +258,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
         else if (interval->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL) {
             assert(interval->ra_ctrl.preg_mask);
             
-            X64_Reg reg = X64_next_reg(&state, interval->lreg, ~interval->ra_ctrl.preg_mask, false);
+            X64_Reg reg = X64_next_reg(&state, interval->lreg, ~interval->ra_ctrl.preg_mask, X64_REG_COUNT);
 
             if (reg != X64_REG_COUNT) {
                 interval->loc.kind = X64_LREG_LOC_REG;
@@ -271,8 +296,12 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
                 jit = jit->next;
             }
 
+            X64_RegAllocControlKind ra_ctrl_kind = interval->ra_ctrl_kind;
+
             if (state.active.count == state.num_scratch_regs) {
                 // Exhausted all available free registers. Spill the longest interval that IS NOT forced into a register.
+
+                bool force_reg = (ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG) || (ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_ANY_REG);
 
                 // Look for the latest active interval that is not forced into a register and is not using a banned register.
                 List* head = &state.active.list;
@@ -280,14 +309,15 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 for (; it != head; it = it->prev) {
                     X64_LRegRange* it_e = list_entry(it, X64_LRegRange, lnode);
-                    if (it_e->force_reg) continue;
+                    if (it_e->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG ||
+                        it_e->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_ANY_REG) continue;
 
                     bool using_banned_reg = (it_e->loc.kind == X64_LREG_LOC_REG) && u32_is_bit_set(banned_regs, it_e->loc.reg);
                     if (!using_banned_reg) break;
                 }
 
-                if ((it == head) && interval->force_reg) {
-                    // All other active intervals are forced into registers, and we are not able to force this one.
+                if ((it == head) && force_reg) {
+                    // All other active intervals are forced into registers, and we are not able to spill this one.
                     // Fail & exit.
                     state.result.success = false;
                     return state.result;
@@ -295,24 +325,43 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 if (it == head) {
                     // All other active intervals are forced into registers, so spill this one.
-                    X64_spill_reg_loc(&state, &interval->loc);
+                    X64_spill_reg_loc(&state, interval);
                 }
                 else {
                     // If forcing this interval into a register, steal a register from another interval (longest end).
                     // Otherwise, spill the interval that ends the latest.
                     X64_LRegRange* last_active = list_entry(it, X64_LRegRange, lnode);
 
-                    if (interval->force_reg || (last_active->end > interval->end)) {
-                        X64_steal_reg(&state, last_active, interval, i);
+                    if (force_reg || (last_active->end > interval->end)) {
+                        X64_steal_reg(&state, last_active, interval);
                     }
                     else {
-                        X64_spill_reg_loc(&state, &interval->loc);
+                        X64_spill_reg_loc(&state, interval);
                     }
                 }
             }
             else {
+                X64_Reg preg_hint = X64_REG_COUNT;
+
+                // Extract register hint, if available.
+                if (ra_ctrl_kind == X64_REG_ALLOC_CTRL_HINT_PHYS_REG) {
+                    preg_hint = interval->ra_ctrl.preg;
+                    assert(preg_hint < X64_REG_COUNT);
+                }
+                else if (ra_ctrl_kind == X64_REG_ALLOC_CTRL_HINT_LIR_REG) {
+                    u32 lreg_hint = interval->ra_ctrl.lreg;
+                    assert(lreg_hint < builder->num_regs);
+
+                    X64_LRegLoc* hint_loc = &builder->lreg_ranges[lreg_hint].loc;
+
+                    if (hint_loc->kind == X64_LREG_LOC_REG) {
+                        preg_hint = hint_loc->reg;
+                        assert(preg_hint < X64_REG_COUNT);
+                    }
+                }
+
                 // Try to allocate the next free reg.
-                X64_Reg reg = X64_next_reg(&state, i, banned_regs, false);
+                X64_Reg reg = X64_next_reg(&state, interval->lreg, banned_regs, preg_hint);
 
                 if (reg == X64_REG_COUNT) {
                     state.result.success = false;
@@ -321,12 +370,14 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 interval->loc.kind = X64_LREG_LOC_REG;
                 interval->loc.reg = reg;
-                X64_lreg_interval_list_add(&state, interval);
+                X64_lreg_interval_list_add(&state.active, interval, X64_INTERVAL_SORT_END);
             }
         }
 
         uit = unext;
     }
+
+    // TODO: Process call sites to generate push/pop regs
 
     state.result.stack_offset = ALIGN_UP(state.result.stack_offset, X64_STACK_ALIGN);
     state.result.success = true;

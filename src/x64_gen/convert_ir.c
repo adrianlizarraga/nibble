@@ -132,7 +132,7 @@ static u32 X64_def_phys_reg(X64_LIRBuilder* builder, X64_Reg phys_reg)
     assert(result == array_len(builder->lreg_ranges) - 1);
 
     range->ra_ctrl_kind = X64_REG_ALLOC_CTRL_FORCE_REG;
-    range->ra_ctrl.preg_mask = (1 << phys_reg);
+    range->ra_ctrl.preg = phys_reg;
 
     return result;
 }
@@ -169,7 +169,7 @@ static void X64_force_any_reg(X64_LIRBuilder* builder, u32 lreg)
     X64_LRegRange* range = &builder->lreg_ranges[lreg];
 
     assert(range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_NONE);
-    range->ra_ctrl_kind = X64_REG_ALLOC_CTRL_FORCE_REG;
+    range->ra_ctrl_kind = X64_REG_ALLOC_CTRL_FORCE_ANY_REG;
     range->ra_ctrl.preg_mask = x64_target.scratch_reg_mask;
 }
 
