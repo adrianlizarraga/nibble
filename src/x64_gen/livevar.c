@@ -168,6 +168,8 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
                 num_args = instr->call_r.num_args;
                 args = instr->call_r.args;
                 dst = instr->call_r.dst;
+
+                X64_touch_lreg(builder, instr->call_r.proc_loc, ino);
             }
 
             for (u32 i = 0; i < num_args; i++) {

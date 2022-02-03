@@ -421,8 +421,12 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
             // Intersects
             if ((interval->start < ino) && (ino < interval->end)) {
-                intersects = true;
-                break;
+                X64_LRegLoc* loc = &interval->loc;
+
+                if (loc->kind == X64_LREG_LOC_REG && X64_is_caller_saved_reg(loc->reg)) {
+                    intersects = true;
+                    break;
+                }
             }
 
             it = it->next;
@@ -436,7 +440,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
         List* jit = it;
 
         while (jit != head) {
-            X64_LRegRange* interval = list_entry(it, X64_LRegRange, lnode);
+            X64_LRegRange* interval = list_entry(jit, X64_LRegRange, lnode);
 
             if (interval->start >= ino) {
                 break;

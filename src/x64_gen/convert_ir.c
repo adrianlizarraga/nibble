@@ -193,6 +193,15 @@ static void X64_hint_phys_reg(X64_LIRBuilder* builder, u32 lreg, X64_Reg phys_re
     assert(lreg < builder->num_regs);
     X64_LRegRange* range = &builder->lreg_ranges[lreg];
 
+    // Follow chain of LIR hints and set the root's hint to phys_reg instead if:
+    // - The root has no other hints.
+    // - The physical register is not caller-saved (to prevent unnecessary pushes/pops across procs).
+    if (!X64_is_caller_saved_reg(phys_reg)) {
+        while (range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_HINT_LIR_REG) {
+            range = &builder->lreg_ranges[range->ra_ctrl.lreg];
+        }
+    }
+
     if (range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_NONE) {
         range->ra_ctrl_kind = X64_REG_ALLOC_CTRL_HINT_PHYS_REG;
         range->ra_ctrl.preg = phys_reg;
@@ -746,6 +755,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             ax = X64_def_phys_reg(builder, X64_RAX);
 
             X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
+            X64_hint_phys_reg(builder, a, X64_RAX);
         }
 
         X64_emit_instr_ret(builder, xbblock, ax, dx);
