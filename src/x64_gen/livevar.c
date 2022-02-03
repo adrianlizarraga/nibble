@@ -8,6 +8,7 @@ static void X64_touch_lreg(X64_LIRBuilder* builder, u32 lreg, long ino)
 
     if (range->start == -1) {
         range->start = ino;
+        range->end = ino;
     }
     else {
         assert(range->end == -1 || range->end < ino);
@@ -28,10 +29,12 @@ static void X64_touch_mem_lregs(X64_LIRBuilder* builder, X64_MemAddr* addr, long
     }
 }
 
-static void X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBlock* bblock)
+static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBlock* bblock)
 {
+    long ino = 0;
+
     for (X64_Instr* instr = bblock->first; instr; instr = instr->next) {
-        long ino = instr->ino;
+        ino = instr->ino;
 
         switch (instr->kind) {
         case X64_INSTR_ADD_R_R:
@@ -156,13 +159,13 @@ static void X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             u32 dst;
 
             if (instr->kind == X64_INSTR_CALL) {
-                num_args = instr->call.dst;
+                num_args = instr->call.num_args;
                 args = instr->call.args;
                 dst = instr->call.dst;
             }
             else {
                 assert(instr->kind == X64_INSTR_CALL_R);
-                num_args = instr->call_r.dst;
+                num_args = instr->call_r.num_args;
                 args = instr->call_r.args;
                 dst = instr->call_r.dst;
             }
@@ -182,11 +185,17 @@ static void X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             break;
         }
     }
+
+    return ino;
 }
 
 void X64_compute_live_intervals(X64_LIRBuilder* builder)
 {
+    long ino = 0;
+
     for (size_t i = 0; i < builder->num_bblocks; i++) {
-        X64_compute_bblock_live_intervals(builder, builder->bblocks[i]);
+        ino = X64_compute_bblock_live_intervals(builder, builder->bblocks[i]);
     }
+
+    X64_touch_lreg(builder, builder->lreg_rbp, ino);
 }

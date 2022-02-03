@@ -5,7 +5,7 @@
 #include "x64_gen/lir.c"
 #include "x64_gen/convert_ir.c"
 #include "x64_gen/livevar.c"
-//#include "x64_gen/reg_alloc.c"
+#include "x64_gen/reg_alloc.c"
 #include "x64_gen/print_lir.c"
 
 #define X64_INIT_LINE_LEN 128
@@ -1376,18 +1376,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     X64_compute_live_intervals(&builder);
 
-    // TODO: THIS IS NOT SORTED BY START!!!!!!!!!
-    for (size_t i = 0; i < builder.num_regs; i++) {
-        long start = builder.lreg_ranges[i].start;
-        long end = builder.lreg_ranges[i].end;
-
-        assert(start != -1 && end != -1);
-        assert(start <= end);
-
-        ftprint_out("r%d: [%d - %d]\n", i, start, end);
-    }
-
-    /*
     X64_RegAllocResult reg_alloc =
         X64_linear_scan_reg_alloc(&builder, generator->curr_proc.num_scratch_regs, generator->curr_proc.scratch_regs, stack_size);
 
@@ -1397,7 +1385,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     }
 
     stack_size = reg_alloc.stack_offset;
-    */
     generator->curr_proc.builder = &builder;
 
 
@@ -1428,7 +1415,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     }
     */
 
-#if 0
+#if 1
     u32 num_lreg_ranges = array_len(builder.lreg_ranges);
     ftprint_out("Register allocation for %s (%s):\n", sym->name->str, is_nonleaf ? "nonleaf": "leaf");
     for (u32 i = 0; i < num_lreg_ranges; i += 1)

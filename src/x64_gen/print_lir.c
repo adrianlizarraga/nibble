@@ -242,7 +242,6 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
 
         break;
     }
-    // TODO: LEFT OFF HERE ADRIAN!!!!!!
     case X64_INSTR_CALL:
     case X64_INSTR_CALL_R: {
         Type* proc_type;
@@ -267,21 +266,31 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
             stack_args_info = instr->call_r.stack_info;
         }
 
-        // TODO: Print moving args to stack.
-
-        if (instr->kind == X64_INSTR_CALL) {
-            ftprint_char_array(&dstr, false, "call %s", symbol_mangled_name(arena, instr->call.sym));
-        }
-        else {
-            ftprint_char_array(&dstr, false, "call r%d", instr->call_r.proc_loc);
-        }
-
-        // Move return value (if any) to appropriate register.
         Type* ret_type = proc_type->as_proc.ret;
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            ftprint_char_array(&dstr, false, "mov <%lu> r%d, _ax", ret_type->size, dst_lreg);
+            ftprint_char_array(&dstr, false, "<%lu> r%d = ", ret_type->size, dst_lreg);
         }
+
+        if (instr->kind == X64_INSTR_CALL) {
+            ftprint_char_array(&dstr, false, "call %s (", symbol_mangled_name(arena, instr->call.sym));
+        }
+        else {
+            ftprint_char_array(&dstr, false, "call r%d (", instr->call_r.proc_loc);
+        }
+
+        if (num_args) {
+            for (u32 i = 0; i < num_args; i += 1) {
+                X64_InstrCallArg* arg = args + i;
+
+                ftprint_char_array(&dstr, false, "<%s> r%d", type_name(arg->type), arg->lreg);
+
+                if (i != num_args - 1)
+                    ftprint_char_array(&dstr, false, ", ");
+            }
+        }
+
+        ftprint_char_array(&dstr, false, ")");
 
         break;
     }

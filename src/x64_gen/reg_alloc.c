@@ -87,7 +87,7 @@ static void X64_init_free_regs(X64_RegAllocState* state)
 
 static void X64_lreg_interval_list_rm(X64_IntervalList* list, X64_LRegRange* interval)
 {
-    assert(!list_empty(list));
+    assert(!list_empty(&list->list));
     assert(list->count > 0);
 
     list_rm(&interval->lnode);
@@ -178,6 +178,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
     // Add intervals to the `unhandled` list (sorterd by increasing start)
     size_t num_lreg_ranges = array_len(builder->lreg_ranges);
+    size_t num_intervals = 0;
 
     for (size_t i = 0; i < num_lreg_ranges; i += 1) {
         if (X64_find_alias_reg(builder, i) != i) {
@@ -185,6 +186,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
         }
 
         X64_lreg_interval_list_add(&state.unhandled, builder->lreg_ranges + i, X64_INTERVAL_SORT_START);
+        num_intervals += 1;
     }
 
     List* uhead = &state.unhandled.list;
@@ -192,7 +194,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
     while (uit != uhead) {
         List* unext = uit->next;
-        X64_LRegRange* interval = list_entry(it, X64_LRegRange, lnode);
+        X64_LRegRange* interval = list_entry(uit, X64_LRegRange, lnode);
 
         X64_lreg_interval_list_rm(&state.unhandled, interval);
 
@@ -290,7 +292,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 // Add this interval's forced register to the bit-set of registers the current interval cannot use.
                 if (j_rng->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG) {
-                    banned_regs |= j_rng->preg_mask;
+                    banned_regs |= j_rng->ra_ctrl.preg_mask;
                 }
 
                 jit = jit->next;
@@ -377,7 +379,90 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
         uit = unext;
     }
 
-    // TODO: Process call sites to generate push/pop regs
+
+
+    // Process call sites to generate push/pop regs
+    List* head = &state.active.list;
+    List* it = head->next;
+
+    while (it != head) {
+        List* next = it->next;
+        X64_LRegRange* interval = list_entry(it, X64_LRegRange, lnode);
+
+        X64_lreg_interval_list_rm(&state.active, interval);
+        X64_lreg_interval_list_add(&state.handled, interval, X64_INTERVAL_SORT_START);
+
+        it = next;
+    }
+
+    assert(num_intervals == state.handled.count);
+
+    size_t num_sites = array_len(builder->call_sites);
+    X64_CallSite* call_sites = builder->call_sites;
+    head = &state.handled.list;
+    it = head->next;
+    
+    for (size_t i = 0; i < num_sites; i++) {
+        X64_CallSite* site = &call_sites[i];
+        long ino = site->instr->ino;
+
+        site->save_reg_mask = 0;
+
+        // Scan forward to first interval that intersects with call site.
+        bool intersects = false;
+
+        while (it != head) {
+            X64_LRegRange* interval = list_entry(it, X64_LRegRange, lnode);
+
+            // First interval past the call site
+            if (interval->start >= ino) {
+                break;
+            }
+
+            // Intersects
+            if ((interval->start < ino) && (ino < interval->end)) {
+                intersects = true;
+                break;
+            }
+
+            it = it->next;
+        }
+
+        if (!intersects) {
+            continue;
+        }
+
+        // Scan forward to accumulate registers that need to be saved across the call site.
+        List* jit = it;
+
+        while (jit != head) {
+            X64_LRegRange* interval = list_entry(it, X64_LRegRange, lnode);
+
+            if (interval->start >= ino) {
+                break;
+            }
+
+            if ((interval->start < ino) && (ino < interval->end)) {
+                X64_LRegLoc* loc = &interval->loc;
+
+                if (loc->kind == X64_LREG_LOC_REG && X64_is_caller_saved_reg(loc->reg)) {
+                    assert(loc->reg < X64_REG_COUNT);
+                    site->save_reg_mask |= (1 << loc->reg);
+                }
+            }
+
+            jit = jit->next;
+        }
+    }
+
+#if 1
+    ftprint_out("Call sites:\n");
+    for (size_t i = 0; i < num_sites; i++) {
+        X64_CallSite* site = &call_sites[i];
+
+        ftprint_out("\t%d: 0x%lX\n", site->instr->ino, site->save_reg_mask);
+    }
+#endif
 
     state.result.stack_offset = ALIGN_UP(state.result.stack_offset, X64_STACK_ALIGN);
     state.result.success = true;
