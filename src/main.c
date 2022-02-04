@@ -19,7 +19,6 @@
 #include "print.c"
 #include "array.c"
 #include "hash_map.c"
-#include "queue.c"
 #include "stream.c"
 #include "lexer.c"
 #include "ast.c"

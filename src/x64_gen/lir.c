@@ -18,7 +18,7 @@ static void X64_bblock_add_instr(X64_BBlock* bblock, X64_Instr* instr)
 
 static void X64_add_lir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Instr* instr)
 {
-    instr->ino = builder->num_instrs << 1;
+    instr->ino = builder->num_instrs;
     builder->num_instrs += 1;
 
     X64_bblock_add_instr(xbblock, instr);
