@@ -1176,8 +1176,15 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
     case X64_INSTR_MOV_R_R: {
         u32 size = (u32)instr->mov_r_r.size;
 
-        // TODO: Do not emit if operands are the same.
-        X64_emit_rr_instr(generator, "mov", true, size, instr->mov_r_r.dst, size, instr->mov_r_r.src);
+        X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_r_r.dst);
+        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_r_r.src);
+
+        bool same_ops = (dst_loc.kind == src_loc.kind) && (((dst_loc.kind == X64_LREG_LOC_REG) && (dst_loc.reg == src_loc.reg)) ||
+                                                           ((dst_loc.kind == X64_LREG_LOC_STACK) && (dst_loc.offset == src_loc.offset)));
+
+        if (!same_ops) {
+            X64_emit_rr_instr(generator, "mov", true, size, instr->mov_r_r.dst, size, instr->mov_r_r.src);
+        }
         break;
     }
     case X64_INSTR_MOV_R_I: {
