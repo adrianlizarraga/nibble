@@ -1236,12 +1236,12 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         break;
     }
     case X64_INSTR_JMP: {
-        X64_emit_text(generator, "    jmp %s", X64_get_label(generator, instr->jmp.jmp_target));
+        X64_emit_text(generator, "    jmp %s", X64_get_label(generator, instr->jmp.target->id));
         break;
     }
     case X64_INSTR_JMPCC: {
         X64_emit_text(generator, "    j%s %s", x64_condition_codes[instr->jmpcc.cond],
-                      X64_get_label(generator, instr->jmpcc.jmp_target));
+                      X64_get_label(generator, instr->jmpcc.true_bb->id));
         break;
     }
     case X64_INSTR_SETCC: {
@@ -1306,7 +1306,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
 
         while (save_reg_mask) {
             if (save_reg_mask & 0x1) {
-                X64_push_reg(&group, (X64_Reg)r, false);
+                X64_push_reg(&group, (X64_Reg)r);
             }
 
             save_reg_mask >>= 1;
@@ -1367,23 +1367,32 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
             }
         }
 
-        // Clean up stack args
-        if (stack_args_info.size) {
-            X64_emit_text(generator, "    add rsp, %u", stack_args_info.size);
+        if (group.num_tmp_regs) {
+            // Clean up stack args
+            if (stack_args_info.size) {
+                X64_emit_text(generator, "    add rsp, %u", stack_args_info.size);
+            }
+
+            // Restore saved registers.
+            X64_end_reg_group(&group);
+
+            // Clean up any initial stack alignment
+            if (align_stack_size) {
+                X64_emit_text(generator, "    add rsp, %u", align_stack_size);
+            }
         }
+        else {
+            size_t cleanup_amount = stack_args_info.size + align_stack_size;
 
-        // Restore saved registers.
-        X64_end_reg_group(&group);
-
-        // Clean up any initial stack alignment
-        if (align_stack_size) {
-            X64_emit_text(generator, "    add rsp, %u", align_stack_size);
+            if (cleanup_amount) {
+                X64_emit_text(generator, "    add rsp, %lu", cleanup_amount); // Clean up stack args + alignment
+            }
         }
 
         break;
     }
     default:
-        NIBBLE_FATAL_EXIT("Unknown X64 LIR instruction kind %d at IP %u\n", instr->kind, instr_index);
+        NIBBLE_FATAL_EXIT("Unknown X64 LIR instruction kind %d at IP %u\n", instr->kind, instr->ino);
         break;
     }
 

@@ -915,13 +915,13 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
         else if (instr->kind == INSTR_COND_JMP) {
             assert(xinstr->kind == X64_INSTR_JMPCC);
 
-            X64_BBlock* xn_true = X64_get_bblock_succ(builder, &queue, &map, instr->cond_jmp.true_bb);
-            array_push(xn_true->preds, xbb);
-            xinstr->jmpcc.true_bb = xn_true;
-
             X64_BBlock* xn_false = X64_get_bblock_succ(builder, &queue, &map, instr->cond_jmp.false_bb);
             array_push(xn_false->preds, xbb);
             xinstr->jmpcc.false_bb = xn_false;
+
+            X64_BBlock* xn_true = X64_get_bblock_succ(builder, &queue, &map, instr->cond_jmp.true_bb);
+            array_push(xn_true->preds, xbb);
+            xinstr->jmpcc.true_bb = xn_true;
         }
     }
 

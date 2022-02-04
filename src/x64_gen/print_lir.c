@@ -248,14 +248,12 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         u32 dst_lreg;
         u32 num_args;
         X64_InstrCallArg* args;
-        X64_StackArgsInfo stack_args_info;
 
         if (instr->kind == X64_INSTR_CALL) {
             proc_type = instr->call.sym->type;
             dst_lreg = instr->call.dst;
             num_args = instr->call.num_args;
             args = instr->call.args;
-            stack_args_info = instr->call.stack_info;
         }
         else {
             assert(instr->kind == X64_INSTR_CALL_R);
@@ -263,7 +261,6 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
             dst_lreg = instr->call_r.dst;
             num_args = instr->call_r.num_args;
             args = instr->call_r.args;
-            stack_args_info = instr->call_r.stack_info;
         }
 
         Type* ret_type = proc_type->as_proc.ret;

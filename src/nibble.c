@@ -1108,7 +1108,6 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     ftprint_out("[INFO]: Generating NASM assembly output: %s ...\n", nasm_fname.str);
     gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lit_map, nasm_fname.str);
 
-    /*
     //////////////////////////////////////////
     //          Run NASM assembler
     //////////////////////////////////////////
@@ -1177,7 +1176,6 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
         ftprint_err("[ERROR]: Linker command failed\n");
         return false;
     }
-    */
 
     allocator_restore_state(mem_state);
     return true;
