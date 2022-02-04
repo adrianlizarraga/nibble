@@ -263,6 +263,7 @@ typedef struct X64_InstrCall {
     u32 num_args;
     X64_InstrCallArg* args;
     X64_StackArgsInfo stack_info;
+    unsigned save_reg_mask;
 } X64_InstrCall;
 
 typedef struct X64_InstrCall_R {
@@ -272,6 +273,7 @@ typedef struct X64_InstrCall_R {
     u32 num_args;
     X64_InstrCallArg* args;
     X64_StackArgsInfo stack_info;
+    unsigned save_reg_mask;
 } X64_InstrCall_R;
 
 struct X64_Instr {
@@ -336,17 +338,12 @@ struct X64_BBlock {
     struct X64_BBlock** preds; // Stretchy buffer of predecessor basic blocks.
 };
 
-typedef struct X64_CallSite {
-    X64_Instr* instr;
-    unsigned save_reg_mask;
-} X64_CallSite;
-
 typedef struct X64_LIRBuilder {
     Allocator* arena;
 
     u32 num_regs;
     X64_LRegRange* lreg_ranges; // Stretchy buf
-    X64_CallSite* call_sites;   // Stretchy buf
+    X64_Instr** call_sites;     // Stretchy buf
 
     size_t num_instrs;
     size_t num_bblocks;

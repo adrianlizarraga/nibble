@@ -398,15 +398,24 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
     assert(num_intervals == state.handled.count);
 
     size_t num_sites = array_len(builder->call_sites);
-    X64_CallSite* call_sites = builder->call_sites;
+    X64_Instr** call_sites = builder->call_sites;
     head = &state.handled.list;
     it = head->next;
     
     for (size_t i = 0; i < num_sites; i++) {
-        X64_CallSite* site = &call_sites[i];
-        long ino = site->instr->ino;
+        X64_Instr* instr = call_sites[i];
+        long ino = instr->ino;
+        unsigned* save_reg_mask;
 
-        site->save_reg_mask = 0;
+        if (instr->kind == X64_INSTR_CALL) {
+            save_reg_mask = &instr->call.save_reg_mask;
+        }
+        else {
+            assert(instr->kind == X64_INSTR_CALL_R);
+            save_reg_mask = &instr->call_r.save_reg_mask;
+        }
+
+        *save_reg_mask = 0;
 
         // Scan forward to first interval that intersects with call site.
         bool intersects = false;
@@ -451,7 +460,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 if (loc->kind == X64_LREG_LOC_REG && X64_is_caller_saved_reg(loc->reg)) {
                     assert(loc->reg < X64_REG_COUNT);
-                    site->save_reg_mask |= (1 << loc->reg);
+                    *save_reg_mask |= (1 << loc->reg);
                 }
             }
 
@@ -462,9 +471,9 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 #if 1
     ftprint_out("Call sites:\n");
     for (size_t i = 0; i < num_sites; i++) {
-        X64_CallSite* site = &call_sites[i];
-
-        ftprint_out("\t%d: 0x%lX\n", site->instr->ino, site->save_reg_mask);
+        X64_Instr* instr = call_sites[i];
+        unsigned mask = (instr->kind == X64_INSTR_CALL) ? instr->call.save_reg_mask : instr->call_r.save_reg_mask;
+        ftprint_out("\t%d: 0x%lX\n", instr->ino, mask);
     }
 #endif
 

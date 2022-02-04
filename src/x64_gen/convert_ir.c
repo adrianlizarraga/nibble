@@ -459,7 +459,7 @@ static bool X64_try_combine_limm(X64_LIRBuilder* builder, X64_BBlock* xbblock, I
 static void X64_add_call_site(X64_LIRBuilder* builder, X64_Instr* instr)
 {
     assert(instr->kind == X64_INSTR_CALL || instr->kind == X64_INSTR_CALL_R);
-    array_push(builder->call_sites, (X64_CallSite){.instr = instr});
+    array_push(builder->call_sites, instr);
 }
 
 static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
@@ -870,7 +870,7 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
     builder->lreg_aliases = array_create(builder->arena, u32, 16);
     builder->lreg_sizes = array_create(builder->arena, u32, 16);
 
-    builder->call_sites = array_create(builder->arena, X64_CallSite, 8);
+    builder->call_sites = array_create(builder->arena, X64_Instr*, 8);
 
     // Array of X64 basic blocks. Basic blocks will be inserted in sorted order.
     builder->num_bblocks = 0;
@@ -946,13 +946,13 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
     // Sort call sites by location
     {
         size_t num_sites = array_len(builder->call_sites);
-        X64_CallSite* call_sites = builder->call_sites;
+        X64_Instr** call_sites = builder->call_sites;
         
         for (size_t i = 1; i < num_sites; i++) {
             size_t j = i;
 
-            while (j > 0 && call_sites[j].instr->ino < call_sites[j - 1].instr->ino) {
-                X64_CallSite tmp = call_sites[j];
+            while (j > 0 && call_sites[j]->ino < call_sites[j - 1]->ino) {
+                X64_Instr* tmp = call_sites[j];
                 call_sites[j] = call_sites[j - 1];
                 call_sites[j - 1] = tmp;
 

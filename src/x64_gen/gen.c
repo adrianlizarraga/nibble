@@ -132,7 +132,7 @@ typedef struct X64_Generator {
 static X64_LRegLoc X64_lreg_loc(X64_Generator* generator, u32 lreg)
 {
     u32 rng_idx = X64_find_alias_reg(generator->curr_proc.builder, lreg);
-    X64_LRegLoc reg_loc = {0};//generator->curr_proc.builder->lreg_ranges[rng_idx].loc; // TODO: Fix
+    X64_LRegLoc reg_loc = generator->curr_proc.builder->lreg_ranges[rng_idx].loc;
 
     assert(reg_loc.kind != X64_LREG_LOC_UNASSIGNED);
 
@@ -168,10 +168,10 @@ static char** X64_emit_text(X64_Generator* gen, const char* format, ...)
     return line;
 }
 
-static char* X64_get_label(X64_Generator* generator, u32 instr_index)
+static char* X64_get_label(X64_Generator* generator, u32 bblock_id)
 {
     char* dstr = array_create(generator->tmp_mem, char, 8);
-    ftprint_char_array(&dstr, true, "L.%u.%u", generator->curr_proc.id, instr_index);
+    ftprint_char_array(&dstr, true, "L.%u.%u", generator->curr_proc.id, bblock_id);
 
     return dstr;
 }
@@ -465,6 +465,28 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, u32 lreg, u32 size, bool store, 
     group->first_tmp_reg = tmp_reg;
 
     return tmp_reg->reg;
+}
+
+static void X64_push_reg(X64_RegGroup* group, X64_Reg reg)
+{
+    assert(reg != X64_REG_COUNT);
+    assert(!u32_is_bit_set(group->used_tmp_reg_mask, reg));
+
+    Allocator* tmp_mem = group->generator->tmp_mem;
+
+    X64_TmpReg* tmp_reg = alloc_type(tmp_mem, X64_TmpReg, true);
+    tmp_reg->reg = reg;
+
+    X64_emit_text(group->generator, "    push %s", x64_reg_names[X64_MAX_INT_REG_SIZE][tmp_reg->reg]);
+
+    // Add scratch register to the list (stack) of regs in group.
+    tmp_reg->next = group->first_tmp_reg;
+    group->first_tmp_reg = tmp_reg;
+
+    // Record register in group
+    u32_set_bit(&group->used_tmp_reg_mask, tmp_reg->reg);
+
+    group->num_tmp_regs += 1;
 }
 
 static void X64_end_reg_group(X64_RegGroup* group)
@@ -942,6 +964,30 @@ static void X64_emit_mi_instr(X64_Generator* generator, const char* instr, u32 o
                   X64_print_imm(generator->tmp_mem, op2_imm, op2_size));
 }
 
+static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_InstrCallArg* args)
+{
+    for (u32 i = 0; i < num_args; i++) {
+        X64_InstrCallArg* arg = args + i;
+
+        if (!arg->in_reg) {
+            continue;
+        }
+
+        size_t arg_size = arg->type->size;
+        X64_LRegLoc loc = X64_lreg_loc(generator, arg->lreg);
+
+        if (loc.kind == X64_LREG_LOC_STACK) {
+            assert(arg->preg < X64_REG_COUNT);
+            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][arg->preg],
+                          X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
+        }
+        else {
+            assert(loc.kind == X64_LREG_LOC_REG);
+            assert(loc.reg == arg->preg);
+        }
+    }
+}
+
 static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo stack_args_info, u32 num_args, X64_InstrCallArg* args)
 {
     u64 stack_args_size = stack_args_info.size;
@@ -965,7 +1011,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
             X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->lreg);
 
             if (loc.kind == X64_LREG_LOC_REG) {
-                assert(stack_offset == arg_info->sp_offset);
+                assert(stack_offset == arg_info->sp_offset); // TODO: sp_offset is redundant!
 
                 // Move directly into stack slot.
                 X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], stack_offset,
@@ -1007,8 +1053,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
     }
 }
 
-/*
-static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_last_instr, X64_Instr* instr)
+static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
 {
     static const char* binary_r_r_name[] = {
         [X64_INSTR_ADD_R_R] = "add",
@@ -1044,9 +1089,6 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
     };
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
-
-    if (instr->is_jmp_target)
-        X64_emit_text(generator, "    %s:", X64_get_label(generator, instr_index));
 
     switch (instr->kind) {
     case X64_INSTR_ADD_R_R:
@@ -1134,6 +1176,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
     case X64_INSTR_MOV_R_R: {
         u32 size = (u32)instr->mov_r_r.size;
 
+        // TODO: Do not emit if operands are the same.
         X64_emit_rr_instr(generator, "mov", true, size, instr->mov_r_r.dst, size, instr->mov_r_r.src);
         break;
     }
@@ -1215,8 +1258,9 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
         break;
     }
     case X64_INSTR_RET: {
-        if (!is_last_instr)
+        if (instr->next) { // Not the last instruction
             X64_emit_text(generator, "    jmp end.%s", symbol_mangled_name(generator->tmp_mem, generator->curr_proc.sym));
+        }
 
         break;
     }
@@ -1227,6 +1271,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
         u32 num_args;
         X64_InstrCallArg* args;
         X64_StackArgsInfo stack_args_info;
+        unsigned save_reg_mask;
 
         if (instr->kind == X64_INSTR_CALL) {
             proc_type = instr->call.sym->type;
@@ -1234,6 +1279,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
             num_args = instr->call.num_args;
             args = instr->call.args;
             stack_args_info = instr->call.stack_info;
+            save_reg_mask = instr->call.save_reg_mask;
         }
         else {
             assert(instr->kind == X64_INSTR_CALL_R);
@@ -1242,6 +1288,7 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
             num_args = instr->call_r.num_args;
             args = instr->call_r.args;
             stack_args_info = instr->call_r.stack_info;
+            save_reg_mask = instr->call_r.save_reg_mask;
         }
 
         // NOTE: Stack frame must be 16-byte aligned before procedure call.
@@ -1252,13 +1299,28 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
 
         // NOTE: No need to save caller-saved registers before call because the register allocator currently
         // spills any values needed across procedure calls.
+        X64_RegGroup group = X64_begin_reg_group(generator);
 
-        // Place stack arguments. Register arguments have already been forced to the correct locations by
-        // the register allocator.
+        // Save caller-saved registers needed across the call.
+        u32 r = 0;
+
+        while (save_reg_mask) {
+            if (save_reg_mask & 0x1) {
+                X64_push_reg(&group, (X64_Reg)r, false);
+            }
+
+            save_reg_mask >>= 1;
+            r++;
+        }
+
+        // Place arguments in the appropriate locations.
+        // For register args, it is expected that the register allocator either placed the arg in the correct register or spilled it.
+        // For stack args, it is expected that the register allocator either placed the arg in a non-argument register or spilled it.
+        X64_place_args_in_regs(generator, num_args, args);
         X64_place_args_in_stack(generator, stack_args_info, num_args, args);
 
         // Align stack before call.
-        u64 total_stack_size = stack_args_info.size;
+        u64 total_stack_size = stack_args_info.size + group.num_tmp_regs * X64_MAX_INT_REG_SIZE;
         u64 align_stack_size = 0;
 
         if (total_stack_size & (X64_STACK_ALIGN - 1)) {
@@ -1310,6 +1372,9 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
             X64_emit_text(generator, "    add rsp, %u", stack_args_info.size);
         }
 
+        // Restore saved registers.
+        X64_end_reg_group(&group);
+
         // Clean up any initial stack alignment
         if (align_stack_size) {
             X64_emit_text(generator, "    add rsp, %u", align_stack_size);
@@ -1324,7 +1389,6 @@ static void X64_gen_instr(X64_Generator* generator, u32 instr_index, bool is_las
 
     allocator_restore_state(mem_state);
 }
-*/
 
 static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 {
@@ -1415,7 +1479,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     }
     */
 
-#if 1
+#if 0
     u32 num_lreg_ranges = array_len(builder.lreg_ranges);
     ftprint_out("Register allocation for %s (%s):\n", sym->name->str, is_nonleaf ? "nonleaf": "leaf");
     for (u32 i = 0; i < num_lreg_ranges; i += 1)
@@ -1442,24 +1506,20 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
         X64_fill_line(generator, sub_rsp_inst, "    sub rsp, %u", stack_size);
 
     // Generate instructions.
-    /*
-    List* head = &builder.instrs;
-    size_t instr_index = 0;
+    for (size_t ii = 0; ii < builder.num_bblocks; ii++) {
+        X64_BBlock* bb = builder.bblocks[ii];
 
-    for (List* it = head->next; it != head; it = it->next) {
-        X64_Instr* instr = list_entry(it, X64_Instr, lnode);
-        bool is_last = it->next == head;
+        X64_emit_text(generator, "    %s:", X64_get_label(generator, bb->id));
 
-        X64_gen_instr(generator, instr_index, is_last, instr);
-        instr_index += 1;
+        for (X64_Instr* instr = bb->first; instr; instr = instr->next) {
+            X64_gen_instr(generator, instr);
+        }
     }
-    */
 
     // End label
     X64_emit_text(generator, "    end.%s:", proc_mangled);
 
     // Save/Restore callee-saved registers.
-    /*
     char* tmp_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
 
     for (uint32_t r = 0; r < X64_REG_COUNT; r += 1) {
@@ -1476,7 +1536,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     array_push(tmp_line, '\0');
 
     *save_regs_inst = mem_dup(generator->gen_mem, tmp_line, array_len(tmp_line), DEFAULT_ALIGN);
-    */
 
     if (stack_size)
         X64_emit_text(generator, "    mov rsp, rbp");
