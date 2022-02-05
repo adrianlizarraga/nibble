@@ -1466,34 +1466,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     stack_size = reg_alloc.stack_offset;
     generator->curr_proc.builder = &builder;
 
-
-    // Remove redunant register moves.
-    // TODO: Fix jump targets when remove instructions.
-    /*
-    List* head = &builder.instrs;
-    List* it = head->next;
-
-    while (it != head) {
-        List* next = it->next;
-        X64_Instr* instr = list_entry(it, X64_Instr, lnode);
-
-        if (instr->kind == X64_INSTR_MOV_R_R) {
-            X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_r_r.dst);
-            X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_r_r.src);
-
-            if (dst_loc.kind == src_loc.kind) {
-                if (((dst_loc.kind == X64_LREG_LOC_REG) && (dst_loc.reg == src_loc.reg)) ||
-                    ((dst_loc.kind == X64_LREG_LOC_STACK) && (dst_loc.offset == src_loc.offset))) {
-                    list_rm(it);
-                    builder.num_instrs -= 1;
-                }
-            }
-        }
-
-        it = next;
-    }
-    */
-
 #if 0
     u32 num_lreg_ranges = array_len(builder.lreg_ranges);
     ftprint_out("Register allocation for %s (%s):\n", sym->name->str, is_nonleaf ? "nonleaf": "leaf");
