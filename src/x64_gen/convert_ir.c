@@ -811,7 +811,6 @@ static X64_BBlock* X64_make_bblock(X64_LIRBuilder* builder, BBlock* bblock)
     X64_BBlock* xbblock = alloc_type(builder->arena, X64_BBlock, true);
     xbblock->id = bblock->id;
     xbblock->flags = bblock->flags;
-    xbblock->preds = array_create(builder->arena, X64_BBlock*, array_len(bblock->preds));
 
     for (Instr* it = bblock->first; it;) {
         it = X64_convert_ir_instr(builder, xbblock, it);
@@ -867,7 +866,6 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
             BBlock* n = instr->jmp.target;
             X64_BBlock* xn = builder->bblocks[n->id];
 
-            array_push(xn->preds, xbb);
             xinstr->jmp.target = xn;
         }
         else if (instr->kind == INSTR_COND_JMP) {
@@ -876,13 +874,11 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
             BBlock* n_false = instr->cond_jmp.false_bb;
             X64_BBlock* xn_false = builder->bblocks[n_false->id];
             assert(n_false->id == xn_false->id);
-            array_push(xn_false->preds, xbb);
             xinstr->jmpcc.false_bb = xn_false;
 
             BBlock* n_true = instr->cond_jmp.true_bb;
             X64_BBlock* xn_true = builder->bblocks[n_true->id];
             assert(n_true->id == xn_true->id);
-            array_push(xn_true->preds, xbb);
             xinstr->jmpcc.true_bb = xn_true;
         }
     }

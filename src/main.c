@@ -27,8 +27,7 @@
 #include "bytecode/gen.c"
 #include "print_ir.c"
 #include "code_gen.c"
-#include "x64_gen/gen.c" // TODO: UNCOMMENT!
-//#include "x64_gen/regs.c" // TODO: REMOVE
+#include "x64_gen/gen.c"
 #include "nibble.c"
 
 void print_usage(FILE* fd, const char* program_name)

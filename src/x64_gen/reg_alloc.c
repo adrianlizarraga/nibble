@@ -468,15 +468,6 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
         }
     }
 
-#if 1
-    ftprint_out("Call sites:\n");
-    for (size_t i = 0; i < num_sites; i++) {
-        X64_Instr* instr = call_sites[i];
-        unsigned mask = (instr->kind == X64_INSTR_CALL) ? instr->call.save_reg_mask : instr->call_r.save_reg_mask;
-        ftprint_out("\t%d: 0x%lX\n", instr->ino, mask);
-    }
-#endif
-
     state.result.stack_offset = ALIGN_UP(state.result.stack_offset, X64_STACK_ALIGN);
     state.result.success = true;
 

@@ -1431,7 +1431,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
-    ftprint_out("Processing proc %s\n", sym->name->str);
     const char* proc_mangled = symbol_mangled_name(generator->tmp_mem, sym);
     X64_emit_text(generator, "");
     X64_emit_text(generator, "global %s", proc_mangled);

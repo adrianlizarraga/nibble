@@ -1,6 +1,5 @@
 #include "code_gen.h"
 #include "x64_gen/gen.h"
-//#include "x64_gen/regs.h" // TODO: REMOVE
 
 typedef bool GenModuleProc(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs,
                            HMap* str_lit_map, const char* output_file);
@@ -13,7 +12,7 @@ bool init_code_gen(OS target_os, Arch target_arch)
         return false;
 
     if (init_x64_target(target_os)) {
-        target_gen_module = x64_gen_module; // TODO: UNCOMMENT!!!!!!!!!!!!!
+        target_gen_module = x64_gen_module;
         return true;
     }
 

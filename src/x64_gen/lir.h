@@ -334,8 +334,6 @@ struct X64_BBlock {
     size_t num_instrs;
     X64_Instr* first;
     X64_Instr* last;
-
-    struct X64_BBlock** preds; // Stretchy buffer of predecessor basic blocks.
 };
 
 typedef struct X64_LIRBuilder {
