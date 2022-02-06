@@ -22,6 +22,7 @@ typedef struct SymbolProc SymbolProc;
 typedef struct SymbolModule SymbolModule;
 typedef struct Scope Scope;
 typedef struct Module Module;
+typedef struct BBlock BBlock;
 
 typedef struct ConstAddr ConstAddr;
 typedef struct ConstArrayMemberInitzer ConstArrayMemberInitzer;
@@ -825,17 +826,11 @@ struct SymbolVar {
     };
 };
 
-typedef struct LifetimeInterval {
-    u32 start;
-    u32 end;
-    bool is_ret;
-    bool is_arg;
-    u32 arg_index;
-} LifetimeInterval;
-
 struct SymbolProc {
-    struct IR_Instr** instrs; // NOTE: stretchy buf
-    LifetimeInterval* reg_intervals;
+    struct BBlock** bblocks; // Stretchy buffer of basic blocks
+    size_t num_instrs;
+
+    u32 num_regs;
     bool is_nonleaf;
 };
 

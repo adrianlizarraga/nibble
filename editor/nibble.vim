@@ -23,6 +23,7 @@ syntax keyword nibbleConstant NULL
 
 " Single line comments
 syntax region nibbleLineComment start="//" end="$" contains=nibbleTodos
+syntax region nibbleComment start=+/\*+ end=+\*/+ extend fold contains=nibbleTodos
 
 " String and char literals
 syntax region nibbleString start=/\v"/ skip=/\v\\./ end=/\v"/
@@ -38,6 +39,7 @@ highlight default link nibbleType Type
 highlight default link nibbleBoolean Boolean
 highlight default link nibbleConstant Constant
 highlight default link nibbleLineComment Comment
+highlight default link nibbleComment Comment
 highlight default link nibbleString String
 
 let b:current_syntax = "nibble"

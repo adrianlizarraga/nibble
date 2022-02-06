@@ -43,5 +43,4 @@ size_t ftprintv_file(FILE* fd, bool nullterm, const char* format, va_list vargs)
 void u32_set_bit(u32* mask, u8 bit);
 void u32_unset_bit(u32* mask, u8 bit);
 bool u32_is_bit_set(u32 mask, u8 bit);
-
 #endif
