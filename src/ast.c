@@ -1292,6 +1292,7 @@ void scope_init(Scope* scope)
 
     list_head_init(&scope->children);
     list_head_init(&scope->sym_list);
+    list_head_init(&scope->obj_list);
 }
 
 Scope* new_scope(Allocator* allocator, u32 num_syms)
@@ -1300,6 +1301,7 @@ Scope* new_scope(Allocator* allocator, u32 num_syms)
 
     list_head_init(&scope->children);
     list_head_init(&scope->sym_list);
+    list_head_init(&scope->obj_list);
 
     if (num_syms) {
         size_t log2_cap = calc_hmap_size((size_t)num_syms);
@@ -1354,6 +1356,17 @@ Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, D
     add_scope_symbol(scope, sym->name, sym, true);
 
     return sym;
+}
+
+AnonObj* add_anon_object(Allocator* allocator, Scope* scope, Type* type)
+{
+    AnonObj* obj = alloc_type(allocator, AnonObj, true);
+    obj->type = type;
+
+    list_add_last(&scope->obj_list, &obj->lnode);
+    scope->num_objs += 1;
+
+    return obj;
 }
 
 static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)

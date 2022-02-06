@@ -237,6 +237,14 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
             dst->local.disp = src->disp + sym->as_var.offset;
             dst->local.scale = src->scale;
         }
+        else if (src->base_kind == MEM_BASE_OBJ) {
+            AnonObj* obj = src->base.obj;
+
+            dst->kind = X64_ADDR_LOCAL;
+            dst->local.base_reg = builder->lreg_rbp;
+            dst->local.disp = src->disp + obj->offset;
+            dst->local.scale = src->scale;
+        }
         else {
             u32 base_reg = X64_get_lir_reg(builder, src->base.reg);
             X64_force_any_reg(builder, base_reg);
@@ -269,21 +277,21 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
     }
 }
 
-static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u32 num_args, InstrCallArg* args,
+static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u32 num_args, IR_Value* args,
                                                      X64_InstrCallArg* x64_args)
 {
     X64_StackArgsInfo stack_info = {0};
     u32 arg_reg_index = 0;
 
     for (u32 i = 0; i < num_args; i++) {
-        InstrCallArg* arg = args + i;
+        IR_Value* arg = args + i;
         u64 arg_size = arg->type->size;
         X64_InstrCallArg* arg_info = x64_args + i;
 
         assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
 
         arg_info->type = arg->type;
-        arg_info->lreg = X64_get_lir_reg(builder, arg->loc);
+        arg_info->lreg = X64_get_lir_reg(builder, arg->reg);
 
         if (arg_reg_index >= x64_target.num_arg_regs) {
             arg_info->in_reg = false;
@@ -304,19 +312,19 @@ static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u3
     return stack_info;
 }
 
-static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, u32 num_args, InstrCallArg* args,
+static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, u32 num_args, IR_Value* args,
                                                        X64_InstrCallArg* x64_args)
 {
     X64_StackArgsInfo stack_info = {.size = X64_WINDOWS_SHADOW_SPACE, .offset = X64_WINDOWS_SHADOW_SPACE};
 
     for (u32 i = 0; i < num_args; i++) {
-        InstrCallArg* arg = args + i;
+        IR_Value* arg = args + i;
         u64 arg_size = arg->type->size;
         X64_InstrCallArg* arg_info = x64_args + i;
 
         assert(arg_size <= X64_MAX_INT_REG_SIZE); // TODO: Support structs
         arg_info->type = arg->type;
-        arg_info->lreg = X64_get_lir_reg(builder, arg->loc);
+        arg_info->lreg = X64_get_lir_reg(builder, arg->reg);
 
         if (i >= x64_target.num_arg_regs) {
             arg_info->in_reg = false;
@@ -337,7 +345,7 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
     return stack_info;
 }
 
-static X64_StackArgsInfo X64_convert_call_args(X64_LIRBuilder* builder, u32 num_args, InstrCallArg* args,
+static X64_StackArgsInfo X64_convert_call_args(X64_LIRBuilder* builder, u32 num_args, IR_Value* args,
                                                X64_InstrCallArg* x64_args)
 {
     if (x64_target.os == OS_LINUX) {
@@ -744,13 +752,13 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         //
         //     mov _ax, a  ; if `a` not in `ax`
         //     ret
-        Type* ret_type = ir_instr->ret.type;
+        Type* ret_type = ir_instr->ret.val.type;
 
         u32 ax = X64_LIR_REG_COUNT;
         u32 dx = X64_LIR_REG_COUNT;
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            u32 a = X64_get_lir_reg(builder, ir_instr->ret.a);
+            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg);
             ax = X64_def_phys_reg(builder, X64_RAX);
 
             X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
@@ -763,7 +771,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     case INSTR_CALL_INDIRECT:
     case INSTR_CALL: {
         u32 num_args;
-        InstrCallArg* args;
+        IR_Value* args;
         Type* proc_type;
         IR_Reg ir_r;
 

@@ -680,12 +680,12 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
             list_add_last(&mod->stmts, &stmt->lnode);
         }
 
-#ifdef NIBBLE_PRINT_DECLS
+#ifdef NIBBLE_PRINT_IRS
         ftprint_out("%s\n", ftprint_stmt(&ctx->gen_mem, stmt));
 #endif
     }
 
-#ifdef NIBBLE_PRINT_DECLS
+#ifdef NIBBLE_PRINT_IRS
     ftprint_out("\n");
 #endif
 

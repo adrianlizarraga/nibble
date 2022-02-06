@@ -44,11 +44,16 @@ static char* IR_print_mem(Allocator* arena, MemAddr* addr)
     ftprint_char_array(&dstr, false, "[");
 
     if (has_base) {
-        if (addr->base_kind == MEM_BASE_REG)
+        if (addr->base_kind == MEM_BASE_REG) {
             ftprint_char_array(&dstr, false, "%s", IR_print_reg(arena, addr->base.reg));
-        else if (addr->base_kind == MEM_BASE_SYM)
+        }
+        else if (addr->base_kind == MEM_BASE_SYM) {
             ftprint_char_array(&dstr, false, "%s %s", (addr->base.sym->is_local ? "local" : "global"),
                                symbol_mangled_name(arena, addr->base.sym));
+        }
+        else if (addr->base_kind == MEM_BASE_OBJ) {
+            ftprint_char_array(&dstr, false, "obj @%d", addr->base.obj->offset);
+        }
         else {
             assert(addr->base_kind == MEM_BASE_STR_LIT);
             ftprint_char_array(&dstr, false, "\"%s\"", cstr_escape(arena, addr->base.str_lit->str, addr->base.str_lit->len, 0));
@@ -192,7 +197,16 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         break;
     }
     case INSTR_RET: {
-        ftprint_char_array(&dstr, false, "ret <%s> %s", type_name(instr->ret.type), IR_print_reg(arena, instr->ret.a));
+        IR_Value* val = &instr->ret.val;
+
+        ftprint_char_array(&dstr, false, "ret <%s>");
+
+        if (type_is_aggregate(val->type)) {
+            ftprint_char_array(&dstr, false, " %s", IR_print_mem(arena, &val->addr));
+        }
+        else if (val->type != builtin_types[BUILTIN_TYPE_VOID].type) {
+            ftprint_char_array(&dstr, false, " %s", IR_print_reg(arena, val->reg));
+        }
         break;
     }
     case INSTR_CALL:
@@ -203,7 +217,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         const char* proc_name;
         IR_Reg r;
         u32 num_args;
-        InstrCallArg* args;
+        IR_Value* args;
 
         if (is_indirect) {
             proc_type = instr->calli.proc_type;
@@ -230,9 +244,10 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
 
         if (num_args) {
             for (u32 i = 0; i < num_args; i += 1) {
-                InstrCallArg* arg = args + i;
+                IR_Value* arg = args + i;
 
-                ftprint_char_array(&dstr, false, "<%s> %s", type_name(arg->type), IR_print_reg(arena, arg->loc));
+                ftprint_char_array(&dstr, false, "<%s> %s", type_name(arg->type),
+                        (type_is_aggregate(arg->type) ? IR_print_mem(arena, &arg->addr) : IR_print_reg(arena, arg->reg)));
 
                 if (i != num_args - 1)
                     ftprint_char_array(&dstr, false, ", ");

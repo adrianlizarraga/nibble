@@ -653,6 +653,24 @@ static u64 X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* scope
     }
 
     //
+    // Sum sizes of anonymous objects in this scope.
+    //
+    {
+        List* head = &scope->obj_list;
+        List* it = head->next;
+
+        while (it != head) {
+            AnonObj* obj = list_entry(it, AnonObj, lnode);
+
+            stack_size += obj->type->size;
+            stack_size = ALIGN_UP(stack_size, obj->type->align);
+            obj->offset = -stack_size;
+
+            it = it->next;
+        }
+    }
+
+    //
     // Recursively compute stack sizes for child scopes. Take the largest.
     //
     {
@@ -1451,7 +1469,9 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     X64_emit_lir_instrs(&builder, sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks);
 
+#if NIBBLE_PRINT_IRS
     LIR_dump_proc_dot(generator->tmp_mem, proc_mangled, builder.num_bblocks, builder.bblocks);
+#endif
 
     X64_compute_live_intervals(&builder);
 

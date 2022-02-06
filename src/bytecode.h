@@ -46,6 +46,7 @@ typedef enum MemBaseKind {
     MEM_BASE_NONE = 0,
     MEM_BASE_REG,
     MEM_BASE_SYM,
+    MEM_BASE_OBJ,
     MEM_BASE_STR_LIT,
 } MemBaseKind;
 
@@ -55,6 +56,7 @@ typedef struct MemAddr {
     union {
         IR_Reg reg;
         Symbol* sym;
+        AnonObj* obj;
         StrLit* str_lit;
     } base;
 
@@ -147,16 +149,20 @@ typedef struct InstrCondJmp {
     IR_Reg a;
 } InstrCondJmp;
 
-typedef struct InstrCallArg {
+typedef struct IR_Value {
     Type* type;
-    IR_Reg loc;
-} InstrCallArg;
+
+    union {
+        IR_Reg reg;
+        MemAddr addr;
+    };
+} IR_Value;
 
 typedef struct InstrCall {
     Symbol* sym;
     IR_Reg r;
     u32 num_args;
-    InstrCallArg* args;
+    IR_Value* args;
 } InstrCall;
 
 typedef struct InstrCallIndirect {
@@ -164,12 +170,11 @@ typedef struct InstrCallIndirect {
     IR_Reg loc;
     IR_Reg r;
     u32 num_args;
-    InstrCallArg* args;
+    IR_Value* args;
 } InstrCallIndirect;
 
 typedef struct InstrRet {
-    Type* type;
-    IR_Reg a;
+    IR_Value val;
 } InstrRet;
 
 typedef struct InstrMemcpy {
