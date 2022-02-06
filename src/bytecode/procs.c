@@ -467,6 +467,12 @@ static MemAddr IR_sym_as_addr(Symbol* sym)
     return addr;
 }
 
+static MemAddr IR_obj_as_addr(AnonObj* obj)
+{
+    MemAddr addr = {.base_kind = MEM_BASE_OBJ, .base.obj = obj, .index_reg = IR_REG_COUNT};
+    return addr;
+}
+
 static MemAddr IR_strlit_as_addr(StrLit* str_lit)
 {
     MemAddr addr = {.base_kind = MEM_BASE_STR_LIT, .base.str_lit = str_lit, .index_reg = IR_REG_COUNT};
@@ -807,6 +813,17 @@ static BBlock* IR_op_to_r(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* o
     case IR_OPERAND_PROC: {
         IR_Reg reg = IR_next_reg(builder);
         IR_emit_instr_laddr(builder, bblock, operand->type, reg, IR_sym_as_addr(operand->sym));
+
+        operand->kind = IR_OPERAND_REG;
+        operand->reg = reg;
+
+        return bblock;
+    }
+    case IR_OPERAND_OBJ: {
+        assert(IR_type_fits_in_reg(operand->type));
+
+        IR_Reg reg = IR_next_reg(builder);
+        IR_emit_instr_load(builder, bblock, operand->type, reg, IR_obj_as_addr(operand->obj));
 
         operand->kind = IR_OPERAND_REG;
         operand->reg = reg;
