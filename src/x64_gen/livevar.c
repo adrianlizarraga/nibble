@@ -173,7 +173,11 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             }
 
             for (u32 i = 0; i < num_args; i++) {
-                X64_touch_lreg(builder, args[i].lreg, ino);
+                X64_InstrCallArg* arg = args + i;
+
+                if (!type_is_aggregate(arg->type)) {
+                    X64_touch_lreg(builder, arg->lir.reg, ino);
+                }
             }
 
             if (dst != X64_LIR_REG_COUNT) {

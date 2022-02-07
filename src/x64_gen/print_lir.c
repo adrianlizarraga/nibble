@@ -280,7 +280,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
             for (u32 i = 0; i < num_args; i += 1) {
                 X64_InstrCallArg* arg = args + i;
 
-                ftprint_char_array(&dstr, false, "<%s> r%d", type_name(arg->type), arg->lreg);
+                ftprint_char_array(&dstr, false, "<%s> r%d", type_name(arg->type), arg->lir.reg);
 
                 if (i != num_args - 1)
                     ftprint_char_array(&dstr, false, ", ");

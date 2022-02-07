@@ -986,22 +986,47 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
 {
     for (u32 i = 0; i < num_args; i++) {
         X64_InstrCallArg* arg = args + i;
-
-        if (!arg->in_reg) {
-            continue;
-        }
-
         size_t arg_size = arg->type->size;
-        X64_LRegLoc loc = X64_lreg_loc(generator, arg->lreg);
 
-        if (loc.kind == X64_LREG_LOC_STACK) {
-            assert(arg->preg < X64_REG_COUNT);
-            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][arg->preg],
-                          X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
+        if (type_is_aggregate(arg->type)) {
+            // Argument is a struct/union object.
+            X64_ObjArgSlot* slot = &arg->slot.obj;
+
+            if (!slot->num_regs) {
+                continue;
+            }
+
+            X64_SIBDAddr addr = {0};
+            X64_get_sibd_addr(generator, &addr, &arg->lir.addr);
+
+            assert(addr.kind == X64_SIBD_ADDR_LOCAL);
+
+            // Move 64-bit chunks of the struct object into the appropriate argument registers.
+            for (unsigned ii = 0; ii < slot->num_regs; ii++) {
+                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][slot->pregs[ii]],
+                              X64_print_sibd_addr(generator->tmp_mem, &addr, arg_size));
+                addr.local.disp += 8;
+            }
         }
         else {
-            assert(loc.kind == X64_LREG_LOC_REG);
-            assert(loc.reg == arg->preg);
+            // Argument is not a struct/union.
+            X64_PrimArgSlot* slot = &arg->slot.prim;
+
+            if (!slot->in_reg) {
+                continue;
+            }
+
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg->lir.reg);
+
+            if (loc.kind == X64_LREG_LOC_STACK) {
+                assert(slot->preg < X64_REG_COUNT);
+                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][slot->preg],
+                              X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
+            }
+            else {
+                assert(loc.kind == X64_LREG_LOC_REG);
+                assert(loc.reg == slot->preg);
+            }
         }
     }
 }
@@ -1022,14 +1047,14 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
         for (u32 i = 0; i < num_args; i += 1) {
             X64_InstrCallArg* arg_info = args + i;
 
-            if (arg_info->in_reg)
+            if (arg_info->slot.prim.in_reg)
                 continue; // Skip register args
 
             u64 arg_size = arg_info->type->size;
-            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->lreg);
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->lir.reg);
 
             if (loc.kind == X64_LREG_LOC_REG) {
-                assert(stack_offset == arg_info->sp_offset); // TODO: sp_offset is redundant!
+                assert(stack_offset == arg_info->slot.prim.sp_offset); // TODO: sp_offset is redundant!
 
                 // Move directly into stack slot.
                 X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], stack_offset,
@@ -1047,14 +1072,14 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
         for (u32 i = 0; i < num_args; i += 1) {
             X64_InstrCallArg* arg_info = args + i;
 
-            if (arg_info->in_reg)
+            if (arg_info->slot.prim.in_reg)
                 continue; // Skip register args
 
             u64 arg_size = arg_info->type->size;
-            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->lreg);
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->lir.reg);
 
             if (loc.kind == X64_LREG_LOC_STACK) {
-                assert(stack_offset == arg_info->sp_offset);
+                assert(stack_offset == arg_info->slot.prim.sp_offset);
                 // Move into RAX.
                 X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][X64_RAX],
                               X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));

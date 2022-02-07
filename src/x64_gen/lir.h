@@ -246,15 +246,39 @@ typedef struct X64_InstrRet {
     u32 rdx;
 } X64_InstrRet;
 
-typedef struct X64_InstrCallArg {
-    Type* type;
-    u32 lreg;
-
+typedef struct X64_PrimArgSlot {
     bool in_reg;
+
     union {
         u32 sp_offset;
         X64_Reg preg;
     };
+} X64_PrimArgSlot;
+
+typedef struct X64_ObjArgSlot {
+    bool as_ptr;
+    unsigned num_regs;
+
+    union {
+        u32 sp_offset;
+        X64_Reg pregs[2];
+    };
+} X64_ObjArgSlot;
+
+typedef struct X64_InstrCallArg {
+    Type* type;
+
+    // LIR location.
+    union {
+        u32 reg;
+        X64_MemAddr addr;
+    } lir;
+
+    // Required location before call instruction
+    union {
+        X64_PrimArgSlot prim;
+        X64_ObjArgSlot obj;
+    } slot;
 } X64_InstrCallArg;
 
 typedef struct X64_InstrCall {
