@@ -515,12 +515,39 @@ typedef struct X64_StackParamsInfo {
     List* local_var_iter; // Iterator pointing to the first local variable (if any) of the proc
 } X64_StackParamsInfo;
 
+typedef struct X64_LinuxAssignParamState {
+    u64 stack_spill_size;
+    u64 stack_arg_offset;
+} X64_LinuxAssignParamState;
+
+static s32 X64_linux_get_stack_arg(X64_LinuxAssignParamState* state, u64 arg_size, u64 arg_align)
+{
+    s32 offset = state->stack_arg_offset;
+
+    state->stack_arg_offset += arg_size;
+    state->stack_arg_offset = ALIGN_UP(state->stack_arg_offset, arg_align);
+    state->stack_arg_offset = ALIGN_UP(state->stack_arg_offset, X64_STACK_WORD_SIZE);
+
+    return offset;
+}
+
+static s32 X64_linux_spill_reg_arg(X64_Generator* generator, X64_LinuxAssignParamState* state, u64 arg_size, u64 arg_align,
+                                   X64_Reg arg_reg)
+{
+    state->stack_spill_size += arg_size;
+    state->stack_spill_size = ALIGN_UP(state->stack_spill_size, arg_align);
+    s32 offset = -state->stack_spill_size;
+
+    X64_emit_text(generator, "    mov %s [rbp + %d], %s", x64_mem_size_label[arg_size], offset, x64_reg_names[arg_size][arg_reg]);
+
+    return offset;
+}
+
 static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, DeclProc* dproc, X64_StackParamsInfo* stack_params_info)
 {
-    u64 stack_spill_size = 0;
     u32 index = 0;
     u32 arg_reg_index = 0;
-    u64 stack_arg_offset = 0x10;
+    X64_LinuxAssignParamState state = {.stack_arg_offset = 0x10};
 
     Scope* scope = dproc->scope;
     List* head = &scope->sym_list;
@@ -540,33 +567,41 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, DeclPr
         Type* arg_type = sym->type;
         u64 arg_size = arg_type->size;
         u64 arg_align = arg_type->align;
-        bool arg_in_reg = (arg_reg_index < x64_target.num_arg_regs) && (arg_size <= X64_MAX_INT_REG_SIZE);
 
-        // Spill argument register below rsp
-        if (arg_in_reg) {
-            X64_Reg arg_reg = x64_target.arg_regs[arg_reg_index];
+        if (type_is_aggregate(arg_type)) {
+            u32 rem_regs = x64_target.num_arg_regs - arg_reg_index;
 
-            stack_spill_size += arg_size;
-            stack_spill_size = ALIGN_UP(stack_spill_size, arg_align);
-            sym->as_var.offset = -stack_spill_size;
+            if ((arg_size <= X64_MAX_INT_REG_SIZE) && (rem_regs >= 1)) {
+                X64_Reg arg_reg = x64_target.arg_regs[arg_reg_index++];
+                sym->as_var.offset = X64_linux_spill_reg_arg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, arg_reg);
+            }
+            else if ((arg_size <= (X64_MAX_INT_REG_SIZE << 1)) && (rem_regs >= 2)) {
+                X64_Reg low_reg = x64_target.arg_regs[arg_reg_index++];
+                X64_Reg high_reg = x64_target.arg_regs[arg_reg_index++];
 
-            X64_emit_text(generator, "    mov %s [rbp + %d], %s", x64_mem_size_label[arg_size], sym->as_var.offset,
-                          x64_reg_names[arg_size][arg_reg]);
-
-            arg_reg_index += 1;
+                X64_linux_spill_reg_arg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, high_reg);
+                sym->as_var.offset = X64_linux_spill_reg_arg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
+            }
+            else {
+                sym->as_var.offset = X64_linux_get_stack_arg(&state, arg_size, arg_align);
+            }
         }
         else {
-            sym->as_var.offset = stack_arg_offset;
-            stack_arg_offset += arg_size;
-            stack_arg_offset = ALIGN_UP(stack_arg_offset, arg_align);
-            stack_arg_offset = ALIGN_UP(stack_arg_offset, X64_STACK_WORD_SIZE);
+            // Spill argument register below rsp
+            if (arg_reg_index < x64_target.num_arg_regs) {
+                X64_Reg arg_reg = x64_target.arg_regs[arg_reg_index++];
+                sym->as_var.offset = X64_linux_spill_reg_arg(generator, &state, arg_size, arg_align, arg_reg);
+            }
+            else {
+                sym->as_var.offset = X64_linux_get_stack_arg(&state, arg_size, arg_align);
+            }
         }
 
         index += 1;
         it = it->next;
     }
 
-    stack_params_info->stack_spill_size = stack_spill_size;
+    stack_params_info->stack_spill_size = state.stack_spill_size;
     stack_params_info->local_var_iter = it;
 }
 
@@ -589,6 +624,9 @@ static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, Decl
 
         // Assign stack offsets to procedure params.
         assert(sym->kind == SYMBOL_VAR);
+
+        // TODO: Support struct args
+        assert(!type_is_aggregate(sym->type));
 
         Type* arg_type = sym->type;
         u64 arg_size = arg_type->size;
@@ -1001,12 +1039,30 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
 
             assert(addr.kind == X64_SIBD_ADDR_LOCAL);
 
+            //
             // Move 64-bit chunks of the struct object into the appropriate argument registers.
+            //
+            size_t copy_amnt = 0;
+
             for (unsigned ii = 0; ii < slot->num_regs; ii++) {
-                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][slot->pregs[ii]],
-                              X64_print_sibd_addr(generator->tmp_mem, &addr, arg_size));
+                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][slot->pregs[ii]],
+                              X64_print_sibd_addr(generator->tmp_mem, &addr, X64_MAX_INT_REG_SIZE));
                 addr.local.disp += 8;
+                copy_amnt += 8;
             }
+
+            // TODO: Masking off doesn't work if mask >= 32-bits
+            /*
+            if (copy_amnt > arg_size) {
+                // Mask off the extra amount we read from memory and copied to the last register.
+                size_t valid_bytes = X64_MAX_INT_REG_SIZE - (copy_amnt - arg_size);
+                size_t mask = (1ULL << (valid_bytes << 3)) - 1;
+                ftprint_out("copy_amnt: %lu, arg_size: %lu, valid_bytes: %lu, mask: 0x%lx\n", copy_amnt, arg_size, valid_bytes, mask);
+
+                X64_emit_text(generator, "    and %s, 0x%lx", x64_reg_names[X64_MAX_INT_REG_SIZE][slot->pregs[slot->num_regs - 1]],
+                              mask);
+            }
+            */
         }
         else {
             // Argument is not a struct/union.
@@ -1042,57 +1098,82 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
 
         // 1st pass: Move args that are currently in registers into their stack slots.
         // This ensures that we can freely use RAX as a temporary register in the second pass.
-        u64 stack_offset = stack_args_info.offset;
 
         for (u32 i = 0; i < num_args; i += 1) {
-            X64_InstrCallArg* arg_info = args + i;
+            X64_InstrCallArg* arg = args + i;
+            u64 arg_size = arg->type->size;
 
-            if (arg_info->slot.prim.in_reg)
-                continue; // Skip register args
+            if (type_is_aggregate(arg->type)) {
+                // Argument is a struct/union object.
+                X64_ObjArgSlot* slot = &arg->slot.obj;
 
-            u64 arg_size = arg_info->type->size;
-            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->lir.reg);
+                if (slot->num_regs) {
+                    continue;
+                }
 
-            if (loc.kind == X64_LREG_LOC_REG) {
-                assert(stack_offset == arg_info->slot.prim.sp_offset); // TODO: sp_offset is redundant!
+                // Copy obj into its location in the stack.
+                X64_SIBDAddr src_addr = {0};
+                X64_get_sibd_addr(generator, &src_addr, &arg->lir.addr);
+                assert(src_addr.kind == X64_SIBD_ADDR_LOCAL);
+
+                X64_emit_text(generator, "    push rdi");
+                X64_emit_text(generator, "    push rsi");
+                X64_emit_text(generator, "    push rcx");
+
+                X64_emit_text(generator, "    lea rdi, [rsp + %d]", slot->sp_offset);
+                X64_emit_text(generator, "    lea rsi, %s", X64_print_sibd_addr(generator->tmp_mem, &src_addr, 0));
+                X64_emit_text(generator, "    mov rcx, 0x%lx", arg_size);
+                X64_emit_text(generator, "    rep movsb");
+
+                X64_emit_text(generator, "    pop rcx");
+                X64_emit_text(generator, "    pop rsi");
+                X64_emit_text(generator, "    pop rdi");
+            }
+            else {
+                // Argument is not a struct/union.
+                X64_PrimArgSlot* slot = &arg->slot.prim;
+
+                if (slot->in_reg) {
+                    continue; // Skip register args
+                }
+
+                X64_LRegLoc loc = X64_lreg_loc(generator, arg->lir.reg);
 
                 // Move directly into stack slot.
-                X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], stack_offset,
-                              x64_reg_names[arg_size][loc.reg]);
+                if (loc.kind == X64_LREG_LOC_REG) {
+                    X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], slot->sp_offset,
+                                  x64_reg_names[arg_size][loc.reg]);
+                }
             }
-
-            stack_offset += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
         }
 
-        assert(stack_offset == stack_args_size);
-
         // 2nd pass: Move args that are currently spilled into their stack slots.
-        stack_offset = stack_args_info.offset;
-
         for (u32 i = 0; i < num_args; i += 1) {
-            X64_InstrCallArg* arg_info = args + i;
+            X64_InstrCallArg* arg = args + i;
 
-            if (arg_info->slot.prim.in_reg)
+            if (type_is_aggregate(arg->type)) {
+                continue;
+            }
+
+            X64_PrimArgSlot* slot = &arg->slot.prim;
+
+            if (slot->in_reg) {
                 continue; // Skip register args
+            }
 
-            u64 arg_size = arg_info->type->size;
-            X64_LRegLoc loc = X64_lreg_loc(generator, arg_info->lir.reg);
+            u64 arg_size = arg->type->size;
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg->lir.reg);
 
             if (loc.kind == X64_LREG_LOC_STACK) {
-                assert(stack_offset == arg_info->slot.prim.sp_offset);
                 // Move into RAX.
                 X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][X64_RAX],
                               X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
 
                 // Move RAX into stack slot.
-                X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], stack_offset,
+                X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], slot->sp_offset,
                               x64_reg_names[arg_size][X64_RAX]);
             }
-
-            stack_offset += ALIGN_UP(arg_size, X64_STACK_WORD_SIZE);
         }
-
-        assert(stack_offset == stack_args_size);
     }
 }
 
@@ -1551,7 +1632,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     // End label
     X64_emit_text(generator, "    end.%s:", proc_mangled);
 
-    // Save/Restore callee-saved registers.
+    // Patch instruction to save callee-saved registers.
     char* tmp_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
 
     for (uint32_t r = 0; r < X64_REG_COUNT; r += 1) {
@@ -1561,13 +1642,23 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
             ftprint_char_array(&tmp_line, false, "    push %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
-            X64_emit_text(generator, "    pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
         }
     }
 
     array_push(tmp_line, '\0');
-
     *save_regs_inst = mem_dup(generator->gen_mem, tmp_line, array_len(tmp_line), DEFAULT_ALIGN);
+
+    // Restore callee-saved registers. 
+    // NOTE: Iterating in the reverse order as the corresponding pushes.
+    for (uint32_t r = X64_REG_COUNT; r-- > 0;) {
+        X64_Reg reg = (X64_Reg)r;
+
+        if (reg == X64_RBP || reg == X64_RSP) continue;
+
+        if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
+            X64_emit_text(generator, "    pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
+        }
+    }
 
     if (stack_size)
         X64_emit_text(generator, "    mov rsp, rbp");

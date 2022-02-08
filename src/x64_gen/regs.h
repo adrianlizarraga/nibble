@@ -96,7 +96,7 @@ typedef struct X64_LRegRange {
     union {
         X64_Reg preg;
         u32 lreg;
-        unsigned preg_mask;
+        u32 preg_mask;
     } ra_ctrl;
 
     X64_LRegLoc loc;

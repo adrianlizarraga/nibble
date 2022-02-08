@@ -160,7 +160,7 @@ static void X64_force_stack_arg_reg(X64_LIRBuilder* builder, u32 lreg)
     range->ra_ctrl.preg_mask = builder->stack_reg_mask;
 }
 
-static void X64_force_any_reg(X64_LIRBuilder* builder, u32 lreg)
+static void X64_force_any_reg(X64_LIRBuilder* builder, u32 lreg, u32 banned_regs)
 {
     lreg = X64_find_alias_reg(builder, lreg);
 
@@ -169,7 +169,7 @@ static void X64_force_any_reg(X64_LIRBuilder* builder, u32 lreg)
 
     assert(range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_NONE);
     range->ra_ctrl_kind = X64_REG_ALLOC_CTRL_FORCE_ANY_REG;
-    range->ra_ctrl.preg_mask = x64_target.scratch_reg_mask;
+    range->ra_ctrl.preg_mask = x64_target.scratch_reg_mask & (~banned_regs);
 }
 
 static void X64_hint_same_reg(X64_LIRBuilder* builder, u32 copier_lreg, u32 copied_lreg)
@@ -207,7 +207,7 @@ static void X64_hint_phys_reg(X64_LIRBuilder* builder, u32 lreg, X64_Reg phys_re
     }
 }
 
-static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr* src)
+static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr* src, u32 banned_regs)
 {
     bool has_base = src->base_kind != MEM_BASE_NONE;
     bool has_index = src->scale && (src->index_reg < IR_REG_COUNT);
@@ -247,7 +247,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
         }
         else {
             u32 base_reg = X64_get_lir_reg(builder, src->base.reg);
-            X64_force_any_reg(builder, base_reg);
+            X64_force_any_reg(builder, base_reg, banned_regs);
 
             dst->kind = X64_ADDR_LOCAL;
             dst->local.base_reg = base_reg;
@@ -257,7 +257,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
 
         if (has_index) {
             u32 index_reg = X64_get_lir_reg(builder, src->index_reg);
-            X64_force_any_reg(builder, index_reg);
+            X64_force_any_reg(builder, index_reg, banned_regs);
 
             dst->local.index_reg = index_reg;
         }
@@ -267,7 +267,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
     }
     else {
         u32 index_reg = X64_get_lir_reg(builder, src->index_reg);
-        X64_force_any_reg(builder, index_reg);
+        X64_force_any_reg(builder, index_reg, banned_regs);
 
         dst->kind = X64_ADDR_LOCAL;
         dst->local.base_reg = (u32)-1;
@@ -314,15 +314,15 @@ static void X64_linux_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg* d
     assert(type_is_aggregate(type));
 
     dst->type = type;
-    X64_get_lir_addr(builder, &dst->lir.addr, &src->addr);
+    X64_get_lir_addr(builder, &dst->lir.addr, &src->addr, (1 << X64_RDI));
 
     u32 rem_regs = x64_target.num_arg_regs - *arg_reg_index;
 
-    if ((type->size <= 8) && (rem_regs >= 1)) {
+    if ((type->size <= X64_MAX_INT_REG_SIZE) && (rem_regs >= 1)) {
         dst->slot.obj.num_regs = 1;
         dst->slot.obj.pregs[0] = x64_target.arg_regs[*arg_reg_index]; *arg_reg_index += 1;
     }
-    else if ((type->size <= 16) && (rem_regs >= 2)) {
+    else if ((type->size <= (X64_MAX_INT_REG_SIZE << 1)) && (rem_regs >= 2)) {
         dst->slot.obj.num_regs = 2;
         dst->slot.obj.pregs[0] = x64_target.arg_regs[*arg_reg_index]; *arg_reg_index += 1;
         dst->slot.obj.pregs[1] = x64_target.arg_regs[*arg_reg_index]; *arg_reg_index += 1;
@@ -392,7 +392,7 @@ static void X64_windows_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg*
     assert(type_is_aggregate(type));
 
     dst->type = type;
-    X64_get_lir_addr(builder, &dst->lir.addr, &src->addr);
+    X64_get_lir_addr(builder, &dst->lir.addr, &src->addr, (1 << X64_RDI));
 
     // TODO: Finish
     assert(0);
@@ -525,7 +525,7 @@ static bool X64_try_combine_limm(X64_LIRBuilder* builder, X64_BBlock* xbblock, I
             size_t size = t_instr->store.type->size;
 
             X64_MemAddr addr;
-            X64_get_lir_addr(builder, &addr, &t_instr->store.addr);
+            X64_get_lir_addr(builder, &addr, &t_instr->store.addr, 0);
 
             X64_emit_instr_mov_m_i(builder, xbblock, size, addr, imm);
             *p_ir_instr = t_instr;
@@ -688,7 +688,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         size_t size = ir_instr->load.type->size;
 
         X64_MemAddr addr;
-        X64_get_lir_addr(builder, &addr, &ir_instr->load.addr);
+        X64_get_lir_addr(builder, &addr, &ir_instr->load.addr, 0);
 
         u32 r = X64_get_lir_reg(builder, ir_instr->load.r);
         X64_emit_instr_mov_r_m(builder, xbblock, size, r, addr);
@@ -700,7 +700,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // lea r, [..addr]
 
         X64_MemAddr addr;
-        X64_get_lir_addr(builder, &addr, &ir_instr->laddr.addr);
+        X64_get_lir_addr(builder, &addr, &ir_instr->laddr.addr, 0);
 
         u32 r = X64_get_lir_reg(builder, ir_instr->laddr.r);
         X64_emit_instr_lea(builder, xbblock, r, addr);
@@ -714,7 +714,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         size_t size = ir_instr->store.type->size;
 
         X64_MemAddr addr;
-        X64_get_lir_addr(builder, &addr, &ir_instr->store.addr);
+        X64_get_lir_addr(builder, &addr, &ir_instr->store.addr, 0);
 
         u32 a = X64_get_lir_reg(builder, ir_instr->store.a);
         X64_emit_instr_mov_m_r(builder, xbblock, size, addr, a);
@@ -800,13 +800,13 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // mov rcx, size
         // rep movsb
         X64_MemAddr dst_addr;
-        X64_get_lir_addr(builder, &dst_addr, &ir_instr->memcpy.dst);
+        X64_get_lir_addr(builder, &dst_addr, &ir_instr->memcpy.dst, 0);
 
         u32 rdi = X64_def_phys_reg(builder, X64_RDI);
         X64_emit_instr_lea(builder, xbblock, rdi, dst_addr);
 
         X64_MemAddr src_addr;
-        X64_get_lir_addr(builder, &src_addr, &ir_instr->memcpy.src);
+        X64_get_lir_addr(builder, &src_addr, &ir_instr->memcpy.src, (1 << X64_RDI));
 
         u32 rsi = X64_def_phys_reg(builder, X64_RSI);
         X64_emit_instr_lea(builder, xbblock, rsi, src_addr);

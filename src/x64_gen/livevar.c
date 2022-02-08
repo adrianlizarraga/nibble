@@ -11,7 +11,7 @@ static void X64_touch_lreg(X64_LIRBuilder* builder, u32 lreg, long ino)
         range->end = ino;
     }
     else {
-        assert(range->end == -1 || range->end < ino);
+        assert(range->end <= ino);
         range->end = ino;
     }
 }
@@ -175,7 +175,10 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             for (u32 i = 0; i < num_args; i++) {
                 X64_InstrCallArg* arg = args + i;
 
-                if (!type_is_aggregate(arg->type)) {
+                if (type_is_aggregate(arg->type)) {
+                    X64_touch_mem_lregs(builder, &arg->lir.addr, ino);
+                }
+                else {
                     X64_touch_lreg(builder, arg->lir.reg, ino);
                 }
             }
