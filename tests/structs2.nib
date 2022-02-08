@@ -17,6 +17,14 @@ proc vec3_add_val(a: Vec3, b:  Vec3) => int {
     return a.x + a.y + a.z + b.x + b.y + b.z;
 }
 
+struct Buf {
+    buf : [1024] char;
+}
+
+proc bar(a : int, b : Buf, c : Buf, d : int) => int {
+    return a + b.buf[0] + c.buf[256] + d;
+}
+
 proc vec3_add(a : ^Vec3, b : ^Vec3, c : ^Vec3) {
     c.x = a.x + b.x;
     (*c).y = (*a).y + (*b).y;
@@ -47,7 +55,15 @@ proc main() => int {
 
     var r2 := vec3_add_val(v1, v2);
 
-    return r + r2; // 11 + 12 = 23
+    var buf : Buf;
+    buf.buf[0] = 20;
+
+    var buf2: Buf;
+    buf2.buf[256] = 10;
+
+    var r3 := bar(3, buf, buf2, 4);
+
+    return r + r2 + r3; // 11 + 12 + 37 = 60
     /*
 
     var a : Vec3;
