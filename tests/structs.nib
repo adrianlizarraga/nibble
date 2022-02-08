@@ -1,7 +1,28 @@
+struct Smol {
+    a : char;
+    b : char;
+}
+
+proc pass_smol(s : Smol) => int {
+    return s.a + s.b;
+}
+
 struct Vec3 {
     x : int;
     y : int;
     z : int;
+}
+
+proc vec3_add_val(a: Vec3, b:  Vec3) => int {
+    return a.x + a.y + a.z + b.x + b.y + b.z;
+}
+
+struct Buf {
+    buf : [1024] char;
+}
+
+proc bar(a : int, b : Buf, c : Buf, d : int) => int {
+    return a + b.buf[0] + c.buf[256] + d;
 }
 
 proc vec3_add(a : ^Vec3, b : ^Vec3, c : ^Vec3) {
@@ -20,6 +41,30 @@ proc vec3_add2(a : Vec3, b : Vec3, c : ^Vec3) {
 
 proc main() => int {
     #writeout("Structs\n", 8);
+
+    var s : Smol;
+    s.a = 1;
+    s.b = 10;
+
+    var r := pass_smol(s);
+
+    var v1 : Vec3;
+    var v2 : Vec3;
+    v1.x = 1; v1.y = 2; v1.z = 3;
+    v2.x = 1; v2.y = 2; v2.z = 3;
+
+    var r2 := vec3_add_val(v1, v2);
+
+    var buf : Buf;
+    buf.buf[0] = 20;
+
+    var buf2: Buf;
+    buf2.buf[256] = 10;
+
+    var r3 := bar(3, buf, buf2, 4);
+
+    return r + r2 + r3; // 11 + 12 + 37 = 60
+    /*
 
     var a : Vec3;
     a.x = 1;
@@ -40,4 +85,5 @@ proc main() => int {
 
     // 3 + 6 + 9 = 18
     return d.x + d.y + d.z;
+    */
 }

@@ -1096,8 +1096,8 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
         // Make room in the stack for arguments
         X64_emit_text(generator, "    sub rsp, %d", stack_args_size);
 
-        // 1st pass: Move args that are currently in registers into their stack slots.
-        // This ensures that we can freely use RAX as a temporary register in the second pass.
+        // 1st pass: Place large struct obj args.
+        bool pushed_cpy_state = false;
 
         for (u32 i = 0; i < num_args; i += 1) {
             X64_InstrCallArg* arg = args + i;
@@ -1116,21 +1116,35 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
                 X64_get_sibd_addr(generator, &src_addr, &arg->lir.addr);
                 assert(src_addr.kind == X64_SIBD_ADDR_LOCAL);
 
-                X64_emit_text(generator, "    push rdi");
-                X64_emit_text(generator, "    push rsi");
-                X64_emit_text(generator, "    push rcx");
+                // TODO: There's no need to push all (rdi, rsi, rcx) if not used.
+                if (!pushed_cpy_state) {
+                    X64_emit_text(generator, "    push rdi");
+                    X64_emit_text(generator, "    push rsi");
+                    X64_emit_text(generator, "    push rcx");
+                    pushed_cpy_state = true;
+                }
 
-                X64_emit_text(generator, "    lea rdi, [rsp + %d]", slot->sp_offset);
+                X64_emit_text(generator, "    lea rdi, [rsp + %d]", slot->sp_offset + X64_MAX_INT_REG_SIZE * 3);
                 X64_emit_text(generator, "    lea rsi, %s", X64_print_sibd_addr(generator->tmp_mem, &src_addr, 0));
                 X64_emit_text(generator, "    mov rcx, 0x%lx", arg_size);
                 X64_emit_text(generator, "    rep movsb");
-
-                X64_emit_text(generator, "    pop rcx");
-                X64_emit_text(generator, "    pop rsi");
-                X64_emit_text(generator, "    pop rdi");
             }
-            else {
-                // Argument is not a struct/union.
+        }
+
+        if (pushed_cpy_state) {
+            X64_emit_text(generator, "    pop rcx");
+            X64_emit_text(generator, "    pop rsi");
+            X64_emit_text(generator, "    pop rdi");
+        }
+
+        // 2nd pass: Move primitive args that are currently in registers into their stack slots.
+        // This ensures that we can freely use RAX as a temporary register in the next pass.
+
+        for (u32 i = 0; i < num_args; i += 1) {
+            X64_InstrCallArg* arg = args + i;
+            u64 arg_size = arg->type->size;
+
+            if (!type_is_aggregate(arg->type)) {
                 X64_PrimArgSlot* slot = &arg->slot.prim;
 
                 if (slot->in_reg) {
@@ -1147,7 +1161,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
             }
         }
 
-        // 2nd pass: Move args that are currently spilled into their stack slots.
+        // 3rd pass: Move primitive args that are currently spilled into the stack.
         for (u32 i = 0; i < num_args; i += 1) {
             X64_InstrCallArg* arg = args + i;
 
