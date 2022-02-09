@@ -1026,8 +1026,7 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
         X64_InstrCallArg* arg = args + i;
         size_t arg_size = arg->type->size;
 
-        if (type_is_aggregate(arg->type)) {
-            // Argument is a struct/union object.
+        if (type_is_aggregate(arg->type)) { // Argument is a struct/union object.
             X64_ObjArgSlot* slot = &arg->slot.obj;
 
             if (!slot->num_regs) {
@@ -1035,7 +1034,7 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
             }
 
             X64_SIBDAddr addr = {0};
-            X64_get_sibd_addr(generator, &addr, &arg->lir.addr);
+            X64_get_sibd_addr(generator, &addr, &arg->val.addr);
 
             assert(addr.kind == X64_SIBD_ADDR_LOCAL);
 
@@ -1052,27 +1051,15 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
             }
 
             // TODO: Masking off doesn't work if mask >= 32-bits
-            /*
-            if (copy_amnt > arg_size) {
-                // Mask off the extra amount we read from memory and copied to the last register.
-                size_t valid_bytes = X64_MAX_INT_REG_SIZE - (copy_amnt - arg_size);
-                size_t mask = (1ULL << (valid_bytes << 3)) - 1;
-                ftprint_out("copy_amnt: %lu, arg_size: %lu, valid_bytes: %lu, mask: 0x%lx\n", copy_amnt, arg_size, valid_bytes, mask);
-
-                X64_emit_text(generator, "    and %s, 0x%lx", x64_reg_names[X64_MAX_INT_REG_SIZE][slot->pregs[slot->num_regs - 1]],
-                              mask);
-            }
-            */
         }
-        else {
-            // Argument is not a struct/union.
+        else { // Argument is a primitive type
             X64_PrimArgSlot* slot = &arg->slot.prim;
 
             if (!slot->in_reg) {
                 continue;
             }
 
-            X64_LRegLoc loc = X64_lreg_loc(generator, arg->lir.reg);
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg->val.reg);
 
             if (loc.kind == X64_LREG_LOC_STACK) {
                 assert(slot->preg < X64_REG_COUNT);
@@ -1113,7 +1100,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
 
                 // Copy obj into its location in the stack.
                 X64_SIBDAddr src_addr = {0};
-                X64_get_sibd_addr(generator, &src_addr, &arg->lir.addr);
+                X64_get_sibd_addr(generator, &src_addr, &arg->val.addr);
                 assert(src_addr.kind == X64_SIBD_ADDR_LOCAL);
 
                 // TODO: There's no need to push all (rdi, rsi, rcx) if not used.
@@ -1151,7 +1138,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
                     continue; // Skip register args
                 }
 
-                X64_LRegLoc loc = X64_lreg_loc(generator, arg->lir.reg);
+                X64_LRegLoc loc = X64_lreg_loc(generator, arg->val.reg);
 
                 // Move directly into stack slot.
                 if (loc.kind == X64_LREG_LOC_REG) {
@@ -1176,7 +1163,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo 
             }
 
             u64 arg_size = arg->type->size;
-            X64_LRegLoc loc = X64_lreg_loc(generator, arg->lir.reg);
+            X64_LRegLoc loc = X64_lreg_loc(generator, arg->val.reg);
 
             if (loc.kind == X64_LREG_LOC_STACK) {
                 // Move into RAX.
@@ -1412,7 +1399,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
     case X64_INSTR_CALL:
     case X64_INSTR_CALL_R: {
         Type* proc_type;
-        u32 dst_lreg;
+        X64_CallValue dst_val;
         u32 num_args;
         X64_InstrCallArg* args;
         X64_StackArgsInfo stack_args_info;
@@ -1420,7 +1407,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
 
         if (instr->kind == X64_INSTR_CALL) {
             proc_type = instr->call.sym->type;
-            dst_lreg = instr->call.dst;
+            dst_val = instr->call.dst;
             num_args = instr->call.num_args;
             args = instr->call.args;
             stack_args_info = instr->call.stack_info;
@@ -1429,7 +1416,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         else {
             assert(instr->kind == X64_INSTR_CALL_R);
             proc_type = instr->call_r.proc_type;
-            dst_lreg = instr->call_r.dst;
+            dst_val = instr->call_r.dst;
             num_args = instr->call_r.num_args;
             args = instr->call_r.args;
             stack_args_info = instr->call_r.stack_info;
@@ -1494,7 +1481,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         Type* ret_type = proc_type->as_proc.ret;
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            X64_LRegLoc dst_loc = X64_lreg_loc(generator, dst_lreg);
+            // TODO: Handle returning objs
+            X64_LRegLoc dst_loc = X64_lreg_loc(generator, dst_val.reg);
 
             if (dst_loc.kind == X64_LREG_LOC_STACK) {
                 // Move result (in RAX) to stack offset.

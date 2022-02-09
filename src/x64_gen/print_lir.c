@@ -245,20 +245,20 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
     case X64_INSTR_CALL:
     case X64_INSTR_CALL_R: {
         Type* proc_type;
-        u32 dst_lreg;
+        u32 dst_lreg; // TODO: Handle returning struct objs
         u32 num_args;
         X64_InstrCallArg* args;
 
         if (instr->kind == X64_INSTR_CALL) {
             proc_type = instr->call.sym->type;
-            dst_lreg = instr->call.dst;
+            dst_lreg = instr->call.dst.reg;
             num_args = instr->call.num_args;
             args = instr->call.args;
         }
         else {
             assert(instr->kind == X64_INSTR_CALL_R);
             proc_type = instr->call_r.proc_type;
-            dst_lreg = instr->call_r.dst;
+            dst_lreg = instr->call_r.dst.reg;
             num_args = instr->call_r.num_args;
             args = instr->call_r.args;
         }
@@ -280,7 +280,8 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
             for (u32 i = 0; i < num_args; i += 1) {
                 X64_InstrCallArg* arg = args + i;
 
-                ftprint_char_array(&dstr, false, "<%s> r%d", type_name(arg->type), arg->lir.reg);
+                // TODO: Print obj addrs too
+                ftprint_char_array(&dstr, false, "<%s> r%d", type_name(arg->type), arg->val.reg);
 
                 if (i != num_args - 1)
                     ftprint_char_array(&dstr, false, ", ");

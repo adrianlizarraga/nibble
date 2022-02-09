@@ -160,7 +160,7 @@ typedef struct IR_Value {
 
 typedef struct InstrCall {
     Symbol* sym;
-    IR_Reg r;
+    IR_Value r;
     u32 num_args;
     IR_Value* args;
 } InstrCall;
@@ -168,7 +168,7 @@ typedef struct InstrCall {
 typedef struct InstrCallIndirect {
     Type* proc_type;
     IR_Reg loc;
-    IR_Reg r;
+    IR_Value r;
     u32 num_args;
     IR_Value* args;
 } InstrCallIndirect;

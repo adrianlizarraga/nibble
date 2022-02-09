@@ -215,7 +215,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
 
         Type* proc_type;
         const char* proc_name;
-        IR_Reg r;
+        IR_Value r;
         u32 num_args;
         IR_Value* args;
 
@@ -236,8 +236,11 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
 
         ftprint_char_array(&dstr, false, "call ");
 
-        if (proc_type->as_proc.ret != builtin_types[BUILTIN_TYPE_VOID].type) {
-            ftprint_char_array(&dstr, false, "<%s> %s, ", type_name(proc_type->as_proc.ret), IR_print_reg(arena, r));
+        Type* ret_type = proc_type->as_proc.ret;
+
+        if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
+            ftprint_char_array(&dstr, false, "<%s> %s, ", type_name(proc_type->as_proc.ret),
+                               (type_is_aggregate(ret_type) ? IR_print_mem(arena, &r.addr) : IR_print_reg(arena, r.reg)));
         }
 
         ftprint_char_array(&dstr, false, "%s (", proc_name);

@@ -265,14 +265,15 @@ typedef struct X64_ObjArgSlot {
     };
 } X64_ObjArgSlot;
 
+typedef union X64_CallValue {
+    u32 reg;
+    X64_MemAddr addr;
+} X64_CallValue;
+
 typedef struct X64_InstrCallArg {
     Type* type;
 
-    // LIR location.
-    union {
-        u32 reg;
-        X64_MemAddr addr;
-    } lir;
+    X64_CallValue val;
 
     // Required location before call instruction
     union {
@@ -283,7 +284,7 @@ typedef struct X64_InstrCallArg {
 
 typedef struct X64_InstrCall {
     Symbol* sym;
-    u32 dst;
+    X64_CallValue dst;
     u32 num_args;
     X64_InstrCallArg* args;
     X64_StackArgsInfo stack_info;
@@ -293,7 +294,7 @@ typedef struct X64_InstrCall {
 typedef struct X64_InstrCall_R {
     Type* proc_type;
     u32 proc_loc;
-    u32 dst;
+    X64_CallValue dst;
     u32 num_args;
     X64_InstrCallArg* args;
     X64_StackArgsInfo stack_info;
@@ -404,8 +405,8 @@ void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, Conditio
 void X64_emit_instr_setcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, u32 dst);
 void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rdi, u32 rsi, u32 rcx);
 void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u32 rdx);
-X64_Instr* X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, u32 dst, u32 num_args, X64_InstrCallArg* args,
+X64_Instr* X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, X64_CallValue dst, u32 num_args, X64_InstrCallArg* args,
                                X64_StackArgsInfo stack_info);
-X64_Instr* X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, u32 dst, u32 num_args,
+X64_Instr* X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, X64_CallValue dst, u32 num_args,
                                  X64_InstrCallArg* args, X64_StackArgsInfo stack_info);
 #endif

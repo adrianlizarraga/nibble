@@ -155,7 +155,9 @@ static void X64_force_stack_arg_reg(X64_LIRBuilder* builder, u32 lreg)
     assert(lreg < builder->num_regs);
     X64_LRegRange* range = &builder->lreg_ranges[lreg];
 
-    assert(range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_NONE);
+    assert(range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_FORCE_REG);
+    assert(range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_FORCE_ANY_REG);
+    assert(range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL);
     range->ra_ctrl_kind = X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL;
     range->ra_ctrl.preg_mask = builder->stack_reg_mask;
 }
@@ -286,13 +288,13 @@ static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* 
     assert(size <= X64_MAX_INT_REG_SIZE);
 
     dst->type = type;
-    dst->lir.reg = X64_get_lir_reg(builder, src->reg);
+    dst->val.reg = X64_get_lir_reg(builder, src->reg);
 
     if (*arg_reg_index >= x64_target.num_arg_regs) {
         dst->slot.prim.in_reg = false;
         dst->slot.prim.sp_offset = stack_info->size;
 
-        X64_force_stack_arg_reg(builder, dst->lir.reg);
+        X64_force_stack_arg_reg(builder, dst->val.reg);
 
         stack_info->size += ALIGN_UP(size, X64_STACK_WORD_SIZE);
     }
@@ -301,7 +303,7 @@ static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* 
         dst->slot.prim.preg = x64_target.arg_regs[*arg_reg_index];
 
         *arg_reg_index += 1;
-        X64_force_arg_reg(builder, dst->lir.reg, dst->slot.prim.preg);
+        X64_force_arg_reg(builder, dst->val.reg, dst->slot.prim.preg);
     }
 }
 
@@ -314,7 +316,7 @@ static void X64_linux_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg* d
     assert(type_is_aggregate(type));
 
     dst->type = type;
-    X64_get_lir_addr(builder, &dst->lir.addr, &src->addr, (1 << X64_RDI));
+    X64_get_lir_addr(builder, &dst->val.addr, &src->addr, (1 << X64_RDI));
 
     u32 rem_regs = x64_target.num_arg_regs - *arg_reg_index;
 
@@ -335,11 +337,11 @@ static void X64_linux_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg* d
     }
 }
 
-static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, u32 num_args, IR_Value* args,
+static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, Type* ret_type, u32 num_args, IR_Value* args,
                                                      X64_InstrCallArg* x64_args)
 {
     X64_StackArgsInfo stack_info = {0};
-    u32 arg_reg_index = 0;
+    u32 arg_reg_index = type_is_aggregate(ret_type) && (ret_type->size <= 2 * X64_MAX_INT_REG_SIZE);
 
     for (u32 i = 0; i < num_args; i++) {
         IR_Value* ir_arg = args + i;
@@ -365,13 +367,13 @@ static void X64_windows_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg
     assert(size <= X64_MAX_INT_REG_SIZE);
 
     dst->type = type;
-    dst->lir.reg = X64_get_lir_reg(builder, src->reg);
+    dst->val.reg = X64_get_lir_reg(builder, src->reg);
 
     if (arg_index >= x64_target.num_arg_regs) {
         dst->slot.prim.in_reg = false;
         dst->slot.prim.sp_offset = stack_info->size;
 
-        X64_force_stack_arg_reg(builder, dst->lir.reg);
+        X64_force_stack_arg_reg(builder, dst->val.reg);
 
         stack_info->size += ALIGN_UP(size, X64_STACK_WORD_SIZE);
     }
@@ -379,7 +381,7 @@ static void X64_windows_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg
         dst->slot.prim.in_reg = true;
         dst->slot.prim.preg = x64_target.arg_regs[arg_index];
 
-        X64_force_arg_reg(builder, dst->lir.reg, dst->slot.prim.preg);
+        X64_force_arg_reg(builder, dst->val.reg, dst->slot.prim.preg);
     }
 }
 
@@ -392,40 +394,41 @@ static void X64_windows_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg*
     assert(type_is_aggregate(type));
 
     dst->type = type;
-    X64_get_lir_addr(builder, &dst->lir.addr, &src->addr, (1 << X64_RDI));
+    X64_get_lir_addr(builder, &dst->val.addr, &src->addr, (1 << X64_RDI));
 
     // TODO: Finish
     assert(0);
 }
 
-static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, u32 num_args, IR_Value* args,
+static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, Type* ret_type, u32 num_args, IR_Value* args,
                                                        X64_InstrCallArg* x64_args)
 {
     X64_StackArgsInfo stack_info = {.size = X64_WINDOWS_SHADOW_SPACE, .offset = X64_WINDOWS_SHADOW_SPACE};
+    u32 offset = type_is_aggregate(ret_type) && (ret_type->size <= X64_MAX_INT_REG_SIZE);
 
     for (u32 i = 0; i < num_args; i++) {
         IR_Value* ir_arg = args + i;
         X64_InstrCallArg* lir_arg = x64_args + i;
 
         if (type_is_aggregate(ir_arg->type)) {
-            X64_windows_place_obj_arg(builder, lir_arg, ir_arg, i, &stack_info);
+            X64_windows_place_obj_arg(builder, lir_arg, ir_arg, i + offset, &stack_info);
         }
         else {
-            X64_windows_place_prim_arg(builder, lir_arg, ir_arg, i, &stack_info);
+            X64_windows_place_prim_arg(builder, lir_arg, ir_arg, i + offset, &stack_info);
         }
     }
 
     return stack_info;
 }
 
-static X64_StackArgsInfo X64_convert_call_args(X64_LIRBuilder* builder, u32 num_args, IR_Value* args,
+static X64_StackArgsInfo X64_convert_call_args(X64_LIRBuilder* builder, Type* ret_type, u32 num_args, IR_Value* args,
                                                X64_InstrCallArg* x64_args)
 {
     if (x64_target.os == OS_LINUX) {
-        return X64_linux_convert_call_args(builder, num_args, args, x64_args);
+        return X64_linux_convert_call_args(builder, ret_type, num_args, args, x64_args);
     }
     else {
-        return X64_windows_convert_call_args(builder, num_args, args, x64_args);
+        return X64_windows_convert_call_args(builder, ret_type, num_args, args, x64_args);
     }
 }
 
@@ -846,7 +849,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         u32 num_args;
         IR_Value* args;
         Type* proc_type;
-        IR_Reg ir_r;
+        IR_Value ir_r;
 
         if (ir_instr->kind == INSTR_CALL) {
             num_args = ir_instr->call.num_args;
@@ -861,10 +864,21 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             ir_r = ir_instr->calli.r;
         }
 
-        X64_InstrCallArg* x64_args = alloc_array(builder->arena, X64_InstrCallArg, num_args, false);
-        X64_StackArgsInfo stack_info = X64_convert_call_args(builder, num_args, args, x64_args);
         Type* ret_type = proc_type->as_proc.ret;
-        u32 r = (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) ? X64_get_lir_reg(builder, ir_r) : X64_LIR_REG_COUNT;
+        X64_InstrCallArg* x64_args = alloc_array(builder->arena, X64_InstrCallArg, num_args, false);
+        X64_StackArgsInfo stack_info = X64_convert_call_args(builder, ret_type, num_args, args, x64_args);
+
+        X64_CallValue r = {0};
+
+        if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
+            if (type_is_aggregate(ret_type)) {
+                X64_get_lir_addr(builder, &r.addr, &ir_r.addr, (1UL << X64_RAX) | (1UL << X64_RDX));
+            }
+            else {
+                r.reg = X64_get_lir_reg(builder, ir_r.reg);
+            }
+        }
+
         X64_Instr* instr;
 
         if (ir_instr->kind == INSTR_CALL) {

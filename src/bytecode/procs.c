@@ -396,7 +396,7 @@ static Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock*
     return instr;
 }
 
-static void IR_emit_instr_call(IR_ProcBuilder* builder, BBlock* bblock, Symbol* sym, IR_Reg r, u32 num_args, IR_Value* args)
+static void IR_emit_instr_call(IR_ProcBuilder* builder, BBlock* bblock, Symbol* sym, IR_Value r, u32 num_args, IR_Value* args)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_CALL);
     instr->call.sym = sym;
@@ -407,7 +407,7 @@ static void IR_emit_instr_call(IR_ProcBuilder* builder, BBlock* bblock, Symbol* 
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg loc, IR_Reg r, u32 num_args, IR_Value* args)
+static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg loc, IR_Value r, u32 num_args, IR_Value* args)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_CALL_INDIRECT);
     instr->calli.proc_type = type;
@@ -1690,8 +1690,9 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return curr_bb;
 }
 
-static void IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, IR_Operand* dst_op)
+static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, IR_Operand* dst_op)
 {
+    IR_Value ret_val = {.type = expr_call->super.type};
     dst_op->type = expr_call->super.type;
 
     // Allocate register if procedure returns a value.
@@ -1699,16 +1700,18 @@ static void IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, IR_O
         if (!type_is_aggregate(dst_op->type)) {
             dst_op->kind = IR_OPERAND_REG;
             dst_op->reg = IR_next_reg(builder);
+
+            ret_val.reg = dst_op->reg;
         }
         else {
             dst_op->kind = IR_OPERAND_OBJ;
             dst_op->obj = add_anon_object(builder->arena, builder->curr_scope, dst_op->type);
+
+            ret_val.addr = IR_obj_as_addr(dst_op->obj);
         }
     }
-    else {
-        dst_op->kind = IR_OPERAND_NONE;
-        dst_op->reg = IR_REG_COUNT;
-    }
+
+    return ret_val;
 }
 
 static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call)
@@ -1760,14 +1763,14 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     // Allocate register for return value, emit call instruction, and then cleanup.
     if (proc_op.kind == IR_OPERAND_PROC) {
         // Direct procedure call.
-        IR_setup_call_ret(builder, expr_call, dst_op);
-        IR_emit_instr_call(builder, curr_bb, proc_op.sym, dst_op->reg, num_args, args);
+        IR_Value r = IR_setup_call_ret(builder, expr_call, dst_op);
+        IR_emit_instr_call(builder, curr_bb, proc_op.sym, r, num_args, args);
     }
     else {
         // Indirect procedure call through register.
         curr_bb = IR_op_to_r(builder, curr_bb, &proc_op);
-        IR_setup_call_ret(builder, expr_call, dst_op);
-        IR_emit_instr_call_indirect(builder, curr_bb, proc_op.type, proc_op.reg, dst_op->reg, num_args, args);
+        IR_Value r = IR_setup_call_ret(builder, expr_call, dst_op);
+        IR_emit_instr_call_indirect(builder, curr_bb, proc_op.type, proc_op.reg, r, num_args, args);
     }
 
     // Mark current procedure as non-leaf.

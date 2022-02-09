@@ -241,7 +241,7 @@ void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-X64_Instr* X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, u32 dst, u32 num_args, X64_InstrCallArg* args,
+X64_Instr* X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, X64_CallValue dst, u32 num_args, X64_InstrCallArg* args,
                                X64_StackArgsInfo stack_info)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CALL);
@@ -256,7 +256,7 @@ X64_Instr* X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Sym
     return instr;
 }
 
-X64_Instr* X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, u32 dst, u32 num_args,
+X64_Instr* X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, X64_CallValue dst, u32 num_args,
                                  X64_InstrCallArg* args, X64_StackArgsInfo stack_info)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CALL_R);
