@@ -245,20 +245,20 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
     case X64_INSTR_CALL:
     case X64_INSTR_CALL_R: {
         Type* proc_type;
-        u32 dst_lreg; // TODO: Handle returning struct objs
+        X64_CallValue dst_val;
         u32 num_args;
         X64_InstrCallArg* args;
 
         if (instr->kind == X64_INSTR_CALL) {
             proc_type = instr->call.sym->type;
-            dst_lreg = instr->call.dst.reg;
+            dst_val = instr->call.dst;
             num_args = instr->call.num_args;
             args = instr->call.args;
         }
         else {
             assert(instr->kind == X64_INSTR_CALL_R);
             proc_type = instr->call_r.proc_type;
-            dst_lreg = instr->call_r.dst.reg;
+            dst_val = instr->call_r.dst;
             num_args = instr->call_r.num_args;
             args = instr->call_r.args;
         }
@@ -266,7 +266,12 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         Type* ret_type = proc_type->as_proc.ret;
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            ftprint_char_array(&dstr, false, "<%lu> r%d = ", ret_type->size, dst_lreg);
+            if (type_is_aggregate(ret_type)) {
+                ftprint_char_array(&dstr, false, "<%lu> %s = ", ret_type->size, LIR_print_mem(arena, &dst_val.addr));
+            }
+            else {
+                ftprint_char_array(&dstr, false, "<%lu> r%d = ", ret_type->size, dst_val.reg);
+            }
         }
 
         if (instr->kind == X64_INSTR_CALL) {
@@ -280,8 +285,12 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
             for (u32 i = 0; i < num_args; i += 1) {
                 X64_InstrCallArg* arg = args + i;
 
-                // TODO: Print obj addrs too
-                ftprint_char_array(&dstr, false, "<%s> r%d", type_name(arg->type), arg->val.reg);
+                if (type_is_aggregate(arg->type)) {
+                    ftprint_char_array(&dstr, false, "<%s> %s", type_name(arg->type), LIR_print_mem(arena, &arg->val.addr));
+                }
+                else {
+                    ftprint_char_array(&dstr, false, "<%s> r%d", type_name(arg->type), arg->val.reg);
+                }
 
                 if (i != num_args - 1)
                     ftprint_char_array(&dstr, false, ", ");
