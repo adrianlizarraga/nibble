@@ -545,6 +545,60 @@ static void X64_add_call_site(X64_LIRBuilder* builder, X64_Instr* instr)
     array_push(builder->call_sites, instr);
 }
 
+static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
+{
+    Type* ret_type = ir_instr->ret.val.type;
+
+    u32 ax = X64_LIR_REG_COUNT;
+    u32 dx = X64_LIR_REG_COUNT;
+
+    if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
+        if (type_is_aggregate(ret_type)) {
+            // TODO: If large, move spilled rdi into rax
+            // TODO: If small, move into rax/rdx?
+        }
+        else {
+            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg);
+            ax = X64_def_phys_reg(builder, X64_RAX);
+
+            X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
+            X64_hint_phys_reg(builder, a, X64_RAX);
+        }
+    }
+
+    X64_emit_instr_ret(builder, xbblock, ax, dx);
+}
+
+static void X64_windows_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
+{
+        Type* ret_type = ir_instr->ret.val.type;
+
+        u32 ax = X64_LIR_REG_COUNT;
+        u32 dx = X64_LIR_REG_COUNT;
+
+        if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
+            // TODO: Handle returning structs
+
+            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg);
+            ax = X64_def_phys_reg(builder, X64_RAX);
+
+            X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
+            X64_hint_phys_reg(builder, a, X64_RAX);
+        }
+
+        X64_emit_instr_ret(builder, xbblock, ax, dx);
+}
+
+static void X64_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
+{
+    if (x64_target.os == OS_LINUX) {
+        X64_linux_convert_ir_ret_instr(builder, xbblock, ir_instr);
+    }
+    else {
+        X64_windows_convert_ir_ret_instr(builder, xbblock, ir_instr);
+    }
+}
+
 static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
 {
     Instr* next_instr = ir_instr->next;

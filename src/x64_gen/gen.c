@@ -531,23 +531,32 @@ static s32 X64_linux_get_stack_arg(X64_LinuxAssignParamState* state, u64 arg_siz
     return offset;
 }
 
-static s32 X64_linux_spill_reg_arg(X64_Generator* generator, X64_LinuxAssignParamState* state, u64 arg_size, u64 arg_align,
-                                   X64_Reg arg_reg)
+static s32 X64_linux_spill_reg(X64_Generator* generator, X64_LinuxAssignParamState* state, u64 size, u64 align, X64_Reg preg)
 {
-    state->stack_spill_size += arg_size;
-    state->stack_spill_size = ALIGN_UP(state->stack_spill_size, arg_align);
+    state->stack_spill_size += size;
+    state->stack_spill_size = ALIGN_UP(state->stack_spill_size, align);
     s32 offset = -state->stack_spill_size;
 
-    X64_emit_text(generator, "    mov %s [rbp + %d], %s", x64_mem_size_label[arg_size], offset, x64_reg_names[arg_size][arg_reg]);
+    X64_emit_text(generator, "    mov %s [rbp + %d], %s", x64_mem_size_label[size], offset, x64_reg_names[size][preg]);
 
     return offset;
 }
 
-static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, DeclProc* dproc, X64_StackParamsInfo* stack_params_info)
+static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol* sproc, X64_StackParamsInfo* stack_params_info)
 {
+    DeclProc* dproc = (DeclProc*)sproc->decl;
+    Type* ret_type = sproc->type->as_proc.ret;
+
     u32 index = 0;
     u32 arg_reg_index = 0;
     X64_LinuxAssignParamState state = {.stack_arg_offset = 0x10};
+
+    // For procs that return a large struct by value:
+    // Spill the first argument, which contains a pointer to the return value's memory address, into the stack.
+    // We need to spill (remember) this address so that the procedure can return it, as per the X64 calling conventions.
+    if (type_is_aggregate(ret_type) && (ret_type->size >= (X64_MAX_INT_REG_SIZE << 1))) {
+        X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE, x64_target.arg_regs[arg_reg_index++]);
+    }
 
     Scope* scope = dproc->scope;
     List* head = &scope->sym_list;
@@ -573,14 +582,14 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, DeclPr
 
             if ((arg_size <= X64_MAX_INT_REG_SIZE) && (rem_regs >= 1)) {
                 X64_Reg arg_reg = x64_target.arg_regs[arg_reg_index++];
-                sym->as_var.offset = X64_linux_spill_reg_arg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, arg_reg);
+                sym->as_var.offset = X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, arg_reg);
             }
             else if ((arg_size <= (X64_MAX_INT_REG_SIZE << 1)) && (rem_regs >= 2)) {
                 X64_Reg low_reg = x64_target.arg_regs[arg_reg_index++];
                 X64_Reg high_reg = x64_target.arg_regs[arg_reg_index++];
 
-                X64_linux_spill_reg_arg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, high_reg);
-                sym->as_var.offset = X64_linux_spill_reg_arg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
+                X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, high_reg);
+                sym->as_var.offset = X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
             }
             else {
                 sym->as_var.offset = X64_linux_get_stack_arg(&state, arg_size, arg_align);
@@ -590,7 +599,7 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, DeclPr
             // Spill argument register below rsp
             if (arg_reg_index < x64_target.num_arg_regs) {
                 X64_Reg arg_reg = x64_target.arg_regs[arg_reg_index++];
-                sym->as_var.offset = X64_linux_spill_reg_arg(generator, &state, arg_size, arg_align, arg_reg);
+                sym->as_var.offset = X64_linux_spill_reg(generator, &state, arg_size, arg_align, arg_reg);
             }
             else {
                 sym->as_var.offset = X64_linux_get_stack_arg(&state, arg_size, arg_align);
@@ -605,8 +614,10 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, DeclPr
     stack_params_info->local_var_iter = it;
 }
 
-static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, DeclProc* dproc, X64_StackParamsInfo* stack_params_info)
+static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, Symbol* sproc, X64_StackParamsInfo* stack_params_info)
 {
+    DeclProc* dproc = (DeclProc*)sproc->decl;
+
     u32 index = 0;
     u64 stack_arg_offset = 0x10;
 
@@ -655,14 +666,14 @@ static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, Decl
     stack_params_info->local_var_iter = it;
 }
 
-static void X64_assign_proc_param_offsets(X64_Generator* generator, DeclProc* dproc, X64_StackParamsInfo* stack_params_info)
+static void X64_assign_proc_param_offsets(X64_Generator* generator, Symbol* sproc, X64_StackParamsInfo* stack_params_info)
 {
     if (x64_target.os == OS_LINUX) {
-        X64_linux_assign_proc_param_offsets(generator, dproc, stack_params_info);
+        X64_linux_assign_proc_param_offsets(generator, sproc, stack_params_info);
     }
     else {
         assert(x64_target.os == OS_WIN32);
-        X64_windows_assign_proc_param_offsets(generator, dproc, stack_params_info);
+        X64_windows_assign_proc_param_offsets(generator, sproc, stack_params_info);
     }
 }
 
@@ -730,8 +741,9 @@ static u64 X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* scope
     return ALIGN_UP(stack_size, X64_STACK_ALIGN);
 }
 
-static u64 X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* dproc)
+static u64 X64_assign_proc_stack_offsets(X64_Generator* generator, Symbol* sproc)
 {
+    DeclProc* dproc = (DeclProc*)sproc->decl;
     Scope* scope = dproc->scope;
 
     //
@@ -739,7 +751,7 @@ static u64 X64_assign_proc_stack_offsets(X64_Generator* generator, DeclProc* dpr
     //
 
     X64_StackParamsInfo stack_params_info = {0};
-    X64_assign_proc_param_offsets(generator, dproc, &stack_params_info);
+    X64_assign_proc_param_offsets(generator, sproc, &stack_params_info);
 
     u64 stack_size = stack_params_info.stack_spill_size;
 
@@ -1568,7 +1580,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     char** save_regs_inst = X64_emit_text(generator, NULL);
     char** sub_rsp_inst = X64_emit_text(generator, NULL);
 
-    u32 stack_size = X64_assign_proc_stack_offsets(generator, decl); // NOTE: Spills argument registers.
+    u32 stack_size = X64_assign_proc_stack_offsets(generator, sym); // NOTE: Spills argument registers.
 
     // Register allocation.
     BBlock** ir_bblocks = sym->as_proc.bblocks;
