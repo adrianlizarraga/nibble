@@ -2393,7 +2393,6 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 
     pop_scope(resolver);
     assert(array_len(params) == decl->num_params);
-    allocator_restore_state(mem_state);
 
     Type* ret_type = builtin_types[BUILTIN_TYPE_VOID].type;
 
@@ -2425,6 +2424,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     sym->type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type);
     sym->status = SYMBOL_STATUS_RESOLVED;
 
+    allocator_restore_state(mem_state);
     return true;
 }
 

@@ -778,6 +778,24 @@ static u64 X64_assign_proc_stack_offsets(X64_Generator* generator, Symbol* sproc
     }
 
     //
+    // Sum sizes of anonymous objects in the procedure's top scope.
+    //
+    {
+        List* head = &scope->obj_list;
+        List* it = head->next;
+
+        while (it != head) {
+            AnonObj* obj = list_entry(it, AnonObj, lnode);
+
+            stack_size += obj->type->size;
+            stack_size = ALIGN_UP(stack_size, obj->type->align);
+            obj->offset = -stack_size;
+
+            it = it->next;
+        }
+    }
+
+    //
     // Recursively compute stack sizes for child scopes. Take the largest.
     //
 
@@ -1058,8 +1076,8 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
             for (unsigned ii = 0; ii < slot->num_regs; ii++) {
                 X64_emit_text(generator, "    mov %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][slot->pregs[ii]],
                               X64_print_sibd_addr(generator->tmp_mem, &addr, X64_MAX_INT_REG_SIZE));
-                addr.local.disp += 8;
-                copy_amnt += 8;
+                addr.local.disp += X64_MAX_INT_REG_SIZE;
+                copy_amnt += X64_MAX_INT_REG_SIZE;
             }
 
             // TODO: Masking off doesn't work if mask >= 32-bits
@@ -1457,6 +1475,19 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
             r++;
         }
 
+        // If the called procedure returns a "large" object by value, provide the address to the destination
+        // memory location as the first argument.
+        Type* ret_type = proc_type->as_proc.ret;
+
+        if (type_is_aggregate(ret_type) && ret_type->size > (X64_MAX_INT_REG_SIZE << 1)) {
+            X64_Reg dst_reg = x64_target.arg_regs[0];
+            X64_SIBDAddr obj_addr = {0};
+            X64_get_sibd_addr(generator, &obj_addr, &dst_val.addr);
+
+            X64_emit_text(generator, "    lea %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][dst_reg],
+                          X64_print_sibd_addr(generator->tmp_mem, &obj_addr, 0));
+        }
+
         // Place arguments in the appropriate locations.
         // For register args, it is expected that the register allocator either placed the arg in the correct register or spilled it.
         // For stack args, it is expected that the register allocator either placed the arg in a non-argument register or spilled it.
@@ -1490,24 +1521,45 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         }
 
         // Move return value (if any) to appropriate register.
-        Type* ret_type = proc_type->as_proc.ret;
-
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            // TODO: Handle returning objs
-            X64_LRegLoc dst_loc = X64_lreg_loc(generator, dst_val.reg);
 
-            if (dst_loc.kind == X64_LREG_LOC_STACK) {
-                // Move result (in RAX) to stack offset.
-                X64_emit_text(generator, "    mov %s, %s", X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size),
-                              x64_reg_names[ret_type->size][X64_RAX]);
-            }
-            else {
-                assert(dst_loc.kind == X64_LREG_LOC_REG);
+            if (!type_is_aggregate(ret_type)) {
+                // Returns a primitive type.
 
-                if (dst_loc.reg != X64_RAX) {
-                    // Move result (in RAX) to allocated result register.
-                    X64_emit_text(generator, "    mov %s, %s", x64_reg_names[ret_type->size][dst_loc.reg],
+                X64_LRegLoc dst_loc = X64_lreg_loc(generator, dst_val.reg);
+
+                if (dst_loc.kind == X64_LREG_LOC_STACK) {
+                    // Move result (in RAX) to stack offset.
+                    X64_emit_text(generator, "    mov %s, %s", X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size),
                                   x64_reg_names[ret_type->size][X64_RAX]);
+                }
+                else {
+                    assert(dst_loc.kind == X64_LREG_LOC_REG);
+
+                    if (dst_loc.reg != X64_RAX) {
+                        // Move result (in RAX) to allocated result register.
+                        X64_emit_text(generator, "    mov %s, %s", x64_reg_names[ret_type->size][dst_loc.reg],
+                                      x64_reg_names[ret_type->size][X64_RAX]);
+                    }
+                }
+            }
+            else if (ret_type->size <= (X64_MAX_INT_REG_SIZE << 1)) {
+                // Returns a small structure object.
+
+                X64_SIBDAddr obj_addr = {0};
+                X64_get_sibd_addr(generator, &obj_addr, &dst_val.addr);
+
+                // Copy RAX into the first 8 bytes of struct memory.
+                X64_emit_text(generator, "    mov %s, %s", X64_print_sibd_addr(generator->tmp_mem, &obj_addr, X64_MAX_INT_REG_SIZE),
+                              x64_reg_names[X64_MAX_INT_REG_SIZE][X64_RAX]);
+
+                if (ret_type->size > X64_MAX_INT_REG_SIZE) {
+                    obj_addr.local.disp += X64_MAX_INT_REG_SIZE;
+
+                    // Copy RDX into the second 8 bytes of struct memory.
+                    X64_emit_text(generator, "    mov %s, %s",
+                                  X64_print_sibd_addr(generator->tmp_mem, &obj_addr, X64_MAX_INT_REG_SIZE),
+                                  x64_reg_names[X64_MAX_INT_REG_SIZE][X64_RDX]);
                 }
             }
         }

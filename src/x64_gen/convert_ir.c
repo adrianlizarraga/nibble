@@ -279,6 +279,26 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_MemAddr* dst, MemAddr*
     }
 }
 
+static void X64_emit_memcpy(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, X64_MemAddr src, size_t size)
+{
+    // lea rdi, [..dst]
+    // lea rsi, [..src]
+    // mov rcx, size
+    // rep movsb
+
+    u32 rdi = X64_def_phys_reg(builder, X64_RDI);
+    X64_emit_instr_lea(builder, xbblock, rdi, dst);
+
+    u32 rsi = X64_def_phys_reg(builder, X64_RSI);
+    X64_emit_instr_lea(builder, xbblock, rsi, src);
+
+    Scalar num_bytes = {.as_int._u64 = size};
+    u32 rcx = X64_def_phys_reg(builder, X64_RCX);
+    X64_emit_instr_mov_r_i(builder, xbblock, PTR_SIZE, rcx, num_bytes);
+
+    X64_emit_instr_rep_movsb(builder, xbblock, rdi, rsi, rcx);
+}
+
 static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, 
                                      u32* arg_reg_index, X64_StackArgsInfo* stack_info)
 {
@@ -341,7 +361,7 @@ static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, Ty
                                                      X64_InstrCallArg* x64_args)
 {
     X64_StackArgsInfo stack_info = {0};
-    u32 arg_reg_index = type_is_aggregate(ret_type) && (ret_type->size <= 2 * X64_MAX_INT_REG_SIZE);
+    u32 arg_reg_index = type_is_aggregate(ret_type) && (ret_type->size > 2 * X64_MAX_INT_REG_SIZE);
 
     for (u32 i = 0; i < num_args; i++) {
         IR_Value* ir_arg = args + i;
@@ -404,7 +424,7 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
                                                        X64_InstrCallArg* x64_args)
 {
     X64_StackArgsInfo stack_info = {.size = X64_WINDOWS_SHADOW_SPACE, .offset = X64_WINDOWS_SHADOW_SPACE};
-    u32 offset = type_is_aggregate(ret_type) && (ret_type->size <= X64_MAX_INT_REG_SIZE);
+    u32 offset = type_is_aggregate(ret_type) && (ret_type->size > X64_MAX_INT_REG_SIZE);
 
     for (u32 i = 0; i < num_args; i++) {
         IR_Value* ir_arg = args + i;
@@ -554,8 +574,48 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
 
     if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
         if (type_is_aggregate(ret_type)) {
-            // TODO: If large, move spilled rdi into rax
-            // TODO: If small, move into rax/rdx?
+            X64_MemAddr obj_addr;
+            X64_get_lir_addr(builder, &obj_addr, &ir_instr->ret.val.addr, (1 << X64_RDI));
+
+            if (ret_type->size > (X64_MAX_INT_REG_SIZE << 1)) { // Large obj
+                // Copy object to the address provided to the procedure.
+
+                X64_MemAddr dst_addr_loc = { // Provided result addr is assumed to be spilled into the first stack slot.
+                    .kind = X64_ADDR_LOCAL,
+                    .local = {.base_reg = builder->lreg_rbp, .disp = -X64_MAX_INT_REG_SIZE, .index_reg = X64_REG_COUNT}
+                };
+
+                u32 rdi = X64_def_phys_reg(builder, X64_RDI);
+                X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, rdi, dst_addr_loc);
+
+                u32 rsi = X64_def_phys_reg(builder, X64_RSI);
+                X64_emit_instr_lea(builder, xbblock, rsi, obj_addr);
+
+                Scalar num_bytes = {.as_int._u64 = ret_type->size};
+                u32 rcx = X64_def_phys_reg(builder, X64_RCX);
+                X64_emit_instr_mov_r_i(builder, xbblock, PTR_SIZE, rcx, num_bytes);
+
+                X64_emit_instr_rep_movsb(builder, xbblock, rdi, rsi, rcx);
+
+                // Move provided addr into rax.
+                ax = X64_def_phys_reg(builder, X64_RAX);
+                X64_emit_instr_mov_r_r(builder, xbblock, X64_MAX_INT_REG_SIZE, ax, rdi);
+            }
+            else { // Small obj
+                // Copy first 8 bytes of obj to rax.
+                ax = X64_def_phys_reg(builder, X64_RAX);
+                X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, ax, obj_addr);
+
+                if (ret_type->size > X64_MAX_INT_REG_SIZE) {
+                    // Copy second 8 bytes of obj to rdx.
+                    // TODO: Mask off extra copy amount (if obj size < 16 bytes)
+                    X64_MemAddr obj_high_addr = obj_addr;
+                    obj_high_addr.local.disp += X64_MAX_INT_REG_SIZE;
+
+                    dx = X64_def_phys_reg(builder, X64_RDX);
+                    X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, dx, obj_high_addr);
+                }
+            }
         }
         else {
             u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg);
@@ -578,6 +638,7 @@ static void X64_windows_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
             // TODO: Handle returning structs
+            assert(!type_is_aggregate(ret_type));
 
             u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg);
             ax = X64_def_phys_reg(builder, X64_RAX);
@@ -859,43 +920,21 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_MemAddr dst_addr;
         X64_get_lir_addr(builder, &dst_addr, &ir_instr->memcpy.dst, 0);
 
-        u32 rdi = X64_def_phys_reg(builder, X64_RDI);
-        X64_emit_instr_lea(builder, xbblock, rdi, dst_addr);
-
         X64_MemAddr src_addr;
         X64_get_lir_addr(builder, &src_addr, &ir_instr->memcpy.src, (1 << X64_RDI));
 
-        u32 rsi = X64_def_phys_reg(builder, X64_RSI);
-        X64_emit_instr_lea(builder, xbblock, rsi, src_addr);
-
-        Scalar num_bytes = {.as_int._u64 = ir_instr->memcpy.type->size};
-        u32 rcx = X64_def_phys_reg(builder, X64_RCX);
-        X64_emit_instr_mov_r_i(builder, xbblock, PTR_SIZE, rcx, num_bytes);
-
-        X64_emit_instr_rep_movsb(builder, xbblock, rdi, rsi, rcx);
+        X64_emit_memcpy(builder, xbblock, dst_addr, src_addr, ir_instr->memcpy.type->size);
         break;
     }
     case INSTR_RET: {
         // EX: ret a
         //
-        //     BECOMES
+        //     BECOMES (for primitive return types)
         //
         //     mov _ax, a  ; if `a` not in `ax`
         //     ret
-        Type* ret_type = ir_instr->ret.val.type;
 
-        u32 ax = X64_LIR_REG_COUNT;
-        u32 dx = X64_LIR_REG_COUNT;
-
-        if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg);
-            ax = X64_def_phys_reg(builder, X64_RAX);
-
-            X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
-            X64_hint_phys_reg(builder, a, X64_RAX);
-        }
-
-        X64_emit_instr_ret(builder, xbblock, ax, dx);
+        X64_convert_ir_ret_instr(builder, xbblock, ir_instr);
         break;
     }
     case INSTR_CALL_INDIRECT:
