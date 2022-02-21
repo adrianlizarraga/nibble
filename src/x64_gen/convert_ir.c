@@ -631,23 +631,55 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
 
 static void X64_windows_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
 {
-        Type* ret_type = ir_instr->ret.val.type;
+    Type* ret_type = ir_instr->ret.val.type;
 
-        u32 ax = X64_LIR_REG_COUNT;
-        u32 dx = X64_LIR_REG_COUNT;
+    u32 ax = X64_LIR_REG_COUNT;
 
-        if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            // TODO: Handle returning structs
-            assert(!type_is_aggregate(ret_type));
+    if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
+        if (type_is_aggregate(ret_type)) {
+            X64_MemAddr obj_addr;
+            X64_get_lir_addr(builder, &obj_addr, &ir_instr->ret.val.addr, (1 << X64_RDI));
 
+            if (ret_type->size > X64_MAX_INT_REG_SIZE) { // Large obj
+                // Copy object to the address provided to the procedure.
+
+                X64_MemAddr dst_addr_loc = { // Provided result addr is assumed to be spilled into the first stack slot.
+                    .kind = X64_ADDR_LOCAL,
+                    .local = {.base_reg = builder->lreg_rbp, .disp = X64_STACK_ARG_RBP_OFFSET, .index_reg = X64_REG_COUNT}
+                };
+
+                u32 rdi = X64_def_phys_reg(builder, X64_RDI);
+                X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, rdi, dst_addr_loc);
+
+                u32 rsi = X64_def_phys_reg(builder, X64_RSI);
+                X64_emit_instr_lea(builder, xbblock, rsi, obj_addr);
+
+                Scalar num_bytes = {.as_int._u64 = ret_type->size};
+                u32 rcx = X64_def_phys_reg(builder, X64_RCX);
+                X64_emit_instr_mov_r_i(builder, xbblock, PTR_SIZE, rcx, num_bytes);
+
+                X64_emit_instr_rep_movsb(builder, xbblock, rdi, rsi, rcx);
+
+                // Move provided addr into rax.
+                ax = X64_def_phys_reg(builder, X64_RAX);
+                X64_emit_instr_mov_r_r(builder, xbblock, X64_MAX_INT_REG_SIZE, ax, rdi);
+            }
+            else { // Small obj
+                // Copy first 8 bytes of obj to rax.
+                ax = X64_def_phys_reg(builder, X64_RAX);
+                X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, ax, obj_addr);
+            }
+        }
+        else {
             u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg);
             ax = X64_def_phys_reg(builder, X64_RAX);
 
             X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
             X64_hint_phys_reg(builder, a, X64_RAX);
         }
+    }
 
-        X64_emit_instr_ret(builder, xbblock, ax, dx);
+    X64_emit_instr_ret(builder, xbblock, ax, X64_LIR_REG_COUNT);
 }
 
 static void X64_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
