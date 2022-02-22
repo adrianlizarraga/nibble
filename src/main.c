@@ -1,3 +1,15 @@
+/* TODO:
+
+   - Only generate assembly for procs reachable from main()
+   - Only generate assembly for string literals reachable from main()
+   - For loops
+   - Switch statements
+   - Floating point primitives
+   - Defer statement
+   - Multiple return values (tuple implemented as anonymous struct)
+ 
+*/
+
 //#define NDEBUG 1
 #define PRINT_MEM_USAGE 1
 #include <assert.h>
