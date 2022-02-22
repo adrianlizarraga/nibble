@@ -860,6 +860,7 @@ struct Symbol {
 
 struct AnonObj {
     Type* type;
+    u32 id;
     s32 offset;
     List lnode;
 };

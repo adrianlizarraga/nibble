@@ -52,7 +52,7 @@ static char* IR_print_mem(Allocator* arena, MemAddr* addr)
                                symbol_mangled_name(arena, addr->base.sym));
         }
         else if (addr->base_kind == MEM_BASE_OBJ) {
-            ftprint_char_array(&dstr, false, "obj @%d", addr->base.obj->offset);
+            ftprint_char_array(&dstr, false, "obj %u", addr->base.obj->id);
         }
         else {
             assert(addr->base_kind == MEM_BASE_STR_LIT);
@@ -199,7 +199,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
     case INSTR_RET: {
         IR_Value* val = &instr->ret.val;
 
-        ftprint_char_array(&dstr, false, "ret <%s>");
+        ftprint_char_array(&dstr, false, "ret <%s>", type_name(val->type));
 
         if (type_is_aggregate(val->type)) {
             ftprint_char_array(&dstr, false, " %s", IR_print_mem(arena, &val->addr));

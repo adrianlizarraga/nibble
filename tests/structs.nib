@@ -8,9 +8,9 @@ proc pass_smol(s : Smol) => int {
 }
 
 struct Vec3 {
-    x : int;
-    y : int;
-    z : int;
+    x : char;
+    y : char;
+    z : char;
 }
 
 proc vec3_add_comps(a: Vec3, b:  Vec3) => int {

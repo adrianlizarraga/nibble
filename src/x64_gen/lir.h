@@ -256,13 +256,15 @@ typedef struct X64_PrimArgSlot {
 } X64_PrimArgSlot;
 
 typedef struct X64_ObjArgSlot {
-    bool as_ptr;
     unsigned num_regs;
-
     union {
         u32 sp_offset;
         X64_Reg pregs[2];
     };
+
+    // NOTE: Only used for Windows calling convention.
+    bool as_ptr;
+    u32 ptr_sp_offset;
 } X64_ObjArgSlot;
 
 typedef union X64_CallValue {

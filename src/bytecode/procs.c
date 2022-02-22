@@ -978,7 +978,7 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
     else if (rhs->kind == IR_OPERAND_STR_LIT) {
         curr_bb = IR_emit_array_str_init(builder, curr_bb, lhs, rhs);
     }
-    else if (IR_type_fits_in_reg(rhs->type)) {
+    else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
         curr_bb = IR_op_to_r(builder, curr_bb, rhs);
         IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
     }

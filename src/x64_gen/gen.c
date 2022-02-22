@@ -554,7 +554,7 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
     // For procs that return a large struct by value:
     // Spill the first argument, which contains a pointer to the return value's memory address, into the stack.
     // We need to spill (remember) this address so that the procedure can return it, as per the X64 calling conventions.
-    if (type_is_aggregate(ret_type) && (ret_type->size >= (X64_MAX_INT_REG_SIZE << 1))) {
+    if (type_is_aggregate(ret_type) && (ret_type->size > (X64_MAX_INT_REG_SIZE << 1))) {
         X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE, x64_target.arg_regs[arg_reg_index++]);
     }
 
@@ -923,6 +923,57 @@ static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 m
     return dstr;
 }
 
+static size_t X64_cpy_reg_to_mem(X64_Generator* generator, X64_SIBDAddr* dst, X64_Reg src, size_t size)
+{
+    static char pow2_sizes[8] = {
+        [1] = 1,
+        [2] = 2,
+        [3] = 2,
+        [4] = 4,
+        [5] = 4,
+        [6] = 4,
+        [7] = 4,
+    };
+
+    size_t rem_amnt = size;
+
+    // If need to copy more than 8 bytes, just copy entire register into memory, and then return.
+    if (rem_amnt >= X64_MAX_INT_REG_SIZE) {
+        X64_emit_text(generator, "    mov %s, %s", X64_print_sibd_addr(generator->tmp_mem, dst, X64_MAX_INT_REG_SIZE),
+                      x64_reg_names[X64_MAX_INT_REG_SIZE][src]);
+
+        // Move dst addr forward.
+        dst->local.disp += X64_MAX_INT_REG_SIZE;
+
+        return rem_amnt - X64_MAX_INT_REG_SIZE;
+    }
+
+    // Have to copy less than 8 bytes. Copy in chunks of powers-of-two.
+    assert(rem_amnt < X64_MAX_INT_REG_SIZE);
+
+    while (rem_amnt) {
+        // Calc the largest power of 2 that is less than or equal to min(8, rem_amnt).
+        size_t n = pow2_sizes[rem_amnt];
+
+        // Copy that amount into memory.
+        X64_emit_text(generator, "    mov %s, %s", X64_print_sibd_addr(generator->tmp_mem, dst, n), x64_reg_names[n][src]);
+
+        // Move dst addr forward.
+        dst->local.disp += n;
+
+        size_t new_rem_amnt = rem_amnt - n;
+
+        // Shift src register right to discard copied bits.
+        if (new_rem_amnt) {
+            X64_emit_text(generator, "    sar %s, %d", x64_reg_names[X64_MAX_INT_REG_SIZE][src], n << 3);
+        }
+
+        rem_amnt = new_rem_amnt;
+    }
+
+    return rem_amnt;
+}
+
 static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, u32 op1_lreg,
                               u32 op2_size, u32 op2_lreg)
 {
@@ -1018,6 +1069,7 @@ static void X64_emit_rm_instr(X64_Generator* generator, const char* instr, bool 
 
     X64_RegGroup tmp_group = X64_begin_reg_group(generator);
     X64_Reg op1_reg = X64_get_reg(&tmp_group, op1_lreg, op1_size, writes_op1, used_regs);
+    assert(op1_size <= 8 && IS_POW2(op1_size));
 
     X64_emit_text(generator, "    %s %s, %s", instr, x64_reg_names[op1_size][op1_reg],
                   X64_print_sibd_addr(generator->tmp_mem, &op2_addr, op2_size));
@@ -1033,6 +1085,7 @@ static void X64_emit_mr_instr(X64_Generator* generator, const char* instr, u32 o
 
     X64_RegGroup tmp_group = X64_begin_reg_group(generator);
     X64_Reg op2_reg = X64_get_reg(&tmp_group, op2_lreg, op2_size, false, used_regs);
+    assert(op2_size <= 8 && IS_POW2(op2_size));
 
     X64_emit_text(generator, "    %s %s, %s", instr, X64_print_sibd_addr(generator->tmp_mem, &op1_addr, op1_size),
                   x64_reg_names[op2_size][op2_reg]);
@@ -1550,16 +1603,12 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
                 X64_get_sibd_addr(generator, &obj_addr, &dst_val.addr);
 
                 // Copy RAX into the first 8 bytes of struct memory.
-                X64_emit_text(generator, "    mov %s, %s", X64_print_sibd_addr(generator->tmp_mem, &obj_addr, X64_MAX_INT_REG_SIZE),
-                              x64_reg_names[X64_MAX_INT_REG_SIZE][X64_RAX]);
+                size_t rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RAX, ret_type->size);
 
-                if (ret_type->size > X64_MAX_INT_REG_SIZE) {
-                    obj_addr.local.disp += X64_MAX_INT_REG_SIZE;
-
-                    // Copy RDX into the second 8 bytes of struct memory.
-                    X64_emit_text(generator, "    mov %s, %s",
-                                  X64_print_sibd_addr(generator->tmp_mem, &obj_addr, X64_MAX_INT_REG_SIZE),
-                                  x64_reg_names[X64_MAX_INT_REG_SIZE][X64_RDX]);
+                // Copy RDX into the second 8 bytes of struct memory.
+                if (rem_amnt) {
+                    rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RDX, rem_amnt);
+                    assert(!rem_amnt);
                 }
             }
         }
@@ -1641,7 +1690,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     X64_emit_lir_instrs(&builder, sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks);
 
-#if NIBBLE_PRINT_IRS
+#ifdef NIBBLE_PRINT_IRS
     LIR_dump_proc_dot(generator->tmp_mem, proc_mangled, builder.num_bblocks, builder.bblocks);
 #endif
 

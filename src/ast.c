@@ -1362,6 +1362,7 @@ AnonObj* add_anon_object(Allocator* allocator, Scope* scope, Type* type)
 {
     AnonObj* obj = alloc_type(allocator, AnonObj, true);
     obj->type = type;
+    obj->id = scope->num_objs;
 
     list_add_last(&scope->obj_list, &obj->lnode);
     scope->num_objs += 1;
