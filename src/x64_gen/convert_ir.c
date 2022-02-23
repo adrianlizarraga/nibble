@@ -2,48 +2,23 @@
 #include "x64_gen/lir.h"
 
 static X64_InstrKind binary_kind[] = {
-    [INSTR_ADD] = X64_INSTR_ADD_R_R,
-    [INSTR_SUB] = X64_INSTR_SUB_R_R,
-    [INSTR_MUL] = X64_INSTR_IMUL_R_R,
-    [INSTR_AND] = X64_INSTR_AND_R_R,
-    [INSTR_OR]  = X64_INSTR_OR_R_R,
-    [INSTR_XOR] = X64_INSTR_XOR_R_R
-};
+    [INSTR_ADD] = X64_INSTR_ADD_R_R, [INSTR_SUB] = X64_INSTR_SUB_R_R, [INSTR_MUL] = X64_INSTR_IMUL_R_R,
+    [INSTR_AND] = X64_INSTR_AND_R_R, [INSTR_OR] = X64_INSTR_OR_R_R,   [INSTR_XOR] = X64_INSTR_XOR_R_R};
 
 static X64_InstrKind binary_r_i_kind[] = {
-    [INSTR_ADD] = X64_INSTR_ADD_R_I,
-    [INSTR_SUB] = X64_INSTR_SUB_R_I,
-    [INSTR_MUL] = X64_INSTR_IMUL_R_I,
-    [INSTR_AND] = X64_INSTR_AND_R_I,
-    [INSTR_OR]  = X64_INSTR_OR_R_I,
-    [INSTR_XOR] = X64_INSTR_XOR_R_I
-};
+    [INSTR_ADD] = X64_INSTR_ADD_R_I, [INSTR_SUB] = X64_INSTR_SUB_R_I, [INSTR_MUL] = X64_INSTR_IMUL_R_I,
+    [INSTR_AND] = X64_INSTR_AND_R_I, [INSTR_OR] = X64_INSTR_OR_R_I,   [INSTR_XOR] = X64_INSTR_XOR_R_I};
 
-static X64_InstrKind div_kind[] = {
-    [INSTR_UDIV] = X64_INSTR_DIV,
-    [INSTR_SDIV] = X64_INSTR_IDIV
-};
+static X64_InstrKind div_kind[] = {[INSTR_UDIV] = X64_INSTR_DIV, [INSTR_SDIV] = X64_INSTR_IDIV};
 
-static X64_InstrKind shift_kind[] = {
-    [INSTR_SHL] = X64_INSTR_SHL_R_R,
-    [INSTR_SAR] = X64_INSTR_SAR_R_R
-};
+static X64_InstrKind shift_kind[] = {[INSTR_SHL] = X64_INSTR_SHL_R_R, [INSTR_SAR] = X64_INSTR_SAR_R_R};
 
-static X64_InstrKind shift_r_i_kind[] = {
-    [INSTR_SHL] = X64_INSTR_SHL_R_I,
-    [INSTR_SAR] = X64_INSTR_SAR_R_I
-};
+static X64_InstrKind shift_r_i_kind[] = {[INSTR_SHL] = X64_INSTR_SHL_R_I, [INSTR_SAR] = X64_INSTR_SAR_R_I};
 
-static X64_InstrKind unary_kind[] = {
-    [INSTR_NEG] = X64_INSTR_NEG,
-    [INSTR_NOT] = X64_INSTR_NOT
-};
+static X64_InstrKind unary_kind[] = {[INSTR_NEG] = X64_INSTR_NEG, [INSTR_NOT] = X64_INSTR_NOT};
 
-static X64_InstrKind convert_kind[] = {
-    [INSTR_TRUNC] = X64_INSTR_MOV_R_R,
-    [INSTR_SEXT] = X64_INSTR_MOVSX_R_R,
-    [INSTR_ZEXT] = X64_INSTR_MOVZX_R_R
-};
+static X64_InstrKind convert_kind[] =
+    {[INSTR_TRUNC] = X64_INSTR_MOV_R_R, [INSTR_SEXT] = X64_INSTR_MOVSX_R_R, [INSTR_ZEXT] = X64_INSTR_MOVZX_R_R};
 
 static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
 {
@@ -299,8 +274,8 @@ static void X64_emit_memcpy(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Me
     X64_emit_instr_rep_movsb(builder, xbblock, rdi, rsi, rcx);
 }
 
-static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, 
-                                     u32* arg_reg_index, X64_StackArgsInfo* stack_info)
+static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, u32* arg_reg_index,
+                                     X64_StackArgsInfo* stack_info)
 {
     Type* type = src->type;
     size_t size = type->size;
@@ -327,8 +302,8 @@ static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* 
     }
 }
 
-static void X64_linux_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, 
-                                    u32* arg_reg_index, X64_StackArgsInfo* stack_info)
+static void X64_linux_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, u32* arg_reg_index,
+                                    X64_StackArgsInfo* stack_info)
 {
     Type* type = src->type;
     size_t size = type->size;
@@ -342,12 +317,15 @@ static void X64_linux_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg* d
 
     if ((type->size <= X64_MAX_INT_REG_SIZE) && (rem_regs >= 1)) {
         dst->slot.obj.num_regs = 1;
-        dst->slot.obj.pregs[0] = x64_target.arg_regs[*arg_reg_index]; *arg_reg_index += 1;
+        dst->slot.obj.pregs[0] = x64_target.arg_regs[*arg_reg_index];
+        *arg_reg_index += 1;
     }
     else if ((type->size <= (X64_MAX_INT_REG_SIZE << 1)) && (rem_regs >= 2)) {
         dst->slot.obj.num_regs = 2;
-        dst->slot.obj.pregs[0] = x64_target.arg_regs[*arg_reg_index]; *arg_reg_index += 1;
-        dst->slot.obj.pregs[1] = x64_target.arg_regs[*arg_reg_index]; *arg_reg_index += 1;
+        dst->slot.obj.pregs[0] = x64_target.arg_regs[*arg_reg_index];
+        *arg_reg_index += 1;
+        dst->slot.obj.pregs[1] = x64_target.arg_regs[*arg_reg_index];
+        *arg_reg_index += 1;
     }
     else {
         dst->slot.obj.num_regs = 0;
@@ -378,8 +356,8 @@ static X64_StackArgsInfo X64_linux_convert_call_args(X64_LIRBuilder* builder, Ty
     return stack_info;
 }
 
-static void X64_windows_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, 
-                                       u32 arg_index, X64_StackArgsInfo* stack_info)
+static void X64_windows_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, u32 arg_index,
+                                       X64_StackArgsInfo* stack_info)
 {
     Type* type = src->type;
     size_t size = type->size;
@@ -405,8 +383,8 @@ static void X64_windows_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg
     }
 }
 
-static void X64_windows_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, 
-                                      u32 arg_index, X64_StackArgsInfo* stack_info)
+static void X64_windows_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, u32 arg_index,
+                                      X64_StackArgsInfo* stack_info)
 {
     Type* type = src->type;
     size_t size = type->size;
@@ -416,8 +394,29 @@ static void X64_windows_place_obj_arg(X64_LIRBuilder* builder, X64_InstrCallArg*
     dst->type = type;
     X64_get_lir_addr(builder, &dst->val.addr, &src->addr, (1 << X64_RDI));
 
-    // TODO: Finish
-    assert(0);
+    bool reg_avail = arg_index < x64_target.num_arg_regs;
+    bool fit_reg = (size <= X64_MAX_INT_REG_SIZE) && IS_POW2(size);
+
+    // Pass entire object in a register.
+    if (reg_avail && fit_reg) {
+        dst->slot.obj.as_ptr = false;
+        dst->slot.obj.num_regs = 1;
+        dst->slot.obj.pregs[0] = x64_target.arg_regs[arg_index];
+    }
+    // Pass pointer to object in a register.
+    else if (reg_avail) {
+        dst->slot.obj.as_ptr = true;
+        dst->slot.obj.num_regs = 1;
+        dst->slot.obj.pregs[0] = x64_target.arg_regs[arg_index];
+    }
+    // Pass pointer to object in the stack.
+    else {
+        dst->slot.obj.as_ptr = true;
+        dst->slot.obj.num_regs = 0;
+        dst->slot.obj.sp_offset = stack_info->size;
+
+        stack_info->size += X64_STACK_WORD_SIZE;
+    }
 }
 
 static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, Type* ret_type, u32 num_args, IR_Value* args,
@@ -426,6 +425,8 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
     X64_StackArgsInfo stack_info = {.size = X64_WINDOWS_SHADOW_SPACE, .offset = X64_WINDOWS_SHADOW_SPACE};
     u32 offset = type_is_aggregate(ret_type) && (ret_type->size > X64_MAX_INT_REG_SIZE);
 
+    // Place arguments.
+    // NOTE: For struct objects that cannot be placed in a single register, a pointer to a copy is provided as the argument.
     for (u32 i = 0; i < num_args; i++) {
         IR_Value* ir_arg = args + i;
         X64_InstrCallArg* lir_arg = x64_args + i;
@@ -435,6 +436,17 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
         }
         else {
             X64_windows_place_prim_arg(builder, lir_arg, ir_arg, i + offset, &stack_info);
+        }
+    }
+
+    // Assign a stack offset to struct object copies.
+    for (u32 i = 0; i < num_args; i++) {
+        X64_InstrCallArg* arg = x64_args + i;
+
+        if (type_is_aggregate(arg->type) && arg->slot.obj.as_ptr) {
+            arg->slot.obj.ptr_sp_offset = stack_info.size;
+
+            stack_info.size += ALIGN_UP(arg->type->size, X64_STACK_WORD_SIZE);
         }
     }
 
@@ -462,7 +474,7 @@ static bool X64_try_combine_limm(X64_LIRBuilder* builder, X64_BBlock* xbblock, I
         [INSTR_SUB] = INSTR_IS_BINARY,
         [INSTR_MUL] = INSTR_IS_BINARY | INSTR_IS_COMM,
         [INSTR_AND] = INSTR_IS_BINARY | INSTR_IS_COMM,
-        [INSTR_OR]  = INSTR_IS_BINARY | INSTR_IS_COMM,
+        [INSTR_OR] = INSTR_IS_BINARY | INSTR_IS_COMM,
         [INSTR_XOR] = INSTR_IS_BINARY | INSTR_IS_COMM,
         [INSTR_SHL] = INSTR_IS_SHIFT,
         [INSTR_SAR] = INSTR_IS_SHIFT,
@@ -528,7 +540,7 @@ static bool X64_try_combine_limm(X64_LIRBuilder* builder, X64_BBlock* xbblock, I
             //     mov r, a
             //     shl r, 1
             size_t size = t_instr->shift.type->size;
-            
+
             u32 r = X64_get_lir_reg(builder, t_instr->shift.r);
             u32 a = X64_get_lir_reg(builder, t_instr->shift.a);
             X64_hint_same_reg(builder, r, a);
@@ -580,10 +592,10 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
             if (ret_type->size > (X64_MAX_INT_REG_SIZE << 1)) { // Large obj
                 // Copy object to the address provided to the procedure.
 
-                X64_MemAddr dst_addr_loc = { // Provided result addr is assumed to be spilled into the first stack slot.
+                X64_MemAddr dst_addr_loc = {
+                    // Provided result addr is assumed to be spilled into the first stack slot.
                     .kind = X64_ADDR_LOCAL,
-                    .local = {.base_reg = builder->lreg_rbp, .disp = -X64_MAX_INT_REG_SIZE, .index_reg = X64_REG_COUNT}
-                };
+                    .local = {.base_reg = builder->lreg_rbp, .disp = -X64_MAX_INT_REG_SIZE, .index_reg = X64_REG_COUNT}};
 
                 u32 rdi = X64_def_phys_reg(builder, X64_RDI);
                 X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, rdi, dst_addr_loc);
@@ -643,10 +655,10 @@ static void X64_windows_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock
             if (ret_type->size > X64_MAX_INT_REG_SIZE) { // Large obj
                 // Copy object to the address provided to the procedure.
 
-                X64_MemAddr dst_addr_loc = { // Provided result addr is assumed to be spilled into the first stack slot.
+                X64_MemAddr dst_addr_loc = {
+                    // Provided result addr is assumed to be spilled into the first stack slot.
                     .kind = X64_ADDR_LOCAL,
-                    .local = {.base_reg = builder->lreg_rbp, .disp = X64_STACK_ARG_RBP_OFFSET, .index_reg = X64_REG_COUNT}
-                };
+                    .local = {.base_reg = builder->lreg_rbp, .disp = X64_STACK_ARG_RBP_OFFSET, .index_reg = X64_REG_COUNT}};
 
                 u32 rdi = X64_def_phys_reg(builder, X64_RDI);
                 X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, rdi, dst_addr_loc);
@@ -824,7 +836,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         if (!X64_try_combine_limm(builder, xbblock, &ir_instr)) {
             u32 r = X64_get_lir_reg(builder, ir_instr->limm.r);
-            
+
             X64_emit_instr_mov_r_i(builder, xbblock, size, r, ir_instr->limm.imm);
         }
 
@@ -890,7 +902,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             //
             //     cmp a, b
             //     jmp_<cond> <target>
-            
+
             X64_emit_instr_jmpcc(builder, xbblock, ir_instr->cmp.cond, NULL, NULL);
             ir_instr = next_instr;
         }
@@ -1103,4 +1115,3 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
         }
     }
 }
-
