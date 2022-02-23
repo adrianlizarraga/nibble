@@ -520,13 +520,13 @@ typedef struct X64_LinuxAssignParamState {
     u64 stack_arg_offset;
 } X64_LinuxAssignParamState;
 
-static s32 X64_linux_get_stack_arg(X64_LinuxAssignParamState* state, u64 arg_size, u64 arg_align)
+static s32 X64_consume_stack_arg(u64* stack_arg_offset, u64 arg_size, u64 arg_align)
 {
-    s32 offset = state->stack_arg_offset;
+    s32 offset = (s32)*stack_arg_offset;
 
-    state->stack_arg_offset += arg_size;
-    state->stack_arg_offset = ALIGN_UP(state->stack_arg_offset, arg_align);
-    state->stack_arg_offset = ALIGN_UP(state->stack_arg_offset, X64_STACK_WORD_SIZE);
+    *stack_arg_offset += arg_size;
+    *stack_arg_offset = ALIGN_UP(*stack_arg_offset, arg_align);
+    *stack_arg_offset = ALIGN_UP(*stack_arg_offset, X64_STACK_WORD_SIZE);
 
     return offset;
 }
@@ -592,7 +592,7 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
                 sym->as_var.offset = X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
             }
             else {
-                sym->as_var.offset = X64_linux_get_stack_arg(&state, arg_size, arg_align);
+                sym->as_var.offset = X64_consume_stack_arg(&state.stack_arg_offset, arg_size, arg_align);
             }
         }
         else {
@@ -602,7 +602,7 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
                 sym->as_var.offset = X64_linux_spill_reg(generator, &state, arg_size, arg_align, arg_reg);
             }
             else {
-                sym->as_var.offset = X64_linux_get_stack_arg(&state, arg_size, arg_align);
+                sym->as_var.offset = X64_consume_stack_arg(&state.stack_arg_offset, arg_size, arg_align);
             }
         }
 
@@ -636,26 +636,40 @@ static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, Symb
         // Assign stack offsets to procedure params.
         assert(sym->kind == SYMBOL_VAR);
 
-        // TODO: Support struct args
-        assert(!type_is_aggregate(sym->type));
-
         Type* arg_type = sym->type;
-        u64 arg_size = arg_type->size;
-        u64 arg_align = arg_type->align;
-        bool arg_in_reg = (index < x64_target.num_arg_regs) && (arg_size <= X64_MAX_INT_REG_SIZE);
+        u64 slot_size = arg_type->size;
+        u64 slot_align = arg_type->align;
 
-        sym->as_var.offset = stack_arg_offset;
-        stack_arg_offset += arg_size;
-        stack_arg_offset = ALIGN_UP(stack_arg_offset, arg_align);
-        stack_arg_offset = ALIGN_UP(stack_arg_offset, X64_STACK_WORD_SIZE);
+        if (type_is_aggregate(arg_type)) {
+            bool obj_in_reg = (slot_size <= X64_MAX_INT_REG_SIZE) && IS_POW2(slot_size);
+
+            if (obj_in_reg) {
+                sym->as_var.is_ptr = false;
+                sym->as_var.offset = X64_consume_stack_arg(&stack_arg_offset, slot_size, slot_align);
+            }
+            else {
+                // NOTE: Passing the object's address!
+                slot_size = X64_MAX_INT_REG_SIZE;
+                slot_align = X64_MAX_INT_REG_SIZE;
+
+                sym->as_var.is_ptr = true;
+                sym->as_var.offset = X64_consume_stack_arg(&stack_arg_offset, slot_size, slot_align);
+            }
+        }
+        else {
+            sym->as_var.is_ptr = false;
+            sym->as_var.offset = X64_consume_stack_arg(&stack_arg_offset, slot_size, slot_align);
+        }
+
+        assert(slot_size <= X64_MAX_INT_REG_SIZE);
 
         // Spill argument register to the shadow space (32 bytes above return address)
         // Only the first four arguments can be in a register.
-        if (arg_in_reg) {
+        if (index < x64_target.num_arg_regs) {
             X64_Reg arg_reg = x64_target.arg_regs[index];
 
-            X64_emit_text(generator, "    mov %s [rbp + %d], %s", x64_mem_size_label[arg_size], sym->as_var.offset,
-                          x64_reg_names[arg_size][arg_reg]);
+            X64_emit_text(generator, "    mov %s [rbp + %d], %s", x64_mem_size_label[slot_size], sym->as_var.offset,
+                          x64_reg_names[slot_size][arg_reg]);
         }
 
         index += 1;
