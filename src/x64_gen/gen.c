@@ -940,13 +940,7 @@ static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 m
 static size_t X64_cpy_reg_to_mem(X64_Generator* generator, X64_SIBDAddr* dst, X64_Reg src, size_t size)
 {
     static char pow2_sizes[8] = {
-        [1] = 1,
-        [2] = 2,
-        [3] = 2,
-        [4] = 4,
-        [5] = 4,
-        [6] = 4,
-        [7] = 4,
+        [1] = 1, [2] = 2, [3] = 2, [4] = 4, [5] = 4, [6] = 4, [7] = 4,
     };
 
     size_t rem_amnt = size;
@@ -988,8 +982,8 @@ static size_t X64_cpy_reg_to_mem(X64_Generator* generator, X64_SIBDAddr* dst, X6
     return rem_amnt;
 }
 
-static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, u32 op1_lreg,
-                              u32 op2_size, u32 op2_lreg)
+static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, u32 op1_lreg, u32 op2_size,
+                              u32 op2_lreg)
 {
     X64_LRegLoc op1_loc = X64_lreg_loc(generator, op1_lreg);
     X64_LRegLoc op2_loc = X64_lreg_loc(generator, op2_lreg);
@@ -1075,8 +1069,8 @@ static void X64_emit_ri_instr(X64_Generator* generator, const char* instr, u32 o
     }
 }
 
-static void X64_emit_rm_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, u32 op1_lreg,
-                              u32 op2_size, X64_MemAddr* op2_vaddr)
+static void X64_emit_rm_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, u32 op1_lreg, u32 op2_size,
+                              X64_MemAddr* op2_vaddr)
 {
     X64_SIBDAddr op2_addr = {0};
     u32 used_regs = X64_get_sibd_addr(generator, &op2_addr, op2_vaddr);
@@ -1130,24 +1124,28 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
                 continue;
             }
 
-            X64_SIBDAddr addr = {0};
-            X64_get_sibd_addr(generator, &addr, &arg->val.addr);
-
-            assert(addr.kind == X64_SIBD_ADDR_LOCAL);
-
-            //
-            // Move 64-bit chunks of the struct object into the appropriate argument registers.
-            //
-            size_t copy_amnt = 0;
-
-            for (unsigned ii = 0; ii < slot->num_regs; ii++) {
-                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][slot->pregs[ii]],
-                              X64_print_sibd_addr(generator->tmp_mem, &addr, X64_MAX_INT_REG_SIZE));
-                addr.local.disp += X64_MAX_INT_REG_SIZE;
-                copy_amnt += X64_MAX_INT_REG_SIZE;
+            // Move object address into the appropriate argument register.
+            if (slot->as_ptr) {
+                assert(slot->num_regs == 1);
+                X64_emit_text(generator, "    lea %s, [rsp + %d]", x64_reg_names[X64_MAX_INT_REG_SIZE][slot->pregs[0]],
+                              slot->ptr_sp_offset);
             }
+            // Copy 64-bit chunks of the struct object into the appropriate argument registers.
+            else {
+                X64_SIBDAddr addr = {0};
+                X64_get_sibd_addr(generator, &addr, &arg->val.addr);
 
-            // TODO: Masking off doesn't work if mask >= 32-bits
+                assert(addr.kind == X64_SIBD_ADDR_LOCAL);
+
+                size_t copy_amnt = 0;
+
+                for (unsigned ii = 0; ii < slot->num_regs; ii++) {
+                    X64_emit_text(generator, "    mov %s, %s", x64_reg_names[X64_MAX_INT_REG_SIZE][slot->pregs[ii]],
+                                  X64_print_sibd_addr(generator->tmp_mem, &addr, X64_MAX_INT_REG_SIZE));
+                    addr.local.disp += X64_MAX_INT_REG_SIZE;
+                    copy_amnt += X64_MAX_INT_REG_SIZE;
+                }
+            }
         }
         else { // Argument is a primitive type
             X64_PrimArgSlot* slot = &arg->slot.prim;
@@ -1171,144 +1169,216 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
     }
 }
 
-static void X64_place_args_in_stack(X64_Generator* generator, X64_StackArgsInfo stack_args_info, u32 num_args, X64_InstrCallArg* args)
+static void X64_linux_place_struct_args_in_stack(X64_Generator* generator, u32 num_args, X64_InstrCallArg* args)
 {
-    u64 stack_args_size = stack_args_info.size;
+    bool pushed_cpy_state = false;
 
-    // Push stack arguments (if any)
-    if (stack_args_size) {
-        // Make room in the stack for arguments
-        X64_emit_text(generator, "    sub rsp, %d", stack_args_size);
+    for (u32 i = 0; i < num_args; i += 1) {
+        X64_InstrCallArg* arg = args + i;
+        u64 arg_size = arg->type->size;
 
-        // 1st pass: Place large struct obj args.
-        bool pushed_cpy_state = false;
+        if (type_is_aggregate(arg->type)) {
+            // Argument is a struct/union object.
+            X64_ObjArgSlot* slot = &arg->slot.obj;
 
-        for (u32 i = 0; i < num_args; i += 1) {
-            X64_InstrCallArg* arg = args + i;
-            u64 arg_size = arg->type->size;
+            assert(!slot->as_ptr);
 
-            if (type_is_aggregate(arg->type)) {
-                // Argument is a struct/union object.
-                X64_ObjArgSlot* slot = &arg->slot.obj;
-
-                if (slot->num_regs) {
-                    continue;
-                }
-
-                // Copy obj into its location in the stack.
-                X64_SIBDAddr src_addr = {0};
-                X64_get_sibd_addr(generator, &src_addr, &arg->val.addr);
-                assert(src_addr.kind == X64_SIBD_ADDR_LOCAL);
-
-                // TODO: There's no need to push all (rdi, rsi, rcx) if not used.
-                if (!pushed_cpy_state) {
-                    X64_emit_text(generator, "    push rdi");
-                    X64_emit_text(generator, "    push rsi");
-                    X64_emit_text(generator, "    push rcx");
-                    pushed_cpy_state = true;
-                }
-
-                X64_emit_text(generator, "    lea rdi, [rsp + %d]", slot->sp_offset + X64_MAX_INT_REG_SIZE * 3);
-                X64_emit_text(generator, "    lea rsi, %s", X64_print_sibd_addr(generator->tmp_mem, &src_addr, 0));
-                X64_emit_text(generator, "    mov rcx, 0x%lx", arg_size);
-                X64_emit_text(generator, "    rep movsb");
-            }
-        }
-
-        if (pushed_cpy_state) {
-            X64_emit_text(generator, "    pop rcx");
-            X64_emit_text(generator, "    pop rsi");
-            X64_emit_text(generator, "    pop rdi");
-        }
-
-        // 2nd pass: Move primitive args that are currently in registers into their stack slots.
-        // This ensures that we can freely use RAX as a temporary register in the next pass.
-
-        for (u32 i = 0; i < num_args; i += 1) {
-            X64_InstrCallArg* arg = args + i;
-            u64 arg_size = arg->type->size;
-
-            if (!type_is_aggregate(arg->type)) {
-                X64_PrimArgSlot* slot = &arg->slot.prim;
-
-                if (slot->in_reg) {
-                    continue; // Skip register args
-                }
-
-                X64_LRegLoc loc = X64_lreg_loc(generator, arg->val.reg);
-
-                // Move directly into stack slot.
-                if (loc.kind == X64_LREG_LOC_REG) {
-                    X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], slot->sp_offset,
-                                  x64_reg_names[arg_size][loc.reg]);
-                }
-            }
-        }
-
-        // 3rd pass: Move primitive args that are currently spilled into the stack.
-        for (u32 i = 0; i < num_args; i += 1) {
-            X64_InstrCallArg* arg = args + i;
-
-            if (type_is_aggregate(arg->type)) {
+            if (slot->num_regs) {
                 continue;
             }
 
+            // TODO: There's no need to push all (rdi, rsi, rcx) if not used.
+            if (!pushed_cpy_state) {
+                X64_emit_text(generator, "    push rdi");
+                X64_emit_text(generator, "    push rsi");
+                X64_emit_text(generator, "    push rcx");
+                pushed_cpy_state = true;
+            }
+
+            const u32 sp_begin = X64_MAX_INT_REG_SIZE * 3;
+
+            // Copy obj into its location in the stack.
+            X64_SIBDAddr src_addr = {0};
+            X64_get_sibd_addr(generator, &src_addr, &arg->val.addr);
+            assert(src_addr.kind == X64_SIBD_ADDR_LOCAL);
+
+            X64_emit_text(generator, "    lea rdi, [rsp + %d]", slot->sp_offset + sp_begin);
+            X64_emit_text(generator, "    lea rsi, %s", X64_print_sibd_addr(generator->tmp_mem, &src_addr, 0));
+            X64_emit_text(generator, "    mov rcx, 0x%lx", arg_size);
+            X64_emit_text(generator, "    rep movsb");
+        }
+    }
+
+    if (pushed_cpy_state) {
+        X64_emit_text(generator, "    pop rcx");
+        X64_emit_text(generator, "    pop rsi");
+        X64_emit_text(generator, "    pop rdi");
+    }
+}
+
+static void X64_windows_place_struct_args_in_stack(X64_Generator* generator, u32 num_args, X64_InstrCallArg* args)
+{
+    bool pushed_cpy_state = false;
+
+    for (u32 i = 0; i < num_args; i += 1) {
+        X64_InstrCallArg* arg = args + i;
+        u64 arg_size = arg->type->size;
+
+        if (type_is_aggregate(arg->type)) {
+            // Argument is a struct/union object.
+            X64_ObjArgSlot* slot = &arg->slot.obj;
+
+            if (!slot->as_ptr) {
+                continue;
+            }
+
+            assert(arg_size > X64_MAX_INT_REG_SIZE);
+
+            // TODO: There's no need to push all (rdi, rsi, rcx) if not used.
+            if (!pushed_cpy_state) {
+                X64_emit_text(generator, "    push rdi");
+                X64_emit_text(generator, "    push rsi");
+                X64_emit_text(generator, "    push rcx");
+                pushed_cpy_state = true;
+            }
+
+            const u32 sp_begin = X64_MAX_INT_REG_SIZE * 3;
+
+            // Copy obj into its location in the stack.
+            X64_SIBDAddr src_addr = {0};
+            X64_get_sibd_addr(generator, &src_addr, &arg->val.addr);
+            assert(src_addr.kind == X64_SIBD_ADDR_LOCAL);
+
+            X64_emit_text(generator, "    lea rdi, [rsp + %d]", slot->ptr_sp_offset + sp_begin);
+
+            // Move object pointer into stack slot.
+            if (!slot->num_regs) {
+                X64_emit_text(generator, "    mov %s [rsp + %d], rdi", x64_mem_size_label[X64_MAX_INT_REG_SIZE],
+                              slot->sp_offset + sp_begin);
+            }
+
+            X64_emit_text(generator, "    lea rsi, %s", X64_print_sibd_addr(generator->tmp_mem, &src_addr, 0));
+            X64_emit_text(generator, "    mov rcx, 0x%lx", arg_size);
+            X64_emit_text(generator, "    rep movsb");
+        }
+    }
+
+    if (pushed_cpy_state) {
+        X64_emit_text(generator, "    pop rcx");
+        X64_emit_text(generator, "    pop rsi");
+        X64_emit_text(generator, "    pop rdi");
+    }
+}
+
+static void X64_place_args_in_stack(X64_Generator* generator, u32 num_args, X64_InstrCallArg* args)
+{
+    // 1st pass: Copy struct arguments into the stack.
+    if (x64_target.os == OS_LINUX) {
+        X64_linux_place_struct_args_in_stack(generator, num_args, args);
+    }
+    else {
+        assert(x64_target.os == OS_WIN32);
+        X64_windows_place_struct_args_in_stack(generator, num_args, args);
+    }
+
+    // 2nd pass: Copy primitive args that are currently in registers into their stack slots.
+    // This ensures that we can freely use RAX as a temporary register in the next pass.
+    for (u32 i = 0; i < num_args; i += 1) {
+        X64_InstrCallArg* arg = args + i;
+        u64 arg_size = arg->type->size;
+
+        if (!type_is_aggregate(arg->type)) {
             X64_PrimArgSlot* slot = &arg->slot.prim;
 
             if (slot->in_reg) {
                 continue; // Skip register args
             }
 
-            u64 arg_size = arg->type->size;
             X64_LRegLoc loc = X64_lreg_loc(generator, arg->val.reg);
 
-            if (loc.kind == X64_LREG_LOC_STACK) {
-                // Move into RAX.
-                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][X64_RAX],
-                              X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
-
-                // Move RAX into stack slot.
+            // Move directly into stack slot.
+            if (loc.kind == X64_LREG_LOC_REG) {
                 X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], slot->sp_offset,
-                              x64_reg_names[arg_size][X64_RAX]);
+                              x64_reg_names[arg_size][loc.reg]);
             }
         }
+    }
+
+    // 3rd pass: Copy primitive args that are currently spilled into the stack frame.
+    for (u32 i = 0; i < num_args; i += 1) {
+        X64_InstrCallArg* arg = args + i;
+
+        if (type_is_aggregate(arg->type)) {
+            continue;
+        }
+
+        X64_PrimArgSlot* slot = &arg->slot.prim;
+
+        if (slot->in_reg) {
+            continue; // Skip register args
+        }
+
+        u64 arg_size = arg->type->size;
+        X64_LRegLoc loc = X64_lreg_loc(generator, arg->val.reg);
+
+        if (loc.kind == X64_LREG_LOC_STACK) {
+            // Move into RAX.
+            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[arg_size][X64_RAX],
+                          X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
+
+            // Move RAX into stack slot.
+            X64_emit_text(generator, "    mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], slot->sp_offset,
+                          x64_reg_names[arg_size][X64_RAX]);
+        }
+    }
+}
+
+static void X64_linux_cpy_ret_small_struct(X64_Generator* generator, Type* ret_type, X64_CallValue* dst_val)
+{
+    // Procedure returned a small structure object in registers.
+    // Copy into appropriate memory location.
+    if (ret_type->size <= (X64_MAX_INT_REG_SIZE << 1)) {
+        X64_SIBDAddr obj_addr = {0};
+        X64_get_sibd_addr(generator, &obj_addr, &dst_val->addr);
+
+        // Copy RAX into the first 8 bytes of struct memory.
+        size_t rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RAX, ret_type->size);
+
+        // Copy RDX into the second 8 bytes of struct memory.
+        if (rem_amnt) {
+            rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RDX, rem_amnt);
+            assert(!rem_amnt);
+        }
+    }
+}
+
+static void X64_windows_cpy_ret_small_struct(X64_Generator* generator, Type* ret_type, X64_CallValue* dst_val)
+{
+    // Procedure returned a small structure object in RAX.
+    // Copy into appropriate memory location.
+    if (ret_type->size <= X64_MAX_INT_REG_SIZE) {
+        X64_SIBDAddr obj_addr = {0};
+        X64_get_sibd_addr(generator, &obj_addr, &dst_val->addr);
+
+        // Copy RAX into the first 8 bytes of struct memory.
+        size_t rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RAX, ret_type->size);
+        assert(!rem_amnt);
     }
 }
 
 static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
 {
-    static const char* binary_r_r_name[] = {
-        [X64_INSTR_ADD_R_R] = "add",
-        [X64_INSTR_SUB_R_R] = "sub",
-        [X64_INSTR_IMUL_R_R] = "imul",
-        [X64_INSTR_AND_R_R] = "and",
-        [X64_INSTR_OR_R_R] = "or",
-        [X64_INSTR_XOR_R_R] = "xor"
-    };
+    static const char* binary_r_r_name[] = {[X64_INSTR_ADD_R_R] = "add", [X64_INSTR_SUB_R_R] = "sub", [X64_INSTR_IMUL_R_R] = "imul",
+                                            [X64_INSTR_AND_R_R] = "and", [X64_INSTR_OR_R_R] = "or",   [X64_INSTR_XOR_R_R] = "xor"};
 
-    static const char* binary_r_i_name[] = {
-        [X64_INSTR_ADD_R_I] = "add",
-        [X64_INSTR_SUB_R_I] = "sub",
-        [X64_INSTR_IMUL_R_I] = "imul",
-        [X64_INSTR_AND_R_I] = "and",
-        [X64_INSTR_OR_R_I] = "or",
-        [X64_INSTR_XOR_R_I] = "xor"
-    };
+    static const char* binary_r_i_name[] = {[X64_INSTR_ADD_R_I] = "add", [X64_INSTR_SUB_R_I] = "sub", [X64_INSTR_IMUL_R_I] = "imul",
+                                            [X64_INSTR_AND_R_I] = "and", [X64_INSTR_OR_R_I] = "or",   [X64_INSTR_XOR_R_I] = "xor"};
 
-    static const char* shift_r_r_name[] = {
-        [X64_INSTR_SAR_R_R] = "sar",
-        [X64_INSTR_SHL_R_R] = "shl"
-    };
+    static const char* shift_r_r_name[] = {[X64_INSTR_SAR_R_R] = "sar", [X64_INSTR_SHL_R_R] = "shl"};
 
-    static const char* shift_r_i_name[] = {
-        [X64_INSTR_SAR_R_I] = "sar",
-        [X64_INSTR_SHL_R_I] = "shl"
-    };
+    static const char* shift_r_i_name[] = {[X64_INSTR_SAR_R_I] = "sar", [X64_INSTR_SHL_R_I] = "shl"};
 
-    static const char* unary_name[] = {
-        [X64_INSTR_NEG] = "neg",
-        [X64_INSTR_NOT] = "not"
-    };
+    static const char* unary_name[] = {[X64_INSTR_NEG] = "neg", [X64_INSTR_NOT] = "not"};
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
@@ -1363,8 +1433,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
 
         assert(src_loc.kind == X64_LREG_LOC_REG && src_loc.reg == X64_RCX);
 
-        const char* dst_op_str = dst_in_reg ? x64_reg_names[dst_size][dst_loc.reg] :
-                                              X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+        const char* dst_op_str =
+            dst_in_reg ? x64_reg_names[dst_size][dst_loc.reg] : X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
 
         X64_emit_text(generator, "    %s %s, %s", shift_r_r_name[instr->kind], dst_op_str, x64_reg_names[1][X64_RCX]);
         break;
@@ -1374,8 +1444,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         u32 dst_size = (u32)instr->shift_r_i.size;
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->shift_r_i.dst);
         bool dst_in_reg = (dst_loc.kind == X64_LREG_LOC_REG);
-        const char* dst_op_str = dst_in_reg ? x64_reg_names[dst_size][dst_loc.reg] :
-                                              X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+        const char* dst_op_str =
+            dst_in_reg ? x64_reg_names[dst_size][dst_loc.reg] : X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
 
         X64_emit_text(generator, "    %s %s, %d", shift_r_i_name[instr->kind], dst_op_str, instr->shift_r_i.src.as_int._u8);
         break;
@@ -1385,8 +1455,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         u32 size = (u32)instr->unary.size;
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->unary.dst);
         bool dst_in_reg = (dst_loc.kind == X64_LREG_LOC_REG);
-        const char* dst_op_str = dst_in_reg ? x64_reg_names[size][dst_loc.reg] :
-                                              X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, size);
+        const char* dst_op_str =
+            dst_in_reg ? x64_reg_names[size][dst_loc.reg] : X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, size);
 
         X64_emit_text(generator, "    %s %s", unary_name[instr->kind], dst_op_str);
         break;
@@ -1401,8 +1471,9 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_r_r.dst);
         X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_r_r.src);
 
-        bool same_ops = (dst_loc.kind == src_loc.kind) && (((dst_loc.kind == X64_LREG_LOC_REG) && (dst_loc.reg == src_loc.reg)) ||
-                                                           ((dst_loc.kind == X64_LREG_LOC_STACK) && (dst_loc.offset == src_loc.offset)));
+        bool same_ops =
+            (dst_loc.kind == src_loc.kind) && (((dst_loc.kind == X64_LREG_LOC_REG) && (dst_loc.reg == src_loc.reg)) ||
+                                               ((dst_loc.kind == X64_LREG_LOC_STACK) && (dst_loc.offset == src_loc.offset)));
 
         if (!same_ops) {
             X64_emit_rr_instr(generator, "mov", true, size, instr->mov_r_r.dst, size, instr->mov_r_r.src);
@@ -1558,8 +1629,15 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         // Place arguments in the appropriate locations.
         // For register args, it is expected that the register allocator either placed the arg in the correct register or spilled it.
         // For stack args, it is expected that the register allocator either placed the arg in a non-argument register or spilled it.
+        if (stack_args_info.size) {
+            X64_emit_text(generator, "    sub rsp, %d", stack_args_info.size);
+        }
+
         X64_place_args_in_regs(generator, num_args, args);
-        X64_place_args_in_stack(generator, stack_args_info, num_args, args);
+
+        if (stack_args_info.size) {
+            X64_place_args_in_stack(generator, num_args, args);
+        }
 
         // Align stack before call.
         u64 total_stack_size = stack_args_info.size + group.num_tmp_regs * X64_MAX_INT_REG_SIZE;
@@ -1589,7 +1667,6 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
 
         // Move return value (if any) to appropriate register.
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-
             if (!type_is_aggregate(ret_type)) {
                 // Returns a primitive type.
 
@@ -1597,7 +1674,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
 
                 if (dst_loc.kind == X64_LREG_LOC_STACK) {
                     // Move result (in RAX) to stack offset.
-                    X64_emit_text(generator, "    mov %s, %s", X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size),
+                    X64_emit_text(generator, "    mov %s, %s",
+                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size),
                                   x64_reg_names[ret_type->size][X64_RAX]);
                 }
                 else {
@@ -1610,20 +1688,12 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
                     }
                 }
             }
-            else if (ret_type->size <= (X64_MAX_INT_REG_SIZE << 1)) {
-                // Returns a small structure object.
-
-                X64_SIBDAddr obj_addr = {0};
-                X64_get_sibd_addr(generator, &obj_addr, &dst_val.addr);
-
-                // Copy RAX into the first 8 bytes of struct memory.
-                size_t rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RAX, ret_type->size);
-
-                // Copy RDX into the second 8 bytes of struct memory.
-                if (rem_amnt) {
-                    rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RDX, rem_amnt);
-                    assert(!rem_amnt);
-                }
+            else if (x64_target.os == OS_LINUX) {
+                X64_linux_cpy_ret_small_struct(generator, ret_type, &dst_val);
+            }
+            else {
+                assert(x64_target.os == OS_WIN32);
+                X64_windows_cpy_ret_small_struct(generator, ret_type, &dst_val);
             }
         }
 
@@ -1767,7 +1837,8 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     for (uint32_t r = 0; r < X64_REG_COUNT; r += 1) {
         X64_Reg reg = (X64_Reg)r;
 
-        if (reg == X64_RBP || reg == X64_RSP) continue;
+        if (reg == X64_RBP || reg == X64_RSP)
+            continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
             ftprint_char_array(&tmp_line, false, "    push %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
@@ -1777,12 +1848,13 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     array_push(tmp_line, '\0');
     *save_regs_inst = mem_dup(generator->gen_mem, tmp_line, array_len(tmp_line), DEFAULT_ALIGN);
 
-    // Restore callee-saved registers. 
+    // Restore callee-saved registers.
     // NOTE: Iterating in the reverse order as the corresponding pushes.
     for (uint32_t r = X64_REG_COUNT; r-- > 0;) {
         X64_Reg reg = (X64_Reg)r;
 
-        if (reg == X64_RBP || reg == X64_RSP) continue;
+        if (reg == X64_RBP || reg == X64_RSP)
+            continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
             X64_emit_text(generator, "    pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
