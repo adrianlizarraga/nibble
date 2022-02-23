@@ -1797,10 +1797,13 @@ static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, HMap
 
         if (entry->key != HASH_MAP_NULL_KEY) {
             StrLit* str_lit = UINT_PTR(entry->value, StrLit);
-            const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
 
-            X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
-            X64_emit_data(generator, "db `%s\\0`", escaped_str);
+            if (str_lit->used) {
+                const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
+
+                X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
+                X64_emit_data(generator, "db `%s\\0`", escaped_str);
+            }
         }
     }
 

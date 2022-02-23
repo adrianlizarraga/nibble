@@ -1861,6 +1861,7 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
         dst->type = expr_str_lit->super.type;
         dst->str_lit = expr_str_lit->str_lit;
 
+        dst->str_lit->used = true;
         return bblock;
     }
     default:

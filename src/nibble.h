@@ -168,6 +168,7 @@ typedef enum Intrinsic {
 
 typedef struct StrLit {
     struct StrLit* next;
+    bool used;
     size_t id;
     size_t len;
     char str[];

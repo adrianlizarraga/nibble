@@ -239,6 +239,7 @@ static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* d
         dst->type = expr_str_lit->super.type;
         dst->str_lit = expr_str_lit->str_lit;
 
+        dst->str_lit->used = true;
         break;
     }
     default:
