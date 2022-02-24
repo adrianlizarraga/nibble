@@ -2393,7 +2393,6 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 
     pop_scope(resolver);
     assert(array_len(params) == decl->num_params);
-    allocator_restore_state(mem_state);
 
     Type* ret_type = builtin_types[BUILTIN_TYPE_VOID].type;
 
@@ -2425,6 +2424,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     sym->type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type);
     sym->status = SYMBOL_STATUS_RESOLVED;
 
+    allocator_restore_state(mem_state);
     return true;
 }
 
@@ -2775,9 +2775,15 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     case CST_StmtReturn: {
         ret = RESOLVE_STMT_RETURNS;
         StmtReturn* sret = (StmtReturn*)stmt;
+        Type* type_void = builtin_types[BUILTIN_TYPE_VOID].type;
 
-        if (!sret->expr && (ret_type != builtin_types[BUILTIN_TYPE_VOID].type)) {
+        if (!sret->expr && (ret_type != type_void)) {
             resolver_on_error(resolver, stmt->range, "Return statement is missing a return value of type `%s`", type_name(ret_type));
+            break;
+        }
+
+        if (sret->expr && (ret_type == type_void)) {
+            resolver_on_error(resolver, stmt->range, "Procedure with a `void` return type cannot return a value");
             break;
         }
 

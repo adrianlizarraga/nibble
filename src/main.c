@@ -1,3 +1,16 @@
+/* TODO:
+
+   - Only generate assembly for procs reachable from main()
+     - Currently, we prune procs not reachable from the main _MODULE_, but unused procs in main module remain.
+     - RELATED: Compile all module symbols, but only generate used symbols.
+   - For loops
+   - Switch statements
+   - Floating point primitives
+   - Defer statement
+   - Multiple return values (tuple implemented as anonymous struct)
+
+*/
+
 //#define NDEBUG 1
 #define PRINT_MEM_USAGE 1
 #include <assert.h>
@@ -6,8 +19,8 @@
 #include <string.h>
 
 //#define NDEBUG
-#define NIBBLE_PRINT_DECLS
-#define NIBBLE_PRINT_MEM_USAGE
+//#define NIBBLE_PRINT_IRS
+//#define NIBBLE_PRINT_MEM_USAGE
 
 // This is a "unity build".
 // Having a single compilation unit makes building trivial.

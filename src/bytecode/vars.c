@@ -3,6 +3,7 @@
 typedef struct IR_VarBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
+    BucketList* str_lits;
     TypeCache* type_cache;
     Module* curr_mod;
 } IR_VarBuilder;
@@ -234,10 +235,16 @@ static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* d
         break;
     case CST_ExprStr: {
         ExprStr* expr_str_lit = (ExprStr*)expr;
+        StrLit* str_lit = expr_str_lit->str_lit;
 
         dst->kind = CONST_EXPR_STR_LIT;
         dst->type = expr_str_lit->super.type;
-        dst->str_lit = expr_str_lit->str_lit;
+        dst->str_lit = str_lit;
+
+        if (!str_lit->used) {
+            str_lit->used = true;
+            bucket_list_add_elem(builder->str_lits, str_lit);
+        }
 
         break;
     }
@@ -261,9 +268,9 @@ static void IR_build_var(IR_VarBuilder* builder, Symbol* sym)
     sym->as_var.const_expr = const_expr;
 }
 
-static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, BucketList* vars, TypeCache* type_cache)
+static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* str_lits, TypeCache* type_cache)
 {
-    IR_VarBuilder builder = {.arena = arena, .tmp_arena = tmp_arena, .type_cache = type_cache, .curr_mod = NULL};
+    IR_VarBuilder builder = {.arena = arena, .tmp_arena = tmp_arena, .str_lits = str_lits, .type_cache = type_cache, .curr_mod = NULL};
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 

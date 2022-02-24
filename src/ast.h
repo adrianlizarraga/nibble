@@ -20,6 +20,7 @@ typedef struct Symbol Symbol;
 typedef struct SymbolVar SymbolVar;
 typedef struct SymbolProc SymbolProc;
 typedef struct SymbolModule SymbolModule;
+typedef struct AnonObj AnonObj;
 typedef struct Scope Scope;
 typedef struct Module Module;
 typedef struct BBlock BBlock;
@@ -824,6 +825,10 @@ struct SymbolVar {
         // Used to describe initial value (constexpr) for global variable
         ConstExpr const_expr;
     };
+
+    // NOTE: Only used for windows
+    // True if the value stored in the stack offset is actually a pointer to the variable.
+    bool is_ptr; // TODO: Remove offset and is_ptr from this struct. Store in separate hash table that maps a sym -> stack location
 };
 
 struct SymbolProc {
@@ -857,6 +862,13 @@ struct Symbol {
     };
 };
 
+struct AnonObj {
+    Type* type;
+    u32 id;
+    s32 offset;
+    List lnode;
+};
+
 Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, Identifier* name, Module* home_mod);
 Symbol* new_symbol_decl(Allocator* allocator, Decl* decl, Module* home_mod);
 Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type, Module* home_mod);
@@ -878,6 +890,10 @@ struct Scope {
     List sym_list;
     size_t num_syms;
 
+    // List of anonymous objects on this scope's stack
+    List obj_list;
+    size_t num_objs;
+
     ListNode lnode;
 };
 
@@ -891,6 +907,7 @@ Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 
 void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list);
 Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl);
+AnonObj* add_anon_object(Allocator* allocator, Scope* scope, Type* type);
 bool install_module_decls(Allocator* allocator, Module* mod);
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym);
 bool import_all_mod_syms(Module* dst_mod, Module* src_mod);

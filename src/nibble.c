@@ -457,6 +457,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     bucket_list_init(&nibble->vars, &nibble->ast_mem, 32);
     bucket_list_init(&nibble->procs, &nibble->ast_mem, 32);
     bucket_list_init(&nibble->aggregate_types, &nibble->ast_mem, 16);
+    bucket_list_init(&nibble->str_lits, &nibble->ast_mem, 8);
 
     error_stream_init(&nibble->errors, &nibble->gen_mem);
 
@@ -680,12 +681,12 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
             list_add_last(&mod->stmts, &stmt->lnode);
         }
 
-#ifdef NIBBLE_PRINT_DECLS
+#ifdef NIBBLE_PRINT_IRS
         ftprint_out("%s\n", ftprint_stmt(&ctx->gen_mem, stmt));
 #endif
     }
 
-#ifdef NIBBLE_PRINT_DECLS
+#ifdef NIBBLE_PRINT_IRS
     ftprint_out("\n");
 #endif
 
@@ -1093,7 +1094,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     //////////////////////////////////////////
     //          Gen IR bytecode
     //////////////////////////////////////////
-    IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->type_cache);
+    IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lits, &nibble->type_cache);
 
     //////////////////////////////////////////
     //          Gen NASM output
@@ -1106,7 +1107,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     path_append(&nasm_fname, nasm_ext, sizeof(nasm_ext) - 1);
 
     ftprint_out("[INFO]: Generating NASM assembly output: %s ...\n", nasm_fname.str);
-    gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lit_map, nasm_fname.str);
+    gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lits, nasm_fname.str);
 
     //////////////////////////////////////////
     //          Run NASM assembler

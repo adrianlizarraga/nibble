@@ -5,6 +5,7 @@
 #define X64_MAX_INT_REG_SIZE 8
 #define X64_STACK_ALIGN 16
 #define X64_STACK_WORD_SIZE 8
+#define X64_STACK_ARG_RBP_OFFSET 0x10
 
 #define X64_WINDOWS_SHADOW_SPACE 32
 
@@ -55,6 +56,10 @@ bool X64_is_caller_saved_reg(X64_Reg reg);
 bool X64_is_callee_saved_reg(X64_Reg reg);
 bool X64_is_arg_reg(X64_Reg reg);
 
+#define X64_linux_is_struct_retarg_large(s) ((s) > (X64_MAX_INT_REG_SIZE << 1))
+#define X64_windows_is_struct_retarg_large(s) (((s) > X64_MAX_INT_REG_SIZE) || !IS_POW2(s))
+bool X64_is_struct_retarg_large(size_t size);
+
 // Data structures used to track the "location" of a virtual IR register.
 // A virtual register could be assigned to a physical register, or could be assigned
 // to a stack offset.
@@ -96,7 +101,7 @@ typedef struct X64_LRegRange {
     union {
         X64_Reg preg;
         u32 lreg;
-        unsigned preg_mask;
+        u32 preg_mask;
     } ra_ctrl;
 
     X64_LRegLoc loc;

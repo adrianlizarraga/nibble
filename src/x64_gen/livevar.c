@@ -11,7 +11,7 @@ static void X64_touch_lreg(X64_LIRBuilder* builder, u32 lreg, long ino)
         range->end = ino;
     }
     else {
-        assert(range->end == -1 || range->end < ino);
+        assert(range->end <= ino);
         range->end = ino;
     }
 }
@@ -156,28 +156,45 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_CALL_R: {
             u32 num_args;
             X64_InstrCallArg* args;
-            u32 dst;
+            X64_CallValue dst;
+            Type* proc_type;
 
             if (instr->kind == X64_INSTR_CALL) {
                 num_args = instr->call.num_args;
                 args = instr->call.args;
                 dst = instr->call.dst;
+                proc_type = instr->call.sym->type;
             }
             else {
                 assert(instr->kind == X64_INSTR_CALL_R);
                 num_args = instr->call_r.num_args;
                 args = instr->call_r.args;
                 dst = instr->call_r.dst;
+                proc_type = instr->call_r.proc_type;
 
                 X64_touch_lreg(builder, instr->call_r.proc_loc, ino);
             }
 
             for (u32 i = 0; i < num_args; i++) {
-                X64_touch_lreg(builder, args[i].lreg, ino);
+                X64_InstrCallArg* arg = args + i;
+
+                if (type_is_aggregate(arg->type)) {
+                    X64_touch_mem_lregs(builder, &arg->val.addr, ino);
+                }
+                else {
+                    X64_touch_lreg(builder, arg->val.reg, ino);
+                }
             }
 
-            if (dst != X64_LIR_REG_COUNT) {
-                X64_touch_lreg(builder, dst, ino);
+            Type* ret_type = proc_type->as_proc.ret;
+
+            if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
+                if (type_is_aggregate(ret_type)) {
+                    X64_touch_mem_lregs(builder, &dst.addr, ino);
+                }
+                else {
+                    X64_touch_lreg(builder, dst.reg, ino);
+                }
             }
 
             break;

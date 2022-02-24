@@ -4,6 +4,7 @@
 typedef struct IR_ProcBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
+    BucketList* str_lits;
     TypeCache* type_cache;
     Symbol* curr_proc;
     Scope* curr_scope;
@@ -21,6 +22,7 @@ typedef enum IR_OperandKind {
     IR_OPERAND_DEFERRED_CMP,
     IR_OPERAND_ARRAY_INIT,
     IR_OPERAND_VAR,
+    IR_OPERAND_OBJ,
     IR_OPERAND_STR_LIT,
     IR_OPERAND_PROC,
 } IR_OperandKind;
@@ -54,6 +56,7 @@ typedef struct IR_Operand {
         IR_Reg reg;
         MemAddr addr;
         Symbol* sym;
+        AnonObj* obj;
         IR_DeferredCmp cmp;
         IR_ArrayInitializer array_initzer;
         StrLit* str_lit;
@@ -394,7 +397,7 @@ static Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock*
     return instr;
 }
 
-static void IR_emit_instr_call(IR_ProcBuilder* builder, BBlock* bblock, Symbol* sym, IR_Reg r, u32 num_args, InstrCallArg* args)
+static void IR_emit_instr_call(IR_ProcBuilder* builder, BBlock* bblock, Symbol* sym, IR_Value r, u32 num_args, IR_Value* args)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_CALL);
     instr->call.sym = sym;
@@ -405,7 +408,7 @@ static void IR_emit_instr_call(IR_ProcBuilder* builder, BBlock* bblock, Symbol* 
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg loc, IR_Reg r, u32 num_args, InstrCallArg* args)
+static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg loc, IR_Value r, u32 num_args, IR_Value* args)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_CALL_INDIRECT);
     instr->calli.proc_type = type;
@@ -417,11 +420,10 @@ static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, BBlock* bblock,
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_ret(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg a)
+static void IR_emit_instr_ret(IR_ProcBuilder* builder, BBlock* bblock, IR_Value val)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_RET);
-    instr->ret.type = type;
-    instr->ret.a = a;
+    instr->ret.val = val;
 
     IR_add_instr(builder, bblock, instr);
 }
@@ -466,6 +468,12 @@ static MemAddr IR_sym_as_addr(Symbol* sym)
     return addr;
 }
 
+static MemAddr IR_obj_as_addr(AnonObj* obj)
+{
+    MemAddr addr = {.base_kind = MEM_BASE_OBJ, .base.obj = obj, .index_reg = IR_REG_COUNT};
+    return addr;
+}
+
 static MemAddr IR_strlit_as_addr(StrLit* str_lit)
 {
     MemAddr addr = {.base_kind = MEM_BASE_STR_LIT, .base.str_lit = str_lit, .index_reg = IR_REG_COUNT};
@@ -495,6 +503,13 @@ static void IR_get_object_addr(IR_ProcBuilder* builder, BBlock* bblock, MemAddr*
     }
     else if (src->kind == IR_OPERAND_DEREF_ADDR) {
         *dst = src->addr;
+    }
+    else if (src->kind == IR_OPERAND_OBJ) {
+        dst->base_kind = MEM_BASE_OBJ;
+        dst->base.obj = src->obj;
+        dst->index_reg = IR_REG_COUNT;
+        dst->disp = 0;
+        dst->scale = 0;
     }
     else {
         assert(src->kind == IR_OPERAND_STR_LIT);
@@ -805,6 +820,17 @@ static BBlock* IR_op_to_r(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* o
 
         return bblock;
     }
+    case IR_OPERAND_OBJ: {
+        assert(IR_type_fits_in_reg(operand->type));
+
+        IR_Reg reg = IR_next_reg(builder);
+        IR_emit_instr_load(builder, bblock, operand->type, reg, IR_obj_as_addr(operand->obj));
+
+        operand->kind = IR_OPERAND_REG;
+        operand->reg = reg;
+
+        return bblock;
+    }
     default: {
         assert(operand->kind == IR_OPERAND_VAR);
         IR_Reg reg = IR_next_reg(builder);
@@ -953,7 +979,7 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
     else if (rhs->kind == IR_OPERAND_STR_LIT) {
         curr_bb = IR_emit_array_str_init(builder, curr_bb, lhs, rhs);
     }
-    else if (IR_type_fits_in_reg(rhs->type)) {
+    else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
         curr_bb = IR_op_to_r(builder, curr_bb, rhs);
         IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
     }
@@ -1665,31 +1691,34 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return curr_bb;
 }
 
-static void IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, IR_Operand* dst_op)
+static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, IR_Operand* dst_op)
 {
+    IR_Value ret_val = {.type = expr_call->super.type};
     dst_op->type = expr_call->super.type;
 
     // Allocate register if procedure returns a value.
     if (dst_op->type != builtin_types[BUILTIN_TYPE_VOID].type) {
-        if (IR_type_fits_in_reg(dst_op->type)) {
+        if (!type_is_aggregate(dst_op->type)) {
             dst_op->kind = IR_OPERAND_REG;
             dst_op->reg = IR_next_reg(builder);
+
+            ret_val.reg = dst_op->reg;
         }
         else {
-            // TODO: Support returning structs
-            assert(0);
+            dst_op->kind = IR_OPERAND_OBJ;
+            dst_op->obj = add_anon_object(builder->arena, builder->curr_scope, dst_op->type);
+
+            ret_val.addr = IR_obj_as_addr(dst_op->obj);
         }
     }
-    else {
-        dst_op->kind = IR_OPERAND_NONE;
-        dst_op->reg = IR_REG_COUNT;
-    }
+
+    return ret_val;
 }
 
-static InstrCallArg* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call)
+static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call)
 {
     u32 num_args = (u32)expr_call->num_args;
-    InstrCallArg* args = alloc_array(builder->arena, InstrCallArg, num_args, false);
+    IR_Value* args = alloc_array(builder->arena, IR_Value, num_args, false);
 
     // Emit instructions for each argument expression and collect the resulting expression values
     // into an `args` array.
@@ -1703,16 +1732,16 @@ static InstrCallArg* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblo
 
         *p_bblock = IR_emit_expr(builder, *p_bblock, ast_arg->expr, &arg_op);
 
-        if (IR_type_fits_in_reg(arg_op.type)) {
+        if (!type_is_aggregate(arg_op.type)) {
             *p_bblock = IR_op_to_r(builder, *p_bblock, &arg_op);
 
             assert(arg_index < num_args);
             args[arg_index].type = arg_op.type;
-            args[arg_index].loc = arg_op.reg;
+            args[arg_index].reg = arg_op.reg;
         }
         else {
-            // TODO: Support struct types
-            assert(0);
+            args[arg_index].type = arg_op.type;
+            IR_get_object_addr(builder, *p_bblock, &args[arg_index].addr, &arg_op);
         }
 
         arg_index += 1;
@@ -1726,7 +1755,7 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
 {
     BBlock* curr_bb = bblock;
     u32 num_args = (u32)expr_call->num_args;
-    InstrCallArg* args = IR_setup_call_args(builder, &curr_bb, expr_call);
+    IR_Value* args = IR_setup_call_args(builder, &curr_bb, expr_call);
 
     // Emit instructions for the procedure pointer/name.
     IR_Operand proc_op = {0};
@@ -1735,14 +1764,14 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     // Allocate register for return value, emit call instruction, and then cleanup.
     if (proc_op.kind == IR_OPERAND_PROC) {
         // Direct procedure call.
-        IR_setup_call_ret(builder, expr_call, dst_op);
-        IR_emit_instr_call(builder, curr_bb, proc_op.sym, dst_op->reg, num_args, args);
+        IR_Value r = IR_setup_call_ret(builder, expr_call, dst_op);
+        IR_emit_instr_call(builder, curr_bb, proc_op.sym, r, num_args, args);
     }
     else {
         // Indirect procedure call through register.
         curr_bb = IR_op_to_r(builder, curr_bb, &proc_op);
-        IR_setup_call_ret(builder, expr_call, dst_op);
-        IR_emit_instr_call_indirect(builder, curr_bb, proc_op.type, proc_op.reg, dst_op->reg, num_args, args);
+        IR_Value r = IR_setup_call_ret(builder, expr_call, dst_op);
+        IR_emit_instr_call_indirect(builder, curr_bb, proc_op.type, proc_op.reg, r, num_args, args);
     }
 
     // Mark current procedure as non-leaf.
@@ -1828,10 +1857,16 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
         return IR_emit_expr_compound_lit(builder, bblock, (ExprCompoundLit*)expr, dst);
     case CST_ExprStr: {
         ExprStr* expr_str_lit = (ExprStr*)expr;
+        StrLit* str_lit = expr_str_lit->str_lit;
 
         dst->kind = IR_OPERAND_STR_LIT;
         dst->type = expr_str_lit->super.type;
-        dst->str_lit = expr_str_lit->str_lit;
+        dst->str_lit = str_lit;
+
+        if (!str_lit->used) {
+            str_lit->used = true;
+            bucket_list_add_elem(builder->str_lits, str_lit);
+        }
 
         return bblock;
     }
@@ -1866,12 +1901,24 @@ static BBlock* IR_emit_stmt_block(IR_ProcBuilder* builder, BBlock* bblock, StmtB
 static BBlock* IR_emit_stmt_return(IR_ProcBuilder* builder, BBlock* bblock, StmtReturn* sret)
 {
     BBlock* last_bb = bblock;
-    IR_Operand expr_op = {0};
+    IR_Value ret_val = {.type = builtin_types[BUILTIN_TYPE_VOID].type};
 
-    last_bb = IR_emit_expr(builder, last_bb, sret->expr, &expr_op);
-    last_bb = IR_op_to_r(builder, last_bb, &expr_op);
+    if (sret->expr) {
+        IR_Operand expr_op = {0};
 
-    IR_emit_instr_ret(builder, last_bb, expr_op.type, expr_op.reg);
+        last_bb = IR_emit_expr(builder, last_bb, sret->expr, &expr_op);
+        ret_val.type = expr_op.type;
+
+        if (type_is_aggregate(expr_op.type)) {
+            IR_get_object_addr(builder, last_bb, &ret_val.addr, &expr_op);
+        }
+        else {
+            last_bb = IR_op_to_r(builder, last_bb, &expr_op);
+            ret_val.reg = expr_op.reg;
+        }
+    }
+
+    IR_emit_instr_ret(builder, last_bb, ret_val);
 
     return NULL;
 }
@@ -2304,8 +2351,9 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     if (!dproc->returns) {
         assert(sym->type->as_proc.ret == builtin_types[BUILTIN_TYPE_VOID].type);
         assert(last_bb);
+        IR_Value ret_val = {.type = builtin_types[BUILTIN_TYPE_VOID].type};
 
-        IR_emit_instr_ret(builder, last_bb, builtin_types[BUILTIN_TYPE_VOID].type, IR_REG_COUNT);
+        IR_emit_instr_ret(builder, last_bb, ret_val);
     }
 
     IR_pop_scope(builder);
@@ -2349,16 +2397,16 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
         }
     }
 
-#ifdef NIBBLE_PRINT_DECLS
+#ifdef NIBBLE_PRINT_IRS
     IR_print_out_proc(builder->tmp_arena, sym);
     IR_dump_proc_dot(builder->tmp_arena, sym);
 #endif
 }
 
-static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache)
+static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, BucketList* str_lits, TypeCache* type_cache)
 {
     IR_ProcBuilder builder =
-        {.arena = arena, .tmp_arena = tmp_arena, .type_cache = type_cache, .curr_proc = NULL, .curr_scope = NULL};
+        {.arena = arena, .tmp_arena = tmp_arena, .str_lits = str_lits, .type_cache = type_cache, .curr_proc = NULL, .curr_scope = NULL};
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 

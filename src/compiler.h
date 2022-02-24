@@ -36,6 +36,7 @@ struct NibbleCtx {
     BucketList vars;
     BucketList procs;
     BucketList aggregate_types;
+    BucketList str_lits;
 };
 
 bool nibble_init(OS target_os, Arch target_arch);
