@@ -166,7 +166,6 @@ static bool cast_eop(ExprOperand* eop, Type* dst_type)
     Type* src_type = eop->type;
 
     if (src_type == dst_type) {
-        eop->type = dst_type;
         return true;
     }
 
@@ -343,7 +342,17 @@ static void convert_arith_eops(ExprOperand* left, ExprOperand* right)
         promote_int_eops(left);
         promote_int_eops(right);
 
+        // Collapse enum types to their base types.
+        if (left->type->kind == TYPE_ENUM) {
+            left->type = left->type->as_enum.base;
+        }
+
+        if (right->type->kind == TYPE_ENUM) {
+            right->type = right->type->as_enum.base;
+        }
+
         if (left->type != right->type) {
+            assert(left->type->kind == TYPE_INTEGER && right->type->kind == TYPE_INTEGER);
             TypeInteger* left_as_int = &left->type->as_integer;
             TypeInteger* right_as_int = &right->type->as_integer;
 
@@ -1135,6 +1144,27 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
         break;
     }
+    case TKN_AND:
+    case TKN_OR:
+    case TKN_CARET: {
+        if (!type_is_integer_like(left_op.type)) {
+            resolver_on_error(resolver, ebinary->left->range,
+                              "Left operand of binary operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[ebinary->op], type_name(left_op.type));
+            return false;
+        }
+
+        if (!type_is_integer_like(right_op.type)) {
+            resolver_on_error(resolver, ebinary->right->range,
+                              "Right operand of binary operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[ebinary->op], type_name(right_op.type));
+            return false;
+        }
+
+        resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
+
+        break;
+    }
     case TKN_EQ:
     case TKN_NOTEQ: {
         bool left_is_ptr = (left_op.type->kind == TYPE_PTR);
@@ -1377,9 +1407,6 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
         break;
     case TKN_NEG:
-        if (!try_eop_array_decay(resolver, &src_op, expr->range))
-            return false;
-
         if (!type_is_integer_like(src_op.type)) {
             resolver_on_error(resolver, expr->range, "Can only use unary ~ with integer types");
             return false;
@@ -2366,7 +2393,6 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 
     pop_scope(resolver);
     assert(array_len(params) == decl->num_params);
-    allocator_restore_state(mem_state);
 
     Type* ret_type = builtin_types[BUILTIN_TYPE_VOID].type;
 
@@ -2398,6 +2424,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     sym->type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type);
     sym->status = SYMBOL_STATUS_RESOLVED;
 
+    allocator_restore_state(mem_state);
     return true;
 }
 
@@ -2469,6 +2496,7 @@ static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* r
     for (List* it = head->next; it != head; it = it->next) {
         Stmt* child_stmt = list_entry(it, Stmt, lnode);
 
+        // TODO: Also consider statements after break or continue
         if (ret_success & RESOLVE_STMT_RETURNS) {
             resolver_on_error(resolver, child_stmt->range, "Statement will never be executed; all previous control paths return");
 
@@ -2747,9 +2775,15 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     case CST_StmtReturn: {
         ret = RESOLVE_STMT_RETURNS;
         StmtReturn* sret = (StmtReturn*)stmt;
+        Type* type_void = builtin_types[BUILTIN_TYPE_VOID].type;
 
-        if (!sret->expr && (ret_type != builtin_types[BUILTIN_TYPE_VOID].type)) {
+        if (!sret->expr && (ret_type != type_void)) {
             resolver_on_error(resolver, stmt->range, "Return statement is missing a return value of type `%s`", type_name(ret_type));
+            break;
+        }
+
+        if (sret->expr && (ret_type == type_void)) {
+            resolver_on_error(resolver, stmt->range, "Procedure with a `void` return type cannot return a value");
             break;
         }
 

@@ -1,6 +1,6 @@
-#ifndef NIBBLE_IR_H
-#define NIBBLE_IR_H
-#include "stream.h"
+#ifndef NIBBLE_IR_NEW_H
+#define NIBBLE_IR_NEW_H
+
 #include "ast.h"
 
 #define IR_STACK_ALIGN 16
@@ -10,388 +10,239 @@
 
 typedef u32 IR_Reg;
 
-typedef enum IR_InstrKind {
-    IR_INSTR_NONE = 0,
+typedef enum InstrKind {
+    INSTR_NONE = 0,
+    INSTR_ADD,
+    INSTR_SUB,
+    INSTR_MUL,
+    INSTR_UDIV,
+    INSTR_SDIV,
+    INSTR_SAR,
+    INSTR_SHL,
+    INSTR_AND,
+    INSTR_OR,
+    INSTR_XOR,
+    INSTR_NOT,
+    INSTR_NEG,
+    INSTR_TRUNC,
+    INSTR_ZEXT,
+    INSTR_SEXT,
+    INSTR_LIMM,
+    INSTR_LOAD,
+    INSTR_LADDR,
+    INSTR_STORE,
+    INSTR_CMP,
+    INSTR_JMP,
+    INSTR_COND_JMP,
+    INSTR_RET,
+    INSTR_CALL,
+    INSTR_CALL_INDIRECT,
+    INSTR_MEMCPY,
+    INSTR_PHI,
+    INSTR_KIND_COUNT
+} InstrKind;
 
-    // Addition
-    IR_INSTR_ADD_R_R,
-    IR_INSTR_ADD_R_M,
-    IR_INSTR_ADD_R_I,
+typedef enum MemBaseKind {
+    MEM_BASE_NONE = 0,
+    MEM_BASE_REG,
+    MEM_BASE_SYM,
+    MEM_BASE_OBJ,
+    MEM_BASE_STR_LIT,
+} MemBaseKind;
 
-    // Subtraction
-    IR_INSTR_SUB_R_R,
-    IR_INSTR_SUB_R_M,
-    IR_INSTR_SUB_R_I,
+typedef struct MemAddr {
+    MemBaseKind base_kind;
 
-    // Multiplication
-    IR_INSTR_MUL_R_R,
-    IR_INSTR_MUL_R_M,
-    IR_INSTR_MUL_R_I,
-
-    // Unsigned division
-    IR_INSTR_UDIV_R_R,
-    IR_INSTR_UDIV_R_M,
-    IR_INSTR_UDIV_R_I,
-
-    // Signed division
-    IR_INSTR_SDIV_R_R,
-    IR_INSTR_SDIV_R_M,
-    IR_INSTR_SDIV_R_I,
-
-    // TODO: Unsigned/Signed MOD
-
-    // Arithmetic shift right
-    IR_INSTR_SAR_R_R,
-    IR_INSTR_SAR_R_M,
-    IR_INSTR_SAR_R_I,
-
-    // Shift left
-    IR_INSTR_SHL_R_R,
-    IR_INSTR_SHL_R_M,
-    IR_INSTR_SHL_R_I,
-
-    // Bitwise NOT
-    IR_INSTR_NOT,
-
-    // Two's complement negation.
-    IR_INSTR_NEG,
-
-    // Load immediate into register.
-    IR_INSTR_LIMM,
-
-    // Truncate
-    IR_INSTR_TRUNC_R_R,
-    IR_INSTR_TRUNC_R_M,
-
-    // Zero-extend
-    IR_INSTR_ZEXT_R_R,
-    IR_INSTR_ZEXT_R_M,
-
-    // Sign-extend
-    IR_INSTR_SEXT_R_R,
-    IR_INSTR_SEXT_R_M,
-
-    // Load an address computation into a register.
-    IR_INSTR_LADDR,
-
-    // Load contents of memory into register.
-    IR_INSTR_LOAD,
-
-    // Store into memory.
-    IR_INSTR_STORE_R,
-    IR_INSTR_STORE_I,
-
-    // Compare two values and set condition flags
-    IR_INSTR_CMP_R_R,
-    IR_INSTR_CMP_R_M,
-    IR_INSTR_CMP_R_I,
-    IR_INSTR_CMP_M_R,
-    IR_INSTR_CMP_M_I,
-
-    // Jump to instruction index
-    IR_INSTR_JMP,
-
-    // Jump to instruction index based on condition
-    IR_INSTR_JMPCC,
-
-    // Set a byte (0 or 1) based on condition
-    IR_INSTR_SETCC,
-
-    // Return value in specifed register
-    IR_INSTR_RET,
-
-    // Call a procedure directly
-    IR_INSTR_CALL,
-
-    // Call a procedure indirectly (register has procedure address)
-    IR_INSTR_CALL_R,
-} IR_InstrKind;
-
-typedef enum IR_MemBaseKind {
-    IR_MEM_BASE_NONE = 0,
-    IR_MEM_BASE_REG,
-    IR_MEM_BASE_SYM,
-    IR_MEM_BASE_STR_LIT,
-} IR_MemBaseKind;
-
-typedef struct IR_MemAddr {
-    IR_MemBaseKind base_kind;
     union {
         IR_Reg reg;
         Symbol* sym;
+        AnonObj* obj;
         StrLit* str_lit;
     } base;
 
     IR_Reg index_reg;
     u8 scale;
     u32 disp;
-} IR_MemAddr;
+} MemAddr;
 
-typedef struct IR_InstrBinary_R_R {
+typedef struct InstrBinary {
     Type* type;
-    IR_Reg dst;
-    IR_Reg src;
-} IR_InstrBinary_R_R;
+    IR_Reg r;
+    IR_Reg a;
+    IR_Reg b;
+} InstrBinary;
 
-typedef struct IR_InstrBinary_R_M {
+typedef struct InstrShift {
     Type* type;
-    IR_Reg dst;
-    IR_MemAddr src;
-} IR_InstrBinary_R_M;
+    IR_Reg r;
+    IR_Reg a;
+    IR_Reg b;
+} InstrShift;
 
-typedef struct IR_InstrBinary_R_I {
+typedef struct InstrUnary {
     Type* type;
-    IR_Reg dst;
-    Scalar src;
-} IR_InstrBinary_R_I;
+    IR_Reg r;
+    IR_Reg a;
+} InstrUnary;
 
-typedef struct IR_InstrShift_R_R {
+typedef struct InstrConvert {
     Type* dst_type;
     Type* src_type;
-    IR_Reg dst;
-    IR_Reg src;
-} IR_InstrShift_R_R;
+    IR_Reg r;
+    IR_Reg a;
+} InstrConvert;
 
-typedef struct IR_InstrShift_R_M {
-    Type* dst_type;
-    Type* src_type;
-    IR_Reg dst;
-    IR_MemAddr src;
-} IR_InstrShift_R_M;
-
-typedef struct IR_InstrShift_R_I {
-    Type* dst_type;
-    Type* src_type;
-    IR_Reg dst;
-    Scalar src;
-} IR_InstrShift_R_I;
-
-typedef struct IR_InstrUnary {
+typedef struct InstrLImm {
     Type* type;
-    IR_Reg dst;
-} IR_InstrUnary;
+    IR_Reg r;
+    Scalar imm;
+} InstrLImm;
 
-typedef struct IR_InstrLImm {
+typedef struct InstrLoad {
     Type* type;
-    IR_Reg dst;
-    Scalar src;
-} IR_InstrLImm;
+    IR_Reg r;
+    MemAddr addr;
+} InstrLoad;
 
-typedef struct IR_InstrLoad {
+typedef struct InstrLAddr {
     Type* type;
-    IR_Reg dst;
-    IR_MemAddr src;
-} IR_InstrLoad;
+    IR_Reg r;
+    MemAddr addr;
+} InstrLAddr;
 
-typedef struct IR_InstrStore_R {
+typedef struct InstrStore {
     Type* type;
-    IR_MemAddr dst;
-    IR_Reg src;
-} IR_InstrStore_R;
+    MemAddr addr;
+    IR_Reg a;
+} InstrStore;
 
-typedef struct IR_InstrStore_I {
+typedef enum ConditionKind {
+    COND_U_LT,
+    COND_S_LT,
+    COND_U_LTEQ,
+    COND_S_LTEQ,
+    COND_U_GT,
+    COND_S_GT,
+    COND_U_GTEQ,
+    COND_S_GTEQ,
+    COND_EQ,
+    COND_NEQ,
+} ConditionKind;
+
+typedef struct InstrCmp {
     Type* type;
-    IR_MemAddr dst;
-    Scalar src;
-} IR_InstrStore_I;
+    ConditionKind cond;
+    IR_Reg r;
+    IR_Reg a;
+    IR_Reg b;
+} InstrCmp;
 
-typedef struct IR_InstrLAddr {
-    IR_Reg dst;
-    Type* type; // Type of the thing we would be loading. Not necessary??
-    IR_MemAddr mem;
-} IR_InstrLAddr;
+typedef struct InstrJmp {
+    BBlock* from;
+    BBlock* target;
+} InstrJmp;
 
-typedef struct IR_InstrRet {
+typedef struct InstrCondJmp {
+    BBlock* from;
+    BBlock* true_bb;
+    BBlock* false_bb;
+    IR_Reg a;
+} InstrCondJmp;
+
+typedef struct IR_Value {
     Type* type;
-    IR_Reg src;
-} IR_InstrRet;
-
-typedef struct IR_InstrConvert_R_R {
-    Type* dst_type;
-    Type* src_type;
-    IR_Reg dst;
-    IR_Reg src;
-} IR_InstrConvert_R_R;
-
-typedef struct IR_InstrConvert_R_M {
-    Type* dst_type;
-    Type* src_type;
-    IR_Reg dst;
-    IR_MemAddr src;
-} IR_InstrConvert_R_M;
-
-typedef struct IR_InstrCmp_R_R {
-    Type* type;
-    IR_Reg op1;
-    IR_Reg op2;
-} IR_InstrCmp_R_R;
-
-typedef struct IR_InstrCmp_R_M {
-    Type* type;
-    IR_Reg op1;
-    IR_MemAddr op2;
-} IR_InstrCmp_R_M;
-
-typedef struct IR_InstrCmp_R_I {
-    Type* type;
-    IR_Reg op1;
-    Scalar op2;
-} IR_InstrCmp_R_I;
-
-typedef struct IR_InstrCmp_M_R {
-    Type* type;
-    IR_MemAddr op1;
-    IR_Reg op2;
-} IR_InstrCmp_M_R;
-
-typedef struct IR_InstrCmp_M_I {
-    Type* type;
-    IR_MemAddr op1;
-    Scalar op2;
-} IR_InstrCmp_M_I;
-
-typedef enum IR_ConditionKind {
-    IR_COND_U_LT,
-    IR_COND_S_LT,
-    IR_COND_U_LTEQ,
-    IR_COND_S_LTEQ,
-    IR_COND_U_GT,
-    IR_COND_S_GT,
-    IR_COND_U_GTEQ,
-    IR_COND_S_GTEQ,
-    IR_COND_EQ,
-    IR_COND_NEQ,
-} IR_ConditionKind;
-
-typedef struct IR_InstrJmpCC {
-    u32* jmp_target;
-    IR_ConditionKind cond;
-} IR_InstrJmpCC;
-
-typedef struct IR_InstrJmp {
-    u32* jmp_target;
-} IR_InstrJmp;
-
-typedef struct IR_InstrSetCC {
-    IR_ConditionKind cond;
-    IR_Reg dst;
-} IR_InstrSetCC;
-
-typedef struct IR_InstrCallArg {
-    Type* type;
-    IR_Reg loc; // TODO: Support stack args
-} IR_InstrCallArg;
-
-typedef struct IR_InstrCall {
-    Symbol* sym;
-    IR_Reg dst;
-    u32 num_args;
-    IR_InstrCallArg* args;
-} IR_InstrCall;
-
-typedef struct IR_InstrCall_R {
-    Type* proc_type;
-    IR_Reg proc_loc;
-    IR_Reg dst;
-    u32 num_args;
-    IR_InstrCallArg* args;
-} IR_InstrCall_R;
-
-typedef struct IR_Instr {
-    IR_InstrKind kind;
-    bool is_jmp_target;
 
     union {
-        // Addition
-        IR_InstrBinary_R_R add_r_r;
-        IR_InstrBinary_R_M add_r_m;
-        IR_InstrBinary_R_I add_r_i;
-
-        // Subtraction
-        IR_InstrBinary_R_R sub_r_r;
-        IR_InstrBinary_R_M sub_r_m;
-        IR_InstrBinary_R_I sub_r_i;
-
-        // Multiplication
-        IR_InstrBinary_R_R mul_r_r;
-        IR_InstrBinary_R_M mul_r_m;
-        IR_InstrBinary_R_I mul_r_i;
-
-        // Division
-        IR_InstrBinary_R_R div_r_r;
-        IR_InstrBinary_R_M div_r_m;
-        IR_InstrBinary_R_I div_r_i;
-
-        // Arithmetic shift right
-        IR_InstrShift_R_R sar_r_r;
-        IR_InstrShift_R_M sar_r_m;
-        IR_InstrShift_R_I sar_r_i;
-
-        // Shift left
-        IR_InstrShift_R_R shl_r_r;
-        IR_InstrShift_R_M shl_r_m;
-        IR_InstrShift_R_I shl_r_i;
-
-        // Two's complement negation
-        IR_InstrUnary neg;
-
-        // Bitwise NOT
-        IR_InstrUnary not ;
-
-        // Load immediate into register
-        IR_InstrLImm limm;
-
-        // Load an address computation into register
-        IR_InstrLAddr laddr;
-
-        // Truncate integer
-        IR_InstrConvert_R_R trunc_r_r;
-        IR_InstrConvert_R_M trunc_r_m;
-
-        // Zero-extend integer
-        IR_InstrConvert_R_R zext_r_r;
-        IR_InstrConvert_R_M zext_r_m;
-
-        // Sign-extend integer
-        IR_InstrConvert_R_R sext_r_r;
-        IR_InstrConvert_R_M sext_r_m;
-
-        // Load contents of memory into register
-        IR_InstrLoad load;
-
-        // Store register contents into memory
-        IR_InstrStore_R store_r;
-
-        // Store immediate into memory
-        IR_InstrStore_I store_i;
-
-        // Compare two values and set condition flags
-        IR_InstrCmp_R_R cmp_r_r;
-        IR_InstrCmp_R_M cmp_r_m;
-        IR_InstrCmp_R_I cmp_r_i;
-        IR_InstrCmp_M_R cmp_m_r;
-        IR_InstrCmp_M_I cmp_m_i;
-
-        // Jump to instruction index
-        IR_InstrJmp jmp;
-
-        // Jump to instruction index based on condition
-        IR_InstrJmpCC jmpcc;
-
-        // Set a byte (1 or 0) based on condition
-        IR_InstrSetCC setcc;
-
-        // Return value in specified register
-        IR_InstrRet ret;
-
-        // Call a procedure directly
-        IR_InstrCall call;
-
-        // Call a procedure indirectly (register contains procedure address)
-        IR_InstrCall_R call_r;
+        IR_Reg reg;
+        MemAddr addr;
     };
-} IR_Instr;
+} IR_Value;
 
-void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, TypeCache* type_cache);
+typedef struct InstrCall {
+    Symbol* sym;
+    IR_Value r;
+    u32 num_args;
+    IR_Value* args;
+} InstrCall;
 
+typedef struct InstrCallIndirect {
+    Type* proc_type;
+    IR_Reg loc;
+    IR_Value r;
+    u32 num_args;
+    IR_Value* args;
+} InstrCallIndirect;
+
+typedef struct InstrRet {
+    IR_Value val;
+} InstrRet;
+
+typedef struct InstrMemcpy {
+    Type* type;
+    MemAddr dst;
+    MemAddr src;
+} InstrMemcpy;
+
+
+typedef struct PhiArg {
+    BBlock* bblock;
+    IR_Reg ireg;
+} PhiArg;
+
+typedef struct InstrPhi {
+    Type* type;
+    IR_Reg r;
+    size_t num_args;
+    PhiArg* args;
+} InstrPhi;
+
+typedef struct Instr {
+    InstrKind kind;
+    long ino; // Instruction number
+    bool is_leader;
+
+    union {
+        InstrBinary binary;
+        InstrShift shift;
+        InstrUnary unary;
+        InstrConvert convert;
+        InstrLImm limm;
+        InstrLoad load;
+        InstrStore store;
+        InstrLAddr laddr;
+        InstrCmp cmp;
+        InstrJmp jmp;
+        InstrCondJmp cond_jmp;
+        InstrCall call;
+        InstrCallIndirect calli;
+        InstrRet ret;
+        InstrMemcpy memcpy;
+        InstrPhi phi;
+    };
+
+    struct Instr* prev;
+    struct Instr* next;
+} Instr;
+
+enum BBlockFlags {
+    BBLOCK_IS_START    = 0x1,
+    BBLOCK_IS_LOOP_HDR = 0x2
+};
+
+struct BBlock {
+    long id;
+    u32 flags;
+
+    // Doubly-linked list of instructions.
+    size_t num_instrs;
+    Instr* first;
+    Instr* last;
+
+    BBlock** preds; // Stretchy buffer of predecessor basic blocks.
+
+    bool closed; // Currently used for debugging. A BBlock is closed once the final jmp/ret instruction has been added.
+};
+
+void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, BucketList* str_lits,
+                     TypeCache* type_cache);
 #endif

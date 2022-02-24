@@ -1,0 +1,18 @@
+proc main () => int {
+    var o : bool = 0;
+    var p : bool = 0;
+    var q : bool = 0;
+
+    var a : bool = 1;
+    var b : bool = 1;
+    var c : bool = 1;
+
+    // returns 4
+    return (o || 1) + // No SC => 1
+           (a && 1) + // No SC => 1
+           (a || 0) + // SC => 1
+           (o && 1) + // SC => 0
+           (a && b && 0) + // SC => 0
+           (a && q && b) + // SC => 0
+           (o || a || p);  // SC => 1
+}

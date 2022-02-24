@@ -7,6 +7,11 @@ enum TokenKind : s16 {
 
 #static_assert(#sizeof(#typeof(TK_INT)) == 2);
 
+enum SomeFlags : u64 {
+    FLAG_A = 0x1,
+    FLAG_B = 0x2
+}
+
 proc main() => int {
     #writeout("Enum\n", 5);
 
@@ -18,5 +23,7 @@ proc main() => int {
     #writeout(token_names[TK_INT], 7);
     #writeout("\n", 1);
 
-    return TK_NONE + TK_INT + TK_IDENT + TK_PLUS + 8; // 0 + 1 + 10 + 11 + 8 = 30
+    var f : SomeFlags = FLAG_B;
+
+    return FLAG_A + TK_NONE + TK_INT + TK_IDENT + f + TK_PLUS + 8; //1 + 2 + 0 + 1 + 10 + 11 + 8 = 33
 }

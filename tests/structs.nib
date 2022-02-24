@@ -1,20 +1,120 @@
+struct Smol {
+    a : char;
+    b : char;
+}
+
+proc pass_smol(s : Smol) => int {
+    return s.a + s.b;
+}
+
+struct SmolVec3 {
+    x : char;
+    y : char;
+    z : char;
+}
+
+struct SmolVec2 {
+    x : char;
+    y : char;
+}
+
 struct Vec3 {
     x : int;
     y : int;
     z : int;
 }
 
+proc vec3_add_comps(a: Vec3, b:  Vec3) => int {
+    return a.x + a.y + a.z + b.x + b.y + b.z;
+}
+
+struct Buf {
+    buf : [1024] char;
+}
+
+struct BarResult {
+    r : int;
+    buf: [32] char;
+}
+
+proc bar(a : int, b : Buf, c : Buf, d : int) => BarResult {
+    var r : BarResult;
+
+    r.r = a + b.buf[0] + c.buf[256] + d;
+    r.buf[31] = 2;
+
+    return r;
+}
+
+proc vec3_add(a : Vec3, b : Vec3) => Vec3 {
+    var c : Vec3;
+
+    c.x = a.x + b.x;
+    c.y = a.y + b.y;
+    c.z = a.z + b.z;
+
+    return c;
+}
+
+proc smol_vec3_add(a : SmolVec3, b : SmolVec3) => SmolVec3 {
+    var c : SmolVec3;
+
+    c.x = a.x + b.x;
+    c.y = a.y + b.y;
+    c.z = a.z + b.z;
+
+    return c;
+}
+
+proc smol_vec2_add(a : SmolVec2, b : SmolVec2) => SmolVec2 {
+    var c : SmolVec2;
+
+    c.x = a.x + b.x;
+    c.y = a.y + b.y;
+
+    return c;
+}
+
 proc main() => int {
     #writeout("Structs\n", 8);
 
-    var v : Vec3;
-    v.x = 10;
+    var s : Smol;
+    s.a = 1;
+    s.b = 10;
 
-    var p_v : ^Vec3 = ^v;
-    p_v.y = 20;
+    var r := pass_smol(s);
 
-    (*p_v).z = 30;
+    var v1 : Vec3;
+    var v2 : Vec3;
+    v1.x = 1; v1.y = 2; v1.z = 3;
+    v2 = v1;
 
-    // 10 + 20 + 30 = 60
-    return v.x + p_v.y + (*p_v).z;
+    var r2 := vec3_add_comps(v1, v2);
+
+    var buf : Buf;
+    buf.buf[0] = 20;
+
+    var buf2: Buf;
+    buf2.buf[256] = 10;
+
+    var r3 : BarResult = bar(3, buf, buf2, 4);
+
+    var r4 := vec3_add(v1, v2);
+
+    var sv1 : SmolVec3;
+    var sv2 : SmolVec3;
+    sv1.x = 3; sv1.y = 2; sv1.z = 1;
+    sv2 = sv1;
+
+    var r5 := smol_vec3_add(sv1, sv2);
+
+    var sv3 : SmolVec2;
+    var sv4 : SmolVec2;
+    sv3.x = -2; sv3.y = 1;
+    sv4 = sv3;
+
+    var r6 := smol_vec2_add(sv3, sv4);
+
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) = 84
+    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.z) + (r5.x + r5.y + r5.z) + (r6.x + r6.y);
 }
