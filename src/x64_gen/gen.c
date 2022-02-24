@@ -1882,27 +1882,27 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     allocator_restore_state(mem_state);
 }
 
-static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, HMap* str_lit_map)
+static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, BucketList* str_lits)
 {
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
     X64_emit_data(generator, "SECTION .rodata\n");
 
     // Emit static/const string literals
-    // TODO: Iterating through all empty slots in the hash table is slow....
-    for (u64 i = 0; i < str_lit_map->cap; i += 1) {
-        HMapEntry* entry = str_lit_map->entries + i;
+    size_t num_str_lits = str_lits->num_elems;
 
-        if (entry->key != HASH_MAP_NULL_KEY) {
-            StrLit* str_lit = UINT_PTR(entry->value, StrLit);
+    for (size_t i = 0; i < num_str_lits; i++) {
+        void** str_lit_ptr = bucket_list_get_elem_packed(str_lits, i);
+        assert(str_lit_ptr);
 
-            if (str_lit->used) {
-                const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
+        StrLit* str_lit = (StrLit*)(*str_lit_ptr);
 
-                X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
-                X64_emit_data(generator, "db `%s\\0`", escaped_str);
-            }
-        }
+        assert(str_lit->used);
+
+        const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
+
+        X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
+        X64_emit_data(generator, "db `%s\\0`", escaped_str);
     }
 
     X64_emit_data(generator, "\nSECTION .data\n");
@@ -1945,7 +1945,7 @@ static void X64_write_output_file(X64_Generator* generator, FILE* out_fd)
     }
 }
 
-bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs, HMap* str_lit_map,
+bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs, BucketList* str_lits,
                     const char* output_file)
 {
     FILE* out_fd = fopen(output_file, "w");
@@ -1962,7 +1962,7 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bu
     };
 
     // Generate global variables.
-    X64_gen_global_vars(&generator, vars, str_lit_map);
+    X64_gen_global_vars(&generator, vars, str_lits);
 
     // Generate instructions for each procedure.
     size_t num_procs = procs->num_elems;

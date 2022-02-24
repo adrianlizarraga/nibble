@@ -4,6 +4,7 @@
 typedef struct IR_ProcBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
+    BucketList* str_lits;
     TypeCache* type_cache;
     Symbol* curr_proc;
     Scope* curr_scope;
@@ -1856,12 +1857,17 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
         return IR_emit_expr_compound_lit(builder, bblock, (ExprCompoundLit*)expr, dst);
     case CST_ExprStr: {
         ExprStr* expr_str_lit = (ExprStr*)expr;
+        StrLit* str_lit = expr_str_lit->str_lit;
 
         dst->kind = IR_OPERAND_STR_LIT;
         dst->type = expr_str_lit->super.type;
-        dst->str_lit = expr_str_lit->str_lit;
+        dst->str_lit = str_lit;
 
-        dst->str_lit->used = true;
+        if (!str_lit->used) {
+            str_lit->used = true;
+            bucket_list_add_elem(builder->str_lits, str_lit);
+        }
+
         return bblock;
     }
     default:
@@ -2397,10 +2403,10 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
 #endif
 }
 
-static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, TypeCache* type_cache)
+static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, BucketList* str_lits, TypeCache* type_cache)
 {
     IR_ProcBuilder builder =
-        {.arena = arena, .tmp_arena = tmp_arena, .type_cache = type_cache, .curr_proc = NULL, .curr_scope = NULL};
+        {.arena = arena, .tmp_arena = tmp_arena, .str_lits = str_lits, .type_cache = type_cache, .curr_proc = NULL, .curr_scope = NULL};
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 
