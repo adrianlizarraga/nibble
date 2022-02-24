@@ -35,7 +35,6 @@ const U32_ALIGN_MASK : u32 = (#sizeof(u32) - 1);
 proc cstr_len(str : ^char) => usize {
     var s := str;
 
-    /*
     // Calc length until s pointer is aligned to a 4-byte boundary.
     while (((s :> usize) & U32_ALIGN_MASK)) {
         if (!*s)
@@ -45,13 +44,12 @@ proc cstr_len(str : ^char) => usize {
     }
 
     // Iterate over the data in 4-byte increments until the null terminator is found.
-    const w : ^u32 = s :> ^void;
+    var w : ^u32 = s :> ^void;
 
-    while ((*w - U32_ONE_BYTES) & (~(*w)) & U32_EIGHT_BYTES)
+    while (!((*w - U32_ONE_BYTES) & (~(*w)) & U32_EIGHT_BYTES))
         w = w + 1;
 
     s = w :> ^void; // Point to the beginning of the word containing the 0 byte.
-    */
 
     while (*s)
         s = s + 1;
