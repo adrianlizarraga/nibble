@@ -1378,7 +1378,7 @@ static void X64_windows_cpy_ret_small_struct(X64_Generator* generator, Type* ret
     }
 }
 
-static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
+static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_instr)
 {
     static const char* binary_r_r_name[] = {[X64_INSTR_ADD_R_R] = "add", [X64_INSTR_SUB_R_R] = "sub", [X64_INSTR_IMUL_R_R] = "imul",
                                             [X64_INSTR_AND_R_R] = "and", [X64_INSTR_OR_R_R] = "or",   [X64_INSTR_XOR_R_R] = "xor"};
@@ -1570,7 +1570,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         break;
     }
     case X64_INSTR_RET: {
-        if (instr->next) { // Not the last instruction
+        if (!last_instr) { // Not the last instruction
             X64_emit_text(generator, "    jmp end.%s", symbol_mangled_name(generator->tmp_mem, generator->curr_proc.sym));
         }
 
@@ -1836,7 +1836,9 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
         X64_emit_text(generator, "    %s:", X64_get_label(generator, bb->id));
 
         for (X64_Instr* instr = bb->first; instr; instr = instr->next) {
-            X64_gen_instr(generator, instr);
+            bool last_instr = (ii == builder.num_bblocks - 1) && !instr->next;
+
+            X64_gen_instr(generator, instr, last_instr);
         }
     }
 

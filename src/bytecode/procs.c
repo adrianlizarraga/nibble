@@ -644,7 +644,7 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
         dst_reg = IR_next_reg(builder);
 
         IR_emit_instr_zext(builder, bblock, operand->type, builtin_types[BUILTIN_TYPE_U8].type, dst_reg,
-                           def_cmp->final_jmp.cmp->cmp.cond);
+                           def_cmp->final_jmp.cmp->cmp.r);
     }
     else {
         // Fix final jmp condition so that it jumps to "false" control path.
