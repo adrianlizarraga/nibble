@@ -554,7 +554,7 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
     // For procs that return a large struct by value:
     // Spill the first argument, which contains a pointer to the return value's memory address, into the stack.
     // We need to spill (remember) this address so that the procedure can return it, as per the X64 calling conventions.
-    if (type_is_aggregate(ret_type) && (ret_type->size > (X64_MAX_INT_REG_SIZE << 1))) {
+    if (type_is_aggregate(ret_type) && X64_linux_is_struct_retarg_large(ret_type->size)) {
         X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE, x64_target.arg_regs[arg_reg_index++]);
     }
 
@@ -617,9 +617,23 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
 static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, Symbol* sproc, X64_StackParamsInfo* stack_params_info)
 {
     DeclProc* dproc = (DeclProc*)sproc->decl;
+    Type* ret_type = sproc->type->as_proc.ret;
 
     u32 index = 0;
-    u64 stack_arg_offset = 0x10;
+    u64 stack_arg_offset = X64_STACK_ARG_RBP_OFFSET;
+
+    bool has_dst_arg = type_is_aggregate(ret_type) && X64_windows_is_struct_retarg_large(ret_type->size);
+
+    // For procs that return a large struct by value:
+    // Spill the first argument, which contains a pointer to the return value's memory address, into the stack.
+    // We need to spill (remember) this address so that the procedure can return it, as per the X64 calling conventions.
+    if (has_dst_arg) {
+    	X64_Reg arg_reg = x64_target.arg_regs[index++];
+
+    	X64_emit_text(generator, "    mov %s [rbp + %d], %s ; Spill dst ptr", x64_mem_size_label[X64_MAX_INT_REG_SIZE],
+		      X64_consume_stack_arg(&stack_arg_offset, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE),
+		      x64_reg_names[X64_MAX_INT_REG_SIZE][arg_reg]);
+    }
 
     Scope* scope = dproc->scope;
     List* head = &scope->sym_list;
@@ -628,7 +642,7 @@ static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, Symb
     while (it != head) {
         // Only process params. Local variables are not processed here.
         // TODO: Support varargs
-        if (index >= dproc->num_params)
+        if (index >= (dproc->num_params + has_dst_arg))
             break;
 
         Symbol* sym = list_entry(it, Symbol, lnode);
@@ -641,18 +655,16 @@ static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, Symb
         u64 slot_align = arg_type->align;
 
         if (type_is_aggregate(arg_type)) {
-            bool obj_in_reg = (slot_size <= X64_MAX_INT_REG_SIZE) && IS_POW2(slot_size);
-
-            if (obj_in_reg) {
-                sym->as_var.is_ptr = false;
-                sym->as_var.offset = X64_consume_stack_arg(&stack_arg_offset, slot_size, slot_align);
-            }
-            else {
+            if (X64_windows_is_struct_retarg_large(slot_size)) {
                 // NOTE: Passing the object's address!
                 slot_size = X64_MAX_INT_REG_SIZE;
                 slot_align = X64_MAX_INT_REG_SIZE;
 
                 sym->as_var.is_ptr = true;
+                sym->as_var.offset = X64_consume_stack_arg(&stack_arg_offset, slot_size, slot_align);
+            }
+	    else {
+                sym->as_var.is_ptr = false;
                 sym->as_var.offset = X64_consume_stack_arg(&stack_arg_offset, slot_size, slot_align);
             }
         }
@@ -1232,7 +1244,7 @@ static void X64_windows_place_struct_args_in_stack(X64_Generator* generator, u32
                 continue;
             }
 
-            assert(arg_size > X64_MAX_INT_REG_SIZE);
+	    assert(X64_windows_is_struct_retarg_large(arg_size));
 
             // TODO: There's no need to push all (rdi, rsi, rcx) if not used.
             if (!pushed_cpy_state) {
@@ -1337,7 +1349,7 @@ static void X64_linux_cpy_ret_small_struct(X64_Generator* generator, Type* ret_t
 {
     // Procedure returned a small structure object in registers.
     // Copy into appropriate memory location.
-    if (ret_type->size <= (X64_MAX_INT_REG_SIZE << 1)) {
+    if (!X64_linux_is_struct_retarg_large(ret_type->size)) {
         X64_SIBDAddr obj_addr = {0};
         X64_get_sibd_addr(generator, &obj_addr, &dst_val->addr);
 
@@ -1356,7 +1368,7 @@ static void X64_windows_cpy_ret_small_struct(X64_Generator* generator, Type* ret
 {
     // Procedure returned a small structure object in RAX.
     // Copy into appropriate memory location.
-    if (ret_type->size <= X64_MAX_INT_REG_SIZE) {
+    if (!X64_windows_is_struct_retarg_large(ret_type->size)) {
         X64_SIBDAddr obj_addr = {0};
         X64_get_sibd_addr(generator, &obj_addr, &dst_val->addr);
 
@@ -1617,7 +1629,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr)
         // memory location as the first argument.
         Type* ret_type = proc_type->as_proc.ret;
 
-        if (type_is_aggregate(ret_type) && ret_type->size > (X64_MAX_INT_REG_SIZE << 1)) {
+        if (type_is_aggregate(ret_type) && X64_is_struct_retarg_large(ret_type->size)) {
             X64_Reg dst_reg = x64_target.arg_regs[0];
             X64_SIBDAddr obj_addr = {0};
             X64_get_sibd_addr(generator, &obj_addr, &dst_val.addr);

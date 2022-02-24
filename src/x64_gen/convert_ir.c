@@ -413,7 +413,7 @@ static void X64_windows_place_obj_arg(X64_LIRBuilder* builder, X64_BBlock* xbblo
     X64_get_lir_addr(builder, xbblock, &dst->val.addr, &src->addr, (1 << X64_RDI));
 
     bool reg_avail = arg_index < x64_target.num_arg_regs;
-    bool fit_reg = (size <= X64_MAX_INT_REG_SIZE) && IS_POW2(size);
+    bool fit_reg = !X64_windows_is_struct_retarg_large(size);
 
     // Pass entire object in a register.
     if (reg_avail && fit_reg) {
@@ -441,7 +441,7 @@ static X64_StackArgsInfo X64_windows_convert_call_args(X64_LIRBuilder* builder, 
                                                        IR_Value* args, X64_InstrCallArg* x64_args)
 {
     X64_StackArgsInfo stack_info = {.size = X64_WINDOWS_SHADOW_SPACE, .offset = X64_WINDOWS_SHADOW_SPACE};
-    u32 offset = type_is_aggregate(ret_type) && (ret_type->size > X64_MAX_INT_REG_SIZE);
+    u32 offset = type_is_aggregate(ret_type) && X64_windows_is_struct_retarg_large(ret_type->size);
 
     // Place arguments.
     // NOTE: For struct objects that cannot be placed in a single register, a pointer to a copy is provided as the argument.
@@ -484,10 +484,11 @@ static X64_StackArgsInfo X64_convert_call_args(X64_LIRBuilder* builder, X64_BBlo
 
 static bool X64_try_combine_limm(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr** p_ir_instr)
 {
-    static const u32 INSTR_IS_BINARY = 0x1;
-    static const u32 INSTR_IS_COMM = 0x2;
-    static const u32 INSTR_IS_SHIFT = 0x4;
-    static u32 instr_kind_flags[INSTR_KIND_COUNT] = {
+#define INSTR_IS_BINARY 0x1
+#define INSTR_IS_COMM   0x2
+#define INSTR_IS_SHIFT  0x4
+
+    static const u32 instr_kind_flags[INSTR_KIND_COUNT] = {
         [INSTR_ADD] = INSTR_IS_BINARY | INSTR_IS_COMM,
         [INSTR_SUB] = INSTR_IS_BINARY,
         [INSTR_MUL] = INSTR_IS_BINARY | INSTR_IS_COMM,
@@ -587,6 +588,10 @@ static bool X64_try_combine_limm(X64_LIRBuilder* builder, X64_BBlock* xbblock, I
     }
 
     return false;
+
+#undef INSTR_IS_BINARY
+#undef INSTR_IS_COMM
+#undef INSTR_IS_SHIFT
 }
 
 static void X64_add_call_site(X64_LIRBuilder* builder, X64_Instr* instr)
@@ -607,7 +612,7 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
             X64_MemAddr obj_addr;
             X64_get_lir_addr(builder, xbblock, &obj_addr, &ir_instr->ret.val.addr, (1 << X64_RDI));
 
-            if (ret_type->size > (X64_MAX_INT_REG_SIZE << 1)) { // Large obj
+            if (X64_linux_is_struct_retarg_large(ret_type->size)) { // Large obj
                 // Copy object to the address provided to the procedure.
 
                 X64_MemAddr dst_addr_loc = {
@@ -670,7 +675,7 @@ static void X64_windows_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock
             X64_MemAddr obj_addr;
             X64_get_lir_addr(builder, xbblock, &obj_addr, &ir_instr->ret.val.addr, (1 << X64_RDI));
 
-            if (ret_type->size > X64_MAX_INT_REG_SIZE) { // Large obj
+            if (X64_windows_is_struct_retarg_large(ret_type->size)) { // Large obj
                 // Copy object to the address provided to the procedure.
 
                 X64_MemAddr dst_addr_loc = {
