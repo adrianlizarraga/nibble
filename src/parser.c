@@ -1946,7 +1946,7 @@ static Decl* parse_decl_var(Parser* parser)
 }
 
 // proc_param = TKN_IDENT ':' type_spec
-static Decl* parse_proc_param(Parser* parser)
+static Decl* parse_proc_param(Parser* parser, bool* is_variadic)
 {
     const char* error_prefix = "Failed to parse procedure parameter";
 
@@ -1954,17 +1954,33 @@ static Decl* parse_proc_param(Parser* parser)
         return NULL;
 
     Identifier* name = parser->ptoken.as_ident.ident;
-    ProgRange range = {.start = parser->ptoken.range.start};
+    ProgPos start = parser->ptoken.range.start;
 
     if (!expect_token(parser, TKN_COLON, error_prefix))
         return NULL;
+
+    if (match_token(parser, TKN_ELLIPSIS)) {
+        if (*is_variadic) {
+            ProgRange err_range = {.start = start, .end = parser->token.range.end};
+            parser_on_error(parser, err_range, "%s: can only specify one variadic argument", error_prefix);
+            return NULL;
+        }
+
+
+        *is_variadic = true;
+    }
+    else if (*is_variadic) {
+        ProgRange err_range = {.start = start, .end = parser->token.range.end};
+        parser_on_error(parser, err_range, "%s: variadic argument must appear last in the parameter list", error_prefix);
+        return NULL;
+    }
 
     TypeSpec* typespec = parse_typespec(parser);
 
     if (!typespec)
         return NULL;
 
-    range.end = typespec->range.end;
+    ProgRange range = {.start = start, .end = typespec->range.end};
 
     return new_decl_var(parser->ast_arena, name, typespec, NULL, range);
 }
@@ -1974,66 +1990,80 @@ static Decl* parse_proc_param(Parser* parser)
 static Decl* parse_decl_proc(Parser* parser)
 {
     assert(is_keyword(parser, KW_PROC));
-    Decl* decl = NULL;
     ProgRange range = {.start = parser->token.range.start};
     const char* error_prefix = "Failed to parse procedure declaration";
 
     next_token(parser);
 
-    if (expect_token(parser, TKN_IDENT, error_prefix)) {
-        Identifier* name = parser->ptoken.as_ident.ident;
+    // Parse procedure name
+    if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+        return NULL;
+    }
 
-        if (expect_token(parser, TKN_LPAREN, error_prefix)) {
-            u32 num_params = 0;
-            List params = list_head_create(params);
-            bool bad_param = false;
+    Identifier* name = parser->ptoken.as_ident.ident;
 
-            while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
-                Decl* param = parse_proc_param(parser);
+    // Parse opening parenthesis.
+    if (!expect_token(parser, TKN_LPAREN, error_prefix)) {
+        return NULL;
+    }
 
-                if (param) {
-                    num_params += 1;
-                    list_add_last(&params, &param->lnode);
-                }
-                else {
-                    bad_param = true;
-                }
+    // Parse parameters
+    u32 num_params = 0;
+    bool is_variadic = false;
+    List params = list_head_create(params);
 
-                if (bad_param || !match_token(parser, TKN_COMMA))
-                    break;
-            }
+    while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
+        Decl* param = parse_proc_param(parser, &is_variadic);
 
-            if (!bad_param && expect_token(parser, TKN_RPAREN, error_prefix)) {
-                TypeSpec* ret = NULL;
-                bool bad_ret = false;
-
-                if (match_token(parser, TKN_ARROW)) {
-                    ret = parse_typespec(parser);
-                    bad_ret = !ret;
-                }
-
-                if (!bad_ret) {
-                    StmtBlockBody body = {0};
-
-                    if (is_token_kind(parser, TKN_LBRACE)) {
-                        if (parse_fill_stmt_block_body(parser, &body, error_prefix)) {
-                            range.end = parser->ptoken.range.end;
-                            decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
-                                                 body.num_decls, 0, range);
-                        }
-                    }
-                    else if (match_token(parser, TKN_SEMICOLON)) {
-                        list_head_init(&body.stmts);
-                        range.end = parser->ptoken.range.end;
-                        decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
-                                             body.num_decls, true, range);
-                    }
-                    else {
-                        parser_unexpected_token(parser, TKN_RBRACE, error_prefix);
-                    }
-                }
-            }
+        if (!param) {
+            return NULL;
         }
+
+        num_params += 1;
+        list_add_last(&params, &param->lnode);
+
+        if (!match_token(parser, TKN_COMMA)) {
+            break;
+        }
+    }
+
+    // Parse closing parenthesis.
+    if (!expect_token(parser, TKN_RPAREN, error_prefix)) {
+        return NULL;
+    }
+
+    // Parse return value type.
+    TypeSpec* ret = NULL;
+
+    if (match_token(parser, TKN_ARROW)) {
+        ret = parse_typespec(parser);
+
+        if (!ret) {
+            return NULL;
+        }
+    }
+
+    Decl* decl = NULL;
+    StmtBlockBody body = {0};
+
+    // Parse procedure body.
+    if (is_token_kind(parser, TKN_LBRACE)) {
+        if (parse_fill_stmt_block_body(parser, &body, error_prefix)) {
+            range.end = parser->ptoken.range.end;
+            decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
+                                 body.num_decls, 0, range);
+        }
+    }
+    // Parse end of incomplete procedure.
+    else if (match_token(parser, TKN_SEMICOLON)) {
+        list_head_init(&body.stmts);
+        range.end = parser->ptoken.range.end;
+        decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
+                             body.num_decls, true, range);
+    }
+    // Unexpected token error.
+    else {
+        parser_unexpected_token(parser, TKN_LBRACE, error_prefix);
     }
 
     return decl;
