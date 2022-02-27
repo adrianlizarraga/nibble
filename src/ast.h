@@ -870,7 +870,9 @@ struct Symbol {
 };
 
 struct AnonObj {
-    Type* type;
+    size_t size;
+    size_t align;
+
     u32 id;
     s32 offset;
     List lnode;
@@ -914,7 +916,7 @@ Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 
 void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list);
 Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl);
-AnonObj* add_anon_object(Allocator* allocator, Scope* scope, Type* type);
+AnonObj* add_anon_obj(Allocator* allocator, Scope* scope, size_t size, size_t align);
 bool install_module_decls(Allocator* allocator, Module* mod);
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym);
 bool import_all_mod_syms(Module* dst_mod, Module* src_mod);

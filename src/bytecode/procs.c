@@ -8,6 +8,7 @@ typedef struct IR_ProcBuilder {
     TypeCache* type_cache;
     Symbol* curr_proc;
     Scope* curr_scope;
+    List* curr_anon_obj;
 
     struct IR_DeferredJmpcc* sc_jmp_freelist;
     struct IR_UJmpNode* ujmp_freelist;
@@ -291,12 +292,12 @@ static void IR_emit_instr_unary(IR_ProcBuilder* builder, BBlock* bblock, InstrKi
     IR_add_instr(builder, bblock, instr);
 }
 
-#define IR_emit_instr_trunc(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_TRUNC, (dt), (st), (r), (a)) 
-#define IR_emit_instr_zext(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_ZEXT, (dt), (st), (r), (a)) 
-#define IR_emit_instr_sext(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_SEXT, (dt), (st), (r), (a)) 
+#define IR_emit_instr_trunc(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_TRUNC, (dt), (st), (r), (a))
+#define IR_emit_instr_zext(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_ZEXT, (dt), (st), (r), (a))
+#define IR_emit_instr_sext(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_SEXT, (dt), (st), (r), (a))
 
-static void IR_emit_instr_convert(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* dst_type, Type* src_type,
-                                  IR_Reg r, IR_Reg a)
+static void IR_emit_instr_convert(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* dst_type, Type* src_type, IR_Reg r,
+                                  IR_Reg a)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
     instr->convert.dst_type = dst_type;
@@ -323,7 +324,7 @@ static void IR_emit_instr_load(IR_ProcBuilder* builder, BBlock* bblock, Type* ty
     instr->load.type = type;
     instr->load.r = r;
     instr->load.addr = addr;
-    
+
     IR_add_instr(builder, bblock, instr);
 }
 
@@ -333,7 +334,7 @@ static void IR_emit_instr_laddr(IR_ProcBuilder* builder, BBlock* bblock, Type* t
     instr->laddr.type = type;
     instr->laddr.r = r;
     instr->laddr.addr = addr;
-    
+
     IR_add_instr(builder, bblock, instr);
 }
 
@@ -408,7 +409,8 @@ static void IR_emit_instr_call(IR_ProcBuilder* builder, BBlock* bblock, Symbol* 
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg loc, IR_Value r, u32 num_args, IR_Value* args)
+static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg loc, IR_Value r, u32 num_args,
+                                        IR_Value* args)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_CALL_INDIRECT);
     instr->calli.proc_type = type;
@@ -610,8 +612,8 @@ static void IR_fix_sc_jmp_path(IR_DeferredJmpcc* def_jmp, bool desired_result)
     }
 }
 
-static BBlock* IR_copy_sc_jmp(IR_ProcBuilder* builder, BBlock* bblock,
-                              IR_DeferredJmpcc* dst_jmp, IR_DeferredJmpcc* src_jmp, bool desired_result)
+static BBlock* IR_copy_sc_jmp(IR_ProcBuilder* builder, BBlock* bblock, IR_DeferredJmpcc* dst_jmp, IR_DeferredJmpcc* src_jmp,
+                              bool desired_result)
 {
     *dst_jmp = *src_jmp;
 
@@ -696,10 +698,7 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
 
         // Emit PHI instruction.
         dst_reg = IR_next_reg(builder);
-        PhiArg phi_args[2] = {
-            {.bblock = t_bblock, .ireg = one_reg},
-            {.bblock = f_bblock, .ireg = zero_reg}
-        };
+        PhiArg phi_args[2] = {{.bblock = t_bblock, .ireg = one_reg}, {.bblock = f_bblock, .ireg = zero_reg}};
 
         IR_emit_instr_phi(builder, e_bblock, operand->type, dst_reg, 2, phi_args);
     }
@@ -764,7 +763,6 @@ static void IR_ptr_to_mem_op(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand
     if (operand->kind == IR_OPERAND_VAR) {
         base_reg = IR_next_reg(builder);
         IR_emit_instr_load(builder, bblock, operand->type, base_reg, IR_sym_as_addr(operand->sym));
-
     }
     else if (operand->kind == IR_OPERAND_DEREF_ADDR) {
         // Occurs when dereferencing a pointer to a pointer.
@@ -1002,6 +1000,50 @@ static void IR_pop_scope(IR_ProcBuilder* builder)
     builder->curr_scope = builder->curr_scope->parent;
 }
 
+static Scope* IR_get_proc_scope(IR_ProcBuilder* builder)
+{
+    Symbol* proc_sym = builder->curr_proc;
+    DeclProc* dproc = (DeclProc*)proc_sym->decl;
+
+    return dproc->scope;
+}
+
+static void IR_reset_anon_obj_stack(IR_ProcBuilder* builder)
+{
+    Scope* scope = IR_get_proc_scope(builder);
+
+    builder->curr_anon_obj = &scope->obj_list;
+}
+
+static AnonObj* IR_get_anon_obj(IR_ProcBuilder* builder, size_t size, size_t align)
+{
+    AnonObj* obj;
+    Scope* scope = IR_get_proc_scope(builder);
+    List* head = &scope->obj_list;
+    List* next = builder->curr_anon_obj->next;
+
+    if (next == head) {
+        obj = add_anon_obj(builder->arena, scope, size, align);
+        builder->curr_anon_obj = head->prev;
+    }
+    else {
+        obj = list_entry(next, AnonObj, lnode);
+
+        // Keep the largest size and alignment values when reusing the same memory.
+        if (obj->size < size) {
+            obj->size = size;
+        }
+
+        if (obj->align < align) {
+            obj->align = align;
+        }
+
+        builder->curr_anon_obj = next;
+    }
+
+    return obj;
+}
+
 //////////////////////////////////////////////////////
 //
 //         Walk AST and emit IR instructions
@@ -1031,7 +1073,8 @@ static void IR_emit_expr_ident(IR_ProcBuilder* builder, ExprIdent* eident, IR_Op
     IR_operand_from_sym(dst, sym);
 }
 
-static BBlock* IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op, bool add)
+static BBlock* IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* dst, IR_Operand* ptr_op, IR_Operand* int_op,
+                                   bool add)
 {
     BBlock* curr_bb = bblock;
     u64 base_size = ptr_op->type->as_ptr.base->size;
@@ -1080,7 +1123,7 @@ static BBlock* IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_O
 }
 
 static BBlock* IR_emit_binary_cmp(IR_ProcBuilder* builder, BBlock* bblock, ConditionKind cond_kind, Type* dst_type, IR_Operand* dst_op,
-                               IR_Operand* left_op, IR_Operand* right_op)
+                                  IR_Operand* left_op, IR_Operand* right_op)
 {
     assert(left_op->type == right_op->type);
     BBlock* curr_bb = IR_op_to_r(builder, bblock, left_op);
@@ -1168,7 +1211,6 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
             it = next_it;
             prev_it = it;
         }
-
     }
 
     // The left subexpression is some computation (not a deferred comparison). Compare the left subexpression to zero
@@ -1282,7 +1324,6 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
             IR_emit_instr_sub(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
 
             if (base_size_log2 > 0) {
-
                 // Load shift amount into a register.
                 Scalar shift_arg = {.as_int._u32 = base_size_log2};
                 IR_Reg shift_reg = IR_next_reg(builder);
@@ -1706,7 +1747,7 @@ static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, 
         }
         else {
             dst_op->kind = IR_OPERAND_OBJ;
-            dst_op->obj = add_anon_object(builder->arena, builder->curr_scope, dst_op->type);
+            dst_op->obj = IR_get_anon_obj(builder, dst_op->type->size, dst_op->type->align);
 
             ret_val.addr = IR_obj_as_addr(dst_op->obj);
         }
@@ -1889,8 +1930,8 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
     }
 }
 
-
-static BBlock* IR_emit_stmt_block_body(IR_ProcBuilder* builder, BBlock* bblock, List* stmts, IR_UJmpList* break_ujmps, IR_UJmpList* cont_ujmps)
+static BBlock* IR_emit_stmt_block_body(IR_ProcBuilder* builder, BBlock* bblock, List* stmts, IR_UJmpList* break_ujmps,
+                                       IR_UJmpList* cont_ujmps)
 {
     BBlock* last_bb = bblock;
 
@@ -1902,7 +1943,8 @@ static BBlock* IR_emit_stmt_block_body(IR_ProcBuilder* builder, BBlock* bblock, 
     return last_bb;
 }
 
-static BBlock* IR_emit_stmt_block(IR_ProcBuilder* builder, BBlock* bblock, StmtBlock* sblock, IR_UJmpList* break_ujmps, IR_UJmpList* cont_ujmps)
+static BBlock* IR_emit_stmt_block(IR_ProcBuilder* builder, BBlock* bblock, StmtBlock* sblock, IR_UJmpList* break_ujmps,
+                                  IR_UJmpList* cont_ujmps)
 {
     IR_push_scope(builder, sblock->scope);
     BBlock* last_bb = IR_emit_stmt_block_body(builder, bblock, &sblock->stmts, break_ujmps, cont_ujmps);
@@ -2053,7 +2095,8 @@ static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* 
     return curr_bb;
 }
 
-static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* stmt, IR_UJmpList* break_ujmps, IR_UJmpList* cont_ujmps)
+static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* stmt, IR_UJmpList* break_ujmps,
+                               IR_UJmpList* cont_ujmps)
 {
     Expr* cond_expr = stmt->if_blk.cond;
     Stmt* if_body = stmt->if_blk.body;
@@ -2082,12 +2125,12 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     BBlock* true_end_bb = IR_emit_stmt(builder, true_bb, if_body, break_ujmps, cont_ujmps);
 
     if (true_end_bb) {
-        IR_emit_instr_jmp(builder, true_end_bb, last_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
+        IR_emit_instr_jmp(builder, true_end_bb,
+                          last_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
     }
 
     if (else_body) {
         BBlock* false_end_bb = IR_emit_stmt(builder, false_bb, else_body, break_ujmps, cont_ujmps);
-
 
         if (false_end_bb) {
             IR_emit_instr_jmp(builder, false_end_bb, last_bb); // Not really needed in actual assembly (fall-through)
@@ -2303,40 +2346,61 @@ static bool IR_rm_dead_bblocks(Symbol* sym)
 
 static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt, IR_UJmpList* break_ujmps, IR_UJmpList* cont_ujmps)
 {
+    BBlock* last_bb = NULL;
+
     switch (stmt->kind) {
     case CST_StmtBlock:
-        return IR_emit_stmt_block(builder, bblock, (StmtBlock*)stmt, break_ujmps, cont_ujmps);
+        last_bb = IR_emit_stmt_block(builder, bblock, (StmtBlock*)stmt, break_ujmps, cont_ujmps);
+        break;
     case CST_StmtReturn:
-        return IR_emit_stmt_return(builder, bblock, (StmtReturn*)stmt);
+        last_bb = IR_emit_stmt_return(builder, bblock, (StmtReturn*)stmt);
+        break;
     case CST_StmtDecl:
-        return IR_emit_stmt_decl(builder, bblock, (StmtDecl*)stmt);
+        last_bb = IR_emit_stmt_decl(builder, bblock, (StmtDecl*)stmt);
+        break;
     case CST_StmtExpr:
-        return IR_emit_stmt_expr(builder, bblock, (StmtExpr*)stmt);
+        last_bb = IR_emit_stmt_expr(builder, bblock, (StmtExpr*)stmt);
+        break;
     case CST_StmtExprAssign:
-        return IR_emit_stmt_expr_assign(builder, bblock, (StmtExprAssign*)stmt);
+        last_bb = IR_emit_stmt_expr_assign(builder, bblock, (StmtExprAssign*)stmt);
+        break;
     case CST_StmtIf:
-        return IR_emit_stmt_if(builder, bblock, (StmtIf*)stmt, break_ujmps, cont_ujmps);
+        last_bb = IR_emit_stmt_if(builder, bblock, (StmtIf*)stmt, break_ujmps, cont_ujmps);
+        break;
     case CST_StmtWhile:
-        return IR_emit_stmt_while(builder, bblock, (StmtWhile*)stmt);
+        last_bb = IR_emit_stmt_while(builder, bblock, (StmtWhile*)stmt);
+        break;
     case CST_StmtDoWhile:
-        return IR_emit_stmt_do_while(builder, bblock, (StmtDoWhile*)stmt);
+        last_bb = IR_emit_stmt_do_while(builder, bblock, (StmtDoWhile*)stmt);
+        break;
     case CST_StmtBreak: {
         Instr* instr = IR_emit_instr_jmp(builder, bblock, NULL);
         IR_add_ujmp(builder, break_ujmps, instr); // Add to list of unpatched jumps
-        return NULL;
+
+        last_bb = NULL;
+        break;
     }
     case CST_StmtContinue: {
         Instr* instr = IR_emit_instr_jmp(builder, bblock, NULL);
         IR_add_ujmp(builder, cont_ujmps, instr); // Add to list of unpatched jumps
-        return NULL;
+
+        last_bb = NULL;
+        break;
     }
     case CST_StmtStaticAssert:
         // Do nothing.
-        return bblock;
+        last_bb = bblock;
+        break;
     default:
         NIBBLE_FATAL_EXIT("Cannot emit bytecode instruction for statement kind `%d`\n", stmt->kind);
-        return NULL;
+        break;
     }
+
+    // Reset anon object pointer after every statement.
+    // This allows us to reuse the same temporary memory for anonymous objects that appear in different statements.
+    IR_reset_anon_obj_stack(builder);
+
+    return last_bb;
 }
 
 static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
@@ -2348,14 +2412,15 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     }
 
     // Set procedure as the current scope.
-    IR_push_scope(builder, dproc->scope);
     builder->curr_proc = sym;
+    IR_push_scope(builder, dproc->scope);
+    IR_reset_anon_obj_stack(builder);
 
     sym->as_proc.bblocks = array_create(builder->arena, BBlock*, 8);
 
     BBlock* start_bb = IR_alloc_bblock(builder);
     start_bb->flags |= BBLOCK_IS_START;
-    
+
     BBlock* last_bb = IR_emit_stmt_block_body(builder, start_bb, &dproc->stmts, NULL, NULL);
 
     // If proc doesn't have explicit returns, add one at the end.
@@ -2418,8 +2483,12 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
 
 static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, BucketList* str_lits, TypeCache* type_cache)
 {
-    IR_ProcBuilder builder =
-        {.arena = arena, .tmp_arena = tmp_arena, .str_lits = str_lits, .type_cache = type_cache, .curr_proc = NULL, .curr_scope = NULL};
+    IR_ProcBuilder builder = {.arena = arena,
+                              .tmp_arena = tmp_arena,
+                              .str_lits = str_lits,
+                              .type_cache = type_cache,
+                              .curr_proc = NULL,
+                              .curr_scope = NULL};
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 

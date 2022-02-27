@@ -737,8 +737,8 @@ static u64 X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* scope
         while (it != head) {
             AnonObj* obj = list_entry(it, AnonObj, lnode);
 
-            stack_size += obj->type->size;
-            stack_size = ALIGN_UP(stack_size, obj->type->align);
+            stack_size += obj->size;
+            stack_size = ALIGN_UP(stack_size, obj->align);
             obj->offset = -stack_size;
 
             it = it->next;
@@ -813,8 +813,8 @@ static u64 X64_assign_proc_stack_offsets(X64_Generator* generator, Symbol* sproc
         while (it != head) {
             AnonObj* obj = list_entry(it, AnonObj, lnode);
 
-            stack_size += obj->type->size;
-            stack_size = ALIGN_UP(stack_size, obj->type->align);
+            stack_size += obj->size;
+            stack_size = ALIGN_UP(stack_size, obj->align);
             obj->offset = -stack_size;
 
             it = it->next;

@@ -1,0 +1,41 @@
+struct Vec3 {
+    x : int;
+    y : int;
+    z : int;
+}
+
+proc v3(x : int) => Vec3 {
+    var r : Vec3;
+
+    r.x = x;
+    r.y = x;
+    r.z = x;
+
+    return r;
+}
+
+struct Vec4 {
+    x : ssize;
+    y : ssize;
+    z : ssize;
+    w : ssize;
+}
+
+proc v4(x : ssize) => Vec4 {
+    var r : Vec4;
+
+    r.x = x;
+    r.y = x;
+    r.z = x;
+    r.w = x;
+
+    return r;
+}
+
+proc main() => int {
+    var r1 := v3(1).x + v3(2).y + v3(3).z; // 6
+    var r2 := v4(5).x + v4(2).y + v4(2).z + v4(1).w; // 10
+
+    return r2 + r1; // 16
+}
+
