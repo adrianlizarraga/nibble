@@ -1,0 +1,18 @@
+proc add_variadic(nums : ..int) => int {
+    var i : usize = 0;
+    var result : int = 0;
+
+    while (i < nums.size) {
+        result = result + nums.data[i];
+        
+        i = i + 1;
+    }
+
+    return result;
+}
+
+proc main() => int {
+    var r := add_variadic(1, 2, "hi");
+
+    return r;
+}

@@ -178,7 +178,6 @@ typedef struct ExprUnary {
 } ExprUnary;
 
 typedef struct ProcCallArg {
-    ProgRange range;
     Expr* expr;
     Identifier* name;
     ListNode lnode;
@@ -623,6 +622,7 @@ typedef struct TypeProc {
     size_t num_params;
     Type** params;
     Type* ret;
+    bool is_variadic;
 } TypeProc;
 
 typedef struct TypeArray {
@@ -744,10 +744,11 @@ TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len);
-Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
+Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic);
 Type* type_unsigned_int(Type* type_int);
 Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl);
 Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym);
+Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap* type_ptr_cache, Type* elem_type);
 
 ///////////////////////////////
 //       Symbols

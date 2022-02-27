@@ -910,6 +910,28 @@ TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name)
     return NULL;
 }
 
+Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap* type_ptr_cache, Type* elem_type)
+{
+    uint64_t* pval = hmap_get(type_variadic_cache, PTR_UINT(elem_type));
+    Type* type = pval ? (void*)*pval : NULL;
+
+    if (!type) {
+        type = type_alloc(allocator, TYPE_INCOMPLETE_AGGREGATE);
+
+        TypeAggregateField fields[2] = {0};
+        fields[0].type = builtin_types[BUILTIN_TYPE_USIZE].type;
+        fields[0].name = builtin_struct_fields[BUILTIN_STRUCT_FIELD_SIZE];
+
+        fields[1].type = type_ptr(allocator, type_ptr_cache, elem_type);
+        fields[1].name = builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA];
+
+        complete_struct_type(allocator, type, ARRAY_LEN(fields), fields);
+
+        hmap_put(type_variadic_cache, PTR_UINT(elem_type), PTR_UINT(type));
+    }
+
+    return type;
+}
 void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields)
 {
     size_t size = 0;
@@ -1036,7 +1058,7 @@ Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_
     return type;
 }
 
-Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret)
+Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic)
 {
     size_t params_size = num_params * sizeof(params[0]);
     uint64_t key = hash_mix_uint64(hash_bytes(params, params_size), hash_ptr(ret));
@@ -1069,6 +1091,7 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
     type->as_proc.num_params = num_params;
     type->as_proc.params = mem_dup_array(allocator, Type*, params, num_params);
     type->as_proc.ret = ret;
+    type->as_proc.is_variadic = is_variadic;
 
     CachedType* new_cached = alloc_type(allocator, CachedType, true);
     new_cached->type = type;
