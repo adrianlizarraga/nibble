@@ -54,9 +54,10 @@ TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange ran
     return (TypeSpec*)typespec;
 }
 
-TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range)
+TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, bool is_variadic, ProgRange range)
 {
     TypeSpecProc* typespec = new_typespec(allocator, TypeSpecProc, range);
+    typespec->is_variadic = is_variadic;
     typespec->num_params = num_params;
     typespec->ret = ret;
 
@@ -65,11 +66,12 @@ TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* param
     return (TypeSpec*)typespec;
 }
 
-ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* typespec, ProgRange range)
+ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* typespec, bool is_variadic, ProgRange range)
 {
     ProcParam* param = alloc_type(allocator, ProcParam, true);
     param->name = name;
     param->typespec = typespec;
+    param->is_variadic = is_variadic;
     param->range = range;
 
     return param;
@@ -267,10 +269,11 @@ static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind
     return decl;
 }
 
-Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, ProgRange range)
+Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, bool is_variadic, ProgRange range)
 {
     DeclVar* decl = new_decl(allocator, DeclVar, name, range);
     decl->typespec = typespec;
+    decl->is_variadic = is_variadic;
     decl->init = init;
 
     return (Decl*)decl;
@@ -343,12 +346,13 @@ AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, Type
 }
 
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts, u32 num_decls,
-                    bool is_incomplete, ProgRange range)
+                    bool is_incomplete, bool is_variadic, ProgRange range)
 {
     DeclProc* decl = new_decl(allocator, DeclProc, name, range);
     decl->ret = ret;
     decl->num_params = num_params;
     decl->is_incomplete = is_incomplete;
+    decl->is_variadic = is_variadic;
     decl->num_decls = num_decls;
 
     list_replace(params, &decl->params);

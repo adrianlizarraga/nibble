@@ -3,9 +3,6 @@
 
 #include <string.h>
 
-#define PARSER_ARENA_BLOCK_SIZE 512
-//#define NIBBLE_PRINT_DECLS
-
 static void parser_on_error(Parser* parser, ProgRange range, const char* format, ...)
 {
     if (parser->errors) {
@@ -238,32 +235,77 @@ static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_pref
 }
 
 // typespec_proc_param = (name ':')? typespec
-static ProcParam* parse_typespec_proc_param(Parser* parser)
+static ProcParam* parse_typespec_proc_param(Parser* parser, bool* is_variadic)
 {
+    const char* error_prefix = "Failed to parse procedure type";
     ProcParam* param = NULL;
-    TypeSpec* typespec = parse_typespec(parser);
 
-    if (typespec && match_token(parser, TKN_COLON)) {
-        if (typespec->kind == CST_TypeSpecIdent) {
-            ProgRange range = {.start = typespec->range.start};
+    // Parse variadic parameter type without a name. EX: .. typespec
+    if (match_token(parser, TKN_ELLIPSIS)) {
+        if (*is_variadic) {
+            parser_on_error(parser, parser->ptoken.range, "%s: can only specify one variadic parameter", error_prefix);
+            return NULL;
+        }
+
+        *is_variadic = true;
+
+        TypeSpec* typespec = parse_typespec(parser);
+
+        if (match_token(parser, TKN_COLON)) {
+            parser_on_error(parser, parser->ptoken.range, "%s: `..` must appear before parameter type", error_prefix);
+            return NULL;
+        }
+
+        param = new_proc_param(parser->ast_arena, NULL, typespec, *is_variadic, typespec->range);
+    }
+    else {
+        TypeSpec* typespec = parse_typespec(parser);
+
+        if (!typespec) {
+            return NULL;
+        }
+
+        // Parse a potentially variadic parameter type with a name. EX: `x : int` or `x : ..int`.
+        if (match_token(parser, TKN_COLON)) {
+            if (typespec->kind != CST_TypeSpecIdent) {
+                parser_on_error(parser, typespec->range, "Parameter's name must be an alphanumeric identifier");
+                return NULL;
+            }
+
+            ProgPos start = typespec->range.start;
             TypeSpecIdent* tident = (TypeSpecIdent*)typespec;
             Identifier* name = tident->name;
 
             mem_free(parser->ast_arena, typespec);
 
+            if (match_token(parser, TKN_ELLIPSIS)) {
+                if (*is_variadic) {
+                    ProgRange err_range = {.start = start, .end = parser->token.range.end};
+                    parser_on_error(parser, err_range, "%s: can only specify one variadic parameter", error_prefix);
+                    return NULL;
+                }
+
+                *is_variadic = true;
+            }
+            else if (*is_variadic) {
+                ProgRange err_range = {.start = start, .end = parser->token.range.end};
+                parser_on_error(parser, err_range, "%s: variadic parameter must appear last in the parameter list", error_prefix);
+                return NULL;
+            }
+
             typespec = parse_typespec(parser);
 
-            if (typespec) {
-                range.end = typespec->range.end;
-                param = new_proc_param(parser->ast_arena, name, typespec, range);
+            if (!typespec) {
+                return NULL;
             }
+
+            ProgRange range =  {.start = start, .end = typespec->range.end};
+            param = new_proc_param(parser->ast_arena, name, typespec, *is_variadic, range);
         }
+        // Parameter type does not have a name and is not variadic.
         else {
-            parser_on_error(parser, typespec->range, "Parameter's name must be an alphanumeric identifier");
+            param = new_proc_param(parser->ast_arena, NULL, typespec, false, typespec->range);
         }
-    }
-    else if (typespec) {
-        param = new_proc_param(parser->ast_arena, NULL, typespec, typespec->range);
     }
 
     return param;
@@ -275,50 +317,49 @@ static ProcParam* parse_typespec_proc_param(Parser* parser)
 static TypeSpec* parse_typespec_proc(Parser* parser)
 {
     assert(is_keyword(parser, KW_PROC));
-    TypeSpec* typespec = NULL;
     ProgRange range = {.start = parser->token.range.start};
     const char* error_prefix = "Failed to parse procedure type specification";
 
     next_token(parser);
 
-    if (expect_token(parser, TKN_LPAREN, error_prefix)) {
-        size_t num_params = 0;
-        List params = list_head_create(params);
-        bool bad_param = false;
+    if (!expect_token(parser, TKN_LPAREN, error_prefix)) {
+        return NULL;
+    }
 
-        while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
-            ProcParam* param = parse_typespec_proc_param(parser);
+    size_t num_params = 0;
+    List params = list_head_create(params);
+    bool is_variadic = false;
 
-            if (param) {
-                num_params += 1;
-                list_add_last(&params, &param->lnode);
-            }
-            else {
-                bad_param = true;
-                break;
-            }
+    while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
+        ProcParam* param = parse_typespec_proc_param(parser, &is_variadic);
 
-            if (!match_token(parser, TKN_COMMA))
-                break;
+        if (!param) {
+            return NULL;
         }
 
-        if (!bad_param && expect_token(parser, TKN_RPAREN, error_prefix)) {
-            TypeSpec* ret = NULL;
-            bool bad_ret = false;
+        num_params += 1;
+        list_add_last(&params, &param->lnode);
 
-            if (match_token(parser, TKN_ARROW)) {
-                ret = parse_typespec(parser);
-                bad_ret = ret == NULL;
-            }
+        if (!match_token(parser, TKN_COMMA))
+            break;
+    }
 
-            if (!bad_ret) {
-                range.end = parser->ptoken.range.end;
-                typespec = new_typespec_proc(parser->ast_arena, num_params, &params, ret, range);
-            }
+    if (!expect_token(parser, TKN_RPAREN, error_prefix)) {
+        return NULL;
+    }
+
+    TypeSpec* ret = NULL;
+
+    if (match_token(parser, TKN_ARROW)) {
+        ret = parse_typespec(parser);
+
+        if (!ret) {
+            return NULL;
         }
     }
 
-    return typespec;
+    range.end = parser->ptoken.range.end;
+    return new_typespec_proc(parser->ast_arena, num_params, &params, ret, is_variadic, range);
 }
 
 typedef struct NamespacedIdent {
@@ -1931,7 +1972,7 @@ static Decl* parse_decl_var(Parser* parser)
                 if (typespec || expr) {
                     if (expect_token(parser, TKN_SEMICOLON, error_prefix)) {
                         range.end = parser->ptoken.range.end;
-                        decl = new_decl_var(parser->ast_arena, name, typespec, expr, range);
+                        decl = new_decl_var(parser->ast_arena, name, typespec, expr, false, range);
                     }
                 }
                 else {
@@ -1962,7 +2003,7 @@ static Decl* parse_proc_param(Parser* parser, bool* is_variadic)
     if (match_token(parser, TKN_ELLIPSIS)) {
         if (*is_variadic) {
             ProgRange err_range = {.start = start, .end = parser->token.range.end};
-            parser_on_error(parser, err_range, "%s: can only specify one variadic argument", error_prefix);
+            parser_on_error(parser, err_range, "%s: can only specify one variadic parameter", error_prefix);
             return NULL;
         }
 
@@ -1971,18 +2012,19 @@ static Decl* parse_proc_param(Parser* parser, bool* is_variadic)
     }
     else if (*is_variadic) {
         ProgRange err_range = {.start = start, .end = parser->token.range.end};
-        parser_on_error(parser, err_range, "%s: variadic argument must appear last in the parameter list", error_prefix);
+        parser_on_error(parser, err_range, "%s: variadic parameter must appear last in the parameter list", error_prefix);
         return NULL;
     }
 
     TypeSpec* typespec = parse_typespec(parser);
 
-    if (!typespec)
+    if (!typespec) {
         return NULL;
+    }
 
     ProgRange range = {.start = start, .end = typespec->range.end};
 
-    return new_decl_var(parser->ast_arena, name, typespec, NULL, range);
+    return new_decl_var(parser->ast_arena, name, typespec, NULL, *is_variadic, range);
 }
 
 // decl_proc  = 'proc' TKN_IDENT '(' param_list ')' ('=>' typespec)? stmt_block
@@ -2051,7 +2093,7 @@ static Decl* parse_decl_proc(Parser* parser)
         if (parse_fill_stmt_block_body(parser, &body, error_prefix)) {
             range.end = parser->ptoken.range.end;
             decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
-                                 body.num_decls, 0, range);
+                                 body.num_decls, false, is_variadic, range);
         }
     }
     // Parse end of incomplete procedure.
@@ -2059,7 +2101,7 @@ static Decl* parse_decl_proc(Parser* parser)
         list_head_init(&body.stmts);
         range.end = parser->ptoken.range.end;
         decl = new_decl_proc(parser->ast_arena, name, num_params, &params, ret, &body.stmts,
-                             body.num_decls, true, range);
+                             body.num_decls, true, is_variadic, range);
     }
     // Unexpected token error.
     else {

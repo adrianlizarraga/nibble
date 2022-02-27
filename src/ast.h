@@ -79,12 +79,14 @@ typedef TypeSpecAggregate TypeSpecUnion;
 typedef struct ProcParam {
     ProgRange range;
     Identifier* name;
+    bool is_variadic;
     TypeSpec* typespec;
     ListNode lnode;
 } ProcParam;
 
 typedef struct TypeSpecProc {
     TypeSpec super;
+    bool is_variadic;
     size_t num_params;
     List params;
     TypeSpec* ret;
@@ -113,8 +115,8 @@ TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range)
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
 TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
-ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
-TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range);
+ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* type, bool is_variadic, ProgRange range);
+TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, bool is_variadic, ProgRange range);
 
 typedef TypeSpec* NewTypeSpecAggregateProc(Allocator* alloc, List* fields, ProgRange range);
 TypeSpec* new_typespec_struct(Allocator* allocator, List* fields, ProgRange range);
@@ -517,6 +519,7 @@ struct Decl {
 
 typedef struct DeclVar {
     Decl super;
+    bool is_variadic;
     TypeSpec* typespec;
     Expr* init;
 } DeclVar;
@@ -556,7 +559,10 @@ typedef struct DeclProc {
     u32 num_params;
     u32 num_decls;
     bool returns;
+
+    // TODO: Use flags variable
     bool is_incomplete;
+    bool is_variadic;
 
     List params;
     List stmts;
@@ -570,7 +576,7 @@ typedef struct DeclTypedef {
 } DeclTypedef;
 
 DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRange range);
-Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
+Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, bool is_variadic, ProgRange range);
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* type, size_t num_items, List* items, ProgRange range);
@@ -580,7 +586,7 @@ typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fie
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, bool is_incomplete, ProgRange range);
+                    u32 num_decls, bool is_incomplete, bool is_variadic, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 
