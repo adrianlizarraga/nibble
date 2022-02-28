@@ -8,7 +8,7 @@ typedef struct IR_ProcBuilder {
     TypeCache* type_cache;
     Symbol* curr_proc;
     Scope* curr_scope;
-    List* curr_anon_obj;
+    List* curr_tmp_obj;
 
     struct IR_DeferredJmpcc* sc_jmp_freelist;
     struct IR_UJmpNode* ujmp_freelist;
@@ -1000,31 +1000,27 @@ static void IR_pop_scope(IR_ProcBuilder* builder)
     builder->curr_scope = builder->curr_scope->parent;
 }
 
-static Scope* IR_get_proc_scope(IR_ProcBuilder* builder)
+static void IR_reset_tmp_obj_stack(IR_ProcBuilder* builder)
 {
     Symbol* proc_sym = builder->curr_proc;
-    DeclProc* dproc = (DeclProc*)proc_sym->decl;
 
-    return dproc->scope;
+    builder->curr_tmp_obj = &proc_sym->as_proc.tmp_objs;
 }
 
-static void IR_reset_anon_obj_stack(IR_ProcBuilder* builder)
-{
-    Scope* scope = IR_get_proc_scope(builder);
-
-    builder->curr_anon_obj = &scope->obj_list;
-}
-
-static AnonObj* IR_get_anon_obj(IR_ProcBuilder* builder, size_t size, size_t align)
+static AnonObj* IR_get_tmp_obj(IR_ProcBuilder* builder, size_t size, size_t align)
 {
     AnonObj* obj;
-    Scope* scope = IR_get_proc_scope(builder);
-    List* head = &scope->obj_list;
-    List* next = builder->curr_anon_obj->next;
+    Symbol* proc_sym = builder->curr_proc;
+    List* head = &proc_sym->as_proc.tmp_objs;
+    List* next = builder->curr_tmp_obj->next;
 
     if (next == head) {
-        obj = add_anon_obj(builder->arena, scope, size, align);
-        builder->curr_anon_obj = head->prev;
+        // NOTE: Use a negative ID for temporary anonymous objects. This ID is used only for debugging purposes.
+        // May consider using a hierarchical ID.
+        obj = add_anon_obj(builder->arena, head, -proc_sym->as_proc.num_tmp_objs - 1, size, align);
+
+        proc_sym->as_proc.num_tmp_objs += 1;
+        builder->curr_tmp_obj = head->prev;
     }
     else {
         obj = list_entry(next, AnonObj, lnode);
@@ -1038,7 +1034,7 @@ static AnonObj* IR_get_anon_obj(IR_ProcBuilder* builder, size_t size, size_t ali
             obj->align = align;
         }
 
-        builder->curr_anon_obj = next;
+        builder->curr_tmp_obj = next;
     }
 
     return obj;
@@ -1747,7 +1743,7 @@ static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, 
         }
         else {
             dst_op->kind = IR_OPERAND_OBJ;
-            dst_op->obj = IR_get_anon_obj(builder, dst_op->type->size, dst_op->type->align);
+            dst_op->obj = IR_get_tmp_obj(builder, dst_op->type->size, dst_op->type->align);
 
             ret_val.addr = IR_obj_as_addr(dst_op->obj);
         }
@@ -2398,7 +2394,7 @@ static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt,
 
     // Reset anon object pointer after every statement.
     // This allows us to reuse the same temporary memory for anonymous objects that appear in different statements.
-    IR_reset_anon_obj_stack(builder);
+    IR_reset_tmp_obj_stack(builder);
 
     return last_bb;
 }
@@ -2411,10 +2407,14 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
         return;
     }
 
+    // Initialize stack of temporary anonymous objects.
+    list_head_init(&sym->as_proc.tmp_objs);
+    sym->as_proc.num_tmp_objs = 0;
+
     // Set procedure as the current scope.
     builder->curr_proc = sym;
     IR_push_scope(builder, dproc->scope);
-    IR_reset_anon_obj_stack(builder);
+    IR_reset_tmp_obj_stack(builder);
 
     sym->as_proc.bblocks = array_create(builder->arena, BBlock*, 8);
 

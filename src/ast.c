@@ -1385,15 +1385,14 @@ Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, D
     return sym;
 }
 
-AnonObj* add_anon_obj(Allocator* allocator, Scope* scope, size_t size, size_t align)
+AnonObj* add_anon_obj(Allocator* allocator, List* objs, s32 id, size_t size, size_t align)
 {
     AnonObj* obj = alloc_type(allocator, AnonObj, true);
     obj->size = size;
     obj->align = align;
-    obj->id = scope->num_objs;
+    obj->id = id;
 
-    list_add_last(&scope->obj_list, &obj->lnode);
-    scope->num_objs += 1;
+    list_add_last(objs, &obj->lnode);
 
     return obj;
 }
