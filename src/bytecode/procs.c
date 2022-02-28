@@ -1754,12 +1754,14 @@ static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, 
 
 static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call)
 {
-    u32 num_args = (u32)expr_call->num_args; // TODO: Wrong for variadic procs.
-    IR_Value* args = alloc_array(builder->arena, IR_Value, num_args, false);
-
     Type* proc_type = expr_call->proc->type;
     bool is_variadic = proc_type->as_proc.is_variadic;
     size_t num_params = proc_type->as_proc.num_params;
+    size_t num_args = expr_call->num_args;
+
+    // NOTE: Variadic arguments are collapsed into one struct, so the number of IR arguments will always
+    // match the number of parameters.
+    IR_Value* args = alloc_array(builder->arena, IR_Value, num_params, false);
 
     // Emit instructions for each argument expression and collect the resulting expression values
     // into an `args` array.
@@ -1770,7 +1772,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
 
     // Handle arguments for non-variadic parameters.
     while (arg_index < n) {
-        assert(it != head);
+        assert(it != head && arg_index < num_args);
         ProcCallArg* ast_arg = list_entry(it, ProcCallArg, lnode);
         IR_Operand arg_op = {0};
 
@@ -1794,8 +1796,12 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
 
     // Handle variadic arguments.
     // Place arguments into a local array and then pass the struct {size, data} to the procedure.
-    if (is_variadic) {
-        assert(0); // TODO: Implement
+    size_t num_vargs = num_args - n;
+
+    if (num_vargs) {
+        // var arr : [num_vargs] = {[0] = <0>, [1] = <1>, ..., [num_vargs - 1] = <..>};
+        Type* variadic_type = proc_type->as_proc.params[num_params - 1];
+        AnonObj* arr_obj = IR_get_tmp_obj(builder, variadic_type->size * num_vargs, variadic_type->align);
     }
 
     return args; // TODO: Need to also return number of arguments (different for varargs).
