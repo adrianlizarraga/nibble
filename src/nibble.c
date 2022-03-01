@@ -1120,6 +1120,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     //////////////////////////////////////////
     //          Gen IR bytecode
     //////////////////////////////////////////
+    ftprint_out("[INFO]: Generating IR ...\n");
     IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lits, &nibble->type_cache);
 
     //////////////////////////////////////////

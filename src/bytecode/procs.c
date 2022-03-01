@@ -1752,7 +1752,7 @@ static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, 
     return ret_val;
 }
 
-static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call)
+static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call, size_t* p_num_args)
 {
     Type* proc_type = expr_call->proc->type;
     bool is_variadic = proc_type->as_proc.is_variadic;
@@ -1761,7 +1761,8 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
 
     // NOTE: Variadic arguments are collapsed into one struct, so the number of IR arguments will always
     // match the number of parameters.
-    IR_Value* args = alloc_array(builder->arena, IR_Value, num_params, false);
+    *p_num_args = num_params;
+    IR_Value* args = alloc_array(builder->arena, IR_Value, *p_num_args, false);
 
     // Emit instructions for each argument expression and collect the resulting expression values
     // into an `args` array.
@@ -1799,19 +1800,68 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
     size_t num_vargs = num_args - n;
 
     if (num_vargs) {
-        // var arr : [num_vargs] = {[0] = <0>, [1] = <1>, ..., [num_vargs - 1] = <..>};
-        Type* variadic_type = proc_type->as_proc.params[num_params - 1];
-        AnonObj* arr_obj = IR_get_tmp_obj(builder, variadic_type->size * num_vargs, variadic_type->align);
+        //
+        // var arr : [num_vargs] <elem_type> = {[0] = <varg0>, [1] = <varg1>, ..., [num_vargs - 1] = <..>};
+        //
+
+        Type* struct_type = proc_type->as_proc.params[num_params - 1];
+        TypeAggregateField* data_field = get_type_aggregate_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+        Type* ptr_type = data_field->type;
+        Type* elem_type = ptr_type->as_ptr.base;
+
+        // Reserve memory space for the array object.
+        AnonObj* arr_obj = IR_get_tmp_obj(builder, elem_type->size * num_vargs, elem_type->align);
+        MemAddr arr_addr = IR_obj_as_addr(arr_obj);
+        IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = arr_addr};
+
+        // Assign expression to each element in the array.
+        while (arg_index < num_args) {
+            assert(it != head && arg_index < num_args);
+            ProcCallArg* ast_arg = list_entry(it, ProcCallArg, lnode);
+            IR_Operand arg_op = {0};
+
+            *p_bblock = IR_emit_expr(builder, *p_bblock, ast_arg->expr, &arg_op);
+            *p_bblock = IR_emit_assign(builder, *p_bblock, &elem_ptr_op, &arg_op);
+
+            elem_ptr_op.addr.disp += elem_type->size;
+
+            arg_index += 1;
+            it = it->next;
+        }
+
+        //
+        // var struct_arg : VariadicStruct<elem_type> = {.size = <num_vargs>, .data = arr};
+        //
+
+        AnonObj* struct_obj = IR_get_tmp_obj(builder, struct_type->size, struct_type->size);
+        MemAddr struct_addr = IR_obj_as_addr(struct_obj);
+
+        TypeAggregateField* size_field = get_type_aggregate_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_SIZE]);
+
+        IR_Operand size_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = size_field->type, .addr = struct_addr};
+        size_field_op.addr.disp += size_field->offset;
+
+        IR_Operand data_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = data_field->type, .addr = struct_addr};
+        data_field_op.addr.disp += data_field->offset;
+
+        IR_Operand size_val_op = {.kind = IR_OPERAND_IMM, .type = size_field->type, .imm.as_int._u64 = num_vargs};
+        IR_Operand data_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = data_field->type, .addr = arr_addr};
+
+        *p_bblock = IR_emit_assign(builder, *p_bblock, &size_field_op, &size_val_op);
+        *p_bblock = IR_emit_assign(builder, *p_bblock, &data_field_op, &data_val_op);
+
+        args[n].type = struct_type;
+        args[n].addr = struct_addr;
     }
 
-    return args; // TODO: Need to also return number of arguments (different for varargs).
+    return args;
 }
 
 static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCall* expr_call, IR_Operand* dst_op)
 {
     BBlock* curr_bb = bblock;
-    u32 num_args = (u32)expr_call->num_args;
-    IR_Value* args = IR_setup_call_args(builder, &curr_bb, expr_call);
+    size_t num_args = 0;
+    IR_Value* args = IR_setup_call_args(builder, &curr_bb, expr_call, &num_args);
 
     // Emit instructions for the procedure pointer/name.
     IR_Operand proc_op = {0};
