@@ -703,6 +703,8 @@ enum BuiltinTypeKind {
     BUILTIN_TYPE_SSIZE,
     BUILTIN_TYPE_USIZE,
 
+    BUILTIN_TYPE_ANY,
+
     NUM_BUILTIN_TYPES,
 };
 

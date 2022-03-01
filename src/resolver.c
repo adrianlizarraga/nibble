@@ -251,8 +251,8 @@ static bool can_convert_eop(ExprOperand* operand, Type* dst_type)
     if (dst_type == src_type) {
         convertible = true;
     }
-    // Can convert anything to void
-    else if (dst_type == builtin_types[BUILTIN_TYPE_VOID].type) {
+    // Can convert anything to any
+    else if (dst_type == builtin_types[BUILTIN_TYPE_ANY].type) {
         convertible = true;
     }
     // Can convert between arithmetic types

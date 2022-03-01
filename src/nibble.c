@@ -317,6 +317,8 @@ static bool init_builtin_struct_fields()
     static const StringView names[BUILTIN_STRUCT_FIELD_COUNT] = {
         [BUILTIN_STRUCT_FIELD_SIZE] = string_view_lit("size"),
         [BUILTIN_STRUCT_FIELD_DATA] = string_view_lit("data"),
+        [BUILTIN_STRUCT_FIELD_TYPE] = string_view_lit("type"),
+        [BUILTIN_STRUCT_FIELD_PTR] = string_view_lit("ptr"),
     };
 
     for (int i = 0; i < BUILTIN_STRUCT_FIELD_COUNT; i += 1) {

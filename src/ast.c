@@ -1215,6 +1215,22 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     type_ptr_void = type_ptr(ast_mem, &type_cache->ptrs, builtin_types[BUILTIN_TYPE_VOID].type);
     type_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, builtin_types[BUILTIN_TYPE_CHAR].type);
     type_ptr_ptr_char = type_ptr(ast_mem, &type_cache->ptrs, type_ptr_char);
+
+    // Create the _any_ type.
+    // TODO: Specify this in a dedicated builtin.nib file.
+    Type* type_any = type_alloc(ast_mem, TYPE_INCOMPLETE_AGGREGATE);
+
+    TypeAggregateField fields[2] = {0};
+    fields[0].type = builtin_types[BUILTIN_TYPE_USIZE].type;
+    fields[0].name = builtin_struct_fields[BUILTIN_STRUCT_FIELD_TYPE];
+
+    fields[1].type = type_ptr_void;
+    fields[1].name = builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR];
+
+    complete_struct_type(ast_mem, type_any, ARRAY_LEN(fields), fields);
+
+    builtin_types[BUILTIN_TYPE_ANY].name = "any";
+    builtin_types[BUILTIN_TYPE_ANY].type = type_any;
 }
 
 //////////////////////////////
