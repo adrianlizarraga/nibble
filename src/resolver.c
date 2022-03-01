@@ -2165,6 +2165,8 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
 static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 {
+    assert(sym->kind == SYMBOL_VAR);
+
     DeclVar* decl = (DeclVar*)sym->decl;
     bool global = !sym->is_local;
     TypeSpec* typespec = decl->typespec;
@@ -2323,6 +2325,8 @@ static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
 
 static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 {
+    assert(sym->kind == SYMBOL_CONST);
+
     DeclConst* decl = (DeclConst*)sym->decl;
     TypeSpec* typespec = decl->typespec;
     Expr* init = decl->init;
@@ -2917,10 +2921,15 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         if (decl->kind == CST_DeclVar || decl->kind == CST_DeclConst) {
             Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, decl);
 
-            if (!sym)
+            if (!sym) {
                 resolver_on_error(resolver, stmt->range, "Identifier `%s` shadows a previous local declaration", decl->name->str);
-            else if (resolve_decl_var(resolver, sym))
+            }
+            else if ((decl->kind == CST_DeclVar) && resolve_decl_var(resolver, sym)) {
                 ret = RESOLVE_STMT_SUCCESS;
+            }
+            else if ((decl->kind == CST_DeclConst) && resolve_decl_const(resolver, sym)) {
+                ret = RESOLVE_STMT_SUCCESS;
+            }
         }
         else {
             // TODO: Support other declaration kinds.
