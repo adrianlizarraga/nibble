@@ -52,7 +52,7 @@ static char* IR_print_mem(Allocator* arena, MemAddr* addr)
                                symbol_mangled_name(arena, addr->base.sym));
         }
         else if (addr->base_kind == MEM_BASE_OBJ) {
-            ftprint_char_array(&dstr, false, "obj %u", addr->base.obj->id);
+            ftprint_char_array(&dstr, false, "obj %d", addr->base.obj->id);
         }
         else {
             assert(addr->base_kind == MEM_BASE_STR_LIT);

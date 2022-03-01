@@ -54,9 +54,10 @@ TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange ran
     return (TypeSpec*)typespec;
 }
 
-TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range)
+TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, bool is_variadic, ProgRange range)
 {
     TypeSpecProc* typespec = new_typespec(allocator, TypeSpecProc, range);
+    typespec->is_variadic = is_variadic;
     typespec->num_params = num_params;
     typespec->ret = ret;
 
@@ -65,11 +66,12 @@ TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* param
     return (TypeSpec*)typespec;
 }
 
-ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* typespec, ProgRange range)
+ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* typespec, bool is_variadic, ProgRange range)
 {
     ProcParam* param = alloc_type(allocator, ProcParam, true);
     param->name = name;
     param->typespec = typespec;
+    param->is_variadic = is_variadic;
     param->range = range;
 
     return param;
@@ -267,10 +269,11 @@ static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind
     return decl;
 }
 
-Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, ProgRange range)
+Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, bool is_variadic, ProgRange range)
 {
     DeclVar* decl = new_decl(allocator, DeclVar, name, range);
     decl->typespec = typespec;
+    decl->is_variadic = is_variadic;
     decl->init = init;
 
     return (Decl*)decl;
@@ -343,12 +346,13 @@ AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, Type
 }
 
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts, u32 num_decls,
-                    bool is_incomplete, ProgRange range)
+                    bool is_incomplete, bool is_variadic, ProgRange range)
 {
     DeclProc* decl = new_decl(allocator, DeclProc, name, range);
     decl->ret = ret;
     decl->num_params = num_params;
     decl->is_incomplete = is_incomplete;
+    decl->is_variadic = is_variadic;
     decl->num_decls = num_decls;
 
     list_replace(params, &decl->params);
@@ -906,6 +910,28 @@ TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name)
     return NULL;
 }
 
+Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap* type_ptr_cache, Type* elem_type)
+{
+    uint64_t* pval = hmap_get(type_variadic_cache, PTR_UINT(elem_type));
+    Type* type = pval ? (void*)*pval : NULL;
+
+    if (!type) {
+        type = type_alloc(allocator, TYPE_INCOMPLETE_AGGREGATE);
+
+        TypeAggregateField fields[2] = {0};
+        fields[0].type = builtin_types[BUILTIN_TYPE_USIZE].type;
+        fields[0].name = builtin_struct_fields[BUILTIN_STRUCT_FIELD_SIZE];
+
+        fields[1].type = type_ptr(allocator, type_ptr_cache, elem_type);
+        fields[1].name = builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA];
+
+        complete_struct_type(allocator, type, ARRAY_LEN(fields), fields);
+
+        hmap_put(type_variadic_cache, PTR_UINT(elem_type), PTR_UINT(type));
+    }
+
+    return type;
+}
 void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields)
 {
     size_t size = 0;
@@ -1032,7 +1058,7 @@ Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_
     return type;
 }
 
-Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret)
+Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic)
 {
     size_t params_size = num_params * sizeof(params[0]);
     uint64_t key = hash_mix_uint64(hash_bytes(params, params_size), hash_ptr(ret));
@@ -1065,6 +1091,7 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
     type->as_proc.num_params = num_params;
     type->as_proc.params = mem_dup_array(allocator, Type*, params, num_params);
     type->as_proc.ret = ret;
+    type->as_proc.is_variadic = is_variadic;
 
     CachedType* new_cached = alloc_type(allocator, CachedType, true);
     new_cached->type = type;
@@ -1358,14 +1385,14 @@ Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, D
     return sym;
 }
 
-AnonObj* add_anon_object(Allocator* allocator, Scope* scope, Type* type)
+AnonObj* add_anon_obj(Allocator* allocator, List* objs, s32 id, size_t size, size_t align)
 {
     AnonObj* obj = alloc_type(allocator, AnonObj, true);
-    obj->type = type;
-    obj->id = scope->num_objs;
+    obj->size = size;
+    obj->align = align;
+    obj->id = id;
 
-    list_add_last(&scope->obj_list, &obj->lnode);
-    scope->num_objs += 1;
+    list_add_last(objs, &obj->lnode);
 
     return obj;
 }

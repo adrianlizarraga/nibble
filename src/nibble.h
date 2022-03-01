@@ -115,6 +115,7 @@ typedef struct TypeCache {
     HMap ptrs;
     HMap arrays;
     HMap procs;
+    HMap variadics;
 } TypeCache;
 
 typedef enum Keyword {
@@ -156,15 +157,22 @@ typedef enum Annotation {
     ANNOTATION_FOREIGN,
     ANNOTATION_PACKED,
 
-    ANNOTATION_COUNT,
+    ANNOTATION_COUNT
 } Annotation;
 
 typedef enum Intrinsic {
     INTRINSIC_READIN,
     INTRINSIC_WRITEOUT,
     
-    INTRINSIC_COUNT,
+    INTRINSIC_COUNT
 } Intrinsic;
+
+typedef enum BuiltinStructField {
+    BUILTIN_STRUCT_FIELD_SIZE,
+    BUILTIN_STRUCT_FIELD_DATA,
+
+    BUILTIN_STRUCT_FIELD_COUNT
+} BuiltinStructField;
 
 typedef struct StrLit {
     struct StrLit* next;
@@ -198,6 +206,7 @@ extern const char* keyword_names[KW_COUNT];
 extern const char* annotation_names[ANNOTATION_COUNT];
 extern const char* intrinsic_names[INTRINSIC_COUNT];
 
+extern Identifier* builtin_struct_fields[BUILTIN_STRUCT_FIELD_COUNT];
 extern Identifier* main_proc_ident;
 
 StrLit* intern_str_lit(const char* str, size_t len);
