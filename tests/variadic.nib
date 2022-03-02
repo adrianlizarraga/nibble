@@ -62,5 +62,7 @@ proc main() => int {
 
     var v := add_v3(a, b, c);
 
-    return r + (v.x + v.y + v.z) + add_any_ints(1, 2, 'a'); // 12 + 18 + (1 + 2) = 33
+    var int1 : int = 1;
+
+    return r + (v.x + v.y + v.z) + add_any_ints(int1, 2, int1 + 1, int1 == 1, 'a'); // 12 + 18 + (1 + 2 + 2 + 1) = 36
 }
