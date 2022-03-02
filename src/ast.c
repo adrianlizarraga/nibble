@@ -226,6 +226,14 @@ Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* typespec, ProgRange range)
     return (Expr*)expr;
 }
 
+Expr* new_expr_typeid(Allocator* allocator, TypeSpec* typespec, ProgRange range)
+{
+    ExprTypeid* expr = new_expr(allocator, ExprTypeid, range);
+    expr->typespec = typespec;
+
+    return (Expr*)expr;
+}
+
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range)
 {
     MemberInitializer* initzer = alloc_type(allocator, MemberInitializer, true);
@@ -1853,6 +1861,11 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ExprSizeof* e = (ExprSizeof*)expr;
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(sizeof %s)", ftprint_typespec(allocator, e->typespec));
+        } break;
+        case CST_ExprTypeid: {
+            ExprTypeid* e = (ExprTypeid*)expr;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(typeid %s)", ftprint_typespec(allocator, e->typespec));
         } break;
         case CST_ExprCompoundLit: {
             ExprCompoundLit* e = (ExprCompoundLit*)expr;

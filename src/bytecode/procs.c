@@ -1007,7 +1007,7 @@ static void IR_reset_tmp_obj_stack(IR_ProcBuilder* builder)
     builder->curr_tmp_obj = &proc_sym->as_proc.tmp_objs;
 }
 
-static AnonObj* IR_get_tmp_obj(IR_ProcBuilder* builder, size_t size, size_t align)
+static AnonObj* IR_alloc_tmp_obj(IR_ProcBuilder* builder, size_t size, size_t align)
 {
     AnonObj* obj;
     Symbol* proc_sym = builder->curr_proc;
@@ -1743,7 +1743,7 @@ static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, 
         }
         else {
             dst_op->kind = IR_OPERAND_OBJ;
-            dst_op->obj = IR_get_tmp_obj(builder, dst_op->type->size, dst_op->type->align);
+            dst_op->obj = IR_alloc_tmp_obj(builder, dst_op->type->size, dst_op->type->align);
 
             ret_val.addr = IR_obj_as_addr(dst_op->obj);
         }
@@ -1808,20 +1808,65 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
         TypeAggregateField* data_field = get_type_aggregate_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
         Type* ptr_type = data_field->type;
         Type* elem_type = ptr_type->as_ptr.base;
+        Type* type_any = builtin_types[BUILTIN_TYPE_ANY].type;
+        bool elem_is_any = elem_type == type_any;
 
         // Reserve memory space for the array object.
-        AnonObj* arr_obj = IR_get_tmp_obj(builder, elem_type->size * num_vargs, elem_type->align);
+        AnonObj* arr_obj = IR_alloc_tmp_obj(builder, elem_type->size * num_vargs, elem_type->align);
         MemAddr arr_addr = IR_obj_as_addr(arr_obj);
         IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = arr_addr};
 
-        // Assign expression to each element in the array.
+        // Assign each argument expression to the corresponding element in the array.
         while (arg_index < num_args) {
             assert(it != head && arg_index < num_args);
             ProcCallArg* ast_arg = list_entry(it, ProcCallArg, lnode);
             IR_Operand arg_op = {0};
 
             *p_bblock = IR_emit_expr(builder, *p_bblock, ast_arg->expr, &arg_op);
-            *p_bblock = IR_emit_assign(builder, *p_bblock, &elem_ptr_op, &arg_op);
+
+            if (elem_is_any && arg_op.type != elem_type) {
+                //
+                // var any_obj : ^Any = ^arr[arg_index];
+                //
+                // any_obj.type = #typeid(arg_type);
+                // any_obj.ptr = ^arg;
+                //
+
+                // If the arg is an immediate, load it into memory.
+                // We need load the argument's address into the `any` object's ptr field.
+                if (arg_op.kind == IR_OPERAND_IMM) {
+                    AnonObj* imm_obj = IR_alloc_tmp_obj(builder, arg_op.type->size, arg_op.type->align);
+                    IR_Operand imm_obj_op = {.kind = IR_OPERAND_OBJ, .type = arg_op.type, .obj = imm_obj};
+
+                    *p_bblock = IR_emit_assign(builder, *p_bblock, &imm_obj_op, &arg_op);
+                    arg_op = imm_obj_op;
+                }
+
+                MemAddr arg_addr;
+                IR_get_object_addr(builder, *p_bblock, &arg_addr, &arg_op);
+
+                // Initialize any object's fields. Note that we're directly modifying the array element.
+                MemAddr any_obj_addr = elem_ptr_op.addr;
+
+                // Set the object's type field to the arg's typeid.
+                TypeAggregateField* type_field = get_type_aggregate_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_TYPE]);
+                IR_Operand type_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = type_field->type, .addr = any_obj_addr};
+                IR_Operand type_val_op = {.kind = IR_OPERAND_IMM, .type = type_field->type, .imm.as_int._u64 = arg_op.type->id};
+
+                type_field_op.addr.disp += type_field->offset;
+                *p_bblock = IR_emit_assign(builder, *p_bblock, &type_field_op, &type_val_op);
+
+                // Set the object's ptr field to the arg's address.
+                TypeAggregateField* ptr_field = get_type_aggregate_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
+                IR_Operand ptr_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = ptr_field->type, .addr = any_obj_addr};
+                IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = arg_addr};
+
+                ptr_field_op.addr.disp += ptr_field->offset;
+                *p_bblock = IR_emit_assign(builder, *p_bblock, &ptr_field_op, &ptr_val_op);
+            }
+            else {
+                *p_bblock = IR_emit_assign(builder, *p_bblock, &elem_ptr_op, &arg_op);
+            }
 
             elem_ptr_op.addr.disp += elem_type->size;
 
@@ -1833,7 +1878,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
         // var struct_arg : VariadicStruct<elem_type> = {.size = <num_vargs>, .data = arr};
         //
 
-        AnonObj* struct_obj = IR_get_tmp_obj(builder, struct_type->size, struct_type->size);
+        AnonObj* struct_obj = IR_alloc_tmp_obj(builder, struct_type->size, struct_type->align);
         MemAddr struct_addr = IR_obj_as_addr(struct_obj);
 
         TypeAggregateField* size_field = get_type_aggregate_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_SIZE]);
