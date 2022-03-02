@@ -10,7 +10,7 @@ endif
 syntax keyword nibbleTodos TODO NOTE IMPORTANT FIXME
 
 " Language keywords
-syntax keyword nibbleKeywords var const proc typedef sizeof typeof export import from as label goto break continue return if else while do for switch case
+syntax keyword nibbleKeywords var const proc typedef sizeof typeof typeid export import from as label goto break continue return if else while do for switch case
 
 syntax region nibbleIncluded start=/"/ skip=/\\\\\|\\"/ end=/"/  display contained
 syntax match nibbleInclude /^\s*\zs#include\>\s*"/ display contains=nibbleIncluded

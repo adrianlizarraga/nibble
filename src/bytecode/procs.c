@@ -1826,26 +1826,21 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
 
             if (elem_is_any && arg_op.type != elem_type) {
                 //
+                // var cpy_obj := arg;
                 // var any_obj : ^Any = ^arr[arg_index];
                 //
                 // any_obj.type = #typeid(arg_type);
-                // any_obj.ptr = ^arg;
+                // any_obj.ptr = ^cpy_obj;
                 //
 
-                // If the arg is an immediate, load it into memory.
-                // We need load the argument's address into the `any` object's ptr field.
-                if (arg_op.kind == IR_OPERAND_IMM) {
-                    AnonObj* imm_obj = IR_alloc_tmp_obj(builder, arg_op.type->size, arg_op.type->align);
-                    IR_Operand imm_obj_op = {.kind = IR_OPERAND_OBJ, .type = arg_op.type, .obj = imm_obj};
+                // Copy the argument into memory.
+                // We need to load the copy's address into the `any` object's ptr field.
+                AnonObj* cpy_obj = IR_alloc_tmp_obj(builder, arg_op.type->size, arg_op.type->align);
+                IR_Operand cpy_obj_op = {.kind = IR_OPERAND_OBJ, .type = arg_op.type, .obj = cpy_obj};
 
-                    *p_bblock = IR_emit_assign(builder, *p_bblock, &imm_obj_op, &arg_op);
-                    arg_op = imm_obj_op;
-                }
+                *p_bblock = IR_emit_assign(builder, *p_bblock, &cpy_obj_op, &arg_op);
 
-                MemAddr arg_addr;
-                IR_get_object_addr(builder, *p_bblock, &arg_addr, &arg_op);
-
-                // Initialize any object's fields. Note that we're directly modifying the array element.
+                // Initialize the `any` object's fields. Note that we're directly modifying the array element.
                 MemAddr any_obj_addr = elem_ptr_op.addr;
 
                 // Set the object's type field to the arg's typeid.
@@ -1859,7 +1854,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 // Set the object's ptr field to the arg's address.
                 TypeAggregateField* ptr_field = get_type_aggregate_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
                 IR_Operand ptr_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = ptr_field->type, .addr = any_obj_addr};
-                IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = arg_addr};
+                IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = IR_obj_as_addr(cpy_obj)};
 
                 ptr_field_op.addr.disp += ptr_field->offset;
                 *p_bblock = IR_emit_assign(builder, *p_bblock, &ptr_field_op, &ptr_val_op);
