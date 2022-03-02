@@ -251,10 +251,6 @@ static bool can_convert_eop(ExprOperand* operand, Type* dst_type)
     if (dst_type == src_type) {
         convertible = true;
     }
-    // Can convert anything to void
-    else if (dst_type == builtin_types[BUILTIN_TYPE_VOID].type) {
-        convertible = true;
-    }
     // Can convert between arithmetic types
     else if (type_is_arithmetic(dst_type) && type_is_arithmetic(src_type)) {
         convertible = true;
@@ -761,7 +757,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     TokenIntSuffix suffix = eint->token.suffix;
 
     if (rep == TKN_INT_CHAR) {
-        type = builtin_types[BUILTIN_TYPE_INT].type;
+        type = builtin_types[BUILTIN_TYPE_CHAR].type; // Differs from C spec, where a char literal is an int.
     }
     else if (rep == TKN_INT_DEC) {
         switch (suffix) {
@@ -908,6 +904,23 @@ static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
     expr->super.is_imm = true;
     expr->super.is_lvalue = false;
     expr->super.imm.as_int._u64 = type->size;
+
+    return true;
+}
+
+static bool resolve_expr_typeid(Resolver* resolver, ExprTypeid* expr)
+{
+    Type* type = resolve_typespec(resolver, expr->typespec);
+
+    if (!type) {
+        return false;
+    }
+
+    expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_int._u64 = type->id;
 
     return true;
 }
@@ -1679,6 +1692,30 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     return false;
 }
 
+static bool resolve_call_arg(Resolver* resolver, size_t arg_index, ProcCallArg* arg, Type* param_type, bool is_varg)
+{
+    if (!resolve_expr(resolver, arg->expr, NULL))
+        return false;
+
+    ExprOperand arg_eop = OP_FROM_EXPR(arg->expr);
+
+    if (!try_eop_array_decay(resolver, &arg_eop, arg->expr->range))
+        return false;
+
+    bool can_be_any = is_varg && param_type == builtin_types[BUILTIN_TYPE_ANY].type;
+
+    if (!can_be_any && !convert_eop(&arg_eop, param_type)) {
+        resolver_on_error(resolver, arg->expr->range,
+                          "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`", (arg_index + 1),
+                          type_name(param_type), type_name(arg->expr->type));
+        return false;
+    }
+
+    arg->expr = try_wrap_cast_expr(resolver, &arg_eop, arg->expr);
+
+    return true;
+}
+
 static bool resolve_expr_call(Resolver* resolver, Expr* expr)
 {
     ExprCall* ecall = (ExprCall*)expr;
@@ -1696,41 +1733,65 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
     }
 
     // Verify that the number of arguments match number of parameters.
-    if (proc_type->as_proc.num_params != ecall->num_args) {
-        resolver_on_error(resolver, expr->range, "Incorrect number of procedure call arguments. Expected `%d` arguments, but got `%d`",
-                          proc_type->as_proc.num_params, ecall->num_args);
+    bool is_variadic = proc_type->as_proc.is_variadic;
+    size_t num_params = proc_type->as_proc.num_params;
+    size_t num_args = ecall->num_args;
+
+    if (is_variadic && (num_args < (num_params - 1))) {
+        resolver_on_error(resolver, expr->range, "Incorrect number of procedure call arguments."
+                          " Expected at least `%d` arguments, but got `%d`", num_params - 1, num_args);
         return false;
     }
 
-    // Resolve argument expressions and verify that argument types match parameter types.
+    if (!is_variadic && (num_params != num_args)) {
+        resolver_on_error(resolver, expr->range, "Incorrect number of procedure call arguments. Expected `%d` arguments, but got `%d`",
+                          num_params, num_args);
+        return false;
+    }
+
+    size_t n = is_variadic ? num_params - 1 : num_params;
+    size_t arg_index = 0;
+    Type** params = proc_type->as_proc.params;
     List* head = &ecall->args;
     List* it = head->next;
-    Type** params = proc_type->as_proc.params;
-    size_t i = 0;
 
-    while (it != head) {
+    // Resolve arguments for non-variadic parameters.
+    while (arg_index < n) {
+        assert(it != head);
+        Type* param_type = params[arg_index];
         ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
 
-        if (!resolve_expr(resolver, arg->expr, NULL))
-            return false;
-
-        Type* param_type = params[i];
-        ExprOperand arg_eop = OP_FROM_EXPR(arg->expr);
-
-        if (!try_eop_array_decay(resolver, &arg_eop, arg->range))
-            return false;
-
-        if (!convert_eop(&arg_eop, param_type)) {
-            resolver_on_error(resolver, arg->range,
-                              "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`", (i + 1),
-                              type_name(params[i]), type_name(arg->expr->type));
+        if (!resolve_call_arg(resolver, arg_index, arg, param_type, false)) {
             return false;
         }
 
-        arg->expr = try_wrap_cast_expr(resolver, &arg_eop, arg->expr);
-
         it = it->next;
-        i += 1;
+        arg_index += 1;
+    }
+
+    // Resolve variadic arguments.
+    if (is_variadic) {
+        Type* variadic_type = params[num_params - 1];
+        assert(variadic_type->kind == TYPE_STRUCT);
+
+        TypeAggregateField* data_field = get_type_aggregate_field(variadic_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+        assert(data_field);
+
+        Type* ptr_param_type = data_field->type;
+        assert(ptr_param_type->kind == TYPE_PTR);
+
+        Type* param_type = ptr_param_type->as_ptr.base;
+
+        while (it != head) {
+            ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
+
+            if (!resolve_call_arg(resolver, arg_index, arg, param_type, true)) {
+                return false;
+            }
+
+            it = it->next;
+            arg_index += 1;
+        }
     }
 
     expr->type = proc_type->as_proc.ret;
@@ -1943,6 +2004,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_str(resolver, (ExprStr*)expr);
     case CST_ExprSizeof:
         return resolve_expr_sizeof(resolver, (ExprSizeof*)expr);
+    case CST_ExprTypeid:
+        return resolve_expr_typeid(resolver, (ExprTypeid*)expr);
     default:
         ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
         assert(0);
@@ -2049,9 +2112,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
             param = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, param);
 
-            if (param->kind == TYPE_ARRAY) {
-                resolver_on_error(resolver, proc_param->range,
-                                  "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
+            if (!try_complete_aggregate_type(resolver, param)) {
                 allocator_restore_state(mem_state);
                 return NULL;
             }
@@ -2059,6 +2120,17 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             if (param->size == 0) {
                 resolver_on_error(resolver, proc_param->range, "Invalid procedure paramater type `%s` of zero size.",
                                   type_name(param));
+                allocator_restore_state(mem_state);
+                return NULL;
+            }
+
+            if (proc_param->is_variadic) {
+                param = type_variadic_struct(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.variadics,
+                                             &resolver->ctx->type_cache.ptrs, param);
+            }
+            else if (param->kind == TYPE_ARRAY) {
+                resolver_on_error(resolver, proc_param->range,
+                                  "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
                 allocator_restore_state(mem_state);
                 return NULL;
             }
@@ -2093,7 +2165,8 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             }
         }
 
-        Type* type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret);
+        Type* type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret,
+                               ts->is_variadic);
         allocator_restore_state(mem_state);
 
         return type;
@@ -2109,6 +2182,8 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
 static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 {
+    assert(sym->kind == SYMBOL_VAR);
+
     DeclVar* decl = (DeclVar*)sym->decl;
     bool global = !sym->is_local;
     TypeSpec* typespec = decl->typespec;
@@ -2267,6 +2342,8 @@ static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
 
 static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 {
+    assert(sym->kind == SYMBOL_CONST);
+
     DeclConst* decl = (DeclConst*)sym->decl;
     TypeSpec* typespec = decl->typespec;
     Expr* init = decl->init;
@@ -2331,18 +2408,22 @@ static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
 
     type = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type);
 
-    if (type->kind == TYPE_ARRAY) {
-        resolver_on_error(resolver, typespec->range,
-                          "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
-        return false;
-    }
-
     if (!try_complete_aggregate_type(resolver, type)) {
         return false;
     }
 
     if (type->size == 0) {
         resolver_on_error(resolver, decl->super.range, "Cannot declare a parameter of zero size.");
+        return false;
+    }
+
+
+    if (decl->is_variadic) {
+        type = type_variadic_struct(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.variadics, &resolver->ctx->type_cache.ptrs, type);
+    }
+    else if (type->kind == TYPE_ARRAY) {
+        resolver_on_error(resolver, typespec->range,
+                          "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
         return false;
     }
 
@@ -2356,6 +2437,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
 
+    bool is_variadic = decl->is_variadic;
     bool is_incomplete = decl->is_incomplete;
     bool is_foreign = decl->super.flags & DECL_IS_FOREIGN;
     bool is_intrinsic = decl->super.name->kind == IDENTIFIER_INTRINSIC;
@@ -2421,7 +2503,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         }
     }
 
-    sym->type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type);
+    sym->type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type, is_variadic);
     sym->status = SYMBOL_STATUS_RESOLVED;
 
     allocator_restore_state(mem_state);
@@ -2856,10 +2938,15 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         if (decl->kind == CST_DeclVar || decl->kind == CST_DeclConst) {
             Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, decl);
 
-            if (!sym)
+            if (!sym) {
                 resolver_on_error(resolver, stmt->range, "Identifier `%s` shadows a previous local declaration", decl->name->str);
-            else if (resolve_decl_var(resolver, sym))
+            }
+            else if ((decl->kind == CST_DeclVar) && resolve_decl_var(resolver, sym)) {
                 ret = RESOLVE_STMT_SUCCESS;
+            }
+            else if ((decl->kind == CST_DeclConst) && resolve_decl_const(resolver, sym)) {
+                ret = RESOLVE_STMT_SUCCESS;
+            }
         }
         else {
             // TODO: Support other declaration kinds.

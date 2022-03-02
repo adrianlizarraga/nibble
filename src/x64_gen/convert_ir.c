@@ -217,7 +217,8 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
                 base_reg = X64_next_lir_reg(builder);
                 X64_force_any_reg(builder, base_reg, banned_regs);
 
-                X64_MemAddr ptr_addr = { .kind = X64_ADDR_LOCAL,
+                X64_MemAddr ptr_addr = {
+                    .kind = X64_ADDR_LOCAL,
                     .local = {.base_reg = builder->lreg_rbp, .disp = sym->as_var.offset, .index_reg = X64_REG_COUNT}};
 
                 X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, base_reg, ptr_addr);
@@ -269,6 +270,25 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
         dst->local.disp = src->disp;
         dst->local.scale = src->scale;
         dst->local.index_reg = index_reg;
+    }
+
+    // Fix invalid scale by consolidating the base reg, index reg, and scale.
+    if (has_index && (!IS_POW2(dst->local.scale) || (dst->local.scale > X64_MAX_SIBD_SCALE))) {
+        assert(dst->kind == X64_ADDR_LOCAL);
+
+        // mul index_reg, <scale>
+        Scalar scale_imm = {.as_int._u64 = dst->local.scale};
+        X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[INSTR_MUL], X64_MAX_INT_REG_SIZE, dst->local.index_reg, scale_imm);
+
+        // add index_reg, base_reg
+        if (has_base) {
+            X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_ADD], X64_MAX_INT_REG_SIZE, dst->local.index_reg,
+                                      dst->local.base_reg);
+        }
+
+        dst->local.base_reg = dst->local.index_reg;
+        dst->local.index_reg = (u32)-1;
+        dst->local.scale = 0;
     }
 }
 
@@ -485,8 +505,8 @@ static X64_StackArgsInfo X64_convert_call_args(X64_LIRBuilder* builder, X64_BBlo
 static bool X64_try_combine_limm(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr** p_ir_instr)
 {
 #define INSTR_IS_BINARY 0x1
-#define INSTR_IS_COMM   0x2
-#define INSTR_IS_SHIFT  0x4
+#define INSTR_IS_COMM 0x2
+#define INSTR_IS_SHIFT 0x4
 
     static const u32 instr_kind_flags[INSTR_KIND_COUNT] = {
         [INSTR_ADD] = INSTR_IS_BINARY | INSTR_IS_COMM,

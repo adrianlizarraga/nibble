@@ -79,12 +79,14 @@ typedef TypeSpecAggregate TypeSpecUnion;
 typedef struct ProcParam {
     ProgRange range;
     Identifier* name;
+    bool is_variadic;
     TypeSpec* typespec;
     ListNode lnode;
 } ProcParam;
 
 typedef struct TypeSpecProc {
     TypeSpec super;
+    bool is_variadic;
     size_t num_params;
     List params;
     TypeSpec* ret;
@@ -113,8 +115,8 @@ TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range)
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
 TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
-ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
-TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, ProgRange range);
+ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* type, bool is_variadic, ProgRange range);
+TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, bool is_variadic, ProgRange range);
 
 typedef TypeSpec* NewTypeSpecAggregateProc(Allocator* alloc, List* fields, ProgRange range);
 TypeSpec* new_typespec_struct(Allocator* allocator, List* fields, ProgRange range);
@@ -139,6 +141,7 @@ typedef enum ExprKind {
     CST_ExprIdent,
     CST_ExprCast,
     CST_ExprSizeof,
+    CST_ExprTypeid,
     CST_ExprCompoundLit,
 } ExprKind;
 
@@ -176,7 +179,6 @@ typedef struct ExprUnary {
 } ExprUnary;
 
 typedef struct ProcCallArg {
-    ProgRange range;
     Expr* expr;
     Identifier* name;
     ListNode lnode;
@@ -235,6 +237,11 @@ typedef struct ExprSizeof {
     TypeSpec* typespec;
 } ExprSizeof;
 
+typedef struct ExprTypeid {
+    Expr super;
+    TypeSpec* typespec;
+} ExprTypeid;
+
 typedef enum DesignatorKind {
     DESIGNATOR_NONE,
     DESIGNATOR_NAME,
@@ -277,6 +284,7 @@ Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
 Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
+Expr* new_expr_typeid(Allocator* allocator, TypeSpec* type, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
 Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range);
 
@@ -517,6 +525,7 @@ struct Decl {
 
 typedef struct DeclVar {
     Decl super;
+    bool is_variadic;
     TypeSpec* typespec;
     Expr* init;
 } DeclVar;
@@ -556,7 +565,10 @@ typedef struct DeclProc {
     u32 num_params;
     u32 num_decls;
     bool returns;
+
+    // TODO: Use flags variable
     bool is_incomplete;
+    bool is_variadic;
 
     List params;
     List stmts;
@@ -570,7 +582,7 @@ typedef struct DeclTypedef {
 } DeclTypedef;
 
 DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRange range);
-Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
+Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, bool is_variadic, ProgRange range);
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* type, size_t num_items, List* items, ProgRange range);
@@ -580,7 +592,7 @@ typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fie
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, bool is_incomplete, ProgRange range);
+                    u32 num_decls, bool is_incomplete, bool is_variadic, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 
@@ -617,6 +629,7 @@ typedef struct TypeProc {
     size_t num_params;
     Type** params;
     Type* ret;
+    bool is_variadic;
 } TypeProc;
 
 typedef struct TypeArray {
@@ -651,7 +664,7 @@ typedef struct TypeIncompleteAggregate {
 
 struct Type {
     TypeKind kind;
-    int id;
+    size_t id;
     size_t size;
     size_t align;
 
@@ -697,6 +710,8 @@ enum BuiltinTypeKind {
     BUILTIN_TYPE_SSIZE,
     BUILTIN_TYPE_USIZE,
 
+    BUILTIN_TYPE_ANY,
+
     NUM_BUILTIN_TYPES,
 };
 
@@ -738,10 +753,11 @@ TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len);
-Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret);
+Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic);
 Type* type_unsigned_int(Type* type_int);
 Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl);
 Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym);
+Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap* type_ptr_cache, Type* elem_type);
 
 ///////////////////////////////
 //       Symbols
@@ -837,6 +853,9 @@ struct SymbolProc {
 
     u32 num_regs;
     bool is_nonleaf;
+
+    List tmp_objs;
+    size_t num_tmp_objs;
 };
 
 struct SymbolModule {
@@ -863,8 +882,10 @@ struct Symbol {
 };
 
 struct AnonObj {
-    Type* type;
-    u32 id;
+    size_t size;
+    size_t align;
+
+    s32 id;
     s32 offset;
     List lnode;
 };
@@ -907,7 +928,7 @@ Symbol* lookup_scope_symbol(Scope* scope, Identifier* name);
 
 void add_scope_symbol(Scope* scope, Identifier* name, Symbol* sym, bool add_list);
 Symbol* add_unresolved_symbol(Allocator* allocator, Scope* scope, Module* mod, Decl* decl);
-AnonObj* add_anon_object(Allocator* allocator, Scope* scope, Type* type);
+AnonObj* add_anon_obj(Allocator* allocator, List* objs, s32 id, size_t size, size_t align);
 bool install_module_decls(Allocator* allocator, Module* mod);
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym);
 bool import_all_mod_syms(Module* dst_mod, Module* src_mod);

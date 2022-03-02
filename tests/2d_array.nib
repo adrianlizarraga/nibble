@@ -6,9 +6,16 @@ var g_b : [2][3]char = {
     "cc", {'d', 'd'}
 };
 
-var g_c : [2]^char = {
-    "ee", "ff"
+var g_c : [4]^char = {
+    "ee", "ff", (0xdeadbeef :> ^char), ^g_ch
 };
+
+var g_ch : char = 'g';
+var g_str : ^char = "global\n";
+//var g_str_off : ^char = ^g_str[1]; // Not allowed. Equivalent to ^*(g_str + 1);
+
+var g_p_var : ^^char = ^g_str;
+var g_p_imm : ^char = 0xdeadbeef :> ^char;
 
 proc main() => int {
     var a : [2][2]int = {
@@ -29,8 +36,15 @@ proc main() => int {
     #writeout("\n", 1);
     #writeout(g_b[1], 2);
     #writeout("\n", 1);
+    #writeout(g_c[0], 2);
+    #writeout(^nl, 1);
     #writeout(g_c[1], 2);
     #writeout(^nl, 1);
+    #writeout(g_c[3], 1);
+    #writeout(^nl, 1);
+
+    #writeout(g_str, 7);
+    #writeout(*g_p_var, 7);
 
     return a[1][1] + g_a[1][0]; // 3 + 2 = 5
 }
