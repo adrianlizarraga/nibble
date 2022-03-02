@@ -317,6 +317,8 @@ static bool init_builtin_struct_fields()
     static const StringView names[BUILTIN_STRUCT_FIELD_COUNT] = {
         [BUILTIN_STRUCT_FIELD_SIZE] = string_view_lit("size"),
         [BUILTIN_STRUCT_FIELD_DATA] = string_view_lit("data"),
+        [BUILTIN_STRUCT_FIELD_TYPE] = string_view_lit("type"),
+        [BUILTIN_STRUCT_FIELD_PTR] = string_view_lit("ptr"),
     };
 
     for (int i = 0; i < BUILTIN_STRUCT_FIELD_COUNT; i += 1) {
@@ -386,6 +388,7 @@ static bool init_keywords()
         [KW_TYPEDEF] = string_view_lit("typedef"),
         [KW_SIZEOF] = string_view_lit("#sizeof"),
         [KW_TYPEOF] = string_view_lit("#typeof"),
+        [KW_TYPEID] = string_view_lit("#typeid"),
         [KW_STATIC_ASSERT] = string_view_lit("#static_assert"),
         [KW_EXPORT] = string_view_lit("export"),
         [KW_IMPORT] = string_view_lit("import"),

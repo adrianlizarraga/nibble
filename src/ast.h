@@ -141,6 +141,7 @@ typedef enum ExprKind {
     CST_ExprIdent,
     CST_ExprCast,
     CST_ExprSizeof,
+    CST_ExprTypeid,
     CST_ExprCompoundLit,
 } ExprKind;
 
@@ -236,6 +237,11 @@ typedef struct ExprSizeof {
     TypeSpec* typespec;
 } ExprSizeof;
 
+typedef struct ExprTypeid {
+    Expr super;
+    TypeSpec* typespec;
+} ExprTypeid;
+
 typedef enum DesignatorKind {
     DESIGNATOR_NONE,
     DESIGNATOR_NAME,
@@ -278,6 +284,7 @@ Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
 Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
+Expr* new_expr_typeid(Allocator* allocator, TypeSpec* type, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
 Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range);
 
@@ -657,7 +664,7 @@ typedef struct TypeIncompleteAggregate {
 
 struct Type {
     TypeKind kind;
-    int id;
+    size_t id;
     size_t size;
     size_t align;
 
@@ -702,6 +709,8 @@ enum BuiltinTypeKind {
     BUILTIN_TYPE_ULLONG,
     BUILTIN_TYPE_SSIZE,
     BUILTIN_TYPE_USIZE,
+
+    BUILTIN_TYPE_ANY,
 
     NUM_BUILTIN_TYPES,
 };

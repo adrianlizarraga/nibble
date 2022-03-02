@@ -251,10 +251,6 @@ static bool can_convert_eop(ExprOperand* operand, Type* dst_type)
     if (dst_type == src_type) {
         convertible = true;
     }
-    // Can convert anything to void
-    else if (dst_type == builtin_types[BUILTIN_TYPE_VOID].type) {
-        convertible = true;
-    }
     // Can convert between arithmetic types
     else if (type_is_arithmetic(dst_type) && type_is_arithmetic(src_type)) {
         convertible = true;
@@ -761,7 +757,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     TokenIntSuffix suffix = eint->token.suffix;
 
     if (rep == TKN_INT_CHAR) {
-        type = builtin_types[BUILTIN_TYPE_INT].type;
+        type = builtin_types[BUILTIN_TYPE_CHAR].type; // Differs from C spec, where a char literal is an int.
     }
     else if (rep == TKN_INT_DEC) {
         switch (suffix) {
@@ -908,6 +904,23 @@ static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
     expr->super.is_imm = true;
     expr->super.is_lvalue = false;
     expr->super.imm.as_int._u64 = type->size;
+
+    return true;
+}
+
+static bool resolve_expr_typeid(Resolver* resolver, ExprTypeid* expr)
+{
+    Type* type = resolve_typespec(resolver, expr->typespec);
+
+    if (!type) {
+        return false;
+    }
+
+    expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_int._u64 = type->id;
 
     return true;
 }
@@ -1679,7 +1692,7 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     return false;
 }
 
-static bool resolve_call_arg(Resolver* resolver, size_t arg_index, ProcCallArg* arg, Type* param_type)
+static bool resolve_call_arg(Resolver* resolver, size_t arg_index, ProcCallArg* arg, Type* param_type, bool is_varg)
 {
     if (!resolve_expr(resolver, arg->expr, NULL))
         return false;
@@ -1689,7 +1702,9 @@ static bool resolve_call_arg(Resolver* resolver, size_t arg_index, ProcCallArg* 
     if (!try_eop_array_decay(resolver, &arg_eop, arg->expr->range))
         return false;
 
-    if (!convert_eop(&arg_eop, param_type)) {
+    bool can_be_any = is_varg && param_type == builtin_types[BUILTIN_TYPE_ANY].type;
+
+    if (!can_be_any && !convert_eop(&arg_eop, param_type)) {
         resolver_on_error(resolver, arg->expr->range,
                           "Incorrect type for argument %d of procedure call. Expected type `%s`, but got `%s`", (arg_index + 1),
                           type_name(param_type), type_name(arg->expr->type));
@@ -1746,7 +1761,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         Type* param_type = params[arg_index];
         ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
 
-        if (!resolve_call_arg(resolver, arg_index, arg, param_type)) {
+        if (!resolve_call_arg(resolver, arg_index, arg, param_type, false)) {
             return false;
         }
 
@@ -1770,7 +1785,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         while (it != head) {
             ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
 
-            if (!resolve_call_arg(resolver, arg_index, arg, param_type)) {
+            if (!resolve_call_arg(resolver, arg_index, arg, param_type, true)) {
                 return false;
             }
 
@@ -1989,6 +2004,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_str(resolver, (ExprStr*)expr);
     case CST_ExprSizeof:
         return resolve_expr_sizeof(resolver, (ExprSizeof*)expr);
+    case CST_ExprTypeid:
+        return resolve_expr_typeid(resolver, (ExprTypeid*)expr);
     default:
         ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
         assert(0);

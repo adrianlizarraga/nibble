@@ -686,6 +686,27 @@ static Expr* parse_expr_sizeof(Parser* parser)
     return expr;
 }
 
+static Expr* parse_expr_typeid(Parser* parser)
+{
+    assert(is_keyword(parser, KW_TYPEID));
+    Expr* expr = NULL;
+    ProgRange range = {.start = parser->token.range.start};
+    const char* error_prefix = "Failed to parse typeid expression";
+
+    next_token(parser);
+
+    if (expect_token(parser, TKN_LPAREN, error_prefix)) {
+        TypeSpec* typespec = parse_typespec(parser);
+
+        if (typespec && expect_token(parser, TKN_RPAREN, error_prefix)) {
+            range.end = parser->ptoken.range.end;
+            expr = new_expr_typeid(parser->ast_arena, typespec, range);
+        }
+    }
+
+    return expr;
+}
+
 // expr_ident = mod_namespace? TKN_IDENT
 // mod_namespace = (TKN_IDENT '::')
 static Expr* parse_expr_ident(Parser* parser)
@@ -741,6 +762,8 @@ static Expr* parse_expr_base(Parser* parser)
         switch (token.as_kw.ident->kw) {
         case KW_SIZEOF:
             return parse_expr_sizeof(parser);
+        case KW_TYPEID:
+            return parse_expr_typeid(parser);
         default:
             break;
         }

@@ -35,6 +35,23 @@ proc add_v3(vecs : ..Vec3) => Vec3 {
     return r;
 }
 
+proc add_any_ints(args : ..any) => int {
+    var r : int = 0;
+
+    var i : usize = 0;
+
+    while (i < args.size) {
+        if (args.data[i].type == #typeid(int)) {
+            var val : int = *(args.data[i].ptr :> ^int);
+            r = r + val;
+        }
+
+        i = i + 1;
+    }
+
+    return r;
+}
+
 proc main() => int {
     var r := add_variadic(6, 1, 2, 3);
 
@@ -45,5 +62,5 @@ proc main() => int {
 
     var v := add_v3(a, b, c);
 
-    return r + (v.x + v.y + v.z); // 12 + 18 = 30
+    return r + (v.x + v.y + v.z) + add_any_ints(1, 2, 'a'); // 12 + 18 + (1 + 2) = 33
 }

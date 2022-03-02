@@ -128,6 +128,7 @@ typedef enum Keyword {
     KW_TYPEDEF,
     KW_SIZEOF,
     KW_TYPEOF,
+    KW_TYPEID,
     KW_STATIC_ASSERT,
     KW_EXPORT,
     KW_IMPORT,
@@ -170,6 +171,8 @@ typedef enum Intrinsic {
 typedef enum BuiltinStructField {
     BUILTIN_STRUCT_FIELD_SIZE,
     BUILTIN_STRUCT_FIELD_DATA,
+    BUILTIN_STRUCT_FIELD_TYPE,
+    BUILTIN_STRUCT_FIELD_PTR,
 
     BUILTIN_STRUCT_FIELD_COUNT
 } BuiltinStructField;
