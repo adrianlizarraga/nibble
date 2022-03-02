@@ -2259,6 +2259,28 @@ static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* b
     return after_bblock;
 }
 
+static BBlock* IR_emit_stmt_for(IR_ProcBuilder* builder, BBlock* bblock, StmtFor* stmt)
+{
+    Stmt* init_stmt = stmt->init;
+    Expr* cond_expr = stmt->cond;
+    Stmt* body_stmt = stmt->body;
+    Stmt* next_stmt = stmt->next;
+
+    IR_push_scope(builder, stmt->scope);
+
+    bblock = IR_emit_stmt(builder, bblock, init_stmt, NULL, NULL); // TODO: Should break/cont be allowed in init?
+
+    if (cond_expr->is_constexpr && cond_expr->is_imm) {
+        assert(0); // TODO
+    }
+
+    assert(0); // TODO
+
+    IR_pop_scope(builder);
+
+    return bblock;
+}
+
 static BBlock* IR_emit_stmt_while(IR_ProcBuilder* builder, BBlock* bblock, StmtWhile* stmt)
 {
     Expr* cond_expr = stmt->cond;
@@ -2464,6 +2486,9 @@ static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt,
         break;
     case CST_StmtDoWhile:
         last_bb = IR_emit_stmt_do_while(builder, bblock, (StmtDoWhile*)stmt);
+        break;
+    case CST_StmtFor:
+        last_bb = IR_emit_stmt_for(builder, bblock, (StmtFor*)stmt);
         break;
     case CST_StmtBreak: {
         Instr* instr = IR_emit_instr_jmp(builder, bblock, NULL);

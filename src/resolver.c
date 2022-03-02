@@ -2667,6 +2667,44 @@ static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, 
     return ret;
 }
 
+static unsigned resolve_stmt_for(Resolver* resolver, StmtFor* stmt_for, Type* ret_type, unsigned flags)
+{
+    stmt_for->scope = push_scope(resolver, 4); // TODO: The 4 is magical
+
+    unsigned ret = resolve_stmt(resolver, stmt_for->init, ret_type, flags);
+
+    if (!(ret & RESOLVE_STMT_SUCCESS)) {
+        return 0;
+    }
+
+    ExprOperand cond_eop = {0};
+
+    if (!resolve_cond_expr(resolver, stmt_for->cond, &cond_eop)) {
+        return 0;
+    }
+
+    stmt_for->cond = try_wrap_cast_expr(resolver, &cond_eop, stmt_for->cond);
+
+    ret &= resolve_stmt(resolver, stmt_for->body, ret_type, flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
+
+    if (!(ret & RESOLVE_STMT_SUCCESS)) {
+        return 0;
+    }
+
+    flags &= ~RESOLVE_STMT_BREAK_ALLOWED;
+    flags &= ~RESOLVE_STMT_CONTINUE_ALLOWED;
+
+    ret &= resolve_stmt(resolver, stmt_for->next, ret_type, flags);
+
+    // NOTE: Because for loops don't have an "else" path, we can't say that all control paths return.
+    // TODO: Add else to for-loop!!
+    ret &= ~RESOLVE_STMT_RETURNS;
+
+    pop_scope(resolver);
+
+    return ret;
+}
+
 static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     StmtWhile* swhile = (StmtWhile*)stmt;
@@ -2908,6 +2946,10 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     }
     case CST_StmtIf: {
         ret = resolve_stmt_if(resolver, stmt, ret_type, flags);
+        break;
+    }
+    case CST_StmtFor: {
+        ret = resolve_stmt_for(resolver, (StmtFor*)stmt, ret_type, flags);
         break;
     }
     case CST_StmtWhile: {
