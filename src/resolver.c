@@ -53,6 +53,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec);
 enum ResolveStmtRetFlags {
     RESOLVE_STMT_SUCCESS = 0x1,
     RESOLVE_STMT_RETURNS = 0x2,
+    RESOLVE_STMT_LOOP_EXITS = 0x4,
 };
 
 enum ResolveStmtInFlags {
@@ -637,7 +638,7 @@ typedef struct SeenField {
 
 static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregate* decl_aggregate)
 {
-    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem); 
+    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
 
     // Resolve each parsed aggregate field into a field type.
     TypeAggregateField* field_types = array_create(&resolver->ctx->tmp_mem, TypeAggregateField, 16);
@@ -710,7 +711,7 @@ static bool try_complete_aggregate_type(Resolver* resolver, Type* type)
 
     if (type->as_incomplete.is_completing) {
         resolver_on_error(resolver, sym->decl->range, "Cannot resolve type `%s` due to cyclic dependency", sym->name->str);
-        return false; 
+        return false;
     }
 
     assert(sym->decl->kind == CST_DeclStruct || sym->decl->kind == CST_DeclUnion);
@@ -1551,8 +1552,8 @@ static bool resolve_expr_field(Resolver* resolver, ExprField* expr_field)
 
     if (!field_type) {
         // TODO: Range on field identifier
-        resolver_on_error(resolver, expr_field->super.range, "Type `%s` does not have a field named `%s`.",
-                          type_name(obj_type), expr_field->field->str);
+        resolver_on_error(resolver, expr_field->super.range, "Type `%s` does not have a field named `%s`.", type_name(obj_type),
+                          expr_field->field->str);
         return false;
     }
 
@@ -1630,8 +1631,7 @@ static Symbol* lookup_ident(Resolver* resolver, Identifier* mod_ns, Identifier* 
         Identifier* sym_name = get_import_sym_name(stmt, name);
 
         if (!sym_name) {
-            resolver_on_error(resolver, range,
-                              "Identifier `%s` is not among the imported symbols in module namespace `%s`", name->str,
+            resolver_on_error(resolver, range, "Identifier `%s` is not among the imported symbols in module namespace `%s`", name->str,
                               sym_modns->name->str);
             return NULL;
         }
@@ -1737,8 +1737,10 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
     size_t num_args = ecall->num_args;
 
     if (is_variadic && (num_args < (num_params - 1))) {
-        resolver_on_error(resolver, expr->range, "Incorrect number of procedure call arguments."
-                          " Expected at least `%d` arguments, but got `%d`", num_params - 1, num_args);
+        resolver_on_error(resolver, expr->range,
+                          "Incorrect number of procedure call arguments."
+                          " Expected at least `%d` arguments, but got `%d`",
+                          num_params - 1, num_args);
         return false;
     }
 
@@ -2164,8 +2166,8 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             }
         }
 
-        Type* type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret,
-                               ts->is_variadic);
+        Type* type =
+            type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret, ts->is_variadic);
         allocator_restore_state(mem_state);
 
         return type;
@@ -2416,9 +2418,9 @@ static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
         return false;
     }
 
-
     if (decl->is_variadic) {
-        type = type_variadic_struct(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.variadics, &resolver->ctx->type_cache.ptrs, type);
+        type =
+            type_variadic_struct(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.variadics, &resolver->ctx->type_cache.ptrs, type);
     }
     else if (type->kind == TYPE_ARRAY) {
         resolver_on_error(resolver, typespec->range,
@@ -2522,6 +2524,8 @@ static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym)
     bool returns = r & RESOLVE_STMT_RETURNS;
     bool success = r & RESOLVE_STMT_SUCCESS;
 
+    assert(!success || !(r & RESOLVE_STMT_LOOP_EXITS));
+
     pop_scope(resolver);
 
     dproc->returns = returns;
@@ -2577,9 +2581,18 @@ static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* r
     for (List* it = head->next; it != head; it = it->next) {
         Stmt* child_stmt = list_entry(it, Stmt, lnode);
 
-        // TODO: Also consider statements after break or continue
+        // Check for statement after return.
         if (ret_success & RESOLVE_STMT_RETURNS) {
             resolver_on_error(resolver, child_stmt->range, "Statement will never be executed; all previous control paths return");
+
+            ret_success &= ~RESOLVE_STMT_SUCCESS;
+            break;
+        }
+
+        // Check for statement after break/continue
+        if (ret_success & RESOLVE_STMT_LOOP_EXITS) {
+            resolver_on_error(resolver, child_stmt->range,
+                              "Statement will never be executed; all previous control paths break or continue the loop");
 
             ret_success &= ~RESOLVE_STMT_SUCCESS;
             break;
@@ -2588,7 +2601,7 @@ static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* r
         unsigned r = resolve_stmt(resolver, child_stmt, ret_type, flags);
 
         // NOTE: Track whether any statement in the block returns from the parent procedure.
-        ret_success = (r & RESOLVE_STMT_RETURNS) | ret_success;
+        ret_success = (r & RESOLVE_STMT_RETURNS) | (r & RESOLVE_STMT_LOOP_EXITS) | ret_success;
 
         if (!(r & RESOLVE_STMT_SUCCESS)) {
             ret_success &= ~RESOLVE_STMT_SUCCESS;
@@ -2658,10 +2671,13 @@ static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, 
         return 0;
 
     // Resolve else block.
-    if (sif->else_blk.body)
+    if (sif->else_blk.body) {
         ret &= resolve_stmt(resolver, sif->else_blk.body, ret_type, flags);
-    else
+    }
+    else {
         ret &= ~RESOLVE_STMT_RETURNS;
+        ret &= ~RESOLVE_STMT_LOOP_EXITS;
+    }
 
     return ret;
 }
@@ -2716,6 +2732,7 @@ static unsigned resolve_stmt_for(Resolver* resolver, StmtFor* stmt_for, Type* re
     // NOTE: Because for loops don't have an "else" path, we can't say that all control paths return.
     // TODO: Add else to for-loop!!
     ret &= ~RESOLVE_STMT_RETURNS;
+    ret &= ~RESOLVE_STMT_LOOP_EXITS;
 
     pop_scope(resolver);
 
@@ -2739,6 +2756,7 @@ static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_typ
     // NOTE: Because while loops don't have an "else" path, we can't say that all control paths return.
     // TODO: Add else to while loop!!
     ret &= ~RESOLVE_STMT_RETURNS;
+    ret &= ~RESOLVE_STMT_LOOP_EXITS;
 
     return ret;
 }
@@ -2760,6 +2778,14 @@ static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_
     // Report an error if the do-while loop always returns before the condition check.
     if (ret & RESOLVE_STMT_RETURNS) {
         resolver_on_error(resolver, swhile->cond->range, "All paths in do-while loop's body return before condition check.");
+        ret &= ~RESOLVE_STMT_SUCCESS;
+    }
+
+    // Report an error if the do-while loop always breaks out before condition check.
+    // TODO: Continue should be ok?
+    if (ret & RESOLVE_STMT_LOOP_EXITS) {
+        resolver_on_error(resolver, swhile->cond->range,
+                          "All paths in do-while loop's body break or continue before condition check.");
         ret &= ~RESOLVE_STMT_SUCCESS;
     }
 
@@ -2946,7 +2972,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     }
     case CST_StmtBreak: {
         if (break_continue_allowed)
-            ret = RESOLVE_STMT_SUCCESS;
+            ret = RESOLVE_STMT_SUCCESS | RESOLVE_STMT_LOOP_EXITS;
         else
             resolver_on_error(resolver, stmt->range, "Illegal break statement");
 
@@ -2954,7 +2980,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
     }
     case CST_StmtContinue: {
         if (break_continue_allowed)
-            ret = RESOLVE_STMT_SUCCESS;
+            ret = RESOLVE_STMT_SUCCESS | RESOLVE_STMT_LOOP_EXITS;
         else
             resolver_on_error(resolver, stmt->range, "Illegal continue statement");
 
