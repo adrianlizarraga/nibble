@@ -396,6 +396,7 @@ typedef struct StmtDoWhile {
 
 typedef struct StmtFor {
     Stmt super;
+    Scope* scope;
     Stmt* init;
     Expr* cond;
     Stmt* next;

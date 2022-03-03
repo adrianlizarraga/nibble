@@ -3,6 +3,8 @@ proc main() => int {
     var i := 0;
     var j := 0;
     var k := 0;
+    var l := 0;
+    var m := 0;
 
     // Infinite loop
     while (1) {
@@ -40,9 +42,31 @@ proc main() => int {
         if (k >= 10) {
             k = 0; // Should not execute
         }
-    } while (k < 20);
+    } while (k < 20 && j == 10 && i == 10);
 
-    // TODO: for loop
+    // For loop
+    for (var z := 0; z < 20; z = z + 1) {
+        if (z == 10) {
+            l = z;
+            break;
+        }
 
-    return i + j + k; // 10 + 10 + 10 = 30
+        if (z >= 10) {
+            l = 0; // Should not execute
+        }
+    }
+
+    // Infinite for loop
+    for (var z := 0; 1; z = z + 1) {
+        if (z == 5) {
+            m = z;
+            break;
+        }
+
+        if (z >= 5) {
+            m = 0; // Should not execute
+        }
+    }
+
+    return i + j + k + l + m; // 10 + 10 + 10 + 10 + 5 = 45
 }
