@@ -2583,7 +2583,7 @@ static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* r
 
         // Check for statement after return.
         if (ret_success & RESOLVE_STMT_RETURNS) {
-            resolver_on_error(resolver, child_stmt->range, "Statement will never be executed; all previous control paths return");
+            resolver_on_error(resolver, child_stmt->range, "Statement will never execute because all previous control paths return");
 
             ret_success &= ~RESOLVE_STMT_SUCCESS;
             break;
@@ -2592,7 +2592,7 @@ static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* r
         // Check for statement after break/continue
         if (ret_success & RESOLVE_STMT_LOOP_EXITS) {
             resolver_on_error(resolver, child_stmt->range,
-                              "Statement will never be executed; all previous control paths break or continue the loop");
+                              "Statement will never execute because all previous control paths break or continue the loop");
 
             ret_success &= ~RESOLVE_STMT_SUCCESS;
             break;
@@ -2732,7 +2732,7 @@ static unsigned resolve_stmt_for(Resolver* resolver, StmtFor* stmt_for, Type* re
     // NOTE: Because for loops don't have an "else" path, we can't say that all control paths return.
     // TODO: Add else to for-loop!!
     ret &= ~RESOLVE_STMT_RETURNS;
-    ret &= ~RESOLVE_STMT_LOOP_EXITS;
+    ret &= ~RESOLVE_STMT_LOOP_EXITS; // Break/continue do not propagate out from loops.
 
     pop_scope(resolver);
 
@@ -2756,7 +2756,7 @@ static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_typ
     // NOTE: Because while loops don't have an "else" path, we can't say that all control paths return.
     // TODO: Add else to while loop!!
     ret &= ~RESOLVE_STMT_RETURNS;
-    ret &= ~RESOLVE_STMT_LOOP_EXITS;
+    ret &= ~RESOLVE_STMT_LOOP_EXITS; // Break/continue do not propagate out from loops.
 
     return ret;
 }
