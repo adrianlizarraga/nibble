@@ -2237,91 +2237,112 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     return last_bb;
 }
 
-static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* body)
+static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* body, Stmt* next)
 {
     BBlock* hdr_bblock = IR_alloc_bblock(builder);
-    BBlock* after_bblock = IR_alloc_bblock(builder);
+    BBlock* end_bblock = IR_alloc_bblock(builder);
+    BBlock* nxt_bblock = next ? IR_alloc_bblock(builder) : NULL;
 
     IR_emit_instr_jmp(builder, bblock, hdr_bblock);
 
     IR_UJmpList break_ujmps = {0};
     IR_UJmpList cont_ujmps = {0};
-    BBlock* loop_end_bblock = IR_emit_stmt(builder, hdr_bblock, body, &break_ujmps, &cont_ujmps);
+    BBlock* body_end_bblock = IR_emit_stmt(builder, hdr_bblock, body, &break_ujmps, &cont_ujmps);
 
-    IR_patch_ujmp_list(builder, &break_ujmps, after_bblock);
-    IR_patch_ujmp_list(builder, &cont_ujmps, hdr_bblock);
+    if (next) {
+        if (body_end_bblock) {
+            IR_emit_instr_jmp(builder, body_end_bblock, nxt_bblock);
+        }
 
-    if (loop_end_bblock) {
-        IR_emit_instr_jmp(builder, loop_end_bblock, hdr_bblock);
+        body_end_bblock = IR_emit_stmt(builder, nxt_bblock, next, NULL, NULL);
+        assert(body_end_bblock);
+    }
+
+    if (body_end_bblock) {
+        IR_emit_instr_jmp(builder, body_end_bblock, hdr_bblock);
         hdr_bblock->flags |= BBLOCK_IS_LOOP_HDR;
     }
 
-    return after_bblock;
+    IR_patch_ujmp_list(builder, &break_ujmps, end_bblock);
+    IR_patch_ujmp_list(builder, &cont_ujmps, nxt_bblock ? nxt_bblock : hdr_bblock);
+
+    return end_bblock;
+}
+
+static BBlock* IR_emit_cond_loop(IR_ProcBuilder* builder, BBlock* bblock, Expr* cond_expr, Stmt* body_stmt, Stmt* next_stmt)
+{
+    BBlock* last_bb = NULL;
+
+    // Emit infinite loop.
+    if (!cond_expr || (cond_expr->is_constexpr && cond_expr->is_imm)) {
+        assert(!cond_expr || type_is_scalar(cond_expr->type));
+        bool cond_val = !cond_expr || (cond_expr->imm.as_int._u64 != 0);
+
+        last_bb = cond_val ? IR_emit_inf_loop(builder, bblock, body_stmt, next_stmt) : bblock;
+    }
+    // Normal for-loop.
+    else {
+        last_bb = IR_alloc_bblock(builder);
+
+        BBlock* hdr_bb = IR_alloc_bblock(builder);
+        BBlock* nxt_bb = next_stmt ? IR_alloc_bblock(builder) : NULL;
+
+        // Jump to the loop header basic block.
+        IR_emit_instr_jmp(builder, bblock, hdr_bb);
+
+        // Process condition
+        BBlock* body_bb = IR_process_cfg_cond(builder, cond_expr, hdr_bb, false, last_bb);
+
+        // Emit instructions for the loop body.
+        //   - break target: last_bb
+        //   - continue target: nxt_bb or hdr_bb
+        IR_UJmpList break_ujmps = {0};
+        IR_UJmpList cont_ujmps = {0};
+        BBlock* body_end_bb = IR_emit_stmt(builder, body_bb, body_stmt, &break_ujmps, &cont_ujmps);
+
+        // Emit code for the for-loop's 'next' statement.
+        if (next_stmt) {
+            if (body_end_bb) {
+                IR_emit_instr_jmp(builder, body_end_bb, nxt_bb);
+            }
+
+            body_end_bb = IR_emit_stmt(builder, nxt_bb, next_stmt, NULL, NULL);
+            assert(body_end_bb);
+        }
+
+        if (body_end_bb) {
+            // Jump back up to the loop header.
+            IR_emit_instr_jmp(builder, body_end_bb, hdr_bb);
+
+            // Explicitly mark loop header.
+            hdr_bb->flags |= BBLOCK_IS_LOOP_HDR;
+        }
+
+        IR_patch_ujmp_list(builder, &break_ujmps, last_bb);
+        IR_patch_ujmp_list(builder, &cont_ujmps, nxt_bb ? nxt_bb : hdr_bb);
+    }
+
+    return last_bb;
 }
 
 static BBlock* IR_emit_stmt_for(IR_ProcBuilder* builder, BBlock* bblock, StmtFor* stmt)
 {
-    Stmt* init_stmt = stmt->init;
-    Expr* cond_expr = stmt->cond;
-    Stmt* body_stmt = stmt->body;
-    Stmt* next_stmt = stmt->next;
-
     IR_push_scope(builder, stmt->scope);
 
-    bblock = IR_emit_stmt(builder, bblock, init_stmt, NULL, NULL); // TODO: Should break/cont be allowed in init?
-
-    if (cond_expr->is_constexpr && cond_expr->is_imm) {
-        assert(0); // TODO
+    if (stmt->init) {
+        bblock = IR_emit_stmt(builder, bblock, stmt->init, NULL, NULL);
     }
 
-    assert(0); // TODO
+    BBlock* last_bb = IR_emit_cond_loop(builder, bblock, stmt->cond, stmt->body, stmt->next);
 
     IR_pop_scope(builder);
 
-    return bblock;
+    return last_bb;
 }
 
 static BBlock* IR_emit_stmt_while(IR_ProcBuilder* builder, BBlock* bblock, StmtWhile* stmt)
 {
-    Expr* cond_expr = stmt->cond;
-    Stmt* body_stmt = stmt->body;
-
-    if (cond_expr->is_constexpr && cond_expr->is_imm) {
-        assert(type_is_scalar(cond_expr->type));
-        bool cond_val = cond_expr->imm.as_int._u64 != 0;
-
-        // Emit infinite loop
-        return cond_val ? IR_emit_inf_loop(builder, bblock, body_stmt) : bblock;
-    }
-
-    BBlock* hdr_bb = IR_alloc_bblock(builder);
-    BBlock* last_bb = IR_alloc_bblock(builder);
-
-    // Jump to the loop header basic block.
-    IR_emit_instr_jmp(builder, bblock, hdr_bb);
-
-    // Process condition
-    BBlock* body_bb = IR_process_cfg_cond(builder, cond_expr, hdr_bb, false, last_bb);
-
-    // Emit instructions for the loop body.
-    //   - break target: last_bb
-    //   - continue target: hdr_bb
-    IR_UJmpList break_ujmps = {0};
-    IR_UJmpList cont_ujmps = {0};
-    BBlock* body_end_bb = IR_emit_stmt(builder, body_bb, body_stmt, &break_ujmps, &cont_ujmps);
-
-    IR_patch_ujmp_list(builder, &break_ujmps, last_bb);
-    IR_patch_ujmp_list(builder, &cont_ujmps, hdr_bb);
-
-    if (body_end_bb) {
-        // Jump back up to the loop header.
-        IR_emit_instr_jmp(builder, body_end_bb, hdr_bb);
-
-        // Explicitly mark loop header.
-        hdr_bb->flags |= BBLOCK_IS_LOOP_HDR;
-    }
-
-    return last_bb;
+    return IR_emit_cond_loop(builder, bblock, stmt->cond, stmt->body, NULL);
 }
 
 static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, StmtDoWhile* stmt)
@@ -2334,8 +2355,9 @@ static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, St
         bool cond_val = cond_expr->imm.as_int._u64 != 0;
 
         // Emit infinite loop
-        return cond_val ? IR_emit_inf_loop(builder, bblock, body_stmt) : bblock;
+        return cond_val ? IR_emit_inf_loop(builder, bblock, body_stmt, NULL) : bblock;
     }
+
     BBlock* last_bb;
     BBlock* body_bb = IR_alloc_bblock(builder);
 

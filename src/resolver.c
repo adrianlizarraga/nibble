@@ -56,8 +56,7 @@ enum ResolveStmtRetFlags {
 };
 
 enum ResolveStmtInFlags {
-    RESOLVE_STMT_BREAK_ALLOWED = 0x1,
-    RESOLVE_STMT_CONTINUE_ALLOWED = 0x2,
+    RESOLVE_STMT_BREAK_CONTINUE_ALLOWED = 0x1,
 };
 
 static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
@@ -2669,32 +2668,50 @@ static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, 
 
 static unsigned resolve_stmt_for(Resolver* resolver, StmtFor* stmt_for, Type* ret_type, unsigned flags)
 {
-    stmt_for->scope = push_scope(resolver, 4); // TODO: The 4 is magical
+    stmt_for->scope = push_scope(resolver, 2); // At most 1 variable declaration in for-loop's init statement.
 
-    unsigned ret = resolve_stmt(resolver, stmt_for->init, ret_type, flags);
+    unsigned flags_no_break = flags;
+    flags_no_break &= ~RESOLVE_STMT_BREAK_CONTINUE_ALLOWED;
+
+    unsigned ret = RESOLVE_STMT_SUCCESS;
+
+    // Init statement.
+    if (stmt_for->init) {
+        ret &= resolve_stmt(resolver, stmt_for->init, ret_type, flags_no_break);
+
+        if (!(ret & RESOLVE_STMT_SUCCESS)) {
+            return 0;
+        }
+
+        // Throw an error if the init statement returns.
+        if (ret & RESOLVE_STMT_RETURNS) {
+            resolver_on_error(resolver, stmt_for->init->range, "For-loop body will never execute");
+            return 0;
+        }
+    }
+
+    // Condition expression.
+    if (stmt_for->cond) {
+        ExprOperand cond_eop = {0};
+
+        if (!resolve_cond_expr(resolver, stmt_for->cond, &cond_eop)) {
+            return 0;
+        }
+
+        stmt_for->cond = try_wrap_cast_expr(resolver, &cond_eop, stmt_for->cond);
+    }
+
+    // Loop body.
+    ret &= resolve_stmt(resolver, stmt_for->body, ret_type, flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
 
     if (!(ret & RESOLVE_STMT_SUCCESS)) {
         return 0;
     }
 
-    ExprOperand cond_eop = {0};
-
-    if (!resolve_cond_expr(resolver, stmt_for->cond, &cond_eop)) {
-        return 0;
+    // Next iteration statement.
+    if (stmt_for->next) {
+        ret &= resolve_stmt(resolver, stmt_for->next, ret_type, flags_no_break);
     }
-
-    stmt_for->cond = try_wrap_cast_expr(resolver, &cond_eop, stmt_for->cond);
-
-    ret &= resolve_stmt(resolver, stmt_for->body, ret_type, flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
-
-    if (!(ret & RESOLVE_STMT_SUCCESS)) {
-        return 0;
-    }
-
-    flags &= ~RESOLVE_STMT_BREAK_ALLOWED;
-    flags &= ~RESOLVE_STMT_CONTINUE_ALLOWED;
-
-    ret &= resolve_stmt(resolver, stmt_for->next, ret_type, flags);
 
     // NOTE: Because for loops don't have an "else" path, we can't say that all control paths return.
     // TODO: Add else to for-loop!!
@@ -2717,7 +2734,7 @@ static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_typ
     swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
 
     // Resolve loop body.
-    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
+    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
 
     // NOTE: Because while loops don't have an "else" path, we can't say that all control paths return.
     // TODO: Add else to while loop!!
@@ -2738,7 +2755,7 @@ static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_
     swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
 
     // Resolve loop body.
-    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_ALLOWED | RESOLVE_STMT_CONTINUE_ALLOWED);
+    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
 
     // Report an error if the do-while loop always returns before the condition check.
     if (ret & RESOLVE_STMT_RETURNS) {
@@ -2878,8 +2895,7 @@ static bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
 static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     unsigned ret = 0;
-    bool break_allowed = flags & RESOLVE_STMT_BREAK_ALLOWED;
-    bool continue_allowed = flags & RESOLVE_STMT_CONTINUE_ALLOWED;
+    bool break_continue_allowed = flags & RESOLVE_STMT_BREAK_CONTINUE_ALLOWED;
 
     switch (stmt->kind) {
     case CST_StmtNoOp: {
@@ -2929,7 +2945,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         break;
     }
     case CST_StmtBreak: {
-        if (break_allowed)
+        if (break_continue_allowed)
             ret = RESOLVE_STMT_SUCCESS;
         else
             resolver_on_error(resolver, stmt->range, "Illegal break statement");
@@ -2937,7 +2953,7 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         break;
     }
     case CST_StmtContinue: {
-        if (continue_allowed)
+        if (break_continue_allowed)
             ret = RESOLVE_STMT_SUCCESS;
         else
             resolver_on_error(resolver, stmt->range, "Illegal continue statement");
