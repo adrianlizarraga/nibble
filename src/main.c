@@ -9,8 +9,8 @@
    - Defer statement
    - Multiple return values (tuple implemented as anonymous struct)
      - Indexed field access. EX: vec3{0} // access first field of Vec3
-     - #fieldoffset
      - #fieldindex
+     - #fieldoffset
      - Tuple type is just an anonymous struct. EX: var my_tuple : {int, int};
 
 */

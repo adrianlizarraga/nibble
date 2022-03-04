@@ -3,6 +3,12 @@ struct Smol {
     b : char;
 }
 
+#static_assert(#offsetof(Smol, a) == 0);
+#static_assert(#offsetof(Smol, b) == 1);
+
+#static_assert(#indexof(Smol, a) == 0);
+#static_assert(#indexof(Smol, b) == 1);
+
 proc pass_smol(s : Smol) => int {
     return s.a + s.b;
 }
@@ -23,6 +29,16 @@ struct Vec3 {
     y : int;
     z : int;
 }
+
+#static_assert(#offsetof(Vec3, x) == 0);
+#static_assert(#offsetof(Vec3, y) == 4);
+#static_assert(#offsetof(Vec3, z) == 8);
+//#static_assert(#offsetof(Vec3, w) == 12);
+
+#static_assert(#indexof(Vec3, x) == 0);
+#static_assert(#indexof(Vec3, y) == 1);
+#static_assert(#indexof(Vec3, z) == 2);
+//#static_assert(#indexof(Vec3, w) == 2);
 
 proc vec3_add_comps(a: Vec3, b:  Vec3) => int {
     return a.x + a.y + a.z + b.x + b.y + b.z;
@@ -108,6 +124,7 @@ proc main() => int {
 
     var r5 := smol_vec3_add(sv1, sv2);
     var r5_ptr : ^SmolVec3 = ^r5;
+    const INDEX_1 : int = 1;
 
     var sv3 : SmolVec2;
     var sv4 : SmolVec2;
@@ -118,5 +135,5 @@ proc main() => int {
     var r6_ptr : ^SmolVec2 = ^r6;
 
     // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) = 84
-    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.x + r5_ptr.[1] + r5.z) + (r6.x + r6_ptr.y);
+    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) + (r6.x + r6_ptr.y);
 }

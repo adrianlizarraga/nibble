@@ -707,6 +707,82 @@ static Expr* parse_expr_typeid(Parser* parser)
     return expr;
 }
 
+static Expr* parse_expr_offsetof(Parser* parser)
+{
+    assert(is_keyword(parser, KW_OFFSETOF));
+    ProgPos start = parser->token.range.start;
+
+    const char* err_prefix = "Failed to parse offsetof expression";
+
+    next_token(parser);
+
+    if (!expect_token(parser, TKN_LPAREN, err_prefix)) {
+        return NULL;
+    }
+
+    TypeSpec* obj_ts = parse_typespec(parser);
+
+    if (!obj_ts) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_COMMA, err_prefix)) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_IDENT, err_prefix)) {
+        return NULL;
+    }
+
+    Identifier* field_ident = parser->ptoken.as_ident.ident;
+
+    if (!expect_token(parser, TKN_RPAREN, err_prefix)) {
+        return NULL;
+    }
+
+    ProgRange range = {.start = start, .end = parser->ptoken.range.end};
+
+    return new_expr_offsetof(parser->ast_arena, obj_ts, field_ident, range);
+}
+
+static Expr* parse_expr_indexof(Parser* parser)
+{
+    assert(is_keyword(parser, KW_INDEXOF));
+    ProgPos start = parser->token.range.start;
+
+    const char* err_prefix = "Failed to parse offsetof expression";
+
+    next_token(parser);
+
+    if (!expect_token(parser, TKN_LPAREN, err_prefix)) {
+        return NULL;
+    }
+
+    TypeSpec* obj_ts = parse_typespec(parser);
+
+    if (!obj_ts) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_COMMA, err_prefix)) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_IDENT, err_prefix)) {
+        return NULL;
+    }
+
+    Identifier* field_ident = parser->ptoken.as_ident.ident;
+
+    if (!expect_token(parser, TKN_RPAREN, err_prefix)) {
+        return NULL;
+    }
+
+    ProgRange range = {.start = start, .end = parser->ptoken.range.end};
+
+    return new_expr_indexof(parser->ast_arena, obj_ts, field_ident, range);
+}
+
 // expr_ident = mod_namespace? TKN_IDENT
 // mod_namespace = (TKN_IDENT '::')
 static Expr* parse_expr_ident(Parser* parser)
@@ -726,6 +802,9 @@ static Expr* parse_expr_ident(Parser* parser)
 //           | expr_ident
 //           | expr_compound_init
 //           | expr_sizeof
+//           | expr_typeid
+//           | expr_offsetof
+//           | expr_indexof
 //           | '(' expr ')'
 //
 // expr_sizeof = KW_SIZEOF '('type_spec')'
@@ -764,6 +843,10 @@ static Expr* parse_expr_base(Parser* parser)
             return parse_expr_sizeof(parser);
         case KW_TYPEID:
             return parse_expr_typeid(parser);
+        case KW_OFFSETOF:
+            return parse_expr_offsetof(parser);
+        case KW_INDEXOF:
+            return parse_expr_indexof(parser);
         default:
             break;
         }

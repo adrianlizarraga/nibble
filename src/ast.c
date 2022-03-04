@@ -243,6 +243,24 @@ Expr* new_expr_typeid(Allocator* allocator, TypeSpec* typespec, ProgRange range)
     return (Expr*)expr;
 }
 
+Expr* new_expr_offsetof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range)
+{
+    ExprOffsetof* expr = new_expr(allocator, ExprOffsetof, range);
+    expr->obj_ts = obj_ts;
+    expr->field_ident = field_ident;
+
+    return (Expr*)expr;
+}
+
+Expr* new_expr_indexof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range)
+{
+    ExprIndexof* expr = new_expr(allocator, ExprIndexof, range);
+    expr->obj_ts = obj_ts;
+    expr->field_ident = field_ident;
+
+    return (Expr*)expr;
+}
+
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range)
 {
     MemberInitializer* initzer = alloc_type(allocator, MemberInitializer, true);
@@ -964,6 +982,7 @@ void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, c
         // Make sure the field is placed at an offset that is divisible by its alignment.
         size = ALIGN_UP(size, field_align);
         field->offset = size;
+        field->index = i;
 
         // Increase the struct's size by the field's size.
         size += field_size;
@@ -1000,6 +1019,7 @@ void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, co
 
         // All union fields start at offset 0 (share the same memory region).
         field->offset = 0;
+        field->index = i;
 
         // Update the union to use the maximum field alignment and size.
         if (field_align > align) {
@@ -1880,6 +1900,16 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ExprTypeid* e = (ExprTypeid*)expr;
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(typeid %s)", ftprint_typespec(allocator, e->typespec));
+        } break;
+        case CST_ExprOffsetof: {
+            ExprOffsetof* e = (ExprOffsetof*)expr;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(offsetof %s %s)", ftprint_typespec(allocator, e->obj_ts), e->field_ident->str);
+        } break;
+        case CST_ExprIndexof: {
+            ExprIndexof* e = (ExprIndexof*)expr;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(indexof %s %s)", ftprint_typespec(allocator, e->obj_ts), e->field_ident->str);
         } break;
         case CST_ExprCompoundLit: {
             ExprCompoundLit* e = (ExprCompoundLit*)expr;

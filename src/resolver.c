@@ -925,6 +925,76 @@ static bool resolve_expr_typeid(Resolver* resolver, ExprTypeid* expr)
     return true;
 }
 
+static bool resolve_expr_offsetof(Resolver* resolver, ExprOffsetof* expr)
+{
+    Type* obj_type = resolve_typespec(resolver, expr->obj_ts);
+
+    if (!obj_type) {
+        return false;
+    }
+
+    if (!try_complete_aggregate_type(resolver, obj_type)) {
+        return false;
+    }
+
+    if (!type_is_aggregate(obj_type)) {
+        resolver_on_error(resolver, expr->obj_ts->range, "First argument of #offsetof must be an aggregate type.");
+        return false;
+    }
+
+    TypeAggregateField* field = get_type_aggregate_field(obj_type, expr->field_ident);
+
+    if (!field) {
+        // TODO: Range on identifier
+        resolver_on_error(resolver, expr->super.range, "Type `%s` does not have a field named `%s`.", type_name(obj_type),
+                          expr->field_ident->str);
+        return false;
+    }
+
+    expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_int._u64 = field->offset;
+
+    return true;
+}
+
+static bool resolve_expr_indexof(Resolver* resolver, ExprIndexof* expr)
+{
+    Type* obj_type = resolve_typespec(resolver, expr->obj_ts);
+
+    if (!obj_type) {
+        return false;
+    }
+
+    if (!try_complete_aggregate_type(resolver, obj_type)) {
+        return false;
+    }
+
+    if (!type_is_aggregate(obj_type)) {
+        resolver_on_error(resolver, expr->obj_ts->range, "First argument of #indexof must be an aggregate type.");
+        return false;
+    }
+
+    TypeAggregateField* field = get_type_aggregate_field(obj_type, expr->field_ident);
+
+    if (!field) {
+        // TODO: Range on identifier
+        resolver_on_error(resolver, expr->super.range, "Type `%s` does not have a field named `%s`.", type_name(obj_type),
+                          expr->field_ident->str);
+        return false;
+    }
+
+    expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_int._u64 = field->index;
+
+    return true;
+}
+
 static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
 {
     expr->super.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, builtin_types[BUILTIN_TYPE_CHAR].type,
@@ -1556,21 +1626,9 @@ static bool resolve_expr_field(Resolver* resolver, ExprField* expr_field)
     bool is_lvalue = obj_info.is_lvalue;
 
     // Check that the accessed field exists.
-    Type* field_type = NULL;
+    TypeAggregateField* field = get_type_aggregate_field(obj_type, expr_field->field);
 
-    TypeAggregate* type_aggregate = &obj_type->as_aggregate;
-    size_t num_fields = type_aggregate->num_fields;
-
-    for (size_t i = 0; i < num_fields; i += 1) {
-        TypeAggregateField* f = type_aggregate->fields + i;
-
-        if (f->name == expr_field->field) {
-            field_type = f->type;
-            break;
-        }
-    }
-
-    if (!field_type) {
+    if (!field) {
         // TODO: Range on field identifier
         resolver_on_error(resolver, expr_field->super.range, "Type `%s` does not have a field named `%s`.", type_name(obj_type),
                           expr_field->field->str);
@@ -1578,7 +1636,7 @@ static bool resolve_expr_field(Resolver* resolver, ExprField* expr_field)
     }
 
     // Set overall expression type and attributes.
-    expr_field->super.type = field_type;
+    expr_field->super.type = field->type;
     expr_field->super.is_lvalue = is_lvalue;
     expr_field->super.is_constexpr = false;
     expr_field->super.is_imm = false;
@@ -2075,6 +2133,10 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_sizeof(resolver, (ExprSizeof*)expr);
     case CST_ExprTypeid:
         return resolve_expr_typeid(resolver, (ExprTypeid*)expr);
+    case CST_ExprOffsetof:
+        return resolve_expr_offsetof(resolver, (ExprOffsetof*)expr);
+    case CST_ExprIndexof:
+        return resolve_expr_indexof(resolver, (ExprIndexof*)expr);
     default:
         ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
         assert(0);
