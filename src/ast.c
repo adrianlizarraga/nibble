@@ -145,6 +145,15 @@ Expr* new_expr_field(Allocator* allocator, Expr* object, Identifier* field, Prog
     return (Expr*)expr;
 }
 
+Expr* new_expr_field_index(Allocator* allocator, Expr* object, Expr* index, ProgRange range)
+{
+    ExprFieldIndex* expr = new_expr(allocator, ExprFieldIndex, range);
+    expr->object = object;
+    expr->index = index;
+
+    return (Expr*)expr;
+}
+
 Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range)
 {
     ExprIndex* expr = new_expr(allocator, ExprIndex, range);
@@ -1821,6 +1830,11 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ExprField* e = (ExprField*)expr;
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(field %s %s)", ftprint_expr(allocator, e->object), e->field->str);
+        } break;
+        case CST_ExprFieldIndex: {
+            ExprFieldIndex* e = (ExprFieldIndex*)expr;
+            dstr = array_create(allocator, char, 8);
+            ftprint_char_array(&dstr, false, "(field-index %s %s)", ftprint_expr(allocator, e->object), ftprint_expr(allocator, e->index));
         } break;
         case CST_ExprInt: {
             ExprInt* e = (ExprInt*)expr;

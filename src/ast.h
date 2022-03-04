@@ -135,6 +135,7 @@ typedef enum ExprKind {
     CST_ExprCall,
     CST_ExprIndex,
     CST_ExprField,
+    CST_ExprFieldIndex,
     CST_ExprInt,
     CST_ExprFloat,
     CST_ExprStr,
@@ -202,6 +203,12 @@ typedef struct ExprField {
     Expr* object;
     Identifier* field;
 } ExprField;
+
+typedef struct ExprFieldIndex {
+    Expr super;
+    Expr* object;
+    Expr* index;
+} ExprFieldIndex;
 
 typedef struct ExprInt {
     Expr super;
@@ -275,6 +282,7 @@ Expr* new_expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* 
 Expr* new_expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right);
 Expr* new_expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange range);
 Expr* new_expr_field(Allocator* allocator, Expr* object, Identifier* field, ProgRange range);
+Expr* new_expr_field_index(Allocator* allocator, Expr* object, Expr* index, ProgRange range);
 Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
 Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range);
 ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, Identifier* name);

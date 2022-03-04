@@ -1509,31 +1509,51 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
     return true;
 }
 
+typedef struct ObjExprResolution {
+    Type* type;
+    bool is_lvalue;
+} ObjExprResolution;
+
+static bool resolve_obj_expr(Resolver* resolver, Expr* obj_expr, ObjExprResolution* result)
+{
+    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to an aggregate type.
+
+    if (!resolve_expr(resolver, obj_expr, NULL)) {
+        return false;
+    }
+
+    result->is_lvalue = obj_expr->is_lvalue;
+    result->type = obj_expr->type;
+
+    if (result->type->kind == TYPE_PTR) {
+        result->type = result->type->as_ptr.base;
+        result->is_lvalue = true;
+    }
+
+    if (!try_complete_aggregate_type(resolver, result->type)) {
+        return false;
+    }
+
+    if (!type_is_aggregate(result->type)) {
+        resolver_on_error(resolver, obj_expr->range, "Cannot access field on non-aggregate (i.e., struct or union) type `%s`.",
+                          type_name(result->type));
+        return false;
+    }
+
+    return true;
+}
+
 static bool resolve_expr_field(Resolver* resolver, ExprField* expr_field)
 {
-    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to
-    // an aggregate type.
-    if (!resolve_expr(resolver, expr_field->object, NULL)) {
+    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to an aggregate type.
+    ObjExprResolution obj_info = {0};
+
+    if (!resolve_obj_expr(resolver, expr_field->object, &obj_info)) {
         return false;
     }
 
-    bool is_lvalue = expr_field->object->is_lvalue;
-    Type* obj_type = expr_field->object->type;
-
-    if (obj_type->kind == TYPE_PTR) {
-        obj_type = obj_type->as_ptr.base;
-        is_lvalue = true;
-    }
-
-    if (!try_complete_aggregate_type(resolver, obj_type)) {
-        return false;
-    }
-
-    if (!type_is_aggregate(obj_type)) {
-        resolver_on_error(resolver, expr_field->object->range,
-                          "Cannot access field on non-aggregate (i.e., struct or union) type `%s`.", type_name(obj_type));
-        return false;
-    }
+    Type* obj_type = obj_info.type;
+    bool is_lvalue = obj_info.is_lvalue;
 
     // Check that the accessed field exists.
     Type* field_type = NULL;
@@ -1562,6 +1582,52 @@ static bool resolve_expr_field(Resolver* resolver, ExprField* expr_field)
     expr_field->super.is_lvalue = is_lvalue;
     expr_field->super.is_constexpr = false;
     expr_field->super.is_imm = false;
+
+    return true;
+}
+
+static bool resolve_expr_field_index(Resolver* resolver, ExprFieldIndex* expr)
+{
+    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to an aggregate type.
+    ObjExprResolution obj_info = {0};
+
+    if (!resolve_obj_expr(resolver, expr->object, &obj_info)) {
+        return false;
+    }
+
+    Type* obj_type = obj_info.type;
+    bool is_lvalue = obj_info.is_lvalue;
+
+    // Resolve field index expression.
+    if (!resolve_expr(resolver, expr->index, NULL)) {
+        return false;
+    }
+
+    // Field index must be a constant expression.
+    ExprOperand index_op = OP_FROM_EXPR(expr->index);
+
+    if (!(index_op.is_constexpr && index_op.is_imm && type_is_integer_like(index_op.type))) {
+        resolver_on_error(resolver, expr->index->range, "Object's field index must be a compile-time constant expression");
+        return false;
+    }
+
+    // Field index must be within bounds.
+    size_t field_index = expr->index->imm.as_int._u64;
+    TypeAggregate* type_agg = &obj_type->as_aggregate;
+
+    if (field_index >= type_agg->num_fields) {
+        resolver_on_error(resolver, expr->index->range, "Object field index (%llu) is out of bounds. Type `%s` has %llu fields.",
+                          field_index, type_name(obj_type), type_agg->num_fields);
+        return false;
+    }
+
+    TypeAggregateField* field = type_agg->fields + field_index;
+
+    // Set overall expression type and attributes.
+    expr->super.type = field->type;
+    expr->super.is_lvalue = is_lvalue;
+    expr->super.is_constexpr = false;
+    expr->super.is_imm = false;
 
     return true;
 }
@@ -1995,6 +2061,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_index(resolver, expr);
     case CST_ExprField:
         return resolve_expr_field(resolver, (ExprField*)expr);
+    case CST_ExprFieldIndex:
+        return resolve_expr_field_index(resolver, (ExprFieldIndex*)expr);
     case CST_ExprCall:
         return resolve_expr_call(resolver, expr);
     case CST_ExprCast:

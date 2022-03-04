@@ -813,20 +813,33 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
     return arg;
 }
 
-// expr_base_mod = expr_base ('.' TKN_IDENT | '[' expr ']' | '(' proc_call_arg_list* ')' | ':>' typespec)*
+// expr_base_mod = expr_base ('.' ('[' expr ']' | TKN_IDENT) | '[' expr ']' | '(' proc_call_arg_list* ')' | ':>' typespec)*
 // proc_call_arg_list = proc_call_arg (',' proc_call_arg)*
 static Expr* parse_expr_base_mod(Parser* parser)
 {
     Expr* expr = parse_expr_base(parser);
 
-    while (expr && (is_token_kind(parser, TKN_DOT) || is_token_kind(parser, TKN_LBRACKET) || is_token_kind(parser, TKN_LPAREN) ||
-                    is_token_kind(parser, TKN_CAST))) {
+    while (expr && (is_token_kind(parser, TKN_DOT) || is_token_kind(parser, TKN_LBRACKET) ||
+                    is_token_kind(parser, TKN_LPAREN) || is_token_kind(parser, TKN_CAST))) {
         if (match_token(parser, TKN_DOT)) {
             //
-            // Field access.
+            // Struct object field access.
             //
 
-            if (expect_token(parser, TKN_IDENT, "Failed to parse field access")) {
+            // Indexed field.
+            if (match_token(parser, TKN_LBRACKET)) {
+                Expr* index = parse_expr(parser);
+
+                if (index && expect_token(parser, TKN_RBRACKET, "Failed to parse indexed field access")) {
+                    ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
+                    expr = new_expr_field_index(parser->ast_arena, expr, index, range);
+                }
+                else {
+                    expr = NULL;
+                }
+            }
+            // Named field.
+            else if (expect_token(parser, TKN_IDENT, "Failed to parse field access")) {
                 Identifier* field = parser->ptoken.as_ident.ident;
                 ProgRange range = {.start = expr->range.start, .end = parser->ptoken.range.end};
                 expr = new_expr_field(parser->ast_arena, expr, field, range);

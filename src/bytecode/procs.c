@@ -1597,40 +1597,66 @@ static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprU
     return curr_bb;
 }
 
+static BBlock* IR_emit_obj_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* obj_expr, IR_Operand* dst)
+{
+    IR_Operand obj_op = {0};
+    BBlock* curr_bb = IR_emit_expr(builder, bblock, obj_expr, &obj_op);
+
+    dst->kind = IR_OPERAND_DEREF_ADDR;
+
+    // This pointer points to the actual object.
+    if (obj_op.type->kind == TYPE_PTR) {
+        dst->type = obj_op.type->as_ptr.base;
+        IR_ptr_to_mem_op(builder, curr_bb, &obj_op);
+        dst->addr = obj_op.addr;
+    }
+    // Accessing the object field directly.
+    else {
+        dst->type = obj_op.type;
+        IR_get_object_addr(builder, curr_bb, &dst->addr, &obj_op);
+    }
+
+    return curr_bb;
+}
+
 static BBlock* IR_emit_expr_field(IR_ProcBuilder* builder, BBlock* bblock, ExprField* expr_field, IR_Operand* dst)
 {
     IR_Operand obj_op = {0};
-    BBlock* curr_bb = IR_emit_expr(builder, bblock, expr_field->object, &obj_op);
+    BBlock* curr_bb = IR_emit_obj_expr(builder, bblock, expr_field->object, &obj_op);
 
-    Type* obj_type;
-    MemAddr obj_addr;
-
-    if (obj_op.type->kind == TYPE_PTR) {
-        //
-        // This pointer points to the actual object.
-        //
-
-        obj_type = obj_op.type->as_ptr.base;
-        IR_ptr_to_mem_op(builder, curr_bb, &obj_op);
-        obj_addr = obj_op.addr;
-    }
-    else {
-        //
-        // Accessing the object field directly.
-        //
-
-        obj_type = obj_op.type;
-        IR_get_object_addr(builder, curr_bb, &obj_addr, &obj_op);
-    }
-
-    size_t field_offset = get_type_aggregate_field(obj_type, expr_field->field)->offset;
+    TypeAggregateField* field = get_type_aggregate_field(obj_op.type, expr_field->field);
+    assert(field);
 
     dst->kind = IR_OPERAND_DEREF_ADDR;
     dst->type = expr_field->super.type;
-    dst->addr = obj_addr;
+    dst->addr = obj_op.addr;
 
     // Add in the field's byte offset from the beginning of the object.
-    dst->addr.disp += (u32)field_offset;
+    dst->addr.disp += (u32)field->offset;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_expr_field_index(IR_ProcBuilder* builder, BBlock* bblock, ExprFieldIndex* expr, IR_Operand* dst)
+{
+    IR_Operand obj_op = {0};
+    BBlock* curr_bb = IR_emit_obj_expr(builder, bblock, expr->object, &obj_op);
+
+    assert(expr->index->is_imm);
+
+    size_t field_index = expr->index->imm.as_int._u64;
+    TypeAggregate* type_agg = &obj_op.type->as_aggregate;
+
+    assert(field_index < type_agg->num_fields);
+
+    TypeAggregateField* field = type_agg->fields + field_index;
+
+    dst->kind = IR_OPERAND_DEREF_ADDR;
+    dst->type = expr->super.type;
+    dst->addr = obj_op.addr;
+
+    // Add in the field's byte offset from the beginning of the object.
+    dst->addr.disp += (u32)field->offset;
 
     return curr_bb;
 }
@@ -1999,6 +2025,8 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
         return IR_emit_expr_index(builder, bblock, (ExprIndex*)expr, dst);
     case CST_ExprField:
         return IR_emit_expr_field(builder, bblock, (ExprField*)expr, dst);
+    case CST_ExprFieldIndex:
+        return IR_emit_expr_field_index(builder, bblock, (ExprFieldIndex*)expr, dst);
     case CST_ExprCompoundLit:
         return IR_emit_expr_compound_lit(builder, bblock, (ExprCompoundLit*)expr, dst);
     case CST_ExprStr: {
