@@ -967,6 +967,68 @@ Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap
 
     return type;
 }
+
+static u64 hash_aggregate_fields(size_t num_fields, const TypeAggregateField* fields)
+{
+    const uint64_t FNV_INIT = 0xcbf29ce484222325ULL;
+
+    u64 h = FNV_INIT;
+    size_t i = 0;
+
+    do {
+        //h = 
+    } while(i < num_fields);
+
+    return h;
+}
+
+typedef struct CachedType {
+    Type* type;
+    struct CachedType* next;
+} CachedType;
+
+Type* type_anon_struct(Allocator* allocator, HMap* type_anon_s_cache, size_t num_fields, const TypeAggregateField* fields)
+{
+    u64 key = hash_aggregate_fields(num_fields, fields);
+    u64* pval = hmap_get(type_anon_s_cache, key);
+    CachedType* cached = pval ? (void*)*pval : NULL;
+
+    // Returned cached type if it exists.
+    for (CachedType* it = cached; it != NULL; it = it->next) {
+        Type* type = it->type;
+
+        if (type->as_aggregate.num_fields == num_fields) {
+            bool equal = true;
+
+            for (size_t i = 0; i < num_fields; i++) {
+                TypeAggregateField* f_other = type->as_aggregate.fields + i;
+                const TypeAggregateField* f_this = fields + i;
+
+                if ((f_this->type != f_other->type) || (f_this->name != f_other->name)) {
+                    equal = false;
+                    break;
+                }
+            }
+
+            if (equal) {
+                return type;
+            }
+        }
+    }
+
+    // Create a new type, cache it, and return it.
+    Type* type = type_alloc(allocator, TYPE_INCOMPLETE_AGGREGATE);
+    complete_struct_type(allocator, type, num_fields, fields);
+
+    CachedType* new_cached = alloc_type(allocator, CachedType, true);
+    new_cached->type = type;
+    new_cached->next = cached;
+
+    hmap_put(type_anon_s_cache, key, PTR_UINT(new_cached));
+
+    return type;
+}
+
 void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields)
 {
     size_t size = 0;
@@ -1059,11 +1121,6 @@ Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base)
 
     return type;
 }
-
-typedef struct CachedType {
-    Type* type;
-    struct CachedType* next;
-} CachedType;
 
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len)
 {
