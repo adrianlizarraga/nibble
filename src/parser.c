@@ -165,31 +165,33 @@ bool skip_after_token(Parser* parser, TokenKind kind)
 //    Parse type specifiers
 //////////////////////////////
 
-// aggregate_field = TKN_IDENT ':' type_spec ';'
+// aggregate_field = (TKN_IDENT ':')? type_spec ';'
 static AggregateField* parse_aggregate_field(Parser* parser)
 {
     const char* error_prefix = "Failed to parse field";
+    ProgPos start = parser->token.range.start;
 
-    if (!expect_token(parser, TKN_IDENT, error_prefix))
-        return NULL;
+    Identifier* ident = NULL;
 
-    Identifier* ident = parser->ptoken.as_ident.ident;
-    ProgRange range = {.start = parser->ptoken.range.start};
+    if (match_token(parser, TKN_IDENT)) {
+        ident = parser->ptoken.as_ident.ident;
 
-    if (!expect_token(parser, TKN_COLON, error_prefix))
-        return NULL;
+        if (!expect_token(parser, TKN_COLON, error_prefix)) {
+            return NULL;
+        }
+    }
 
     TypeSpec* typespec = parse_typespec(parser);
 
     if (!typespec || !expect_token(parser, TKN_SEMICOLON, error_prefix))
         return NULL;
 
-    range.end = parser->ptoken.range.end;
+    ProgRange range = {.start = start, .end = parser->ptoken.range.end};
 
     return new_aggregate_field(parser->ast_arena, ident, typespec, range);
 }
 
-// aggregate_body  = TKN_IDENT '{' aggregate_field* '}'
+// aggregate_body  = '{' aggregate_field* '}'
 static bool parse_fill_aggregate_body(Parser* parser, List* fields)
 {
     list_head_init(fields);

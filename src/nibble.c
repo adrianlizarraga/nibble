@@ -467,6 +467,8 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->type_cache.arrays = hmap(6, NULL);
     nibble->type_cache.procs = hmap(6, NULL);
     nibble->type_cache.variadics = hmap(6, NULL);
+    nibble->type_cache.structs = hmap(6, NULL);
+    nibble->type_cache.unions = hmap(6, NULL);
 
     if (!init_keywords())
         return false;
@@ -1234,6 +1236,10 @@ void nibble_cleanup(void)
                 nibble->type_cache.procs.cap, nibble->type_cache.procs.cap * sizeof(HMapEntry));
     ftprint_out("type_variadics cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.variadics.len,
                 nibble->type_cache.variadics.cap, nibble->type_cache.variadics.cap * sizeof(HMapEntry));
+    ftprint_out("type_structs cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.structs.len,
+                nibble->type_cache.structs.cap, nibble->type_cache.structs.cap * sizeof(HMapEntry));
+    ftprint_out("type_unions cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.unions.len,
+                nibble->type_cache.unions.cap, nibble->type_cache.unions.cap * sizeof(HMapEntry));
 #endif
 
     hmap_destroy(&nibble->str_lit_map);
@@ -1243,6 +1249,8 @@ void nibble_cleanup(void)
     hmap_destroy(&nibble->type_cache.procs);
     hmap_destroy(&nibble->type_cache.arrays);
     hmap_destroy(&nibble->type_cache.variadics);
+    hmap_destroy(&nibble->type_cache.structs);
+    hmap_destroy(&nibble->type_cache.unions);
     allocator_destroy(&nibble->tmp_mem);
     allocator_destroy(&nibble->ast_mem);
 

@@ -636,54 +636,69 @@ typedef struct SeenField {
     ProgRange range;
 } SeenField;
 
-static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregate* decl_aggregate)
+// NOTE: Returned object is a stretchy buffer allocated with temporary memory.
+// On error, NULL is returned.
+static TypeAggregateField* resolve_aggregate_fields(Resolver* resolver, List* in_fields)
 {
-    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
-
-    // Resolve each parsed aggregate field into a field type.
-    TypeAggregateField* field_types = array_create(&resolver->ctx->tmp_mem, TypeAggregateField, 16);
+    TypeAggregateField* out_fields = array_create(&resolver->ctx->tmp_mem, TypeAggregateField, 16);
     HMap seen_fields = hmap(3, &resolver->ctx->tmp_mem); // Used to check for duplicate field names
 
-    List* head = &decl_aggregate->fields;
+    List* head = in_fields;
 
     for (List* it = head->next; it != head; it = it->next) {
         AggregateField* field = list_entry(it, AggregateField, lnode);
 
         // Check for duplicate field names.
-        SeenField* seen_field = hmap_get_obj(&seen_fields, PTR_UINT(field->name));
+        if (field->name) {
+            SeenField* seen_field = hmap_get_obj(&seen_fields, PTR_UINT(field->name));
 
-        if (seen_field) {
-            assert(seen_field->name == field->name);
-            resolver_on_error(resolver, seen_field->range, "Duplicate member field name `%s`.", field->name->str);
-            return false;
+            if (seen_field) {
+                assert(seen_field->name == field->name);
+                resolver_on_error(resolver, seen_field->range, "Duplicate member field name `%s`.", field->name->str);
+                return NULL;
+            }
+
+            seen_field = alloc_type(&resolver->ctx->tmp_mem, SeenField, false);
+            seen_field->name = field->name;
+            seen_field->range = field->range;
+
+            hmap_put(&seen_fields, PTR_UINT(field->name), PTR_UINT(seen_field));
         }
-
-        seen_field = alloc_type(&resolver->ctx->tmp_mem, SeenField, false);
-        seen_field->name = field->name;
-        seen_field->range = field->range;
-
-        hmap_put(&seen_fields, PTR_UINT(field->name), PTR_UINT(seen_field));
 
         // Resolve field's type.
         Type* field_type = resolve_typespec(resolver, field->typespec);
 
         if (!try_complete_aggregate_type(resolver, field_type)) {
-            return false;
+            return NULL;
         }
 
         if (type_has_incomplete_array(field_type)) {
             resolver_on_error(resolver, field->range, "Member field has an array type of unknown size");
-            return false;
+            return NULL;
         }
 
         if (field_type->size == 0) {
             resolver_on_error(resolver, field->range, "Member field has zero size");
-            return false;
+            return NULL;
         }
 
         TypeAggregateField field_type_info = {.type = field_type, .name = field->name};
 
-        array_push(field_types, field_type_info);
+        array_push(out_fields, field_type_info);
+    }
+
+    return out_fields;
+}
+
+static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregate* decl_aggregate)
+{
+    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+
+    // Resolve each parsed aggregate field into a field type.
+    TypeAggregateField* field_types = resolve_aggregate_fields(resolver, &decl_aggregate->fields);
+
+    if (!field_types) {
+        return false;
     }
 
     // Call the appropriate procedure to fill in the aggregate type's size and alignment.
@@ -2298,6 +2313,42 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
         Type* type =
             type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret, ts->is_variadic);
+        allocator_restore_state(mem_state);
+
+        return type;
+    }
+    case CST_TypeSpecStruct: { // Anonymous struct (aka tuples)
+        TypeSpecStruct* ts = (TypeSpecStruct*)typespec;
+
+        AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+        TypeAggregateField* fields = resolve_aggregate_fields(resolver, &ts->fields);
+
+        if (!fields) {
+            return NULL;
+        }
+
+        Type* type = type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.structs, TYPE_STRUCT,
+                                         array_len(fields), fields);
+
+        assert(type->kind == TYPE_STRUCT);
+        allocator_restore_state(mem_state);
+
+        return type;
+    }
+    case CST_TypeSpecUnion: { // Anonymous union
+        TypeSpecUnion* ts = (TypeSpecUnion*)typespec;
+
+        AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+        TypeAggregateField* fields = resolve_aggregate_fields(resolver, &ts->fields);
+
+        if (!fields) {
+            return NULL;
+        }
+
+        Type* type = type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.unions, TYPE_UNION,
+                                         array_len(fields), fields);
+
+        assert(type->kind == TYPE_UNION);
         allocator_restore_state(mem_state);
 
         return type;

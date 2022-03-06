@@ -15,8 +15,11 @@
 
 */
 
+/* Wishlist:
+    - Enum sub types. EX: A proc only expects a subset of possible enum values.
+*/
+
 //#define NDEBUG 1
-#define PRINT_MEM_USAGE 1
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

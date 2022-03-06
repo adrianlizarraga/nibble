@@ -978,6 +978,8 @@ static u64 hash_aggregate_fields(size_t num_fields, const TypeAggregateField* fi
 
         u64 t_h = hash_bytes(&f->type, sizeof(Type*), h);
         h = hash_bytes(&f->name, sizeof(Identifier*), t_h);
+
+        i += 1;
     } while(i < num_fields);
 
     return h;
@@ -988,15 +990,16 @@ typedef struct CachedType {
     struct CachedType* next;
 } CachedType;
 
-Type* type_anon_struct(Allocator* allocator, HMap* type_anon_s_cache, size_t num_fields, const TypeAggregateField* fields)
+Type* type_anon_aggregate(Allocator* allocator, HMap* type_cache, TypeKind kind, size_t num_fields, const TypeAggregateField* fields)
 {
     u64 key = hash_aggregate_fields(num_fields, fields);
-    u64* pval = hmap_get(type_anon_s_cache, key);
+    u64* pval = hmap_get(type_cache, key);
     CachedType* cached = pval ? (void*)*pval : NULL;
 
     // Returned cached type if it exists.
     for (CachedType* it = cached; it != NULL; it = it->next) {
         Type* type = it->type;
+        assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
 
         if (type->as_aggregate.num_fields == num_fields) {
             bool equal = true;
@@ -1019,13 +1022,20 @@ Type* type_anon_struct(Allocator* allocator, HMap* type_anon_s_cache, size_t num
 
     // Create a new type, cache it, and return it.
     Type* type = type_alloc(allocator, TYPE_INCOMPLETE_AGGREGATE);
-    complete_struct_type(allocator, type, num_fields, fields);
+
+    if (kind == TYPE_STRUCT) {
+        complete_struct_type(allocator, type, num_fields, fields);
+    }
+    else {
+        assert(kind == TYPE_UNION);
+        complete_union_type(allocator, type, num_fields, fields);
+    }
 
     CachedType* new_cached = alloc_type(allocator, CachedType, true);
     new_cached->type = type;
     new_cached->next = cached;
 
-    hmap_put(type_anon_s_cache, key, PTR_UINT(new_cached));
+    hmap_put(type_cache, key, PTR_UINT(new_cached));
 
     return type;
 }
