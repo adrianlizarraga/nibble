@@ -970,13 +970,14 @@ Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap
 
 static u64 hash_aggregate_fields(size_t num_fields, const TypeAggregateField* fields)
 {
-    const uint64_t FNV_INIT = 0xcbf29ce484222325ULL;
-
     u64 h = FNV_INIT;
     size_t i = 0;
 
     do {
-        //h = 
+        const TypeAggregateField* f = fields + i;
+
+        u64 t_h = hash_bytes(&f->type, sizeof(Type*), h);
+        h = hash_bytes(&f->name, sizeof(Identifier*), t_h);
     } while(i < num_fields);
 
     return h;
@@ -1155,7 +1156,7 @@ Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic)
 {
     size_t params_size = num_params * sizeof(params[0]);
-    uint64_t key = hash_mix_uint64(hash_bytes(params, params_size), hash_ptr(ret));
+    uint64_t key = hash_mix_uint64(hash_bytes(params, params_size, FNV_INIT), hash_ptr(ret));
     uint64_t* pval = hmap_get(type_proc_cache, key);
     CachedType* cached = pval ? (void*)*pval : NULL;
 

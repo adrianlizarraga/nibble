@@ -625,7 +625,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
 
             // Check if the file we're trying to include is in the seen_includes table.
             // If yes, fail. Otherwise, add.
-            u64 key = hash_bytes(include_cpath.str, include_cpath.len);
+            u64 key = hash_bytes(include_cpath.str, include_cpath.len, FNV_INIT);
             CachedInclude* cached_include = NULL;
             bool seen = false;
 
@@ -1255,7 +1255,7 @@ StrLit* intern_str_lit(const char* str, size_t len)
     Allocator* allocator = &nibble->gen_mem;
     HMap* strmap = &nibble->str_lit_map;
 
-    uint64_t key = hash_bytes(str, len);
+    uint64_t key = hash_bytes(str, len, FNV_INIT);
     uint64_t* pval = hmap_get(strmap, key);
     StrLit* intern = pval ? (void*)*pval : NULL;
 
@@ -1294,7 +1294,7 @@ Identifier* intern_ident(const char* str, size_t len)
 {
     Allocator* allocator = &nibble->gen_mem;
     HMap* strmap = &nibble->ident_map;
-    uint64_t key = hash_bytes(str, len);
+    uint64_t key = hash_bytes(str, len, FNV_INIT);
     uint64_t* pval = hmap_get(strmap, key);
     Identifier* intern = pval ? (void*)*pval : NULL;
 
