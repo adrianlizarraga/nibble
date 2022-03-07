@@ -26,6 +26,15 @@ proc mult_ret_proc2(a : int) => union {val : int; err: int;} {
     return r;
 }
 
+proc mult_ret_proc3(a : int) => struct {char; int;} {
+    var r : struct {char; int;};
+
+    r.[0] = a & 0x1;
+    r.[1] = a;
+
+    return r;
+}
+
 proc main() => int {
     var r1 := mult_ret_proc(10);
     var r2 := mult_ret_proc(-1);
@@ -33,5 +42,8 @@ proc main() => int {
     var r3 := mult_ret_proc2(10);
     var r4 := mult_ret_proc2(-10);
 
-    return r1.err + r1.val + r2.[1] + r2.[0] + r3.val + r4.[0]; // (0 + 10 + 1 + 0) + (10 + -1) = 20 
+    var r5 := mult_ret_proc3(3);
+
+    // (0 + 10 + 1 + 0) + (10 + -1) + (1 + 3) = 24
+    return (r1.err + r1.val + r2.[1] + r2.[0]) + (r3.val + r4.[0]) + (r5.[0] + r5.[1]);
 }

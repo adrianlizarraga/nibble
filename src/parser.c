@@ -172,19 +172,40 @@ static AggregateField* parse_aggregate_field(Parser* parser)
     ProgPos start = parser->token.range.start;
 
     Identifier* ident = NULL;
+    TypeSpec* typespec = parse_typespec(parser);
 
-    if (match_token(parser, TKN_IDENT)) {
-        ident = parser->ptoken.as_ident.ident;
+    if (!typespec) {
+        return NULL;
+    }
 
-        if (!expect_token(parser, TKN_COLON, error_prefix)) {
+    // Parsed a typespec, but was actually meant to be the field's name.
+    if (match_token(parser, TKN_COLON)) {
+        if (typespec->kind != CST_TypeSpecIdent) {
+            parser_on_error(parser, typespec->range, "Field name must be a valid alphanumeric identifier.");
+            return NULL;
+        }
+
+        TypeSpecIdent* t = (TypeSpecIdent*) typespec;
+
+        if (t->mod_ns) {
+            parser_on_error(parser, typespec->range, "Field name cannot be prefixed by a module namespace.");
+            return NULL;
+        }
+
+        ident = t->name; // Save field name identifer.
+        mem_free(parser->ast_arena, typespec); // Free memory.
+
+        typespec = parse_typespec(parser); // Re-parse typespec.
+
+        if (!typespec) {
             return NULL;
         }
     }
 
-    TypeSpec* typespec = parse_typespec(parser);
 
-    if (!typespec || !expect_token(parser, TKN_SEMICOLON, error_prefix))
+    if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
         return NULL;
+    }
 
     ProgRange range = {.start = start, .end = parser->ptoken.range.end};
 
@@ -276,6 +297,12 @@ static ProcParam* parse_typespec_proc_param(Parser* parser, bool* is_variadic)
 
             ProgPos start = typespec->range.start;
             TypeSpecIdent* tident = (TypeSpecIdent*)typespec;
+
+            if (tident->mod_ns) {
+                parser_on_error(parser, typespec->range, "Parameter name cannot be prefixed by a module namespace.");
+                return NULL;
+            }
+
             Identifier* name = tident->name;
 
             mem_free(parser->ast_arena, typespec);
@@ -561,57 +588,92 @@ TypeSpec* parse_typespec(Parser* parser)
 
 static Expr* parse_expr_unary(Parser* parser);
 
+static MemberInitializer* parse_nonindex_member_initializer(Parser* parser)
+{
+    ProgPos start = parser->token.range.start;
+    Designator designator = {0};
+
+    // Try to parse the expression (assuming that it is not named).
+    Expr* expr = parse_expr(parser);
+
+    if (!expr) {
+        return NULL;
+    }
+
+    // If we find a `=` token, then we mistakenly parsed a name as an expression.
+    if (match_token(parser, TKN_ASSIGN)) {
+        if (expr->kind != CST_ExprIdent) {
+            parser_on_error(parser, expr->range, "Initializer designator name must be alphanumeric");
+            return NULL;
+        }
+
+        ExprIdent* e = (ExprIdent*)expr;
+
+        if (e->mod_ns) {
+            parser_on_error(parser, expr->range, "Initializer designator name cannot be prefixed by a module namespace.");
+            return NULL;
+        }
+
+        // Save initializer name.
+        designator.kind = DESIGNATOR_NAME;
+        designator.name = e->name;
+
+        // Free memory.
+        mem_free(parser->ast_arena, expr);
+
+        // Re-parse expression.
+        expr = parse_expr(parser);
+
+        if (!expr) {
+            return NULL;
+        }
+    }
+
+    ProgRange range = {.start = start, .end = expr->range.end};
+
+    return new_member_initializer(parser->ast_arena, expr, designator, range);
+}
+
+static MemberInitializer* parse_index_member_initializer(Parser* parser)
+{
+    const char* err_prefix = "Failed to parse indexed initializer expression";
+    ProgRange range = {.start = parser->token.range.start};
+    Designator designator = {.kind = DESIGNATOR_INDEX};
+
+    if (!expect_token(parser, TKN_LBRACKET, err_prefix)) {
+        return NULL;
+    }
+
+    Expr* index = parse_expr(parser);
+
+    if (!index) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_RBRACKET, err_prefix) ||
+        !expect_token(parser, TKN_ASSIGN, err_prefix)) {
+        return NULL;
+    }
+
+    Expr* init = parse_expr(parser);
+
+    if (!init) {
+        return NULL;
+    }
+
+    range.end = init->range.end;
+    designator.index = index;
+
+    return new_member_initializer(parser->ast_arena, init, designator, range);
+}
+
 static MemberInitializer* parse_member_initializer(Parser* parser)
 {
-    MemberInitializer* initzer = NULL;
-    ProgRange range = {.start = parser->token.range.start};
-    Designator designator = {0};
-    const char* error_prefix = "Failed to parse initializer expression";
-
-    if (match_token(parser, TKN_LBRACKET)) {
-        Expr* index = parse_expr(parser);
-
-        if (index && expect_token(parser, TKN_RBRACKET, error_prefix) &&
-            expect_token(parser, TKN_ASSIGN, error_prefix)) {
-            Expr* init = parse_expr(parser);
-
-            if (init) {
-                range.end = init->range.end;
-                designator.kind = DESIGNATOR_INDEX;
-                designator.index = index;
-                initzer = new_member_initializer(parser->ast_arena, init, designator, range);
-            }
-        }
-    }
-    else {
-        Expr* expr = parse_expr(parser);
-
-        if (expr && match_token(parser, TKN_ASSIGN)) {
-            if (expr->kind == CST_ExprIdent) {
-                Identifier* name = ((ExprIdent*)expr)->name;
-
-                mem_free(parser->ast_arena, expr);
-
-                Expr* init = parse_expr(parser);
-
-                if (init) {
-                    range.end = init->range.end;
-                    designator.kind = DESIGNATOR_NAME;
-                    designator.name = name;
-                    initzer = new_member_initializer(parser->ast_arena, init, designator, range);
-                }
-            }
-            else {
-                parser_on_error(parser, expr->range, "Initializer designator name must be alphanumeric");
-            }
-        }
-        else if (expr) {
-            range.end = expr->range.end;
-            initzer = new_member_initializer(parser->ast_arena, expr, designator, range);
-        }
+    if (is_token_kind(parser, TKN_LBRACKET)) {
+        return parse_index_member_initializer(parser);
     }
 
-    return initzer;
+    return parse_nonindex_member_initializer(parser);
 }
 
 // expr_compound_lit = '{' expr_init_list (':' typespec)? '}'
@@ -872,30 +934,37 @@ static Expr* parse_expr_base(Parser* parser)
 // proc_call_arg = (IDENTIFIER '=')? expr
 static ProcCallArg* parse_proc_call_arg(Parser* parser)
 {
-    ProcCallArg* arg = NULL;
+    Identifier* name = NULL;
     Expr* expr = parse_expr(parser);
 
-    if (expr && match_token(parser, TKN_ASSIGN)) {
-        if (expr->kind == CST_ExprIdent) {
-            Identifier* name = ((ExprIdent*)expr)->name;
+    if (!expr) {
+        return NULL;
+    }
 
-            mem_free(parser->ast_arena, expr);
-
-            expr = parse_expr(parser);
-
-            if (expr) {
-                arg = new_proc_call_arg(parser->ast_arena, expr, name);
-            }
-        }
-        else {
+    if (match_token(parser, TKN_ASSIGN)) {
+        if (expr->kind != CST_ExprIdent) {
             parser_on_error(parser, expr->range, "Procedure argument's name must be an alphanumeric identifier");
+            return NULL;
+        }
+
+        ExprIdent* e = (ExprIdent*)expr;
+
+        if (e->mod_ns) {
+            parser_on_error(parser, expr->range, "Argument name cannot be prefixed by a module namespace.");
+            return NULL;
+        }
+
+        name = e->name;
+        mem_free(parser->ast_arena, expr);
+
+        expr = parse_expr(parser);
+
+        if (!expr) {
+            return NULL;
         }
     }
-    else if (expr) {
-        arg = new_proc_call_arg(parser->ast_arena, expr, NULL);
-    }
 
-    return arg;
+    return new_proc_call_arg(parser->ast_arena, expr, name);
 }
 
 // expr_base_mod = expr_base ('.' ('[' expr ']' | TKN_IDENT) | '[' expr ']' | '(' proc_call_arg_list* ')' | ':>' typespec)*
