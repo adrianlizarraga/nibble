@@ -6,7 +6,7 @@ A programming language based on C. The goal is to create a compiled, statically-
 - [x] Module import system (based on javascript ES6)
 - [x] Type inference
 - [x] Typed enumerations
-- [ ] Multiple return values (return anonymous structure object)
+- [x] Multiple return values (return anonymous structure object)
 - [ ] Defer statement (like go)
 - [ ] Default procedure arguments
 - [ ] Named procedure arguments
@@ -210,7 +210,7 @@ Nibble does not yet support all basic C features:
 - [x] Union types
 - [x] Enum types
 - [x] Typedefs
-- [ ] Procedures
+- [x] Procedures
     - [x] Basic procedures with non-variadic parameters
     - [x] Varidic parameters
 - [ ] Statements
