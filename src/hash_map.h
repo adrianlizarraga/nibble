@@ -40,9 +40,11 @@ uint64_t* hmap_put(HMap* map, uint64_t key, uint64_t value);
 uint64_t* hmap_get(HMap* map, uint64_t key);
 void* hmap_get_obj(HMap* map, uint64_t key);
 
+#define FNV_INIT 0xcbf29ce484222325ULL
+
 uint64_t hash_uint64(uint64_t h);
 uint64_t hash_ptr(const void* ptr);
 uint64_t hash_mix_uint64(uint64_t a, uint64_t b);
-uint64_t hash_bytes(const void* buf, size_t len);
+uint64_t hash_bytes(const void* buf, size_t len, uint64_t init);
 
 #endif

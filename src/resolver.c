@@ -636,54 +636,69 @@ typedef struct SeenField {
     ProgRange range;
 } SeenField;
 
-static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregate* decl_aggregate)
+// NOTE: Returned object is a stretchy buffer allocated with temporary memory.
+// On error, NULL is returned.
+static TypeAggregateField* resolve_aggregate_fields(Resolver* resolver, List* in_fields)
 {
-    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
-
-    // Resolve each parsed aggregate field into a field type.
-    TypeAggregateField* field_types = array_create(&resolver->ctx->tmp_mem, TypeAggregateField, 16);
+    TypeAggregateField* out_fields = array_create(&resolver->ctx->tmp_mem, TypeAggregateField, 16);
     HMap seen_fields = hmap(3, &resolver->ctx->tmp_mem); // Used to check for duplicate field names
 
-    List* head = &decl_aggregate->fields;
+    List* head = in_fields;
 
     for (List* it = head->next; it != head; it = it->next) {
         AggregateField* field = list_entry(it, AggregateField, lnode);
 
         // Check for duplicate field names.
-        SeenField* seen_field = hmap_get_obj(&seen_fields, PTR_UINT(field->name));
+        if (field->name) {
+            SeenField* seen_field = hmap_get_obj(&seen_fields, PTR_UINT(field->name));
 
-        if (seen_field) {
-            assert(seen_field->name == field->name);
-            resolver_on_error(resolver, seen_field->range, "Duplicate member field name `%s`.", field->name->str);
-            return false;
+            if (seen_field) {
+                assert(seen_field->name == field->name);
+                resolver_on_error(resolver, seen_field->range, "Duplicate member field name `%s`.", field->name->str);
+                return NULL;
+            }
+
+            seen_field = alloc_type(&resolver->ctx->tmp_mem, SeenField, false);
+            seen_field->name = field->name;
+            seen_field->range = field->range;
+
+            hmap_put(&seen_fields, PTR_UINT(field->name), PTR_UINT(seen_field));
         }
-
-        seen_field = alloc_type(&resolver->ctx->tmp_mem, SeenField, false);
-        seen_field->name = field->name;
-        seen_field->range = field->range;
-
-        hmap_put(&seen_fields, PTR_UINT(field->name), PTR_UINT(seen_field));
 
         // Resolve field's type.
         Type* field_type = resolve_typespec(resolver, field->typespec);
 
         if (!try_complete_aggregate_type(resolver, field_type)) {
-            return false;
+            return NULL;
         }
 
         if (type_has_incomplete_array(field_type)) {
             resolver_on_error(resolver, field->range, "Member field has an array type of unknown size");
-            return false;
+            return NULL;
         }
 
         if (field_type->size == 0) {
             resolver_on_error(resolver, field->range, "Member field has zero size");
-            return false;
+            return NULL;
         }
 
         TypeAggregateField field_type_info = {.type = field_type, .name = field->name};
 
-        array_push(field_types, field_type_info);
+        array_push(out_fields, field_type_info);
+    }
+
+    return out_fields;
+}
+
+static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregate* decl_aggregate)
+{
+    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+
+    // Resolve each parsed aggregate field into a field type.
+    TypeAggregateField* field_types = resolve_aggregate_fields(resolver, &decl_aggregate->fields);
+
+    if (!field_types) {
+        return false;
     }
 
     // Call the appropriate procedure to fill in the aggregate type's size and alignment.
@@ -921,6 +936,76 @@ static bool resolve_expr_typeid(Resolver* resolver, ExprTypeid* expr)
     expr->super.is_imm = true;
     expr->super.is_lvalue = false;
     expr->super.imm.as_int._u64 = type->id;
+
+    return true;
+}
+
+static bool resolve_expr_offsetof(Resolver* resolver, ExprOffsetof* expr)
+{
+    Type* obj_type = resolve_typespec(resolver, expr->obj_ts);
+
+    if (!obj_type) {
+        return false;
+    }
+
+    if (!try_complete_aggregate_type(resolver, obj_type)) {
+        return false;
+    }
+
+    if (!type_is_aggregate(obj_type)) {
+        resolver_on_error(resolver, expr->obj_ts->range, "First argument of #offsetof must be an aggregate type.");
+        return false;
+    }
+
+    TypeAggregateField* field = get_type_aggregate_field(obj_type, expr->field_ident);
+
+    if (!field) {
+        // TODO: Range on identifier
+        resolver_on_error(resolver, expr->super.range, "Type `%s` does not have a field named `%s`.", type_name(obj_type),
+                          expr->field_ident->str);
+        return false;
+    }
+
+    expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_int._u64 = field->offset;
+
+    return true;
+}
+
+static bool resolve_expr_indexof(Resolver* resolver, ExprIndexof* expr)
+{
+    Type* obj_type = resolve_typespec(resolver, expr->obj_ts);
+
+    if (!obj_type) {
+        return false;
+    }
+
+    if (!try_complete_aggregate_type(resolver, obj_type)) {
+        return false;
+    }
+
+    if (!type_is_aggregate(obj_type)) {
+        resolver_on_error(resolver, expr->obj_ts->range, "First argument of #indexof must be an aggregate type.");
+        return false;
+    }
+
+    TypeAggregateField* field = get_type_aggregate_field(obj_type, expr->field_ident);
+
+    if (!field) {
+        // TODO: Range on identifier
+        resolver_on_error(resolver, expr->super.range, "Type `%s` does not have a field named `%s`.", type_name(obj_type),
+                          expr->field_ident->str);
+        return false;
+    }
+
+    expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_int._u64 = field->index;
 
     return true;
 }
@@ -1509,48 +1594,56 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
     return true;
 }
 
+typedef struct ObjExprResolution {
+    Type* type;
+    bool is_lvalue;
+} ObjExprResolution;
+
+static bool resolve_obj_expr(Resolver* resolver, Expr* obj_expr, ObjExprResolution* result)
+{
+    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to an aggregate type.
+
+    if (!resolve_expr(resolver, obj_expr, NULL)) {
+        return false;
+    }
+
+    result->is_lvalue = obj_expr->is_lvalue;
+    result->type = obj_expr->type;
+
+    if (result->type->kind == TYPE_PTR) {
+        result->type = result->type->as_ptr.base;
+        result->is_lvalue = true;
+    }
+
+    if (!try_complete_aggregate_type(resolver, result->type)) {
+        return false;
+    }
+
+    if (!type_is_aggregate(result->type)) {
+        resolver_on_error(resolver, obj_expr->range, "Cannot access field on non-aggregate (i.e., struct or union) type `%s`.",
+                          type_name(result->type));
+        return false;
+    }
+
+    return true;
+}
+
 static bool resolve_expr_field(Resolver* resolver, ExprField* expr_field)
 {
-    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to
-    // an aggregate type.
-    if (!resolve_expr(resolver, expr_field->object, NULL)) {
+    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to an aggregate type.
+    ObjExprResolution obj_info = {0};
+
+    if (!resolve_obj_expr(resolver, expr_field->object, &obj_info)) {
         return false;
     }
 
-    bool is_lvalue = expr_field->object->is_lvalue;
-    Type* obj_type = expr_field->object->type;
-
-    if (obj_type->kind == TYPE_PTR) {
-        obj_type = obj_type->as_ptr.base;
-        is_lvalue = true;
-    }
-
-    if (!try_complete_aggregate_type(resolver, obj_type)) {
-        return false;
-    }
-
-    if (!type_is_aggregate(obj_type)) {
-        resolver_on_error(resolver, expr_field->object->range,
-                          "Cannot access field on non-aggregate (i.e., struct or union) type `%s`.", type_name(obj_type));
-        return false;
-    }
+    Type* obj_type = obj_info.type;
+    bool is_lvalue = obj_info.is_lvalue;
 
     // Check that the accessed field exists.
-    Type* field_type = NULL;
+    TypeAggregateField* field = get_type_aggregate_field(obj_type, expr_field->field);
 
-    TypeAggregate* type_aggregate = &obj_type->as_aggregate;
-    size_t num_fields = type_aggregate->num_fields;
-
-    for (size_t i = 0; i < num_fields; i += 1) {
-        TypeAggregateField* f = type_aggregate->fields + i;
-
-        if (f->name == expr_field->field) {
-            field_type = f->type;
-            break;
-        }
-    }
-
-    if (!field_type) {
+    if (!field) {
         // TODO: Range on field identifier
         resolver_on_error(resolver, expr_field->super.range, "Type `%s` does not have a field named `%s`.", type_name(obj_type),
                           expr_field->field->str);
@@ -1558,10 +1651,56 @@ static bool resolve_expr_field(Resolver* resolver, ExprField* expr_field)
     }
 
     // Set overall expression type and attributes.
-    expr_field->super.type = field_type;
+    expr_field->super.type = field->type;
     expr_field->super.is_lvalue = is_lvalue;
     expr_field->super.is_constexpr = false;
     expr_field->super.is_imm = false;
+
+    return true;
+}
+
+static bool resolve_expr_field_index(Resolver* resolver, ExprFieldIndex* expr)
+{
+    // Resolve 'object' expression and make sure it is an aggregate type or a pointer to an aggregate type.
+    ObjExprResolution obj_info = {0};
+
+    if (!resolve_obj_expr(resolver, expr->object, &obj_info)) {
+        return false;
+    }
+
+    Type* obj_type = obj_info.type;
+    bool is_lvalue = obj_info.is_lvalue;
+
+    // Resolve field index expression.
+    if (!resolve_expr(resolver, expr->index, NULL)) {
+        return false;
+    }
+
+    // Field index must be a constant expression.
+    ExprOperand index_op = OP_FROM_EXPR(expr->index);
+
+    if (!(index_op.is_constexpr && index_op.is_imm && type_is_integer_like(index_op.type))) {
+        resolver_on_error(resolver, expr->index->range, "Object's field index must be a compile-time constant expression");
+        return false;
+    }
+
+    // Field index must be within bounds.
+    size_t field_index = expr->index->imm.as_int._u64;
+    TypeAggregate* type_agg = &obj_type->as_aggregate;
+
+    if (field_index >= type_agg->num_fields) {
+        resolver_on_error(resolver, expr->index->range, "Object field index (%llu) is out of bounds. Type `%s` has %llu fields.",
+                          field_index, type_name(obj_type), type_agg->num_fields);
+        return false;
+    }
+
+    TypeAggregateField* field = type_agg->fields + field_index;
+
+    // Set overall expression type and attributes.
+    expr->super.type = field->type;
+    expr->super.is_lvalue = is_lvalue;
+    expr->super.is_constexpr = false;
+    expr->super.is_imm = false;
 
     return true;
 }
@@ -1995,6 +2134,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_index(resolver, expr);
     case CST_ExprField:
         return resolve_expr_field(resolver, (ExprField*)expr);
+    case CST_ExprFieldIndex:
+        return resolve_expr_field_index(resolver, (ExprFieldIndex*)expr);
     case CST_ExprCall:
         return resolve_expr_call(resolver, expr);
     case CST_ExprCast:
@@ -2007,6 +2148,10 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_sizeof(resolver, (ExprSizeof*)expr);
     case CST_ExprTypeid:
         return resolve_expr_typeid(resolver, (ExprTypeid*)expr);
+    case CST_ExprOffsetof:
+        return resolve_expr_offsetof(resolver, (ExprOffsetof*)expr);
+    case CST_ExprIndexof:
+        return resolve_expr_indexof(resolver, (ExprIndexof*)expr);
     default:
         ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
         assert(0);
@@ -2168,6 +2313,42 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
         Type* type =
             type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret, ts->is_variadic);
+        allocator_restore_state(mem_state);
+
+        return type;
+    }
+    case CST_TypeSpecStruct: { // Anonymous struct (aka tuples)
+        TypeSpecStruct* ts = (TypeSpecStruct*)typespec;
+
+        AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+        TypeAggregateField* fields = resolve_aggregate_fields(resolver, &ts->fields);
+
+        if (!fields) {
+            return NULL;
+        }
+
+        Type* type = type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.structs, TYPE_STRUCT,
+                                         array_len(fields), fields);
+
+        assert(type->kind == TYPE_STRUCT);
+        allocator_restore_state(mem_state);
+
+        return type;
+    }
+    case CST_TypeSpecUnion: { // Anonymous union
+        TypeSpecUnion* ts = (TypeSpecUnion*)typespec;
+
+        AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+        TypeAggregateField* fields = resolve_aggregate_fields(resolver, &ts->fields);
+
+        if (!fields) {
+            return NULL;
+        }
+
+        Type* type = type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.unions, TYPE_UNION,
+                                         array_len(fields), fields);
+
+        assert(type->kind == TYPE_UNION);
         allocator_restore_state(mem_state);
 
         return type;

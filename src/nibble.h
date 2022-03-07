@@ -116,6 +116,8 @@ typedef struct TypeCache {
     HMap arrays;
     HMap procs;
     HMap variadics;
+    HMap structs; // Anonymous
+    HMap unions; // Anonymous
 } TypeCache;
 
 typedef enum Keyword {
@@ -129,6 +131,8 @@ typedef enum Keyword {
     KW_SIZEOF,
     KW_TYPEOF,
     KW_TYPEID,
+    KW_INDEXOF,
+    KW_OFFSETOF,
     KW_STATIC_ASSERT,
     KW_EXPORT,
     KW_IMPORT,

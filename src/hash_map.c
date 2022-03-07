@@ -41,14 +41,14 @@ uint64_t hash_mix_uint64(uint64_t a, uint64_t b)
 }
 
 // FNV-1a hash
+// NOTE: Use FNV_INIT as the initial value if not chaining hash_bytes() calls.
 // TODO: Replace with a better hash function ;)
-uint64_t hash_bytes(const void* buf, size_t len)
+uint64_t hash_bytes(const void* buf, size_t len, u64 init)
 {
     const uint64_t FNV_PRIME = 0x00000100000001b3ULL;
-    const uint64_t FNV_INIT = 0xcbf29ce484222325ULL;
 
     const char* b = (const char*)buf;
-    uint64_t hash = FNV_INIT;
+    uint64_t hash = init;
 
     for (size_t i = 0; i < len; ++i) {
         hash = hash ^ b[i];

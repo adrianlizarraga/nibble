@@ -145,6 +145,15 @@ Expr* new_expr_field(Allocator* allocator, Expr* object, Identifier* field, Prog
     return (Expr*)expr;
 }
 
+Expr* new_expr_field_index(Allocator* allocator, Expr* object, Expr* index, ProgRange range)
+{
+    ExprFieldIndex* expr = new_expr(allocator, ExprFieldIndex, range);
+    expr->object = object;
+    expr->index = index;
+
+    return (Expr*)expr;
+}
+
 Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range)
 {
     ExprIndex* expr = new_expr(allocator, ExprIndex, range);
@@ -230,6 +239,24 @@ Expr* new_expr_typeid(Allocator* allocator, TypeSpec* typespec, ProgRange range)
 {
     ExprTypeid* expr = new_expr(allocator, ExprTypeid, range);
     expr->typespec = typespec;
+
+    return (Expr*)expr;
+}
+
+Expr* new_expr_offsetof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range)
+{
+    ExprOffsetof* expr = new_expr(allocator, ExprOffsetof, range);
+    expr->obj_ts = obj_ts;
+    expr->field_ident = field_ident;
+
+    return (Expr*)expr;
+}
+
+Expr* new_expr_indexof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range)
+{
+    ExprIndexof* expr = new_expr(allocator, ExprIndexof, range);
+    expr->obj_ts = obj_ts;
+    expr->field_ident = field_ident;
 
     return (Expr*)expr;
 }
@@ -940,6 +967,79 @@ Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap
 
     return type;
 }
+
+static u64 hash_aggregate_fields(size_t num_fields, const TypeAggregateField* fields)
+{
+    u64 h = FNV_INIT;
+    size_t i = 0;
+
+    do {
+        const TypeAggregateField* f = fields + i;
+
+        u64 t_h = hash_bytes(&f->type, sizeof(Type*), h);
+        h = hash_bytes(&f->name, sizeof(Identifier*), t_h);
+
+        i += 1;
+    } while(i < num_fields);
+
+    return h;
+}
+
+typedef struct CachedType {
+    Type* type;
+    struct CachedType* next;
+} CachedType;
+
+Type* type_anon_aggregate(Allocator* allocator, HMap* type_cache, TypeKind kind, size_t num_fields, const TypeAggregateField* fields)
+{
+    u64 key = hash_aggregate_fields(num_fields, fields);
+    u64* pval = hmap_get(type_cache, key);
+    CachedType* cached = pval ? (void*)*pval : NULL;
+
+    // Returned cached type if it exists.
+    for (CachedType* it = cached; it != NULL; it = it->next) {
+        Type* type = it->type;
+        assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
+
+        if (type->as_aggregate.num_fields == num_fields) {
+            bool equal = true;
+
+            for (size_t i = 0; i < num_fields; i++) {
+                TypeAggregateField* f_other = type->as_aggregate.fields + i;
+                const TypeAggregateField* f_this = fields + i;
+
+                if ((f_this->type != f_other->type) || (f_this->name != f_other->name)) {
+                    equal = false;
+                    break;
+                }
+            }
+
+            if (equal) {
+                return type;
+            }
+        }
+    }
+
+    // Create a new type, cache it, and return it.
+    Type* type = type_alloc(allocator, TYPE_INCOMPLETE_AGGREGATE);
+
+    if (kind == TYPE_STRUCT) {
+        complete_struct_type(allocator, type, num_fields, fields);
+    }
+    else {
+        assert(kind == TYPE_UNION);
+        complete_union_type(allocator, type, num_fields, fields);
+    }
+
+    CachedType* new_cached = alloc_type(allocator, CachedType, true);
+    new_cached->type = type;
+    new_cached->next = cached;
+
+    hmap_put(type_cache, key, PTR_UINT(new_cached));
+
+    return type;
+}
+
 void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields)
 {
     size_t size = 0;
@@ -955,6 +1055,7 @@ void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, c
         // Make sure the field is placed at an offset that is divisible by its alignment.
         size = ALIGN_UP(size, field_align);
         field->offset = size;
+        field->index = i;
 
         // Increase the struct's size by the field's size.
         size += field_size;
@@ -991,6 +1092,7 @@ void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, co
 
         // All union fields start at offset 0 (share the same memory region).
         field->offset = 0;
+        field->index = i;
 
         // Update the union to use the maximum field alignment and size.
         if (field_align > align) {
@@ -1031,11 +1133,6 @@ Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base)
     return type;
 }
 
-typedef struct CachedType {
-    Type* type;
-    struct CachedType* next;
-} CachedType;
-
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len)
 {
     u64 key = hash_mix_uint64(hash_ptr(base), len);
@@ -1069,7 +1166,7 @@ Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic)
 {
     size_t params_size = num_params * sizeof(params[0]);
-    uint64_t key = hash_mix_uint64(hash_bytes(params, params_size), hash_ptr(ret));
+    uint64_t key = hash_mix_uint64(hash_bytes(params, params_size, FNV_INIT), hash_ptr(ret));
     uint64_t* pval = hmap_get(type_proc_cache, key);
     CachedType* cached = pval ? (void*)*pval : NULL;
 
@@ -1822,6 +1919,11 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(field %s %s)", ftprint_expr(allocator, e->object), e->field->str);
         } break;
+        case CST_ExprFieldIndex: {
+            ExprFieldIndex* e = (ExprFieldIndex*)expr;
+            dstr = array_create(allocator, char, 8);
+            ftprint_char_array(&dstr, false, "(field-index %s %s)", ftprint_expr(allocator, e->object), ftprint_expr(allocator, e->index));
+        } break;
         case CST_ExprInt: {
             ExprInt* e = (ExprInt*)expr;
             dstr = array_create(allocator, char, 8);
@@ -1866,6 +1968,16 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ExprTypeid* e = (ExprTypeid*)expr;
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(typeid %s)", ftprint_typespec(allocator, e->typespec));
+        } break;
+        case CST_ExprOffsetof: {
+            ExprOffsetof* e = (ExprOffsetof*)expr;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(offsetof %s %s)", ftprint_typespec(allocator, e->obj_ts), e->field_ident->str);
+        } break;
+        case CST_ExprIndexof: {
+            ExprIndexof* e = (ExprIndexof*)expr;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(indexof %s %s)", ftprint_typespec(allocator, e->obj_ts), e->field_ident->str);
         } break;
         case CST_ExprCompoundLit: {
             ExprCompoundLit* e = (ExprCompoundLit*)expr;

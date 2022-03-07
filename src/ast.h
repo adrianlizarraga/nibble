@@ -135,6 +135,7 @@ typedef enum ExprKind {
     CST_ExprCall,
     CST_ExprIndex,
     CST_ExprField,
+    CST_ExprFieldIndex,
     CST_ExprInt,
     CST_ExprFloat,
     CST_ExprStr,
@@ -142,6 +143,8 @@ typedef enum ExprKind {
     CST_ExprCast,
     CST_ExprSizeof,
     CST_ExprTypeid,
+    CST_ExprOffsetof,
+    CST_ExprIndexof,
     CST_ExprCompoundLit,
 } ExprKind;
 
@@ -203,6 +206,12 @@ typedef struct ExprField {
     Identifier* field;
 } ExprField;
 
+typedef struct ExprFieldIndex {
+    Expr super;
+    Expr* object;
+    Expr* index;
+} ExprFieldIndex;
+
 typedef struct ExprInt {
     Expr super;
     TokenInt token;
@@ -242,6 +251,18 @@ typedef struct ExprTypeid {
     TypeSpec* typespec;
 } ExprTypeid;
 
+typedef struct ExprIndexof {
+   Expr super;
+   TypeSpec* obj_ts;
+   Identifier* field_ident;
+} ExprIndexof;
+
+typedef struct ExprOffsetof {
+   Expr super;
+   TypeSpec* obj_ts;
+   Identifier* field_ident;
+} ExprOffsetof;
+
 typedef enum DesignatorKind {
     DESIGNATOR_NONE,
     DESIGNATOR_NAME,
@@ -275,6 +296,7 @@ Expr* new_expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* 
 Expr* new_expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right);
 Expr* new_expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange range);
 Expr* new_expr_field(Allocator* allocator, Expr* object, Identifier* field, ProgRange range);
+Expr* new_expr_field_index(Allocator* allocator, Expr* object, Expr* index, ProgRange range);
 Expr* new_expr_index(Allocator* allocator, Expr* array, Expr* index, ProgRange range);
 Expr* new_expr_call(Allocator* allocator, Expr* proc, size_t num_args, List* args, ProgRange range);
 ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, Identifier* name);
@@ -285,6 +307,8 @@ Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name,
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_typeid(Allocator* allocator, TypeSpec* type, ProgRange range);
+Expr* new_expr_offsetof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range);
+Expr* new_expr_indexof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
 Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range);
 
@@ -650,6 +674,7 @@ typedef struct TypeEnum {
 typedef struct TypeAggregateField {
     Type* type;
     size_t offset;
+    size_t index;
     Identifier* name;
 } TypeAggregateField;
 

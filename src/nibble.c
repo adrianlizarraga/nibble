@@ -389,6 +389,8 @@ static bool init_keywords()
         [KW_SIZEOF] = string_view_lit("#sizeof"),
         [KW_TYPEOF] = string_view_lit("#typeof"),
         [KW_TYPEID] = string_view_lit("#typeid"),
+        [KW_INDEXOF] = string_view_lit("#indexof"),
+        [KW_OFFSETOF] = string_view_lit("#offsetof"),
         [KW_STATIC_ASSERT] = string_view_lit("#static_assert"),
         [KW_EXPORT] = string_view_lit("export"),
         [KW_IMPORT] = string_view_lit("import"),
@@ -465,6 +467,8 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->type_cache.arrays = hmap(6, NULL);
     nibble->type_cache.procs = hmap(6, NULL);
     nibble->type_cache.variadics = hmap(6, NULL);
+    nibble->type_cache.structs = hmap(6, NULL);
+    nibble->type_cache.unions = hmap(6, NULL);
 
     if (!init_keywords())
         return false;
@@ -623,7 +627,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
 
             // Check if the file we're trying to include is in the seen_includes table.
             // If yes, fail. Otherwise, add.
-            u64 key = hash_bytes(include_cpath.str, include_cpath.len);
+            u64 key = hash_bytes(include_cpath.str, include_cpath.len, FNV_INIT);
             CachedInclude* cached_include = NULL;
             bool seen = false;
 
@@ -1232,6 +1236,10 @@ void nibble_cleanup(void)
                 nibble->type_cache.procs.cap, nibble->type_cache.procs.cap * sizeof(HMapEntry));
     ftprint_out("type_variadics cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.variadics.len,
                 nibble->type_cache.variadics.cap, nibble->type_cache.variadics.cap * sizeof(HMapEntry));
+    ftprint_out("type_structs cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.structs.len,
+                nibble->type_cache.structs.cap, nibble->type_cache.structs.cap * sizeof(HMapEntry));
+    ftprint_out("type_unions cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.unions.len,
+                nibble->type_cache.unions.cap, nibble->type_cache.unions.cap * sizeof(HMapEntry));
 #endif
 
     hmap_destroy(&nibble->str_lit_map);
@@ -1241,6 +1249,8 @@ void nibble_cleanup(void)
     hmap_destroy(&nibble->type_cache.procs);
     hmap_destroy(&nibble->type_cache.arrays);
     hmap_destroy(&nibble->type_cache.variadics);
+    hmap_destroy(&nibble->type_cache.structs);
+    hmap_destroy(&nibble->type_cache.unions);
     allocator_destroy(&nibble->tmp_mem);
     allocator_destroy(&nibble->ast_mem);
 
@@ -1253,7 +1263,7 @@ StrLit* intern_str_lit(const char* str, size_t len)
     Allocator* allocator = &nibble->gen_mem;
     HMap* strmap = &nibble->str_lit_map;
 
-    uint64_t key = hash_bytes(str, len);
+    uint64_t key = hash_bytes(str, len, FNV_INIT);
     uint64_t* pval = hmap_get(strmap, key);
     StrLit* intern = pval ? (void*)*pval : NULL;
 
@@ -1292,7 +1302,7 @@ Identifier* intern_ident(const char* str, size_t len)
 {
     Allocator* allocator = &nibble->gen_mem;
     HMap* strmap = &nibble->ident_map;
-    uint64_t key = hash_bytes(str, len);
+    uint64_t key = hash_bytes(str, len, FNV_INIT);
     uint64_t* pval = hmap_get(strmap, key);
     Identifier* intern = pval ? (void*)*pval : NULL;
 
