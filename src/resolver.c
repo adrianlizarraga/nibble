@@ -2085,6 +2085,71 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
     return true;
 }
 
+static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+{
+    assert(type->kind == TYPE_STRUCT);
+    TypeAggregate* type_agg = &type->as_aggregate;
+
+    bool is_compound_lit = expr->typespec != NULL;
+    bool all_initzers_constexpr = true;
+    size_t field_index = 0;
+
+    // Iterate through each initializer.
+    List* head = &expr->initzers;
+    List* it = head->next;
+
+    while (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        Designator* desig = &initzer->designator;
+
+        if (desig->kind == DESIGNATOR_INDEX) { // TODO: Support index for anonymous struct fields
+            resolver_on_error(resolver, initzer->range, "Cannot use an index designator for a struct literal.");
+            return false;
+        }
+
+        // Determine which field this initializer targets.
+        TypeAggregateField* field = NULL;
+
+        if (desig->kind == DESIGNATOR_NAME) {
+            field = get_type_aggregate_field(type, desig->name);
+
+            if (!field) {
+                resolver_on_error(resolver, initzer->range, "Initializer targets non-existing field: `%s`.", desig->name->str);
+                return false;
+            }
+
+            field_index = field->index + 1;
+        }
+        else {
+            if (field_index >= type_agg->num_fields) {
+                resolver_on_error(resolver, initzer->range, "Too many initializers. Expected at most %llu initializers.",
+                                  type_agg->num_fields);
+                return false;
+            }
+
+            field = &type_agg->fields[field_index++];
+        }
+
+        // Resolve initializer value.
+        if (!resolve_expr(resolver, initzer->init, field->type)) {
+            return false;
+        }
+
+        ExprOperand init_op = OP_FROM_EXPR(initzer->init);
+
+        // If the field is a ptr, then the initializer value must be able to decay into a pointer.
+        if ((field->type->kind == TYPE_PTR) && !try_eop_array_decay(resolver, &init_op, initzer->init->range)) {
+            return false;
+        }
+
+        // TODO:
+        assert(0);
+
+        it = it->next;
+    }
+
+}
+
 static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* expected_type)
 {
     Type* type = expected_type;
@@ -2108,11 +2173,14 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
         return false;
     }
 
-    // For now, only allow array types.
-    // TODO: Support struct types
     if (type->kind == TYPE_ARRAY) {
         return resolve_expr_array_compound_lit(resolver, expr, type);
     }
+    else if (type->kind == TYPE_STRUCT) {
+        return resolve_expr_struct_compound_lit(resolver, expr, type);
+    }
+    // TODO: Support union types
+
 
     resolver_on_error(resolver, expr->super.range, "Invalid compound literal type `%s`", type_name(type));
 
