@@ -145,6 +145,7 @@ typedef enum ExprKind {
     CST_ExprTypeid,
     CST_ExprOffsetof,
     CST_ExprIndexof,
+    CST_ExprLen,
     CST_ExprCompoundLit,
 } ExprKind;
 
@@ -263,6 +264,11 @@ typedef struct ExprOffsetof {
    Identifier* field_ident;
 } ExprOffsetof;
 
+typedef struct ExprLen {
+    Expr super;
+    Expr* arg;
+} ExprLen;
+
 typedef enum DesignatorKind {
     DESIGNATOR_NONE,
     DESIGNATOR_NAME,
@@ -309,6 +315,7 @@ Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_typeid(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_offsetof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range);
 Expr* new_expr_indexof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range);
+Expr* new_expr_len(Allocator* allocator, Expr* arg, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
 Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range);
 

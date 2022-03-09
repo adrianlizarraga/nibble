@@ -734,7 +734,7 @@ static Expr* parse_expr_sizeof(Parser* parser)
     assert(is_keyword(parser, KW_SIZEOF));
     Expr* expr = NULL;
     ProgRange range = {.start = parser->token.range.start};
-    const char* error_prefix = "Failed to parse sizeof expression";
+    const char* error_prefix = "Failed to parse #sizeof expression";
 
     next_token(parser);
 
@@ -755,7 +755,7 @@ static Expr* parse_expr_typeid(Parser* parser)
     assert(is_keyword(parser, KW_TYPEID));
     Expr* expr = NULL;
     ProgRange range = {.start = parser->token.range.start};
-    const char* error_prefix = "Failed to parse typeid expression";
+    const char* error_prefix = "Failed to parse #typeid expression";
 
     next_token(parser);
 
@@ -776,7 +776,7 @@ static Expr* parse_expr_offsetof(Parser* parser)
     assert(is_keyword(parser, KW_OFFSETOF));
     ProgPos start = parser->token.range.start;
 
-    const char* err_prefix = "Failed to parse offsetof expression";
+    const char* err_prefix = "Failed to parse #offsetof expression";
 
     next_token(parser);
 
@@ -813,8 +813,7 @@ static Expr* parse_expr_indexof(Parser* parser)
 {
     assert(is_keyword(parser, KW_INDEXOF));
     ProgPos start = parser->token.range.start;
-
-    const char* err_prefix = "Failed to parse offsetof expression";
+    const char* err_prefix = "Failed to parse #indexof expression";
 
     next_token(parser);
 
@@ -847,6 +846,33 @@ static Expr* parse_expr_indexof(Parser* parser)
     return new_expr_indexof(parser->ast_arena, obj_ts, field_ident, range);
 }
 
+static Expr* parse_expr_len(Parser* parser)
+{
+    assert(is_keyword(parser, KW_LEN));
+    ProgPos start = parser->token.range.start;
+    const char* err_prefix = "Failed to parse #len expression";
+
+    next_token(parser);
+
+    if (!expect_token(parser, TKN_LPAREN, err_prefix)) {
+        return NULL;
+    }
+
+    Expr* arg = parse_expr(parser);
+
+    if (!arg) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_RPAREN, err_prefix)) {
+        return NULL;
+    }
+
+    ProgRange range = {.start = start, .end = parser->ptoken.range.end};
+
+    return new_expr_len(parser->ast_arena, arg, range);
+}
+
 // expr_ident = mod_namespace? TKN_IDENT
 // mod_namespace = (TKN_IDENT '::')
 static Expr* parse_expr_ident(Parser* parser)
@@ -869,6 +895,7 @@ static Expr* parse_expr_ident(Parser* parser)
 //           | expr_typeid
 //           | expr_offsetof
 //           | expr_indexof
+//           | expr_len
 //           | '(' expr ')'
 //
 // expr_sizeof = KW_SIZEOF '('type_spec')'
@@ -911,6 +938,8 @@ static Expr* parse_expr_base(Parser* parser)
             return parse_expr_offsetof(parser);
         case KW_INDEXOF:
             return parse_expr_indexof(parser);
+        case KW_LEN:
+            return parse_expr_len(parser);
         default:
             break;
         }
