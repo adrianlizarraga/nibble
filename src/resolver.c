@@ -1010,6 +1010,28 @@ static bool resolve_expr_indexof(Resolver* resolver, ExprIndexof* expr)
     return true;
 }
 
+static bool resolve_expr_len(Resolver* resolver, ExprLen* expr)
+{
+    if (!resolve_expr(resolver, expr->arg, NULL)) {
+        return false;
+    }
+
+    Type* type = expr->arg->type;
+
+    if (type->kind != TYPE_ARRAY) {
+        resolver_on_error(resolver, expr->arg->range, "The argument of #len must be an array type.");
+        return false;
+    }
+
+    expr->super.type = builtin_types[BUILTIN_TYPE_USIZE].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_int._u64 = type->as_array.len;
+
+    return true;
+}
+
 static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
 {
     expr->super.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, builtin_types[BUILTIN_TYPE_CHAR].type,
@@ -2152,6 +2174,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_offsetof(resolver, (ExprOffsetof*)expr);
     case CST_ExprIndexof:
         return resolve_expr_indexof(resolver, (ExprIndexof*)expr);
+    case CST_ExprLen:
+        return resolve_expr_len(resolver, (ExprLen*)expr);
     default:
         ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
         assert(0);
