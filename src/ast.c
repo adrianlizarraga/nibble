@@ -261,6 +261,14 @@ Expr* new_expr_indexof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field
     return (Expr*)expr;
 }
 
+Expr* new_expr_len(Allocator* allocator, Expr* arg, ProgRange range)
+{
+    ExprLen* expr = new_expr(allocator, ExprLen, range);
+    expr->arg = arg;
+
+    return (Expr*)expr;
+}
+
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range)
 {
     MemberInitializer* initzer = alloc_type(allocator, MemberInitializer, true);
@@ -1978,6 +1986,11 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ExprIndexof* e = (ExprIndexof*)expr;
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(indexof %s %s)", ftprint_typespec(allocator, e->obj_ts), e->field_ident->str);
+        } break;
+        case CST_ExprLen: {
+            ExprLen* e = (ExprLen*)expr;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(len %s)", ftprint_expr(allocator, e->arg));
         } break;
         case CST_ExprCompoundLit: {
             ExprCompoundLit* e = (ExprCompoundLit*)expr;

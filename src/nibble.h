@@ -133,6 +133,7 @@ typedef enum Keyword {
     KW_TYPEID,
     KW_INDEXOF,
     KW_OFFSETOF,
+    KW_LEN,
     KW_STATIC_ASSERT,
     KW_EXPORT,
     KW_IMPORT,

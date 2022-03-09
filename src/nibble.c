@@ -391,6 +391,7 @@ static bool init_keywords()
         [KW_TYPEID] = string_view_lit("#typeid"),
         [KW_INDEXOF] = string_view_lit("#indexof"),
         [KW_OFFSETOF] = string_view_lit("#offsetof"),
+        [KW_LEN] = string_view_lit("#len"),
         [KW_STATIC_ASSERT] = string_view_lit("#static_assert"),
         [KW_EXPORT] = string_view_lit("export"),
         [KW_IMPORT] = string_view_lit("import"),
