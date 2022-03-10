@@ -529,8 +529,12 @@ TypeSpec* parse_array_typespec(Parser* parser)
     }
 
     Expr* len = NULL;
+    bool infer_len = false;
 
-    if (!is_token_kind(parser, TKN_RBRACKET)) {
+    if (match_keyword(parser, KW_UNDERSCORE)) {
+        infer_len = true;
+    }
+    else if (!is_token_kind(parser, TKN_RBRACKET)) {
         len = parse_expr(parser);
 
         if (!len) {
@@ -550,7 +554,9 @@ TypeSpec* parse_array_typespec(Parser* parser)
 
     range.end = base->range.end;
 
-    return new_typespec_array(parser->ast_arena, base, len, range);
+    assert((len && !infer_len) || !len); // TODO: Remove
+
+    return new_typespec_array(parser->ast_arena, base, len, infer_len, range);
 }
 
 // typespec = ('^' | '[' expr? ']' | KW_CONST) typespec

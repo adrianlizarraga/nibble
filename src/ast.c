@@ -37,11 +37,12 @@ TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range
     return (TypeSpec*)typespec;
 }
 
-TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range)
+TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, bool infer_len, ProgRange range)
 {
     TypeSpecArray* typespec = new_typespec(allocator, TypeSpecArray, range);
     typespec->base = base;
     typespec->len = len;
+    typespec->infer_len = infer_len;
 
     return (TypeSpec*)typespec;
 }
@@ -798,6 +799,8 @@ bool types_are_compatible(Type* t, Type* u)
 
         bool elems_compat = types_are_compatible(t_arr->base, u_arr->base);
         bool sizes_compat = (!t_arr->len || !u_arr->len || t_arr->len == u_arr->len);
+        //bool sizes_compat = (t_arr->infer_len && !u_arr->infer_len) || (!t_arr->infer_len && u_arr->infer_len) ||
+                            //((t_arr->len == u_arr->len) && t_arr->len);
 
         return elems_compat && sizes_compat;
     }
@@ -1850,8 +1853,11 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
                 ftprint_char_array(&dstr, false, "(:arr %s %s)", ftprint_expr(allocator, t->len),
                                    ftprint_typespec(allocator, t->base));
             }
+            else if (t->infer_len) {
+                ftprint_char_array(&dstr, false, "(:arr _ %s)", ftprint_typespec(allocator, t->base));
+            }
             else {
-                ftprint_char_array(&dstr, false, "(:arr %s)", ftprint_typespec(allocator, t->base));
+                ftprint_char_array(&dstr, false, "(:arr_slice %s)", ftprint_typespec(allocator, t->base));
             }
         } break;
         default: {
