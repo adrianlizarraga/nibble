@@ -1010,7 +1010,7 @@ static bool resolve_expr_indexof(Resolver* resolver, ExprIndexof* expr)
     return true;
 }
 
-static bool resolve_expr_len(Resolver* resolver, ExprLen* expr)
+static bool resolve_expr_length(Resolver* resolver, ExprLength* expr)
 {
     if (!resolve_expr(resolver, expr->arg, NULL)) {
         return false;
@@ -2174,8 +2174,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_offsetof(resolver, (ExprOffsetof*)expr);
     case CST_ExprIndexof:
         return resolve_expr_indexof(resolver, (ExprIndexof*)expr);
-    case CST_ExprLen:
-        return resolve_expr_len(resolver, (ExprLen*)expr);
+    case CST_ExprLength:
+        return resolve_expr_length(resolver, (ExprLength*)expr);
     default:
         ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
         assert(0);

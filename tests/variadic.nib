@@ -2,7 +2,7 @@ proc add_variadic(offset : char, nums : ..int) => int {
     var i : usize = 0;
     var result : int = 0;
 
-    while (i < nums.size) {
+    while (i < nums.length) {
         result = result + nums.data[i];
         
         i = i + 1;
@@ -24,7 +24,7 @@ proc add_v3(vecs : ..Vec3) => Vec3 {
     r.y = 0;
     r.z = 0;
 
-    while (i < vecs.size) {
+    while (i < vecs.length) {
         r.x = r.x + vecs.data[i].x;
         r.y = r.y + vecs.data[i].y;
         r.z = r.z + vecs.data[i].z;
@@ -40,7 +40,7 @@ proc add_any_ints(args : ..any) => int {
 
     var i : usize = 0;
 
-    while (i < args.size) {
+    while (i < args.length) {
         if (args.data[i].type == #typeid(int)) {
             var val : int = *(args.data[i].ptr :> ^int);
             r = r + val;

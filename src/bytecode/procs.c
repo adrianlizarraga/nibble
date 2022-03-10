@@ -1896,24 +1896,24 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
         }
 
         //
-        // var struct_arg : VariadicStruct<elem_type> = {.size = <num_vargs>, .data = arr};
+        // var struct_arg : VariadicStruct<elem_type> = {.length = <num_vargs>, .data = arr};
         //
 
         AnonObj* struct_obj = IR_alloc_tmp_obj(builder, struct_type->size, struct_type->align);
         MemAddr struct_addr = IR_obj_as_addr(struct_obj);
 
-        TypeAggregateField* size_field = get_type_aggregate_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_SIZE]);
+        TypeAggregateField* length_field = get_type_aggregate_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH]);
 
-        IR_Operand size_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = size_field->type, .addr = struct_addr};
-        size_field_op.addr.disp += size_field->offset;
+        IR_Operand length_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = length_field->type, .addr = struct_addr};
+        length_field_op.addr.disp += length_field->offset;
 
         IR_Operand data_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = data_field->type, .addr = struct_addr};
         data_field_op.addr.disp += data_field->offset;
 
-        IR_Operand size_val_op = {.kind = IR_OPERAND_IMM, .type = size_field->type, .imm.as_int._u64 = num_vargs};
+        IR_Operand length_val_op = {.kind = IR_OPERAND_IMM, .type = length_field->type, .imm.as_int._u64 = num_vargs};
         IR_Operand data_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = data_field->type, .addr = arr_addr};
 
-        *p_bblock = IR_emit_assign(builder, *p_bblock, &size_field_op, &size_val_op);
+        *p_bblock = IR_emit_assign(builder, *p_bblock, &length_field_op, &length_val_op);
         *p_bblock = IR_emit_assign(builder, *p_bblock, &data_field_op, &data_val_op);
 
         args[n].type = struct_type;

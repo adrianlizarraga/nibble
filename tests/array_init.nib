@@ -1,12 +1,12 @@
 var g_a : [] int = {0, 1, [4] = 10}; // Should be array of 5 elements.
-#static_assert(#len(g_a) == 5);
+#static_assert(#length(g_a) == 5);
 //var g_err := {1, 2}; // Cannot infer type
 
 proc main() => int
 {
     var a: [11] int = {0, [4] = 1, 2, [10] = 4};
     var b: [] int = {0, 1, [4] = 10}; // [5]int
-    #static_assert(#len(b) == 5);
+    #static_assert(#length(b) == 5);
     //var bad: [11] int = a; // Not allowed.
 
     var c : int = 5;

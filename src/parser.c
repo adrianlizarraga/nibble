@@ -848,7 +848,7 @@ static Expr* parse_expr_indexof(Parser* parser)
 
 static Expr* parse_expr_len(Parser* parser)
 {
-    assert(is_keyword(parser, KW_LEN));
+    assert(is_keyword(parser, KW_LENGTH));
     ProgPos start = parser->token.range.start;
     const char* err_prefix = "Failed to parse #len expression";
 
@@ -870,7 +870,7 @@ static Expr* parse_expr_len(Parser* parser)
 
     ProgRange range = {.start = start, .end = parser->ptoken.range.end};
 
-    return new_expr_len(parser->ast_arena, arg, range);
+    return new_expr_length(parser->ast_arena, arg, range);
 }
 
 // expr_ident = mod_namespace? TKN_IDENT
@@ -938,7 +938,7 @@ static Expr* parse_expr_base(Parser* parser)
             return parse_expr_offsetof(parser);
         case KW_INDEXOF:
             return parse_expr_indexof(parser);
-        case KW_LEN:
+        case KW_LENGTH:
             return parse_expr_len(parser);
         default:
             break;
