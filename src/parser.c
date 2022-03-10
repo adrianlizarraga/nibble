@@ -519,6 +519,40 @@ static TypeSpec* parse_typespec_base(Parser* parser)
     return NULL;
 }
 
+TypeSpec* parse_array_typespec(Parser* parser)
+{
+    const char* err_prefix = "Failed to parse array type specification";
+    ProgRange range = {.start = parser->token.range.start};
+
+    if (!expect_token(parser, TKN_LBRACKET, err_prefix)) {
+        return NULL;
+    }
+
+    Expr* len = NULL;
+
+    if (!is_token_kind(parser, TKN_RBRACKET)) {
+        len = parse_expr(parser);
+
+        if (!len) {
+            return NULL;
+        }
+    }
+
+    if (!expect_token(parser, TKN_RBRACKET, err_prefix)) {
+        return NULL;
+    }
+
+    TypeSpec* base = parse_typespec(parser);
+
+    if (!base) {
+        return NULL;
+    }
+
+    range.end = base->range.end;
+
+    return new_typespec_array(parser->ast_arena, base, len, range);
+}
+
 // typespec = ('^' | '[' expr? ']' | KW_CONST) typespec
 //          | typespec_base
 TypeSpec* parse_typespec(Parser* parser)
@@ -538,29 +572,11 @@ TypeSpec* parse_typespec(Parser* parser)
             typespec = new_typespec_ptr(parser->ast_arena, base, range);
         }
     }
-    else if (match_token(parser, TKN_LBRACKET)) {
+    else if (is_token_kind(parser, TKN_LBRACKET)) {
         //
         // Array typespec.
         //
-
-        ProgRange range = {.start = parser->ptoken.range.start};
-
-        Expr* len = NULL;
-        bool bad_len = false;
-
-        if (!is_token_kind(parser, TKN_RBRACKET)) {
-            len = parse_expr(parser);
-            bad_len = len == NULL;
-        }
-
-        if (!bad_len && expect_token(parser, TKN_RBRACKET, "Failed to parse array type")) {
-            TypeSpec* base = parse_typespec(parser);
-
-            if (base) {
-                range.end = base->range.end;
-                typespec = new_typespec_array(parser->ast_arena, base, len, range);
-            }
-        }
+        typespec = parse_array_typespec(parser);
     }
     else if (match_keyword(parser, KW_CONST)) {
         //
