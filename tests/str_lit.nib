@@ -1,4 +1,4 @@
-var g_s : []char = "HELLO";
+var g_s : [_]char = "HELLO";
 var g_a : [4]char;
 var g_b : [4]char = {[1] = '1', '4'}; // first and last elements are automatically set to 0
                                       // because this is a global variable.
@@ -10,21 +10,17 @@ proc first_char(str: ^char) => char {
 proc main() => int
 {
     var a : ^char = "Hello\n";
+    #writeout(a, 6);
 
     //"Hello"[1] = 'Z'; // Segfaults because literals are stored in readonly memory.
 
     var s : [6]char = "12345";
 
-    // Cannot initialize array after declaration.
-    //var t : [6]char;
-    //t = "12345";
+    // Unlike C, we can initialize array after declaration.
+    var t : [7]char;
+    t = "12345\n";
+    #writeout(t, 6);
 
-    #writeout(a, 7);
-
-    var p : ^char = "hi\n";
-    var pp : ^^char = ^p;
-
-    #writeout(*pp + 1, 2);
 
     // 'S' + 'e' - '5' + 'E' - 0 - '4' <=> 83 + 101 - 53 + 69 - 0 - 52 = 148
     return first_char("Sailor\n`") + a[1] - s[4] + g_s[1] - g_a[2] - g_b[2]; 
