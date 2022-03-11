@@ -1,0 +1,7 @@
+
+proc main() => int {
+    var s : []char = "123\n";
+    #writeout(s.data, s.length);
+    
+    return s.length;
+}

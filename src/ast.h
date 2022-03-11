@@ -781,6 +781,8 @@ bool type_is_scalar(Type* type);
 bool type_is_ptr_like(Type* type);
 bool type_is_aggregate(Type* type);
 bool type_is_obj_like(Type* type);
+bool type_is_slice(Type* type);
+bool slice_and_array_compatible(Type* array_type, Type* slice_type);
 bool type_is_incomplete_array(Type* type);
 bool type_has_incomplete_array(Type* type);
 bool types_are_compatible(Type* t, Type* u);

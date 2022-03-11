@@ -268,20 +268,11 @@ static bool can_convert_eop(Resolver* resolver, ExprOperand* operand, Type* dst_
 
         convertible = can_convert_eop(resolver, &decay_eop, dst_type);
     }
-    // TODO: REMOVE
-    /*
     // Can convert an array into an array slice.
-    else if ((dst_type->kind == TYPE_STRUCT) && (dst_type->as_aggregate.wrapper_kind == TYPE_AGG_IS_SLICE_WRAPPER) &&
-             (src_type->kind == TYPE_ARRAY)) {
+    else if (type_is_slice(dst_type) && (src_type->kind == TYPE_ARRAY)) {
         assert(operand->is_lvalue);
-
-        TypeAggregateField* dst_data_field = get_type_aggregate_field(dst_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
-        Type* dst_elem_type = dst_data_field->type->as_ptr.base;
-        Type* src_elem_type = src_type->as_array.base;
-
-        convertible = dst_elem_type == src_elem_type;
+        convertible = slice_and_array_compatible(src_type, dst_type);
     }
-    */
     else if ((dst_type->kind == TYPE_PTR) && (src_type->kind == TYPE_PTR)) {
         Type* dst_pointed_type = dst_type->as_ptr.base;
         Type* src_pointed_type = src_type->as_ptr.base;
@@ -1380,15 +1371,6 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
             }
         }
-        else if (left_op.type->kind == TYPE_ARRAY && right_op.type->kind == TYPE_ARRAY) {
-            if (left_op.type != right_op.type) {
-                resolver_on_error(resolver, expr->range, "Cannot compare arrays of different types.");
-                return false;
-            }
-
-            dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
-            assert(0); // TODO: Implement memory comparison for arrays. Can't do it for structs due to uninitialized padding bytes.
-        }
         else {
             resolver_on_error(resolver, expr->range, "Can only compare arithmetic types, or compatible pointer types with `%s`",
                               token_kind_names[ebinary->op]);
@@ -1897,8 +1879,9 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
 
 static bool resolve_call_arg(Resolver* resolver, size_t arg_index, ProcCallArg* arg, Type* param_type, bool is_varg)
 {
-    if (!resolve_expr(resolver, arg->expr, NULL))
+    if (!resolve_expr(resolver, arg->expr, NULL)) {
         return false;
+    }
 
     ExprOperand arg_eop = OP_FROM_EXPR(arg->expr);
 

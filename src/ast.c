@@ -763,6 +763,23 @@ bool type_is_obj_like(Type* type)
     return (type->kind == TYPE_ARRAY) || type_is_aggregate(type);
 }
 
+bool type_is_slice(Type* type)
+{
+    return (type->kind == TYPE_STRUCT) && (type->as_aggregate.wrapper_kind == TYPE_AGG_IS_SLICE_WRAPPER);
+}
+
+bool slice_and_array_compatible(Type* array_type, Type* slice_type)
+{
+    assert(array_type->kind == TYPE_ARRAY);
+    assert(type_is_slice(slice_type));
+
+    TypeAggregateField* data_field = get_type_aggregate_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+    Type* slice_elem_type = data_field->type->as_ptr.base;
+    Type* array_elem_type = array_type->as_array.base;
+
+    return slice_elem_type == array_elem_type;
+}
+
 bool type_is_incomplete_array(Type* type)
 {
     return (type->kind == TYPE_ARRAY) && (type->as_array.len == 0);
