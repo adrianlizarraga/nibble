@@ -799,8 +799,6 @@ bool types_are_compatible(Type* t, Type* u)
 
         bool elems_compat = types_are_compatible(t_arr->base, u_arr->base);
         bool sizes_compat = (!t_arr->len || !u_arr->len || t_arr->len == u_arr->len);
-        //bool sizes_compat = (t_arr->infer_len && !u_arr->infer_len) || (!t_arr->infer_len && u_arr->infer_len) ||
-                            //((t_arr->len == u_arr->len) && t_arr->len);
 
         return elems_compat && sizes_compat;
     }
