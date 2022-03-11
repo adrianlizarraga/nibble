@@ -21,6 +21,11 @@ proc main() => int
     t = "12345\n";
     #writeout(t, 6);
 
+    // Can implicitly convert an array (e.g., a string literal) into a pointer of the element type.
+    var p : ^char = "hi\n";
+    var pp : ^^char = ^p;
+
+    #writeout(*pp + 1, 2);
 
     // 'S' + 'e' - '5' + 'E' - 0 - '4' <=> 83 + 101 - 53 + 69 - 0 - 52 = 148
     return first_char("Sailor\n`") + a[1] - s[4] + g_s[1] - g_a[2] - g_b[2]; 
