@@ -758,6 +758,11 @@ bool type_is_aggregate(Type* type)
     return (kind == TYPE_STRUCT) || (kind == TYPE_UNION);
 }
 
+bool type_is_obj_like(Type* type)
+{
+    return (type->kind == TYPE_ARRAY) || type_is_aggregate(type);
+}
+
 bool type_is_incomplete_array(Type* type)
 {
     return (type->kind == TYPE_ARRAY) && (type->as_array.len == 0);
@@ -863,26 +868,6 @@ Type* try_array_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type)
         return type_ptr(allocator, type_ptr_cache, type->as_array.base);
 
     return type;
-}
-
-// Recursively decay incomplete array types into pointers. Other types are returned unchanged.
-// Examples:
-//     []char => ^char
-//     [][]char => ^^char
-//     ^[]char => ^^char
-//     ^^[]char => ^^^char
-Type* try_incomplete_array_decay(Allocator* alloc, HMap* type_ptr_cache, Type* type)
-{
-    Type* result = type;
-
-    if (type_is_incomplete_array(type)) {
-        result = type_ptr(alloc, type_ptr_cache, try_incomplete_array_decay(alloc, type_ptr_cache, type->as_array.base));
-    }
-    else if (type->kind == TYPE_PTR) {
-        result = type_ptr(alloc, type_ptr_cache, try_incomplete_array_decay(alloc, type_ptr_cache, type->as_ptr.base));
-    }
-
-    return result;
 }
 
 static Type* type_alloc(Allocator* allocator, TypeKind kind)

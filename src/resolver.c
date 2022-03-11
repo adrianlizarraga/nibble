@@ -1760,22 +1760,6 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
 {
     ExprIndex* eindex = (ExprIndex*)expr;
 
-    // Resolve array expression
-    if (!resolve_expr(resolver, eindex->array, NULL))
-        return false;
-
-    ExprOperand array_op = OP_FROM_EXPR(eindex->array);
-
-    if (array_op.type->kind == TYPE_ARRAY) {
-        eop_array_decay(resolver, &array_op);
-    }
-
-    if (array_op.type->kind != TYPE_PTR) {
-        resolver_on_error(resolver, eindex->array->range, "Cannot index non-pointer or non-array type `%s`",
-                          type_name(eindex->array->type));
-        return false;
-    }
-
     // Resolve array index expression
     if (!resolve_expr(resolver, eindex->index, NULL))
         return false;
@@ -1785,6 +1769,35 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     if (!convert_eop(resolver, &index_op, builtin_types[BUILTIN_TYPE_S64].type)) {
         resolver_on_error(resolver, eindex->index->range, "Array index of type `%s` cannot be converted to an integer",
                           type_name(eindex->index->type));
+        return false;
+    }
+
+    // Resolve array expression
+    if (!resolve_expr(resolver, eindex->array, NULL))
+        return false;
+
+    ExprOperand array_op = OP_FROM_EXPR(eindex->array);
+
+    if (array_op.type->kind == TYPE_ARRAY) {
+        // We can do bounds checking if the index is a constant expression.
+        if (index_op.is_constexpr) {
+            assert(index_op.is_imm);
+            size_t idx_val = index_op.imm.as_int._u64;
+            size_t arr_len = array_op.type->as_array.len;
+
+            if (idx_val >= arr_len) {
+                resolver_on_error(resolver, eindex->index->range, "Array index `%llu` is out of range. Array length is `%llu`.",
+                                  idx_val, arr_len);
+                return false;
+            }
+        }
+
+        eop_array_decay(resolver, &array_op);
+    }
+
+    if (array_op.type->kind != TYPE_PTR) {
+        resolver_on_error(resolver, eindex->array->range, "Cannot index non-pointer or non-array type `%s`",
+                          type_name(eindex->array->type));
         return false;
     }
 
@@ -2086,19 +2099,6 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
 
-        /*
-        if ((elem_type->kind == TYPE_PTR) && !try_eop_array_decay(resolver, &init_op)) {
-            return false;
-        }
-
-        bool is_valid_array_init = (initzer->init->kind == CST_ExprCompoundLit) || (initzer->init->kind == CST_ExprStr);
-
-        if ((elem_type->kind == TYPE_ARRAY) && !is_valid_array_init) {
-            resolver_on_error(resolver, initzer->init->range, "Invalid array initializer");
-            return false;
-        }
-        */
-
         // Initializer expression should be convertible to the element type.
         if (!convert_eop(resolver, &init_op, elem_type)) {
             resolver_on_error(resolver, initzer->init->range, "Array initializer of type `%s` cannot be converted to `%s`",
@@ -2315,7 +2315,10 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 return NULL;
             }
 
-            param = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, param);
+            if (type_is_incomplete_array(param)) {
+                resolver_on_error(resolver, proc_param->range, "Procedure parameter cannot be an array with an inferred length.");
+                return false;
+            }
 
             if (!try_complete_aggregate_type(resolver, param)) {
                 allocator_restore_state(mem_state);
@@ -2333,12 +2336,6 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 param = type_variadic_struct(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.variadics,
                                              &resolver->ctx->type_cache.ptrs, param);
             }
-            else if (param->kind == TYPE_ARRAY) {
-                resolver_on_error(resolver, proc_param->range,
-                                  "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
-                allocator_restore_state(mem_state);
-                return NULL;
-            }
 
             array_push(params, param);
         }
@@ -2354,12 +2351,9 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
                 return NULL;
             }
 
-            ret = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, ret);
-
-            if (ret->kind == TYPE_ARRAY) {
+            if (type_is_incomplete_array(ret)) {
                 assert(ts->ret);
-                resolver_on_error(resolver, ts->ret->range, "Procedure return type cannot be an array, but found `%s`.",
-                                  type_name(ret));
+                resolver_on_error(resolver, ts->ret->range, "Procedure return type cannot be an array with an inferred length.");
                 allocator_restore_state(mem_state);
                 return NULL;
             }
@@ -2449,25 +2443,6 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
             assert(!type_has_incomplete_array(expr->type));
 
             ExprOperand right_eop = OP_FROM_EXPR(expr);
-            //bool is_valid_array_init = (expr->kind == CST_ExprCompoundLit) || (expr->kind == CST_ExprStr);
-
-            /*
-            // If assigning an array to a pointer, try to decay the right-hand-side expression into a pointer.
-            // Ex: var p : ^char = bytes_array;
-            if ((declared_type->kind == TYPE_PTR) && !try_eop_array_decay(resolver, &right_eop)) {
-                return false;
-            }
-            */
-
-            /*
-            // If the declared type is an array, rhs must be a vaild array initializer.
-            // Ex: var buf : [4]char = {0,1,2,3};
-            // Ex: var buf : [_]char = "Hello";
-            if ((declared_type->kind == TYPE_ARRAY) && !is_valid_array_init) {
-                resolver_on_error(resolver, expr->range, "Invalid array initializer");
-                return false;
-            }
-            */
 
             // If the declared type contains an incomplete array type, try to use the
             // rhs type if the types are compatible.
@@ -2647,7 +2622,10 @@ static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
         return false;
     }
 
-    type = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, type);
+    if (type_is_incomplete_array(type)) {
+        resolver_on_error(resolver, decl->super.range, "Procedure parameter cannot be an array with an inferred length.");
+        return false;
+    }
 
     if (!try_complete_aggregate_type(resolver, type)) {
         return false;
@@ -2661,11 +2639,6 @@ static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
     if (decl->is_variadic) {
         type =
             type_variadic_struct(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.variadics, &resolver->ctx->type_cache.ptrs, type);
-    }
-    else if (type->kind == TYPE_ARRAY) {
-        resolver_on_error(resolver, typespec->range,
-                          "Procedure parameter cannot be an array type. Use a pointer or an incomplete array type.");
-        return false;
     }
 
     sym->type = type;
@@ -2730,11 +2703,9 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
             return false;
         }
 
-        ret_type = try_incomplete_array_decay(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, ret_type);
-
-        if (ret_type->kind == TYPE_ARRAY) {
+        if (type_is_incomplete_array(ret_type)) {
             resolver_on_error(resolver, decl->ret->range,
-                              "Procedure return type cannot be an array type. Use a pointer or an incomplete array type.");
+                              "Procedure return type cannot be an array with an inferred length.");
             return false;
         }
 
@@ -3032,7 +3003,6 @@ static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_
 static void eop_array_decay(Resolver* resolver, ExprOperand* eop)
 {
     assert(eop->type->kind == TYPE_ARRAY);
-    assert(eop->is_lvalue);
 
     eop->type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, eop->type->as_array.base);
     eop->is_lvalue = false;

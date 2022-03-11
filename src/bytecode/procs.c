@@ -829,6 +829,17 @@ static BBlock* IR_op_to_r(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* o
 
         return bblock;
     }
+    case IR_OPERAND_STR_LIT: {
+        assert(IR_type_fits_in_reg(operand->type));
+
+        IR_Reg reg = IR_next_reg(builder);
+        IR_emit_instr_load(builder, bblock, operand->type, reg, IR_strlit_as_addr(operand->str_lit));
+
+        operand->kind = IR_OPERAND_REG;
+        operand->reg = reg;
+
+        return bblock;
+    }
     default: {
         assert(operand->kind == IR_OPERAND_VAR);
         IR_Reg reg = IR_next_reg(builder);
@@ -916,49 +927,6 @@ static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
     return curr_bb;
 }
 
-// Emit code for initializing an array with a string literal (is a copy of string literal).
-//    var a: [6] char = "Hello";
-//
-//    Equivalent to:
-//
-//    var a: [6] char = {'H', 'e', 'l', 'l', 'o', '\0'};
-static BBlock* IR_emit_array_str_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* array_op, IR_Operand* init_op)
-{
-    assert(array_op->kind == IR_OPERAND_VAR || array_op->kind == IR_OPERAND_DEREF_ADDR);
-    assert(init_op->kind == IR_OPERAND_STR_LIT);
-    assert(array_op->type->kind == TYPE_ARRAY);
-
-    BBlock* curr_bb = bblock;
-
-    Type* arr_type = array_op->type;
-    Type* ptr_type = try_array_decay(builder->arena, &builder->type_cache->ptrs, arr_type);
-    Type* elem_type = ptr_type->as_ptr.base;
-    u64 num_elems = arr_type->as_array.len;
-
-    StrLit* str_lit = init_op->str_lit;
-    const char* str = str_lit->str;
-
-    assert((str_lit->len + 1) == num_elems);
-
-    // Decay array into pointer to the first elem.
-    IR_Operand base_ptr_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_type};
-    IR_get_object_addr(builder, curr_bb, &base_ptr_op.addr, array_op);
-
-    for (u64 elem_index = 0; elem_index < num_elems; elem_index += 1) {
-        IR_Operand char_op = {.kind = IR_OPERAND_IMM, .type = elem_type, .imm.as_int._u64 = str[elem_index]};
-
-        IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_ptr_op.addr};
-        elem_ptr_op.addr.disp += elem_type->size * elem_index;
-
-        curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &char_op);
-    }
-
-    // TODO: Reduce the number of assignment (mov) instructions by initializing
-    // multiple elements at a time (one machine word's worth).
-
-    return curr_bb;
-}
-
 static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* lhs, IR_Operand* rhs)
 {
     BBlock* curr_bb = bblock;
@@ -973,9 +941,6 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
     }
     else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
         curr_bb = IR_emit_array_init(builder, curr_bb, lhs, rhs);
-    }
-    else if (rhs->kind == IR_OPERAND_STR_LIT) {
-        curr_bb = IR_emit_array_str_init(builder, curr_bb, lhs, rhs);
     }
     else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
         curr_bb = IR_op_to_r(builder, curr_bb, rhs);
@@ -1761,7 +1726,7 @@ static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, 
 
     // Allocate register if procedure returns a value.
     if (dst_op->type != builtin_types[BUILTIN_TYPE_VOID].type) {
-        if (!type_is_aggregate(dst_op->type)) {
+        if (!type_is_obj_like(dst_op->type)) {
             dst_op->kind = IR_OPERAND_REG;
             dst_op->reg = IR_next_reg(builder);
 
@@ -1805,7 +1770,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
 
         *p_bblock = IR_emit_expr(builder, *p_bblock, ast_arg->expr, &arg_op);
 
-        if (!type_is_aggregate(arg_op.type)) {
+        if (!type_is_obj_like(arg_op.type)) {
             *p_bblock = IR_op_to_r(builder, *p_bblock, &arg_op);
 
             assert(arg_index < num_args);
@@ -2084,7 +2049,7 @@ static BBlock* IR_emit_stmt_return(IR_ProcBuilder* builder, BBlock* bblock, Stmt
         last_bb = IR_emit_expr(builder, last_bb, sret->expr, &expr_op);
         ret_val.type = expr_op.type;
 
-        if (type_is_aggregate(expr_op.type)) {
+        if (type_is_obj_like(expr_op.type)) {
             IR_get_object_addr(builder, last_bb, &ret_val.addr, &expr_op);
         }
         else {

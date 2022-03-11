@@ -35,6 +35,24 @@ proc add_v3(vecs : ..Vec3) => Vec3 {
     return r;
 }
 
+proc add_arr3(vecs : ..[3]int) => [3]int {
+    var i : usize = 0;
+    var r : [3]int;
+    r[0] = 0;
+    r[1] = 0;
+    r[2] = 0;
+
+    while (i < vecs.length) {
+        r[0] = r[0] + vecs.data[i][0];
+        r[1] = r[1] + vecs.data[i][1];
+        r[2] = r[2] + vecs.data[i][2];
+
+        i = i + 1;
+    }
+
+    return r;
+}
+
 proc add_any_ints(args : ..any) => int {
     var r : int = 0;
 
@@ -62,7 +80,15 @@ proc main() => int {
 
     var v := add_v3(a, b, c);
 
+    var arr1 : [3]int;
+    arr1[0] = -1; arr1[1] = -2; arr1[2] = 4;
+    var arr2 := arr1;
+    var arr3 := arr2;
+
+    var arr4 := add_arr3(arr1, arr2, arr3);
+
     var int1 : int = 1;
 
-    return r + (v.x + v.y + v.z) + add_any_ints(int1, 2, int1 + 1, int1 == 1, 'a'); // 12 + 18 + (1 + 2 + 2 + 1) = 36
+    // 12 + 18 + (1 + 2 + 2 + 1) + (-3 + -6 + 12) = 39
+    return r + (v.x + v.y + v.z) + add_any_ints(int1, 2, int1 + 1, int1 == 1, 'a') + (arr4[0] + arr4[1] + arr4[2]);
 }
