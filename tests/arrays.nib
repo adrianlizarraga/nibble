@@ -1,20 +1,101 @@
+proc pass_smol(s : [2]char) => int {
+    #static_assert(#length(s) == 2);
+    return s[0] + s[1];
+}
+
+proc vec3_add_comps(a : [3]int, b : [3]int) => int {
+    return a[0] + a[1] + a[2] + b[0] + b[1] + b[2];
+}
+
+proc bar(a : int, b : [1024]char, c : [1024]char, d : int) => [32]char {
+    #static_assert(#length(b) == 1024);
+    var r : [32]char;
+
+    r[0] = a + b[0] + c[256] + d;
+    r[31] = 2;
+
+    return r;
+}
+
+proc vec3_add(a : [3]int, b : [3]int) => [3]int {
+    var c : [3]int;
+
+    c[0] = a[0] + b[0];
+    c[1] = a[1] + b[1];
+    c[2] = a[2] + b[2];
+
+    return c;
+}
+
+proc smol_vec3_add(a : [3]char, b : [3]char) => [3]char {
+    var c : [3]char;
+
+    c[0] = a[0] + b[0];
+    c[1] = a[1] + b[1];
+    c[2] = a[2] + b[2];
+
+    return c;
+}
+
+proc smol_vec2_add(a : [2]char, b : [2]char) => [2]char {
+    var c : [2]char;
+
+    c[0] = a[0] + b[0];
+    c[1] = a[1] + b[1];
+
+    return c;
+}
+
 proc main() => int
 {
-    var a: [4] int;
+    // Pass small array object into proc.
+    var s: [2]char;
+    s[0] = 1;
+    s[1] = 10;
 
-    a[0] = 0;
-    a[1] = 1;
-    a[2] = 2;
-    a[3] = 3;
+    var r := pass_smol(s);
 
-    //var p: ^int = ^a[1];
-    //var b: = *^a[1];
-    var c : int = 2;
+    // Pass small (2 regs in linux) array objects into proc.
+    var v1 : [3]int;
+    var v2 : [3]int;
+    v1[0] = 1; v1[1] = 2; v1[2] = 3;
+    v2 = v1;
 
-    //return a[3] + *p; // Returns 4
-    //return a[3] + b; // Returns 4
-    //return a[3] + p[-1]; // Returns 3 (3 - 0)
-    return a[3] + a[c]; // 3 + a[2] = 5
-    //return a[3] + a[b]; // 3 + a[1] = 4
+    var r2 := vec3_add_comps(v1, v2);
+
+    // Pass large array objects and return a large array object.
+    var buf : [1024]char;
+    buf[0] = 20;
+
+    var buf2 : [1024]char;
+    buf2[256] = 10;
+
+    var r3 : [32]char = bar(3, buf, buf2, 4);
+
+    // Add 3d vector arrays by value
+    var r4 := vec3_add(v1, v2);
+    #static_assert(#length(r4) == #length(v1));
+
+    // Add smaller 3d vector arrays by value.
+    var sv1 : [3]char;
+    var sv2 : [3]char;
+    sv1[0] = 3; sv1[1] = 2; sv1[2] = 1;
+    sv2 = sv1;
+
+    var r5 := smol_vec3_add(sv1, sv2);
+    var r5_elem_ptr : ^char = r5; // Decay array into pointer to the first element.
+
+    // Add smaller 2d vector arrays by value.
+    var sv3 : [2]char;
+    var sv4 : [2]char;
+    sv3[0] = -2; sv3[1] = 1;
+    sv4 = sv3;
+
+    var r6 := smol_vec2_add(sv3, sv4);
+    var r6_ptr : ^[2]char = ^r6; // Pointer to the entire array.
+    #static_assert(#length(*r6_ptr) == 2);
+
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (6 + 4 + 2) + (-4 + 2) = 84
+    return r + r2 + r3[0] + r3[31] + (r4[0] + r4[1] + r4[2]) + (r5[0] + r5_elem_ptr[1] + r5[2]) + (r6[0] + (*r6_ptr)[1]);
 }
 

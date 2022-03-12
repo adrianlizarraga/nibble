@@ -6,7 +6,9 @@ A programming language based on C. The goal is to create a compiled, statically-
 - [x] Module import system (based on javascript ES6)
 - [x] Type inference
 - [x] Typed enumerations
-- [x] Multiple return values (return anonymous structure object)
+- [x] Multiple return values (return anonymous structure object aka tuples)
+- [x] Type-safe variadic procedures
+- [x] Array slices (See [C's Biggest Mistake](https://digitalmars.com/articles/C-biggest-mistake.html))
 - [ ] Defer statement (like go)
 - [ ] Default procedure arguments
 - [ ] Named procedure arguments

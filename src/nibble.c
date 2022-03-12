@@ -315,7 +315,7 @@ static bool init_annotations()
 static bool init_builtin_struct_fields()
 {
     static const StringView names[BUILTIN_STRUCT_FIELD_COUNT] = {
-        [BUILTIN_STRUCT_FIELD_SIZE] = string_view_lit("size"),
+        [BUILTIN_STRUCT_FIELD_LENGTH] = string_view_lit("length"),
         [BUILTIN_STRUCT_FIELD_DATA] = string_view_lit("data"),
         [BUILTIN_STRUCT_FIELD_TYPE] = string_view_lit("type"),
         [BUILTIN_STRUCT_FIELD_PTR] = string_view_lit("ptr"),
@@ -391,7 +391,7 @@ static bool init_keywords()
         [KW_TYPEID] = string_view_lit("#typeid"),
         [KW_INDEXOF] = string_view_lit("#indexof"),
         [KW_OFFSETOF] = string_view_lit("#offsetof"),
-        [KW_LEN] = string_view_lit("#len"),
+        [KW_LENGTH] = string_view_lit("#length"),
         [KW_STATIC_ASSERT] = string_view_lit("#static_assert"),
         [KW_EXPORT] = string_view_lit("export"),
         [KW_IMPORT] = string_view_lit("import"),
@@ -468,6 +468,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->type_cache.arrays = hmap(6, NULL);
     nibble->type_cache.procs = hmap(6, NULL);
     nibble->type_cache.variadics = hmap(6, NULL);
+    nibble->type_cache.slices = hmap(6, NULL);
     nibble->type_cache.structs = hmap(6, NULL);
     nibble->type_cache.unions = hmap(6, NULL);
 
@@ -1237,6 +1238,8 @@ void nibble_cleanup(void)
                 nibble->type_cache.procs.cap, nibble->type_cache.procs.cap * sizeof(HMapEntry));
     ftprint_out("type_variadics cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.variadics.len,
                 nibble->type_cache.variadics.cap, nibble->type_cache.variadics.cap * sizeof(HMapEntry));
+    ftprint_out("type_slices cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.slices.len,
+                nibble->type_cache.slices.cap, nibble->type_cache.slices.cap * sizeof(HMapEntry));
     ftprint_out("type_structs cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.structs.len,
                 nibble->type_cache.structs.cap, nibble->type_cache.structs.cap * sizeof(HMapEntry));
     ftprint_out("type_unions cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.unions.len,
@@ -1250,6 +1253,7 @@ void nibble_cleanup(void)
     hmap_destroy(&nibble->type_cache.procs);
     hmap_destroy(&nibble->type_cache.arrays);
     hmap_destroy(&nibble->type_cache.variadics);
+    hmap_destroy(&nibble->type_cache.slices);
     hmap_destroy(&nibble->type_cache.structs);
     hmap_destroy(&nibble->type_cache.unions);
     allocator_destroy(&nibble->tmp_mem);

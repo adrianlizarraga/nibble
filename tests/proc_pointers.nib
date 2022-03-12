@@ -26,7 +26,7 @@ proc add_variadic(nums : ..int) => int {
     var i : usize = 0;
     var result : int = 0;
 
-    while (i < nums.size) {
+    while (i < nums.length) {
         result = result + nums.data[i];
 
         i = i + 1;
@@ -35,10 +35,30 @@ proc add_variadic(nums : ..int) => int {
     return result;
 }
 
+typedef ArrAddProc = proc([3]int, [3]int) => [3]int;
+
+proc vec3_add(a : [3]int, b : [3]int) => [3]int {
+    var c : [3]int;
+
+    c[0] = a[0] + b[0];
+    c[1] = a[1] + b[1];
+    c[2] = a[2] + b[2];
+
+    return c;
+}
+
+
 proc main() => int {
     var p : proc(int, int) => int = add; 
     var p2 : BinaryProc = sub; 
     var p3 : VariadicProc = add_variadic;
+    var p4 : ArrAddProc = vec3_add;
 
-    return p(1, 3) + p2(1, 3) + g_proc(1, 3) + get_a_proc(0)(1, 3) + p3(1,2,3); //4 + -2 + 4 + -2 + 6 = 10
+    var v1 : [3]int;
+    var v2 : [3]int;
+    v1[0] = 1; v1[1] = 2; v1[2] = 3;
+    v2 = v1;
+    var v3 := p4(v1, v2);
+
+    return p(1, 3) + p2(1, 3) + g_proc(1, 3) + get_a_proc(0)(1, 3) + p3(1,2,3) + v3[2]; //4 + -2 + 4 + -2 + 6 + 6 = 16
 }

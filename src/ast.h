@@ -101,6 +101,7 @@ typedef struct TypeSpecArray {
     TypeSpec super;
     TypeSpec* base;
     Expr* len;
+    bool infer_len;
 } TypeSpecArray;
 
 typedef struct TypeSpecConst {
@@ -113,7 +114,7 @@ AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, Type
 TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
 TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range);
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
-TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range);
+TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, bool infer_len, ProgRange range);
 TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
 ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* type, bool is_variadic, ProgRange range);
 TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, bool is_variadic, ProgRange range);
@@ -145,7 +146,7 @@ typedef enum ExprKind {
     CST_ExprTypeid,
     CST_ExprOffsetof,
     CST_ExprIndexof,
-    CST_ExprLen,
+    CST_ExprLength,
     CST_ExprCompoundLit,
 } ExprKind;
 
@@ -264,10 +265,10 @@ typedef struct ExprOffsetof {
    Identifier* field_ident;
 } ExprOffsetof;
 
-typedef struct ExprLen {
+typedef struct ExprLength {
     Expr super;
     Expr* arg;
-} ExprLen;
+} ExprLength;
 
 typedef enum DesignatorKind {
     DESIGNATOR_NONE,
@@ -315,7 +316,7 @@ Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_typeid(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_offsetof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range);
 Expr* new_expr_indexof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range);
-Expr* new_expr_len(Allocator* allocator, Expr* arg, ProgRange range);
+Expr* new_expr_length(Allocator* allocator, Expr* arg, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
 Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range);
 
@@ -685,7 +686,14 @@ typedef struct TypeAggregateField {
     Identifier* name;
 } TypeAggregateField;
 
+typedef enum TypeAggWrapperKind {
+    TYPE_AGG_IS_NOT_WRAPPER = 0,
+    TYPE_AGG_IS_VARIADIC_WRAPPER,
+    TYPE_AGG_IS_SLICE_WRAPPER,
+} TypeAggWrapperKind;
+
 typedef struct TypeAggregate {
+    TypeAggWrapperKind wrapper_kind;
     size_t num_fields;
     TypeAggregateField* fields;
 } TypeAggregate;
@@ -772,12 +780,14 @@ bool type_is_arithmetic(Type* type);
 bool type_is_scalar(Type* type);
 bool type_is_ptr_like(Type* type);
 bool type_is_aggregate(Type* type);
+bool type_is_obj_like(Type* type);
+bool type_is_slice(Type* type);
+bool slice_and_array_compatible(Type* array_type, Type* slice_type);
 bool type_is_incomplete_array(Type* type);
 bool type_has_incomplete_array(Type* type);
 bool types_are_compatible(Type* t, Type* u);
 
 Type* try_array_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
-Type* try_incomplete_array_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
 
 void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields);
 void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields);
@@ -790,7 +800,11 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
 Type* type_unsigned_int(Type* type_int);
 Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl);
 Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym);
-Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap* type_ptr_cache, Type* elem_type);
+
+#define type_variadic_struct(a, twc, tpc, t) type_wrapper_struct((a), (twc), (tpc), TYPE_AGG_IS_VARIADIC_WRAPPER, (t))
+#define type_slice_struct(a, twc, tpc, t) type_wrapper_struct((a), (twc), (tpc), TYPE_AGG_IS_SLICE_WRAPPER, (t))
+Type* type_wrapper_struct(Allocator* allocator, HMap* type_wrapper_cache, HMap* type_ptr_cache, TypeAggWrapperKind wrapper_kind,
+                          Type* elem_type);
 
 ///////////////////////////////
 //       Symbols
