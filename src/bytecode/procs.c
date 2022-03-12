@@ -773,6 +773,9 @@ static void IR_ptr_to_mem_op(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand
         IR_execute_deref(builder, bblock, operand);
         base_reg = operand->reg;
     }
+    else if (operand->kind == IR_OPERAND_REG) {
+        base_reg = operand->reg;
+    }
 
     assert(base_reg != IR_REG_COUNT);
 
@@ -927,29 +930,64 @@ static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
     return curr_bb;
 }
 
+static BBlock* IR_init_array_slice(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* slice_addr, Type* slice_type,
+                                   IR_Operand* array_op)
+{
+    assert(array_op->type->kind == TYPE_ARRAY);
+
+    BBlock* curr_bb = bblock;
+
+    TypeAggregateField* length_field = get_type_aggregate_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH]);
+    IR_Operand length_val_op = {.kind = IR_OPERAND_IMM, .type = length_field->type, .imm.as_int._u64 = array_op->type->as_array.len};
+
+    IR_Operand length_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = length_field->type, .addr = *slice_addr};
+    length_field_op.addr.disp += length_field->offset;
+
+    TypeAggregateField* data_field = get_type_aggregate_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+    IR_Operand data_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = data_field->type, .addr = *slice_addr};
+    data_field_op.addr.disp += data_field->offset;
+
+    MemAddr arr_addr = {0};
+    IR_get_object_addr(builder, curr_bb, &arr_addr, array_op);
+
+    IR_Operand data_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = data_field->type, .addr = arr_addr};
+
+    curr_bb = IR_emit_assign(builder, curr_bb, &length_field_op, &length_val_op);
+    curr_bb = IR_emit_assign(builder, curr_bb, &data_field_op, &data_val_op);
+
+    return curr_bb;
+}
+
 static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* lhs, IR_Operand* rhs)
 {
     BBlock* curr_bb = bblock;
     MemAddr dst_addr;
     IR_get_object_addr(builder, curr_bb, &dst_addr, lhs);
 
-    if (rhs->kind == IR_OPERAND_IMM) {
-        IR_Reg r = IR_next_reg(builder);
-
-        IR_emit_instr_limm(builder, curr_bb, rhs->type, r, rhs->imm);
-        IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, r);
-    }
-    else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
-        curr_bb = IR_emit_array_init(builder, curr_bb, lhs, rhs);
-    }
-    else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
-        curr_bb = IR_op_to_r(builder, curr_bb, rhs);
-        IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
+    if (type_is_slice(lhs->type) && (rhs->type->kind == TYPE_ARRAY)) {
+        curr_bb = IR_init_array_slice(builder, curr_bb, &dst_addr, lhs->type, rhs);
     }
     else {
-        MemAddr src_addr;
-        IR_get_object_addr(builder, curr_bb, &src_addr, rhs);
-        IR_emit_instr_memcpy(builder, curr_bb, lhs->type, dst_addr, src_addr);
+        assert(lhs->type == rhs->type);
+
+        if (rhs->kind == IR_OPERAND_IMM) {
+            IR_Reg r = IR_next_reg(builder);
+
+            IR_emit_instr_limm(builder, curr_bb, rhs->type, r, rhs->imm);
+            IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, r);
+        }
+        else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
+            curr_bb = IR_emit_array_init(builder, curr_bb, lhs, rhs);
+        }
+        else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
+            curr_bb = IR_op_to_r(builder, curr_bb, rhs);
+            IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
+        }
+        else {
+            MemAddr src_addr;
+            IR_get_object_addr(builder, curr_bb, &src_addr, rhs);
+            IR_emit_instr_memcpy(builder, curr_bb, lhs->type, dst_addr, src_addr);
+        }
     }
 
     return curr_bb;
@@ -1694,34 +1732,6 @@ static BBlock* IR_emit_int_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_Oper
     return curr_bb;
 }
 
-static BBlock* IR_init_array_slice(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* slice_addr, Type* slice_type,
-                                   IR_Operand* array_op)
-{
-    assert(array_op->type->kind == TYPE_ARRAY);
-
-    BBlock* curr_bb = bblock;
-
-    TypeAggregateField* length_field = get_type_aggregate_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH]);
-    IR_Operand length_val_op = {.kind = IR_OPERAND_IMM, .type = length_field->type, .imm.as_int._u64 = array_op->type->as_array.len};
-
-    IR_Operand length_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = length_field->type, .addr = *slice_addr};
-    length_field_op.addr.disp += length_field->offset;
-    
-    TypeAggregateField* data_field = get_type_aggregate_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
-    IR_Operand data_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = data_field->type, .addr = *slice_addr};
-    data_field_op.addr.disp += data_field->offset;
-
-    MemAddr arr_addr = {0};
-    IR_get_object_addr(builder, curr_bb, &arr_addr, array_op);
-
-    IR_Operand data_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = data_field->type, .addr = arr_addr};
-
-    curr_bb = IR_emit_assign(builder, curr_bb, &length_field_op, &length_val_op);
-    curr_bb = IR_emit_assign(builder, curr_bb, &data_field_op, &data_val_op);
-
-    return curr_bb;
-}
-
 static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCast* expr_cast, IR_Operand* dst_op)
 {
     // Emit instructions for source expression that will be casted.
@@ -1735,10 +1745,23 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     assert(dst_op->type->kind != TYPE_FLOAT);
     assert(src_op.type != dst_op->type); // Should be prevented by resolver.
 
-    if (src_op.type->kind == TYPE_ARRAY && dst_op->type->kind == TYPE_PTR) {
+    if ((src_op.type->kind == TYPE_ARRAY) && (dst_op->type->kind == TYPE_PTR)) {
         dst_op->kind = IR_OPERAND_MEM_ADDR;
 
         IR_get_object_addr(builder, curr_bb, &dst_op->addr, &src_op);
+    }
+    else if (type_is_slice(src_op.type) && (dst_op->type->kind == TYPE_PTR)) {
+        MemAddr slice_addr = {0};
+        IR_get_object_addr(builder, curr_bb, &slice_addr, &src_op);
+
+        TypeAggregateField* data_field = get_type_aggregate_field(src_op.type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+        assert(data_field->type == dst_op->type);
+
+        dst_op->kind = IR_OPERAND_DEREF_ADDR;
+        dst_op->addr = slice_addr;
+        dst_op->addr.disp += data_field->offset;
+
+        IR_execute_deref(builder, curr_bb, dst_op);
     }
     else if ((src_op.type->kind == TYPE_ARRAY) && type_is_slice(dst_op->type)) {
         Type* slice_type = dst_op->type;

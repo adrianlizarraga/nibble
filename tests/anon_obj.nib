@@ -60,7 +60,7 @@ proc main() => int {
     var r3 : int = 0;
 
     {
-        r3 = v3(1).x + v3(1).y + v3(2).z + arr3(3)[0] + arr4(3)[3]; // 10
+        r3 = v3(1).x + v3(1).y + v3(2).z + arr3(3)[0] + (arr4(3) :> []ssize)[3]; // 10
     }
 
     return r2 + r1 + r3; // 26
