@@ -4,6 +4,8 @@ proc main() => int {
     var j := 0;
     var k := 0;
     var z := 0;
+    var l := 0;
+    var m := 0;
 
     // Infinite loop
     // Sum odd numbers up to 10
@@ -79,7 +81,35 @@ proc main() => int {
         i = i + 1;
     }
 
-    // TODO: for loop
+    // For loop
+    // Add even numbers up to 10
+    for (var x := 0; x <= 10; x = x + 1) {
+        var rem := x - (x / 2)*2;
 
-    return j + k + z + sum; // 25 + 30 + 30 + 14 = 99
+        if (rem == 1) {
+            continue;
+        }
+
+        l = l + x;
+    }
+
+    // Infinite for loop
+    // Sum odd numbers up to 10
+    i = 0;
+    for (;;) {
+        if (i > 10) break;
+
+        var rem := i - (i / 2)*2;
+
+        if (rem == 0) {
+            i = i + 1;
+            continue;
+        }
+
+        m = m + i;
+
+        i = i + 1;
+    }
+
+    return j + k + z + sum - l - m; // 25 + 30 + 30 + 14 - 30 - 25 = 44
 }

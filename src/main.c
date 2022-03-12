@@ -8,11 +8,18 @@
    - Floating point primitives
    - Defer statement
    - Multiple return values (tuple implemented as anonymous struct)
+     - Indexed field access. EX: vec3{0} // access first field of Vec3
+     - #fieldindex
+     - #fieldoffset
+     - Tuple type is just an anonymous struct. EX: var my_tuple : {int, int};
 
 */
 
+/* Wishlist:
+    - Enum sub types. EX: A proc only expects a subset of possible enum values.
+*/
+
 //#define NDEBUG 1
-#define PRINT_MEM_USAGE 1
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

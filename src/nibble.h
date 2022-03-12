@@ -115,7 +115,10 @@ typedef struct TypeCache {
     HMap ptrs;
     HMap arrays;
     HMap procs;
-    HMap variadics;
+    HMap variadics; // Struct types that wrap variadic args
+    HMap slices; // Struct types that represent array slices
+    HMap structs; // Anonymous
+    HMap unions; // Anonymous
 } TypeCache;
 
 typedef enum Keyword {
@@ -129,6 +132,9 @@ typedef enum Keyword {
     KW_SIZEOF,
     KW_TYPEOF,
     KW_TYPEID,
+    KW_INDEXOF,
+    KW_OFFSETOF,
+    KW_LENGTH,
     KW_STATIC_ASSERT,
     KW_EXPORT,
     KW_IMPORT,
@@ -169,7 +175,7 @@ typedef enum Intrinsic {
 } Intrinsic;
 
 typedef enum BuiltinStructField {
-    BUILTIN_STRUCT_FIELD_SIZE,
+    BUILTIN_STRUCT_FIELD_LENGTH,
     BUILTIN_STRUCT_FIELD_DATA,
     BUILTIN_STRUCT_FIELD_TYPE,
     BUILTIN_STRUCT_FIELD_PTR,

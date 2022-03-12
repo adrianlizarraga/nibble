@@ -266,7 +266,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         Type* ret_type = proc_type->as_proc.ret;
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-            if (type_is_aggregate(ret_type)) {
+            if (type_is_obj_like(ret_type)) {
                 ftprint_char_array(&dstr, false, "<%lu> %s = ", ret_type->size, LIR_print_mem(arena, &dst_val.addr));
             }
             else {
@@ -285,7 +285,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
             for (u32 i = 0; i < num_args; i += 1) {
                 X64_InstrCallArg* arg = args + i;
 
-                if (type_is_aggregate(arg->type)) {
+                if (type_is_obj_like(arg->type)) {
                     ftprint_char_array(&dstr, false, "<%s> %s", type_name(arg->type), LIR_print_mem(arena, &arg->val.addr));
                 }
                 else {
