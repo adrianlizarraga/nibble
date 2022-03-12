@@ -79,9 +79,9 @@ main.nib:
 proc main(argc : int, argv : ^^char) => int
 {
     var msg : []char = "Hello, World\n";
-    const len : usize = #sizeof(#typeof(msg)) - 1;
 
-    #writeout(msg, len);
+    #writeout(msg.data, msg.length);
+
     return 0;
 }
 ```
@@ -104,7 +104,7 @@ main.nib:
 import { merge_sort } from "./sort.nib";
 
 proc main() => int {
-    var a : []int = {5, 4, 3, 2, 1, 0};
+    var a : [_]int = {5, 4, 3, 2, 1, 0};
     var b : [6]int;
 
     var c : ^int = merge_sort(a, b, 6);
