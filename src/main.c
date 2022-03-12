@@ -26,7 +26,7 @@
 #include <string.h>
 
 //#define NDEBUG
-#define NIBBLE_PRINT_IRS
+//#define NIBBLE_PRINT_IRS
 //#define NIBBLE_PRINT_MEM_USAGE
 
 // This is a "unity build".
