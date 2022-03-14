@@ -956,10 +956,9 @@ TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name)
     return NULL;
 }
 
-Type* type_wrapper_struct(Allocator* allocator, HMap* type_wrapper_cache, HMap* type_ptr_cache, TypeAggWrapperKind wrapper_kind,
-                          Type* elem_type)
+Type* type_slice(Allocator* allocator, HMap* type_slice_cache, HMap* type_ptr_cache, Type* elem_type)
 {
-    uint64_t* pval = hmap_get(type_wrapper_cache, PTR_UINT(elem_type));
+    uint64_t* pval = hmap_get(type_slice_cache, PTR_UINT(elem_type));
     Type* type = pval ? (void*)*pval : NULL;
 
     if (!type) {
@@ -974,9 +973,9 @@ Type* type_wrapper_struct(Allocator* allocator, HMap* type_wrapper_cache, HMap* 
 
         complete_struct_type(allocator, type, ARRAY_LEN(fields), fields);
 
-        type->as_aggregate.wrapper_kind = wrapper_kind;
+        type->as_aggregate.wrapper_kind = TYPE_AGG_IS_SLICE_WRAPPER;
 
-        hmap_put(type_wrapper_cache, PTR_UINT(elem_type), PTR_UINT(type));
+        hmap_put(type_slice_cache, PTR_UINT(elem_type), PTR_UINT(type));
     }
 
     return type;
@@ -1182,7 +1181,7 @@ Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic)
 {
     size_t params_size = num_params * sizeof(params[0]);
-    uint64_t key = hash_mix_uint64(hash_bytes(params, params_size, FNV_INIT), hash_ptr(ret));
+    uint64_t key = hash_mix_uint64(hash_mix_uint64(hash_bytes(params, params_size, FNV_INIT), hash_ptr(ret)), is_variadic);
     uint64_t* pval = hmap_get(type_proc_cache, key);
     CachedType* cached = pval ? (void*)*pval : NULL;
 
@@ -1190,7 +1189,7 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
     for (CachedType* it = cached; it != NULL; it = it->next) {
         Type* type = it->type;
 
-        if ((type->as_proc.num_params == num_params) && (type->as_proc.ret == ret)) {
+        if ((type->as_proc.is_variadic == is_variadic) && (type->as_proc.num_params == num_params) && (type->as_proc.ret == ret)) {
             bool params_equal = true;
 
             for (size_t i = 0; i < num_params; i += 1) {
@@ -1200,8 +1199,9 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
                 }
             }
 
-            if (params_equal)
+            if (params_equal) {
                 return it->type;
+            }
         }
     }
 

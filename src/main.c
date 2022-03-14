@@ -3,16 +3,9 @@
    - Only generate assembly for procs reachable from main()
      - Currently, we prune procs not reachable from the main _MODULE_, but unused procs in main module remain.
      - RELATED: Compile all module symbols, but only generate used symbols.
-   - For loops
    - Switch statements
    - Floating point primitives
    - Defer statement
-   - Multiple return values (tuple implemented as anonymous struct)
-     - Indexed field access. EX: vec3{0} // access first field of Vec3
-     - #fieldindex
-     - #fieldoffset
-     - Tuple type is just an anonymous struct. EX: var my_tuple : {int, int};
-
 */
 
 /* Wishlist:

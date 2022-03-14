@@ -3,7 +3,7 @@ proc add_variadic(offset : char, nums : ..int) => int {
     var result : int = 0;
 
     while (i < nums.length) {
-        result = result + nums.data[i];
+        result = result + nums[i];
         
         i = i + 1;
     }
@@ -25,9 +25,9 @@ proc add_v3(vecs : ..Vec3) => Vec3 {
     r.z = 0;
 
     while (i < vecs.length) {
-        r.x = r.x + vecs.data[i].x;
-        r.y = r.y + vecs.data[i].y;
-        r.z = r.z + vecs.data[i].z;
+        r.x = r.x + vecs[i].x;
+        r.y = r.y + vecs[i].y;
+        r.z = r.z + vecs[i].z;
 
         i = i + 1;
     }
@@ -43,9 +43,9 @@ proc add_arr3(vecs : ..[3]int) => [3]int {
     r[2] = 0;
 
     while (i < vecs.length) {
-        r[0] = r[0] + vecs.data[i][0];
-        r[1] = r[1] + vecs.data[i][1];
-        r[2] = r[2] + vecs.data[i][2];
+        r[0] = r[0] + vecs[i][0];
+        r[1] = r[1] + vecs[i][1];
+        r[2] = r[2] + vecs[i][2];
 
         i = i + 1;
     }
@@ -59,8 +59,8 @@ proc add_any_ints(args : ..any) => int {
     var i : usize = 0;
 
     while (i < args.length) {
-        if (args.data[i].type == #typeid(int)) {
-            var val : int = *(args.data[i].ptr :> ^int);
+        if (args[i].type == #typeid(int)) {
+            var val : int = *(args[i].ptr :> ^int);
             r = r + val;
         }
 
