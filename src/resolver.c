@@ -2330,8 +2330,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
         // Array slice type.
         if (!ts->len && !ts->infer_len) {
-            return type_slice_struct(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.slices,
-                                     &resolver->ctx->type_cache.ptrs, base_type);
+            return type_slice(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.slices, &resolver->ctx->type_cache.ptrs, base_type);
         }
 
         // Actual array type.
@@ -2397,8 +2396,7 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             }
 
             if (proc_param->is_variadic) {
-                param = type_variadic_struct(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.variadics,
-                                             &resolver->ctx->type_cache.ptrs, param);
+                param = type_slice(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.slices, &resolver->ctx->type_cache.ptrs, param);
             }
 
             array_push(params, param);
@@ -2717,8 +2715,7 @@ static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
     }
 
     if (decl->is_variadic) {
-        type =
-            type_variadic_struct(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.variadics, &resolver->ctx->type_cache.ptrs, type);
+        type = type_slice(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.slices, &resolver->ctx->type_cache.ptrs, type);
     }
 
     sym->type = type;

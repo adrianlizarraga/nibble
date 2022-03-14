@@ -688,7 +688,6 @@ typedef struct TypeAggregateField {
 
 typedef enum TypeAggWrapperKind {
     TYPE_AGG_IS_NOT_WRAPPER = 0,
-    TYPE_AGG_IS_VARIADIC_WRAPPER,
     TYPE_AGG_IS_SLICE_WRAPPER,
 } TypeAggWrapperKind;
 
@@ -800,11 +799,7 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
 Type* type_unsigned_int(Type* type_int);
 Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl);
 Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym);
-
-#define type_variadic_struct(a, twc, tpc, t) type_wrapper_struct((a), (twc), (tpc), TYPE_AGG_IS_VARIADIC_WRAPPER, (t))
-#define type_slice_struct(a, twc, tpc, t) type_wrapper_struct((a), (twc), (tpc), TYPE_AGG_IS_SLICE_WRAPPER, (t))
-Type* type_wrapper_struct(Allocator* allocator, HMap* type_wrapper_cache, HMap* type_ptr_cache, TypeAggWrapperKind wrapper_kind,
-                          Type* elem_type);
+Type* type_slice(Allocator* allocator, HMap* type_slice_cache, HMap* type_ptr_cache, Type* elem_type);
 
 ///////////////////////////////
 //       Symbols

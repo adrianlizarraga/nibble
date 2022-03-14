@@ -115,7 +115,6 @@ typedef struct TypeCache {
     HMap ptrs;
     HMap arrays;
     HMap procs;
-    HMap variadics; // Struct types that wrap variadic args
     HMap slices; // Struct types that represent array slices
     HMap structs; // Anonymous
     HMap unions; // Anonymous
