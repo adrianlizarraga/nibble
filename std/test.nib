@@ -3,7 +3,6 @@ import "./print.nib";
 
 /*
     TODO:
-    - type_variadic should just be a slice.
     - Allow converting array of s8 (e.g., a string) to slice of u8.
     - Make char a u8 instead of s8
 */

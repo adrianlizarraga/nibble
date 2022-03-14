@@ -8,12 +8,7 @@ proc print_out(format : [] char, vargs : ..any) => s64 {
     dst.buf = buf :> []char;
     dst.idx = 0;
 
-    // TODO: variadic structs should just be slices
-    var args : []any;
-    args.data = vargs.data;
-    args.length = vargs.length;
-
-    n = print_out_internal(output_to_file, ^dst, format, args);
+    n = print_out_internal(output_to_file, ^dst, format, vargs);
 
     return n;
 }
