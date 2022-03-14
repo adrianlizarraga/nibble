@@ -21,13 +21,16 @@ proc get_a_proc(id:int) => BinaryProc {
 }
 
 typedef VariadicProc = proc(..int) => int;
+typedef SliceProc = proc([]int) => int;
+#static_assert(#typeid(SliceProc) != #typeid(VariadicProc));
 
 proc add_variadic(nums : ..int) => int {
+    #static_assert(#typeid(#typeof(nums)) == #typeid([]int));
     var i : usize = 0;
     var result : int = 0;
 
     while (i < nums.length) {
-        result = result + nums.data[i];
+        result = result + nums[i];
 
         i = i + 1;
     }
