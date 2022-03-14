@@ -1,4 +1,5 @@
 import "./cstring.nib" as CStr;
+import "./print.nib";
 
 proc test_cstr_cmp() => bool {
     var s : []char = "123";
@@ -75,6 +76,9 @@ proc main() => int {
     else {
         #writeout("Pass\n", 5);
     }
+
+    // TODO: Allow converting array of s8 (ie char) to slice of u8.
+    print_out("Print works ha!\n%", 1, 2, 3);
 
     return !pass;
 }
