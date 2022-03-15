@@ -232,6 +232,16 @@ void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
+void X64_emit_instr_rep_stosb(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rdi, u32 rax, u32 rcx)
+{
+    X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_REP_STOSB);
+    instr->rep_stosb.rdi = rdi;
+    instr->rep_stosb.rax = rax;
+    instr->rep_stosb.rcx = rcx;
+
+    X64_add_lir_instr(builder, xbblock, instr);
+}
+
 void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u32 rdx)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_RET);

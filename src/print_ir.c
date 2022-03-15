@@ -88,26 +88,10 @@ static char* IR_print_mem(Allocator* arena, MemAddr* addr)
 char* IR_print_instr(Allocator* arena, Instr* instr)
 {
     static const char* binary_kind_name[] = {
-        [INSTR_ADD]  = "add",
-        [INSTR_SUB]  = "sub",
-        [INSTR_MUL]  = "mul",
-        [INSTR_UDIV] = "udiv",
-        [INSTR_SDIV] = "sdiv",
-        [INSTR_SAR]  = "sar",
-        [INSTR_SHL]  = "shl",
-        [INSTR_AND]  = "and",
-        [INSTR_OR]   = "or",
-        [INSTR_XOR]  = "xor"
-    };
-    static const char* unary_kind_name[] = {
-        [INSTR_NOT] = "not",
-        [INSTR_NEG] = "neg"
-    };
-    static const char* convert_kind_name[] = {
-        [INSTR_TRUNC] = "trunc",
-        [INSTR_ZEXT]  = "zext",
-        [INSTR_SEXT]  = "sext"
-    };
+        [INSTR_ADD] = "add", [INSTR_SUB] = "sub", [INSTR_MUL] = "mul", [INSTR_UDIV] = "udiv", [INSTR_SDIV] = "sdiv",
+        [INSTR_SAR] = "sar", [INSTR_SHL] = "shl", [INSTR_AND] = "and", [INSTR_OR] = "or",     [INSTR_XOR] = "xor"};
+    static const char* unary_kind_name[] = {[INSTR_NOT] = "not", [INSTR_NEG] = "neg"};
+    static const char* convert_kind_name[] = {[INSTR_TRUNC] = "trunc", [INSTR_ZEXT] = "zext", [INSTR_SEXT] = "sext"};
     char* dstr = array_create(arena, char, 16);
 
     switch (instr->kind) {
@@ -135,8 +119,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         for (size_t i = 0; i < n; i++) {
             PhiArg* arg = instr->phi.args + i;
 
-            ftprint_char_array(&dstr, false, "B.%u %s%s", arg->bblock->id, IR_print_reg(arena, arg->ireg),
-                               (i == n - 1 ? "" : ", "));
+            ftprint_char_array(&dstr, false, "B.%u %s%s", arg->bblock->id, IR_print_reg(arena, arg->ireg), (i == n - 1 ? "" : ", "));
         }
         break;
     }
@@ -162,13 +145,12 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         break;
     }
     case INSTR_LADDR: {
-        ftprint_char_array(&dstr, false, "laddr %s, %s", IR_print_reg(arena, instr->laddr.r),
-                           IR_print_mem(arena, &instr->laddr.addr));
+        ftprint_char_array(&dstr, false, "laddr %s, %s", IR_print_reg(arena, instr->laddr.r), IR_print_mem(arena, &instr->laddr.addr));
         break;
     }
     case INSTR_MEMCPY: {
         ftprint_char_array(&dstr, false, "memcpy %s, %s, %llu", IR_print_mem(arena, &instr->memcpy.dst),
-                           IR_print_mem(arena, &instr->memcpy.src), instr->memcpy.type->size);
+                           IR_print_mem(arena, &instr->memcpy.src), instr->memcpy.size);
 
         break;
     }
@@ -201,7 +183,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
 
         ftprint_char_array(&dstr, false, "ret <%s>", type_name(val->type));
 
-        if (type_is_aggregate(val->type)) {
+        if (type_is_obj_like(val->type)) {
             ftprint_char_array(&dstr, false, " %s", IR_print_mem(arena, &val->addr));
         }
         else if (val->type != builtin_types[BUILTIN_TYPE_VOID].type) {
@@ -240,7 +222,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
             ftprint_char_array(&dstr, false, "<%s> %s, ", type_name(proc_type->as_proc.ret),
-                               (type_is_aggregate(ret_type) ? IR_print_mem(arena, &r.addr) : IR_print_reg(arena, r.reg)));
+                               (type_is_obj_like(ret_type) ? IR_print_mem(arena, &r.addr) : IR_print_reg(arena, r.reg)));
         }
 
         ftprint_char_array(&dstr, false, "%s (", proc_name);
@@ -250,7 +232,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
                 IR_Value* arg = args + i;
 
                 ftprint_char_array(&dstr, false, "<%s> %s", type_name(arg->type),
-                        (type_is_aggregate(arg->type) ? IR_print_mem(arena, &arg->addr) : IR_print_reg(arena, arg->reg)));
+                                   (type_is_obj_like(arg->type) ? IR_print_mem(arena, &arg->addr) : IR_print_reg(arena, arg->reg)));
 
                 if (i != num_args - 1)
                     ftprint_char_array(&dstr, false, ", ");
@@ -358,4 +340,3 @@ void IR_dump_proc_dot(Allocator* arena, Symbol* sym)
     allocator_restore_state(mem_state);
     ftprint_out("}\n");
 }
-

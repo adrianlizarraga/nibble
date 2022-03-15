@@ -90,6 +90,12 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_lreg(builder, instr->rep_movsb.rcx, ino);
             break;
         }
+        case X64_INSTR_REP_STOSB: {
+            X64_touch_lreg(builder, instr->rep_stosb.rdi, ino);
+            X64_touch_lreg(builder, instr->rep_stosb.rax, ino);
+            X64_touch_lreg(builder, instr->rep_stosb.rcx, ino);
+            break;
+        }
         case X64_INSTR_MOV_R_R: {
             X64_touch_lreg(builder, instr->mov_r_r.src, ino);
             X64_touch_lreg(builder, instr->mov_r_r.dst, ino);
@@ -178,7 +184,7 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             for (u32 i = 0; i < num_args; i++) {
                 X64_InstrCallArg* arg = args + i;
 
-                if (type_is_aggregate(arg->type)) {
+                if (type_is_obj_like(arg->type)) {
                     X64_touch_mem_lregs(builder, &arg->val.addr, ino);
                 }
                 else {
@@ -189,7 +195,7 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             Type* ret_type = proc_type->as_proc.ret;
 
             if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
-                if (type_is_aggregate(ret_type)) {
+                if (type_is_obj_like(ret_type)) {
                     X64_touch_mem_lregs(builder, &dst.addr, ino);
                 }
                 else {

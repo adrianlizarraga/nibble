@@ -111,13 +111,13 @@ bool X64_is_arg_reg(X64_Reg reg)
     return u32_is_bit_set(x64_target.arg_reg_mask, reg);
 }
 
-bool X64_is_struct_retarg_large(size_t size)
+bool X64_is_obj_retarg_large(size_t size)
 {
     if (x64_target.os == OS_LINUX) {
-        return X64_linux_is_struct_retarg_large(size);
+        return X64_linux_is_obj_retarg_large(size);
     }
 
     assert(x64_target.os == OS_WIN32);
 
-    return X64_windows_is_struct_retarg_large(size);
+    return X64_windows_is_obj_retarg_large(size);
 }

@@ -37,11 +37,12 @@ TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range
     return (TypeSpec*)typespec;
 }
 
-TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, ProgRange range)
+TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, bool infer_len, ProgRange range)
 {
     TypeSpecArray* typespec = new_typespec(allocator, TypeSpecArray, range);
     typespec->base = base;
     typespec->len = len;
+    typespec->infer_len = infer_len;
 
     return (TypeSpec*)typespec;
 }
@@ -257,6 +258,14 @@ Expr* new_expr_indexof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field
     ExprIndexof* expr = new_expr(allocator, ExprIndexof, range);
     expr->obj_ts = obj_ts;
     expr->field_ident = field_ident;
+
+    return (Expr*)expr;
+}
+
+Expr* new_expr_length(Allocator* allocator, Expr* arg, ProgRange range)
+{
+    ExprLength* expr = new_expr(allocator, ExprLength, range);
+    expr->arg = arg;
 
     return (Expr*)expr;
 }
@@ -749,6 +758,28 @@ bool type_is_aggregate(Type* type)
     return (kind == TYPE_STRUCT) || (kind == TYPE_UNION);
 }
 
+bool type_is_obj_like(Type* type)
+{
+    return (type->kind == TYPE_ARRAY) || type_is_aggregate(type);
+}
+
+bool type_is_slice(Type* type)
+{
+    return (type->kind == TYPE_STRUCT) && (type->as_aggregate.wrapper_kind == TYPE_AGG_IS_SLICE_WRAPPER);
+}
+
+bool slice_and_array_compatible(Type* array_type, Type* slice_type)
+{
+    assert(array_type->kind == TYPE_ARRAY);
+    assert(type_is_slice(slice_type));
+
+    TypeAggregateField* data_field = get_type_aggregate_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+    Type* slice_elem_type = data_field->type->as_ptr.base;
+    Type* array_elem_type = array_type->as_array.base;
+
+    return slice_elem_type == array_elem_type;
+}
+
 bool type_is_incomplete_array(Type* type)
 {
     return (type->kind == TYPE_ARRAY) && (type->as_array.len == 0);
@@ -856,26 +887,6 @@ Type* try_array_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type)
     return type;
 }
 
-// Recursively decay incomplete array types into pointers. Other types are returned unchanged.
-// Examples:
-//     []char => ^char
-//     [][]char => ^^char
-//     ^[]char => ^^char
-//     ^^[]char => ^^^char
-Type* try_incomplete_array_decay(Allocator* alloc, HMap* type_ptr_cache, Type* type)
-{
-    Type* result = type;
-
-    if (type_is_incomplete_array(type)) {
-        result = type_ptr(alloc, type_ptr_cache, try_incomplete_array_decay(alloc, type_ptr_cache, type->as_array.base));
-    }
-    else if (type->kind == TYPE_PTR) {
-        result = type_ptr(alloc, type_ptr_cache, try_incomplete_array_decay(alloc, type_ptr_cache, type->as_ptr.base));
-    }
-
-    return result;
-}
-
 static Type* type_alloc(Allocator* allocator, TypeKind kind)
 {
     Type* type = alloc_type(allocator, Type, true);
@@ -945,9 +956,9 @@ TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name)
     return NULL;
 }
 
-Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap* type_ptr_cache, Type* elem_type)
+Type* type_slice(Allocator* allocator, HMap* type_slice_cache, HMap* type_ptr_cache, Type* elem_type)
 {
-    uint64_t* pval = hmap_get(type_variadic_cache, PTR_UINT(elem_type));
+    uint64_t* pval = hmap_get(type_slice_cache, PTR_UINT(elem_type));
     Type* type = pval ? (void*)*pval : NULL;
 
     if (!type) {
@@ -955,14 +966,16 @@ Type* type_variadic_struct(Allocator* allocator, HMap* type_variadic_cache, HMap
 
         TypeAggregateField fields[2] = {0};
         fields[0].type = builtin_types[BUILTIN_TYPE_USIZE].type;
-        fields[0].name = builtin_struct_fields[BUILTIN_STRUCT_FIELD_SIZE];
+        fields[0].name = builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH];
 
         fields[1].type = type_ptr(allocator, type_ptr_cache, elem_type);
         fields[1].name = builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA];
 
         complete_struct_type(allocator, type, ARRAY_LEN(fields), fields);
 
-        hmap_put(type_variadic_cache, PTR_UINT(elem_type), PTR_UINT(type));
+        type->as_aggregate.wrapper_kind = TYPE_AGG_IS_SLICE_WRAPPER;
+
+        hmap_put(type_slice_cache, PTR_UINT(elem_type), PTR_UINT(type));
     }
 
     return type;
@@ -1074,6 +1087,7 @@ void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, c
     type->size = size;
     type->align = align;
 
+    type->as_aggregate.wrapper_kind = TYPE_AGG_IS_NOT_WRAPPER; // Default
     type->as_aggregate.num_fields = num_fields;
     type->as_aggregate.fields = fields_cpy;
 }
@@ -1112,6 +1126,7 @@ void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, co
     type->size = size;
     type->align = align;
 
+    type->as_aggregate.wrapper_kind = TYPE_AGG_IS_NOT_WRAPPER;
     type->as_aggregate.num_fields = num_fields;
     type->as_aggregate.fields = fields_cpy;
 }
@@ -1166,7 +1181,7 @@ Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic)
 {
     size_t params_size = num_params * sizeof(params[0]);
-    uint64_t key = hash_mix_uint64(hash_bytes(params, params_size, FNV_INIT), hash_ptr(ret));
+    uint64_t key = hash_mix_uint64(hash_mix_uint64(hash_bytes(params, params_size, FNV_INIT), hash_ptr(ret)), is_variadic);
     uint64_t* pval = hmap_get(type_proc_cache, key);
     CachedType* cached = pval ? (void*)*pval : NULL;
 
@@ -1174,7 +1189,7 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
     for (CachedType* it = cached; it != NULL; it = it->next) {
         Type* type = it->type;
 
-        if ((type->as_proc.num_params == num_params) && (type->as_proc.ret == ret)) {
+        if ((type->as_proc.is_variadic == is_variadic) && (type->as_proc.num_params == num_params) && (type->as_proc.ret == ret)) {
             bool params_equal = true;
 
             for (size_t i = 0; i < num_params; i += 1) {
@@ -1184,8 +1199,9 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
                 }
             }
 
-            if (params_equal)
+            if (params_equal) {
                 return it->type;
+            }
         }
     }
 
@@ -1837,8 +1853,11 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
                 ftprint_char_array(&dstr, false, "(:arr %s %s)", ftprint_expr(allocator, t->len),
                                    ftprint_typespec(allocator, t->base));
             }
+            else if (t->infer_len) {
+                ftprint_char_array(&dstr, false, "(:arr _ %s)", ftprint_typespec(allocator, t->base));
+            }
             else {
-                ftprint_char_array(&dstr, false, "(:arr %s)", ftprint_typespec(allocator, t->base));
+                ftprint_char_array(&dstr, false, "(:arr_slice %s)", ftprint_typespec(allocator, t->base));
             }
         } break;
         default: {
@@ -1978,6 +1997,11 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ExprIndexof* e = (ExprIndexof*)expr;
             dstr = array_create(allocator, char, 16);
             ftprint_char_array(&dstr, false, "(indexof %s %s)", ftprint_typespec(allocator, e->obj_ts), e->field_ident->str);
+        } break;
+        case CST_ExprLength: {
+            ExprLength* e = (ExprLength*)expr;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(len %s)", ftprint_expr(allocator, e->arg));
         } break;
         case CST_ExprCompoundLit: {
             ExprCompoundLit* e = (ExprCompoundLit*)expr;

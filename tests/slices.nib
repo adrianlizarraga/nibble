@@ -1,0 +1,59 @@
+proc arr_last_int(s : []char) => char {
+    return s[s.length - 1];
+}
+
+proc arr3(x : int) => [3]int {
+    var r : [3]int;
+
+    r[0] = x;
+    r[1] = x;
+    r[2] = x;
+
+    return r;
+}
+
+// Does not compile
+/*
+proc foo() => ^int {
+    return arr3(3);
+}
+*/
+
+proc foo1(p : ^int) => ^int {
+    return p;
+}
+
+proc foo2(p : []int) => ^int {
+    return p.data;
+}
+
+proc main() => int {
+    var s : []char = "123\n"; // Slice is initialized from array
+    #writeout(s.data, s.length);
+
+    var ptr : ^char = s; // Slices can decay to pointers too!
+
+    var arr : [9] char = {[8] = 6};
+    var r : char = arr_last_int(arr); // Test implicit cast from array to slice arg
+
+    var r2 : char = arr_last_int(s); // Test passing an actual slice
+    
+    //var slice : []int = arr3(1); // Should not compile.
+
+    //var slice : []int;
+    //slice = arr3(2); // Should not compile
+
+    //foo1(arr3(3)); // Should not compile. Cannot convert temp array to pointer.
+
+    //foo2(arr3(3)); // Should not compile. Cannot convert tmp array to slice
+
+    //var _arr : [4]^int = {arr3(0)}; // Should not compile. Cannot store pointer to tmp array
+
+    //var _ptr : ^int = arr3(0); // Should not compile. Cannot store pointer to tmp array.
+
+    //var _ptr : ^int;
+    //_ptr = arr3(0); // Should not compile
+
+    // 5 + 49 - 50 + 6 + 0 = 10
+    return s.length + s[0] - ptr[1] + r + r2;
+}

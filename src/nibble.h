@@ -115,7 +115,7 @@ typedef struct TypeCache {
     HMap ptrs;
     HMap arrays;
     HMap procs;
-    HMap variadics;
+    HMap slices; // Struct types that represent array slices
     HMap structs; // Anonymous
     HMap unions; // Anonymous
 } TypeCache;
@@ -133,6 +133,7 @@ typedef enum Keyword {
     KW_TYPEID,
     KW_INDEXOF,
     KW_OFFSETOF,
+    KW_LENGTH,
     KW_STATIC_ASSERT,
     KW_EXPORT,
     KW_IMPORT,
@@ -168,12 +169,14 @@ typedef enum Annotation {
 typedef enum Intrinsic {
     INTRINSIC_READIN,
     INTRINSIC_WRITEOUT,
+    INTRINSIC_MEMCPY,
+    INTRINSIC_MEMSET,
     
     INTRINSIC_COUNT
 } Intrinsic;
 
 typedef enum BuiltinStructField {
-    BUILTIN_STRUCT_FIELD_SIZE,
+    BUILTIN_STRUCT_FIELD_LENGTH,
     BUILTIN_STRUCT_FIELD_DATA,
     BUILTIN_STRUCT_FIELD_TYPE,
     BUILTIN_STRUCT_FIELD_PTR,
@@ -211,8 +214,8 @@ typedef struct Identifier {
 
 extern const char* keyword_names[KW_COUNT];
 extern const char* annotation_names[ANNOTATION_COUNT];
-extern const char* intrinsic_names[INTRINSIC_COUNT];
 
+extern Identifier* intrinsic_idents[INTRINSIC_COUNT];
 extern Identifier* builtin_struct_fields[BUILTIN_STRUCT_FIELD_COUNT];
 extern Identifier* main_proc_ident;
 
