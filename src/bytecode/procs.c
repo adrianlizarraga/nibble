@@ -430,12 +430,22 @@ static void IR_emit_instr_ret(IR_ProcBuilder* builder, BBlock* bblock, IR_Value 
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_memcpy(IR_ProcBuilder* builder, BBlock* bblock, Type* type, MemAddr dst, MemAddr src)
+static void IR_emit_instr_memcpy(IR_ProcBuilder* builder, BBlock* bblock, MemAddr dst, MemAddr src, RegImm size)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_MEMCPY);
-    instr->memcpy.type = type;
+    instr->memcpy.size = size;
     instr->memcpy.dst = dst;
     instr->memcpy.src = src;
+
+    IR_add_instr(builder, bblock, instr);
+}
+
+static void IR_emit_instr_memset(IR_ProcBuilder* builder, BBlock* bblock, MemAddr dst, RegImm value, RegImm size)
+{
+    Instr* instr = IR_new_instr(builder->arena, INSTR_MEMSET);
+    instr->memset.dst = dst;
+    instr->memset.value = value;
+    instr->memset.size = size;
 
     IR_add_instr(builder, bblock, instr);
 }
@@ -856,6 +866,22 @@ static BBlock* IR_op_to_r(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* o
     }
 }
 
+static RegImm IR_op_to_ri(IR_ProcBuilder* builder, BBlock** p_bblock, IR_Operand* op) {
+    RegImm ri;
+
+    if (op->kind == IR_OPERAND_IMM) {
+        ri.is_imm = true;
+        ri.imm = op->imm;
+    }
+    else {
+        *p_bblock = IR_op_to_r(builder, *p_bblock, op);
+        ri.is_imm = false;
+        ri.reg = op->reg;
+    }
+
+    return ri;
+}
+
 static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* lhs, IR_Operand* rhs);
 
 // Emit code for initializing an array with an initializer.
@@ -879,6 +905,14 @@ static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
     IR_ArrayMemberInitializer* initzers = init_op->array_initzer.initzers;
     u64 num_initzers = init_op->array_initzer.num_initzers;
     u64 num_elems = arr_type->as_array.len;
+
+    // Just memset to 0 if don't have any initializers and the array has more than 4 elements.
+    if ((num_initzers == 0) && (num_elems > 4)) {
+        RegImm v = {.is_imm = true, .imm.as_int._u64 = 0};
+        RegImm s = {.is_imm = true, .imm.as_int._u64 = arr_type->size};
+        IR_emit_instr_memset(builder, curr_bb, base_ptr_op.addr, v, s);
+        return curr_bb;
+    }
 
     // Create array of bit flags: 1 bit per element in array.
     // Bit will be set to 1 if the array element has an initializer.
@@ -985,8 +1019,10 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
         }
         else {
             MemAddr src_addr;
+            RegImm size = {.is_imm = true, .imm.as_int._u64 = lhs->type->size};
+
             IR_get_object_addr(builder, curr_bb, &src_addr, rhs);
-            IR_emit_instr_memcpy(builder, curr_bb, lhs->type, dst_addr, src_addr);
+            IR_emit_instr_memcpy(builder, curr_bb, dst_addr, src_addr, size);
         }
     }
 
@@ -1579,16 +1615,7 @@ static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprU
         }
         else {
             assert(src.kind == IR_OPERAND_VAR);
-
-            IR_Reg dst_reg = IR_next_reg(builder);
-
-            IR_emit_instr_laddr(builder, curr_bb, src.type, dst_reg, IR_sym_as_addr(src.sym));
-
-            dst->addr.base_kind = MEM_BASE_REG;
-            dst->addr.base.reg = dst_reg;
-            dst->addr.index_reg = IR_REG_COUNT;
-            dst->addr.disp = 0;
-            dst->addr.scale = 0;
+            dst->addr = IR_sym_as_addr(src.sym);
         }
         break;
     }
@@ -1689,6 +1716,15 @@ static BBlock* IR_emit_int_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_Oper
     // there are no explicit instructions for converting from one ptr type to another, or converting to/from int/ptr.
     assert(src_op->kind != IR_OPERAND_IMM); // Should be prevented by resolver.
 
+    // Converting between pointer types.
+    if (dst_op->type->kind == TYPE_PTR && src_op->type->kind == TYPE_PTR) {
+        IR_ptr_to_mem_op(builder, bblock, src_op);
+
+        dst_op->kind = IR_OPERAND_MEM_ADDR;
+        dst_op->addr = src_op->addr;
+        return bblock;
+    }
+
     // We need the src expression to be in a register.
     BBlock* curr_bb = IR_op_to_r(builder, bblock, src_op);
 
@@ -1782,13 +1818,116 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return curr_bb;
 }
 
-static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, IR_Operand* dst_op)
+static BBlock* IR_emit_memcpy_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args)
 {
-    IR_Value ret_val = {.type = expr_call->super.type};
-    dst_op->type = expr_call->super.type;
+    BBlock* curr_bb = bblock;
+
+    MemAddr dst_addr = {0};
+    MemAddr src_addr = {0};
+    RegImm size = {0};
+
+    assert(num_args == 3);
+
+    List* it = args->next;
+    size_t arg_index = 0;
+
+    while (arg_index < num_args) {
+        assert(it != args);
+
+        ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
+        IR_Operand arg_op = {0};
+
+        curr_bb = IR_emit_expr(builder, curr_bb, arg->expr, &arg_op);
+
+        switch (arg_index) {
+        case 0: // dst : ^void
+            assert(arg_op.type == type_ptr_void);
+            IR_ptr_to_mem_op(builder, curr_bb, &arg_op);
+            dst_addr = arg_op.addr;
+            break;
+        case 1: // src : ^void
+            assert(arg_op.type == type_ptr_void);
+            IR_ptr_to_mem_op(builder, curr_bb, &arg_op);
+            src_addr = arg_op.addr;
+            break;
+        case 2: // size: usize
+            assert(arg_op.type == builtin_types[BUILTIN_TYPE_USIZE].type);
+            size = IR_op_to_ri(builder, &curr_bb, &arg_op);
+            break;
+        default:
+            assert(0);
+            break;
+        }
+
+        arg_index += 1;
+        it = it->next;
+    }
+
+    assert(it == args);
+
+    IR_emit_instr_memcpy(builder, curr_bb, dst_addr, src_addr, size);
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_memset_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args)
+{
+    BBlock* curr_bb = bblock;
+
+    MemAddr dst_addr = {0};
+    RegImm value = {0};
+    RegImm size = {0};
+
+    assert(num_args == 3);
+
+    List* it = args->next;
+    size_t arg_index = 0;
+
+    while (arg_index < num_args) {
+        assert(it != args);
+
+        ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
+        IR_Operand arg_op = {0};
+
+        curr_bb = IR_emit_expr(builder, curr_bb, arg->expr, &arg_op);
+
+        switch (arg_index) {
+        case 0: // dst : ^void
+            assert(arg_op.type == type_ptr_void);
+            IR_ptr_to_mem_op(builder, curr_bb, &arg_op);
+            dst_addr = arg_op.addr;
+            break;
+        case 1: // value : uchar
+            assert(arg_op.type == builtin_types[BUILTIN_TYPE_UCHAR].type);
+            value = IR_op_to_ri(builder, &curr_bb, &arg_op);
+            break;
+        case 2: // size: usize
+            assert(arg_op.type == builtin_types[BUILTIN_TYPE_USIZE].type);
+            size = IR_op_to_ri(builder, &curr_bb, &arg_op);
+            break;
+        default:
+            assert(0);
+            break;
+        }
+
+        arg_index += 1;
+        it = it->next;
+    }
+
+    assert(it == args);
+
+    IR_emit_instr_memset(builder, curr_bb, dst_addr, value, size);
+
+    return curr_bb;
+}
+
+static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, Type* ret_type, IR_Operand* dst_op)
+{
+    IR_Value ret_val = {.type = ret_type};
+    dst_op->type = ret_type;
 
     // Allocate register if procedure returns a value.
-    if (dst_op->type != builtin_types[BUILTIN_TYPE_VOID].type) {
+    if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
         if (!type_is_obj_like(dst_op->type)) {
             dst_op->kind = IR_OPERAND_REG;
             dst_op->reg = IR_next_reg(builder);
@@ -1797,7 +1936,7 @@ static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, ExprCall* expr_call, 
         }
         else {
             dst_op->kind = IR_OPERAND_OBJ;
-            dst_op->obj = IR_alloc_tmp_obj(builder, dst_op->type->size, dst_op->type->align);
+            dst_op->obj = IR_alloc_tmp_obj(builder, ret_type->size, ret_type->align);
 
             ret_val.addr = IR_obj_as_addr(dst_op->obj);
         }
@@ -1954,28 +2093,35 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
 static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCall* expr_call, IR_Operand* dst_op)
 {
     BBlock* curr_bb = bblock;
-    size_t num_args = 0;
-    IR_Value* args = IR_setup_call_args(builder, &curr_bb, expr_call, &num_args);
 
     // Emit instructions for the procedure pointer/name.
     IR_Operand proc_op = {0};
     curr_bb = IR_emit_expr(builder, curr_bb, expr_call->proc, &proc_op);
 
-    // Allocate register for return value, emit call instruction, and then cleanup.
-    if (proc_op.kind == IR_OPERAND_PROC) {
-        // Direct procedure call.
-        IR_Value r = IR_setup_call_ret(builder, expr_call, dst_op);
-        IR_emit_instr_call(builder, curr_bb, proc_op.sym, r, num_args, args);
+    if ((proc_op.kind == IR_OPERAND_PROC) && (proc_op.sym->name == intrinsic_idents[INTRINSIC_MEMCPY])) {
+        curr_bb = IR_emit_memcpy_call(builder, curr_bb, expr_call->num_args, &expr_call->args);
+    }
+    else if ((proc_op.kind == IR_OPERAND_PROC) && (proc_op.sym->name == intrinsic_idents[INTRINSIC_MEMSET])) {
+        curr_bb = IR_emit_memset_call(builder, curr_bb, expr_call->num_args, &expr_call->args);
     }
     else {
-        // Indirect procedure call through register.
-        curr_bb = IR_op_to_r(builder, curr_bb, &proc_op);
-        IR_Value r = IR_setup_call_ret(builder, expr_call, dst_op);
-        IR_emit_instr_call_indirect(builder, curr_bb, proc_op.type, proc_op.reg, r, num_args, args);
-    }
+        size_t num_args = 0;
+        IR_Value* args = IR_setup_call_args(builder, &curr_bb, expr_call, &num_args);
 
-    // Mark current procedure as non-leaf.
-    builder->curr_proc->as_proc.is_nonleaf = true;
+        // Direct procedure call.
+        if (proc_op.kind == IR_OPERAND_PROC) {
+            IR_Value r = IR_setup_call_ret(builder, expr_call->super.type, dst_op);
+            IR_emit_instr_call(builder, curr_bb, proc_op.sym, r, num_args, args);
+        }
+        // Indirect procedure call through register.
+        else {
+            curr_bb = IR_op_to_r(builder, curr_bb, &proc_op);
+            IR_Value r = IR_setup_call_ret(builder, expr_call->super.type, dst_op);
+            IR_emit_instr_call_indirect(builder, curr_bb, proc_op.type, proc_op.reg, r, num_args, args);
+        }
+
+        builder->curr_proc->as_proc.is_nonleaf = true;
+    }
 
     return curr_bb;
 }
@@ -2285,7 +2431,7 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
         }
         else if (!true_end_bb) {
             // Both paths jump out using break/continue/return.
-            // TODO: If scope has other statements after if/else, this should be a compiler error in the resolver.
+            // If scope has other statements after if/else, this should be a compiler error in the resolver.
             return NULL;
         }
     }

@@ -304,14 +304,18 @@ static CastResult can_convert_eop(Resolver* resolver, ExprOperand* operand, Type
     }
     // Can decay an array to a pointer.
     else if ((dst_type->kind == TYPE_PTR) && (src_type->kind == TYPE_ARRAY)) {
-        convertible = (src_type->as_array.base == dst_type->as_ptr.base);
+        Type* ptr_base = dst_type->as_ptr.base;
+        Type* arr_base = src_type->as_array.base;
+
+        convertible = (ptr_base == builtin_types[BUILTIN_TYPE_VOID].type) || (ptr_base == arr_base);
         bad_lvalue = !operand->is_lvalue && forbid_rvalue_decay;
     }
     // Can decay an array slice to a pointer.
     else if ((dst_type->kind == TYPE_PTR) && type_is_slice(src_type)) {
+        Type* ptr_base = dst_type->as_ptr.base;
         TypeAggregateField* data_field = get_type_aggregate_field(src_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
 
-        convertible = (data_field->type == dst_type);
+        convertible = (ptr_base == builtin_types[BUILTIN_TYPE_VOID].type) || (data_field->type == dst_type);
         bad_lvalue = !operand->is_lvalue && forbid_rvalue_decay;
     }
     else if ((dst_type->kind == TYPE_PTR) && (src_type->kind == TYPE_PTR)) {

@@ -97,7 +97,8 @@ typedef enum X64_InstrKind
     // Call a procedure indirectly (register has procedure address)
     X64_INSTR_CALL_R,
 
-    X64_INSTR_REP_MOVSB
+    X64_INSTR_REP_MOVSB,
+    X64_INSTR_REP_STOSB,
 } X64_InstrKind;
 
 typedef enum X64_MemAddrKind
@@ -193,6 +194,12 @@ typedef struct X64_InstrRepMovsb {
     u32 rsi;
     u32 rcx;
 } X64_InstrRepMovsb;
+
+typedef struct X64_InstrRepStosb {
+    u32 rdi;
+    u32 rax;
+    u32 rcx;
+} X64_InstrRepStosb;
 
 typedef struct X64_InstrConvert_R_R {
     size_t dst_size;
@@ -326,6 +333,7 @@ struct X64_Instr {
         X64_InstrMov_M_I mov_m_i;
 
         X64_InstrRepMovsb rep_movsb;
+        X64_InstrRepStosb rep_stosb;
 
         X64_InstrConvert_R_R convert_r_r;
 

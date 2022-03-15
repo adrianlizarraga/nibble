@@ -1495,6 +1495,10 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_text(generator, "    rep movsb");
         break;
     }
+    case X64_INSTR_REP_STOSB: {
+        X64_emit_text(generator, "    rep stosb");
+        break;
+    }
     case X64_INSTR_MOV_R_R: {
         u32 size = (u32)instr->mov_r_r.size;
 

@@ -150,7 +150,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
     }
     case INSTR_MEMCPY: {
         ftprint_char_array(&dstr, false, "memcpy %s, %s, %llu", IR_print_mem(arena, &instr->memcpy.dst),
-                           IR_print_mem(arena, &instr->memcpy.src), instr->memcpy.type->size);
+                           IR_print_mem(arena, &instr->memcpy.src), instr->memcpy.size);
 
         break;
     }
