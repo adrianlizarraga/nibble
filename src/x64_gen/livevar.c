@@ -90,6 +90,12 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_lreg(builder, instr->rep_movsb.rcx, ino);
             break;
         }
+        case X64_INSTR_REP_STOSB: {
+            X64_touch_lreg(builder, instr->rep_stosb.rdi, ino);
+            X64_touch_lreg(builder, instr->rep_stosb.rax, ino);
+            X64_touch_lreg(builder, instr->rep_stosb.rcx, ino);
+            break;
+        }
         case X64_INSTR_MOV_R_R: {
             X64_touch_lreg(builder, instr->mov_r_r.src, ino);
             X64_touch_lreg(builder, instr->mov_r_r.dst, ino);

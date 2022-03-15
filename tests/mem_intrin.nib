@@ -1,0 +1,22 @@
+
+proc main() => int {
+    var a : int = 10;
+    var b : int = 0;
+    var c : int = -1;
+
+    var size := #sizeof(int);
+
+    #memcpy(^b, ^a, #sizeof(int));
+
+    #memcpy(^c, ^b, size);
+
+    var arr : [128]u8 = {};
+    #memset(arr, 0x5, #length(arr));
+
+    var limit := #length(arr) >> 1;
+    var val_4 := 0x4;
+    #memset(arr + 1, val_4, limit);
+
+    // 10 + 10 + (5 + 4 + 5) = 34
+    return b + c + arr[0] + arr[63] + arr[127];
+}

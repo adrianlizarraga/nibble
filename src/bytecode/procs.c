@@ -430,12 +430,22 @@ static void IR_emit_instr_ret(IR_ProcBuilder* builder, BBlock* bblock, IR_Value 
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_memcpy(IR_ProcBuilder* builder, BBlock* bblock, RegImm size, MemAddr dst, MemAddr src)
+static void IR_emit_instr_memcpy(IR_ProcBuilder* builder, BBlock* bblock, MemAddr dst, MemAddr src, RegImm size)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_MEMCPY);
     instr->memcpy.size = size;
     instr->memcpy.dst = dst;
     instr->memcpy.src = src;
+
+    IR_add_instr(builder, bblock, instr);
+}
+
+static void IR_emit_instr_memset(IR_ProcBuilder* builder, BBlock* bblock, MemAddr dst, RegImm value, RegImm size)
+{
+    Instr* instr = IR_new_instr(builder->arena, INSTR_MEMSET);
+    instr->memset.dst = dst;
+    instr->memset.value = value;
+    instr->memset.size = size;
 
     IR_add_instr(builder, bblock, instr);
 }
@@ -896,6 +906,14 @@ static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
     u64 num_initzers = init_op->array_initzer.num_initzers;
     u64 num_elems = arr_type->as_array.len;
 
+    // Just memset to 0 if don't have any initializers and the array has more than 4 elements.
+    if ((num_initzers == 0) && (num_elems > 4)) {
+        RegImm v = {.is_imm = true, .imm.as_int._u64 = 0};
+        RegImm s = {.is_imm = true, .imm.as_int._u64 = arr_type->size};
+        IR_emit_instr_memset(builder, curr_bb, base_ptr_op.addr, v, s);
+        return curr_bb;
+    }
+
     // Create array of bit flags: 1 bit per element in array.
     // Bit will be set to 1 if the array element has an initializer.
     const int num_bits = sizeof(size_t) * 8;
@@ -1004,7 +1022,7 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
             RegImm size = {.is_imm = true, .imm.as_int._u64 = lhs->type->size};
 
             IR_get_object_addr(builder, curr_bb, &src_addr, rhs);
-            IR_emit_instr_memcpy(builder, curr_bb, size, dst_addr, src_addr);
+            IR_emit_instr_memcpy(builder, curr_bb, dst_addr, src_addr, size);
         }
     }
 
@@ -1847,7 +1865,58 @@ static BBlock* IR_emit_memcpy_call(IR_ProcBuilder* builder, BBlock* bblock, size
 
     assert(it == args);
 
-    IR_emit_instr_memcpy(builder, curr_bb, size, dst_addr, src_addr);
+    IR_emit_instr_memcpy(builder, curr_bb, dst_addr, src_addr, size);
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_memset_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args)
+{
+    BBlock* curr_bb = bblock;
+
+    MemAddr dst_addr = {0};
+    RegImm value = {0};
+    RegImm size = {0};
+
+    assert(num_args == 3);
+
+    List* it = args->next;
+    size_t arg_index = 0;
+
+    while (arg_index < num_args) {
+        assert(it != args);
+
+        ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
+        IR_Operand arg_op = {0};
+
+        curr_bb = IR_emit_expr(builder, curr_bb, arg->expr, &arg_op);
+
+        switch (arg_index) {
+        case 0: // dst : ^void
+            assert(arg_op.type == type_ptr_void);
+            IR_ptr_to_mem_op(builder, curr_bb, &arg_op);
+            dst_addr = arg_op.addr;
+            break;
+        case 1: // value : uchar
+            assert(arg_op.type == builtin_types[BUILTIN_TYPE_UCHAR].type);
+            value = IR_op_to_ri(builder, &curr_bb, &arg_op);
+            break;
+        case 2: // size: usize
+            assert(arg_op.type == builtin_types[BUILTIN_TYPE_USIZE].type);
+            size = IR_op_to_ri(builder, &curr_bb, &arg_op);
+            break;
+        default:
+            assert(0);
+            break;
+        }
+
+        arg_index += 1;
+        it = it->next;
+    }
+
+    assert(it == args);
+
+    IR_emit_instr_memset(builder, curr_bb, dst_addr, value, size);
 
     return curr_bb;
 }
@@ -2031,6 +2100,9 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
 
     if ((proc_op.kind == IR_OPERAND_PROC) && (proc_op.sym->name == intrinsic_idents[INTRINSIC_MEMCPY])) {
         curr_bb = IR_emit_memcpy_call(builder, curr_bb, expr_call->num_args, &expr_call->args);
+    }
+    else if ((proc_op.kind == IR_OPERAND_PROC) && (proc_op.sym->name == intrinsic_idents[INTRINSIC_MEMSET])) {
+        curr_bb = IR_emit_memset_call(builder, curr_bb, expr_call->num_args, &expr_call->args);
     }
     else {
         size_t num_args = 0;

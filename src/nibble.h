@@ -170,6 +170,7 @@ typedef enum Intrinsic {
     INTRINSIC_READIN,
     INTRINSIC_WRITEOUT,
     INTRINSIC_MEMCPY,
+    INTRINSIC_MEMSET,
     
     INTRINSIC_COUNT
 } Intrinsic;

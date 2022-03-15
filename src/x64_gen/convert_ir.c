@@ -294,6 +294,18 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
     }
 }
 
+static void X64_load_regimm(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 lreg, unsigned size, RegImm iregimm)
+{
+    if (iregimm.is_imm) {
+        X64_emit_instr_mov_r_i(builder, xbblock, size, lreg, iregimm.imm);
+    }
+    else {
+        u32 s = X64_get_lir_reg(builder, iregimm.reg);
+        X64_hint_same_reg(builder, s, lreg);
+        X64_emit_instr_mov_r_r(builder, xbblock, size, lreg, s);
+    }
+}
+
 static void X64_emit_memcpy(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, X64_MemAddr src, RegImm size)
 {
     // lea rdi, [..dst]
@@ -308,17 +320,28 @@ static void X64_emit_memcpy(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Me
     X64_emit_instr_lea(builder, xbblock, rsi, src);
 
     u32 rcx = X64_def_phys_reg(builder, X64_RCX);
-
-    if (size.is_imm) {
-        X64_emit_instr_mov_r_i(builder, xbblock, PTR_SIZE, rcx, size.imm);
-    }
-    else {
-        u32 s = X64_get_lir_reg(builder, size.reg);
-        X64_hint_same_reg(builder, s, rcx);
-        X64_emit_instr_mov_r_r(builder, xbblock, PTR_SIZE, rcx, s);
-    }
+    X64_load_regimm(builder, xbblock, rcx, PTR_SIZE, size);
 
     X64_emit_instr_rep_movsb(builder, xbblock, rdi, rsi, rcx);
+}
+
+static void X64_emit_memset(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, RegImm value, RegImm size)
+{
+    // lea rdi, [..dst]
+    // mov al, value
+    // mov rcx, size
+    // rep stosb
+
+    u32 rdi = X64_def_phys_reg(builder, X64_RDI);
+    X64_emit_instr_lea(builder, xbblock, rdi, dst);
+
+    u32 al = X64_def_phys_reg(builder, X64_RAX);
+    X64_load_regimm(builder, xbblock, al, 1, value);
+
+    u32 rcx = X64_def_phys_reg(builder, X64_RCX);
+    X64_load_regimm(builder, xbblock, rcx, PTR_SIZE, size);
+
+    X64_emit_instr_rep_stosb(builder, xbblock, rdi, al, rcx);
 }
 
 static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, u32* arg_reg_index,
@@ -1020,6 +1043,22 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_get_lir_addr(builder, xbblock, &src_addr, &ir_instr->memcpy.src, (1 << X64_RDI));
 
         X64_emit_memcpy(builder, xbblock, dst_addr, src_addr, ir_instr->memcpy.size);
+        break;
+    }
+    case INSTR_MEMSET: {
+        // memset(dst, value, size)
+        //
+        // BECOMES
+        //
+        // lea rdi, [..dst]
+        // mov al, value
+        // mov rcx, size
+        // rep stosb
+
+        X64_MemAddr dst_addr;
+        X64_get_lir_addr(builder, xbblock, &dst_addr, &ir_instr->memset.dst, 0);
+
+        X64_emit_memset(builder, xbblock, dst_addr, ir_instr->memset.value, ir_instr->memset.size);
         break;
     }
     case INSTR_RET: {

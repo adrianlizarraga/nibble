@@ -47,6 +47,7 @@ typedef enum InstrKind {
     INSTR_CALL,
     INSTR_CALL_INDIRECT,
     INSTR_MEMCPY,
+    INSTR_MEMSET,
     INSTR_PHI,
     INSTR_KIND_COUNT
 } InstrKind;
@@ -187,10 +188,16 @@ typedef struct InstrRet {
 } InstrRet;
 
 typedef struct InstrMemcpy {
-    RegImm size;
     MemAddr dst;
     MemAddr src;
+    RegImm size;
 } InstrMemcpy;
+
+typedef struct InstrMemset {
+    MemAddr dst;
+    RegImm value;
+    RegImm size;
+} InstrMemset;
 
 typedef struct PhiArg {
     BBlock* bblock;
@@ -225,6 +232,7 @@ typedef struct Instr {
         InstrCallIndirect calli;
         InstrRet ret;
         InstrMemcpy memcpy;
+        InstrMemset memset;
         InstrPhi phi;
     };
 
