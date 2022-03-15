@@ -2426,10 +2426,13 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     if (else_body) {
         BBlock* false_end_bb = IR_emit_stmt(builder, false_bb, else_body, break_ujmps, cont_ujmps);
 
-        assert(false_end_bb || true_end_bb); // Resolver reports error if both paths jump out using break/continue/return.
-
         if (false_end_bb) {
             IR_emit_instr_jmp(builder, false_end_bb, last_bb); // Not really needed in actual assembly (fall-through)
+        }
+        else if (!true_end_bb) {
+            // Both paths jump out using break/continue/return.
+            // If scope has other statements after if/else, this should be a compiler error in the resolver.
+            return NULL;
         }
     }
 
