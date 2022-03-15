@@ -1800,6 +1800,58 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return curr_bb;
 }
 
+static BBlock* IR_emit_memcpy_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args)
+{
+    BBlock* curr_bb = bblock;
+
+    MemAddr dst_addr = {0};
+    MemAddr src_addr = {0};
+    RegImm size = {0};
+
+    assert(num_args == 3);
+
+    List* it = args->next;
+    size_t arg_index = 0;
+
+    while (arg_index < num_args) {
+        assert(it != args);
+
+        ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
+        IR_Operand arg_op = {0};
+
+        curr_bb = IR_emit_expr(builder, curr_bb, arg->expr, &arg_op);
+
+        switch (arg_index) {
+        case 0: // dst : ^void
+            assert(arg_op.type == type_ptr_void);
+            IR_ptr_to_mem_op(builder, curr_bb, &arg_op);
+            dst_addr = arg_op.addr;
+            break;
+        case 1: // src : ^void
+            assert(arg_op.type == type_ptr_void);
+            IR_ptr_to_mem_op(builder, curr_bb, &arg_op);
+            src_addr = arg_op.addr;
+            break;
+        case 2: // size: usize
+            assert(arg_op.type == builtin_types[BUILTIN_TYPE_USIZE].type);
+            size = IR_op_to_ri(builder, &curr_bb, &arg_op);
+            break;
+        default:
+            assert(0);
+            break;
+        }
+
+        arg_index += 1;
+        it = it->next;
+    }
+
+    assert(it == args);
+
+    IR_emit_instr_memcpy(builder, curr_bb, size, dst_addr, src_addr);
+
+    return curr_bb;
+}
+
 static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, Type* ret_type, IR_Operand* dst_op)
 {
     IR_Value ret_val = {.type = ret_type};
@@ -1978,53 +2030,7 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     curr_bb = IR_emit_expr(builder, curr_bb, expr_call->proc, &proc_op);
 
     if ((proc_op.kind == IR_OPERAND_PROC) && (proc_op.sym->name == intrinsic_idents[INTRINSIC_MEMCPY])) {
-        MemAddr dst_addr = {.base_kind = MEM_BASE_REG, .index_reg = IR_REG_COUNT};
-        MemAddr src_addr = {.base_kind = MEM_BASE_REG, .index_reg = IR_REG_COUNT};
-        RegImm size = {0};
-
-        assert(expr_call->num_args == 3);
-
-        List* head = &expr_call->args;
-        List* it = head->next;
-        size_t arg_index = 0;
-
-        while (arg_index < expr_call->num_args) {
-            assert(it != head);
-
-            ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
-            IR_Operand arg_op = {0};
-
-            curr_bb = IR_emit_expr(builder, curr_bb, arg->expr, &arg_op);
-
-            assert(!type_is_obj_like(arg_op.type));
-
-            switch (arg_index) {
-            case 0: // dst : ^void
-                assert(arg_op.type == type_ptr_void);
-                IR_ptr_to_mem_op(builder, curr_bb, &arg_op);
-                dst_addr = arg_op.addr;
-                break;
-            case 1: // src : ^void
-                assert(arg_op.type == type_ptr_void);
-                IR_ptr_to_mem_op(builder, curr_bb, &arg_op);
-                src_addr = arg_op.addr;
-                break;
-            case 2: // size: usize
-                assert(arg_op.type == builtin_types[BUILTIN_TYPE_USIZE].type);
-                size = IR_op_to_ri(builder, &curr_bb, &arg_op);
-                break;
-            default:
-                assert(0);
-                break;
-            }
-
-            arg_index += 1;
-            it = it->next;
-        }
-
-        assert(it == head);
-
-        IR_emit_instr_memcpy(builder, curr_bb, size, dst_addr, src_addr);
+        curr_bb = IR_emit_memcpy_call(builder, curr_bb, expr_call->num_args, &expr_call->args);
     }
     else {
         size_t num_args = 0;
