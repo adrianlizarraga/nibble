@@ -1,2 +1,3 @@
 proc #writeout(buf: ^char, size: usize) => ssize;
 proc #readin(buf: ^char, size: usize) => ssize;
+proc #memcpy(dst: ^void, src: ^void, size: usize);

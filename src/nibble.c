@@ -21,8 +21,8 @@ const char* arch_names[NUM_ARCH] = {
 
 const char* keyword_names[KW_COUNT];
 const char* annotation_names[ANNOTATION_COUNT];
-const char* intrinsic_names[INTRINSIC_COUNT];
 
+Identifier* intrinsic_idents[INTRINSIC_COUNT];
 Identifier* builtin_struct_fields[BUILTIN_STRUCT_FIELD_COUNT];
 Identifier* main_proc_ident;
 
@@ -138,8 +138,7 @@ typedef struct SourceFile {
     ProgPos* line_pos; // Stretchy array for now
 } SourceFile;
 
-static SourceFile* add_src_file(NibbleCtx* ctx, const char* cpath_str, size_t cpath_len, const char* code,
-                                size_t code_len)
+static SourceFile* add_src_file(NibbleCtx* ctx, const char* cpath_str, size_t cpath_len, const char* code, size_t code_len)
 {
     SourceFile* src_file = alloc_type(&ctx->gen_mem, SourceFile, true);
     src_file->range.start = ctx->src_pos;
@@ -341,22 +340,24 @@ static bool init_builtin_struct_fields()
 // NOTE: A terminating null character has to be added to the output of xxd
 
 proc #writeout(buf: ^char, size: usize) => ssize;
-
 proc #readin(buf: ^char, size: usize) => ssize;
+proc #memcpy(dst: ^void, src: ^void, size: usize);
 */
 static const char builtin_code[] = {
-    0x70, 0x72, 0x6f, 0x63, 0x20, 0x23, 0x77, 0x72, 0x69, 0x74, 0x65, 0x6f, 0x75, 0x74, 0x28, 0x62, 0x75,
-    0x66, 0x3a, 0x20, 0x5e, 0x63, 0x68, 0x61, 0x72, 0x2c, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x3a, 0x20, 0x75,
-    0x73, 0x69, 0x7a, 0x65, 0x29, 0x20, 0x3d, 0x3e, 0x20, 0x73, 0x73, 0x69, 0x7a, 0x65, 0x3b, 0x0a, 0x70,
-    0x72, 0x6f, 0x63, 0x20, 0x23, 0x72, 0x65, 0x61, 0x64, 0x69, 0x6e, 0x28, 0x62, 0x75, 0x66, 0x3a, 0x20,
-    0x5e, 0x63, 0x68, 0x61, 0x72, 0x2c, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x3a, 0x20, 0x75, 0x73, 0x69, 0x7a,
-    0x65, 0x29, 0x20, 0x3d, 0x3e, 0x20, 0x73, 0x73, 0x69, 0x7a, 0x65, 0x3b, 0x0a, 0x00};
+    0x70, 0x72, 0x6f, 0x63, 0x20, 0x23, 0x77, 0x72, 0x69, 0x74, 0x65, 0x6f, 0x75, 0x74, 0x28, 0x62, 0x75, 0x66, 0x3a, 0x20, 0x5e, 0x63,
+    0x68, 0x61, 0x72, 0x2c, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x3a, 0x20, 0x75, 0x73, 0x69, 0x7a, 0x65, 0x29, 0x20, 0x3d, 0x3e, 0x20, 0x73,
+    0x73, 0x69, 0x7a, 0x65, 0x3b, 0x0a, 0x70, 0x72, 0x6f, 0x63, 0x20, 0x23, 0x72, 0x65, 0x61, 0x64, 0x69, 0x6e, 0x28, 0x62, 0x75, 0x66,
+    0x3a, 0x20, 0x5e, 0x63, 0x68, 0x61, 0x72, 0x2c, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x3a, 0x20, 0x75, 0x73, 0x69, 0x7a, 0x65, 0x29, 0x20,
+    0x3d, 0x3e, 0x20, 0x73, 0x73, 0x69, 0x7a, 0x65, 0x3b, 0x0a, 0x70, 0x72, 0x6f, 0x63, 0x20, 0x23, 0x6d, 0x65, 0x6d, 0x63, 0x70, 0x79,
+    0x28, 0x64, 0x73, 0x74, 0x3a, 0x20, 0x5e, 0x76, 0x6f, 0x69, 0x64, 0x2c, 0x20, 0x73, 0x72, 0x63, 0x3a, 0x20, 0x5e, 0x76, 0x6f, 0x69,
+    0x64, 0x2c, 0x20, 0x73, 0x69, 0x7a, 0x65, 0x3a, 0x20, 0x75, 0x73, 0x69, 0x7a, 0x65, 0x29, 0x3b, 0x0a, 0x00};
 
 static bool init_intrinsics()
 {
     static const StringView names[INTRINSIC_COUNT] = {
         [INTRINSIC_READIN] = string_view_lit("#readin"),
         [INTRINSIC_WRITEOUT] = string_view_lit("#writeout"),
+        [INTRINSIC_MEMCPY] = string_view_lit("#memcpy"),
     };
 
     for (int i = 0; i < INTRINSIC_COUNT; i += 1) {
@@ -370,7 +371,7 @@ static bool init_intrinsics()
         ident->kind = IDENTIFIER_INTRINSIC;
         ident->intrinsic = (Intrinsic)i;
 
-        intrinsic_names[i] = ident->str;
+        intrinsic_idents[i] = ident;
     }
 
     return true;
@@ -437,19 +438,16 @@ bool nibble_init(OS target_os, Arch target_arch)
     // First, check host/target archs
 #ifdef NIBBLE_HOST_LINUX
     if (target_arch != ARCH_X64 || target_os != OS_LINUX) {
-        ftprint_err("[ERROR]: Target OS (%s %s) not yet supported on Linux.\n", os_names[target_os],
-                    arch_names[target_arch]);
+        ftprint_err("[ERROR]: Target OS (%s %s) not yet supported on Linux.\n", os_names[target_os], arch_names[target_arch]);
         return false;
     }
 #elif defined(NIBBLE_HOST_WINDOWS)
     if (target_arch != ARCH_X64 || target_os != OS_WIN32) {
-        ftprint_err("[ERROR]: Target OS (%s %s) not yet supported on Windows.\n", os_names[target_os],
-                    arch_names[target_arch]);
+        ftprint_err("[ERROR]: Target OS (%s %s) not yet supported on Windows.\n", os_names[target_os], arch_names[target_arch]);
         return false;
     }
 #else
-    ftprint_err("[ERROR]: Target OS (%s %s) not supported on `Unknown` OS.\n", os_names[target_os],
-                arch_names[target_arch]);
+    ftprint_err("[ERROR]: Target OS (%s %s) not supported on `Unknown` OS.\n", os_names[target_os], arch_names[target_arch]);
     exit(1);
 #endif
 
@@ -583,15 +581,14 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
             cpath_str_to_ospath(&ctx->tmp_mem, &file_ospath, cpath_str, cpath_len, &ctx->base_ospath);
 
             if (include_depth > NIBBLE_INCLUDE_LIMIT) {
-                report_error(stmt->range,
-                             "Include limit exceeded. File include chain exceeded the current threshold of `%d`.",
+                report_error(stmt->range, "Include limit exceeded. File include chain exceeded the current threshold of `%d`.",
                              NIBBLE_INCLUDE_LIMIT);
                 return false;
             }
 
             Path include_ospath;
-            NibblePathErr ret = get_import_ospath(&include_ospath, stmt_include->file_pathname, &ctx->base_ospath,
-                                                  &file_ospath, &ctx->tmp_mem);
+            NibblePathErr ret =
+                get_import_ospath(&include_ospath, stmt_include->file_pathname, &ctx->base_ospath, &file_ospath, &ctx->tmp_mem);
 
             // Check if included file's path exists somewhere.
             if (ret == NIB_PATH_INV_PATH) {
@@ -601,8 +598,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
 
             // Check for .nib extension.
             if (ret == NIB_PATH_INV_EXT) {
-                report_error(stmt->range, "Included file \"%s\" does not end in `.%s`",
-                             stmt_include->file_pathname->str, nib_ext);
+                report_error(stmt->range, "Included file \"%s\" does not end in `.%s`", stmt_include->file_pathname->str, nib_ext);
                 return false;
             }
 
@@ -621,8 +617,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
 
             // Check that the include file is not the same as the current file.
             if (cstr_ncmp(cpath_str, include_cpath.str, include_cpath.len) == 0) {
-                report_error(stmt->range, "Cyclic file inclusion detected at file `%s`. Cannot include self.",
-                             file_ospath.str);
+                report_error(stmt->range, "Cyclic file inclusion detected at file `%s`. Cannot include self.", file_ospath.str);
                 return false;
             }
 
@@ -640,8 +635,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
                     CachedInclude* cached = (void*)*pval;
 
                     for (CachedInclude* it = cached; it; it = it->next) {
-                        if ((it->len == include_cpath.len) &&
-                            (cstr_ncmp(it->str, include_cpath.str, include_cpath.len) == 0)) {
+                        if ((it->len == include_cpath.len) && (cstr_ncmp(it->str, include_cpath.str, include_cpath.len) == 0)) {
                             seen = true;
                             cached_include = it;
                             break;
@@ -651,15 +645,15 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
             }
 
             if (seen) {
-                report_error(stmt->range, "Cyclic file inclusion detected.\nFile `%s` was first included by `%s`",
-                             include_ospath.str, cached_include->includer_ospath->str);
+                report_error(stmt->range, "Cyclic file inclusion detected.\nFile `%s` was first included by `%s`", include_ospath.str,
+                             cached_include->includer_ospath->str);
                 return false;
             }
 
             // Add to seen_includes
             {
-                CachedInclude* new_cached_include = mem_allocate(
-                    &ctx->tmp_mem, offsetof(CachedInclude, str) + include_cpath.len + 1, DEFAULT_ALIGN, true);
+                CachedInclude* new_cached_include =
+                    mem_allocate(&ctx->tmp_mem, offsetof(CachedInclude, str) + include_cpath.len + 1, DEFAULT_ALIGN, true);
 
                 if (!new_cached_include) {
                     NIBBLE_FATAL_EXIT("Out of memory: %s:%d", __FILE__, __LINE__);
@@ -682,8 +676,8 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* cpath_
                 return false;
             }
 
-            if (!parse_code_recursive(ctx, mod, include_cpath.str, include_cpath.len, included_code.str,
-                                      included_code.len, seen_includes, include_depth + 1)) {
+            if (!parse_code_recursive(ctx, mod, include_cpath.str, include_cpath.len, included_code.str, included_code.len,
+                                      seen_includes, include_depth + 1)) {
                 return false;
             }
         }
@@ -734,8 +728,7 @@ static bool parse_code(NibbleCtx* ctx, Module* mod, const char* code, size_t cod
 
     mod->range.start = ctx->src_pos;
 
-    bool ret = parse_code_recursive(ctx, mod, mod->cpath_lit->str, mod->cpath_lit->len,
-                                    code, code_len, &seen_includes, 0);
+    bool ret = parse_code_recursive(ctx, mod, mod->cpath_lit->str, mod->cpath_lit->len, code, code_len, &seen_includes, 0);
 
     mod->range.end = ctx->src_pos;
 
@@ -840,8 +833,8 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             // 2. If it exists, subtract base_ospath to generate the canonical module path.
 
             Path import_mod_ospath;
-            NibblePathErr ret_err = get_import_ospath(&import_mod_ospath, simport->mod_pathname, &ctx->base_ospath,
-                                                      &mod_ospath, &ctx->tmp_mem);
+            NibblePathErr ret_err =
+                get_import_ospath(&import_mod_ospath, simport->mod_pathname, &ctx->base_ospath, &mod_ospath, &ctx->tmp_mem);
             // Check if imported module's path exists somewhere.
             if (ret_err == NIB_PATH_INV_PATH) {
                 report_error(stmt->range, "Invalid module import path \"%s\"", simport->mod_pathname->str);
@@ -850,8 +843,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
             // Check for .nib extension.
             if (ret_err == NIB_PATH_INV_EXT) {
-                report_error(stmt->range, "Imported module file \"%s\" does not end in `.%s`",
-                             simport->mod_pathname->str, nib_ext);
+                report_error(stmt->range, "Imported module file \"%s\" does not end in `.%s`", simport->mod_pathname->str, nib_ext);
                 return false;
             }
 
@@ -1058,8 +1050,8 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     }
 
     if (main_sym->kind != SYMBOL_PROC) {
-        report_error(main_sym->decl->range, "Identifier `%s` must be a procedure, but found a %s.",
-                     main_proc_ident->str, sym_kind_names[main_sym->kind]);
+        report_error(main_sym->decl->range, "Identifier `%s` must be a procedure, but found a %s.", main_proc_ident->str,
+                     sym_kind_names[main_sym->kind]);
         print_errors(&nibble->errors);
         return false;
     }
@@ -1104,8 +1096,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
         if (param_types[0] != builtin_types[BUILTIN_TYPE_INT].type) {
             DeclVar* param = (DeclVar*)list_entry(main_decl->params.next, Decl, lnode);
 
-            report_error(param->typespec->range,
-                         "Main procedure's first paramater must be an `int` (`%s`) type, but found `%s`.",
+            report_error(param->typespec->range, "Main procedure's first paramater must be an `int` (`%s`) type, but found `%s`.",
                          type_name(builtin_types[BUILTIN_TYPE_INT].type), type_name(param_types[0]));
             print_errors(&nibble->errors);
             return false;
@@ -1115,8 +1106,7 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
         if ((main_num_params == 2) && (param_types[1] != type_ptr_ptr_char)) {
             DeclVar* param = (DeclVar*)list_entry(main_decl->params.next->next, Decl, lnode);
 
-            report_error(param->typespec->range,
-                         "Main procedure's second paramater must be a `^^char` type, but found `%s`.",
+            report_error(param->typespec->range, "Main procedure's second paramater must be a `^^char` type, but found `%s`.",
                          type_name(param_types[1]));
             print_errors(&nibble->errors);
             return false;
@@ -1223,12 +1213,12 @@ void nibble_cleanup(void)
     print_allocator_stats(&nibble->gen_mem, "GEN mem stats");
     print_allocator_stats(&nibble->ast_mem, "AST mem stats");
     print_allocator_stats(&nibble->tmp_mem, "TMP mem stats");
-    ftprint_out("Ident map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->ident_map.len,
-                nibble->ident_map.cap, nibble->ident_map.cap * sizeof(HMapEntry));
-    ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->str_lit_map.len,
-                nibble->str_lit_map.cap, nibble->str_lit_map.cap * sizeof(HMapEntry));
-    ftprint_out("Module map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->mod_map.len,
-                nibble->mod_map.cap, nibble->mod_map.cap * sizeof(HMapEntry));
+    ftprint_out("Ident map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->ident_map.len, nibble->ident_map.cap,
+                nibble->ident_map.cap * sizeof(HMapEntry));
+    ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->str_lit_map.len, nibble->str_lit_map.cap,
+                nibble->str_lit_map.cap * sizeof(HMapEntry));
+    ftprint_out("Module map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->mod_map.len, nibble->mod_map.cap,
+                nibble->mod_map.cap * sizeof(HMapEntry));
     ftprint_out("type_ptr cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.ptrs.len,
                 nibble->type_cache.ptrs.cap, nibble->type_cache.ptrs.cap * sizeof(HMapEntry));
     ftprint_out("type_array cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.arrays.len,
