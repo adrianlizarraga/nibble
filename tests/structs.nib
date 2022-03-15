@@ -134,6 +134,9 @@ proc main() => int {
     var r6 := smol_vec2_add(sv3, sv4);
     var r6_ptr : ^SmolVec2 = ^r6;
 
-    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) = 84
-    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) + (r6.x + r6_ptr.y);
+    var c : Vec3;
+    #memcpy(^c, ^v1, #sizeof(Vec3));
+
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 = 87
+    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) + (r6.x + r6_ptr.y) + c.z;
 }

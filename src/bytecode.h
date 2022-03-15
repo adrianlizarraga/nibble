@@ -10,6 +10,15 @@
 
 typedef u32 IR_Reg;
 
+typedef struct RegImm {
+    bool is_imm;
+
+    union {
+        IR_Reg reg;
+        Scalar imm;
+    };
+} RegImm;
+
 typedef enum InstrKind {
     INSTR_NONE = 0,
     INSTR_ADD,
@@ -38,6 +47,7 @@ typedef enum InstrKind {
     INSTR_CALL,
     INSTR_CALL_INDIRECT,
     INSTR_MEMCPY,
+    INSTR_MEMSET,
     INSTR_PHI,
     INSTR_KIND_COUNT
 } InstrKind;
@@ -178,11 +188,16 @@ typedef struct InstrRet {
 } InstrRet;
 
 typedef struct InstrMemcpy {
-    Type* type;
     MemAddr dst;
     MemAddr src;
+    RegImm size;
 } InstrMemcpy;
 
+typedef struct InstrMemset {
+    MemAddr dst;
+    RegImm value;
+    RegImm size;
+} InstrMemset;
 
 typedef struct PhiArg {
     BBlock* bblock;
@@ -217,6 +232,7 @@ typedef struct Instr {
         InstrCallIndirect calli;
         InstrRet ret;
         InstrMemcpy memcpy;
+        InstrMemset memset;
         InstrPhi phi;
     };
 

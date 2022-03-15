@@ -169,6 +169,8 @@ typedef enum Annotation {
 typedef enum Intrinsic {
     INTRINSIC_READIN,
     INTRINSIC_WRITEOUT,
+    INTRINSIC_MEMCPY,
+    INTRINSIC_MEMSET,
     
     INTRINSIC_COUNT
 } Intrinsic;
@@ -212,8 +214,8 @@ typedef struct Identifier {
 
 extern const char* keyword_names[KW_COUNT];
 extern const char* annotation_names[ANNOTATION_COUNT];
-extern const char* intrinsic_names[INTRINSIC_COUNT];
 
+extern Identifier* intrinsic_idents[INTRINSIC_COUNT];
 extern Identifier* builtin_struct_fields[BUILTIN_STRUCT_FIELD_COUNT];
 extern Identifier* main_proc_ident;
 
