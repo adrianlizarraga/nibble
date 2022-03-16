@@ -49,11 +49,9 @@ typedef struct IR_ArrayInitializer {
     IR_ArrayMemberInitializer* initzers;
 } IR_ArrayInitializer;
 
-typedef struct IR_StructFieldInitializer IR_StructFieldInitializer;
-
 typedef struct IR_StructInitializer {
     size_t num_initzers;
-    IR_StructFieldInitializer* initzers;
+    struct IR_Operand** field_ops; // One per field
 } IR_StructInitializer;
 
 typedef struct IR_Operand {
@@ -75,11 +73,6 @@ typedef struct IR_Operand {
 
 struct IR_ArrayMemberInitializer {
     u64 index;
-    IR_Operand op;
-};
-
-struct IR_StructFieldInitializer {
-    TypeAggregateField* field;
     IR_Operand op;
 };
 
@@ -898,6 +891,78 @@ static RegImm IR_op_to_ri(IR_ProcBuilder* builder, BBlock** p_bblock, IR_Operand
 
 static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* lhs, IR_Operand* rhs);
 
+static void IR_clear_memory(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* addr, size_t size)
+{
+    RegImm v = {.is_imm = true, .imm.as_int._u64 = 0};
+    RegImm s = {.is_imm = true, .imm.as_int._u64 = size};
+    IR_emit_instr_memset(builder, bblock, *addr, v, s);
+}
+
+static BBlock* IR_emit_struct_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* struct_op, IR_Operand* init_op)
+{
+    assert(struct_op->kind == IR_OPERAND_VAR && struct_op->type->kind == TYPE_STRUCT);
+    assert(init_op->kind == IR_OPERAND_STRUCT_INIT);
+
+    BBlock* curr_bb = bblock;
+
+    MemAddr base_addr = {0};
+    IR_get_object_addr(builder, curr_bb, &base_addr, struct_op);
+
+    Type* type = struct_op->type;
+    TypeAggregate* type_agg = &type->as_aggregate;
+    size_t num_fields = type_agg->num_fields;
+    TypeAggregateField* fields = type_agg->fields;
+
+    size_t num_initzers = init_op->struct_initzer.num_initzers;
+
+    // Memset to 0 if did not specify any initializers AND we either have more than 4 fields or 
+    // the struct is larger than 4 pointers.
+    if ((num_initzers == 0) && ((num_fields > 4) || (type->size > (PTR_SIZE << 2)))) {
+        IR_clear_memory(builder, curr_bb, &base_addr, type->size);
+        return curr_bb;
+    }
+
+    assert(num_initzers <= num_fields);
+    size_t num_zero_fields = num_fields - num_initzers;
+    bool zero_first_pass = (num_zero_fields > 4);
+
+    if (zero_first_pass) {
+        IR_clear_memory(builder, curr_bb, &base_addr, type->size);
+    }
+
+    IR_Operand** field_ops = init_op->struct_initzer.field_ops;
+
+    // Initialize field with provided initializer OR zero.
+    for (size_t i = 0; i < num_fields; i++) {
+        TypeAggregateField* field = fields + i;
+        IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = base_addr};
+        field_ptr_op.addr.disp += field->offset;
+
+        if (field_ops && field_ops[i]) { // field <= initializer.
+            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, field_ops[i]);
+        }
+        else if (!zero_first_pass) { // field <= 0
+            IR_Operand zero_op = {.type = field->type};
+
+            if (field->type->kind == TYPE_STRUCT) {
+                zero_op.kind = IR_OPERAND_STRUCT_INIT;
+            }
+            else if (field->type->kind == TYPE_ARRAY) {
+                zero_op.kind = IR_OPERAND_ARRAY_INIT;
+            }
+            else {
+                assert(type_is_int_scalar(field->type));
+                zero_op.kind = IR_OPERAND_IMM;
+                zero_op.imm = ir_zero_imm;
+            }
+
+            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &zero_op);
+        }
+    }
+
+    return curr_bb;
+}
+
 // Emit code for initializing an array with an initializer.
 //    var a: [11] int = {0, 1, 2, 3};
 static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* array_op, IR_Operand* init_op)
@@ -913,8 +978,8 @@ static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
     Type* elem_type = ptr_type->as_ptr.base;
 
     // Decay array into pointer to the first elem.
-    IR_Operand base_ptr_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_type};
-    IR_get_object_addr(builder, curr_bb, &base_ptr_op.addr, array_op);
+    MemAddr base_addr = {0};
+    IR_get_object_addr(builder, curr_bb, &base_addr, array_op);
 
     IR_ArrayMemberInitializer* initzers = init_op->array_initzer.initzers;
     u64 num_initzers = init_op->array_initzer.num_initzers;
@@ -922,58 +987,74 @@ static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
 
     // Just memset to 0 if don't have any initializers and the array has more than 4 elements.
     if ((num_initzers == 0) && (num_elems > 4)) {
-        RegImm v = {.is_imm = true, .imm.as_int._u64 = 0};
-        RegImm s = {.is_imm = true, .imm.as_int._u64 = arr_type->size};
-        IR_emit_instr_memset(builder, curr_bb, base_ptr_op.addr, v, s);
+        IR_clear_memory(builder, curr_bb, &base_addr, arr_type->size);
         return curr_bb;
     }
 
-    // Create array of bit flags: 1 bit per element in array.
-    // Bit will be set to 1 if the array element has an initializer.
-    const int num_bits = sizeof(size_t) * 8;
-    size_t num_flags = (num_elems + num_bits - 1) / num_bits;
-    size_t* init_flags = alloc_array(builder->tmp_arena, size_t, num_flags, true);
+    assert(num_initzers <= num_elems);
+    size_t num_zero_elems = num_elems - num_initzers;
+    bool zero_first_pass = (num_zero_elems > 4);
 
-    // Iterate through initializers and: 1. mark element as having an initializer, 2. initialize element.
-    for (size_t i = 0; i < num_initzers; i += 1) {
-        IR_ArrayMemberInitializer* initzer = initzers + i;
-        size_t elem_index = initzer->index;
+    if (zero_first_pass) {
+        IR_clear_memory(builder, curr_bb, &base_addr, arr_type->size);
 
-        // Mark array element as having an initializer.
-        size_t flag_index = elem_index / num_bits;
-        size_t bit_index = elem_index % num_bits;
-        size_t* flag = init_flags + flag_index;
+        for (size_t i = 0; i < num_initzers; i += 1) {
+            IR_ArrayMemberInitializer* initzer = initzers + i;
+            size_t elem_index = initzer->index;
 
-        *flag |= (1 << bit_index);
-
-        // Initialize array element with value of the initializer.
-        IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_ptr_op.addr};
-        elem_ptr_op.addr.disp += elem_type->size * elem_index;
-
-        curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &initzer->op);
+            // Initialize array element with value of the initializer.
+            IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_addr};
+            elem_ptr_op.addr.disp += elem_type->size * elem_index;
+            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &initzer->op);
+        }
     }
+    else {
+        // Create array of bit flags: 1 bit per element in array.
+        // Bit will be set to 1 if the array element has an initializer.
+        const int num_bits = sizeof(size_t) * 8;
+        size_t num_flags = (num_elems + num_bits - 1) / num_bits;
+        size_t* init_flags = alloc_array(builder->tmp_arena, size_t, num_flags, true);
 
-    // For each array element, compute the pointer to the corresponding element and assign it
-    // an default value if not yet initialized.
-    IR_Operand zero_op = {.kind = IR_OPERAND_IMM, .type = elem_type, .imm = ir_zero_imm};
+        // Iterate through initializers and: 1. mark element as having an initializer, 2. initialize element.
+        for (size_t i = 0; i < num_initzers; i += 1) {
+            IR_ArrayMemberInitializer* initzer = initzers + i;
+            size_t elem_index = initzer->index;
 
-    for (u64 elem_index = 0; elem_index < num_elems; elem_index += 1) {
-        size_t flag_index = elem_index / num_bits;
-        size_t bit_index = elem_index % num_bits;
+            // Mark array element as having an initializer.
+            size_t flag_index = elem_index / num_bits;
+            size_t bit_index = elem_index % num_bits;
+            size_t* flag = init_flags + flag_index;
 
-        // Skip array elements that have been initialized.
-        if (init_flags[flag_index] & (1 << bit_index)) {
-            continue;
+            *flag |= (1 << bit_index);
+
+            // Initialize array element with value of the initializer.
+            IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_addr};
+            elem_ptr_op.addr.disp += elem_type->size * elem_index;
+
+            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &initzer->op);
         }
 
-        IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_ptr_op.addr};
-        elem_ptr_op.addr.disp += elem_type->size * elem_index;
+        // For each array element, compute the pointer to the corresponding element and assign it
+        // a default value if not yet initialized.
+        IR_Operand zero_op = {.kind = IR_OPERAND_IMM, .type = elem_type, .imm = ir_zero_imm};
 
-        curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &zero_op);
+        for (u64 elem_index = 0; elem_index < num_elems; elem_index += 1) {
+            size_t flag_index = elem_index / num_bits;
+            size_t bit_index = elem_index % num_bits;
+
+            // Skip array elements that have been initialized.
+            if (init_flags[flag_index] & (1 << bit_index)) {
+                continue;
+            }
+
+            IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_addr};
+            elem_ptr_op.addr.disp += elem_type->size * elem_index;
+
+            // TODO: WONT WORK FOR OBJECT ELEM TYPES
+            // LEFT OFF HERE!!!!
+            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &zero_op);
+        }
     }
-
-    // TODO: Reduce the number of assignment (mov) instructions by initializing
-    // multiple elements at a time (one machine word's worth).
 
     return curr_bb;
 }
@@ -1026,6 +1107,9 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
         }
         else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
             curr_bb = IR_emit_array_init(builder, curr_bb, lhs, rhs);
+        }
+        else if (rhs->kind == IR_OPERAND_STRUCT_INIT) {
+            curr_bb = IR_emit_struct_init(builder, curr_bb, lhs, rhs);
         }
         else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
             curr_bb = IR_op_to_r(builder, curr_bb, rhs);
@@ -2188,48 +2272,48 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
 static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst)
 {
     Type* type = expr->super.type;
-    TypeAggregate* type_agg = &type->as_aggregate;
 
     assert(!expr->typespec);
     assert(type->kind == TYPE_STRUCT);
 
-    size_t num_initzers = expr->num_initzers;
-    IR_StructFieldInitializer* ir_initzers = alloc_array(builder->tmp_arena, IR_StructFieldInitializer, num_initzers, true);
+    TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateField* fields = type_agg->fields;
+    size_t num_fields = type_agg->num_fields;
+    IR_Operand** field_ops = alloc_array(builder->tmp_arena, IR_Operand*, num_fields, true);
 
     List* head = &expr->initzers;
     List* it = head->next;
     size_t field_index = 0;
-    size_t initzer_index = 0;
 
     BBlock* curr_bb = bblock;
 
     while (it != head) {
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
-        IR_StructFieldInitializer* ir_initzer = ir_initzers + initzer_index;
+        TypeAggregateField* field;
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            ir_initzer->field = get_type_aggregate_field(type, initzer->designator.name);
-            assert(ir_initzer->field);
+            field = get_type_aggregate_field(type, initzer->designator.name);
+            assert(field);
 
-            field_index = ir_initzer->field->index + 1;
+            field_index = field->index + 1;
         }
         else {
             assert(initzer->designator.kind == DESIGNATOR_NONE);
-            assert(field_index < type_agg->num_fields);
+            assert(field_index < num_fields);
 
-            ir_initzer->field = &type_agg->fields[field_index++];
+            field = &fields[field_index++];
         }
 
-        curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, &ir_initzer->op);
+        field_ops[field->index] = alloc_type(builder->tmp_arena, IR_Operand, true);
+        curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, field_ops[field->index]);
 
-        initzer_index += 1;
         it = it->next;
     }
 
     dst->kind = IR_OPERAND_STRUCT_INIT;
     dst->type = type;
-    dst->struct_initzer.num_initzers = num_initzers;
-    dst->struct_initzer.initzers = ir_initzers;
+    dst->struct_initzer.num_initzers = expr->num_initzers;
+    dst->struct_initzer.field_ops = field_ops;
 
     return curr_bb;
 }

@@ -779,6 +779,7 @@ const char* type_name(Type* type);
 bool type_is_integer_like(Type* type);
 bool type_is_arithmetic(Type* type);
 bool type_is_scalar(Type* type);
+bool type_is_int_scalar(Type* type);
 bool type_is_ptr_like(Type* type);
 bool type_is_aggregate(Type* type);
 bool type_is_obj_like(Type* type);

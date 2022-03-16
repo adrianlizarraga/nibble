@@ -280,7 +280,6 @@ static void X64_print_global_struct_init(Allocator* allocator, ConstExpr* const_
 
     for (size_t i = 0; i < inits->num_initzers; i++) {
         ConstStructFieldInitzer* initzer = inits->initzers + i;
-
         field_vals[initzer->field->index] = &initzer->const_expr;
     }
 

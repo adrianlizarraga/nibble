@@ -101,23 +101,16 @@ var g_s : GlobStruct = {b = 7, a = 1};
 proc main() => int {
     #writeout("Structs\n", 8);
 
-    var s : Smol;
-    s.a = 1;
-    s.b = 10;
-
+    var s : Smol = {a = 1, b = 10};
     var r := pass_smol(s);
 
-    var v1 : Vec3;
-    var v2 : Vec3;
-    v1.x = 1; v1.y = 2; v1.z = 3;
-    v2 = v1;
-
+    var v1 : Vec3 = {1, 2, 3};
+    var v2 : Vec3 = v1;
     var r2 := vec3_add_comps(v1, v2);
 
-    var buf : Buf;
-    buf.buf[0] = 20;
+    var buf : Buf = {buf = {[0] = 20}};
 
-    var buf2: Buf;
+    var buf2: Buf = {};
     buf2.buf[256] = 10;
 
     var r3 : BarResult = bar(3, buf, buf2, 4);
@@ -144,6 +137,8 @@ proc main() => int {
     var c : Vec3;
     #memcpy(^c, ^v1, #sizeof(Vec3));
 
-    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) = 79
-    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) + (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b);
+    var d : Vec3 = {y = 9};
+
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) - (0 + 9 + 0) = 70
+    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) + (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b) - (d.x + d.y + d.z);
 }
