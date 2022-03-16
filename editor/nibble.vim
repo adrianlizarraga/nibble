@@ -19,6 +19,8 @@ syntax match nibbleTypeid '\s*\zs#typeid\>\s*'
 syntax match nibbleOffsetof '\s*\zs#offsetof\>\s*'
 syntax match nibbleIndexof '\s*\zs#indexof\>\s*'
 syntax match nibbleLength '\s*\zs#length\>\s*'
+syntax match nibbleMemcpy '\s*\zs#memcpy\>\s*'
+syntax match nibbleMemset '\s*\zs#memset\>\s*'
 
 syntax region nibbleIncluded start=/"/ skip=/\\\\\|\\"/ end=/"/  display contained
 syntax match nibbleInclude /^\s*\zs#include\>\s*"/ display contains=nibbleIncluded
@@ -40,13 +42,15 @@ syntax region nibbleString start=/\v'/ skip=/\v\\./ end=/\v'/
 " Set highlights
 highlight default link nibbleTodos Todo
 highlight default link nibbleKeywords Keyword
-highlight default link nibbleStaticAssert Keyword
-highlight default link nibbleSizeof Keyword
-highlight default link nibbleTypeof Keyword
-highlight default link nibbleTypeid Keyword
-highlight default link nibbleOffsetof Keyword
-highlight default link nibbleIndexof Keyword
-highlight default link nibbleLength Keyword
+highlight default link nibbleStaticAssert Operator
+highlight default link nibbleSizeof Operator
+highlight default link nibbleTypeof Operator
+highlight default link nibbleTypeid Operator
+highlight default link nibbleOffsetof Operator
+highlight default link nibbleIndexof Operator
+highlight default link nibbleLength Operator
+highlight default link nibbleMemcpy Operator
+highlight default link nibbleMemset Operator
 highlight default link nibbleInclude Include
 highlight default link nibbleStructure Structure
 highlight default link nibbleType Type

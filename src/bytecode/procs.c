@@ -22,6 +22,7 @@ typedef enum IR_OperandKind {
     IR_OPERAND_DEREF_ADDR,
     IR_OPERAND_DEFERRED_CMP,
     IR_OPERAND_ARRAY_INIT,
+    IR_OPERAND_STRUCT_INIT,
     IR_OPERAND_VAR,
     IR_OPERAND_OBJ,
     IR_OPERAND_STR_LIT,
@@ -48,6 +49,13 @@ typedef struct IR_ArrayInitializer {
     IR_ArrayMemberInitializer* initzers;
 } IR_ArrayInitializer;
 
+typedef struct IR_StructFieldInitializer IR_StructFieldInitializer;
+
+typedef struct IR_StructInitializer {
+    size_t num_initzers;
+    IR_StructFieldInitializer* initzers;
+} IR_StructInitializer;
+
 typedef struct IR_Operand {
     IR_OperandKind kind;
     Type* type;
@@ -60,14 +68,20 @@ typedef struct IR_Operand {
         AnonObj* obj;
         IR_DeferredCmp cmp;
         IR_ArrayInitializer array_initzer;
+        IR_StructInitializer struct_initzer;
         StrLit* str_lit;
     };
 } IR_Operand;
 
-typedef struct IR_ArrayMemberInitializer {
+struct IR_ArrayMemberInitializer {
     u64 index;
     IR_Operand op;
-} IR_ArrayMemberInitializer;
+};
+
+struct IR_StructFieldInitializer {
+    TypeAggregateField* field;
+    IR_Operand op;
+};
 
 static const Scalar ir_zero_imm = {.as_int._u64 = 0};
 static const Scalar ir_one_imm = {.as_int._u64 = 1};
@@ -2126,9 +2140,8 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_compound_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst)
+static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst)
 {
-    // TODO: Currently only support array initializers.
     assert(expr->super.type->kind == TYPE_ARRAY);
     assert(!expr->typespec);
 
@@ -2170,6 +2183,69 @@ static BBlock* IR_emit_expr_compound_lit(IR_ProcBuilder* builder, BBlock* bblock
     dst->array_initzer.initzers = ir_initzers;
 
     return curr_bb;
+}
+
+static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst)
+{
+    Type* type = expr->super.type;
+    TypeAggregate* type_agg = &type->as_aggregate;
+
+    assert(!expr->typespec);
+    assert(type->kind == TYPE_STRUCT);
+
+    size_t num_initzers = expr->num_initzers;
+    IR_StructFieldInitializer* ir_initzers = alloc_array(builder->tmp_arena, IR_StructFieldInitializer, num_initzers, true);
+
+    List* head = &expr->initzers;
+    List* it = head->next;
+    size_t field_index = 0;
+    size_t initzer_index = 0;
+
+    BBlock* curr_bb = bblock;
+
+    while (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        IR_StructFieldInitializer* ir_initzer = ir_initzers + initzer_index;
+
+        if (initzer->designator.kind == DESIGNATOR_NAME) {
+            ir_initzer->field = get_type_aggregate_field(type, initzer->designator.name);
+            assert(ir_initzer->field);
+
+            field_index = ir_initzer->field->index + 1;
+        }
+        else {
+            assert(initzer->designator.kind == DESIGNATOR_NONE);
+            assert(field_index < type_agg->num_fields);
+
+            ir_initzer->field = &type_agg->fields[field_index++];
+        }
+
+        curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, &ir_initzer->op);
+
+        initzer_index += 1;
+        it = it->next;
+    }
+
+    dst->kind = IR_OPERAND_STRUCT_INIT;
+    dst->type = type;
+    dst->struct_initzer.num_initzers = num_initzers;
+    dst->struct_initzer.initzers = ir_initzers;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_expr_compound_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst)
+{
+    Type* type = expr->super.type;
+
+    if (type->kind == TYPE_ARRAY) {
+        return IR_emit_expr_array_lit(builder, bblock, expr, dst);
+    }
+
+    // TODO: Support Union initializers
+    assert(type->kind == TYPE_STRUCT);
+
+    return IR_emit_expr_struct_lit(builder, bblock, expr, dst);
 }
 
 static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr, IR_Operand* dst)

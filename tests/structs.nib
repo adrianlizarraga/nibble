@@ -91,6 +91,13 @@ proc smol_vec2_add(a : SmolVec2, b : SmolVec2) => SmolVec2 {
     return c;
 }
 
+struct GlobStruct {
+    a : int;
+    b : char;
+}
+
+var g_s : GlobStruct = {b = 7, a = 1};
+
 proc main() => int {
     #writeout("Structs\n", 8);
 
@@ -137,6 +144,6 @@ proc main() => int {
     var c : Vec3;
     #memcpy(^c, ^v1, #sizeof(Vec3));
 
-    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 = 87
-    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) + (r6.x + r6_ptr.y) + c.z;
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) = 79
+    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) + (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b);
 }

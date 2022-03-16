@@ -164,18 +164,19 @@ static void IR_emit_global_expr_binary(IR_VarBuilder* builder, ExprBinary* expr_
 }
 
 // TODO: Refactor wet code. Very similar to code used in bytecode/procs.c
-static void IR_emit_global_expr_compound_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
+static void IR_emit_global_expr_array_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
 {
-    // TODO: Currently only support array initializers.
-    assert(expr->super.type->kind == TYPE_ARRAY);
+    Type* type = expr->super.type;
+    assert(type->kind == TYPE_ARRAY);
     assert(!expr->typespec);
 
-    size_t initzer_index = 0;
-    ConstArrayMemberInitzer* const_initzers = alloc_array(builder->arena, ConstArrayMemberInitzer, expr->num_initzers, true);
+    size_t num_initzers = expr->num_initzers;
+    ConstArrayMemberInitzer* const_initzers = alloc_array(builder->arena, ConstArrayMemberInitzer, num_initzers, true);
 
     List* head = &expr->initzers;
     List* it = head->next;
     size_t elem_index = 0;
+    size_t initzer_index = 0;
 
     while (it != head) {
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
@@ -201,9 +202,71 @@ static void IR_emit_global_expr_compound_lit(IR_VarBuilder* builder, ExprCompoun
     }
 
     dst->kind = CONST_EXPR_ARRAY_INIT;
-    dst->type = expr->super.type;
-    dst->array_initzer.num_initzers = expr->num_initzers;
+    dst->type = type;
+    dst->array_initzer.num_initzers = num_initzers;
     dst->array_initzer.initzers = const_initzers;
+}
+
+// TODO: Refactor wet code. Very similar to code used in bytecode/procs.c
+static void IR_emit_global_expr_struct_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
+{
+    Type* type = expr->super.type;
+    TypeAggregate* type_agg = &type->as_aggregate;
+
+    assert(!expr->typespec);
+    assert(type->kind == TYPE_STRUCT);
+
+    size_t num_initzers = expr->num_initzers;
+    ConstStructFieldInitzer* const_initzers = alloc_array(builder->arena, ConstStructFieldInitzer, num_initzers, true);
+
+    List* head = &expr->initzers;
+    List* it = head->next;
+    size_t field_index = 0;
+    size_t initzer_index = 0;
+
+    while (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        ConstStructFieldInitzer* ir_initzer = const_initzers + initzer_index;
+
+        if (initzer->designator.kind == DESIGNATOR_NAME) {
+            ir_initzer->field = get_type_aggregate_field(type, initzer->designator.name);
+            assert(ir_initzer->field);
+
+            field_index = ir_initzer->field->index + 1;
+        }
+        else {
+            assert(initzer->designator.kind == DESIGNATOR_NONE);
+            assert(field_index < type_agg->num_fields);
+
+            ir_initzer->field = &type_agg->fields[field_index++];
+        }
+
+        IR_emit_global_expr(builder, initzer->init, &ir_initzer->const_expr);
+
+        initzer_index += 1;
+        it = it->next;
+    }
+
+    dst->kind = CONST_EXPR_STRUCT_INIT;
+    dst->type = type;
+    dst->struct_initzer.num_initzers = num_initzers;
+    dst->struct_initzer.initzers = const_initzers;
+}
+
+// TODO: Refactor wet code. Very similar to code used in bytecode/procs.c
+static void IR_emit_global_expr_compound_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
+{
+    Type* type = expr->super.type;
+
+    if (type->kind == TYPE_ARRAY) {
+        IR_emit_global_expr_array_lit(builder, expr, dst);
+        return;
+    }
+
+    // TODO: Support Union initializers
+    assert(type->kind == TYPE_STRUCT);
+
+    IR_emit_global_expr_struct_lit(builder, expr, dst);
 }
 
 static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* dst)

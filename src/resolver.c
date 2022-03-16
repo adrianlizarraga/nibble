@@ -2230,7 +2230,7 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
             field = get_type_aggregate_field(type, desig->name);
 
             if (!field) {
-                resolver_on_error(resolver, initzer->range, "Initializer targets non-existing field: `%s`.", desig->name->str);
+                resolver_on_error(resolver, initzer->range, "Initializer targets non-existing struct field: `%s`.", desig->name->str);
                 return false;
             }
 
@@ -2238,7 +2238,7 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
         }
         else {
             if (field_index >= type_agg->num_fields) {
-                resolver_on_error(resolver, initzer->range, "Too many initializers. Expected at most %llu initializers.",
+                resolver_on_error(resolver, initzer->range, "Too many initializers, expected at most %llu initializers.",
                                   type_agg->num_fields);
                 return false;
             }
@@ -2253,17 +2253,30 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
 
-        // If the field is a ptr, then the initializer value must be able to decay into a pointer.
-        if ((field->type->kind == TYPE_PTR) && !try_eop_array_decay(resolver, &init_op, initzer->init->range)) {
+        // Initializer expression should be convertible to the field type.
+        CastResult r = convert_eop(resolver, &init_op, field->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, initzer->init->range, "Invalid struct initializer", init_op.type, field->type);
             return false;
         }
 
-        // TODO:
-        assert(0);
+        // If initializer expression is convertible to the field type, create a new AST node that makes the conversion
+        // explicit.
+        initzer->init = try_wrap_cast_expr(resolver, &init_op, initzer->init);
+
+        // Keep track of constness.
+        all_initzers_constexpr &= init_op.is_constexpr;
 
         it = it->next;
     }
 
+    expr->super.type = type;
+    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_imm = false;
+    expr->super.is_constexpr = !is_compound_lit && all_initzers_constexpr;
+
+    return true;
 }
 
 static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* expected_type)

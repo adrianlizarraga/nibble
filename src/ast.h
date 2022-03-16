@@ -28,6 +28,8 @@ typedef struct BBlock BBlock;
 typedef struct ConstAddr ConstAddr;
 typedef struct ConstArrayMemberInitzer ConstArrayMemberInitzer;
 typedef struct ConstArrayInitzer ConstArrayInitzer;
+typedef struct ConstStructFieldInitzer ConstStructFieldInitzer;
+typedef struct ConstStructInitzer ConstStructInitzer;
 typedef struct ConstExpr ConstExpr;
 ///////////////////////////////
 //       Type Specifiers
@@ -830,6 +832,7 @@ typedef enum ConstExprKind {
     CONST_EXPR_MEM_ADDR,
     CONST_EXPR_DEREF_ADDR,
     CONST_EXPR_ARRAY_INIT,
+    CONST_EXPR_STRUCT_INIT,
     CONST_EXPR_VAR,
     CONST_EXPR_PROC,
     CONST_EXPR_STR_LIT
@@ -856,6 +859,11 @@ struct ConstArrayInitzer {
     ConstArrayMemberInitzer* initzers;
 };
 
+struct ConstStructInitzer {
+    size_t num_initzers;
+    ConstStructFieldInitzer* initzers;
+};
+
 struct ConstExpr {
     ConstExprKind kind;
     Type* type;
@@ -866,11 +874,17 @@ struct ConstExpr {
         Symbol* sym;
         StrLit* str_lit;
         ConstArrayInitzer array_initzer;
+        ConstStructInitzer struct_initzer;
     };
 };
 
 struct ConstArrayMemberInitzer {
     size_t index;
+    ConstExpr const_expr;
+};
+
+struct ConstStructFieldInitzer {
+    TypeAggregateField* field;
     ConstExpr const_expr;
 };
 
