@@ -2204,7 +2204,15 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
 static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
 {
     assert(type->kind == TYPE_STRUCT);
+    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+
     TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateField* fields = type_agg->fields;
+    size_t num_fields = type_agg->num_fields;
+
+    // Keep track of fields with initializers using a bit array.
+    BitArray seen_fields = {0};
+    bit_arr_init(&seen_fields, &resolver->ctx->tmp_mem, num_fields);
 
     bool is_compound_lit = expr->typespec != NULL;
     bool all_initzers_constexpr = true;
@@ -2237,14 +2245,24 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
             field_index = field->index + 1;
         }
         else {
-            if (field_index >= type_agg->num_fields) {
-                resolver_on_error(resolver, initzer->range, "Too many initializers, expected at most %llu initializers.",
-                                  type_agg->num_fields);
+            if (field_index >= num_fields) {
+                resolver_on_error(resolver, initzer->range, "Too many initializers, expected at most %llu initializers.", num_fields);
                 return false;
             }
 
-            field = &type_agg->fields[field_index++];
+            field = &fields[field_index++];
         }
+
+        // Report error if already provided an initializer for this field.
+        if (bit_arr_get(&seen_fields, field->index)) {
+            const char* name = field->name ? field->name->str : "_anonymous_";
+            resolver_on_error(resolver, initzer->range, "Initializer sets field more than once. "
+                              "The field's name and index are `%s` and `%llu`.",
+                              name, field->index);
+            return false;
+        }
+
+        bit_arr_set(&seen_fields, field->index, true); // Mark this field as seen.
 
         // Resolve initializer value.
         if (!resolve_expr(resolver, initzer->init, field->type)) {
@@ -2275,6 +2293,8 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
     expr->super.is_lvalue = is_compound_lit;
     expr->super.is_imm = false;
     expr->super.is_constexpr = !is_compound_lit && all_initzers_constexpr;
+
+    allocator_restore_state(mem_state);
 
     return true;
 }
