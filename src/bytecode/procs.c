@@ -898,9 +898,31 @@ static void IR_clear_memory(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* ad
     IR_emit_instr_memset(builder, bblock, *addr, v, s);
 }
 
+static void IR_get_default_val(Type* type, IR_Operand* zero_op)
+{
+    zero_op->type = type;
+
+    if (type->kind == TYPE_STRUCT) {
+        zero_op->kind = IR_OPERAND_STRUCT_INIT;
+        zero_op->struct_initzer.num_initzers = 0;
+        zero_op->struct_initzer.field_ops = NULL;
+    }
+    else if (type->kind == TYPE_ARRAY) {
+        zero_op->kind = IR_OPERAND_ARRAY_INIT;
+        zero_op->array_initzer.num_initzers = 0;
+        zero_op->array_initzer.initzers = NULL;
+    }
+    else {
+        assert(type_is_int_scalar(type));
+        zero_op->kind = IR_OPERAND_IMM;
+        zero_op->imm = ir_zero_imm;
+    }
+}
+
 static BBlock* IR_emit_struct_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* struct_op, IR_Operand* init_op)
 {
-    assert(struct_op->kind == IR_OPERAND_VAR && struct_op->type->kind == TYPE_STRUCT);
+    assert(struct_op->kind == IR_OPERAND_VAR || struct_op->kind == IR_OPERAND_DEREF_ADDR);
+    assert(struct_op->type->kind == TYPE_STRUCT);
     assert(init_op->kind == IR_OPERAND_STRUCT_INIT);
 
     BBlock* curr_bb = bblock;
@@ -942,19 +964,8 @@ static BBlock* IR_emit_struct_init(IR_ProcBuilder* builder, BBlock* bblock, IR_O
             curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, field_ops[i]);
         }
         else if (!zero_first_pass) { // field <= 0
-            IR_Operand zero_op = {.type = field->type};
-
-            if (field->type->kind == TYPE_STRUCT) {
-                zero_op.kind = IR_OPERAND_STRUCT_INIT;
-            }
-            else if (field->type->kind == TYPE_ARRAY) {
-                zero_op.kind = IR_OPERAND_ARRAY_INIT;
-            }
-            else {
-                assert(type_is_int_scalar(field->type));
-                zero_op.kind = IR_OPERAND_IMM;
-                zero_op.imm = ir_zero_imm;
-            }
+            IR_Operand zero_op = {0};
+            IR_get_default_val(field->type, &zero_op);
 
             curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &zero_op);
         }
@@ -974,8 +985,7 @@ static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
     BBlock* curr_bb = bblock;
 
     Type* arr_type = array_op->type;
-    Type* ptr_type = try_array_decay(builder->arena, &builder->type_cache->ptrs, arr_type);
-    Type* elem_type = ptr_type->as_ptr.base;
+    Type* elem_type = arr_type->as_array.base;
 
     // Decay array into pointer to the first elem.
     MemAddr base_addr = {0};
@@ -1036,7 +1046,7 @@ static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
 
         // For each array element, compute the pointer to the corresponding element and assign it
         // a default value if not yet initialized.
-        IR_Operand zero_op = {.kind = IR_OPERAND_IMM, .type = elem_type, .imm = ir_zero_imm};
+        IR_Operand zero_op = {0};
 
         for (u64 elem_index = 0; elem_index < num_elems; elem_index += 1) {
             size_t flag_index = elem_index / num_bits;
@@ -1050,8 +1060,7 @@ static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
             IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_addr};
             elem_ptr_op.addr.disp += elem_type->size * elem_index;
 
-            // TODO: WONT WORK FOR OBJECT ELEM TYPES
-            // LEFT OFF HERE!!!!
+            IR_get_default_val(elem_type, &zero_op);
             curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &zero_op);
         }
     }

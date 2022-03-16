@@ -212,45 +212,45 @@ static void IR_emit_global_expr_struct_lit(IR_VarBuilder* builder, ExprCompoundL
 {
     Type* type = expr->super.type;
     TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateField* fields = type_agg->fields;
+    size_t num_fields = type_agg->num_fields;
 
     assert(!expr->typespec);
     assert(type->kind == TYPE_STRUCT);
 
-    size_t num_initzers = expr->num_initzers;
-    ConstStructFieldInitzer* const_initzers = alloc_array(builder->arena, ConstStructFieldInitzer, num_initzers, true);
+    ConstExpr** field_exprs = alloc_array(builder->arena, ConstExpr*, num_fields, true);
 
     List* head = &expr->initzers;
     List* it = head->next;
     size_t field_index = 0;
-    size_t initzer_index = 0;
 
     while (it != head) {
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
-        ConstStructFieldInitzer* ir_initzer = const_initzers + initzer_index;
+        TypeAggregateField* field;
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            ir_initzer->field = get_type_aggregate_field(type, initzer->designator.name);
-            assert(ir_initzer->field);
+            field = get_type_aggregate_field(type, initzer->designator.name);
+            assert(field);
 
-            field_index = ir_initzer->field->index + 1;
+            field_index = field->index + 1;
         }
         else {
             assert(initzer->designator.kind == DESIGNATOR_NONE);
-            assert(field_index < type_agg->num_fields);
+            assert(field_index < num_fields);
 
-            ir_initzer->field = &type_agg->fields[field_index++];
+            field = &fields[field_index++];
         }
 
-        IR_emit_global_expr(builder, initzer->init, &ir_initzer->const_expr);
+        field_exprs[field->index] = alloc_type(builder->arena, ConstExpr, true);
+        IR_emit_global_expr(builder, initzer->init, field_exprs[field->index]);
 
-        initzer_index += 1;
         it = it->next;
     }
 
     dst->kind = CONST_EXPR_STRUCT_INIT;
     dst->type = type;
-    dst->struct_initzer.num_initzers = num_initzers;
-    dst->struct_initzer.initzers = const_initzers;
+    dst->struct_initzer.num_initzers = expr->num_initzers;
+    dst->struct_initzer.field_exprs = field_exprs;
 }
 
 // TODO: Refactor wet code. Very similar to code used in bytecode/procs.c

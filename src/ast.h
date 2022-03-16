@@ -28,7 +28,6 @@ typedef struct BBlock BBlock;
 typedef struct ConstAddr ConstAddr;
 typedef struct ConstArrayMemberInitzer ConstArrayMemberInitzer;
 typedef struct ConstArrayInitzer ConstArrayInitzer;
-typedef struct ConstStructFieldInitzer ConstStructFieldInitzer;
 typedef struct ConstStructInitzer ConstStructInitzer;
 typedef struct ConstExpr ConstExpr;
 ///////////////////////////////
@@ -862,7 +861,7 @@ struct ConstArrayInitzer {
 
 struct ConstStructInitzer {
     size_t num_initzers;
-    ConstStructFieldInitzer* initzers;
+    ConstExpr** field_exprs; // One per field
 };
 
 struct ConstExpr {
@@ -881,11 +880,6 @@ struct ConstExpr {
 
 struct ConstArrayMemberInitzer {
     size_t index;
-    ConstExpr const_expr;
-};
-
-struct ConstStructFieldInitzer {
-    TypeAggregateField* field;
     ConstExpr const_expr;
 };
 

@@ -272,16 +272,7 @@ static void X64_print_global_struct_init(Allocator* allocator, ConstExpr* const_
     assert(type->kind == TYPE_STRUCT);
 
     TypeAggregate* type_agg = &type->as_aggregate;
-    ConstExpr** field_vals = alloc_array(allocator, ConstExpr*, type_agg->num_fields, true); // Init to NULL
-
-    // Iterate through initializers and overwrite appropriate elements in field_vals array with
-    // the specified initializer value.
-    ConstStructInitzer* inits = &const_expr->struct_initzer;
-
-    for (size_t i = 0; i < inits->num_initzers; i++) {
-        ConstStructFieldInitzer* initzer = inits->initzers + i;
-        field_vals[initzer->field->index] = &initzer->const_expr;
-    }
+    ConstExpr** field_exprs = const_expr->struct_initzer.field_exprs;
 
     TypeAggregateField* fields = type_agg->fields;
     size_t num_fields = type_agg->num_fields;
@@ -300,8 +291,8 @@ static void X64_print_global_struct_init(Allocator* allocator, ConstExpr* const_
         }
 
         // Init field with specified value or zero.
-        if (field_vals[i]) {
-            X64_print_global_val(allocator, field_vals[i], line);
+        if (field_exprs[i]) {
+            X64_print_global_val(allocator, field_exprs[i], line);
         }
         else {
             X64_print_global_zero_bytes(line, field_size);
