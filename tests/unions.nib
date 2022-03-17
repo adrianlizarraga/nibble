@@ -24,6 +24,11 @@ union Value {
 var g_val : Value;
 var g_val2 : Value = {_s8 = -5};
 
+union UnionWithSlice {
+    slice : []int;
+    number : s64;
+}
+
 proc main() => int {
     var val : Value;
     var p_val : ^Value = ^val;
@@ -41,6 +46,9 @@ proc main() => int {
     #static_assert(#typeid(#typeof(val2._u64)) == #typeid(u64));
     #static_assert(#typeid(#typeof(val2._s64)) == #typeid(s64));
 
-    // 40 + 65 + -5 = 100
-    return g_val._u8 + g_val._u16 + p_val._s32 + val2._s8 + g_val2._s8;
+    var arr : [16]int = {-31};
+    var u_slice : UnionWithSlice = {slice = arr};
+
+    // 40 + 65 + -5 + -31 = 69
+    return g_val._u8 + g_val._u16 + p_val._s32 + val2._s8 + g_val2._s8 + u_slice.slice[0];
 }

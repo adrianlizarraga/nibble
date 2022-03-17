@@ -102,6 +102,10 @@ struct Nest {
     c : [2]char;
 }
 
+struct SliceWrapper {
+    s : []char;
+}
+
 var g_s : GlobStruct = {b = 7, a = 1};
 
 proc main() => int {
@@ -146,6 +150,9 @@ proc main() => int {
     var n : Nest = {b = 1};
     var d : Vec3 = {y = 9};
 
-    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) - (0 + 9 + 0) + (1 + 0 + 0) = 71
-    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) + (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b) - (d.x + d.y + d.z) + (n.b + n.a.x + n.c[0]);
+    var sw : SliceWrapper = {s = buf.buf}; // Convert array to slice
+
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) - (0 + 9 + 0) + (1 + 0 + 0) + 20 = 91
+    return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) +
+           (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b) - (d.x + d.y + d.z) + (n.b + n.a.x + n.c[0]) + sw.s[0];
 }

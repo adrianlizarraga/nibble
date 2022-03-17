@@ -1667,6 +1667,9 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         if (src_op.type->kind == TYPE_ARRAY) {
             eop_array_decay(resolver, &src_op);
         }
+        else if (type_is_slice(src_op.type)) {
+            eop_array_slice_decay(&src_op);
+        }
 
         if (src_op.type->kind != TYPE_PTR) {
             resolver_on_error(resolver, expr->range, "Cannot dereference a non-pointer value.");
@@ -1675,6 +1678,8 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
 
         dst_op.type = src_op.type->as_ptr.base;
         dst_op.is_lvalue = true;
+
+        eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
         break;
     default:
         resolver_on_error(resolver, expr->range, "Unary operation type `%d` not supported", eunary->op);
@@ -2271,12 +2276,29 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
 
-        // Initializer expression should be convertible to the field type.
-        CastResult r = convert_eop(resolver, &init_op, field->type, true);
+        // Allowing initializing slice field from array initializer.
+        if (type_is_slice(field->type) && (init_op.type->kind == TYPE_ARRAY)) {
+            if (!slice_and_array_compatible(init_op.type, field->type)) {
+                resolver_on_error(resolver, initzer->range,
+                                  "Invalid struct initializer. Cannot initialize slice of type `%s` from `%s`.",
+                                  type_name(field->type), type_name(init_op.type));
+                return false;
+            }
 
-        if (!r.success) {
-            resolver_cast_error(resolver, r, initzer->init->range, "Invalid struct initializer", init_op.type, field->type);
-            return false;
+            if (!init_op.is_lvalue) {
+                resolver_on_error(resolver, initzer->range, "Invalid struct initializer. "
+                                  "Cannot assign a temporary (r-value) array to an array slice variable.");
+                return false;
+            }
+        }
+        // Initializer expression should be convertible to the field type.
+        else {
+            CastResult r = convert_eop(resolver, &init_op, field->type, true);
+
+            if (!r.success) {
+                resolver_cast_error(resolver, r, initzer->init->range, "Invalid struct initializer", init_op.type, field->type);
+                return false;
+            }
         }
 
         // If initializer expression is convertible to the field type, create a new AST node that makes the conversion
@@ -2346,12 +2368,29 @@ static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit*
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
 
-        // Initializer expression should be convertible to the field type.
-        CastResult r = convert_eop(resolver, &init_op, field->type, true);
+        // Allowing initializing slice field from array initializer.
+        if (type_is_slice(field->type) && (init_op.type->kind == TYPE_ARRAY)) {
+            if (!slice_and_array_compatible(init_op.type, field->type)) {
+                resolver_on_error(resolver, initzer->range,
+                                  "Invalid union initializer. Cannot initialize slice of type `%s` from `%s`.",
+                                  type_name(field->type), type_name(init_op.type));
+                return false;
+            }
 
-        if (!r.success) {
-            resolver_cast_error(resolver, r, initzer->init->range, "Invalid union initializer", init_op.type, field->type);
-            return false;
+            if (!init_op.is_lvalue) {
+                resolver_on_error(resolver, initzer->range, "Invalid union initializer. "
+                                  "Cannot assign a temporary (r-value) array to an array slice variable.");
+                return false;
+            }
+        }
+        // Initializer expression should be convertible to the field type.
+        else {
+            CastResult r = convert_eop(resolver, &init_op, field->type, true);
+
+            if (!r.success) {
+                resolver_cast_error(resolver, r, initzer->init->range, "Invalid union initializer", init_op.type, field->type);
+                return false;
+            }
         }
 
         // If initializer expression is convertible to the field type, create a new AST node that makes the conversion
