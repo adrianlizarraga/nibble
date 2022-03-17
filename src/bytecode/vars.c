@@ -163,7 +163,6 @@ static void IR_emit_global_expr_binary(IR_VarBuilder* builder, ExprBinary* expr_
     }
 }
 
-// TODO: Refactor wet code. Very similar to code used in bytecode/procs.c
 static void IR_emit_global_expr_array_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
 {
     Type* type = expr->super.type;
@@ -207,7 +206,6 @@ static void IR_emit_global_expr_array_lit(IR_VarBuilder* builder, ExprCompoundLi
     dst->array_initzer.initzers = const_initzers;
 }
 
-// TODO: Refactor wet code. Very similar to code used in bytecode/procs.c
 static void IR_emit_global_expr_struct_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
 {
     Type* type = expr->super.type;
@@ -253,7 +251,6 @@ static void IR_emit_global_expr_struct_lit(IR_VarBuilder* builder, ExprCompoundL
     dst->struct_initzer.field_exprs = field_exprs;
 }
 
-// TODO: Refactor wet code. Very similar to code used in bytecode/procs.c
 static void IR_emit_global_expr_compound_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
 {
     Type* type = expr->super.type;

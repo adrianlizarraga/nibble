@@ -2227,7 +2227,7 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
         Designator* desig = &initzer->designator;
 
         if (desig->kind == DESIGNATOR_INDEX) { // TODO: Support index for anonymous struct fields
-            resolver_on_error(resolver, initzer->range, "Cannot use an index designator for a struct literal.");
+            resolver_on_error(resolver, initzer->range, "Cannot use an index designator for a struct initializer.");
             return false;
         }
 
@@ -2299,6 +2299,77 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
     return true;
 }
 
+static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+{
+    assert(type->kind == TYPE_UNION);
+
+    if (expr->num_initzers > 1) {
+        resolver_on_error(resolver, expr->super.range, "Too many initializers, expected at most 1 initializer for a union type.");
+        return false;
+    }
+
+    bool is_compound_lit = expr->typespec != NULL;
+    bool initzer_constexpr = true;
+
+    TypeAggregateField* fields = type->as_aggregate.fields;
+    List* head = &expr->initzers;
+    List* it = head->next;
+
+    if (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        Designator* desig = &initzer->designator;
+
+        if (desig->kind == DESIGNATOR_INDEX) { // TODO: Support index for anonymous union fields
+            resolver_on_error(resolver, initzer->range, "Cannot use an index designator for a union initializer.");
+            return false;
+        }
+
+        // Determine which field this initializer targets.
+        TypeAggregateField* field = NULL;
+
+        if (desig->kind == DESIGNATOR_NAME) {
+            field = get_type_aggregate_field(type, desig->name);
+
+            if (!field) {
+                resolver_on_error(resolver, initzer->range, "Initializer targets non-existing union field: `%s`.", desig->name->str);
+                return false;
+            }
+        }
+        else {
+            field = &fields[0];
+        }
+
+        // Resolve initializer value.
+        if (!resolve_expr(resolver, initzer->init, field->type)) {
+            return false;
+        }
+
+        ExprOperand init_op = OP_FROM_EXPR(initzer->init);
+
+        // Initializer expression should be convertible to the field type.
+        CastResult r = convert_eop(resolver, &init_op, field->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, initzer->init->range, "Invalid union initializer", init_op.type, field->type);
+            return false;
+        }
+
+        // If initializer expression is convertible to the field type, create a new AST node that makes the conversion
+        // explicit.
+        initzer->init = try_wrap_cast_expr(resolver, &init_op, initzer->init);
+
+        // Keep track of constness.
+        initzer_constexpr = init_op.is_constexpr;
+    }
+
+    expr->super.type = type;
+    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_imm = false;
+    expr->super.is_constexpr = !is_compound_lit && initzer_constexpr;
+
+    return true;
+}
+
 static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* expected_type)
 {
     Type* lit_type = NULL;
@@ -2328,10 +2399,11 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
     else if (type->kind == TYPE_STRUCT) {
         return resolve_expr_struct_compound_lit(resolver, expr, type);
     }
-    // TODO: Support union types
+    else if (type->kind == TYPE_UNION) {
+        return resolve_expr_union_compound_lit(resolver, expr, type);
+    }
 
-
-    resolver_on_error(resolver, expr->super.range, "Invalid compound literal type `%s`", type_name(type));
+    resolver_on_error(resolver, expr->super.range, "Invalid compound literal type `%s`.", type_name(type));
 
     return false;
 }
