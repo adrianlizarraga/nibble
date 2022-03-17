@@ -9,6 +9,7 @@ A programming language based on C. The goal is to create a compiled, statically-
 - [x] Multiple return values (return anonymous structure object aka tuples)
 - [x] Type-safe variadic procedures
 - [x] Array slices (See [C's Biggest Mistake](https://digitalmars.com/articles/C-biggest-mistake.html))
+- [x] Variables initialized to zero by default (use `---` value to leave uninitialized)
 - [ ] Defer statement (like go)
 - [ ] Default procedure arguments
 - [ ] Named procedure arguments

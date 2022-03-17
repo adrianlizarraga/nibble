@@ -271,7 +271,7 @@ static void X64_print_global_struct_init(Allocator* allocator, ConstExpr* const_
     Type* type = const_expr->type;
     assert(type->kind == TYPE_STRUCT);
 
-    TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateBody* type_agg = &type->as_struct.body;
     ConstExpr** field_exprs = const_expr->struct_initzer.field_exprs;
 
     TypeAggregateField* fields = type_agg->fields;
@@ -314,7 +314,7 @@ static void X64_print_global_union_init(Allocator* allocator, ConstExpr* const_e
     Type* type = const_expr->type;
     assert(type->kind == TYPE_UNION);
 
-    TypeAggregateField* field = &type->as_aggregate.fields[const_expr->union_initzer.field_index];
+    TypeAggregateField* field = &type->as_union.body.fields[const_expr->union_initzer.field_index];
     ConstExpr* field_expr = const_expr->union_initzer.field_expr;
 
     if (field_expr) {

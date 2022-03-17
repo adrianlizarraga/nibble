@@ -914,6 +914,11 @@ static void IR_get_default_val(Type* type, IR_Operand* zero_op)
         zero_op->struct_initzer.num_initzers = 0;
         zero_op->struct_initzer.field_ops = NULL;
     }
+    else if (type->kind == TYPE_UNION) {
+        zero_op->kind = IR_OPERAND_UNION_INIT;
+        zero_op->union_initzer.field_index = type->as_union.largest_field;
+        zero_op->union_initzer.field_op = NULL;
+    }
     else if (type->kind == TYPE_ARRAY) {
         zero_op->kind = IR_OPERAND_ARRAY_INIT;
         zero_op->array_initzer.num_initzers = 0;
@@ -938,7 +943,7 @@ static BBlock* IR_emit_struct_init(IR_ProcBuilder* builder, BBlock* bblock, IR_O
     IR_get_object_addr(builder, curr_bb, &base_addr, struct_op);
 
     Type* type = struct_op->type;
-    TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateBody* type_agg = &type->as_struct.body;
     size_t num_fields = type_agg->num_fields;
     TypeAggregateField* fields = type_agg->fields;
 
@@ -1000,7 +1005,7 @@ static BBlock* IR_emit_union_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Op
         return curr_bb;
     }
 
-    TypeAggregateField* field = &type->as_aggregate.fields[init_op->union_initzer.field_index];
+    TypeAggregateField* field = &type->as_union.body.fields[init_op->union_initzer.field_index];
     IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = base_addr};
     field_ptr_op.addr.disp += field->offset; // Union fields all have an offset of 0, but keep this just in case one day they don't...
 
@@ -1118,13 +1123,13 @@ static BBlock* IR_init_array_slice(IR_ProcBuilder* builder, BBlock* bblock, MemA
 
     BBlock* curr_bb = bblock;
 
-    TypeAggregateField* length_field = get_type_aggregate_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH]);
+    TypeAggregateField* length_field = get_type_struct_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH]);
     IR_Operand length_val_op = {.kind = IR_OPERAND_IMM, .type = length_field->type, .imm.as_int._u64 = array_op->type->as_array.len};
 
     IR_Operand length_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = length_field->type, .addr = *slice_addr};
     length_field_op.addr.disp += length_field->offset;
 
-    TypeAggregateField* data_field = get_type_aggregate_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+    TypeAggregateField* data_field = get_type_struct_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
     IR_Operand data_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = data_field->type, .addr = *slice_addr};
     data_field_op.addr.disp += data_field->offset;
 
@@ -1828,7 +1833,7 @@ static BBlock* IR_emit_expr_field_index(IR_ProcBuilder* builder, BBlock* bblock,
     assert(expr->index->is_imm);
 
     size_t field_index = expr->index->imm.as_int._u64;
-    TypeAggregate* type_agg = &obj_op.type->as_aggregate;
+    TypeAggregateBody* type_agg = obj_op.type->kind == TYPE_STRUCT ? &obj_op.type->as_struct.body : &obj_op.type->as_union.body;
 
     assert(field_index < type_agg->num_fields);
 
@@ -1943,7 +1948,7 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
         MemAddr slice_addr = {0};
         IR_get_object_addr(builder, curr_bb, &slice_addr, &src_op);
 
-        TypeAggregateField* data_field = get_type_aggregate_field(src_op.type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+        TypeAggregateField* data_field = get_type_struct_field(src_op.type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
         assert(data_field->type == dst_op->type);
 
         dst_op->kind = IR_OPERAND_DEREF_ADDR;
@@ -2151,7 +2156,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
         //
 
         Type* struct_type = proc_type->as_proc.params[num_params - 1];
-        TypeAggregateField* data_field = get_type_aggregate_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+        TypeAggregateField* data_field = get_type_struct_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
         Type* ptr_type = data_field->type;
         Type* elem_type = ptr_type->as_ptr.base;
         Type* type_any = builtin_types[BUILTIN_TYPE_ANY].type;
@@ -2190,7 +2195,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 MemAddr any_obj_addr = elem_ptr_op.addr;
 
                 // Set the object's type field to the arg's typeid.
-                TypeAggregateField* type_field = get_type_aggregate_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_TYPE]);
+                TypeAggregateField* type_field = get_type_struct_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_TYPE]);
                 IR_Operand type_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = type_field->type, .addr = any_obj_addr};
                 IR_Operand type_val_op = {.kind = IR_OPERAND_IMM, .type = type_field->type, .imm.as_int._u64 = arg_op.type->id};
 
@@ -2198,7 +2203,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 *p_bblock = IR_emit_assign(builder, *p_bblock, &type_field_op, &type_val_op);
 
                 // Set the object's ptr field to the arg's address.
-                TypeAggregateField* ptr_field = get_type_aggregate_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
+                TypeAggregateField* ptr_field = get_type_struct_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
                 IR_Operand ptr_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = ptr_field->type, .addr = any_obj_addr};
                 IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = IR_obj_as_addr(cpy_obj)};
 
@@ -2222,7 +2227,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
         AnonObj* struct_obj = IR_alloc_tmp_obj(builder, struct_type->size, struct_type->align);
         MemAddr struct_addr = IR_obj_as_addr(struct_obj);
 
-        TypeAggregateField* length_field = get_type_aggregate_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH]);
+        TypeAggregateField* length_field = get_type_struct_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH]);
 
         IR_Operand length_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = length_field->type, .addr = struct_addr};
         length_field_op.addr.disp += length_field->offset;
@@ -2331,7 +2336,7 @@ static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, 
     assert(!expr->typespec);
     assert(type->kind == TYPE_STRUCT);
 
-    TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateBody* type_agg = &type->as_struct.body;
     TypeAggregateField* fields = type_agg->fields;
     size_t num_fields = type_agg->num_fields;
     IR_Operand** field_ops = alloc_array(builder->tmp_arena, IR_Operand*, num_fields, true);
@@ -2347,7 +2352,7 @@ static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, 
         TypeAggregateField* field;
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            field = get_type_aggregate_field(type, initzer->designator.name);
+            field = get_type_struct_field(type, initzer->designator.name);
             assert(field);
 
             field_index = field->index + 1;
@@ -2392,17 +2397,21 @@ static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, E
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            TypeAggregateField* field = get_type_aggregate_field(type, initzer->designator.name);
+            TypeAggregateField* field = get_type_union_field(type, initzer->designator.name);
             assert(field);
 
             field_index = field->index;
         }
         else {
             assert(initzer->designator.kind == DESIGNATOR_NONE);
+            field_index = 0;
         }
 
         field_op = alloc_type(builder->tmp_arena, IR_Operand, true);
         curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, field_op);
+    }
+    else {
+        field_index = type->as_union.largest_field;
     }
 
     dst->kind = IR_OPERAND_UNION_INIT;
@@ -2536,20 +2545,28 @@ static BBlock* IR_emit_stmt_decl(IR_ProcBuilder* builder, BBlock* bblock, StmtDe
 
     assert(sdecl->decl->kind == CST_DeclVar);
 
-    BBlock* last_bb = bblock;
     DeclVar* dvar = (DeclVar*)sdecl->decl;
 
-    if (dvar->init) {
-        IR_Operand rhs_op = {0};
-        IR_Operand lhs_op = {0};
-
-        last_bb = IR_emit_expr(builder, last_bb, dvar->init, &rhs_op);
-        IR_operand_from_sym(&lhs_op, lookup_symbol(builder->curr_scope, dvar->super.name));
-
-        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op);
+    // Early exit if variable is explicitly uninitialized.
+    if (dvar->flags & DECL_VAR_IS_UNINIT) {
+        return bblock;
     }
 
-    return last_bb;
+    BBlock* last_bb = bblock;
+
+    IR_Operand lhs_op = {0};
+    IR_operand_from_sym(&lhs_op, lookup_symbol(builder->curr_scope, dvar->super.name));
+
+    IR_Operand rhs_op = {0};
+
+    if (dvar->init) {
+        last_bb = IR_emit_expr(builder, last_bb, dvar->init, &rhs_op);
+    }
+    else {
+        IR_get_default_val(lhs_op.type, &rhs_op);
+    }
+
+    return IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op);
 }
 
 static BBlock* IR_emit_stmt_expr(IR_ProcBuilder* builder, BBlock* bblock, StmtExpr* sexpr)
