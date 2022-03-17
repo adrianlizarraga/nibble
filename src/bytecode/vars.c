@@ -209,7 +209,7 @@ static void IR_emit_global_expr_array_lit(IR_VarBuilder* builder, ExprCompoundLi
 static void IR_emit_global_expr_struct_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
 {
     Type* type = expr->super.type;
-    TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateBody* type_agg = &type->as_struct.body;
     TypeAggregateField* fields = type_agg->fields;
     size_t num_fields = type_agg->num_fields;
 
@@ -227,7 +227,7 @@ static void IR_emit_global_expr_struct_lit(IR_VarBuilder* builder, ExprCompoundL
         TypeAggregateField* field;
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            field = get_type_aggregate_field(type, initzer->designator.name);
+            field = get_type_struct_field(type, initzer->designator.name);
             assert(field);
 
             field_index = field->index + 1;
@@ -268,7 +268,7 @@ static void IR_emit_global_expr_union_lit(IR_VarBuilder* builder, ExprCompoundLi
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            TypeAggregateField* field = get_type_aggregate_field(type, initzer->designator.name);
+            TypeAggregateField* field = get_type_union_field(type, initzer->designator.name);
             assert(field);
 
             field_index = field->index;

@@ -494,6 +494,7 @@ const char* token_kind_names[] = {
     [TKN_COMMA] = ",",
     [TKN_DOT] = ".",
     [TKN_ELLIPSIS] = "..",
+    [TKN_UNINIT] = "---",
     [TKN_ARROW] = "=>",
     [TKN_CAST] = ":>",
     [TKN_AT] = "@",
@@ -673,6 +674,10 @@ top:
         if (lexer->at[0] == '=') {
             lexer->at++;
             token.kind = TKN_SUB_ASSIGN;
+        }
+        else if (lexer->at[0] == '-' && lexer->at[1] == '-') { // NOTE: Prevents negating three times in a row.
+            lexer->at += 2;
+            token.kind = TKN_UNINIT;
         }
 
         break;

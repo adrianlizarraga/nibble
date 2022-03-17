@@ -249,7 +249,7 @@ static void eop_array_slice_decay(ExprOperand* eop)
 {
     assert(type_is_slice(eop->type));
 
-    TypeAggregateField* data_field = get_type_aggregate_field(eop->type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+    TypeAggregateField* data_field = get_type_struct_field(eop->type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
 
     eop->type = data_field->type;
     eop->is_lvalue = false;
@@ -313,7 +313,7 @@ static CastResult can_convert_eop(Resolver* resolver, ExprOperand* operand, Type
     // Can decay an array slice to a pointer.
     else if ((dst_type->kind == TYPE_PTR) && type_is_slice(src_type)) {
         Type* ptr_base = dst_type->as_ptr.base;
-        TypeAggregateField* data_field = get_type_aggregate_field(src_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+        TypeAggregateField* data_field = get_type_struct_field(src_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
 
         convertible = (ptr_base == builtin_types[BUILTIN_TYPE_VOID].type) || (data_field->type == dst_type);
         bad_lvalue = !operand->is_lvalue && forbid_rvalue_decay;
@@ -327,8 +327,8 @@ static CastResult can_convert_eop(Resolver* resolver, ExprOperand* operand, Type
         // Ex: struct Base { ... };  struct Derived { Base base;};
         // Derived* d = malloc(...);
         // Base* b = d;
-        if (type_is_aggregate(dst_pointed_type) && type_is_aggregate(src_pointed_type) &&
-            (dst_pointed_type == src_pointed_type->as_aggregate.fields[0].type)) {
+        if (type_is_aggregate(dst_pointed_type) && (src_pointed_type->kind == TYPE_STRUCT) &&
+            (dst_pointed_type == src_pointed_type->as_struct.body.fields[0].type)) {
             convertible = true;
         }
         // Can convert if either is a void*
@@ -1787,7 +1787,7 @@ static bool resolve_expr_field_index(Resolver* resolver, ExprFieldIndex* expr)
 
     // Field index must be within bounds.
     size_t field_index = expr->index->imm.as_int._u64;
-    TypeAggregate* type_agg = &obj_type->as_aggregate;
+    TypeAggregateBody* type_agg = obj_type->kind == TYPE_STRUCT ? &obj_type->as_struct.body : &obj_type->as_union.body;
 
     if (field_index >= type_agg->num_fields) {
         resolver_on_error(resolver, expr->index->range, "Object field index (%llu) is out of bounds. Type `%s` has %llu fields.",
@@ -2046,7 +2046,7 @@ static bool resolve_expr_call(Resolver* resolver, Expr* expr)
         Type* variadic_type = params[num_params - 1];
         assert(variadic_type->kind == TYPE_STRUCT);
 
-        TypeAggregateField* data_field = get_type_aggregate_field(variadic_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+        TypeAggregateField* data_field = get_type_struct_field(variadic_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
         assert(data_field);
 
         Type* ptr_param_type = data_field->type;
@@ -2211,7 +2211,7 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
     assert(type->kind == TYPE_STRUCT);
     AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
 
-    TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateBody* type_agg = &type->as_struct.body;
     TypeAggregateField* fields = type_agg->fields;
     size_t num_fields = type_agg->num_fields;
 
@@ -2240,7 +2240,7 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
         TypeAggregateField* field = NULL;
 
         if (desig->kind == DESIGNATOR_NAME) {
-            field = get_type_aggregate_field(type, desig->name);
+            field = get_type_struct_field(type, desig->name);
 
             if (!field) {
                 resolver_on_error(resolver, initzer->range, "Initializer targets non-existing struct field: `%s`.", desig->name->str);
@@ -2333,7 +2333,7 @@ static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit*
     bool is_compound_lit = expr->typespec != NULL;
     bool initzer_constexpr = true;
 
-    TypeAggregateField* fields = type->as_aggregate.fields;
+    TypeAggregateField* fields = type->as_union.body.fields;
     List* head = &expr->initzers;
     List* it = head->next;
 
@@ -2350,7 +2350,7 @@ static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit*
         TypeAggregateField* field = NULL;
 
         if (desig->kind == DESIGNATOR_NAME) {
-            field = get_type_aggregate_field(type, desig->name);
+            field = get_type_union_field(type, desig->name);
 
             if (!field) {
                 resolver_on_error(resolver, initzer->range, "Initializer targets non-existing union field: `%s`.", desig->name->str);
@@ -2930,7 +2930,7 @@ static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
         return false;
     }
 
-    if (decl->is_variadic) {
+    if (decl->flags & DECL_VAR_IS_VARIADIC) {
         type = type_slice(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.slices, &resolver->ctx->type_cache.ptrs, type);
     }
 

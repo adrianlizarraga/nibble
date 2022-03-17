@@ -313,11 +313,11 @@ static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind
     return decl;
 }
 
-Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, bool is_variadic, ProgRange range)
+Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* typespec, Expr* init, unsigned flags, ProgRange range)
 {
     DeclVar* decl = new_decl(allocator, DeclVar, name, range);
     decl->typespec = typespec;
-    decl->is_variadic = is_variadic;
+    decl->flags = flags;
     decl->init = init;
 
     return (Decl*)decl;
@@ -770,7 +770,7 @@ bool type_is_obj_like(Type* type)
 
 bool type_is_slice(Type* type)
 {
-    return (type->kind == TYPE_STRUCT) && (type->as_aggregate.wrapper_kind == TYPE_AGG_IS_SLICE_WRAPPER);
+    return (type->kind == TYPE_STRUCT) && (type->as_struct.wrapper_kind == TYPE_STRUCT_IS_SLICE_WRAPPER);
 }
 
 bool slice_and_array_compatible(Type* array_type, Type* slice_type)
@@ -778,7 +778,7 @@ bool slice_and_array_compatible(Type* array_type, Type* slice_type)
     assert(array_type->kind == TYPE_ARRAY);
     assert(type_is_slice(slice_type));
 
-    TypeAggregateField* data_field = get_type_aggregate_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+    TypeAggregateField* data_field = get_type_struct_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
     Type* slice_elem_type = data_field->type->as_ptr.base;
     Type* array_elem_type = array_type->as_array.base;
 
@@ -943,12 +943,30 @@ Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym)
     return type;
 }
 
-TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name)
+TypeAggregateField* get_type_struct_field(Type* type, Identifier* name)
 {
-    assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
-    TypeAggregate* type_aggregate = &type->as_aggregate;
-    size_t num_fields = type_aggregate->num_fields;
-    TypeAggregateField* fields = type_aggregate->fields;
+    assert(type->kind == TYPE_STRUCT);
+    TypeAggregateBody* body = &type->as_struct.body;
+    size_t num_fields = body->num_fields;
+    TypeAggregateField* fields = body->fields;
+
+    for (size_t i = 0; i < num_fields; i += 1) {
+        TypeAggregateField* field = fields + i;
+
+        if (field->name == name) {
+            return field;
+        }
+    }
+
+    return NULL;
+}
+
+TypeAggregateField* get_type_union_field(Type* type, Identifier* name)
+{
+    assert(type->kind == TYPE_UNION);
+    TypeAggregateBody* body = &type->as_union.body;
+    size_t num_fields = body->num_fields;
+    TypeAggregateField* fields = body->fields;
 
     for (size_t i = 0; i < num_fields; i += 1) {
         TypeAggregateField* field = fields + i;
@@ -959,6 +977,17 @@ TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name)
     }
     
     return NULL;
+}
+
+TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name)
+{
+    if (type->kind == TYPE_STRUCT) {
+        return get_type_struct_field(type, name);
+    }
+    else {
+        assert(type->kind == TYPE_UNION);
+        return get_type_union_field(type, name);
+    }
 }
 
 Type* type_slice(Allocator* allocator, HMap* type_slice_cache, HMap* type_ptr_cache, Type* elem_type)
@@ -978,7 +1007,7 @@ Type* type_slice(Allocator* allocator, HMap* type_slice_cache, HMap* type_ptr_ca
 
         complete_struct_type(allocator, type, ARRAY_LEN(fields), fields);
 
-        type->as_aggregate.wrapper_kind = TYPE_AGG_IS_SLICE_WRAPPER;
+        type->as_struct.wrapper_kind = TYPE_STRUCT_IS_SLICE_WRAPPER;
 
         hmap_put(type_slice_cache, PTR_UINT(elem_type), PTR_UINT(type));
     }
@@ -1018,12 +1047,13 @@ Type* type_anon_aggregate(Allocator* allocator, HMap* type_cache, TypeKind kind,
     for (CachedType* it = cached; it != NULL; it = it->next) {
         Type* type = it->type;
         assert(type->kind == TYPE_STRUCT || type->kind == TYPE_UNION);
+        TypeAggregateBody* body = type->kind == TYPE_STRUCT ? &type->as_struct.body : &type->as_union.body;
 
-        if (type->as_aggregate.num_fields == num_fields) {
+        if (body->num_fields == num_fields) {
             bool equal = true;
 
             for (size_t i = 0; i < num_fields; i++) {
-                TypeAggregateField* f_other = type->as_aggregate.fields + i;
+                TypeAggregateField* f_other = body->fields + i;
                 const TypeAggregateField* f_this = fields + i;
 
                 if ((f_this->type != f_other->type) || (f_this->name != f_other->name)) {
@@ -1092,15 +1122,16 @@ void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, c
     type->size = size;
     type->align = align;
 
-    type->as_aggregate.wrapper_kind = TYPE_AGG_IS_NOT_WRAPPER; // Default
-    type->as_aggregate.num_fields = num_fields;
-    type->as_aggregate.fields = fields_cpy;
+    type->as_struct.wrapper_kind = TYPE_STRUCT_IS_NOT_WRAPPER; // Default
+    type->as_struct.body.num_fields = num_fields;
+    type->as_struct.body.fields = fields_cpy;
 }
 
 void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields)
 {
     size_t size = 0;
     size_t align = 0;
+    size_t largest_field = 0;
 
     TypeAggregateField* fields_cpy = mem_dup_array(allocator, TypeAggregateField, fields, num_fields);
 
@@ -1120,6 +1151,7 @@ void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, co
 
         if (field_size > size) {
             size = field_size;
+            largest_field = i;
         }
     }
 
@@ -1131,9 +1163,9 @@ void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, co
     type->size = size;
     type->align = align;
 
-    type->as_aggregate.wrapper_kind = TYPE_AGG_IS_NOT_WRAPPER;
-    type->as_aggregate.num_fields = num_fields;
-    type->as_aggregate.fields = fields_cpy;
+    type->as_union.body.num_fields = num_fields;
+    type->as_union.body.fields = fields_cpy;
+    type->as_union.largest_field = largest_field;
 }
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base)
