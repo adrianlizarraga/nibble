@@ -28,7 +28,9 @@ proc uninit_union() {
 }
 
 proc main() => int {
-    var a : int = ---;
+    var a : int = ---; // Explicitly uninitialized!!!
+
+    // Implicitly initialized to zero:
     var b : int;
     var vec : Vec3;
     var arr : [3]int;
@@ -38,3 +40,4 @@ proc main() => int {
     // 0 due to automatic zero initialization.
     return b + (vec.x + vec.y + vec.z) + (arr[0] + arr[1] + arr[2]) + lrg[1023] + uni._s64;
 }
+
