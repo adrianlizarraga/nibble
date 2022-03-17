@@ -15,6 +15,17 @@ union Value {
     _s64: s64;
 }
 
+proc uninit_arr() {
+    var arr : [1024]int = ---;
+}
+
+proc uninit_struct() {
+    var s : Vec3 = ---;
+}
+
+proc uninit_union() {
+    var u : Value = ---;
+}
 
 proc main() => int {
     var a : int = ---;
