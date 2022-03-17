@@ -163,19 +163,19 @@ static void IR_emit_global_expr_binary(IR_VarBuilder* builder, ExprBinary* expr_
     }
 }
 
-// TODO: Refactor wet code. Very similar to code used in bytecode/procs.c
-static void IR_emit_global_expr_compound_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
+static void IR_emit_global_expr_array_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
 {
-    // TODO: Currently only support array initializers.
-    assert(expr->super.type->kind == TYPE_ARRAY);
+    Type* type = expr->super.type;
+    assert(type->kind == TYPE_ARRAY);
     assert(!expr->typespec);
 
-    size_t initzer_index = 0;
-    ConstArrayMemberInitzer* const_initzers = alloc_array(builder->arena, ConstArrayMemberInitzer, expr->num_initzers, true);
+    size_t num_initzers = expr->num_initzers;
+    ConstArrayMemberInitzer* const_initzers = alloc_array(builder->arena, ConstArrayMemberInitzer, num_initzers, true);
 
     List* head = &expr->initzers;
     List* it = head->next;
     size_t elem_index = 0;
+    size_t initzer_index = 0;
 
     while (it != head) {
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
@@ -201,9 +201,106 @@ static void IR_emit_global_expr_compound_lit(IR_VarBuilder* builder, ExprCompoun
     }
 
     dst->kind = CONST_EXPR_ARRAY_INIT;
-    dst->type = expr->super.type;
-    dst->array_initzer.num_initzers = expr->num_initzers;
+    dst->type = type;
+    dst->array_initzer.num_initzers = num_initzers;
     dst->array_initzer.initzers = const_initzers;
+}
+
+static void IR_emit_global_expr_struct_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
+{
+    Type* type = expr->super.type;
+    TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateField* fields = type_agg->fields;
+    size_t num_fields = type_agg->num_fields;
+
+    assert(!expr->typespec);
+    assert(type->kind == TYPE_STRUCT);
+
+    ConstExpr** field_exprs = alloc_array(builder->arena, ConstExpr*, num_fields, true);
+
+    List* head = &expr->initzers;
+    List* it = head->next;
+    size_t field_index = 0;
+
+    while (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        TypeAggregateField* field;
+
+        if (initzer->designator.kind == DESIGNATOR_NAME) {
+            field = get_type_aggregate_field(type, initzer->designator.name);
+            assert(field);
+
+            field_index = field->index + 1;
+        }
+        else {
+            assert(initzer->designator.kind == DESIGNATOR_NONE);
+            assert(field_index < num_fields);
+
+            field = &fields[field_index++];
+        }
+
+        field_exprs[field->index] = alloc_type(builder->arena, ConstExpr, true);
+        IR_emit_global_expr(builder, initzer->init, field_exprs[field->index]);
+
+        it = it->next;
+    }
+
+    dst->kind = CONST_EXPR_STRUCT_INIT;
+    dst->type = type;
+    dst->struct_initzer.num_initzers = expr->num_initzers;
+    dst->struct_initzer.field_exprs = field_exprs;
+}
+
+static void IR_emit_global_expr_union_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
+{
+    Type* type = expr->super.type;
+
+    assert(!expr->typespec);
+    assert(type->kind == TYPE_UNION);
+
+    size_t field_index = 0;
+    ConstExpr* field_expr = NULL;
+
+    List* head = &expr->initzers;
+    List* it = head->next;
+
+    if (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+
+        if (initzer->designator.kind == DESIGNATOR_NAME) {
+            TypeAggregateField* field = get_type_aggregate_field(type, initzer->designator.name);
+            assert(field);
+
+            field_index = field->index;
+        }
+        else {
+            assert(initzer->designator.kind == DESIGNATOR_NONE);
+        }
+
+        field_expr = alloc_type(builder->arena, ConstExpr, true);
+        IR_emit_global_expr(builder, initzer->init, field_expr);
+    }
+
+    dst->kind = CONST_EXPR_UNION_INIT;
+    dst->type = type;
+    dst->union_initzer.field_expr = field_expr;
+    dst->union_initzer.field_index = field_index;
+}
+
+static void IR_emit_global_expr_compound_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
+{
+    Type* type = expr->super.type;
+
+    if (type->kind == TYPE_ARRAY) {
+        IR_emit_global_expr_array_lit(builder, expr, dst);
+    }
+    else if (type->kind == TYPE_STRUCT) {
+        IR_emit_global_expr_struct_lit(builder, expr, dst);
+    }
+    else {
+        assert(type->kind == TYPE_UNION);
+        IR_emit_global_expr_union_lit(builder, expr, dst);
+    }
 }
 
 static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* dst)

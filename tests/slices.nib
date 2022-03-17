@@ -54,6 +54,6 @@ proc main() => int {
     //var _ptr : ^int;
     //_ptr = arr3(0); // Should not compile
 
-    // 5 + 49 - 50 + 6 + 0 = 10
-    return s.length + s[0] - ptr[1] + r + r2;
+    // 5 + 49 - 50 + 51 + 6 + 0 = 61
+    return s.length + *s - ptr[1] + s[2] + r + r2;
 }
