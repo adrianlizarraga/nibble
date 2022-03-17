@@ -309,6 +309,28 @@ static void X64_print_global_struct_init(Allocator* allocator, ConstExpr* const_
     }
 }
 
+static void X64_print_global_union_init(Allocator* allocator, ConstExpr* const_expr, char** line)
+{
+    Type* type = const_expr->type;
+    assert(type->kind == TYPE_UNION);
+
+    TypeAggregateField* field = &type->as_aggregate.fields[const_expr->union_initzer.field_index];
+    ConstExpr* field_expr = const_expr->union_initzer.field_expr;
+
+    if (field_expr) {
+        X64_print_global_val(allocator, field_expr, line);
+
+        size_t padding = type->size - field->type->size;
+
+        if (padding) {
+            X64_print_global_zero_bytes(line, padding);
+        }
+    }
+    else {
+        X64_print_global_zero_bytes(line, type->size);
+    }
+}
+
 static void X64_print_global_int_bytes(Scalar imm, size_t size, char** line)
 {
     u64 elem_val = imm.as_int._u64;
@@ -393,6 +415,10 @@ static void X64_print_global_val(Allocator* allocator, ConstExpr* const_expr, ch
     }
     case CONST_EXPR_STRUCT_INIT: {
         X64_print_global_struct_init(allocator, const_expr, line);
+        break;
+    }
+    case CONST_EXPR_UNION_INIT: {
+        X64_print_global_union_init(allocator, const_expr, line);
         break;
     }
     default:

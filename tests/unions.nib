@@ -10,7 +10,19 @@ union Value {
     _s64: s64;
 }
 
+#static_assert(#offsetof(Value, _u8) == 0);
+#static_assert(#offsetof(Value, _s8) == 0);
+#static_assert(#offsetof(Value, _u16) == 0);
+#static_assert(#offsetof(Value, _s16) == 0);
+#static_assert(#offsetof(Value, _u32) == 0);
+#static_assert(#offsetof(Value, _s32) == 0);
+#static_assert(#offsetof(Value, _u64) == 0);
+#static_assert(#offsetof(Value, _s64) == 0);
+
+#static_assert(#sizeof(Value) == #sizeof(s64));
+
 var g_val : Value;
+var g_val2 : Value = {_s8 = -5};
 
 proc main() => int {
     var val : Value;
@@ -19,5 +31,16 @@ proc main() => int {
 
     g_val._u64 = 10;
 
-    return g_val._u8 + g_val._u16 + p_val._s32; // 40
+    var val2 : Value = {_s8 = 'A'};
+    #static_assert(#typeid(#typeof(val2._u8)) == #typeid(u8));
+    #static_assert(#typeid(#typeof(val2._s8)) == #typeid(s8));
+    #static_assert(#typeid(#typeof(val2._u16)) == #typeid(u16));
+    #static_assert(#typeid(#typeof(val2._s16)) == #typeid(s16));
+    #static_assert(#typeid(#typeof(val2._u32)) == #typeid(u32));
+    #static_assert(#typeid(#typeof(val2._s32)) == #typeid(s32));
+    #static_assert(#typeid(#typeof(val2._u64)) == #typeid(u64));
+    #static_assert(#typeid(#typeof(val2._s64)) == #typeid(s64));
+
+    // 40 + 65 + -5 = 100
+    return g_val._u8 + g_val._u16 + p_val._s32 + val2._s8 + g_val2._s8;
 }

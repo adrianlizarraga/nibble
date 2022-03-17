@@ -251,19 +251,56 @@ static void IR_emit_global_expr_struct_lit(IR_VarBuilder* builder, ExprCompoundL
     dst->struct_initzer.field_exprs = field_exprs;
 }
 
+static void IR_emit_global_expr_union_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
+{
+    Type* type = expr->super.type;
+
+    assert(!expr->typespec);
+    assert(type->kind == TYPE_UNION);
+
+    size_t field_index = 0;
+    ConstExpr* field_expr = NULL;
+
+    List* head = &expr->initzers;
+    List* it = head->next;
+
+    if (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+
+        if (initzer->designator.kind == DESIGNATOR_NAME) {
+            TypeAggregateField* field = get_type_aggregate_field(type, initzer->designator.name);
+            assert(field);
+
+            field_index = field->index;
+        }
+        else {
+            assert(initzer->designator.kind == DESIGNATOR_NONE);
+        }
+
+        field_expr = alloc_type(builder->arena, ConstExpr, true);
+        IR_emit_global_expr(builder, initzer->init, field_expr);
+    }
+
+    dst->kind = CONST_EXPR_UNION_INIT;
+    dst->type = type;
+    dst->union_initzer.field_expr = field_expr;
+    dst->union_initzer.field_index = field_index;
+}
+
 static void IR_emit_global_expr_compound_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
 {
     Type* type = expr->super.type;
 
     if (type->kind == TYPE_ARRAY) {
         IR_emit_global_expr_array_lit(builder, expr, dst);
-        return;
     }
-
-    // TODO: Support Union initializers
-    assert(type->kind == TYPE_STRUCT);
-
-    IR_emit_global_expr_struct_lit(builder, expr, dst);
+    else if (type->kind == TYPE_STRUCT) {
+        IR_emit_global_expr_struct_lit(builder, expr, dst);
+    }
+    else {
+        assert(type->kind == TYPE_UNION);
+        IR_emit_global_expr_union_lit(builder, expr, dst);
+    }
 }
 
 static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* dst)

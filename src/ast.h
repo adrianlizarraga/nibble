@@ -29,6 +29,7 @@ typedef struct ConstAddr ConstAddr;
 typedef struct ConstArrayMemberInitzer ConstArrayMemberInitzer;
 typedef struct ConstArrayInitzer ConstArrayInitzer;
 typedef struct ConstStructInitzer ConstStructInitzer;
+typedef struct ConstUnionInitzer ConstUnionInitzer;
 typedef struct ConstExpr ConstExpr;
 ///////////////////////////////
 //       Type Specifiers
@@ -833,6 +834,7 @@ typedef enum ConstExprKind {
     CONST_EXPR_DEREF_ADDR,
     CONST_EXPR_ARRAY_INIT,
     CONST_EXPR_STRUCT_INIT,
+    CONST_EXPR_UNION_INIT,
     CONST_EXPR_VAR,
     CONST_EXPR_PROC,
     CONST_EXPR_STR_LIT
@@ -864,6 +866,11 @@ struct ConstStructInitzer {
     ConstExpr** field_exprs; // One per field
 };
 
+struct ConstUnionInitzer {
+    size_t field_index;
+    ConstExpr* field_expr;
+};
+
 struct ConstExpr {
     ConstExprKind kind;
     Type* type;
@@ -875,6 +882,7 @@ struct ConstExpr {
         StrLit* str_lit;
         ConstArrayInitzer array_initzer;
         ConstStructInitzer struct_initzer;
+        ConstUnionInitzer union_initzer;
     };
 };
 
