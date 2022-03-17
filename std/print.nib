@@ -1,17 +1,21 @@
+//
+// Public
+//
 
 @exported
 proc print_out(format : [] char, vargs : ..any) => s64 {
     var n : s64 = 0;
-    var buf : [128] char;
-    var dst : FileBuffer;
-
-    dst.buf = buf :> []char;
-    dst.idx = 0;
+    var buf : [128] char = {};
+    var dst : FileBuffer = {buf = buf};
 
     n = print_out_internal(output_to_file, ^dst, format, vargs);
 
     return n;
 }
+
+//
+// Internal
+//
 
 struct FileBuffer {
     buf : []char;
@@ -27,10 +31,7 @@ struct PrintState {
 typedef PutCharProc = proc(^void, char) => bool;
 
 proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, args : []any) => s64 {
-    var state : PrintState;
-    state.count = 0;
-    state.arg = arg;
-    state.put_char = put_char;
+    var state : PrintState = {arg = arg, put_char = put_char};
 
     for (var i := 0; i < format.length; ) {
         var c := format[i];
