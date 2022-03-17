@@ -1,0 +1,29 @@
+struct Vec3 {
+    x : int;
+    y : int;
+    z : int;
+}
+
+union Value {
+    _u8: u8;
+    _s8: s8;
+    _u16: u16;
+    _s16: s16;
+    _u32: u32;
+    _s32: s32;
+    _u64: u64;
+    _s64: s64;
+}
+
+
+proc main() => int {
+    var a : int = ---;
+    var b : int;
+    var vec : Vec3;
+    var arr : [3]int;
+    var lrg : [1024]char;
+    var uni : Value;
+
+    // 0 due to automatic zero initialization.
+    return b + (vec.x + vec.y + vec.z) + (arr[0] + arr[1] + arr[2]) + lrg[1023] + uni._s64;
+}

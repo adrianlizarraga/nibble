@@ -558,9 +558,14 @@ struct Decl {
     ListNode lnode;
 };
 
+enum DeclVarFlags {
+    DECL_VAR_IS_VARIADIC = 0x1,
+    DECL_VAR_IS_UNINIT = 0x2 // Variable declaration is explicitly uninitialized
+};
+
 typedef struct DeclVar {
     Decl super;
-    bool is_variadic;
+    unsigned flags;
     TypeSpec* typespec;
     Expr* init;
 } DeclVar;
@@ -617,7 +622,7 @@ typedef struct DeclTypedef {
 } DeclTypedef;
 
 DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRange range);
-Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, bool is_variadic, ProgRange range);
+Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, unsigned flags, ProgRange range);
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* type, size_t num_items, List* items, ProgRange range);
@@ -688,16 +693,25 @@ typedef struct TypeAggregateField {
     Identifier* name;
 } TypeAggregateField;
 
-typedef enum TypeAggWrapperKind {
-    TYPE_AGG_IS_NOT_WRAPPER = 0,
-    TYPE_AGG_IS_SLICE_WRAPPER,
-} TypeAggWrapperKind;
-
-typedef struct TypeAggregate {
-    TypeAggWrapperKind wrapper_kind;
+typedef struct TypeAggregateBody {
     size_t num_fields;
     TypeAggregateField* fields;
-} TypeAggregate;
+} TypeAggregateBody;
+
+typedef enum TypeStructWrapperKind {
+    TYPE_STRUCT_IS_NOT_WRAPPER = 0,
+    TYPE_STRUCT_IS_SLICE_WRAPPER,
+} TypeStructWrapperKind;
+
+typedef struct TypeStruct {
+    TypeAggregateBody body;
+    TypeStructWrapperKind wrapper_kind;
+} TypeStruct;
+
+typedef struct TypeUnion {
+    TypeAggregateBody body;
+    size_t largest_field;
+} TypeUnion;
 
 typedef struct TypeIncompleteAggregate {
     Symbol* sym;
@@ -717,7 +731,8 @@ struct Type {
         TypeEnum as_enum;
         TypeProc as_proc;
         TypeArray as_array;
-        TypeAggregate as_aggregate;
+        TypeStruct as_struct;
+        TypeUnion as_union;
         TypeIncompleteAggregate as_incomplete;
     };
 };
@@ -795,6 +810,8 @@ void complete_struct_type(Allocator* allocator, Type* type, size_t num_fields, c
 void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, const TypeAggregateField* fields);
 
 TypeAggregateField* get_type_aggregate_field(Type* type, Identifier* name);
+TypeAggregateField* get_type_struct_field(Type* type, Identifier* name);
+TypeAggregateField* get_type_union_field(Type* type, Identifier* name);
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len);

@@ -2183,48 +2183,68 @@ static bool parse_annotations(Parser* parser, List* annotations)
 // Ex 3: var x :int;
 static Decl* parse_decl_var(Parser* parser)
 {
-    assert(is_keyword(parser, KW_VAR));
-    Decl* decl = NULL;
     ProgRange range = {.start = parser->token.range.start};
     const char* error_prefix = "Failed to parse var declaration";
 
-    next_token(parser);
+    // Parse 'var' keyword.
+    if (!expect_keyword(parser, KW_VAR, error_prefix)) {
+        return NULL;
+    }
 
-    if (expect_token(parser, TKN_IDENT, error_prefix)) {
-        Identifier* name = parser->ptoken.as_ident.ident;
+    // Parse variable name.
+    if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+        return NULL;
+    }
 
-        if (expect_token(parser, TKN_COLON, error_prefix)) {
-            TypeSpec* typespec = NULL;
-            Expr* expr = NULL;
-            bool bad_type = false;
-            bool bad_expr = false;
+    Identifier* name = parser->ptoken.as_ident.ident;
 
-            if (!is_token_kind(parser, TKN_ASSIGN) && !is_token_kind(parser, TKN_SEMICOLON)) {
-                typespec = parse_typespec(parser);
-                bad_type = !typespec;
-            }
+    // Parse ':'
+    if (!expect_token(parser, TKN_COLON, error_prefix)) {
+        return NULL;
+    }
 
-            if (match_token(parser, TKN_ASSIGN)) {
-                expr = parse_expr(parser);
-                bad_expr = !expr;
-            }
+    TypeSpec* typespec = NULL;
+    Expr* expr = NULL;
+    bool uninit = false;
 
-            if (!bad_type && !bad_expr) {
-                if (typespec || expr) {
-                    if (expect_token(parser, TKN_SEMICOLON, error_prefix)) {
-                        range.end = parser->ptoken.range.end;
-                        decl = new_decl_var(parser->ast_arena, name, typespec, expr, false, range);
-                    }
-                }
-                else {
-                    range.end = parser->ptoken.range.end;
-                    parser_on_error(parser, range, "A var declaration must have either a type or an initial value");
-                }
+    // Parse type
+    if (!is_token_kind(parser, TKN_ASSIGN) && !is_token_kind(parser, TKN_SEMICOLON)) {
+        typespec = parse_typespec(parser);
+
+        if (!typespec) {
+            return NULL;
+        }
+    }
+
+    // Parse '=' and initial value.
+    if (match_token(parser, TKN_ASSIGN)) {
+        if (match_token(parser, TKN_UNINIT)) {
+            uninit = true;
+        }
+        else {
+            expr = parse_expr(parser);
+
+            if (!expr) {
+                return NULL;
             }
         }
     }
 
-    return decl;
+    if (!typespec && !expr && !uninit) {
+        range.end = parser->ptoken.range.end;
+        parser_on_error(parser, range, "A var declaration must have either a type or an initial value");
+        return NULL;
+    }
+
+    // Parse ending ';'
+    if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
+        return NULL;
+    }
+
+    range.end = parser->ptoken.range.end;
+    unsigned flags = uninit ? DECL_VAR_IS_UNINIT : 0;
+
+    return new_decl_var(parser->ast_arena, name, typespec, expr, flags, range);
 }
 
 // proc_param = TKN_IDENT ':' type_spec
@@ -2264,8 +2284,9 @@ static Decl* parse_proc_param(Parser* parser, bool* is_variadic)
     }
 
     ProgRange range = {.start = start, .end = typespec->range.end};
+    unsigned flags = *is_variadic ? DECL_VAR_IS_VARIADIC : 0;
 
-    return new_decl_var(parser->ast_arena, name, typespec, NULL, *is_variadic, range);
+    return new_decl_var(parser->ast_arena, name, typespec, NULL, flags, range);
 }
 
 // decl_proc  = 'proc' TKN_IDENT '(' param_list ')' ('=>' typespec)? stmt_block
