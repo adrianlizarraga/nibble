@@ -744,6 +744,11 @@ bool type_is_scalar(Type* type)
     return type_is_arithmetic(type) || (kind == TYPE_PTR) || (kind == TYPE_PROC);
 }
 
+bool type_is_int_scalar(Type* type)
+{
+    return type_is_integer_like(type) || type_is_ptr_like(type);
+}
+
 bool type_is_ptr_like(Type* type)
 {
     TypeKind kind = type->kind;

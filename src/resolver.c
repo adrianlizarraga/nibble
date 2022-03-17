@@ -1667,6 +1667,9 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         if (src_op.type->kind == TYPE_ARRAY) {
             eop_array_decay(resolver, &src_op);
         }
+        else if (type_is_slice(src_op.type)) {
+            eop_array_slice_decay(&src_op);
+        }
 
         if (src_op.type->kind != TYPE_PTR) {
             resolver_on_error(resolver, expr->range, "Cannot dereference a non-pointer value.");
@@ -1675,6 +1678,8 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
 
         dst_op.type = src_op.type->as_ptr.base;
         dst_op.is_lvalue = true;
+
+        eunary->expr = try_wrap_cast_expr(resolver, &src_op, eunary->expr);
         break;
     default:
         resolver_on_error(resolver, expr->range, "Unary operation type `%d` not supported", eunary->op);
@@ -2201,6 +2206,209 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
     return true;
 }
 
+static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+{
+    assert(type->kind == TYPE_STRUCT);
+    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
+
+    TypeAggregate* type_agg = &type->as_aggregate;
+    TypeAggregateField* fields = type_agg->fields;
+    size_t num_fields = type_agg->num_fields;
+
+    // Keep track of fields with initializers using a bit array.
+    BitArray seen_fields = {0};
+    bit_arr_init(&seen_fields, &resolver->ctx->tmp_mem, num_fields);
+
+    bool is_compound_lit = expr->typespec != NULL;
+    bool all_initzers_constexpr = true;
+    size_t field_index = 0;
+
+    // Iterate through each initializer.
+    List* head = &expr->initzers;
+    List* it = head->next;
+
+    while (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        Designator* desig = &initzer->designator;
+
+        if (desig->kind == DESIGNATOR_INDEX) { // TODO: Support index for anonymous struct fields
+            resolver_on_error(resolver, initzer->range, "Cannot use an index designator for a struct initializer.");
+            return false;
+        }
+
+        // Determine which field this initializer targets.
+        TypeAggregateField* field = NULL;
+
+        if (desig->kind == DESIGNATOR_NAME) {
+            field = get_type_aggregate_field(type, desig->name);
+
+            if (!field) {
+                resolver_on_error(resolver, initzer->range, "Initializer targets non-existing struct field: `%s`.", desig->name->str);
+                return false;
+            }
+
+            field_index = field->index + 1;
+        }
+        else {
+            if (field_index >= num_fields) {
+                resolver_on_error(resolver, initzer->range, "Too many initializers, expected at most %llu initializers.", num_fields);
+                return false;
+            }
+
+            field = &fields[field_index++];
+        }
+
+        // Report error if already provided an initializer for this field.
+        if (bit_arr_get(&seen_fields, field->index)) {
+            const char* name = field->name ? field->name->str : "_anonymous_";
+            resolver_on_error(resolver, initzer->range, "Initializer sets field more than once. "
+                              "The field's name and index are `%s` and `%llu`.",
+                              name, field->index);
+            return false;
+        }
+
+        bit_arr_set(&seen_fields, field->index, true); // Mark this field as seen.
+
+        // Resolve initializer value.
+        if (!resolve_expr(resolver, initzer->init, field->type)) {
+            return false;
+        }
+
+        ExprOperand init_op = OP_FROM_EXPR(initzer->init);
+
+        // Allowing initializing slice field from array initializer.
+        if (type_is_slice(field->type) && (init_op.type->kind == TYPE_ARRAY)) {
+            if (!slice_and_array_compatible(init_op.type, field->type)) {
+                resolver_on_error(resolver, initzer->range,
+                                  "Invalid struct initializer. Cannot initialize slice of type `%s` from `%s`.",
+                                  type_name(field->type), type_name(init_op.type));
+                return false;
+            }
+
+            if (!init_op.is_lvalue) {
+                resolver_on_error(resolver, initzer->range, "Invalid struct initializer. "
+                                  "Cannot assign a temporary (r-value) array to an array slice variable.");
+                return false;
+            }
+        }
+        // Initializer expression should be convertible to the field type.
+        else {
+            CastResult r = convert_eop(resolver, &init_op, field->type, true);
+
+            if (!r.success) {
+                resolver_cast_error(resolver, r, initzer->init->range, "Invalid struct initializer", init_op.type, field->type);
+                return false;
+            }
+        }
+
+        // If initializer expression is convertible to the field type, create a new AST node that makes the conversion
+        // explicit.
+        initzer->init = try_wrap_cast_expr(resolver, &init_op, initzer->init);
+
+        // Keep track of constness.
+        all_initzers_constexpr &= init_op.is_constexpr;
+
+        it = it->next;
+    }
+
+    expr->super.type = type;
+    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_imm = false;
+    expr->super.is_constexpr = !is_compound_lit && all_initzers_constexpr;
+
+    allocator_restore_state(mem_state);
+
+    return true;
+}
+
+static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+{
+    assert(type->kind == TYPE_UNION);
+
+    if (expr->num_initzers > 1) {
+        resolver_on_error(resolver, expr->super.range, "Too many initializers, expected at most 1 initializer for a union type.");
+        return false;
+    }
+
+    bool is_compound_lit = expr->typespec != NULL;
+    bool initzer_constexpr = true;
+
+    TypeAggregateField* fields = type->as_aggregate.fields;
+    List* head = &expr->initzers;
+    List* it = head->next;
+
+    if (it != head) {
+        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        Designator* desig = &initzer->designator;
+
+        if (desig->kind == DESIGNATOR_INDEX) { // TODO: Support index for anonymous union fields
+            resolver_on_error(resolver, initzer->range, "Cannot use an index designator for a union initializer.");
+            return false;
+        }
+
+        // Determine which field this initializer targets.
+        TypeAggregateField* field = NULL;
+
+        if (desig->kind == DESIGNATOR_NAME) {
+            field = get_type_aggregate_field(type, desig->name);
+
+            if (!field) {
+                resolver_on_error(resolver, initzer->range, "Initializer targets non-existing union field: `%s`.", desig->name->str);
+                return false;
+            }
+        }
+        else {
+            field = &fields[0];
+        }
+
+        // Resolve initializer value.
+        if (!resolve_expr(resolver, initzer->init, field->type)) {
+            return false;
+        }
+
+        ExprOperand init_op = OP_FROM_EXPR(initzer->init);
+
+        // Allowing initializing slice field from array initializer.
+        if (type_is_slice(field->type) && (init_op.type->kind == TYPE_ARRAY)) {
+            if (!slice_and_array_compatible(init_op.type, field->type)) {
+                resolver_on_error(resolver, initzer->range,
+                                  "Invalid union initializer. Cannot initialize slice of type `%s` from `%s`.",
+                                  type_name(field->type), type_name(init_op.type));
+                return false;
+            }
+
+            if (!init_op.is_lvalue) {
+                resolver_on_error(resolver, initzer->range, "Invalid union initializer. "
+                                  "Cannot assign a temporary (r-value) array to an array slice variable.");
+                return false;
+            }
+        }
+        // Initializer expression should be convertible to the field type.
+        else {
+            CastResult r = convert_eop(resolver, &init_op, field->type, true);
+
+            if (!r.success) {
+                resolver_cast_error(resolver, r, initzer->init->range, "Invalid union initializer", init_op.type, field->type);
+                return false;
+            }
+        }
+
+        // If initializer expression is convertible to the field type, create a new AST node that makes the conversion
+        // explicit.
+        initzer->init = try_wrap_cast_expr(resolver, &init_op, initzer->init);
+
+        // Keep track of constness.
+        initzer_constexpr = init_op.is_constexpr;
+    }
+
+    expr->super.type = type;
+    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_imm = false;
+    expr->super.is_constexpr = !is_compound_lit && initzer_constexpr;
+
+    return true;
+}
+
 static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* expected_type)
 {
     Type* lit_type = NULL;
@@ -2224,13 +2432,17 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
         return false;
     }
 
-    // For now, only allow array types.
-    // TODO: Support struct types
     if (type->kind == TYPE_ARRAY) {
         return resolve_expr_array_compound_lit(resolver, expr, type);
     }
+    else if (type->kind == TYPE_STRUCT) {
+        return resolve_expr_struct_compound_lit(resolver, expr, type);
+    }
+    else if (type->kind == TYPE_UNION) {
+        return resolve_expr_union_compound_lit(resolver, expr, type);
+    }
 
-    resolver_on_error(resolver, expr->super.range, "Invalid compound literal type `%s`", type_name(type));
+    resolver_on_error(resolver, expr->super.range, "Invalid compound literal type `%s`.", type_name(type));
 
     return false;
 }

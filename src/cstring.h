@@ -43,4 +43,17 @@ size_t ftprintv_file(FILE* fd, bool nullterm, const char* format, va_list vargs)
 void u32_set_bit(u32* mask, u8 bit);
 void u32_unset_bit(u32* mask, u8 bit);
 bool u32_is_bit_set(u32 mask, u8 bit);
+
+typedef struct BitArray {
+    size_t len;
+    size_t* bits;
+} BitArray;
+
+void bit_arr_init(BitArray* barr, Allocator* arena, size_t len);
+void bit_arr_set(BitArray* barr, size_t index, bool val);
+bool bit_arr_get(BitArray* barr, size_t index);
+void bit_arr_or(BitArray* dst, BitArray* src);
+void bit_arr_and(BitArray* dst, BitArray* src);
+void bit_arr_and_inv(BitArray* dst, BitArray* src);
+void bit_arr_inv(BitArray* barr);
 #endif
