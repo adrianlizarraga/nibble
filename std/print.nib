@@ -67,7 +67,7 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
 
                     val = d;
                     j = j + 1;
-                } while (val != 0);
+                } while (val);
 
                 while (j) {
                     put_char_wrapper(^state, t_buf[j - 1]);
