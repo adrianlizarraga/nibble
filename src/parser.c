@@ -1881,31 +1881,18 @@ static PortSymbol* parse_port_symbol(Parser* parser)
 // export_syms = port_sym (',' port_sym)*
 static Stmt* parse_stmt_export(Parser* parser)
 {
-    assert(is_keyword(parser, KW_EXPORT));
     ProgRange range = {.start = parser->token.range.start};
     const char* error_prefix = "Failed to parse export statement";
 
-    next_token(parser);
+    if (!expect_keyword(parser, KW_EXPORT, error_prefix) || !expect_token(parser, TKN_LBRACE, error_prefix)) {
+        return NULL;
+    }
 
-    // Parse export syms
+    // Parse export symbols
     List export_syms = list_head_create(export_syms);
+    size_t num_exports = 0;
 
-    if (!expect_token(parser, TKN_LBRACE, error_prefix)) {
-        return NULL;
-    }
-
-    // Parse the first export symbol.
-    PortSymbol* esym_1 = parse_port_symbol(parser);
-
-    if (!esym_1) {
-        return NULL;
-    }
-
-    list_add_last(&export_syms, &esym_1->lnode);
-    size_t num_exports = 1;
-
-    // Parse the rest, if any.
-    while (match_token(parser, TKN_COMMA)) {
+    do {
         PortSymbol* esym = parse_port_symbol(parser);
 
         if (!esym) {
@@ -1914,13 +1901,9 @@ static Stmt* parse_stmt_export(Parser* parser)
 
         list_add_last(&export_syms, &esym->lnode);
         num_exports += 1;
-    }
+    } while(match_token(parser, TKN_COMMA));
 
-    if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
-        return NULL;
-    }
-
-    if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
+    if (!expect_token(parser, TKN_RBRACE, error_prefix) || !expect_token(parser, TKN_SEMICOLON, error_prefix)) {
         return NULL;
     }
 
