@@ -2643,15 +2643,15 @@ static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* 
     else {
         curr_bb = IR_op_to_r(builder, curr_bb, &cond_op);
 
-        Scalar imm = jmp_result ? ir_one_imm : ir_zero_imm;
+        ConditionKind cond_kind = jmp_result ? COND_NEQ : COND_EQ;
 
         // Load zero into a register.
         IR_Reg imm_reg = IR_next_reg(builder);
-        IR_emit_instr_limm(builder, curr_bb, cond_op.type, imm_reg, imm);
+        IR_emit_instr_limm(builder, curr_bb, cond_op.type, imm_reg, ir_zero_imm);
 
         // Check if cond == $imm, if so jump to jmp_bb, else fall to last_bb
         IR_Reg cmp_reg = IR_next_reg(builder);
-        IR_emit_instr_cmp(builder, curr_bb, cond_op.type, COND_EQ, cmp_reg, cond_op.reg, imm_reg);
+        IR_emit_instr_cmp(builder, curr_bb, cond_op.type, cond_kind, cmp_reg, cond_op.reg, imm_reg);
 
         BBlock* last_bb = IR_alloc_bblock(builder);
         IR_emit_instr_cond_jmp(builder, curr_bb, jmp_bb, last_bb, cmp_reg);
