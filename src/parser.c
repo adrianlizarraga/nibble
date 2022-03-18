@@ -1927,18 +1927,7 @@ static Stmt* parse_stmt_import(Parser* parser)
     size_t num_imports = 0;
 
     if (match_token(parser, TKN_LBRACE)) {
-        // Parse the first import symbol.
-        PortSymbol* isym_1 = parse_port_symbol(parser);
-
-        if (!isym_1) {
-            return NULL;
-        }
-
-        list_add_last(&import_syms, &isym_1->lnode);
-        num_imports += 1;
-
-        // Parse the rest, if any.
-        while (match_token(parser, TKN_COMMA)) {
+        do {
             PortSymbol* isym = parse_port_symbol(parser);
 
             if (!isym) {
@@ -1947,7 +1936,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
             list_add_last(&import_syms, &isym->lnode);
             num_imports += 1;
-        }
+        } while (match_token(parser, TKN_COMMA));
 
         if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
             return NULL;
