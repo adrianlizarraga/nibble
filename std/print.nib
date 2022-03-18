@@ -3,14 +3,19 @@
 //
 
 @exported
-proc print_out(format : [] char, vargs : ..any) => s64 {
-    var n : s64 = 0;
-    var buf : [128] char = {};
+enum PrintErr {
+    ERR_NONE = 0,
+    ERR_INVALID_ARG_INDEX
+}
+
+@exported
+proc print_out(format : [] char, vargs : ..any) => struct {usize; PrintErr;} {
+    var buf : [128] char;
     var dst : FileBuffer = {buf = buf};
 
-    n = print_out_internal(output_to_file, ^dst, format, vargs);
+    var r := print_out_internal(output_to_file, ^dst, format, vargs);
 
-    return n;
+    return r;
 }
 
 //
@@ -30,7 +35,7 @@ struct PrintState {
 
 typedef PutCharProc = proc(^void, char) => bool;
 
-proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, args : []any) => s64 {
+proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, args : []any) => struct {usize; PrintErr;} {
     var state : PrintState = {arg = arg, put_char = put_char};
 
     for (var i := 0; i < format.length; ) {
@@ -38,6 +43,39 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
 
         if (c == '%') {
             i = i + 1;
+
+            var r := scan_num(format, i);
+            var arg_index := r.[0];
+
+            if (arg_index >= args.length) {
+                var ret : struct {usize; PrintErr;} = {state.count, ERR_INVALID_ARG_INDEX};
+                return ret;
+            }
+
+            var a := ^args[arg_index];
+
+            if (a.type == #typeid(int)) {
+                var t_buf : [32]char;
+                var val : int = *(a.ptr :> ^int);
+                var j : int;
+
+                do {
+                    var d := val / 10;
+                    var digit := val - (d * 10); // TODO: Need %
+
+                    t_buf[j] = '0' + digit;
+
+                    val = d;
+                    j = j + 1;
+                } while (val != 0);
+
+                while (j) {
+                    put_char_wrapper(^state, t_buf[j - 1]);
+                    j = j - 1;
+                }
+            }
+
+            i = r.[1];
         }
         else {
             put_char_wrapper(^state, c);
@@ -45,7 +83,27 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
         }
     }
 
-    return state.count;
+    var r : struct {usize; PrintErr;} = {state.count, ERR_NONE};
+
+    return r;
+}
+
+proc scan_num(format : []char, i : usize) => struct {usize; usize;} {
+    var num : usize = 0;
+
+    while (i < format.length && is_num(format[i])) {
+        num = num * 10;
+        num = num + (format[i] - '0');
+        i = i + 1;
+    }
+
+    var r : struct {usize; usize;} = {num, i};
+
+    return r;
+}
+
+proc is_num(c : char) => bool {
+    return (c >= '0') && (c <= '9');
 }
 
 proc put_char_wrapper(state : ^PrintState, c : char) => bool {

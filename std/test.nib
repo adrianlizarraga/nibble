@@ -3,8 +3,7 @@ import "./print.nib";
 
 /*
     TODO:
-    - Allow converting array of s8 (e.g., a string) to slice of u8.
-    - Make char a u8 instead of s8
+    - Make char a u8 instead of s8?
 */
 
 proc test_cstr_cmp() => bool {
@@ -83,7 +82,11 @@ proc main() => int {
         #writeout("Pass\n", 5);
     }
 
-    print_out("Print works ha!\n%", 1, 2, 3);
+    var r := print_out("Print nums %0, %1, %2!\n", 321, 2, 4333);
+
+    if (r.[1] == 1) {
+        #writeout("Error!\n", 7);
+    }
 
     return !pass;
 }
