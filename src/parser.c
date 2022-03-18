@@ -1850,8 +1850,8 @@ static bool is_mod_path_relative(const char* path, size_t len)
     return (c0 == '/') || (c0 == '.' && ((c1 == '/') || (c1 == '.' && c2 == '/')));
 }
 
-// port_sym = TKN_IDENT ('as' TKN_IDENT)?
-static PortSymbol* parse_port_symbol(Parser* parser)
+// import_sym = TKN_IDENT ('as' TKN_IDENT)?
+static ImportSymbol* parse_import_symbol(Parser* parser)
 {
     ProgRange range = parser->token.range;
     const char* error_prefix = "Failed to parse import symbol";
@@ -1874,7 +1874,34 @@ static PortSymbol* parse_port_symbol(Parser* parser)
         range.end = ptoken->range.end;
     }
 
-    return new_port_symbol(parser->ast_arena, name, rename, range);
+    return new_import_symbol(parser->ast_arena, name, rename, range);
+}
+
+// export_sym = TKN_IDENT ('as' TKN_IDENT)?
+static ExportSymbol* parse_export_symbol(Parser* parser)
+{
+    ProgRange range = parser->token.range;
+    const char* error_prefix = "Failed to parse import symbol";
+
+    if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+        return NULL;
+    }
+
+    Identifier* name = parser->ptoken.as_ident.ident;
+    Identifier* rename = NULL;
+
+    if (match_keyword(parser, KW_AS)) {
+        if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+            return NULL;
+        }
+
+        Token* ptoken = &parser->ptoken;
+
+        rename = ptoken->as_ident.ident;
+        range.end = ptoken->range.end;
+    }
+
+    return new_export_symbol(parser->ast_arena, name, rename, range);
 }
 
 // stmt_export = 'export' '{' export_syms '}' ';'
@@ -1893,7 +1920,7 @@ static Stmt* parse_stmt_export(Parser* parser)
     size_t num_exports = 0;
 
     do {
-        PortSymbol* esym = parse_port_symbol(parser);
+        ExportSymbol* esym = parse_export_symbol(parser);
 
         if (!esym) {
             return NULL;
@@ -1903,7 +1930,11 @@ static Stmt* parse_stmt_export(Parser* parser)
         num_exports += 1;
     } while(match_token(parser, TKN_COMMA));
 
-    if (!expect_token(parser, TKN_RBRACE, error_prefix) || !expect_token(parser, TKN_SEMICOLON, error_prefix)) {
+    if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
+        return NULL;
+    }
+
+    if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
         return NULL;
     }
 
@@ -1928,7 +1959,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
     if (match_token(parser, TKN_LBRACE)) {
         do {
-            PortSymbol* isym = parse_port_symbol(parser);
+            ImportSymbol* isym = parse_import_symbol(parser);
 
             if (!isym) {
                 return NULL;

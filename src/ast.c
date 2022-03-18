@@ -435,14 +435,14 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
-PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
+ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
 {
-    PortSymbol* psym = alloc_type(allocator, PortSymbol, true);
-    psym->name = name;
-    psym->rename = rename;
-    psym->range = range;
+    ImportSymbol* isym = alloc_type(allocator, ImportSymbol, true);
+    isym->name = name;
+    isym->rename = rename;
+    isym->range = range;
 
-    return psym;
+    return isym;
 }
 
 Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
@@ -456,6 +456,16 @@ Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_sym
     list_replace(import_syms, &stmt->import_syms);
 
     return (Stmt*)stmt;
+}
+
+ExportSymbol* new_export_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
+{
+    ExportSymbol* esym = alloc_type(allocator, ExportSymbol, true);
+    esym->name = name;
+    esym->rename = rename;
+    esym->range = range;
+
+    return esym;
 }
 
 Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_syms, ProgRange range)
@@ -516,7 +526,7 @@ Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name)
         // Look to see if the expression's identifier name is among the imported symbols.
         // If so, set sym_name to the expected native symbol name.
         while (it != import_syms) {
-            PortSymbol* isym = list_entry(it, PortSymbol, lnode);
+            ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
             Identifier* isym_name = isym->rename != NULL ? isym->rename : isym->name;
 
             if (isym_name == name) {
@@ -1740,7 +1750,7 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
     List* it = head->next;
 
     while (it != head) {
-        PortSymbol* isym = list_entry(it, PortSymbol, lnode);
+        ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
         Symbol* sym = module_get_export_sym(src_mod, isym->name);
 
         if (!sym) {
@@ -2347,7 +2357,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 List* it = head->next;
 
                 while (it != head) {
-                    PortSymbol* entity = list_entry(it, PortSymbol, lnode);
+                    ImportSymbol* entity = list_entry(it, ImportSymbol, lnode);
                     const char* suffix = (it->next == head) ? "} from " : ", ";
 
                     ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
@@ -2379,7 +2389,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 List* it = head->next;
 
                 while (it != head) {
-                    PortSymbol* entity = list_entry(it, PortSymbol, lnode);
+                    ExportSymbol* entity = list_entry(it, ExportSymbol, lnode);
                     const char* suffix = (it->next == head) ? "}" : ", ";
 
                     ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);

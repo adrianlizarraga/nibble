@@ -919,7 +919,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             List* h = &sexport->export_syms;
 
             for (List* i = h->next; i != h; i = i->next) {
-                PortSymbol* esym = list_entry(i, PortSymbol, lnode);
+                ExportSymbol* esym = list_entry(i, ExportSymbol, lnode);
 
                 // Lookup the symbol we're trying to export.
                 Symbol* sym = lookup_scope_symbol(&mod->scope, esym->name);
