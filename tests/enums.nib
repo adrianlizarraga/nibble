@@ -6,6 +6,7 @@ enum TokenKind : s16 {
 }
 
 #static_assert(#sizeof(#typeof(TK_INT)) == 2);
+#static_assert(#typeid(#typeof(TK_IDENT)) == #typeid(TokenKind));
 
 enum SomeFlags : u64 {
     FLAG_A = 0x1,
@@ -15,7 +16,7 @@ enum SomeFlags : u64 {
 proc main() => int {
     #writeout("Enum\n", 5);
 
-    var token_names : []^char = {
+    var token_names : [_]^char = {
         [TK_INT] = "integer",
         [TK_PLUS] = "+"
     };
@@ -24,6 +25,7 @@ proc main() => int {
     #writeout("\n", 1);
 
     var f : SomeFlags = FLAG_B;
+    #static_assert(#typeid(SomeFlags) == #typeid(#typeof(FLAG_B)));
 
     return FLAG_A + TK_NONE + TK_INT + TK_IDENT + f + TK_PLUS + 8; //1 + 2 + 0 + 1 + 10 + 11 + 8 = 33
 }

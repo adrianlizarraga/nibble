@@ -200,19 +200,29 @@ static CastResult cast_eop(Resolver* resolver, ExprOperand* eop, Type* dst_type,
             eop->is_constexpr = dst_type->kind != TYPE_INTEGER;
         }
         else {
-            if (src_type->kind == TYPE_ENUM)
-                src_type = src_type->as_enum.base;
+            IntegerKind src_int_kind;
+            IntegerKind dst_int_kind;
 
-            if (dst_type->kind == TYPE_ENUM)
-                dst_type = dst_type->as_enum.base;
-
-            IntegerKind src_int_kind = src_type->as_integer.kind;
-            IntegerKind dst_int_kind = dst_type->as_integer.kind;
-
-            if (src_type->kind == TYPE_PTR)
+            if (src_type->kind == TYPE_ENUM) {
+                src_int_kind = src_type->as_enum.base->as_integer.kind;
+            }
+            else if (src_type->kind == TYPE_PTR) {
                 src_int_kind = INTEGER_U64;
-            if (dst_type->kind == TYPE_PTR)
+            }
+            else {
+                src_int_kind = src_type->as_integer.kind;
+            }
+
+            if (dst_type->kind == TYPE_ENUM) {
+                dst_int_kind = dst_type->as_enum.base->as_integer.kind;
+            }
+            else if (dst_type->kind == TYPE_PTR) {
                 dst_int_kind = INTEGER_U64;
+            }
+            else {
+                dst_int_kind = dst_type->as_integer.kind;
+            }
+
 
             switch (src_int_kind) {
                 CASE_INT_CAST(INTEGER_U8, eop, dst_int_kind, _u8)

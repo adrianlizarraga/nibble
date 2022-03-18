@@ -1,6 +1,12 @@
 import "./nested_module.nib";
 
 @exported
+struct StringView {
+    str: ^char;
+    len: usize;
+}
+
+@exported
 proc len(s : ^char) => usize
 {
     if (!s) {

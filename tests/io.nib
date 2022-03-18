@@ -15,7 +15,7 @@ proc cstr_len(s : ^char) => usize
     return count;
 }
 
-proc main(argc : int, argv : []^char) => int
+proc main(argc : int, argv : ^^char) => int
 {
     var i := 0;
     var ln : char = '\n';
@@ -26,8 +26,8 @@ proc main(argc : int, argv : []^char) => int
         i = i + 1;
     }
 
-    var a : []char = "Hello\n";
-    var num_bytes := #sizeof(#typeof(a));
+    var a : [_]char = "Hello\n";
+    var num_bytes := #length(a);
 
     #writeout(a, num_bytes);
 

@@ -1,4 +1,4 @@
-var g_a : [][2]int = {
+var g_a : [_][2]int = {
     {0, 1}, {2, 3}
 };
 
@@ -10,7 +10,7 @@ var g_c : [4]^char = {
     "ee", "ff", (0xdeadbeef :> ^char), ^g_ch
 };
 
-var g_d : []char = "copy\n";
+var g_d : [_]char = "copy\n";
 
 var g_ch : char = 'g';
 var g_str : ^char = "global\n";
