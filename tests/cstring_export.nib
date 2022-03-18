@@ -1,4 +1,5 @@
 import "./nested_module.nib";
+import "./nested_module.nib" as NestedMod;
 
 @exported
 proc len(s : ^char) => usize
@@ -30,3 +31,6 @@ var _internal_var : int;
 
 export { get_rand,  CSTR_CONST, cstr_var };
 export { g_nested_var as g_nested_renamed }; // Export an imported symbol!
+//export {NestedMod::g_nested_var as g_nested_renamed2}; // TODO: Does not work! Should it work though??
+export {NestedMod};
+

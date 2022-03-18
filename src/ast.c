@@ -12,11 +12,13 @@ static TypeSpec* new_typespec_(Allocator* allocator, size_t size, size_t align, 
     return typespec;
 }
 
-TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range)
+TypeSpec* new_typespec_ident(Allocator* allocator, NSIdent* ns_ident)
 {
-    TypeSpecIdent* typespec = new_typespec(allocator, TypeSpecIdent, range);
-    typespec->mod_ns = mod_ns;
-    typespec->name = name;
+    TypeSpecIdent* typespec = new_typespec(allocator, TypeSpecIdent, ns_ident->range);
+    typespec->ns_ident.range = ns_ident->range;
+    typespec->ns_ident.num_idents = ns_ident->num_idents;
+
+    list_replace(&ns_ident->idents, &typespec->ns_ident.idents);
 
     return (TypeSpec*)typespec;
 }
@@ -209,11 +211,13 @@ Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range)
     return (Expr*)expr;
 }
 
-Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range)
+Expr* new_expr_ident(Allocator* allocator, NSIdent* ns_ident)
 {
-    ExprIdent* expr = new_expr(allocator, ExprIdent, range);
-    expr->mod_ns = mod_ns;
-    expr->name = name;
+    ExprIdent* expr = new_expr(allocator, ExprIdent, ns_ident->range);
+    expr->ns_ident.range = ns_ident->range;
+    expr->ns_ident.num_idents = ns_ident->num_idents;
+
+    list_replace(&ns_ident->idents, &expr->ns_ident.idents);
 
     return (Expr*)expr;
 }
@@ -1588,11 +1592,21 @@ static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
         }
     }
 
+    // TODO: REMOVE ALL OF THIS mess once we implement namespaced enumerations!!!!!
     // If this is an enum, create const decls for each enum item.
     if (decl->kind == CST_DeclEnum) {
         DeclEnum* decl_enum = (DeclEnum*)decl;
 
-        TypeSpec* enum_item_typespec = new_typespec_ident(allocator, NULL, decl->name, decl->range); // TODO: Range is wrong
+        // Create identifier for each enum item's typespec.
+        // NOTE: Range is wrong.
+        NSIdent enum_item_ts_ident = {.range = decl->range, .num_idents = 1};
+        list_head_init(&enum_item_ts_ident.idents);
+        IdentNode* enum_item_ts_inode = alloc_type(allocator, IdentNode, true);
+        enum_item_ts_inode->ident = decl->name;
+        list_add_last(&enum_item_ts_ident.idents, &enum_item_ts_inode->lnode);
+
+        // Create typespec used for each enum item const decl.
+        TypeSpec* enum_item_typespec = new_typespec_ident(allocator, &enum_item_ts_ident);
 
         List* head = &decl_enum->items;
         List* it = head->next;
@@ -1611,7 +1625,13 @@ static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
             }
             // Add one to the previous enum item value.
             else if (prev_enum_item) {
-                Expr* prev_enum_val = new_expr_ident(allocator, NULL, prev_enum_item->name, dummy_range);
+                NSIdent prev_enum_item_ident = {.range = dummy_range, .num_idents = 1};
+                list_head_init(&prev_enum_item_ident.idents);
+                IdentNode* prev_enum_item_inode = alloc_type(allocator, IdentNode, true);
+                prev_enum_item_inode->ident = prev_enum_item->name;
+                list_add_last(&prev_enum_item_ident.idents, &prev_enum_item_inode->lnode);
+
+                Expr* prev_enum_val = new_expr_ident(allocator, &prev_enum_item_ident);
                 TokenInt token_one = {.value = 1, .rep = TKN_INT_DEC, .suffix = TKN_INT_SUFFIX_NONE};
                 Expr* expr_one = new_expr_int(allocator, token_one, dummy_range);
 
@@ -1794,6 +1814,31 @@ bool module_add_export_sym(Module* mod, Identifier* name, Symbol* sym)
 //     CST Printing
 //////////////////////////////
 
+char* ftprint_ns_ident(Allocator* allocator, NSIdent* ns_ident)
+{
+    char* dstr = array_create(allocator, char, 16);
+    List* head = &ns_ident->idents;
+    List* it = head->next;
+
+
+    // Print namespaces.
+    while (it->next != head) {
+        IdentNode* inode = list_entry(it, IdentNode, lnode);
+
+        ftprint_char_array(&dstr, false, "%s::", inode->ident->str);
+
+        it = it->next;
+    }
+
+    // Print name.
+    assert(it != head);
+    IdentNode* inode = list_entry(it, IdentNode, lnode);
+
+    ftprint_char_array(&dstr, false, "%s", inode->ident->str);
+
+    return dstr;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
 {
     char* dstr = NULL;
@@ -1806,13 +1851,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
         case CST_TypeSpecIdent: {
             TypeSpecIdent* t = (TypeSpecIdent*)typespec;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(:ident ");
-
-            if (t->mod_ns) {
-                ftprint_char_array(&dstr, false, "%s::", t->mod_ns->str);
-            }
-
-            ftprint_char_array(&dstr, false, "%s", t->name->str);
+            ftprint_char_array(&dstr, false, "(:ident %s)", ftprint_ns_ident(allocator, &t->ns_ident));
         } break;
         case CST_TypeSpecTypeof: {
             TypeSpecTypeof* t = (TypeSpecTypeof*)typespec;
@@ -2002,12 +2041,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case CST_ExprIdent: {
             ExprIdent* e = (ExprIdent*)expr;
             dstr = array_create(allocator, char, 16);
-
-            if (e->mod_ns) {
-                ftprint_char_array(&dstr, false, "%s::", e->mod_ns->str);
-            }
-
-            ftprint_char_array(&dstr, false, "%s", e->name->str);
+            ftprint_char_array(&dstr, false, "%s", ftprint_ns_ident(allocator, &e->ns_ident));
         } break;
         case CST_ExprCast: {
             ExprCast* e = (ExprCast*)expr;

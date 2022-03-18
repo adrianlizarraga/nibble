@@ -31,6 +31,19 @@ typedef struct ConstArrayInitzer ConstArrayInitzer;
 typedef struct ConstStructInitzer ConstStructInitzer;
 typedef struct ConstUnionInitzer ConstUnionInitzer;
 typedef struct ConstExpr ConstExpr;
+
+typedef struct IdentNode {
+    Identifier* ident;
+    ListNode lnode;
+} IdentNode;
+
+typedef struct NSIdent {
+    ProgRange range;
+    size_t num_idents;
+    List idents;
+} NSIdent;
+
+char* ftprint_ns_ident(Allocator* allocator, NSIdent* ns_ident);
 ///////////////////////////////
 //       Type Specifiers
 //////////////////////////////
@@ -54,8 +67,7 @@ struct TypeSpec {
 
 typedef struct TypeSpecIdent {
     TypeSpec super;
-    Identifier* mod_ns;
-    Identifier* name;
+    NSIdent ns_ident;
 } TypeSpecIdent;
 
 typedef struct TypeSpecTypeof {
@@ -113,7 +125,7 @@ typedef struct TypeSpecConst {
 
 AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 
-TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
+TypeSpec* new_typespec_ident(Allocator* allocator, NSIdent* ns_ident);
 TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range);
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, bool infer_len, ProgRange range);
@@ -234,8 +246,7 @@ typedef struct ExprStr {
 
 typedef struct ExprIdent {
     Expr super;
-    Identifier* mod_ns;
-    Identifier* name;
+    NSIdent ns_ident;
 } ExprIdent;
 
 typedef struct ExprCast {
@@ -312,7 +323,7 @@ ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, Identifier* nam
 Expr* new_expr_int(Allocator* allocator, TokenInt token, ProgRange range);
 Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
 Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
-Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
+Expr* new_expr_ident(Allocator* allocator, NSIdent* ns_ident);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_typeid(Allocator* allocator, TypeSpec* type, ProgRange range);

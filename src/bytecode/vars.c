@@ -29,21 +29,27 @@ static void IR_const_expr_from_sym(ConstExpr* dst, Symbol* sym)
 
 static void IR_emit_global_expr_ident(IR_VarBuilder* builder, ExprIdent* eident, ConstExpr* dst)
 {
-    Symbol* sym = NULL;
+    List* head = &eident->ns_ident.idents;
+    List* it = head->next;
 
-    if (eident->mod_ns) {
-        Symbol* sym_modns = lookup_symbol(&builder->curr_mod->scope, eident->mod_ns);
-        StmtImport* stmt = (StmtImport*)sym_modns->as_mod.stmt;
-        Identifier* sym_name = get_import_sym_name(stmt, eident->name);
+    IdentNode* inode = list_entry(it, IdentNode, lnode);
+    Symbol* sym = lookup_symbol(&builder->curr_mod->scope, inode->ident);
+    it = it->next;
 
-        sym = module_get_export_sym(sym_modns->as_mod.mod, sym_name);
-    }
-    else {
-        sym = lookup_symbol(&builder->curr_mod->scope, eident->name);
+    // Keep looking up identifiers through module namespaces.
+    while (it != head) {
+        assert(sym->kind == SYMBOL_MODULE);
+
+        inode = list_entry(it, IdentNode, lnode);
+
+        StmtImport* stmt = (StmtImport*)sym->as_mod.stmt;
+        Identifier* sym_name = get_import_sym_name(stmt, inode->ident);
+
+        sym = module_get_export_sym(sym->as_mod.mod, sym_name);
+        it = it->next;
     }
 
     assert(sym);
-
     IR_const_expr_from_sym(dst, sym);
 }
 

@@ -42,7 +42,7 @@ static CastResult can_convert_eop(Resolver* resolver, ExprOperand* operand, Type
 static CastResult can_cast_eop(Resolver* resolver, ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay);
 static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr);
 
-static Symbol* lookup_ident(Resolver* resolver, Identifier* mod_ns, Identifier* name, ProgRange range);
+static Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident);
 
 static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
@@ -1659,11 +1659,11 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
 
         if (eunary->expr->kind == CST_ExprIdent) {
             ExprIdent* expr_ident = (ExprIdent*)eunary->expr;
-            Symbol* sym = lookup_ident(resolver, expr_ident->mod_ns, expr_ident->name, expr_ident->super.range);
+            Symbol* sym = lookup_ident(resolver, &expr_ident->ns_ident);
 
             if (!sym) {
-                // TODO: Print full identifier name (with module namespace).
-                resolver_on_error(resolver, expr_ident->super.range, "Unknown symbol `%s` in expression", expr_ident->name->str);
+                resolver_on_error(resolver, expr_ident->super.range, "Unknown symbol `%s` in expression",
+                                  ftprint_ns_ident(&resolver->ctx->tmp_mem, &expr_ident->ns_ident));
                 return false;
             }
 
@@ -1881,39 +1881,45 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     return true;
 }
 
-static Symbol* lookup_ident(Resolver* resolver, Identifier* mod_ns, Identifier* name, ProgRange range)
+static Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident)
 {
     //
-    // Tries to lookup a symbol for an identifier in the form <module_namespace>::<identifier_name>
+    // Tries to lookup a symbol for an identifier in the form <module_namespace>::...::<identifier_name>
     //
 
-    Symbol* sym = NULL;
+    List* head = &ns_ident->idents;
+    List* it = head->next;
 
-    if (mod_ns) {
-        // Lookup namespace symbol.
-        Symbol* sym_modns = resolve_name(resolver, mod_ns);
+    IdentNode* inode = list_entry(it, IdentNode, lnode);
+    Symbol* sym = resolve_name(resolver, inode->ident);
 
-        if (!sym_modns || (sym_modns->kind != SYMBOL_MODULE)) {
-            resolver_on_error(resolver, range, "Unknown module namespace `%s::` in expression", mod_ns->str);
+    it = it->next;
+
+    while (it != head) {
+
+        // Current symbol must be a module's namespace.
+        if (!sym || (sym->kind != SYMBOL_MODULE)) {
+            resolver_on_error(resolver, ns_ident->range, "Unknown module namespace `%s`.", inode->ident->str);
             return NULL;
         }
 
-        StmtImport* stmt = (StmtImport*)sym_modns->as_mod.stmt;
-        Identifier* sym_name = get_import_sym_name(stmt, name);
+        inode = list_entry(it, IdentNode, lnode);
+
+        StmtImport* stmt = (StmtImport*)sym->as_mod.stmt;
+        Identifier* sym_name = get_import_sym_name(stmt, inode->ident);
 
         if (!sym_name) {
-            resolver_on_error(resolver, range, "Identifier `%s` is not among the imported symbols in module namespace `%s`", name->str,
-                              sym_modns->name->str);
+            resolver_on_error(resolver, ns_ident->range, "Identifier `%s` is not among the imported symbols in module namespace `%s`",
+                              inode->ident->str, sym->name->str);
             return NULL;
         }
 
         // Enter the namespace's module, and then try to lookup the identifier with its native name.
-        ModuleState mod_state = enter_module(resolver, sym_modns->as_mod.mod);
+        ModuleState mod_state = enter_module(resolver, sym->as_mod.mod);
         sym = resolve_export_name(resolver, sym_name);
         exit_module(resolver, mod_state);
-    }
-    else {
-        sym = resolve_name(resolver, name);
+
+        it = it->next;
     }
 
     return sym;
@@ -1922,11 +1928,11 @@ static Symbol* lookup_ident(Resolver* resolver, Identifier* mod_ns, Identifier* 
 static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
 {
     ExprIdent* eident = (ExprIdent*)expr;
-    Symbol* sym = lookup_ident(resolver, eident->mod_ns, eident->name, expr->range);
+    Symbol* sym = lookup_ident(resolver, &eident->ns_ident);
 
     if (!sym) {
-        // TODO: Print full identifier name (with module namespace).
-        resolver_on_error(resolver, expr->range, "Unknown symbol `%s` in expression", eident->name->str);
+        resolver_on_error(resolver, expr->range, "Unknown symbol `%s` in expression",
+                          ftprint_ns_ident(&resolver->ctx->tmp_mem, &eident->ns_ident));
         return false;
     }
 
@@ -1958,7 +1964,7 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
     }
 
     resolver_on_error(resolver, expr->range, "Expression identifier `%s` must refer to a var, const, or proc declaration",
-                      eident->name->str);
+                      ftprint_ns_ident(&resolver->ctx->tmp_mem, &eident->ns_ident));
     return false;
 }
 
@@ -2509,16 +2515,17 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
     switch (typespec->kind) {
     case CST_TypeSpecIdent: {
         TypeSpecIdent* ts = (TypeSpecIdent*)typespec;
-        Symbol* ident_sym = lookup_ident(resolver, ts->mod_ns, ts->name, typespec->range);
+        Symbol* ident_sym = lookup_ident(resolver, &ts->ns_ident);
 
         if (!ident_sym) {
-            // TODO: Print full namespaced name
-            resolver_on_error(resolver, typespec->range, "Undefined type `%s`", ts->name->str);
+            resolver_on_error(resolver, typespec->range, "Undefined type `%s`",
+                              ftprint_ns_ident(&resolver->ctx->tmp_mem, &ts->ns_ident));
             return NULL;
         }
 
         if (ident_sym->kind != SYMBOL_TYPE) {
-            resolver_on_error(resolver, typespec->range, "Identifier `%s` is not a type", ts->name->str);
+            resolver_on_error(resolver, typespec->range, "Identifier `%s` is not a type",
+                              ftprint_ns_ident(&resolver->ctx->tmp_mem, &ts->ns_ident));
             return NULL;
         }
 
