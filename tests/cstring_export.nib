@@ -31,6 +31,9 @@ var _internal_var : int;
 
 export { get_rand,  CSTR_CONST, cstr_var };
 export { g_nested_var as g_nested_renamed }; // Export an imported symbol!
-//export {NestedMod::g_nested_var as g_nested_renamed2}; // TODO: Does not work! Should it work though??
-export {NestedMod};
+export {NestedMod::g_nested_var as g_nested_renamed2}; // Export a namespaced/imported symbol!
+export {NestedMod}; // Export a module namespace!!!
 
+//export {NestedMod::g_nested_var}; // Error! Must be renamed!
+//export {NestedMod::g_nested_var as cstr_var}; // Error using a duplicate export name!
+//export {len::g_nested_var as g_nested_renamed3}; // Error! len:: is not a valid module namespace!

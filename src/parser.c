@@ -395,7 +395,7 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 }
 
 // namespaced_ident = (TKN_IDENT '::')* TKN_IDENT
-static bool parse_namespaced_ident(Parser* parser, NSIdent* ns_ident)
+static bool parse_namespaced_ident(Parser* parser, NSIdent* ns_ident, const char* err_prefix)
 {
     ns_ident->range = parser->token.range;
     ns_ident->num_idents = 0;
@@ -403,7 +403,7 @@ static bool parse_namespaced_ident(Parser* parser, NSIdent* ns_ident)
 
     // Keep parsing identifiers as long as we see a `::` token.
     do {
-        if (!expect_token(parser, TKN_IDENT, "Failed to parse identifier")) {
+        if (!expect_token(parser, TKN_IDENT, err_prefix)) {
             return false;
         }
 
@@ -425,7 +425,7 @@ static TypeSpec* parse_typespec_ident(Parser* parser)
 {
     NSIdent ns_ident = {0};
 
-    if (!parse_namespaced_ident(parser, &ns_ident)) {
+    if (!parse_namespaced_ident(parser, &ns_ident, "Failed to parse typespec identifier")) {
         return NULL;
     }
 
@@ -893,7 +893,7 @@ static Expr* parse_expr_ident(Parser* parser)
 {
     NSIdent ns_ident = {0};
 
-    if (!parse_namespaced_ident(parser, &ns_ident)) {
+    if (!parse_namespaced_ident(parser, &ns_ident, "Failed to parse expression identifier")) {
         return NULL;
     }
 
@@ -1877,17 +1877,17 @@ static ImportSymbol* parse_import_symbol(Parser* parser)
     return new_import_symbol(parser->ast_arena, name, rename, range);
 }
 
-// export_sym = TKN_IDENT ('as' TKN_IDENT)?
+// export_sym = namespaced_ident ('as' TKN_IDENT)?
 static ExportSymbol* parse_export_symbol(Parser* parser)
 {
     ProgRange range = parser->token.range;
-    const char* error_prefix = "Failed to parse import symbol";
+    const char* error_prefix = "Failed to parse export symbol";
+    NSIdent ns_ident = {0};
 
-    if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+    if (!parse_namespaced_ident(parser, &ns_ident, error_prefix)) {
         return NULL;
     }
 
-    Identifier* name = parser->ptoken.as_ident.ident;
     Identifier* rename = NULL;
 
     if (match_keyword(parser, KW_AS)) {
@@ -1895,13 +1895,12 @@ static ExportSymbol* parse_export_symbol(Parser* parser)
             return NULL;
         }
 
-        Token* ptoken = &parser->ptoken;
-
-        rename = ptoken->as_ident.ident;
-        range.end = ptoken->range.end;
+        rename = parser->ptoken.as_ident.ident;
     }
 
-    return new_export_symbol(parser->ast_arena, name, rename, range);
+    range.end = parser->ptoken.range.end;
+
+    return new_export_symbol(parser->ast_arena, &ns_ident, rename, range);
 }
 
 // stmt_export = 'export' '{' export_syms '}' ';'

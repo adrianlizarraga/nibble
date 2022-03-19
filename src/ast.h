@@ -390,7 +390,7 @@ typedef struct StmtImport {
 
 typedef struct ExportSymbol {
     ProgRange range;
-    Identifier* name;
+    NSIdent ns_ident;
     Identifier* rename;
     ListNode lnode;
 } ExportSymbol;
@@ -535,7 +535,7 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
 ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
 Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
                       ProgRange range);
-ExportSymbol* new_export_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
+ExportSymbol* new_export_symbol(Allocator* allocator, NSIdent* ns_ident, Identifier* rename, ProgRange range);
 Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_syms, ProgRange range);
 Stmt* new_stmt_include(Allocator* allocator, StrLit* file_pathname, ProgRange range);
 

@@ -458,12 +458,15 @@ Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_sym
     return (Stmt*)stmt;
 }
 
-ExportSymbol* new_export_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
+ExportSymbol* new_export_symbol(Allocator* allocator, NSIdent* ns_ident, Identifier* rename, ProgRange range)
 {
     ExportSymbol* esym = alloc_type(allocator, ExportSymbol, true);
-    esym->name = name;
     esym->rename = rename;
     esym->range = range;
+    esym->ns_ident.range = ns_ident->range;
+    esym->ns_ident.num_idents = ns_ident->num_idents;
+
+    list_replace(&ns_ident->idents, &esym->ns_ident.idents);
 
     return esym;
 }
@@ -2392,7 +2395,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                     ExportSymbol* entity = list_entry(it, ExportSymbol, lnode);
                     const char* suffix = (it->next == head) ? "}" : ", ";
 
-                    ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
+                    ftprint_char_array(&dstr, false, "%s%s", ftprint_ns_ident(allocator, &entity->ns_ident), suffix);
                     it = it->next;
                 }
             }

@@ -922,22 +922,60 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
                 ExportSymbol* esym = list_entry(i, ExportSymbol, lnode);
 
                 // Lookup the symbol we're trying to export.
-                Symbol* sym = lookup_scope_symbol(&mod->scope, esym->name);
+                Symbol* sym = NULL;
+                {
+                    List* e_head = &esym->ns_ident.idents;
+                    List* e_it = e_head->next;
 
-                if (!sym) {
-                    report_error(esym->range, "Unknown export symbol `%s`", esym->name->str);
+                    IdentNode* inode = list_entry(e_it, IdentNode, lnode);
+                    sym = lookup_scope_symbol(&mod->scope, inode->ident);
+                    e_it = e_it->next;
+
+                    // Keep looking through module namespaces.
+                    while (sym && (e_it != e_head)) {
+                        if (sym->kind != SYMBOL_MODULE) {
+                            report_error(esym->range, "Namespace `%s` in export statement is not a module", inode->ident->str);
+                            return false;
+                        }
+
+                        inode = list_entry(e_it, IdentNode, lnode);
+
+                        StmtImport* stmt = (StmtImport*)sym->as_mod.stmt;
+                        Identifier* sym_name = get_import_sym_name(stmt, inode->ident);
+
+                        sym = module_get_export_sym(sym->as_mod.mod, sym_name);
+                        e_it = e_it->next;
+                    }
+
+                    if (!sym) {
+                        report_error(esym->range, "Unknown export symbol `%s`", inode->ident->str);
+                        return false;
+                    }
+                }
+
+                // Namespaced symbols must be renamed. Ex: export {MyMod::foo as foo};
+                if ((esym->ns_ident.num_idents > 1) && !esym->rename) {
+                    report_error(esym->range, "Exported symbol `%s` must be renamed due to module namespace",
+                                 ftprint_ns_ident(&ctx->tmp_mem, &esym->ns_ident));
                     return false;
                 }
 
                 // Prevent users from exporting builtin symbols.
                 if (sym->home == ctx->builtin_mod) {
-                    report_error(esym->range, "Cannot export builtin symbol `%s`", esym->name->str);
+                    report_error(esym->range, "Cannot export builtin symbol `%s`", ftprint_ns_ident(&ctx->tmp_mem, &esym->ns_ident));
                     return false;
                 }
 
                 // Add symbol to the module's export table
-                if (!module_add_export_sym(mod, esym->rename ? esym->rename : esym->name, sym)) {
-                    report_error(esym->range, "Conflicting export symbol name `%s`", esym->name->str);
+                Identifier* exp_name = esym->rename;
+
+                if (!esym->rename) {
+                    IdentNode* last_inode = list_entry(esym->ns_ident.idents.prev, IdentNode, lnode);
+                    exp_name = last_inode->ident;
+                }
+
+                if (!module_add_export_sym(mod, exp_name, sym)) {
+                    report_error(esym->range, "Conflicting export symbol name `%s`", exp_name->str);
                     return false;
                 }
             }

@@ -6,7 +6,7 @@ import { cstr_var, cstr_var as var2 } from "./cstring_export.nib";
 
 // This is a var defined two modules down. It is renamed via an export statement, and then
 // renamed again via the import statement.
-import { g_nested_renamed as g_nested_dbl_renamed, NestedMod } from "./cstring_export.nib" as CString;
+import { g_nested_renamed as g_nested_dbl_renamed, NestedMod, g_nested_renamed2 } from "./cstring_export.nib" as CString;
 
 //import { _internal_var } from "./cstring_export.nib"; // Cannot import private symbols!
 //import { nonexisting_var } from "./cstring_export.nib"; // Cannot import nonexisting symbols!
@@ -19,6 +19,7 @@ proc main(argc : int, argv : ^^char) => int
 
     #writeout(a, num_chars);
 
-    return num_chars + CSTR_CONST + CONST20 + cstr_var + var2 + rand(4) - CString::g_nested_dbl_renamed - CString::NestedMod::g_nested_var;
+    return num_chars + CSTR_CONST + CONST20 + cstr_var + var2 + rand(4) - CString::g_nested_dbl_renamed - 
+           CString::NestedMod::g_nested_var - CString::g_nested_renamed2;
 }
 
