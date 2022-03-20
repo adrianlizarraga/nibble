@@ -363,7 +363,6 @@ typedef enum StmtKind {
 struct Stmt {
     StmtKind kind;
     ProgRange range;
-    bool returns; // True if all control paths within this block return from proc.
     ListNode lnode;
 };
 

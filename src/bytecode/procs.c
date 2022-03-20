@@ -2698,8 +2698,8 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     BBlock* true_end_bb = IR_emit_stmt(builder, true_bb, if_body, break_ujmps, cont_ujmps);
 
     if (true_end_bb) {
-        IR_emit_instr_jmp(builder, true_end_bb,
-                          last_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
+        // Generates unnecessary jump without an else-stmt (fall-through) or if if-stmt returns.
+        IR_emit_instr_jmp(builder, true_end_bb, last_bb);
     }
 
     if (else_body) {

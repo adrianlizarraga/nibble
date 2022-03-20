@@ -3554,8 +3554,6 @@ static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, uns
         break;
     }
 
-    stmt->returns = ret & RESOLVE_STMT_RETURNS;
-
     return ret;
 }
 
