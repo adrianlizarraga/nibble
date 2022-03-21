@@ -211,7 +211,7 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 
 // aggregate_body  = '{' aggregate_fields+ '}'
 // aggregate_fields = aggregate_field (';' aggregate_field)* ';'?
-static bool parse_fill_aggregate_body(Parser* parser, List* fields)
+static bool parse_aggregate_fields(Parser* parser, List* fields)
 {
     list_head_init(fields);
 
@@ -231,32 +231,67 @@ static bool parse_fill_aggregate_body(Parser* parser, List* fields)
     return true;
 }
 
-static TypeSpec* parse_typespec_aggregate(Parser* parser, const char* error_prefix,
-                                          NewTypeSpecAggregateProc* new_typespec_aggregate)
+static bool parse_aggregate_body(Parser* parser, List* fields, ProgPos start, const char* err_prefix)
 {
-    assert(is_keyword(parser, KW_STRUCT) || is_keyword(parser, KW_UNION));
-    ProgRange range = {.start = parser->token.range.start};
+    if (!expect_token(parser, TKN_LBRACE, err_prefix)) {
+        return false;
+    }
 
-    next_token(parser);
+    if (!parse_aggregate_fields(parser, fields)) {
+        return false;
+    }
 
-    if (!expect_token(parser, TKN_LBRACE, error_prefix)) {
+    if (!expect_token(parser, TKN_RBRACE, err_prefix)) {
+        return false;
+    }
+
+    if (list_empty(fields)) {
+        ProgRange range = {.start = start, .end = parser->ptoken.range.end};
+        parser_on_error(parser, range, "%s: must have at least one field", err_prefix);
+        return false;
+    }
+
+    return true;
+}
+
+// typespec_anon_struct = KW_STRUCT? '{' aggregate_fields+ '}'
+static TypeSpec* parse_typespec_struct(Parser* parser)
+{
+    const char* err_prefix = "Failed to parse anonymous struct type";
+    ProgPos start = parser->token.range.start;
+
+    match_keyword(parser, KW_STRUCT);
+
+    List fields = {0};
+
+    if (!parse_aggregate_body(parser, &fields, start, err_prefix)) {
+        return NULL;
+    }
+
+    ProgRange range = {.start = start, .end = parser->ptoken.range.end};
+
+    return new_typespec_struct(parser->ast_arena, &fields, range);
+}
+
+// typespec_anon_union  = KW_UNION '{' aggregate_fields+ '}'
+static TypeSpec* parse_typespec_union(Parser* parser)
+{
+    const char* err_prefix = "Failed to parse anonymous union type";
+    ProgPos start = parser->token.range.start;
+
+    if (!expect_keyword(parser, KW_UNION, err_prefix)) {
         return NULL;
     }
 
     List fields = {0};
 
-    if (!parse_fill_aggregate_body(parser, &fields) || !expect_token(parser, TKN_RBRACE, error_prefix)) {
+    if (!parse_aggregate_body(parser, &fields, start, err_prefix)) {
         return NULL;
     }
 
-    range.end = parser->ptoken.range.end;
+    ProgRange range = {.start = start, .end = parser->ptoken.range.end};
 
-    if (list_empty(&fields)) {
-        parser_on_error(parser, range, "%s: must have at least one field", error_prefix);
-        return NULL;
-    }
-
-    return new_typespec_aggregate(parser->ast_arena, &fields, range);
+    return new_typespec_union(parser->ast_arena, &fields, range);
 }
 
 // typespec_proc_param = (name ':')? typespec
@@ -475,15 +510,17 @@ static TypeSpec* parse_typespec_base(Parser* parser)
         case KW_PROC:
             return parse_typespec_proc(parser);
         case KW_STRUCT:
-            return parse_typespec_aggregate(parser, "Failed to parse anonymous struct", new_typespec_struct);
+            return parse_typespec_struct(parser);
         case KW_UNION:
-            return parse_typespec_aggregate(parser, "Failed to parse anonymous union", new_typespec_union);
+            return parse_typespec_union(parser);
         case KW_TYPEOF:
             return parse_typespec_typeof(parser);
         default:
             break;
         }
     } break;
+    case TKN_LBRACE:
+        return parse_typespec_struct(parser);
     case TKN_IDENT:
         return parse_typespec_ident(parser);
     case TKN_LPAREN: {
@@ -2382,23 +2419,13 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, NewD
     }
 
     Identifier* name = parser->ptoken.as_ident.ident;
-
-    if (!expect_token(parser, TKN_LBRACE, error_prefix)) {
-        return NULL;
-    }
-
     List fields = {0};
 
-    if (!parse_fill_aggregate_body(parser, &fields) || !expect_token(parser, TKN_RBRACE, error_prefix)) {
+    if (!parse_aggregate_body(parser, &fields, range.start, error_prefix)) {
         return NULL;
     }
 
     range.end = parser->ptoken.range.end;
-
-    if (list_empty(&fields)) {
-        parser_on_error(parser, range, "%s: must have at least one field", error_prefix);
-        return NULL;
-    }
 
     return new_decl_aggregate(parser->ast_arena, name, &fields, range);
 }
