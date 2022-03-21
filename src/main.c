@@ -1,6 +1,5 @@
 /* TODO:
 
-    - Add '%' operation
     - Add '+=' and '-=' operators
     - Make using tuples easier
       - Shorter, optional syntax. EX: {int, int}
