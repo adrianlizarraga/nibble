@@ -166,7 +166,7 @@ bool skip_after_token(Parser* parser, TokenKind kind)
 //    Parse type specifiers
 //////////////////////////////
 
-// aggregate_field = (TKN_IDENT ':')? type_spec ';'
+// aggregate_field = (TKN_IDENT ':')? type_spec
 static AggregateField* parse_aggregate_field(Parser* parser)
 {
     ProgPos start = parser->token.range.start;
