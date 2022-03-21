@@ -1782,7 +1782,7 @@ char* ftprint_ns_ident(Allocator* allocator, NSIdent* ns_ident)
     assert(it != head);
     IdentNode* inode = list_entry(it, IdentNode, lnode);
 
-    ftprint_char_array(&dstr, false, "%s", inode->ident->str);
+    ftprint_char_array(&dstr, true, "%s", inode->ident->str);
 
     return dstr;
 }

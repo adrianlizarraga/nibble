@@ -4,8 +4,8 @@
 
 @exported
 enum PrintErr {
-    ERR_NONE = 0,
-    ERR_INVALID_ARG_INDEX
+    NONE = 0,
+    INVALID_ARG_INDEX
 }
 
 @exported
@@ -48,7 +48,7 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
             var arg_index := r.[0];
 
             if (arg_index >= args.length) {
-                var ret : struct {usize; PrintErr;} = {state.count, ERR_INVALID_ARG_INDEX};
+                var ret : struct {usize; PrintErr;} = {state.count, PrintErr::INVALID_ARG_INDEX};
                 return ret;
             }
 
@@ -83,7 +83,7 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
         }
     }
 
-    var r : struct {usize; PrintErr;} = {state.count, ERR_NONE};
+    var r : struct {usize; PrintErr;} = {state.count, PrintErr::NONE};
 
     return r;
 }

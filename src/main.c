@@ -1,6 +1,5 @@
 /* TODO:
 
-    - Exporting enum fields does not work
     - Add '%' operation
     - Add '+=' and '-=' operators
     - Make using tuples easier
