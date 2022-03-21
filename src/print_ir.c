@@ -91,6 +91,7 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         [INSTR_ADD] = "add", [INSTR_SUB] = "sub", [INSTR_MUL] = "mul", [INSTR_UDIV] = "udiv", [INSTR_SDIV] = "sdiv",
         [INSTR_UMOD] = "umod", [INSTR_SMOD] = "smod", [INSTR_SAR] = "sar", [INSTR_SHL] = "shl", [INSTR_AND] = "and",
         [INSTR_OR] = "or",     [INSTR_XOR] = "xor"};
+    static const char* divmod_kind_name[] = {[INSTR_UDIVMOD] = "udivmod", [INSTR_SDIVMOD] = "sdivmod"};
     static const char* unary_kind_name[] = {[INSTR_NOT] = "not", [INSTR_NEG] = "neg"};
     static const char* convert_kind_name[] = {[INSTR_TRUNC] = "trunc", [INSTR_ZEXT] = "zext", [INSTR_SEXT] = "sext"};
     char* dstr = array_create(arena, char, 16);
@@ -112,6 +113,14 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         ftprint_char_array(&dstr, false, "%s <%s> %s, %s, %s", op_name, type_name(instr->binary.type),
                            IR_print_reg(arena, instr->binary.r), IR_print_reg(arena, instr->binary.a),
                            IR_print_reg(arena, instr->binary.b));
+        break;
+    }
+    case INSTR_UDIVMOD:
+    case INSTR_SDIVMOD: {
+        const char* op_name = divmod_kind_name[instr->kind];
+        ftprint_char_array(&dstr, false, "%s <%s> %s, %s, %s, %s", op_name, type_name(instr->divmod.type),
+                           IR_print_reg(arena, instr->divmod.q), IR_print_reg(arena, instr->divmod.r),
+                           IR_print_reg(arena, instr->divmod.a), IR_print_reg(arena, instr->divmod.b));
         break;
     }
     case INSTR_PHI: {

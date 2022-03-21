@@ -632,14 +632,7 @@ static void eval_const_binary_op(Resolver* resolver, TokenKind op, ExprOperand* 
     if (type_is_integer_like(type)) {
         ExprOperand left_eop = OP_FROM_CONST(type, left);
         ExprOperand right_eop = OP_FROM_CONST(type, right);
-        bool is_signed = false;
-
-        if (type->kind == TYPE_ENUM) {
-            is_signed = type->as_enum.base->as_integer.is_signed;
-        }
-        else if (type->kind == TYPE_INTEGER) {
-            is_signed = type->as_integer.is_signed;
-        }
+        bool is_signed = type_is_signed(type);
 
         // Compute the operation in the largest type available.
         if (is_signed) {
@@ -679,14 +672,7 @@ static void eval_const_unary_op(Resolver* resolver, TokenKind op, ExprOperand* d
 {
     if (type_is_integer_like(type)) {
         ExprOperand val_eop = OP_FROM_CONST(type, val);
-        bool is_signed = false;
-
-        if (type->kind == TYPE_ENUM) {
-            is_signed = type->as_enum.base->as_integer.is_signed;
-        }
-        else if (type->kind == TYPE_INTEGER) {
-            is_signed = type->as_integer.is_signed;
-        }
+        bool is_signed = type_is_signed(type);
 
         // Compute the operation in the largest type available.
         if (is_signed) {
@@ -1323,6 +1309,29 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         }
 
         resolve_binary_eop(resolver, ebinary->op, &dst_op, &left_op, &right_op);
+
+        break;
+    case TKN_DIVMOD:
+        if (!type_is_integer_like(left_op.type)) {
+            resolver_on_error(resolver, ebinary->left->range,
+                              "Left operand of binary operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[ebinary->op], type_name(left_op.type));
+            return false;
+        }
+
+        if (!type_is_integer_like(right_op.type)) {
+            resolver_on_error(resolver, ebinary->right->range,
+                              "Right operand of binary operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[ebinary->op], type_name(right_op.type));
+            return false;
+        }
+
+        convert_arith_eops(resolver, &left_op, &right_op);
+
+        dst_op.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, left_op.type, 2);
+        dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
+        dst_op.is_imm = false;
+        dst_op.is_lvalue = false;
 
         break;
     case TKN_RSHIFT:
