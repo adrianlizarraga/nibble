@@ -26,6 +26,8 @@ typedef enum InstrKind {
     INSTR_MUL,
     INSTR_UDIV,
     INSTR_SDIV,
+    INSTR_UMOD,
+    INSTR_SMOD,
     INSTR_SAR,
     INSTR_SHL,
     INSTR_AND,

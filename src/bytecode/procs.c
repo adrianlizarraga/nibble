@@ -293,6 +293,21 @@ static void IR_emit_instr_div(IR_ProcBuilder* builder, BBlock* bblock, Type* typ
     IR_add_instr(builder, bblock, instr);
 }
 
+static void IR_emit_instr_mod(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
+{
+    assert(type->kind == TYPE_INTEGER);
+
+    InstrKind kind = type->as_integer.is_signed ? INSTR_SMOD : INSTR_UMOD;
+    Instr* instr = IR_new_instr(builder->arena, kind);
+
+    instr->binary.type = type;
+    instr->binary.r = r;
+    instr->binary.a = a;
+    instr->binary.b = b;
+
+    IR_add_instr(builder, bblock, instr);
+}
+
 #define IR_emit_instr_not(b, blk, t, r, a) IR_emit_instr_unary((b), (blk), INSTR_NOT, (t), (r), (a))
 #define IR_emit_instr_neg(b, blk, t, r, a) IR_emit_instr_unary((b), (blk), INSTR_NEG, (t), (r), (a))
 
@@ -1571,6 +1586,19 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
 
         // TODO: Emit a shift instruction if the second operand is a power-of-two immediate.
         IR_emit_instr_div(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
+
+        dst->kind = IR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = dst_reg;
+        break;
+    }
+    case TKN_MOD: {
+        curr_bb = IR_op_to_r(builder, curr_bb, &left);
+        curr_bb = IR_op_to_r(builder, curr_bb, &right);
+        IR_Reg dst_reg = IR_next_reg(builder);
+
+        // TODO: Emit a masking instruction if the second operand is a power-of-two immediate.
+        IR_emit_instr_mod(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
 
         dst->kind = IR_OPERAND_REG;
         dst->type = result_type;
