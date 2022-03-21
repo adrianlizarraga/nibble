@@ -60,11 +60,11 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
                 var j : int;
 
                 do {
-                    var digit := val % 10;
+                    var div_mod := val /% 10;
 
-                    t_buf[j] = '0' + digit;
+                    t_buf[j] = '0' + div_mod[1];
 
-                    val = val / 10;
+                    val = div_mod[0];
                     j = j + 1;
                 } while (val);
 
