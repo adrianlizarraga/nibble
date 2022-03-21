@@ -169,7 +169,6 @@ bool skip_after_token(Parser* parser, TokenKind kind)
 // aggregate_field = (TKN_IDENT ':')? type_spec ';'
 static AggregateField* parse_aggregate_field(Parser* parser)
 {
-    const char* error_prefix = "Failed to parse field";
     ProgPos start = parser->token.range.start;
 
     Identifier* ident = NULL;
@@ -205,17 +204,13 @@ static AggregateField* parse_aggregate_field(Parser* parser)
         }
     }
 
-
-    if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
-        return NULL;
-    }
-
     ProgRange range = {.start = start, .end = parser->ptoken.range.end};
 
     return new_aggregate_field(parser->ast_arena, ident, typespec, range);
 }
 
-// aggregate_body  = '{' aggregate_field* '}'
+// aggregate_body  = '{' aggregate_fields+ '}'
+// aggregate_fields = aggregate_field (';' aggregate_field)* ';'?
 static bool parse_fill_aggregate_body(Parser* parser, List* fields)
 {
     list_head_init(fields);
@@ -227,6 +222,10 @@ static bool parse_fill_aggregate_body(Parser* parser, List* fields)
             return false;
 
         list_add_last(fields, &field->lnode);
+
+        if (!match_token(parser, TKN_SEMICOLON)) {
+            break;
+        }
     }
 
     return true;
