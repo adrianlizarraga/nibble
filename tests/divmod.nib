@@ -1,0 +1,11 @@
+
+proc main() => int {
+    var a : int = 17;
+    var b : int = 10;
+
+    var c := a /% b; // Returns an array of 2 elements.
+    #static_assert(#length(c) == 2);
+
+    // 1 + 7 + 2 = 10
+    return c[0] + c[1] + (62 /% 20)[1];
+}
