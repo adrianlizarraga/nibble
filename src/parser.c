@@ -187,12 +187,14 @@ static AggregateField* parse_aggregate_field(Parser* parser)
 
         TypeSpecIdent* t = (TypeSpecIdent*) typespec;
 
-        if (t->mod_ns) {
-            parser_on_error(parser, typespec->range, "Field name cannot be prefixed by a module namespace.");
+        if (t->ns_ident.num_idents > 1) {
+            parser_on_error(parser, typespec->range, "Field name cannot be prefixed by a namespace.");
             return NULL;
         }
 
-        ident = t->name; // Save field name identifer.
+        // Save field name identifer.
+        IdentNode* inode = list_entry(t->ns_ident.idents.prev, IdentNode, lnode);
+        ident = inode->ident;
         mem_free(parser->ast_arena, typespec); // Free memory.
 
         typespec = parse_typespec(parser); // Re-parse typespec.
@@ -298,12 +300,13 @@ static ProcParam* parse_typespec_proc_param(Parser* parser, bool* is_variadic)
             ProgPos start = typespec->range.start;
             TypeSpecIdent* tident = (TypeSpecIdent*)typespec;
 
-            if (tident->mod_ns) {
-                parser_on_error(parser, typespec->range, "Parameter name cannot be prefixed by a module namespace.");
+            if (tident->ns_ident.num_idents > 1) {
+                parser_on_error(parser, typespec->range, "Parameter name cannot be prefixed by a namespace.");
                 return NULL;
             }
 
-            Identifier* name = tident->name;
+            IdentNode* inode = list_entry(tident->ns_ident.idents.prev, IdentNode, lnode);
+            Identifier* name = inode->ident;
 
             mem_free(parser->ast_arena, typespec);
 
@@ -391,39 +394,28 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
     return new_typespec_proc(parser->ast_arena, num_params, &params, ret, is_variadic, range);
 }
 
-typedef struct NamespacedIdent {
-    ProgRange range;
-    Identifier* mod_ns;
-    Identifier* name;
-} NamespacedIdent;
-
-// namespaced_ident = (TKN_IDENT '::')? TKN_IDENT
-static bool parse_namespaced_ident(Parser* parser, NamespacedIdent* ns_ident)
+// namespaced_ident = (TKN_IDENT '::')* TKN_IDENT
+static bool parse_namespaced_ident(Parser* parser, NSIdent* ns_ident, const char* err_prefix)
 {
-    assert(is_token_kind(parser, TKN_IDENT));
-    ProgRange range = parser->token.range;
+    ns_ident->range = parser->token.range;
+    ns_ident->num_idents = 0;
+    list_head_init(&ns_ident->idents);
 
-    Identifier* name = parser->token.as_ident.ident;
-    Identifier* mod_ns = NULL;
-
-    next_token(parser);
-
-    if (match_token(parser, TKN_DBL_COLON)) {
-        mod_ns = name; // The first identifier was actually a module namespace.
-
-        if (!expect_token(parser, TKN_IDENT, "Failed to parse identifier name after module namespace")) {
+    // Keep parsing identifiers as long as we see a `::` token.
+    do {
+        if (!expect_token(parser, TKN_IDENT, err_prefix)) {
             return false;
         }
 
-        Token ptoken = parser->ptoken;
+        Token* ptoken = &parser->ptoken;
 
-        name = ptoken.as_ident.ident; // Update the identifier name.
-        range.end = ptoken.range.end;
-    }
+        IdentNode* inode = alloc_type(parser->ast_arena, IdentNode, true);
+        inode->ident = ptoken->as_ident.ident;
 
-    ns_ident->range = range;
-    ns_ident->name = name;
-    ns_ident->mod_ns = mod_ns;
+        list_add_last(&ns_ident->idents, &inode->lnode);
+        ns_ident->num_idents += 1;
+        ns_ident->range.end = ptoken->range.end;
+    } while (match_token(parser, TKN_DBL_COLON));
 
     return true;
 }
@@ -431,13 +423,13 @@ static bool parse_namespaced_ident(Parser* parser, NamespacedIdent* ns_ident)
 // typespec_ident = namespaced_ident
 static TypeSpec* parse_typespec_ident(Parser* parser)
 {
-    NamespacedIdent ns_ident = {0};
+    NSIdent ns_ident = {0};
 
-    if (!parse_namespaced_ident(parser, &ns_ident)) {
+    if (!parse_namespaced_ident(parser, &ns_ident, "Failed to parse typespec identifier")) {
         return NULL;
     }
 
-    return new_typespec_ident(parser->ast_arena, ns_ident.mod_ns, ns_ident.name, ns_ident.range);
+    return new_typespec_ident(parser->ast_arena, &ns_ident);
 }
 
 static TypeSpec* parse_typespec_typeof(Parser* parser)
@@ -631,14 +623,15 @@ static MemberInitializer* parse_nonindex_member_initializer(Parser* parser)
 
         ExprIdent* e = (ExprIdent*)expr;
 
-        if (e->mod_ns) {
-            parser_on_error(parser, expr->range, "Initializer designator name cannot be prefixed by a module namespace.");
+        if (e->ns_ident.num_idents > 1) {
+            parser_on_error(parser, expr->range, "Initializer designator name cannot be prefixed by a namespace.");
             return NULL;
         }
 
         // Save initializer name.
+        IdentNode* inode = list_entry(e->ns_ident.idents.prev, IdentNode, lnode);
         designator.kind = DESIGNATOR_NAME;
-        designator.name = e->name;
+        designator.name = inode->ident;
 
         // Free memory.
         mem_free(parser->ast_arena, expr);
@@ -895,17 +888,16 @@ static Expr* parse_expr_len(Parser* parser)
     return new_expr_length(parser->ast_arena, arg, range);
 }
 
-// expr_ident = mod_namespace? TKN_IDENT
-// mod_namespace = (TKN_IDENT '::')
+// expr_ident = namespaced_ident
 static Expr* parse_expr_ident(Parser* parser)
 {
-    NamespacedIdent ns_ident = {0};
+    NSIdent ns_ident = {0};
 
-    if (!parse_namespaced_ident(parser, &ns_ident)) {
+    if (!parse_namespaced_ident(parser, &ns_ident, "Failed to parse expression identifier")) {
         return NULL;
     }
 
-    return new_expr_ident(parser->ast_arena, ns_ident.mod_ns, ns_ident.name, ns_ident.range);
+    return new_expr_ident(parser->ast_arena, &ns_ident);
 }
 
 // expr_base = TKN_INT
@@ -1000,12 +992,13 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
 
         ExprIdent* e = (ExprIdent*)expr;
 
-        if (e->mod_ns) {
-            parser_on_error(parser, expr->range, "Argument name cannot be prefixed by a module namespace.");
+        if (e->ns_ident.num_idents > 1) {
+            parser_on_error(parser, expr->range, "Argument name cannot be prefixed by a namespace.");
             return NULL;
         }
 
-        name = e->name;
+        IdentNode* inode = list_entry(e->ns_ident.idents.prev, IdentNode, lnode);
+        name = inode->ident;
         mem_free(parser->ast_arena, expr);
 
         expr = parse_expr(parser);
@@ -1857,8 +1850,8 @@ static bool is_mod_path_relative(const char* path, size_t len)
     return (c0 == '/') || (c0 == '.' && ((c1 == '/') || (c1 == '.' && c2 == '/')));
 }
 
-// port_sym = TKN_IDENT ('as' TKN_IDENT)?
-static PortSymbol* parse_port_symbol(Parser* parser)
+// import_sym = TKN_IDENT ('as' TKN_IDENT)?
+static ImportSymbol* parse_import_symbol(Parser* parser)
 {
     ProgRange range = parser->token.range;
     const char* error_prefix = "Failed to parse import symbol";
@@ -1881,39 +1874,52 @@ static PortSymbol* parse_port_symbol(Parser* parser)
         range.end = ptoken->range.end;
     }
 
-    return new_port_symbol(parser->ast_arena, name, rename, range);
+    return new_import_symbol(parser->ast_arena, name, rename, range);
+}
+
+// export_sym = namespaced_ident ('as' TKN_IDENT)?
+static ExportSymbol* parse_export_symbol(Parser* parser)
+{
+    ProgRange range = parser->token.range;
+    const char* error_prefix = "Failed to parse export symbol";
+    NSIdent ns_ident = {0};
+
+    if (!parse_namespaced_ident(parser, &ns_ident, error_prefix)) {
+        return NULL;
+    }
+
+    Identifier* rename = NULL;
+
+    if (match_keyword(parser, KW_AS)) {
+        if (!expect_token(parser, TKN_IDENT, error_prefix)) {
+            return NULL;
+        }
+
+        rename = parser->ptoken.as_ident.ident;
+    }
+
+    range.end = parser->ptoken.range.end;
+
+    return new_export_symbol(parser->ast_arena, &ns_ident, rename, range);
 }
 
 // stmt_export = 'export' '{' export_syms '}' ';'
 // export_syms = port_sym (',' port_sym)*
 static Stmt* parse_stmt_export(Parser* parser)
 {
-    assert(is_keyword(parser, KW_EXPORT));
     ProgRange range = {.start = parser->token.range.start};
     const char* error_prefix = "Failed to parse export statement";
 
-    next_token(parser);
+    if (!expect_keyword(parser, KW_EXPORT, error_prefix) || !expect_token(parser, TKN_LBRACE, error_prefix)) {
+        return NULL;
+    }
 
-    // Parse export syms
+    // Parse export symbols
     List export_syms = list_head_create(export_syms);
+    size_t num_exports = 0;
 
-    if (!expect_token(parser, TKN_LBRACE, error_prefix)) {
-        return NULL;
-    }
-
-    // Parse the first export symbol.
-    PortSymbol* esym_1 = parse_port_symbol(parser);
-
-    if (!esym_1) {
-        return NULL;
-    }
-
-    list_add_last(&export_syms, &esym_1->lnode);
-    size_t num_exports = 1;
-
-    // Parse the rest, if any.
-    while (match_token(parser, TKN_COMMA)) {
-        PortSymbol* esym = parse_port_symbol(parser);
+    do {
+        ExportSymbol* esym = parse_export_symbol(parser);
 
         if (!esym) {
             return NULL;
@@ -1921,7 +1927,7 @@ static Stmt* parse_stmt_export(Parser* parser)
 
         list_add_last(&export_syms, &esym->lnode);
         num_exports += 1;
-    }
+    } while(match_token(parser, TKN_COMMA));
 
     if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
         return NULL;
@@ -1951,19 +1957,8 @@ static Stmt* parse_stmt_import(Parser* parser)
     size_t num_imports = 0;
 
     if (match_token(parser, TKN_LBRACE)) {
-        // Parse the first import symbol.
-        PortSymbol* isym_1 = parse_port_symbol(parser);
-
-        if (!isym_1) {
-            return NULL;
-        }
-
-        list_add_last(&import_syms, &isym_1->lnode);
-        num_imports += 1;
-
-        // Parse the rest, if any.
-        while (match_token(parser, TKN_COMMA)) {
-            PortSymbol* isym = parse_port_symbol(parser);
+        do {
+            ImportSymbol* isym = parse_import_symbol(parser);
 
             if (!isym) {
                 return NULL;
@@ -1971,7 +1966,7 @@ static Stmt* parse_stmt_import(Parser* parser)
 
             list_add_last(&import_syms, &isym->lnode);
             num_imports += 1;
-        }
+        } while (match_token(parser, TKN_COMMA));
 
         if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
             return NULL;
@@ -2408,8 +2403,8 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, NewD
     return new_decl_aggregate(parser->ast_arena, name, &fields, range);
 }
 
-// enum_item  = TKN_IDENT ('=' expr)?
-static EnumItem* parse_enum_item(Parser* parser)
+// decl_enum_item  = TKN_IDENT ('=' expr)?
+static DeclEnumItem* parse_decl_enum_item(Parser* parser)
 {
     if (!expect_token(parser, TKN_IDENT, "Failed to parse enum value")) {
         return NULL;
@@ -2429,7 +2424,7 @@ static EnumItem* parse_enum_item(Parser* parser)
         range.end = parser->ptoken.range.end;
     }
 
-    return new_enum_item(parser->ast_arena, name, value, range);
+    return new_decl_enum_item(parser->ast_arena, name, value, range);
 }
 
 // decl_enum  = 'enum' TKN_IDENT (':' typespec)? '{' decl_enum_items? '}'
@@ -2463,7 +2458,7 @@ static Decl* parse_decl_enum(Parser* parser)
             bool bad_item = false;
 
             while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
-                EnumItem* item = parse_enum_item(parser);
+                DeclEnumItem* item = parse_decl_enum_item(parser);
 
                 if (item) {
                     num_items += 1;

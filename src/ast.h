@@ -18,6 +18,8 @@ typedef struct Stmt Stmt;
 typedef struct Type Type;
 typedef struct Symbol Symbol;
 typedef struct SymbolVar SymbolVar;
+typedef struct SymbolConst SymbolConst;
+typedef struct SymbolEnum SymbolEnum;
 typedef struct SymbolProc SymbolProc;
 typedef struct SymbolModule SymbolModule;
 typedef struct AnonObj AnonObj;
@@ -31,6 +33,19 @@ typedef struct ConstArrayInitzer ConstArrayInitzer;
 typedef struct ConstStructInitzer ConstStructInitzer;
 typedef struct ConstUnionInitzer ConstUnionInitzer;
 typedef struct ConstExpr ConstExpr;
+
+typedef struct IdentNode {
+    Identifier* ident;
+    ListNode lnode;
+} IdentNode;
+
+typedef struct NSIdent {
+    ProgRange range;
+    size_t num_idents;
+    List idents;
+} NSIdent;
+
+char* ftprint_ns_ident(Allocator* allocator, NSIdent* ns_ident);
 ///////////////////////////////
 //       Type Specifiers
 //////////////////////////////
@@ -54,8 +69,7 @@ struct TypeSpec {
 
 typedef struct TypeSpecIdent {
     TypeSpec super;
-    Identifier* mod_ns;
-    Identifier* name;
+    NSIdent ns_ident;
 } TypeSpecIdent;
 
 typedef struct TypeSpecTypeof {
@@ -113,7 +127,7 @@ typedef struct TypeSpecConst {
 
 AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 
-TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
+TypeSpec* new_typespec_ident(Allocator* allocator, NSIdent* ns_ident);
 TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range);
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, bool infer_len, ProgRange range);
@@ -234,8 +248,7 @@ typedef struct ExprStr {
 
 typedef struct ExprIdent {
     Expr super;
-    Identifier* mod_ns;
-    Identifier* name;
+    NSIdent ns_ident;
 } ExprIdent;
 
 typedef struct ExprCast {
@@ -312,7 +325,7 @@ ProcCallArg* new_proc_call_arg(Allocator* allocator, Expr* expr, Identifier* nam
 Expr* new_expr_int(Allocator* allocator, TokenInt token, ProgRange range);
 Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRange range);
 Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
-Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range);
+Expr* new_expr_ident(Allocator* allocator, NSIdent* ns_ident);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_typeid(Allocator* allocator, TypeSpec* type, ProgRange range);
@@ -352,7 +365,6 @@ typedef enum StmtKind {
 struct Stmt {
     StmtKind kind;
     ProgRange range;
-    bool returns; // True if all control paths within this block return from proc.
     ListNode lnode;
 };
 
@@ -362,12 +374,12 @@ typedef struct StmtStaticAssert {
     StrLit* msg;
 } StmtStaticAssert;
 
-typedef struct PortSymbol {
+typedef struct ImportSymbol {
     ProgRange range;
     Identifier* name;
     Identifier* rename;
     ListNode lnode;
-} PortSymbol;
+} ImportSymbol;
 
 typedef struct StmtImport {
     Stmt super;
@@ -376,6 +388,13 @@ typedef struct StmtImport {
     StrLit* mod_pathname;
     Identifier* mod_namespace;
 } StmtImport;
+
+typedef struct ExportSymbol {
+    ProgRange range;
+    NSIdent ns_ident;
+    Identifier* rename;
+    ListNode lnode;
+} ExportSymbol;
 
 typedef struct StmtExport {
     Stmt super;
@@ -514,9 +533,10 @@ Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, Prog
 SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
-PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
+ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
 Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
                       ProgRange range);
+ExportSymbol* new_export_symbol(Allocator* allocator, NSIdent* ns_ident, Identifier* rename, ProgRange range);
 Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_syms, ProgRange range);
 Stmt* new_stmt_include(Allocator* allocator, StrLit* file_pathname, ProgRange range);
 
@@ -537,6 +557,7 @@ typedef enum DeclKind {
     CST_DeclVar,
     CST_DeclConst,
     CST_DeclEnum,
+    CST_DeclEnumItem,
     CST_DeclUnion,
     CST_DeclStruct,
     CST_DeclProc,
@@ -576,12 +597,11 @@ typedef struct DeclConst {
     Expr* init;
 } DeclConst;
 
-typedef struct EnumItem {
-    ProgRange range;
-    Identifier* name;
+typedef struct DeclEnumItem {
+    Decl super;
     Expr* value;
     ListNode lnode;
-} EnumItem;
+} DeclEnumItem;
 
 typedef struct DeclEnum {
     Decl super;
@@ -626,7 +646,7 @@ Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr*
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* type, size_t num_items, List* items, ProgRange range);
-EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range);
+DeclEnumItem* new_decl_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range);
 
 typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
@@ -923,6 +943,15 @@ struct SymbolVar {
     bool is_ptr; // TODO: Remove offset and is_ptr from this struct. Store in separate hash table that maps a sym -> stack location
 };
 
+struct SymbolConst {
+    Scalar imm;
+};
+
+struct SymbolEnum {
+    size_t num_items;
+    Symbol** items;
+};
+
 struct SymbolProc {
     struct BBlock** bblocks; // Stretchy buffer of basic blocks
     size_t num_instrs;
@@ -952,6 +981,8 @@ struct Symbol {
 
     union {
         SymbolVar as_var;
+        SymbolConst as_const;
+        SymbolEnum as_enum;
         SymbolProc as_proc;
         SymbolModule as_mod;
     };

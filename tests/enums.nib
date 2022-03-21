@@ -1,12 +1,20 @@
 enum TokenKind : s16 {
-    TK_NONE,
-    TK_INT,
-    TK_IDENT = 10,
-    TK_PLUS
+    NONE,
+    INT,
+    IDENT = 10,
+    PLUS
 }
 
-#static_assert(#sizeof(#typeof(TK_INT)) == 2);
-#static_assert(#typeid(#typeof(TK_IDENT)) == #typeid(TokenKind));
+#static_assert(#sizeof(#typeof(TokenKind::INT)) == 2);
+//#static_assert(#sizeof(#typeof(TokenKind::NON_EXISTING)) == 2); // Compiler error: non-existing enum item.
+//#static_assert(#sizeof(#typeof(TokenKind::INT::INT)) == 2); // Compiler error: can't use enum item as a namespace.
+#static_assert(#typeid(#typeof(TokenKind::IDENT)) == #typeid(TokenKind));
+
+var g_tkind : TokenKind = TokenKind::INT;
+#static_assert(#sizeof(#typeof(g_tkind)) == 2);
+
+const g_ctkind : s16 = TokenKind::IDENT;
+#static_assert(g_ctkind == TokenKind::IDENT);
 
 enum SomeFlags : u64 {
     FLAG_A = 0x1,
@@ -17,15 +25,16 @@ proc main() => int {
     #writeout("Enum\n", 5);
 
     var token_names : [_]^char = {
-        [TK_INT] = "integer",
-        [TK_PLUS] = "+"
+        [TokenKind::INT] = "integer",
+        [TokenKind::PLUS] = "+"
     };
 
-    #writeout(token_names[TK_INT], 7);
+    #writeout(token_names[TokenKind::INT], 7);
     #writeout("\n", 1);
 
-    var f : SomeFlags = FLAG_B;
-    #static_assert(#typeid(SomeFlags) == #typeid(#typeof(FLAG_B)));
+    var f : SomeFlags = SomeFlags::FLAG_B;
+    #static_assert(#typeid(SomeFlags) == #typeid(#typeof(SomeFlags::FLAG_B)));
 
-    return FLAG_A + TK_NONE + TK_INT + TK_IDENT + f + TK_PLUS + 8; //1 + 2 + 0 + 1 + 10 + 11 + 8 = 33
+    //1 + 2 + 0 + 1 + 10 + 11 + 8 - 1 + 10 = 42
+    return SomeFlags::FLAG_A + TokenKind::NONE + TokenKind::INT + TokenKind::IDENT + f + TokenKind::PLUS + 8 - g_tkind + g_ctkind;
 }
