@@ -61,6 +61,8 @@ typedef enum X64_InstrKind
     X64_INSTR_MOV_R_R, // Register copy
     X64_INSTR_MOV_R_M, // Load memory
 
+    X64_INSTR_MOV_R_RH, // Copy high byte of register to another register.
+
     // Store into memory.
     X64_INSTR_MOV_M_R,
     X64_INSTR_MOV_M_I,
@@ -158,6 +160,11 @@ typedef struct X64_InstrUnary {
     size_t size;
     u32 dst;
 } X64_InstrUnary;
+
+typedef struct X64_InstrMov_R_RH {
+    u32 dst;
+    u32 src;
+} X64_InstrMov_R_RH;
 
 typedef struct X64_InstrMov_R_R {
     size_t size;
@@ -326,6 +333,7 @@ struct X64_Instr {
 
         X64_InstrUnary unary;
 
+        X64_InstrMov_R_R mov_r_rh;
         X64_InstrMov_R_R mov_r_r;
         X64_InstrMov_R_M mov_r_m;
         X64_InstrMov_R_I mov_r_i;
@@ -400,6 +408,7 @@ void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_
 void X64_emit_instr_div(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 rdx, u32 rax, u32 src);
 void X64_emit_instr_unary(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst);
 void X64_emit_instr_mov_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, u32 src);
+void X64_emit_instr_mov_r_rh(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
 void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, X64_MemAddr src);
 void X64_emit_instr_mov_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, Scalar src);
 void X64_emit_instr_mov_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr dst, u32 src);

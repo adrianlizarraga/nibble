@@ -9,7 +9,8 @@ static X64_InstrKind binary_r_i_kind[] = {
     [INSTR_ADD] = X64_INSTR_ADD_R_I, [INSTR_SUB] = X64_INSTR_SUB_R_I, [INSTR_MUL] = X64_INSTR_IMUL_R_I,
     [INSTR_AND] = X64_INSTR_AND_R_I, [INSTR_OR] = X64_INSTR_OR_R_I,   [INSTR_XOR] = X64_INSTR_XOR_R_I};
 
-static X64_InstrKind div_kind[] = {[INSTR_UDIV] = X64_INSTR_DIV, [INSTR_SDIV] = X64_INSTR_IDIV};
+static X64_InstrKind div_kind[] = {[INSTR_UDIV] = X64_INSTR_DIV, [INSTR_SDIV] = X64_INSTR_IDIV,
+                                   [INSTR_UMOD] = X64_INSTR_DIV, [INSTR_SMOD] = X64_INSTR_IDIV};
 
 static X64_InstrKind shift_kind[] = {[INSTR_SHL] = X64_INSTR_SHL_R_R, [INSTR_SAR] = X64_INSTR_SAR_R_R};
 
@@ -840,6 +841,50 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
         X64_emit_instr_mov_r_r(builder, xbblock, size, r, ax);
         X64_hint_same_reg(builder, r, ax);
+        break;
+    }
+    case INSTR_UMOD:
+    case INSTR_SMOD: {
+        // EX: r = a % b
+        //
+        // mov _ax, a ; Only if `a` is not already in `_ax`
+        // cqo        ; sign extend into `_dx` if size >= 2 bytes
+        // div b
+        // mov r, _dx ; _ax[h] if size < 2 bytes
+
+        size_t size = ir_instr->binary.type->size;
+        bool uses_dx = size >= 2;
+
+        u32 a = X64_get_lir_reg(builder, ir_instr->binary.a);
+        u32 ax = X64_def_phys_reg(builder, X64_RAX);
+        X64_hint_phys_reg(builder, a, X64_RAX);
+
+        // mov _ax, a
+        X64_emit_instr_mov_r_r(builder, xbblock, size, ax, a);
+
+        // cqo
+        u32 dx;
+        if (uses_dx) { // Reserve rdx
+            dx = X64_def_phys_reg(builder, X64_RDX);
+            X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
+        }
+
+        // div b
+        u32 b = X64_get_lir_reg(builder, ir_instr->binary.b);
+        X64_emit_instr_div(builder, xbblock, div_kind[ir_instr->kind], size, dx, ax, b);
+
+        if (uses_dx) {
+            // mov r, _dx
+            u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
+            X64_emit_instr_mov_r_r(builder, xbblock, size, r, dx);
+            X64_hint_same_reg(builder, r, dx);
+        }
+        else {
+            // mov r, _ax[h]
+            u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
+            X64_emit_instr_mov_r_rh(builder, xbblock, r, ax);
+        }
+
         break;
     }
     case INSTR_SAR:

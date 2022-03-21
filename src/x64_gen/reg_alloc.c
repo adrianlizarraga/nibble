@@ -292,7 +292,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 // Add this interval's forced register to the bit-set of registers the current interval cannot use.
                 if (j_rng->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG) {
-                    banned_regs |= j_rng->ra_ctrl.preg_mask;
+                    banned_regs |= (1 << j_rng->ra_ctrl.preg);
                 }
 
                 jit = jit->next;

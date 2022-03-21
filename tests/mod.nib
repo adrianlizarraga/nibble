@@ -1,0 +1,11 @@
+
+proc main() => int {
+    var a := 13;
+    var b := 10;
+
+    var a2 : u8 = 16;
+    var b2 : u8 = 12;
+
+    // 3 + 4 + 3 = 10
+    return a % b + (a2 % b2) + (a % b % b2);
+}
