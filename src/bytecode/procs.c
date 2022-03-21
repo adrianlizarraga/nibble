@@ -308,6 +308,22 @@ static void IR_emit_instr_mod(IR_ProcBuilder* builder, BBlock* bblock, Type* typ
     IR_add_instr(builder, bblock, instr);
 }
 
+static void IR_emit_instr_divmod(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg q, IR_Reg r, IR_Reg a, IR_Reg b)
+{
+    assert(type->kind == TYPE_INTEGER);
+
+    InstrKind kind = type->as_integer.is_signed ? INSTR_SDIVMOD : INSTR_UDIVMOD;
+    Instr* instr = IR_new_instr(builder->arena, kind);
+
+    instr->divmod.type = type;
+    instr->divmod.q = q;
+    instr->divmod.r = r;
+    instr->divmod.a = a;
+    instr->divmod.b = b;
+
+    IR_add_instr(builder, bblock, instr);
+}
+
 #define IR_emit_instr_not(b, blk, t, r, a) IR_emit_instr_unary((b), (blk), INSTR_NOT, (t), (r), (a))
 #define IR_emit_instr_neg(b, blk, t, r, a) IR_emit_instr_unary((b), (blk), INSTR_NEG, (t), (r), (a))
 
@@ -1603,6 +1619,56 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         dst->kind = IR_OPERAND_REG;
         dst->type = result_type;
         dst->reg = dst_reg;
+        break;
+    }
+    case TKN_DIVMOD: {
+        // Allocate a temporary array object to hold both the quotient and remainder.
+        AnonObj* result_obj = IR_alloc_tmp_obj(builder, result_type->size, result_type->align);
+        MemAddr result_addr = IR_obj_as_addr(result_obj);
+
+        IR_Operand quot_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = left.type, .addr = result_addr};
+        IR_Operand rem_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = left.type, .addr = result_addr};
+        rem_op.addr.disp += left.type->size;
+
+        IR_Operand quot_val = {.type = left.type};
+        IR_Operand rem_val = {.type = left.type};
+
+        if (left.kind == IR_OPERAND_IMM && right.kind == IR_OPERAND_IMM) {
+            quot_val.kind = IR_OPERAND_IMM;
+            rem_val.kind = IR_OPERAND_IMM;
+
+            if (type_is_signed(left.type)) {
+                quot_val.imm.as_int._s64 = left.imm.as_int._s64 / right.imm.as_int._s64;
+                rem_val.imm.as_int._s64 = left.imm.as_int._s64 % right.imm.as_int._s64;
+            }
+            else {
+                quot_val.imm.as_int._u64 = left.imm.as_int._u64 / right.imm.as_int._u64;
+                rem_val.imm.as_int._u64 = left.imm.as_int._u64 % right.imm.as_int._u64;
+            }
+        }
+        else {
+            curr_bb = IR_op_to_r(builder, curr_bb, &left);
+            curr_bb = IR_op_to_r(builder, curr_bb, &right);
+            IR_Reg quot_reg = IR_next_reg(builder);
+            IR_Reg rem_reg = IR_next_reg(builder);
+
+            // TODO: Emit shift + masking instructions if the second operand is a power-of-two immediate.
+            IR_emit_instr_divmod(builder, curr_bb, left.type, quot_reg, rem_reg, left.reg, right.reg);
+
+            quot_val.kind = IR_OPERAND_REG;
+            quot_val.reg = quot_reg;
+
+            rem_val.kind = IR_OPERAND_REG;
+            rem_val.reg = rem_reg;
+        }
+
+        // Copy quotient and remainer into the object.
+        curr_bb = IR_emit_assign(builder, curr_bb, &quot_op, &quot_val);
+        curr_bb = IR_emit_assign(builder, curr_bb, &rem_op, &rem_val);
+
+        dst->kind = IR_OPERAND_OBJ;
+        dst->type = result_type;
+        dst->obj = result_obj;
         break;
     }
     case TKN_RSHIFT: {

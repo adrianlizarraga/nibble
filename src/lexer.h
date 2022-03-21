@@ -35,6 +35,7 @@ typedef enum TokenKind {
     TKN_ASTERISK,
     TKN_DIV,
     TKN_MOD,
+    TKN_DIVMOD,
     TKN_RSHIFT,
     TKN_LSHIFT,
     TKN_AND,

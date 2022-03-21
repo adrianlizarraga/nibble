@@ -28,6 +28,8 @@ typedef enum InstrKind {
     INSTR_SDIV,
     INSTR_UMOD,
     INSTR_SMOD,
+    INSTR_UDIVMOD,
+    INSTR_SDIVMOD,
     INSTR_SAR,
     INSTR_SHL,
     INSTR_AND,
@@ -83,6 +85,14 @@ typedef struct InstrBinary {
     IR_Reg a;
     IR_Reg b;
 } InstrBinary;
+
+typedef struct InstrDivmod {
+    Type* type;
+    IR_Reg q; // quotient
+    IR_Reg r; // remainder
+    IR_Reg a; // dividend
+    IR_Reg b; // divisor
+} InstrDivmod;
 
 typedef struct InstrShift {
     Type* type;
@@ -220,6 +230,7 @@ typedef struct Instr {
 
     union {
         InstrBinary binary;
+        InstrDivmod divmod;
         InstrShift shift;
         InstrUnary unary;
         InstrConvert convert;

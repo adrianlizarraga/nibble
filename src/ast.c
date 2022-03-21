@@ -745,6 +745,20 @@ bool type_is_integer_like(Type* type)
     return (kind == TYPE_INTEGER) || (kind == TYPE_ENUM);
 }
 
+bool type_is_signed(Type* type)
+{
+    bool is_signed = false;
+
+    if (type->kind == TYPE_ENUM) {
+        is_signed = type->as_enum.base->as_integer.is_signed;
+    }
+    else if (type->kind == TYPE_INTEGER) {
+        is_signed = type->as_integer.is_signed;
+    }
+
+    return is_signed;
+}
+
 bool type_is_arithmetic(Type* type)
 {
     TypeKind kind = type->kind;

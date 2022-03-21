@@ -510,6 +510,7 @@ const char* token_kind_names[] = {
     [TKN_ASTERISK] = "*",
     [TKN_DIV] = "/",
     [TKN_MOD] = "%",
+    [TKN_DIVMOD] = "/%",
     [TKN_RSHIFT] = ">>",
     [TKN_LSHIFT] = "<<",
     [TKN_AND] = "&",
@@ -603,6 +604,10 @@ top:
             if (lexer->at[0] == '=') {
                 lexer->at++;
                 token.kind = TKN_DIV_ASSIGN;
+            }
+            else if (lexer->at[0] == '%') {
+                lexer->at++;
+                token.kind = TKN_DIVMOD;
             }
         }
 
