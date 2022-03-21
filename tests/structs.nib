@@ -19,10 +19,7 @@ struct SmolVec3 {
     z : char;
 }
 
-struct SmolVec2 {
-    x : char;
-    y : char;
-}
+struct SmolVec2 {x : char; y : char} // NOTE: last field's semicolon is optional
 
 struct Vec3 {
     x : int;
