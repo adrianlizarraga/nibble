@@ -1248,21 +1248,27 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
 
 static void IR_emit_expr_ident(IR_ProcBuilder* builder, ExprIdent* eident, IR_Operand* dst)
 {
-    Symbol* sym = NULL;
+    List* head = &eident->ns_ident.idents;
+    List* it = head->next;
 
-    if (eident->mod_ns) {
-        Symbol* sym_modns = lookup_symbol(builder->curr_scope, eident->mod_ns);
-        StmtImport* stmt = (StmtImport*)sym_modns->as_mod.stmt;
-        Identifier* sym_name = get_import_sym_name(stmt, eident->name);
+    IdentNode* inode = list_entry(it, IdentNode, lnode);
+    Symbol* sym = lookup_symbol(builder->curr_scope, inode->ident);
+    it = it->next;
 
-        sym = module_get_export_sym(sym_modns->as_mod.mod, sym_name);
-    }
-    else {
-        sym = lookup_symbol(builder->curr_scope, eident->name);
+    // Keep looking up identifiers through module namespaces.
+    while (it != head) {
+        assert(sym->kind == SYMBOL_MODULE);
+
+        inode = list_entry(it, IdentNode, lnode);
+
+        StmtImport* stmt = (StmtImport*)sym->as_mod.stmt;
+        Identifier* sym_name = get_import_sym_name(stmt, inode->ident);
+
+        sym = module_get_export_sym(sym->as_mod.mod, sym_name);
+        it = it->next;
     }
 
     assert(sym);
-
     IR_operand_from_sym(dst, sym);
 }
 
@@ -2692,8 +2698,8 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     BBlock* true_end_bb = IR_emit_stmt(builder, true_bb, if_body, break_ujmps, cont_ujmps);
 
     if (true_end_bb) {
-        IR_emit_instr_jmp(builder, true_end_bb,
-                          last_bb); // Not actually needed without else-stmt (fall-through) or if if-stmt returns.
+        // Generates unnecessary jump without an else-stmt (fall-through) or if if-stmt returns.
+        IR_emit_instr_jmp(builder, true_end_bb, last_bb);
     }
 
     if (else_body) {

@@ -12,11 +12,13 @@ static TypeSpec* new_typespec_(Allocator* allocator, size_t size, size_t align, 
     return typespec;
 }
 
-TypeSpec* new_typespec_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range)
+TypeSpec* new_typespec_ident(Allocator* allocator, NSIdent* ns_ident)
 {
-    TypeSpecIdent* typespec = new_typespec(allocator, TypeSpecIdent, range);
-    typespec->mod_ns = mod_ns;
-    typespec->name = name;
+    TypeSpecIdent* typespec = new_typespec(allocator, TypeSpecIdent, ns_ident->range);
+    typespec->ns_ident.range = ns_ident->range;
+    typespec->ns_ident.num_idents = ns_ident->num_idents;
+
+    list_replace(&ns_ident->idents, &typespec->ns_ident.idents);
 
     return (TypeSpec*)typespec;
 }
@@ -209,11 +211,13 @@ Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range)
     return (Expr*)expr;
 }
 
-Expr* new_expr_ident(Allocator* allocator, Identifier* mod_ns, Identifier* name, ProgRange range)
+Expr* new_expr_ident(Allocator* allocator, NSIdent* ns_ident)
 {
-    ExprIdent* expr = new_expr(allocator, ExprIdent, range);
-    expr->mod_ns = mod_ns;
-    expr->name = name;
+    ExprIdent* expr = new_expr(allocator, ExprIdent, ns_ident->range);
+    expr->ns_ident.range = ns_ident->range;
+    expr->ns_ident.num_idents = ns_ident->num_idents;
+
+    list_replace(&ns_ident->idents, &expr->ns_ident.idents);
 
     return (Expr*)expr;
 }
@@ -351,11 +355,9 @@ Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* typespec, 
     return (Decl*)decl;
 }
 
-EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range)
+DeclEnumItem* new_decl_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range)
 {
-    EnumItem* item = alloc_type(allocator, EnumItem, true);
-    item->range = range;
-    item->name = name;
+    DeclEnumItem* item = new_decl(allocator, DeclEnumItem, name, range);
     item->value = value;
 
     return item;
@@ -431,14 +433,14 @@ Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, Prog
     return (Stmt*)stmt;
 }
 
-PortSymbol* new_port_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
+ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range)
 {
-    PortSymbol* psym = alloc_type(allocator, PortSymbol, true);
-    psym->name = name;
-    psym->rename = rename;
-    psym->range = range;
+    ImportSymbol* isym = alloc_type(allocator, ImportSymbol, true);
+    isym->name = name;
+    isym->rename = rename;
+    isym->range = range;
 
-    return psym;
+    return isym;
 }
 
 Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
@@ -452,6 +454,19 @@ Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_sym
     list_replace(import_syms, &stmt->import_syms);
 
     return (Stmt*)stmt;
+}
+
+ExportSymbol* new_export_symbol(Allocator* allocator, NSIdent* ns_ident, Identifier* rename, ProgRange range)
+{
+    ExportSymbol* esym = alloc_type(allocator, ExportSymbol, true);
+    esym->rename = rename;
+    esym->range = range;
+    esym->ns_ident.range = ns_ident->range;
+    esym->ns_ident.num_idents = ns_ident->num_idents;
+
+    list_replace(&ns_ident->idents, &esym->ns_ident.idents);
+
+    return esym;
 }
 
 Stmt* new_stmt_export(Allocator* allocator, size_t num_exports, List* export_syms, ProgRange range)
@@ -512,7 +527,7 @@ Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name)
         // Look to see if the expression's identifier name is among the imported symbols.
         // If so, set sym_name to the expected native symbol name.
         while (it != import_syms) {
-            PortSymbol* isym = list_entry(it, PortSymbol, lnode);
+            ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
             Identifier* isym_name = isym->rename != NULL ? isym->rename : isym->name;
 
             if (isym_name == name) {
@@ -1396,8 +1411,9 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 //////////////////////////////
 
 const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT] = {
-    [CST_DECL_NONE] = SYMBOL_NONE, [CST_DeclVar] = SYMBOL_VAR,     [CST_DeclConst] = SYMBOL_CONST, [CST_DeclEnum] = SYMBOL_TYPE,
-    [CST_DeclUnion] = SYMBOL_TYPE, [CST_DeclStruct] = SYMBOL_TYPE, [CST_DeclProc] = SYMBOL_PROC,   [CST_DeclTypedef] = SYMBOL_TYPE,
+    [CST_DECL_NONE] = SYMBOL_NONE, [CST_DeclVar] = SYMBOL_VAR, [CST_DeclConst] = SYMBOL_CONST, [CST_DeclEnum] = SYMBOL_TYPE,
+    [CST_DeclEnumItem] = SYMBOL_CONST, [CST_DeclUnion] = SYMBOL_TYPE, [CST_DeclStruct] = SYMBOL_TYPE, [CST_DeclProc] = SYMBOL_PROC,
+    [CST_DeclTypedef] = SYMBOL_TYPE,
 };
 
 const char* sym_kind_names[SYMBOL_KIND_COUNT] = {
@@ -1588,54 +1604,6 @@ static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
         }
     }
 
-    // If this is an enum, create const decls for each enum item.
-    if (decl->kind == CST_DeclEnum) {
-        DeclEnum* decl_enum = (DeclEnum*)decl;
-
-        TypeSpec* enum_item_typespec = new_typespec_ident(allocator, NULL, decl->name, decl->range); // TODO: Range is wrong
-
-        List* head = &decl_enum->items;
-        List* it = head->next;
-        EnumItem* prev_enum_item = NULL;
-
-        while (it != head) {
-            EnumItem* enum_item = list_entry(it, EnumItem, lnode);
-            Expr* enum_item_val;
-
-            // TODO: This range is wrong! Consider using a custom expr_enum_inc that does not require dummy ranges.
-            ProgRange dummy_range = enum_item->range;
-
-            // Use the explicit enum item initialization value.
-            if (enum_item->value) {
-                enum_item_val = enum_item->value;
-            }
-            // Add one to the previous enum item value.
-            else if (prev_enum_item) {
-                Expr* prev_enum_val = new_expr_ident(allocator, NULL, prev_enum_item->name, dummy_range);
-                TokenInt token_one = {.value = 1, .rep = TKN_INT_DEC, .suffix = TKN_INT_SUFFIX_NONE};
-                Expr* expr_one = new_expr_int(allocator, token_one, dummy_range);
-
-                enum_item_val = new_expr_binary(allocator, TKN_PLUS, prev_enum_val, expr_one);
-            }
-            // Initialize to zero.
-            else {
-                TokenInt token_zero = {.value = 0, .rep = TKN_INT_DEC, .suffix = TKN_INT_SUFFIX_NONE};
-                enum_item_val = new_expr_int(allocator, token_zero, dummy_range);
-            }
-
-            Decl* enum_item_const = new_decl_const(allocator, enum_item->name, enum_item_typespec, enum_item_val, enum_item->range);
-
-            if (!install_module_decl(allocator, mod, enum_item_const)) {
-                return false;
-            }
-
-            // Track the previous enum item so that we know what value to assign the next enum item.
-            prev_enum_item = enum_item;
-
-            it = it->next;
-        }
-    }
-
     return true;
 }
 
@@ -1720,7 +1688,7 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt)
     List* it = head->next;
 
     while (it != head) {
-        PortSymbol* isym = list_entry(it, PortSymbol, lnode);
+        ImportSymbol* isym = list_entry(it, ImportSymbol, lnode);
         Symbol* sym = module_get_export_sym(src_mod, isym->name);
 
         if (!sym) {
@@ -1794,6 +1762,31 @@ bool module_add_export_sym(Module* mod, Identifier* name, Symbol* sym)
 //     CST Printing
 //////////////////////////////
 
+char* ftprint_ns_ident(Allocator* allocator, NSIdent* ns_ident)
+{
+    char* dstr = array_create(allocator, char, 16);
+    List* head = &ns_ident->idents;
+    List* it = head->next;
+
+
+    // Print namespaces.
+    while (it->next != head) {
+        IdentNode* inode = list_entry(it, IdentNode, lnode);
+
+        ftprint_char_array(&dstr, false, "%s::", inode->ident->str);
+
+        it = it->next;
+    }
+
+    // Print name.
+    assert(it != head);
+    IdentNode* inode = list_entry(it, IdentNode, lnode);
+
+    ftprint_char_array(&dstr, false, "%s", inode->ident->str);
+
+    return dstr;
+}
+
 char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
 {
     char* dstr = NULL;
@@ -1806,13 +1799,7 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
         case CST_TypeSpecIdent: {
             TypeSpecIdent* t = (TypeSpecIdent*)typespec;
             dstr = array_create(allocator, char, 16);
-            ftprint_char_array(&dstr, false, "(:ident ");
-
-            if (t->mod_ns) {
-                ftprint_char_array(&dstr, false, "%s::", t->mod_ns->str);
-            }
-
-            ftprint_char_array(&dstr, false, "%s", t->name->str);
+            ftprint_char_array(&dstr, false, "(:ident %s)", ftprint_ns_ident(allocator, &t->ns_ident));
         } break;
         case CST_TypeSpecTypeof: {
             TypeSpecTypeof* t = (TypeSpecTypeof*)typespec;
@@ -2002,12 +1989,7 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case CST_ExprIdent: {
             ExprIdent* e = (ExprIdent*)expr;
             dstr = array_create(allocator, char, 16);
-
-            if (e->mod_ns) {
-                ftprint_char_array(&dstr, false, "%s::", e->mod_ns->str);
-            }
-
-            ftprint_char_array(&dstr, false, "%s", e->name->str);
+            ftprint_char_array(&dstr, false, "%s", ftprint_ns_ident(allocator, &e->ns_ident));
         } break;
         case CST_ExprCast: {
             ExprCast* e = (ExprCast*)expr;
@@ -2313,7 +2295,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 List* it = head->next;
 
                 while (it != head) {
-                    PortSymbol* entity = list_entry(it, PortSymbol, lnode);
+                    ImportSymbol* entity = list_entry(it, ImportSymbol, lnode);
                     const char* suffix = (it->next == head) ? "} from " : ", ";
 
                     ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
@@ -2345,10 +2327,10 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 List* it = head->next;
 
                 while (it != head) {
-                    PortSymbol* entity = list_entry(it, PortSymbol, lnode);
+                    ExportSymbol* entity = list_entry(it, ExportSymbol, lnode);
                     const char* suffix = (it->next == head) ? "}" : ", ";
 
-                    ftprint_char_array(&dstr, false, "%s%s", entity->name->str, suffix);
+                    ftprint_char_array(&dstr, false, "%s%s", ftprint_ns_ident(allocator, &entity->ns_ident), suffix);
                     it = it->next;
                 }
             }
@@ -2429,9 +2411,9 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 List* head = &d->items;
 
                 for (List* it = head->next; it != head; it = it->next) {
-                    EnumItem* item = list_entry(it, EnumItem, lnode);
+                    DeclEnumItem* item = list_entry(it, DeclEnumItem, lnode);
 
-                    ftprint_char_array(&dstr, false, "%s", item->name->str);
+                    ftprint_char_array(&dstr, false, "%s", item->super.name->str);
 
                     if (item->value)
                         ftprint_char_array(&dstr, false, "=%s", ftprint_expr(allocator, item->value));
