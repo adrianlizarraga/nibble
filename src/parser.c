@@ -2403,8 +2403,8 @@ static Decl* parse_decl_aggregate(Parser* parser, const char* error_prefix, NewD
     return new_decl_aggregate(parser->ast_arena, name, &fields, range);
 }
 
-// enum_item  = TKN_IDENT ('=' expr)?
-static EnumItem* parse_enum_item(Parser* parser)
+// decl_enum_item  = TKN_IDENT ('=' expr)?
+static DeclEnumItem* parse_decl_enum_item(Parser* parser)
 {
     if (!expect_token(parser, TKN_IDENT, "Failed to parse enum value")) {
         return NULL;
@@ -2424,7 +2424,7 @@ static EnumItem* parse_enum_item(Parser* parser)
         range.end = parser->ptoken.range.end;
     }
 
-    return new_enum_item(parser->ast_arena, name, value, range);
+    return new_decl_enum_item(parser->ast_arena, name, value, range);
 }
 
 // decl_enum  = 'enum' TKN_IDENT (':' typespec)? '{' decl_enum_items? '}'
@@ -2458,7 +2458,7 @@ static Decl* parse_decl_enum(Parser* parser)
             bool bad_item = false;
 
             while (!is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
-                EnumItem* item = parse_enum_item(parser);
+                DeclEnumItem* item = parse_decl_enum_item(parser);
 
                 if (item) {
                     num_items += 1;

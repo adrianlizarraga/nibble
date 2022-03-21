@@ -1,2 +1,8 @@
 @exported
 var g_nested_var : usize = 0x3;
+
+@exported
+enum NestedErr {
+    NONE,
+    NESTED_BAD,
+}

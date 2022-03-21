@@ -1896,28 +1896,53 @@ static Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident)
     it = it->next;
 
     while (it != head) {
-
-        // Current symbol must be a module's namespace.
-        if (!sym || (sym->kind != SYMBOL_MODULE)) {
-            resolver_on_error(resolver, ns_ident->range, "Unknown module namespace `%s`.", inode->ident->str);
+        if (!sym) {
+            resolver_on_error(resolver, ns_ident->range, "Unknown namespace `%s`.", inode->ident->str);
             return NULL;
         }
 
         inode = list_entry(it, IdentNode, lnode);
 
-        StmtImport* stmt = (StmtImport*)sym->as_mod.stmt;
-        Identifier* sym_name = get_import_sym_name(stmt, inode->ident);
+        if (sym->kind == SYMBOL_MODULE) {
+            StmtImport* stmt = (StmtImport*)sym->as_mod.stmt;
+            Identifier* sym_name = get_import_sym_name(stmt, inode->ident);
 
-        if (!sym_name) {
-            resolver_on_error(resolver, ns_ident->range, "Identifier `%s` is not among the imported symbols in module namespace `%s`",
-                              inode->ident->str, sym->name->str);
+            if (!sym_name) {
+                resolver_on_error(resolver, ns_ident->range, "Identifier `%s` is not among the imported symbols in module namespace `%s`",
+                                  inode->ident->str, sym->name->str);
+                return NULL;
+            }
+
+            // Enter the namespace's module, and then try to lookup the identifier with its native name.
+            ModuleState mod_state = enter_module(resolver, sym->as_mod.mod);
+            sym = resolve_export_name(resolver, sym_name);
+            exit_module(resolver, mod_state);
+        }
+        else if ((sym->kind == SYMBOL_TYPE) && (sym->decl->kind == CST_DeclEnum)) {
+            Symbol** enum_items = sym->as_enum.items;
+            size_t num_enum_items = sym->as_enum.num_items;
+            Symbol* enum_item_sym = NULL;
+
+            // Find enum item symbol.
+            for (size_t ii = 0; ii < num_enum_items; ii++) {
+                if (enum_items[ii]->name == inode->ident) {
+                    enum_item_sym = enum_items[ii];
+                    break;
+                }
+            }
+
+            if (!enum_item_sym) {
+                resolver_on_error(resolver, ns_ident->range, "Identifier `%s` is not a valid enum item of `%s`.", inode->ident->str,
+                                  type_name(sym->type));
+                return NULL;
+            }
+
+            sym = enum_item_sym;
+        }
+        else {
+            resolver_on_error(resolver, ns_ident->range, "Symbol `%s` is not a valid namespace.", inode->ident->str);
             return NULL;
         }
-
-        // Enter the namespace's module, and then try to lookup the identifier with its native name.
-        ModuleState mod_state = enter_module(resolver, sym->as_mod.mod);
-        sym = resolve_export_name(resolver, sym_name);
-        exit_module(resolver, mod_state);
 
         it = it->next;
     }
@@ -1949,7 +1974,7 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
         expr->is_lvalue = false;
         expr->is_constexpr = true;
         expr->is_imm = true;
-        expr->imm = ((DeclConst*)(sym->decl))->init->imm;
+        expr->imm = sym->as_const.imm;
 
         return true;
     case SYMBOL_PROC:
@@ -2840,6 +2865,7 @@ static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
 
 static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
 {
+    assert(sym->kind == SYMBOL_TYPE);
     DeclEnum* decl_enum = (DeclEnum*)sym->decl;
     Type* base_type;
 
@@ -2860,8 +2886,71 @@ static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
         return false;
     }
 
-    sym->type = type_enum(&resolver->ctx->ast_mem, base_type, decl_enum);
+    Type* enum_type = type_enum(&resolver->ctx->ast_mem, base_type, decl_enum);
+
+    // Resolve enum items.
+    Symbol** item_syms = alloc_array(&resolver->ctx->ast_mem, Symbol*, decl_enum->num_items, false);
+    Scalar prev_enum_val = {0};
+
+    List* head = &decl_enum->items;
+    List* it = head->next;
+    size_t i = 0;
+
+    while (it != head) {
+        DeclEnumItem* enum_item = list_entry(it, DeclEnumItem, lnode);
+        Scalar enum_val = {0};
+
+        if (enum_item->value) {
+            if (!resolve_expr(resolver, enum_item->value, enum_type)) {
+                return false;
+            }
+
+            ExprOperand value_eop = OP_FROM_EXPR(enum_item->value);
+
+            if (!value_eop.is_constexpr) {
+                resolver_on_error(resolver, enum_item->value->range, "Value for enum item `%s` must be a constant expression",
+                                  enum_item->super.name->str);
+                return false;
+            }
+
+            if (!type_is_integer_like(value_eop.type)) {
+                resolver_on_error(resolver, enum_item->value->range, "Enum item's value must be of an integer type");
+                return false;
+            }
+
+            CastResult r = convert_eop(resolver, &value_eop, enum_type, true);
+
+            if (!r.success) {
+                resolver_cast_error(resolver, r, enum_item->super.range, "Invalid enum item declaration", value_eop.type, enum_type);
+                return false;
+            }
+
+            enum_item->value = try_wrap_cast_expr(resolver, &value_eop, enum_item->value);
+            enum_val = value_eop.imm;
+        }
+        else if (i > 0) { // Has a previous value
+            Scalar one_imm = {.as_int._u64 = 1};
+            ExprOperand item_op = {0};
+
+            eval_const_binary_op(resolver, TKN_PLUS, &item_op, enum_type, prev_enum_val, one_imm);
+            enum_val = item_op.imm;
+        }
+
+        Symbol* enum_sym = new_symbol_decl(&resolver->ctx->ast_mem, (Decl*)enum_item, sym->home);
+        enum_sym->type = enum_type;
+        enum_sym->status = SYMBOL_STATUS_RESOLVED;
+        enum_sym->as_const.imm = enum_val;
+        item_syms[i] = enum_sym;
+
+        prev_enum_val = enum_val;
+        it = it->next;
+        i += 1;
+    }
+
+    sym->type = enum_type;
     sym->status = SYMBOL_STATUS_RESOLVED;
+    sym->as_enum.items = item_syms;
+    sym->as_enum.num_items = decl_enum->num_items;
 
     return true;
 }
@@ -2916,6 +3005,7 @@ static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 
     sym->type = type;
     sym->status = SYMBOL_STATUS_RESOLVED;
+    sym->as_const.imm = decl->init->imm;
 
     return true;
 }
@@ -3586,6 +3676,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
         }
         break;
     case SYMBOL_CONST:
+        assert(sym->decl->kind == CST_DeclConst);
         success = resolve_decl_const(resolver, sym);
         break;
     case SYMBOL_PROC:

@@ -355,11 +355,9 @@ Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* typespec, 
     return (Decl*)decl;
 }
 
-EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range)
+DeclEnumItem* new_decl_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range)
 {
-    EnumItem* item = alloc_type(allocator, EnumItem, true);
-    item->range = range;
-    item->name = name;
+    DeclEnumItem* item = new_decl(allocator, DeclEnumItem, name, range);
     item->value = value;
 
     return item;
@@ -1413,8 +1411,9 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 //////////////////////////////
 
 const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT] = {
-    [CST_DECL_NONE] = SYMBOL_NONE, [CST_DeclVar] = SYMBOL_VAR,     [CST_DeclConst] = SYMBOL_CONST, [CST_DeclEnum] = SYMBOL_TYPE,
-    [CST_DeclUnion] = SYMBOL_TYPE, [CST_DeclStruct] = SYMBOL_TYPE, [CST_DeclProc] = SYMBOL_PROC,   [CST_DeclTypedef] = SYMBOL_TYPE,
+    [CST_DECL_NONE] = SYMBOL_NONE, [CST_DeclVar] = SYMBOL_VAR, [CST_DeclConst] = SYMBOL_CONST, [CST_DeclEnum] = SYMBOL_TYPE,
+    [CST_DeclEnumItem] = SYMBOL_CONST, [CST_DeclUnion] = SYMBOL_TYPE, [CST_DeclStruct] = SYMBOL_TYPE, [CST_DeclProc] = SYMBOL_PROC,
+    [CST_DeclTypedef] = SYMBOL_TYPE,
 };
 
 const char* sym_kind_names[SYMBOL_KIND_COUNT] = {
@@ -1602,70 +1601,6 @@ static bool install_module_decl(Allocator* allocator, Module* mod, Decl* decl)
         if (!module_add_export_sym(mod, sym->name, sym)) {
             report_error(decl->range, "Conflicting export symbol name `%s`", sym->name->str);
             return false;
-        }
-    }
-
-    // TODO: REMOVE ALL OF THIS mess once we implement namespaced enumerations!!!!!
-    // If this is an enum, create const decls for each enum item.
-    if (decl->kind == CST_DeclEnum) {
-        DeclEnum* decl_enum = (DeclEnum*)decl;
-
-        // Create identifier for each enum item's typespec.
-        // NOTE: Range is wrong.
-        NSIdent enum_item_ts_ident = {.range = decl->range, .num_idents = 1};
-        list_head_init(&enum_item_ts_ident.idents);
-        IdentNode* enum_item_ts_inode = alloc_type(allocator, IdentNode, true);
-        enum_item_ts_inode->ident = decl->name;
-        list_add_last(&enum_item_ts_ident.idents, &enum_item_ts_inode->lnode);
-
-        // Create typespec used for each enum item const decl.
-        TypeSpec* enum_item_typespec = new_typespec_ident(allocator, &enum_item_ts_ident);
-
-        List* head = &decl_enum->items;
-        List* it = head->next;
-        EnumItem* prev_enum_item = NULL;
-
-        while (it != head) {
-            EnumItem* enum_item = list_entry(it, EnumItem, lnode);
-            Expr* enum_item_val;
-
-            // TODO: This range is wrong! Consider using a custom expr_enum_inc that does not require dummy ranges.
-            ProgRange dummy_range = enum_item->range;
-
-            // Use the explicit enum item initialization value.
-            if (enum_item->value) {
-                enum_item_val = enum_item->value;
-            }
-            // Add one to the previous enum item value.
-            else if (prev_enum_item) {
-                NSIdent prev_enum_item_ident = {.range = dummy_range, .num_idents = 1};
-                list_head_init(&prev_enum_item_ident.idents);
-                IdentNode* prev_enum_item_inode = alloc_type(allocator, IdentNode, true);
-                prev_enum_item_inode->ident = prev_enum_item->name;
-                list_add_last(&prev_enum_item_ident.idents, &prev_enum_item_inode->lnode);
-
-                Expr* prev_enum_val = new_expr_ident(allocator, &prev_enum_item_ident);
-                TokenInt token_one = {.value = 1, .rep = TKN_INT_DEC, .suffix = TKN_INT_SUFFIX_NONE};
-                Expr* expr_one = new_expr_int(allocator, token_one, dummy_range);
-
-                enum_item_val = new_expr_binary(allocator, TKN_PLUS, prev_enum_val, expr_one);
-            }
-            // Initialize to zero.
-            else {
-                TokenInt token_zero = {.value = 0, .rep = TKN_INT_DEC, .suffix = TKN_INT_SUFFIX_NONE};
-                enum_item_val = new_expr_int(allocator, token_zero, dummy_range);
-            }
-
-            Decl* enum_item_const = new_decl_const(allocator, enum_item->name, enum_item_typespec, enum_item_val, enum_item->range);
-
-            if (!install_module_decl(allocator, mod, enum_item_const)) {
-                return false;
-            }
-
-            // Track the previous enum item so that we know what value to assign the next enum item.
-            prev_enum_item = enum_item;
-
-            it = it->next;
         }
     }
 
@@ -2476,9 +2411,9 @@ char* ftprint_decl(Allocator* allocator, Decl* decl)
                 List* head = &d->items;
 
                 for (List* it = head->next; it != head; it = it->next) {
-                    EnumItem* item = list_entry(it, EnumItem, lnode);
+                    DeclEnumItem* item = list_entry(it, DeclEnumItem, lnode);
 
-                    ftprint_char_array(&dstr, false, "%s", item->name->str);
+                    ftprint_char_array(&dstr, false, "%s", item->super.name->str);
 
                     if (item->value)
                         ftprint_char_array(&dstr, false, "=%s", ftprint_expr(allocator, item->value));

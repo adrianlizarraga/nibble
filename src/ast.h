@@ -18,6 +18,8 @@ typedef struct Stmt Stmt;
 typedef struct Type Type;
 typedef struct Symbol Symbol;
 typedef struct SymbolVar SymbolVar;
+typedef struct SymbolConst SymbolConst;
+typedef struct SymbolEnum SymbolEnum;
 typedef struct SymbolProc SymbolProc;
 typedef struct SymbolModule SymbolModule;
 typedef struct AnonObj AnonObj;
@@ -555,6 +557,7 @@ typedef enum DeclKind {
     CST_DeclVar,
     CST_DeclConst,
     CST_DeclEnum,
+    CST_DeclEnumItem,
     CST_DeclUnion,
     CST_DeclStruct,
     CST_DeclProc,
@@ -594,12 +597,11 @@ typedef struct DeclConst {
     Expr* init;
 } DeclConst;
 
-typedef struct EnumItem {
-    ProgRange range;
-    Identifier* name;
+typedef struct DeclEnumItem {
+    Decl super;
     Expr* value;
     ListNode lnode;
-} EnumItem;
+} DeclEnumItem;
 
 typedef struct DeclEnum {
     Decl super;
@@ -644,7 +646,7 @@ Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr*
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
 Decl* new_decl_enum(Allocator* allocator, Identifier* name, TypeSpec* type, size_t num_items, List* items, ProgRange range);
-EnumItem* new_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range);
+DeclEnumItem* new_decl_enum_item(Allocator* allocator, Identifier* name, Expr* value, ProgRange range);
 
 typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
@@ -941,6 +943,15 @@ struct SymbolVar {
     bool is_ptr; // TODO: Remove offset and is_ptr from this struct. Store in separate hash table that maps a sym -> stack location
 };
 
+struct SymbolConst {
+    Scalar imm;
+};
+
+struct SymbolEnum {
+    size_t num_items;
+    Symbol** items;
+};
+
 struct SymbolProc {
     struct BBlock** bblocks; // Stretchy buffer of basic blocks
     size_t num_instrs;
@@ -970,6 +981,8 @@ struct Symbol {
 
     union {
         SymbolVar as_var;
+        SymbolConst as_const;
+        SymbolEnum as_enum;
         SymbolProc as_proc;
         SymbolModule as_mod;
     };

@@ -2,7 +2,7 @@ import { len,
          CSTR_CONST, CSTR_CONST as CONST20, // Can import twice using different names!
          get_rand as rand } from "./cstring_export.nib";
 
-import { cstr_var, cstr_var as var2 } from "./cstring_export.nib";
+import { cstr_var, PrintErr, cstr_var as var2 } from "./cstring_export.nib";
 
 // This is a var defined two modules down. It is renamed via an export statement, and then
 // renamed again via the import statement.
@@ -20,6 +20,6 @@ proc main(argc : int, argv : ^^char) => int
     #writeout(a, num_chars);
 
     return num_chars + CSTR_CONST + CONST20 + cstr_var + var2 + rand(4) - CString::g_nested_dbl_renamed - 
-           CString::NestedMod::g_nested_var - CString::g_nested_renamed2;
+           CString::NestedMod::g_nested_var - CString::g_nested_renamed2 + PrintErr::BAD_ALLOC + CString::NestedMod::NestedErr::NESTED_BAD;
 }
 
