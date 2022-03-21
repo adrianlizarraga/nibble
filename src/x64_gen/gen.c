@@ -1592,22 +1592,18 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
 
         assert(src_h_name);
 
-        bool same_ops = (dst_loc.kind == src_loc.kind) && ((dst_loc.kind == X64_LREG_LOC_REG) && (dst_loc.reg == src_loc.reg));
-
-        if (!same_ops) {
-            switch (dst_loc.kind) {
-            case X64_LREG_LOC_REG: {
-                X64_emit_text(generator, "    mov %s, %s", x64_reg_names[1][dst_loc.reg], src_h_name);
-                break;
-            }
-            case X64_LREG_LOC_STACK: {
-                X64_emit_text(generator, "    mov %s, %s", X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, 1), src_h_name);
-                break;
-            }
-            default:
-                NIBBLE_FATAL_EXIT("Invalid dst_loc.kind in X64_INSTR_MOV_R_RH generation.");
-                break;
-            }
+        switch (dst_loc.kind) {
+        case X64_LREG_LOC_REG: {
+            X64_emit_text(generator, "    mov %s, %s", x64_reg_names[1][dst_loc.reg], src_h_name);
+            break;
+        }
+        case X64_LREG_LOC_STACK: {
+            X64_emit_text(generator, "    mov %s, %s", X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, 1), src_h_name);
+            break;
+        }
+        default:
+            NIBBLE_FATAL_EXIT("Invalid dst_loc.kind in X64_INSTR_MOV_R_RH generation.");
+            break;
         }
         break;
     }
