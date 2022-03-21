@@ -89,7 +89,8 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
 {
     static const char* binary_kind_name[] = {
         [INSTR_ADD] = "add", [INSTR_SUB] = "sub", [INSTR_MUL] = "mul", [INSTR_UDIV] = "udiv", [INSTR_SDIV] = "sdiv",
-        [INSTR_SAR] = "sar", [INSTR_SHL] = "shl", [INSTR_AND] = "and", [INSTR_OR] = "or",     [INSTR_XOR] = "xor"};
+        [INSTR_UMOD] = "umod", [INSTR_SMOD] = "smod", [INSTR_SAR] = "sar", [INSTR_SHL] = "shl", [INSTR_AND] = "and",
+        [INSTR_OR] = "or",     [INSTR_XOR] = "xor"};
     static const char* unary_kind_name[] = {[INSTR_NOT] = "not", [INSTR_NEG] = "neg"};
     static const char* convert_kind_name[] = {[INSTR_TRUNC] = "trunc", [INSTR_ZEXT] = "zext", [INSTR_SEXT] = "sext"};
     char* dstr = array_create(arena, char, 16);
@@ -100,6 +101,8 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
     case INSTR_MUL:
     case INSTR_UDIV:
     case INSTR_SDIV:
+    case INSTR_UMOD:
+    case INSTR_SMOD:
     case INSTR_SAR:
     case INSTR_SHL:
     case INSTR_AND:

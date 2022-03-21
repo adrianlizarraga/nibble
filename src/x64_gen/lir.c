@@ -102,6 +102,15 @@ void X64_emit_instr_mov_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
+void X64_emit_instr_mov_r_rh(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src)
+{
+    X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_MOV_R_RH);
+    instr->mov_r_rh.dst = dst;
+    instr->mov_r_rh.src = src;
+
+    X64_add_lir_instr(builder, xbblock, instr);
+}
+
 void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, X64_MemAddr src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_MOV_R_M);

@@ -160,6 +160,10 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         ftprint_char_array(&dstr, false, "rep movsb");
         break;
     }
+    case X64_INSTR_MOV_R_RH: {
+        ftprint_char_array(&dstr, false, "mov <1> r%d, r%d[h]", instr->mov_r_rh.dst, instr->mov_r_rh.src);
+        break;
+    }
     case X64_INSTR_MOV_R_R: {
         u32 size = (u32)instr->mov_r_r.size;
 
