@@ -467,11 +467,12 @@ static TypeSpec* parse_typespec_ident(Parser* parser)
     return new_typespec_ident(parser->ast_arena, &ns_ident);
 }
 
+// typespec_typeof = KW_TYPEOF '(' expr ')'
 static TypeSpec* parse_typespec_typeof(Parser* parser)
 {
     assert(is_keyword(parser, KW_TYPEOF));
     ProgRange range = {.start = parser->token.range.start};
-    const char* error_prefix = "Failed to parse typeof expression";
+    const char* error_prefix = "Failed to parse #typeof";
 
     next_token(parser);
 
@@ -494,10 +495,42 @@ static TypeSpec* parse_typespec_typeof(Parser* parser)
     return new_typespec_typeof(parser->ast_arena, arg, range);
 }
 
+// typespec_ret_type = KW_RET_TYPE ('(' expr ')')?
+static TypeSpec* parse_typespec_ret_type(Parser* parser)
+{
+    const char* err_prefix = "Failed to parse #ret_type";
+    ProgPos start = parser->token.range.start;
+
+    if (!expect_keyword(parser, KW_RET_TYPE, err_prefix)) {
+        return NULL;
+    }
+
+    Expr* proc_expr = NULL;
+
+    // NOTE: Parentheses and proc expression are optional.
+    // If omitted, assumes current procedure. Otherwise, will return the return type corresponding to the indicated procedure.
+    if (match_token(parser, TKN_LPAREN)) {
+        proc_expr = parse_expr(parser);
+
+        if (!proc_expr) {
+            return NULL;
+        }
+
+        if (!expect_token(parser, TKN_RPAREN, err_prefix)) {
+            return NULL;
+        }
+    }
+
+    ProgRange range = {.start = start, .end = parser->ptoken.range.end};
+
+    return new_typespec_ret_type(parser->ast_arena, proc_expr, range);
+}
+
 // typespec_base  = typespec_proc
 //                | typespec_anon_struct
 //                | typespec_anon_union
 //                | typespec_typeof
+//                | typespec_ret_type
 //                | typespec_ident
 //                | '(' type_spec ')'
 static TypeSpec* parse_typespec_base(Parser* parser)
@@ -515,6 +548,8 @@ static TypeSpec* parse_typespec_base(Parser* parser)
             return parse_typespec_union(parser);
         case KW_TYPEOF:
             return parse_typespec_typeof(parser);
+        case KW_RET_TYPE:
+            return parse_typespec_ret_type(parser);
         default:
             break;
         }

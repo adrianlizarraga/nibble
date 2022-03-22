@@ -26,7 +26,6 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym);
 static bool resolve_decl_const(Resolver* resolver, Symbol* sym);
 static bool resolve_decl_proc(Resolver* resolver, Symbol* sym);
 static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym);
-static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym);
 
 typedef struct CastResult {
     bool success;
@@ -82,6 +81,9 @@ static void set_scope(Resolver* resolver, Scope* scope);
 static Scope* push_scope(Resolver* resolver, size_t num_syms);
 static void pop_scope(Resolver* resolver);
 
+static ModuleState enter_proc(Resolver* resolver, Symbol* sym);
+static void exit_proc(Resolver* resolver, ModuleState state);
+
 static void resolver_on_error(Resolver* resolver, ProgRange range, const char* format, ...)
 {
     char buf[MAX_ERROR_LEN];
@@ -115,6 +117,7 @@ static ModuleState enter_module(Resolver* resolver, Module* mod)
     ModuleState old_state = resolver->state;
 
     resolver->state.mod = mod;
+    resolver->state.proc = NULL;
     resolver->state.scope = &mod->scope;
 
     return old_state;
@@ -146,6 +149,26 @@ static Scope* push_scope(Resolver* resolver, size_t num_syms)
 static void pop_scope(Resolver* resolver)
 {
     resolver->state.scope = resolver->state.scope->parent;
+}
+
+static ModuleState enter_proc(Resolver* resolver, Symbol* sym)
+{
+    assert(sym->kind == SYMBOL_PROC);
+    ModuleState mod_state = enter_module(resolver, sym->home);
+
+    DeclProc* dproc = (DeclProc*)(sym->decl);
+    set_scope(resolver, dproc->scope);
+
+    resolver->state.proc = sym;
+
+    return mod_state;
+}
+
+static void exit_proc(Resolver* resolver, ModuleState state)
+{
+    pop_scope(resolver);
+    resolver->state.proc = NULL;
+    exit_module(resolver, state);
 }
 
 #define CASE_INT_CAST(k, o, t, f)                      \
@@ -1998,7 +2021,7 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
         break;
     }
 
-    resolver_on_error(resolver, expr->range, "Expression identifier `%s` must refer to a var, const, or proc declaration",
+    resolver_on_error(resolver, expr->range, "Identifier must refer to a var, const, or proc, but `%s` is neither.",
                       ftprint_ns_ident(&resolver->ctx->tmp_mem, &eident->ns_ident));
     return false;
 }
@@ -2574,6 +2597,41 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
         return ts->expr->type;
     }
+    case CST_TypeSpecRetType: {
+        TypeSpecRetType* ts = (TypeSpecRetType*)typespec;
+
+        Type* proc_type = NULL;
+
+        // Get proc type from expression.
+        if (ts->proc_expr) {
+            if (!resolve_expr(resolver, ts->proc_expr, NULL)) {
+                return NULL;
+            }
+
+            proc_type = ts->proc_expr->type;
+
+            if (proc_type->kind != TYPE_PROC) {
+                resolver_on_error(resolver, ts->proc_expr->range, "Expected expression of procedure type, but found type `%s`.",
+                                  type_name(proc_type));
+                return NULL;
+            }
+        }
+        // Get proc type from current procedure
+        else {
+            Symbol* curr_proc = resolver->state.proc;
+
+            if (!curr_proc) {
+                resolver_on_error(resolver, typespec->range, "Cannot use #ret_type (without an argument) outside of a procedure.");
+                return NULL;
+            }
+
+            assert(curr_proc->kind == SYMBOL_PROC);
+
+            proc_type = curr_proc->type;
+        }
+
+        return proc_type->as_proc.ret;
+    }
     case CST_TypeSpecPtr: {
         TypeSpecPtr* ts = (TypeSpecPtr*)typespec;
         TypeSpec* base_ts = ts->base;
@@ -3132,33 +3190,6 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     return true;
 }
 
-static bool resolve_proc_stmts(Resolver* resolver, Symbol* sym)
-{
-    assert(sym->kind == SYMBOL_PROC);
-
-    DeclProc* dproc = (DeclProc*)(sym->decl);
-
-    set_scope(resolver, dproc->scope);
-
-    Type* ret_type = sym->type->as_proc.ret;
-    unsigned r = resolve_stmt_block_body(resolver, &dproc->stmts, ret_type, 0);
-    bool returns = r & RESOLVE_STMT_RETURNS;
-    bool success = r & RESOLVE_STMT_SUCCESS;
-
-    assert(!success || !(r & RESOLVE_STMT_LOOP_EXITS));
-
-    pop_scope(resolver);
-
-    dproc->returns = returns;
-
-    if ((ret_type != builtin_types[BUILTIN_TYPE_VOID].type) && !returns && success) {
-        resolver_on_error(resolver, dproc->super.range, "Not all code paths in procedure `%s` return a value", dproc->super.name->str);
-        return false;
-    }
-
-    return success;
-}
-
 static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_PROC);
@@ -3168,30 +3199,25 @@ static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
         return true;
     }
 
-    ModuleState mod_state = enter_module(resolver, sym->home);
-    bool success = resolve_proc_stmts(resolver, sym);
+    ModuleState mod_state = enter_proc(resolver, sym);
 
-    exit_module(resolver, mod_state);
+    Type* ret_type = sym->type->as_proc.ret;
+    unsigned r = resolve_stmt_block_body(resolver, &dproc->stmts, ret_type, 0);
+    bool returns = r & RESOLVE_STMT_RETURNS;
+    bool success = r & RESOLVE_STMT_SUCCESS;
+
+    assert(!success || !(r & RESOLVE_STMT_LOOP_EXITS));
+
+    dproc->returns = returns;
+
+    if ((ret_type != builtin_types[BUILTIN_TYPE_VOID].type) && !returns && success) {
+        resolver_on_error(resolver, dproc->super.range, "Not all code paths in procedure `%s` return a value", dproc->super.name->str);
+        return false;
+    }
+
+    exit_proc(resolver, mod_state);
 
     return success;
-
-    // TODO: Support local struct/union/enum declarations inside procedures.
-    /*
-    while (array_len(resolver->incomplete_syms))
-    {
-        Symbol* sym = array_pop(resolver->incomplete_syms);
-
-        if (sym->kind == SYMBOL_PROC)
-        {
-            push_ir_proc(resolver, sym);
-
-            if (!resolve_proc_stmts(resolver, sym))
-                return false;
-        }
-    }
-    */
-
-    return true;
 }
 
 static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* ret_type, unsigned flags)

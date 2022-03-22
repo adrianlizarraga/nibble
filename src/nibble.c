@@ -399,6 +399,7 @@ static bool init_keywords()
         [KW_OFFSETOF] = string_view_lit("#offsetof"),
         [KW_LENGTH] = string_view_lit("#length"),
         [KW_STATIC_ASSERT] = string_view_lit("#static_assert"),
+        [KW_RET_TYPE] = string_view_lit("#ret_type"),
         [KW_EXPORT] = string_view_lit("export"),
         [KW_IMPORT] = string_view_lit("import"),
         [KW_FROM] = string_view_lit("from"),

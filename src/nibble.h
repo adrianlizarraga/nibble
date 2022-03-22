@@ -135,6 +135,7 @@ typedef enum Keyword {
     KW_OFFSETOF,
     KW_LENGTH,
     KW_STATIC_ASSERT,
+    KW_RET_TYPE,
     KW_EXPORT,
     KW_IMPORT,
     KW_FROM,
