@@ -1,0 +1,20 @@
+proc vec3(x: int, y: int, z: int) => {int; int; int} {
+    var v : #ret_type = {x, y, z};
+
+    return v;
+}
+
+// Will not compile: #ret_type (without arg) must be used inside a procedure.
+//var inv : #ret_type = 10;
+
+proc main() => int {
+    var v : #ret_type(vec3) = vec3(1, 2, 3); // Equivalent to var v := vec3(1,2,3);
+    #static_assert(#typeid(#typeof(v)) == #typeid({int; int; int;}));
+
+    // Will not compile: variable `not_a_proc` is not a procedure.
+    //var not_a_proc : int = 2;
+    //var v2 : #ret_type(not_a_proc) = 10;
+
+    // 1 + 2 + 3 = 6
+    return v.[0] + v.[1] + v.[2];
+}

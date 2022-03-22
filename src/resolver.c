@@ -2021,7 +2021,7 @@ static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
         break;
     }
 
-    resolver_on_error(resolver, expr->range, "Expression identifier `%s` must refer to a var, const, or proc declaration",
+    resolver_on_error(resolver, expr->range, "Identifier must refer to a var, const, or proc, but `%s` is neither.",
                       ftprint_ns_ident(&resolver->ctx->tmp_mem, &eident->ns_ident));
     return false;
 }
@@ -2602,11 +2602,32 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 
         Type* proc_type = NULL;
 
+        // Get proc type from expression.
         if (ts->proc_expr) {
-            // TODO: Get proc type from expression.
+            if (!resolve_expr(resolver, ts->proc_expr, NULL)) {
+                return NULL;
+            }
+
+            proc_type = ts->proc_expr->type;
+
+            if (proc_type->kind != TYPE_PROC) {
+                resolver_on_error(resolver, ts->proc_expr->range, "Expected expression of procedure type, but found type `%s`.",
+                                  type_name(proc_type));
+                return NULL;
+            }
         }
+        // Get proc type from current procedure
         else {
-            // TODO: Get proc type from current procedure
+            Symbol* curr_proc = resolver->state.proc;
+
+            if (!curr_proc) {
+                resolver_on_error(resolver, typespec->range, "Cannot use #ret_type (without an argument) outside of a procedure.");
+                return NULL;
+            }
+
+            assert(curr_proc->kind == SYMBOL_PROC);
+
+            proc_type = curr_proc->type;
         }
 
         return proc_type->as_proc.ret;
