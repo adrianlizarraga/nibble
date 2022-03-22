@@ -1681,7 +1681,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         long target_id = instr->jmp.target->id;
 
         if (target_id != bblock_id + 1) {
-            X64_emit_text(generator, "    jmp %s", X64_get_label(generator, instr->jmp.target->id));
+            X64_emit_text(generator, "    jmp %s", X64_get_label(generator, target_id));
         }
         break;
     }
