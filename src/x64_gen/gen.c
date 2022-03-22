@@ -1479,7 +1479,7 @@ static void X64_windows_cpy_ret_small_obj(X64_Generator* generator, Type* ret_ty
     }
 }
 
-static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_instr)
+static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_instr, long bblock_id)
 {
     static const char* binary_r_r_name[] = {[X64_INSTR_ADD_R_R] = "add", [X64_INSTR_SUB_R_R] = "sub", [X64_INSTR_IMUL_R_R] = "imul",
                                             [X64_INSTR_AND_R_R] = "and", [X64_INSTR_OR_R_R] = "or",   [X64_INSTR_XOR_R_R] = "xor"};
@@ -1678,7 +1678,11 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         break;
     }
     case X64_INSTR_JMP: {
-        X64_emit_text(generator, "    jmp %s", X64_get_label(generator, instr->jmp.target->id));
+        long target_id = instr->jmp.target->id;
+
+        if (target_id != bblock_id + 1) {
+            X64_emit_text(generator, "    jmp %s", X64_get_label(generator, instr->jmp.target->id));
+        }
         break;
     }
     case X64_INSTR_JMPCC: {
@@ -1962,13 +1966,14 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     // Generate instructions.
     for (size_t ii = 0; ii < builder.num_bblocks; ii++) {
         X64_BBlock* bb = builder.bblocks[ii];
+        bool last_bb = ii == builder.num_bblocks - 1;
 
         X64_emit_text(generator, "    %s:", X64_get_label(generator, bb->id));
 
         for (X64_Instr* instr = bb->first; instr; instr = instr->next) {
-            bool last_instr = (ii == builder.num_bblocks - 1) && !instr->next;
+            bool last_instr = last_bb && !instr->next;
 
-            X64_gen_instr(generator, instr, last_instr);
+            X64_gen_instr(generator, instr, last_instr, bb->id);
         }
     }
 

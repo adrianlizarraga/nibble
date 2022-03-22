@@ -1,0 +1,27 @@
+import "./print.nib";
+
+proc find_prime_iterative(initial : int) => int {
+    var prime : int = 1;
+    var curr : int = 1;
+    var prime_count : int = 0;
+
+    while (prime_count < initial) {
+        for (var denom : int = 2; denom < curr; denom = denom + 1) {
+            if (curr % denom == 0) {
+                curr = curr + 1;
+                continue;
+            }
+        }
+        prime = curr;
+        curr = curr + 1;
+        prime_count = prime_count + 1;
+    }
+
+    return prime;
+}
+
+proc main() => int {
+    var out : int = find_prime_iterative(20000);
+    print_out("result: %0\n", out);
+    return 0;
+}

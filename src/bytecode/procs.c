@@ -2857,20 +2857,21 @@ static BBlock* IR_emit_cond_loop(IR_ProcBuilder* builder, BBlock* bblock, Expr* 
     }
     // Normal for-loop.
     else {
-        last_bb = IR_alloc_bblock(builder);
-
-        BBlock* hdr_bb = IR_alloc_bblock(builder);
+        // <bblock> -> cond_bb
+        // <body_bb>
+        // <nxt_bb>
+        // <cond_bb> if true -> body_bb, else -> last_bb
+        // <last_bb>
+        BBlock* body_bb = IR_alloc_bblock(builder);
+        BBlock* cond_bb = IR_alloc_bblock(builder);
         BBlock* nxt_bb = next_stmt ? IR_alloc_bblock(builder) : NULL;
 
-        // Jump to the loop header basic block.
-        IR_emit_instr_jmp(builder, bblock, hdr_bb);
-
-        // Process condition
-        BBlock* body_bb = IR_process_cfg_cond(builder, cond_expr, hdr_bb, false, last_bb);
+        // Jump to the loop condition-check block.
+        IR_emit_instr_jmp(builder, bblock, cond_bb);
 
         // Emit instructions for the loop body.
         //   - break target: last_bb
-        //   - continue target: nxt_bb or hdr_bb
+        //   - continue target: nxt_bb or cond_bb
         IR_UJmpList break_ujmps = {0};
         IR_UJmpList cont_ujmps = {0};
         BBlock* body_end_bb = IR_emit_stmt(builder, body_bb, body_stmt, &break_ujmps, &cont_ujmps);
@@ -2886,15 +2887,18 @@ static BBlock* IR_emit_cond_loop(IR_ProcBuilder* builder, BBlock* bblock, Expr* 
         }
 
         if (body_end_bb) {
-            // Jump back up to the loop header.
-            IR_emit_instr_jmp(builder, body_end_bb, hdr_bb);
+            // Jump to the loop condition-check block.
+            IR_emit_instr_jmp(builder, body_end_bb, cond_bb);
 
             // Explicitly mark loop header.
-            hdr_bb->flags |= BBLOCK_IS_LOOP_HDR;
+            cond_bb->flags |= BBLOCK_IS_LOOP_HDR;
         }
 
+        // Process condition
+        last_bb = IR_process_cfg_cond(builder, cond_expr, cond_bb, true, body_bb);
+
         IR_patch_ujmp_list(builder, &break_ujmps, last_bb);
-        IR_patch_ujmp_list(builder, &cont_ujmps, nxt_bb ? nxt_bb : hdr_bb);
+        IR_patch_ujmp_list(builder, &cont_ujmps, nxt_bb ? nxt_bb : cond_bb);
     }
 
     return last_bb;
