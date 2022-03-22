@@ -60,6 +60,7 @@ typedef enum TypeSpecKind {
     CST_TypeSpecArray,
     CST_TypeSpecConst,
     CST_TypeSpecTypeof,
+    CST_TypeSpecRetType,
 } TypeSpecKind;
 
 struct TypeSpec {
@@ -76,6 +77,11 @@ typedef struct TypeSpecTypeof {
     TypeSpec super;
     Expr* expr;
 } TypeSpecTypeof;
+
+typedef struct TypeSpecRetType {
+    TypeSpec super;
+    Expr* proc_expr;
+} TypeSpecRetType;
 
 typedef struct AggregateField {
     ProgRange range;
@@ -129,13 +135,12 @@ AggregateField* new_aggregate_field(Allocator* allocator, Identifier* name, Type
 
 TypeSpec* new_typespec_ident(Allocator* allocator, NSIdent* ns_ident);
 TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range);
+TypeSpec* new_typespec_ret_type(Allocator* allocator, Expr* proc_expr, ProgRange range);
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range);
 TypeSpec* new_typespec_array(Allocator* allocator, TypeSpec* base, Expr* len, bool infer_len, ProgRange range);
 TypeSpec* new_typespec_const(Allocator* allocator, TypeSpec* base, ProgRange range);
 ProcParam* new_proc_param(Allocator* allocator, Identifier* name, TypeSpec* type, bool is_variadic, ProgRange range);
 TypeSpec* new_typespec_proc(Allocator* allocator, size_t num_params, List* params, TypeSpec* ret, bool is_variadic, ProgRange range);
-
-typedef TypeSpec* NewTypeSpecAggregateProc(Allocator* alloc, List* fields, ProgRange range);
 TypeSpec* new_typespec_struct(Allocator* allocator, List* fields, ProgRange range);
 TypeSpec* new_typespec_union(Allocator* allocator, List* fields, ProgRange range);
 

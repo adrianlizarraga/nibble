@@ -1,5 +1,5 @@
-proc mult_ret_proc(a : int) => struct {val : int; err: int;} {
-    var r : struct {val:int; err:int;};
+proc mult_ret_proc(a : int) => struct {val : int; err: int} {
+    var r : struct {val:int; err:int};
 
     if (a < 0) {
         r.err = 1;
@@ -13,8 +13,8 @@ proc mult_ret_proc(a : int) => struct {val : int; err: int;} {
     return r;
 }
 
-proc mult_ret_proc2(a : int) => union {val : int; err: int;} {
-    var r : union {val:int; err:int;};
+proc mult_ret_proc2(a : int) => union {val : int; err: int} {
+    var r : union {val:int; err:int};
 
     if (a < 0) {
         r.err = -1;
@@ -26,8 +26,8 @@ proc mult_ret_proc2(a : int) => union {val : int; err: int;} {
     return r;
 }
 
-proc mult_ret_proc3(a : int) => struct {char; int;} {
-    var r : struct {char; int;};
+proc mult_ret_proc3(a : int) => {char; int} { // NOTE: 'struct' keyword is optional.
+    var r : {char; int};
 
     r.[0] = a & 0x1;
     r.[1] = a;

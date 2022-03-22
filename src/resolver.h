@@ -6,6 +6,7 @@
 
 typedef struct ModuleState {
     Module* mod;
+    Symbol* proc;
     Scope* scope;
 } ModuleState;
 

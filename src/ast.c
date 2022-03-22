@@ -31,6 +31,14 @@ TypeSpec* new_typespec_typeof(Allocator* allocator, Expr* expr, ProgRange range)
     return (TypeSpec*)typespec;
 }
 
+TypeSpec* new_typespec_ret_type(Allocator* allocator, Expr* proc_expr, ProgRange range)
+{
+    TypeSpecRetType* ts = new_typespec(allocator, TypeSpecRetType, range);
+    ts->proc_expr = proc_expr;
+
+    return (TypeSpec*)ts;
+}
+
 TypeSpec* new_typespec_ptr(Allocator* allocator, TypeSpec* base, ProgRange range)
 {
     TypeSpecPtr* typespec = new_typespec(allocator, TypeSpecPtr, range);
