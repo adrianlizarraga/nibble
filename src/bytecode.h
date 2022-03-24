@@ -56,11 +56,25 @@ typedef enum InstrKind {
     INSTR_KIND_COUNT
 } InstrKind;
 
+typedef enum StackObjKind {
+    STACK_OBJ_NONE = 0,
+    STACK_OBJ_ANON_OBJ,
+    STACK_OBJ_SYM
+} StackObjKind;
+
+typedef struct StackObj {
+    StackObjKind kind;
+
+    union {
+        AnonObj* anon_obj;
+        Symbol* sym;
+    };
+} StackObj;
+
 typedef enum MemBaseKind {
     MEM_BASE_NONE = 0,
     MEM_BASE_REG,
-    MEM_BASE_SYM,
-    MEM_BASE_OBJ,
+    MEM_BASE_STACK_OBJ,
     MEM_BASE_STR_LIT,
 } MemBaseKind;
 
@@ -69,8 +83,7 @@ typedef struct MemAddr {
 
     union {
         IR_Reg reg;
-        Symbol* sym;
-        AnonObj* obj;
+        StackObj* obj;
         StrLit* str_lit;
     } base;
 

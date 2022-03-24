@@ -202,47 +202,47 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
             return;
         }
 
-        if (src->base_kind == MEM_BASE_SYM) {
-            Symbol* sym = src->base.sym;
-
-            // Early exit for global variable addresses.
-            if (!sym->is_local) {
-                dst->kind = X64_ADDR_GLOBAL;
-                dst->global = sym;
-
-                return;
-            }
-
+        if (src->base_kind == MEM_BASE_STACK_OBJ) {
+            StackObj* stack_obj = src->base.obj;
             u32 base_reg;
             s32 disp = src->disp;
 
-            if (sym->as_var.is_ptr) {
-                // Load the variable's actual address into `base_reg`.
-                base_reg = X64_next_lir_reg(builder);
-                X64_force_any_reg(builder, base_reg, banned_regs);
+            if (stack_obj->kind == STACK_OBJ_SYM) {
+                Symbol* sym = stack_obj->sym;
 
-                X64_MemAddr ptr_addr = {
-                    .kind = X64_ADDR_LOCAL,
-                    .local = {.base_reg = builder->lreg_rbp, .disp = sym->as_var.offset, .index_reg = X64_REG_COUNT}};
+                // Early exit for global variable addresses.
+                if (!sym->is_local) {
+                    dst->kind = X64_ADDR_GLOBAL;
+                    dst->global = sym;
 
-                X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, base_reg, ptr_addr);
+                    return;
+                }
+
+                if (sym->as_var.is_ptr) {
+                    // Load the variable's actual address into `base_reg`.
+                    base_reg = X64_next_lir_reg(builder);
+                    X64_force_any_reg(builder, base_reg, banned_regs);
+
+                    X64_MemAddr ptr_addr = {
+                        .kind = X64_ADDR_LOCAL,
+                        .local = {.base_reg = builder->lreg_rbp, .disp = sym->as_var.offset, .index_reg = X64_REG_COUNT}};
+
+                    X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, base_reg, ptr_addr);
+                }
+                else {
+                    base_reg = builder->lreg_rbp;
+                    disp += sym->as_var.offset;
+                }
             }
             else {
+                assert(stack_obj->kind == STACK_OBJ_ANON_OBJ);
                 base_reg = builder->lreg_rbp;
-                disp += sym->as_var.offset;
+                disp += stack_obj->obj->offset;
             }
 
             dst->kind = X64_ADDR_LOCAL;
             dst->local.base_reg = base_reg;
             dst->local.disp = disp;
-            dst->local.scale = src->scale;
-        }
-        else if (src->base_kind == MEM_BASE_OBJ) {
-            AnonObj* obj = src->base.obj;
-
-            dst->kind = X64_ADDR_LOCAL;
-            dst->local.base_reg = builder->lreg_rbp;
-            dst->local.disp = src->disp + obj->offset;
             dst->local.scale = src->scale;
         }
         else {
