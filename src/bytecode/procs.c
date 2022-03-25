@@ -1213,15 +1213,28 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
         else if (rhs->kind == IR_OPERAND_UNION_INIT) {
             curr_bb = IR_emit_union_init(builder, curr_bb, lhs, rhs);
         }
-        else if (rhs->kind == IR_OPERAND_TMP_OBJ && lhs->kind == IR_OPERAND_VAR) {
+        else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_TMP_OBJ)) {
+            StackObj* r_stack_obj = rhs->tmp_obj->stack_obj;
+
+            ftprint_out("Aliasing tmp obj assignment\n"); // TODO: REMOVE. nocheckin
+            assert(r_stack_obj->kind == STACK_OBJ_NONE);
+
+            // Alias tmp objects. rhs will refer to lhs.
+            r_stack_obj->kind = STACK_OBJ_ALIAS;
+            r_stack_obj->alias = lhs->tmp_obj->stack_obj;
+
+        }
+        else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_VAR)) {
             StackObj* stack_obj = rhs->tmp_obj->stack_obj;
 
+            ftprint_out("Eliding tmp obj to var assignment\n"); // TODO: REMOVE. nocheckin
             assert(stack_obj->kind == STACK_OBJ_NONE);
 
             // Elide copy by replacing temporary object with the variable to which it would otherwise be copied.
             stack_obj->kind = STACK_OBJ_SYM;
             stack_obj->sym = lhs->sym;
         }
+        // TODO: rhs is tmp_obj, lhs is deferred_deref_addr!
         else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
             curr_bb = IR_op_to_r(builder, curr_bb, rhs);
             IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
@@ -2366,20 +2379,12 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 // any_obj.ptr = ^cpy_obj;
                 //
 
-                MemAddr arg_addr = {0};
-
                 // We need to load the arg's address into the `any` object's ptr field.
-                // Copy the argument into memory IFF the argument is not already a temporary object.
-                if (arg_op.kind != IR_OPERAND_TMP_OBJ) {
-                    IR_TmpObj* cpy_obj = IR_get_tmp_obj(builder, tmp_obj_list, arg_op.type->size, arg_op.type->align);
-                    IR_Operand cpy_obj_op = {.kind = IR_OPERAND_TMP_OBJ, .type = arg_op.type, .tmp_obj = cpy_obj};
+                // Copy the argument into memory. Copy elision should kick in if the arg is already in a tmp object.
+                IR_TmpObj* cpy_obj = IR_get_tmp_obj(builder, tmp_obj_list, arg_op.type->size, arg_op.type->align);
+                IR_Operand cpy_obj_op = {.kind = IR_OPERAND_TMP_OBJ, .type = arg_op.type, .tmp_obj = cpy_obj};
 
-                    *p_bblock = IR_emit_assign(builder, *p_bblock, &cpy_obj_op, &arg_op); // Do the copy.
-                    arg_addr = IR_tmp_obj_as_addr(cpy_obj); // Get the copy's address.
-                }
-                else {
-                    arg_addr = IR_tmp_obj_as_addr(arg_op.tmp_obj);
-                }
+                *p_bblock = IR_emit_assign(builder, *p_bblock, &cpy_obj_op, &arg_op); // Do the copy.
 
                 // Initialize the `any` object's fields. Note that we're directly modifying the array element.
                 MemAddr any_obj_addr = elem_ptr_op.addr;
@@ -2395,7 +2400,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 // Set the object's ptr field to the arg's address.
                 TypeAggregateField* ptr_field = get_type_struct_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
                 IR_Operand ptr_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = ptr_field->type, .addr = any_obj_addr};
-                IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = arg_addr};
+                IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = IR_tmp_obj_as_addr(cpy_obj)};
 
                 ptr_field_op.addr.disp += ptr_field->offset;
                 *p_bblock = IR_emit_assign(builder, *p_bblock, &ptr_field_op, &ptr_val_op);

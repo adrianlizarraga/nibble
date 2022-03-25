@@ -207,6 +207,10 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
             u32 base_reg;
             s32 disp = src->disp;
 
+            while (stack_obj->kind == STACK_OBJ_ALIAS) {
+                stack_obj = stack_obj->alias;
+            }
+
             if (stack_obj->kind == STACK_OBJ_SYM) {
                 Symbol* sym = stack_obj->sym;
 

@@ -59,7 +59,8 @@ typedef enum InstrKind {
 typedef enum StackObjKind {
     STACK_OBJ_NONE = 0,
     STACK_OBJ_ANON_OBJ,
-    STACK_OBJ_SYM
+    STACK_OBJ_SYM,
+    STACK_OBJ_ALIAS
 } StackObjKind;
 
 typedef struct StackObj {
@@ -68,6 +69,7 @@ typedef struct StackObj {
     union {
         AnonObj* anon_obj;
         Symbol* sym;
+        struct StackObj* alias;
     };
 } StackObj;
 
