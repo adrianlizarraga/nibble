@@ -50,6 +50,10 @@ static char* IR_print_mem(Allocator* arena, MemAddr* addr)
         else if (addr->base_kind == MEM_BASE_STACK_OBJ) {
             StackObj* stack_obj = addr->base.obj;
 
+            while (stack_obj->kind == STACK_OBJ_ALIAS) {
+                stack_obj = stack_obj->alias;
+            }
+
             if (stack_obj->kind == STACK_OBJ_SYM) {
                 ftprint_char_array(&dstr, false, "%s %s", (stack_obj->sym->is_local ? "local" : "global"),
                                    symbol_mangled_name(arena, stack_obj->sym));
