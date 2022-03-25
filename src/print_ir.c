@@ -47,12 +47,16 @@ static char* IR_print_mem(Allocator* arena, MemAddr* addr)
         if (addr->base_kind == MEM_BASE_REG) {
             ftprint_char_array(&dstr, false, "%s", IR_print_reg(arena, addr->base.reg));
         }
-        else if (addr->base_kind == MEM_BASE_SYM) {
-            ftprint_char_array(&dstr, false, "%s %s", (addr->base.sym->is_local ? "local" : "global"),
-                               symbol_mangled_name(arena, addr->base.sym));
-        }
-        else if (addr->base_kind == MEM_BASE_OBJ) {
-            ftprint_char_array(&dstr, false, "obj %d", addr->base.obj->id);
+        else if (addr->base_kind == MEM_BASE_STACK_OBJ) {
+            StackObj* stack_obj = addr->base.obj;
+
+            if (stack_obj->kind == STACK_OBJ_SYM) {
+                ftprint_char_array(&dstr, false, "%s %s", (stack_obj->sym->is_local ? "local" : "global"),
+                                   symbol_mangled_name(arena, stack_obj->sym));
+            }
+            else if (stack_obj->kind == STACK_OBJ_ANON_OBJ) {
+                ftprint_char_array(&dstr, false, "obj %d", stack_obj->anon_obj->id);
+            }
         }
         else {
             assert(addr->base_kind == MEM_BASE_STR_LIT);

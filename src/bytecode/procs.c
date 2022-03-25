@@ -10,7 +10,7 @@ typedef struct IR_ProcBuilder {
     Scope* curr_scope;
     List* curr_tmp_obj;
 
-    struct IR_DeferredTmpObj* tmp_obj_freelist;
+    struct IR_TmpObj* tmp_obj_freelist;
     struct IR_DeferredJmpcc* sc_jmp_freelist;
     struct IR_UJmpNode* ujmp_freelist;
 } IR_ProcBuilder;
@@ -26,22 +26,22 @@ typedef enum IR_OperandKind {
     IR_OPERAND_STRUCT_INIT,
     IR_OPERAND_UNION_INIT,
     IR_OPERAND_VAR,
-    IR_OPERAND_OBJ,
+    IR_OPERAND_TMP_OBJ,
     IR_OPERAND_STR_LIT,
     IR_OPERAND_PROC,
 } IR_OperandKind;
 
-typedef struct IR_DeferredTmpObj {
+typedef struct IR_TmpObj {
     size_t size;
     size_t align;
     StackObj* stack_obj;
-    struct IR_DeferredTmpObj* next;
-} IR_DeferredTmpObj;
+    struct IR_TmpObj* next;
+} IR_TmpObj;
 
-typedef struct IR_DeferredTmpObjList {
-    IR_DeferredTmpObj* first;
-    IR_DeferredTmpObj* last;
-} IR_DeferredTmpObjList;
+typedef struct IR_TmpObjList {
+    IR_TmpObj* first;
+    IR_TmpObj* last;
+} IR_TmpObjList;
 
 typedef struct IR_DeferredJmpcc {
     bool result;
@@ -82,7 +82,7 @@ typedef struct IR_Operand {
         IR_Reg reg;
         MemAddr addr;
         Symbol* sym;
-        IR_DeferredTmpObj* obj;
+        IR_TmpObj* tmp_obj;
         IR_DeferredCmp cmp;
         IR_ArrayInitializer array_initzer;
         IR_StructInitializer struct_initzer;
@@ -542,7 +542,7 @@ static MemAddr IR_sym_as_addr(IR_ProcBuilder* builder, Symbol* sym)
     return addr;
 }
 
-static MemAddr IR_obj_as_addr(IR_DeferredTmpObj* obj)
+static MemAddr IR_tmp_obj_as_addr(IR_TmpObj* obj)
 {
     MemAddr addr = {.base_kind = MEM_BASE_STACK_OBJ, .base.obj = obj->stack_obj, .index_reg = IR_REG_COUNT};
     return addr;
@@ -576,8 +576,8 @@ static void IR_get_object_addr(IR_ProcBuilder* builder, BBlock* bblock, MemAddr*
     else if (src->kind == IR_OPERAND_DEREF_ADDR) {
         *dst = src->addr;
     }
-    else if (src->kind == IR_OPERAND_OBJ) {
-        *dst = IR_obj_as_addr(src->obj);
+    else if (src->kind == IR_OPERAND_TMP_OBJ) {
+        *dst = IR_tmp_obj_as_addr(src->tmp_obj);
     }
     else {
         assert(src->kind == IR_OPERAND_STR_LIT);
@@ -887,11 +887,11 @@ static BBlock* IR_op_to_r(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* o
 
         return bblock;
     }
-    case IR_OPERAND_OBJ: {
+    case IR_OPERAND_TMP_OBJ: {
         assert(IR_type_fits_in_reg(operand->type));
 
         IR_Reg reg = IR_next_reg(builder);
-        IR_emit_instr_load(builder, bblock, operand->type, reg, IR_obj_as_addr(operand->obj));
+        IR_emit_instr_load(builder, bblock, operand->type, reg, IR_tmp_obj_as_addr(operand->tmp_obj));
 
         operand->kind = IR_OPERAND_REG;
         operand->reg = reg;
@@ -1213,6 +1213,15 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
         else if (rhs->kind == IR_OPERAND_UNION_INIT) {
             curr_bb = IR_emit_union_init(builder, curr_bb, lhs, rhs);
         }
+        else if (rhs->kind == IR_OPERAND_TMP_OBJ && lhs->kind == IR_OPERAND_VAR) {
+            StackObj* stack_obj = rhs->tmp_obj->stack_obj;
+
+            assert(stack_obj->kind == STACK_OBJ_NONE);
+
+            // Elide copy by replacing temporary object with the variable to which it would otherwise be copied.
+            stack_obj->kind = STACK_OBJ_SYM;
+            stack_obj->sym = lhs->sym;
+        }
         else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
             curr_bb = IR_op_to_r(builder, curr_bb, rhs);
             IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
@@ -1239,9 +1248,9 @@ static void IR_pop_scope(IR_ProcBuilder* builder)
     builder->curr_scope = builder->curr_scope->parent;
 }
 
-static IR_DeferredTmpObj* IR_get_deferred_tmp_obj(IR_ProcBuilder* builder, IR_DeferredTmpObjList* obj_list, size_t size, size_t align)
+static IR_TmpObj* IR_get_tmp_obj(IR_ProcBuilder* builder, IR_TmpObjList* obj_list, size_t size, size_t align)
 {
-    IR_DeferredTmpObj* tmp_obj;
+    IR_TmpObj* tmp_obj;
 
     // Try to get one from the free list. Otherwise, allocate one.
     if (builder->tmp_obj_freelist) {
@@ -1249,7 +1258,7 @@ static IR_DeferredTmpObj* IR_get_deferred_tmp_obj(IR_ProcBuilder* builder, IR_De
         builder->tmp_obj_freelist = tmp_obj->next;
     }
     else {
-        tmp_obj = alloc_type(builder->tmp_arena, IR_DeferredTmpObj, false);
+        tmp_obj = alloc_type(builder->tmp_arena, IR_TmpObj, false);
     }
 
     // Initialize tmp obj.
@@ -1260,16 +1269,18 @@ static IR_DeferredTmpObj* IR_get_deferred_tmp_obj(IR_ProcBuilder* builder, IR_De
 
     // Add obj to the end of the list.
     if (obj_list->last) {
-        obj_list->last->next = node;
+        obj_list->last->next = tmp_obj;
     }
     else {
-        obj_list->first = node;
+        obj_list->first = tmp_obj;
     }
 
-    obj_list->last = node;
+    obj_list->last = tmp_obj;
+
+    return tmp_obj;
 }
 
-static void IR_free_deferred_tmp_obj_list(IR_ProcBuilder* builder, IR_DeferredTmpObjList* obj_list)
+static void IR_free_deferred_tmp_obj_list(IR_ProcBuilder* builder, IR_TmpObjList* obj_list)
 {
     if (!obj_list->last) {
         return;
@@ -1283,7 +1294,7 @@ static void IR_free_deferred_tmp_obj_list(IR_ProcBuilder* builder, IR_DeferredTm
     obj_list->first = obj_list->last = NULL;
 }
 
-static AnonObj* IR_alloc_tmp_obj(IR_ProcBuilder* builder, size_t size, size_t align)
+static AnonObj* IR_alloc_tmp_anon_obj(IR_ProcBuilder* builder, size_t size, size_t align)
 {
     AnonObj* obj;
     Symbol* proc_sym = builder->curr_proc;
@@ -1316,20 +1327,27 @@ static AnonObj* IR_alloc_tmp_obj(IR_ProcBuilder* builder, size_t size, size_t al
     return obj;
 }
 
-static void IR_process_deferred_tmp_objs(IR_ProcBuilder* builder, IR_DeferredTmpObjList* obj_list)
+static void IR_reset_proc_tmp_obj_iterator(IR_ProcBuilder* builder)
 {
-    // Make any remaining deferred objects into temporary anonymous objects.
-    for (IR_DeferredTmpObj* it = obj_list->first; it; it = it->next) {
-        it->stack_obj->kind = STACK_OBJ_ANON_OBJ;
-        it->stack_obj->anon_obj = IR_alloc_tmp_obj(builder, it->size, it->align);
-    }
-
-    IR_free_deferred_tmp_obj_list(builder, obj_list);
-
     // Reset iterator to the proc's first tmp anonymous object.
     Symbol* proc_sym = builder->curr_proc;
 
     builder->curr_tmp_obj = &proc_sym->as_proc.tmp_objs;
+}
+
+static void IR_process_deferred_tmp_objs(IR_ProcBuilder* builder, IR_TmpObjList* obj_list)
+{
+    // Make any remaining deferred objects into temporary anonymous objects.
+    for (IR_TmpObj* it = obj_list->first; it; it = it->next) {
+        StackObj* stack_obj = it->stack_obj;
+
+        if (stack_obj->kind == STACK_OBJ_NONE) {
+            stack_obj->kind = STACK_OBJ_ANON_OBJ;
+            stack_obj->anon_obj = IR_alloc_tmp_anon_obj(builder, it->size, it->align);
+        }
+    }
+
+    IR_free_deferred_tmp_obj_list(builder, obj_list);
 }
 
 //////////////////////////////////////////////////////
@@ -1339,7 +1357,7 @@ static void IR_process_deferred_tmp_objs(IR_ProcBuilder* builder, IR_DeferredTmp
 //////////////////////////////////////////////////////
 
 static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt, IR_UJmpList* break_ujmps, IR_UJmpList* cont_ujmps);
-static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list);
+static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list);
 
 static void IR_emit_expr_ident(IR_ProcBuilder* builder, ExprIdent* eident, IR_Operand* dst)
 {
@@ -1437,7 +1455,7 @@ static BBlock* IR_emit_binary_cmp(IR_ProcBuilder* builder, BBlock* bblock, Condi
     return curr_bb;
 }
 
-static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* dst_op, ExprBinary* expr, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* dst_op, ExprBinary* expr, IR_TmpObjList* tmp_obj_list)
 {
     //
     // NOTE: This procedure will create a deferred comparison containing an array of short-circuit jumps and one final
@@ -1560,7 +1578,7 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     return last_bb;
 }
 
-static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, ExprBinary* expr, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, ExprBinary* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     if (expr->op == TKN_LOGIC_AND || expr->op == TKN_LOGIC_OR) {
         return IR_emit_short_circuit_cmp(builder, bblock, dst, expr, tmp_obj_list);
@@ -1687,8 +1705,8 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
     }
     case TKN_DIVMOD: {
         // Allocate a temporary array object to hold both the quotient and remainder.
-        IR_DeferredTmpObj* result_obj = IR_get_deferred_tmp_obj(builder, tmp_obj_list, result_type->size, result_type->align);
-        MemAddr result_addr = IR_obj_as_addr(result_obj);
+        IR_TmpObj* result_obj = IR_get_tmp_obj(builder, tmp_obj_list, result_type->size, result_type->align);
+        MemAddr result_addr = IR_tmp_obj_as_addr(result_obj);
 
         IR_Operand quot_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = left.type, .addr = result_addr};
         IR_Operand rem_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = left.type, .addr = result_addr};
@@ -1730,9 +1748,9 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         curr_bb = IR_emit_assign(builder, curr_bb, &quot_op, &quot_val);
         curr_bb = IR_emit_assign(builder, curr_bb, &rem_op, &rem_val);
 
-        dst->kind = IR_OPERAND_OBJ;
+        dst->kind = IR_OPERAND_TMP_OBJ;
         dst->type = result_type;
-        dst->obj = result_obj;
+        dst->tmp_obj = result_obj;
         break;
     }
     case TKN_RSHIFT: {
@@ -1835,7 +1853,7 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprUnary* expr, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprUnary* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     Type* result_type = expr->super.type;
     BBlock* curr_bb = bblock;
@@ -1949,7 +1967,7 @@ static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprU
     return curr_bb;
 }
 
-static BBlock* IR_emit_obj_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* obj_expr, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_obj_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* obj_expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand obj_op = {0};
     BBlock* curr_bb = IR_emit_expr(builder, bblock, obj_expr, &obj_op, tmp_obj_list);
@@ -1971,7 +1989,7 @@ static BBlock* IR_emit_obj_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* o
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_field(IR_ProcBuilder* builder, BBlock* bblock, ExprField* expr_field, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_field(IR_ProcBuilder* builder, BBlock* bblock, ExprField* expr_field, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand obj_op = {0};
     BBlock* curr_bb = IR_emit_obj_expr(builder, bblock, expr_field->object, &obj_op, tmp_obj_list);
@@ -1989,10 +2007,10 @@ static BBlock* IR_emit_expr_field(IR_ProcBuilder* builder, BBlock* bblock, ExprF
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_field_index(IR_ProcBuilder* builder, BBlock* bblock, ExprFieldIndex* expr, IR_Operand* dst)
+static BBlock* IR_emit_expr_field_index(IR_ProcBuilder* builder, BBlock* bblock, ExprFieldIndex* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand obj_op = {0};
-    BBlock* curr_bb = IR_emit_obj_expr(builder, bblock, expr->object, &obj_op);
+    BBlock* curr_bb = IR_emit_obj_expr(builder, bblock, expr->object, &obj_op, tmp_obj_list);
 
     assert(expr->index->is_imm);
 
@@ -2013,7 +2031,7 @@ static BBlock* IR_emit_expr_field_index(IR_ProcBuilder* builder, BBlock* bblock,
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_index(IR_ProcBuilder* builder, BBlock* bblock, ExprIndex* expr_index, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_index(IR_ProcBuilder* builder, BBlock* bblock, ExprIndex* expr_index, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand array_op = {0};
     IR_Operand index_op = {0};
@@ -2090,7 +2108,7 @@ static BBlock* IR_emit_int_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_Oper
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCast* expr_cast, IR_Operand* dst_op, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCast* expr_cast, IR_Operand* dst_op, IR_TmpObjList* tmp_obj_list)
 {
     // Emit instructions for source expression that will be casted.
     IR_Operand src_op = {0};
@@ -2123,13 +2141,13 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     }
     else if ((src_op.type->kind == TYPE_ARRAY) && type_is_slice(dst_op->type)) {
         Type* slice_type = dst_op->type;
-        IR_DeferredTmpObj* slice_obj = IR_get_deferred_tmp_obj(builder, tmp_obj_list, slice_type->size, slice_type->align);
-        MemAddr slice_addr = IR_obj_as_addr(slice_obj);
+        IR_TmpObj* slice_obj = IR_get_tmp_obj(builder, tmp_obj_list, slice_type->size, slice_type->align);
+        MemAddr slice_addr = IR_tmp_obj_as_addr(slice_obj);
 
         curr_bb = IR_init_array_slice(builder, curr_bb, &slice_addr, slice_type, &src_op);
 
-        dst_op->kind = IR_OPERAND_OBJ;
-        dst_op->obj = slice_obj;
+        dst_op->kind = IR_OPERAND_TMP_OBJ;
+        dst_op->tmp_obj = slice_obj;
     }
     else {
         assert(type_is_scalar(src_op.type) && src_op.type->kind != TYPE_FLOAT &&
@@ -2140,7 +2158,7 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return curr_bb;
 }
 
-static BBlock* IR_emit_memcpy_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_memcpy_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args, IR_TmpObjList* tmp_obj_list)
 {
     BBlock* curr_bb = bblock;
 
@@ -2192,7 +2210,7 @@ static BBlock* IR_emit_memcpy_call(IR_ProcBuilder* builder, BBlock* bblock, size
     return curr_bb;
 }
 
-static BBlock* IR_emit_memset_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_memset_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args, IR_TmpObjList* tmp_obj_list)
 {
     BBlock* curr_bb = bblock;
 
@@ -2243,7 +2261,7 @@ static BBlock* IR_emit_memset_call(IR_ProcBuilder* builder, BBlock* bblock, size
     return curr_bb;
 }
 
-static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, Type* ret_type, IR_Operand* dst_op, IR_DeferredTmpObjList* tmp_obj_list)
+static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, Type* ret_type, IR_Operand* dst_op, IR_TmpObjList* tmp_obj_list)
 {
     IR_Value ret_val = {.type = ret_type};
     dst_op->type = ret_type;
@@ -2257,17 +2275,17 @@ static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, Type* ret_type, IR_Op
             ret_val.reg = dst_op->reg;
         }
         else {
-            dst_op->kind = IR_OPERAND_OBJ;
-            dst_op->obj = IR_get_deferred_tmp_obj(builder, tmp_obj_list, ret_type->size, ret_type->align);
+            dst_op->kind = IR_OPERAND_TMP_OBJ;
+            dst_op->tmp_obj = IR_get_tmp_obj(builder, tmp_obj_list, ret_type->size, ret_type->align);
 
-            ret_val.addr = IR_obj_as_addr(dst_op->obj);
+            ret_val.addr = IR_tmp_obj_as_addr(dst_op->tmp_obj);
         }
     }
 
     return ret_val;
 }
 
-static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call, size_t* p_num_args, IR_DeferredTmpObjList* tmp_obj_list)
+static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call, size_t* p_num_args, IR_TmpObjList* tmp_obj_list)
 {
     Type* proc_type = expr_call->proc->type;
     bool is_variadic = proc_type->as_proc.is_variadic;
@@ -2327,8 +2345,8 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
         bool elem_is_any = elem_type == type_any;
 
         // Reserve memory space for the array object.
-        IR_DeferredTmpObj* arr_obj = IR_get_deferred_tmp_obj(builder, tmp_obj_list, elem_type->size * num_vargs, elem_type->align);
-        MemAddr arr_addr = IR_obj_as_addr(arr_obj);
+        IR_TmpObj* arr_obj = IR_get_tmp_obj(builder, tmp_obj_list, elem_type->size * num_vargs, elem_type->align);
+        MemAddr arr_addr = IR_tmp_obj_as_addr(arr_obj);
         IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = arr_addr};
 
         // Assign each argument expression to the corresponding element in the array.
@@ -2350,8 +2368,8 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
 
                 // Copy the argument into memory.
                 // We need to load the copy's address into the `any` object's ptr field.
-                IR_DeferredTmpObj* cpy_obj = IR_get_deferred_tmp_obj(builder, tmp_obj_list, arg_op.type->size, arg_op.type->align);
-                IR_Operand cpy_obj_op = {.kind = IR_OPERAND_OBJ, .type = arg_op.type, .obj = cpy_obj};
+                IR_TmpObj* cpy_obj = IR_get_tmp_obj(builder, tmp_obj_list, arg_op.type->size, arg_op.type->align);
+                IR_Operand cpy_obj_op = {.kind = IR_OPERAND_TMP_OBJ, .type = arg_op.type, .tmp_obj = cpy_obj};
 
                 *p_bblock = IR_emit_assign(builder, *p_bblock, &cpy_obj_op, &arg_op);
 
@@ -2369,7 +2387,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 // Set the object's ptr field to the arg's address.
                 TypeAggregateField* ptr_field = get_type_struct_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
                 IR_Operand ptr_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = ptr_field->type, .addr = any_obj_addr};
-                IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = IR_obj_as_addr(cpy_obj)};
+                IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = IR_tmp_obj_as_addr(cpy_obj)};
 
                 ptr_field_op.addr.disp += ptr_field->offset;
                 *p_bblock = IR_emit_assign(builder, *p_bblock, &ptr_field_op, &ptr_val_op);
@@ -2388,8 +2406,8 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
         // var struct_arg : VariadicStruct<elem_type> = {.length = <num_vargs>, .data = arr};
         //
 
-        IR_DeferredTmpObj* struct_obj = IR_get_deferred_tmp_obj(builder, tmp_obj_list, struct_type->size, struct_type->align);
-        MemAddr struct_addr = IR_obj_as_addr(struct_obj);
+        IR_TmpObj* struct_obj = IR_get_tmp_obj(builder, tmp_obj_list, struct_type->size, struct_type->align);
+        MemAddr struct_addr = IR_tmp_obj_as_addr(struct_obj);
 
         TypeAggregateField* length_field = get_type_struct_field(struct_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH]);
 
@@ -2412,7 +2430,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
     return args;
 }
 
-static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCall* expr_call, IR_Operand* dst_op, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCall* expr_call, IR_Operand* dst_op, IR_TmpObjList* tmp_obj_list)
 {
     BBlock* curr_bb = bblock;
 
@@ -2448,7 +2466,7 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     assert(expr->super.type->kind == TYPE_ARRAY);
     assert(!expr->typespec);
@@ -2493,7 +2511,7 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     Type* type = expr->super.type;
 
@@ -2542,7 +2560,7 @@ static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, 
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     Type* type = expr->super.type;
 
@@ -2585,7 +2603,7 @@ static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, E
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_compound_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_compound_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     Type* type = expr->super.type;
 
@@ -2601,7 +2619,7 @@ static BBlock* IR_emit_expr_compound_lit(IR_ProcBuilder* builder, BBlock* bblock
     }
 }
 
-static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr, IR_Operand* dst, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     if (expr->is_constexpr && expr->is_imm) {
         assert(type_is_scalar(expr->type));
@@ -2676,7 +2694,7 @@ static BBlock* IR_emit_stmt_block(IR_ProcBuilder* builder, BBlock* bblock, StmtB
     return last_bb;
 }
 
-static BBlock* IR_emit_stmt_return(IR_ProcBuilder* builder, BBlock* bblock, StmtReturn* sret, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_stmt_return(IR_ProcBuilder* builder, BBlock* bblock, StmtReturn* sret, IR_TmpObjList* tmp_obj_list)
 {
     BBlock* last_bb = bblock;
     IR_Value ret_val = {.type = builtin_types[BUILTIN_TYPE_VOID].type};
@@ -2701,7 +2719,7 @@ static BBlock* IR_emit_stmt_return(IR_ProcBuilder* builder, BBlock* bblock, Stmt
     return NULL;
 }
 
-static BBlock* IR_emit_stmt_decl(IR_ProcBuilder* builder, BBlock* bblock, StmtDecl* sdecl, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_stmt_decl(IR_ProcBuilder* builder, BBlock* bblock, StmtDecl* sdecl, IR_TmpObjList* tmp_obj_list)
 {
     if (sdecl->decl->kind == CST_DeclConst) {
         return bblock;
@@ -2733,7 +2751,7 @@ static BBlock* IR_emit_stmt_decl(IR_ProcBuilder* builder, BBlock* bblock, StmtDe
     return IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op);
 }
 
-static BBlock* IR_emit_stmt_expr(IR_ProcBuilder* builder, BBlock* bblock, StmtExpr* sexpr, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_stmt_expr(IR_ProcBuilder* builder, BBlock* bblock, StmtExpr* sexpr, IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand expr_op = {0};
     BBlock* curr_bb = IR_emit_expr(builder, bblock, sexpr->expr, &expr_op, tmp_obj_list);
@@ -2756,7 +2774,7 @@ static BBlock* IR_emit_stmt_expr(IR_ProcBuilder* builder, BBlock* bblock, StmtEx
     return curr_bb;
 }
 
-static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock, StmtExprAssign* stmt, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock, StmtExprAssign* stmt, IR_TmpObjList* tmp_obj_list)
 {
     BBlock* last_bb = bblock;
 
@@ -2778,7 +2796,7 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
     return last_bb;
 }
 
-static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* hdr_bb, bool jmp_result, BBlock* jmp_bb, IR_DeferredTmpObjList* tmp_obj_list)
+static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* hdr_bb, bool jmp_result, BBlock* jmp_bb, IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand cond_op = {0};
     BBlock* curr_bb = IR_emit_expr(builder, hdr_bb, expr, &cond_op, tmp_obj_list);
@@ -2827,7 +2845,7 @@ static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* 
 }
 
 static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* stmt, IR_UJmpList* break_ujmps,
-                               IR_UJmpList* cont_ujmps, IR_DeferredTmpObjList* tmp_obj_list)
+                               IR_UJmpList* cont_ujmps, IR_TmpObjList* tmp_obj_list)
 {
     Expr* cond_expr = stmt->if_blk.cond;
     Stmt* if_body = stmt->if_blk.body;
@@ -2908,7 +2926,8 @@ static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* b
     return end_bblock;
 }
 
-static BBlock* IR_emit_cond_loop(IR_ProcBuilder* builder, BBlock* bblock, Expr* cond_expr, Stmt* body_stmt, Stmt* next_stmt)
+static BBlock* IR_emit_cond_loop(IR_ProcBuilder* builder, BBlock* bblock, Expr* cond_expr, Stmt* body_stmt, Stmt* next_stmt,
+                                 IR_TmpObjList* tmp_obj_list)
 {
     BBlock* last_bb = NULL;
 
@@ -2959,7 +2978,7 @@ static BBlock* IR_emit_cond_loop(IR_ProcBuilder* builder, BBlock* bblock, Expr* 
         }
 
         // Process condition
-        last_bb = IR_process_cfg_cond(builder, cond_expr, cond_bb, true, body_bb);
+        last_bb = IR_process_cfg_cond(builder, cond_expr, cond_bb, true, body_bb, tmp_obj_list);
 
         IR_patch_ujmp_list(builder, &break_ujmps, last_bb);
         IR_patch_ujmp_list(builder, &cont_ujmps, nxt_bb ? nxt_bb : cond_bb);
@@ -2968,7 +2987,7 @@ static BBlock* IR_emit_cond_loop(IR_ProcBuilder* builder, BBlock* bblock, Expr* 
     return last_bb;
 }
 
-static BBlock* IR_emit_stmt_for(IR_ProcBuilder* builder, BBlock* bblock, StmtFor* stmt)
+static BBlock* IR_emit_stmt_for(IR_ProcBuilder* builder, BBlock* bblock, StmtFor* stmt, IR_TmpObjList* tmp_obj_list)
 {
     IR_push_scope(builder, stmt->scope);
 
@@ -2976,19 +2995,19 @@ static BBlock* IR_emit_stmt_for(IR_ProcBuilder* builder, BBlock* bblock, StmtFor
         bblock = IR_emit_stmt(builder, bblock, stmt->init, NULL, NULL);
     }
 
-    BBlock* last_bb = IR_emit_cond_loop(builder, bblock, stmt->cond, stmt->body, stmt->next);
+    BBlock* last_bb = IR_emit_cond_loop(builder, bblock, stmt->cond, stmt->body, stmt->next, tmp_obj_list);
 
     IR_pop_scope(builder);
 
     return last_bb;
 }
 
-static BBlock* IR_emit_stmt_while(IR_ProcBuilder* builder, BBlock* bblock, StmtWhile* stmt)
+static BBlock* IR_emit_stmt_while(IR_ProcBuilder* builder, BBlock* bblock, StmtWhile* stmt, IR_TmpObjList* tmp_obj_list)
 {
-    return IR_emit_cond_loop(builder, bblock, stmt->cond, stmt->body, NULL);
+    return IR_emit_cond_loop(builder, bblock, stmt->cond, stmt->body, NULL, tmp_obj_list);
 }
 
-static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, StmtDoWhile* stmt)
+static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, StmtDoWhile* stmt, IR_TmpObjList* tmp_obj_list)
 {
     Expr* cond_expr = stmt->cond;
     Stmt* body_stmt = stmt->body;
@@ -3020,7 +3039,7 @@ static BBlock* IR_emit_stmt_do_while(IR_ProcBuilder* builder, BBlock* bblock, St
         body_bb->flags |= BBLOCK_IS_LOOP_HDR;
 
         // Process condition.
-        last_bb = IR_process_cfg_cond(builder, cond_expr, body_end_bb, true, body_bb);
+        last_bb = IR_process_cfg_cond(builder, cond_expr, body_end_bb, true, body_bb, tmp_obj_list);
     }
     else {
         last_bb = IR_alloc_bblock(builder);
@@ -3126,7 +3145,7 @@ static bool IR_rm_dead_bblocks(Symbol* sym)
 static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt, IR_UJmpList* break_ujmps, IR_UJmpList* cont_ujmps)
 {
     BBlock* last_bb = NULL;
-    IR_DeferredTmpObjList tmp_obj_list = {0};
+    IR_TmpObjList tmp_obj_list = {0};
 
     switch (stmt->kind) {
     case CST_StmtBlock:
@@ -3182,6 +3201,7 @@ static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt,
     // Reset anon object pointer after every statement.
     // This allows us to reuse the same temporary memory for anonymous objects that appear in different statements.
     IR_process_deferred_tmp_objs(builder, &tmp_obj_list);
+    IR_reset_proc_tmp_obj_iterator(builder);
 
     return last_bb;
 }
@@ -3201,7 +3221,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     // Set procedure as the current scope.
     builder->curr_proc = sym;
     IR_push_scope(builder, dproc->scope);
-    IR_reset_tmp_obj_stack(builder);
+    IR_reset_proc_tmp_obj_iterator(builder);
 
     sym->as_proc.bblocks = array_create(builder->arena, BBlock*, 8);
 

@@ -1980,6 +1980,9 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     // End label
     X64_emit_text(generator, "    end.%s:", proc_mangled);
 
+    if (stack_size)
+        X64_emit_text(generator, "    add rsp, %u", stack_size);
+
     // Patch instruction to save callee-saved registers.
     char* tmp_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
 
@@ -2010,9 +2013,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
         }
     }
 
-    if (stack_size)
-        X64_emit_text(generator, "    mov rsp, rbp");
-
+    X64_emit_text(generator, "    mov rsp, rbp"); // TODO: Not needed if stack_size == 0 and did not push callee-saved registers
     X64_emit_text(generator, "    pop rbp");
     X64_emit_text(generator, "    ret");
 

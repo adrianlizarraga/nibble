@@ -237,7 +237,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
             else {
                 assert(stack_obj->kind == STACK_OBJ_ANON_OBJ);
                 base_reg = builder->lreg_rbp;
-                disp += stack_obj->obj->offset;
+                disp += stack_obj->anon_obj->offset;
             }
 
             dst->kind = X64_ADDR_LOCAL;
