@@ -1192,7 +1192,7 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
     MemAddr dst_addr;
     IR_get_object_addr(builder, curr_bb, &dst_addr, lhs);
 
-    if (type_is_slice(lhs->type) && (rhs->type->kind == TYPE_ARRAY)) {
+    if (type_is_slice(lhs->type) && (rhs->type->kind == TYPE_ARRAY)) { // TODO: REMOVE and just do implicit casting + copy elision
         curr_bb = IR_init_array_slice(builder, curr_bb, &dst_addr, lhs->type, rhs);
     }
     else {
@@ -2366,12 +2366,20 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 // any_obj.ptr = ^cpy_obj;
                 //
 
-                // Copy the argument into memory.
-                // We need to load the copy's address into the `any` object's ptr field.
-                IR_TmpObj* cpy_obj = IR_get_tmp_obj(builder, tmp_obj_list, arg_op.type->size, arg_op.type->align);
-                IR_Operand cpy_obj_op = {.kind = IR_OPERAND_TMP_OBJ, .type = arg_op.type, .tmp_obj = cpy_obj};
+                MemAddr arg_addr = {0};
 
-                *p_bblock = IR_emit_assign(builder, *p_bblock, &cpy_obj_op, &arg_op);
+                // We need to load the arg's address into the `any` object's ptr field.
+                // Copy the argument into memory IFF the argument is not already a temporary object.
+                if (arg_op.kind != IR_OPERAND_TMP_OBJ) {
+                    IR_TmpObj* cpy_obj = IR_get_tmp_obj(builder, tmp_obj_list, arg_op.type->size, arg_op.type->align);
+                    IR_Operand cpy_obj_op = {.kind = IR_OPERAND_TMP_OBJ, .type = arg_op.type, .tmp_obj = cpy_obj};
+
+                    *p_bblock = IR_emit_assign(builder, *p_bblock, &cpy_obj_op, &arg_op); // Do the copy.
+                    arg_addr = IR_tmp_obj_as_addr(cpy_obj); // Get the copy's address.
+                }
+                else {
+                    arg_addr = IR_tmp_obj_as_addr(arg_op.tmp_obj);
+                }
 
                 // Initialize the `any` object's fields. Note that we're directly modifying the array element.
                 MemAddr any_obj_addr = elem_ptr_op.addr;
@@ -2387,7 +2395,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 // Set the object's ptr field to the arg's address.
                 TypeAggregateField* ptr_field = get_type_struct_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
                 IR_Operand ptr_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = ptr_field->type, .addr = any_obj_addr};
-                IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = IR_tmp_obj_as_addr(cpy_obj)};
+                IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = arg_addr};
 
                 ptr_field_op.addr.disp += ptr_field->offset;
                 *p_bblock = IR_emit_assign(builder, *p_bblock, &ptr_field_op, &ptr_val_op);

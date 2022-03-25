@@ -1908,8 +1908,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     X64_emit_text(generator, "    push rbp");
     X64_emit_text(generator, "    mov rbp, rsp");
 
-    char** save_regs_inst = X64_emit_text(generator, NULL);
-    char** sub_rsp_inst = X64_emit_text(generator, NULL);
+    char** sub_rsp_inst = X64_emit_text(generator, NULL); // sub rsp, <stack_size>
 
     u32 stack_size = X64_assign_proc_stack_offsets(generator, sym); // NOTE: Spills argument registers.
 
@@ -1963,6 +1962,8 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     if (stack_size)
         X64_fill_line(generator, sub_rsp_inst, "    sub rsp, %u", stack_size);
 
+    char** save_regs_inst = X64_emit_text(generator, NULL);
+
     // Generate instructions.
     for (size_t ii = 0; ii < builder.num_bblocks; ii++) {
         X64_BBlock* bb = builder.bblocks[ii];
@@ -1979,9 +1980,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     // End label
     X64_emit_text(generator, "    end.%s:", proc_mangled);
-
-    if (stack_size)
-        X64_emit_text(generator, "    add rsp, %u", stack_size);
 
     // Patch instruction to save callee-saved registers.
     char* tmp_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
@@ -2013,7 +2011,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
         }
     }
 
-    X64_emit_text(generator, "    mov rsp, rbp"); // TODO: Not needed if stack_size == 0 and did not push callee-saved registers
+    X64_emit_text(generator, "    mov rsp, rbp");
     X64_emit_text(generator, "    pop rbp");
     X64_emit_text(generator, "    ret");
 
