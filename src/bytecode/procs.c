@@ -34,7 +34,7 @@ typedef enum IR_OperandKind {
 typedef struct IR_TmpObj {
     size_t size;
     size_t align;
-    StackObj* stack_obj;
+    MemObj* mem_obj;
     struct IR_TmpObj* next;
 } IR_TmpObj;
 
@@ -534,17 +534,17 @@ static IR_Reg IR_next_reg(IR_ProcBuilder* builder)
 
 static MemAddr IR_sym_as_addr(IR_ProcBuilder* builder, Symbol* sym)
 {
-    StackObj* stack_obj = alloc_type(builder->arena, StackObj, false);
-    stack_obj->kind = STACK_OBJ_SYM;
-    stack_obj->sym = sym;
+    MemObj* mem_obj = alloc_type(builder->arena, MemObj, false);
+    mem_obj->kind = MEM_OBJ_SYM;
+    mem_obj->sym = sym;
 
-    MemAddr addr = {.base_kind = MEM_BASE_STACK_OBJ, .base.obj = stack_obj, .index_reg = IR_REG_COUNT};
+    MemAddr addr = {.base_kind = MEM_BASE_MEM_OBJ, .base.obj = mem_obj, .index_reg = IR_REG_COUNT};
     return addr;
 }
 
 static MemAddr IR_tmp_obj_as_addr(IR_TmpObj* obj)
 {
-    MemAddr addr = {.base_kind = MEM_BASE_STACK_OBJ, .base.obj = obj->stack_obj, .index_reg = IR_REG_COUNT};
+    MemAddr addr = {.base_kind = MEM_BASE_MEM_OBJ, .base.obj = obj->mem_obj, .index_reg = IR_REG_COUNT};
     return addr;
 }
 
@@ -1214,27 +1214,33 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
             curr_bb = IR_emit_union_init(builder, curr_bb, lhs, rhs);
         }
         else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_TMP_OBJ)) {
-            StackObj* r_stack_obj = rhs->tmp_obj->stack_obj;
+            MemObj* r_mem_obj = rhs->tmp_obj->mem_obj;
 
-            ftprint_out("Aliasing tmp obj assignment\n"); // TODO: REMOVE. nocheckin
-            assert(r_stack_obj->kind == STACK_OBJ_NONE);
+            assert(r_mem_obj->kind == MEM_OBJ_NONE);
 
             // Alias tmp objects. rhs will refer to lhs.
-            r_stack_obj->kind = STACK_OBJ_ALIAS;
-            r_stack_obj->alias = lhs->tmp_obj->stack_obj;
+            r_mem_obj->kind = MEM_OBJ_ALIAS;
+            r_mem_obj->alias = lhs->tmp_obj->mem_obj;
 
         }
         else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_VAR)) {
-            StackObj* stack_obj = rhs->tmp_obj->stack_obj;
+            MemObj* mem_obj = rhs->tmp_obj->mem_obj;
 
-            ftprint_out("Eliding tmp obj to var assignment\n"); // TODO: REMOVE. nocheckin
-            assert(stack_obj->kind == STACK_OBJ_NONE);
+            assert(mem_obj->kind == MEM_OBJ_NONE);
 
             // Elide copy by replacing temporary object with the variable to which it would otherwise be copied.
-            stack_obj->kind = STACK_OBJ_SYM;
-            stack_obj->sym = lhs->sym;
+            mem_obj->kind = MEM_OBJ_SYM;
+            mem_obj->sym = lhs->sym;
         }
-        // TODO: rhs is tmp_obj, lhs is deferred_deref_addr!
+        else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_DEREF_ADDR)) {
+            MemObj* mem_obj = rhs->tmp_obj->mem_obj;
+
+            assert(mem_obj->kind == MEM_OBJ_NONE);
+
+            // Elide copy by replacing temporary object with the address to which it would otherwise be copied.
+            mem_obj->kind = MEM_OBJ_ADDR;
+            mem_obj->addr = lhs->addr;
+        }
         else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
             curr_bb = IR_op_to_r(builder, curr_bb, rhs);
             IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
@@ -1277,7 +1283,7 @@ static IR_TmpObj* IR_get_tmp_obj(IR_ProcBuilder* builder, IR_TmpObjList* obj_lis
     // Initialize tmp obj.
     tmp_obj->size = size;
     tmp_obj->align = align;
-    tmp_obj->stack_obj = alloc_type(builder->arena, StackObj, true);
+    tmp_obj->mem_obj = alloc_type(builder->arena, MemObj, true);
     tmp_obj->next = NULL;
 
     // Add obj to the end of the list.
@@ -1352,11 +1358,11 @@ static void IR_process_deferred_tmp_objs(IR_ProcBuilder* builder, IR_TmpObjList*
 {
     // Make any remaining deferred objects into temporary anonymous objects.
     for (IR_TmpObj* it = obj_list->first; it; it = it->next) {
-        StackObj* stack_obj = it->stack_obj;
+        MemObj* mem_obj = it->mem_obj;
 
-        if (stack_obj->kind == STACK_OBJ_NONE) {
-            stack_obj->kind = STACK_OBJ_ANON_OBJ;
-            stack_obj->anon_obj = IR_alloc_tmp_anon_obj(builder, it->size, it->align);
+        if (mem_obj->kind == MEM_OBJ_NONE) {
+            mem_obj->kind = MEM_OBJ_ANON_OBJ;
+            mem_obj->anon_obj = IR_alloc_tmp_anon_obj(builder, it->size, it->align);
         }
     }
 

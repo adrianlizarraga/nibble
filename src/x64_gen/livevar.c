@@ -18,13 +18,13 @@ static void X64_touch_lreg(X64_LIRBuilder* builder, u32 lreg, long ino)
 
 static void X64_touch_mem_lregs(X64_LIRBuilder* builder, X64_MemAddr* addr, long ino)
 {
-    if (addr->kind == X64_ADDR_LOCAL) {
-        if (addr->local.base_reg != X64_LIR_REG_COUNT) {
-            X64_touch_lreg(builder, addr->local.base_reg, ino);
+    if (addr->kind == X64_ADDR_SIBD) {
+        if (addr->sibd.base_reg != X64_LIR_REG_COUNT) {
+            X64_touch_lreg(builder, addr->sibd.base_reg, ino);
         }
 
-        if (addr->local.scale && addr->local.index_reg != X64_LIR_REG_COUNT) {
-            X64_touch_lreg(builder, addr->local.index_reg, ino);
+        if (addr->sibd.scale && addr->sibd.index_reg != X64_LIR_REG_COUNT) {
+            X64_touch_lreg(builder, addr->sibd.index_reg, ino);
         }
     }
 }

@@ -105,8 +105,8 @@ typedef enum X64_InstrKind
 
 typedef enum X64_MemAddrKind
 {
-    X64_ADDR_GLOBAL,
-    X64_ADDR_LOCAL,
+    X64_ADDR_GLOBAL_SYM,
+    X64_ADDR_SIBD,
     X64_ADDR_STR_LIT,
 } X64_MemAddrKind;
 
@@ -114,13 +114,13 @@ typedef struct X64_MemAddr {
     X64_MemAddrKind kind;
 
     union {
-        Symbol* global;
+        Symbol* global; // TODO: Should be able to add disp to global.
         struct {
             u32 base_reg;
             u32 index_reg;
             s32 disp;
             u8 scale;
-        } local;
+        } sibd;
         StrLit* str_lit;
     };
 } X64_MemAddr;
