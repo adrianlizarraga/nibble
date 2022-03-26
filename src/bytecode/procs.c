@@ -22,7 +22,6 @@ typedef enum IR_OperandKind {
     IR_OPERAND_MEM_ADDR,
     IR_OPERAND_DEREF_ADDR,
     IR_OPERAND_DEFERRED_CMP,
-    IR_OPERAND_STRUCT_INIT,
     IR_OPERAND_UNION_INIT,
     IR_OPERAND_VAR,
     IR_OPERAND_TMP_OBJ,
@@ -55,11 +54,6 @@ typedef struct IR_DeferredCmp {
     IR_DeferredJmpcc final_jmp;
 } IR_DeferredCmp;
 
-typedef struct IR_StructInitializer {
-    size_t num_initzers;
-    struct IR_Operand** field_ops; // One per field
-} IR_StructInitializer;
-
 typedef struct IR_UnionInitializer {
     size_t field_index;
     struct IR_Operand* field_op;
@@ -76,7 +70,6 @@ typedef struct IR_Operand {
         Symbol* sym;
         IR_TmpObj* tmp_obj;
         IR_DeferredCmp cmp;
-        IR_StructInitializer struct_initzer;
         IR_UnionInitializer union_initzer;
         StrLit* str_lit;
     };
@@ -970,10 +963,33 @@ static BBlock* IR_get_default_val(IR_ProcBuilder* builder, BBlock* bblock, IR_Tm
     BBlock* curr_bb = bblock;
 
     if (type->kind == TYPE_STRUCT) {
-        zero_op->kind = IR_OPERAND_STRUCT_INIT;
+        IR_TmpObj* struct_obj = IR_get_tmp_obj(builder, tmp_obj_list, type->size, type->align);
+        MemAddr struct_addr = IR_tmp_obj_as_addr(struct_obj);
+
+        TypeAggregateBody* type_agg = &type->as_struct.body;
+        TypeAggregateField* fields = type_agg->fields;
+        size_t num_fields = type_agg->num_fields;
+
+        // Memset to 0 if struct type has have more than 4 fields or the struct is larger than 4 pointers.
+        if ((num_fields > 4) || (type->size > (PTR_SIZE << 2))) {
+            IR_clear_memory(builder, curr_bb, &struct_addr, type->size);
+        }
+        else {
+            IR_Operand zero_op = {0};
+
+            for (size_t i = 0; i < num_fields; i++) {
+                TypeAggregateField* field = fields + i;
+                IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = struct_addr};
+                field_ptr_op.addr.disp += field->offset;
+
+                curr_bb = IR_get_default_val(builder, curr_bb, tmp_obj_list, field->type, &zero_op);
+                curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &zero_op, tmp_obj_list);
+            }
+        }
+
+        zero_op->kind = IR_OPERAND_TMP_OBJ;
         zero_op->type = type;
-        zero_op->struct_initzer.num_initzers = 0;
-        zero_op->struct_initzer.field_ops = NULL;
+        zero_op->tmp_obj = struct_obj;
     }
     else if (type->kind == TYPE_UNION) {
         zero_op->kind = IR_OPERAND_UNION_INIT;
@@ -1012,60 +1028,6 @@ static BBlock* IR_get_default_val(IR_ProcBuilder* builder, BBlock* bblock, IR_Tm
         zero_op->kind = IR_OPERAND_IMM;
         zero_op->type = type;
         zero_op->imm = ir_zero_imm;
-    }
-
-    return curr_bb;
-}
-
-static BBlock* IR_emit_struct_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* struct_op, IR_Operand* init_op, IR_TmpObjList* tmp_obj_list)
-{
-    assert(struct_op->kind == IR_OPERAND_VAR || struct_op->kind == IR_OPERAND_DEREF_ADDR);
-    assert(struct_op->type->kind == TYPE_STRUCT);
-    assert(init_op->kind == IR_OPERAND_STRUCT_INIT);
-
-    BBlock* curr_bb = bblock;
-
-    MemAddr base_addr = {0};
-    IR_get_object_addr(builder, curr_bb, &base_addr, struct_op);
-
-    Type* type = struct_op->type;
-    TypeAggregateBody* type_agg = &type->as_struct.body;
-    size_t num_fields = type_agg->num_fields;
-    TypeAggregateField* fields = type_agg->fields;
-
-    size_t num_initzers = init_op->struct_initzer.num_initzers;
-
-    // Memset to 0 if did not specify any initializers AND we either have more than 4 fields or 
-    // the struct is larger than 4 pointers.
-    if ((num_initzers == 0) && ((num_fields > 4) || (type->size > (PTR_SIZE << 2)))) {
-        IR_clear_memory(builder, curr_bb, &base_addr, type->size);
-        return curr_bb;
-    }
-
-    assert(num_initzers <= num_fields);
-    size_t num_zero_fields = num_fields - num_initzers;
-    bool zero_first_pass = (num_zero_fields > 4);
-
-    if (zero_first_pass) {
-        IR_clear_memory(builder, curr_bb, &base_addr, type->size);
-    }
-
-    IR_Operand** field_ops = init_op->struct_initzer.field_ops;
-
-    // Initialize field with provided initializer OR zero.
-    for (size_t i = 0; i < num_fields; i++) {
-        TypeAggregateField* field = fields + i;
-        IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = base_addr};
-        field_ptr_op.addr.disp += field->offset;
-
-        if (field_ops && field_ops[i]) { // field <= initializer.
-            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, field_ops[i], tmp_obj_list);
-        }
-        else if (!zero_first_pass) { // field <= 0
-            IR_Operand zero_op = {0};
-            curr_bb = IR_get_default_val(builder, curr_bb, tmp_obj_list, field->type, &zero_op);
-            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &zero_op, tmp_obj_list);
-        }
     }
 
     return curr_bb;
@@ -1147,9 +1109,6 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
 
         IR_emit_instr_limm(builder, curr_bb, rhs->type, r, rhs->imm);
         IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, r);
-    }
-    else if (rhs->kind == IR_OPERAND_STRUCT_INIT) {
-        curr_bb = IR_emit_struct_init(builder, curr_bb, lhs, rhs, tmp_obj_list);
     }
     else if (rhs->kind == IR_OPERAND_UNION_INIT) {
         curr_bb = IR_emit_union_init(builder, curr_bb, lhs, rhs, tmp_obj_list);
@@ -1267,6 +1226,8 @@ static void IR_process_deferred_tmp_objs(IR_ProcBuilder* builder, IR_TmpObjList*
     // Make any remaining deferred objects into temporary anonymous objects.
     for (IR_TmpObj* it = obj_list->first; it; it = it->next) {
         MemObj* mem_obj = it->mem_obj;
+
+        assert(mem_obj);
 
         if (mem_obj->kind == MEM_OBJ_NONE) {
             mem_obj->kind = MEM_OBJ_ANON_OBJ;
@@ -2412,6 +2373,10 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
     // Just memset to 0 if don't have any initializers and the array has more than 4 elements.
     if ((num_initzers == 0) && (num_elems > 4)) {
         IR_clear_memory(builder, curr_bb, &arr_addr, arr_type->size);
+
+        dst->kind = IR_OPERAND_TMP_OBJ;
+        dst->type = arr_type;
+        dst->tmp_obj = arr_obj;
         return curr_bb;
     }
 
@@ -2523,28 +2488,47 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
 
 static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
-    Type* type = expr->super.type;
-
     assert(!expr->typespec);
-    assert(type->kind == TYPE_STRUCT);
+    assert(expr->super.type->kind == TYPE_STRUCT);
 
-    TypeAggregateBody* type_agg = &type->as_struct.body;
+    Type* struct_type = expr->super.type;
+    BBlock* curr_bb = bblock;
+
+    // Allocate a temporary object for the struct literal object.
+    IR_TmpObj* struct_obj = IR_get_tmp_obj(builder, tmp_obj_list, struct_type->size, struct_type->align);
+    MemAddr struct_addr = IR_tmp_obj_as_addr(struct_obj);
+
+    TypeAggregateBody* type_agg = &struct_type->as_struct.body;
     TypeAggregateField* fields = type_agg->fields;
+
     size_t num_fields = type_agg->num_fields;
-    IR_Operand** field_ops = alloc_array(builder->tmp_arena, IR_Operand*, num_fields, true);
+    size_t num_initzers = expr->num_initzers;
+
+    // Memset to 0 if did not specify any initializers AND we either have more than 4 fields or 
+    // the struct is larger than 4 pointers.
+    if ((num_initzers == 0) && ((num_fields > 4) || (struct_type->size > (PTR_SIZE << 2)))) {
+        IR_clear_memory(builder, curr_bb, &struct_addr, struct_type->size);
+
+        dst->kind = IR_OPERAND_TMP_OBJ;
+        dst->type = struct_type;
+        dst->tmp_obj = struct_obj;
+        return curr_bb;
+    }
 
     List* head = &expr->initzers;
     List* it = head->next;
     size_t field_index = 0;
 
-    BBlock* curr_bb = bblock;
+    // Collect initializer values into the array 'field_ops'. The 'field_ops' array has an element
+    // for each field in the struct type. Elements without an initializer are left as 'NULL'.
+    IR_Operand** field_ops = alloc_array(builder->tmp_arena, IR_Operand*, num_fields, true);
 
     while (it != head) {
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
         TypeAggregateField* field;
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            field = get_type_struct_field(type, initzer->designator.name);
+            field = get_type_struct_field(struct_type, initzer->designator.name);
             assert(field);
 
             field_index = field->index + 1;
@@ -2562,10 +2546,34 @@ static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, 
         it = it->next;
     }
 
-    dst->kind = IR_OPERAND_STRUCT_INIT;
-    dst->type = type;
-    dst->struct_initzer.num_initzers = expr->num_initzers;
-    dst->struct_initzer.field_ops = field_ops;
+    assert(num_initzers <= num_fields);
+    size_t num_zero_fields = num_fields - num_initzers;
+    bool zero_first_pass = (num_zero_fields > 4);
+
+    // Clear the struct memory (as a first pass) if more than 4 fields are uninitialized.
+    if (zero_first_pass) {
+        IR_clear_memory(builder, curr_bb, &struct_addr, struct_type->size);
+    }
+
+    // Initialize each field with the provided initializer OR the default 'zero' value.
+    for (size_t i = 0; i < num_fields; i++) {
+        TypeAggregateField* field = fields + i;
+        IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = struct_addr};
+        field_ptr_op.addr.disp += field->offset;
+
+        if (field_ops && field_ops[i]) { // field <= initializer.
+            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, field_ops[i], tmp_obj_list);
+        }
+        else if (!zero_first_pass) { // field <= 0
+            IR_Operand zero_op = {0};
+            curr_bb = IR_get_default_val(builder, curr_bb, tmp_obj_list, field->type, &zero_op);
+            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &zero_op, tmp_obj_list);
+        }
+    }
+
+    dst->kind = IR_OPERAND_TMP_OBJ;
+    dst->type = struct_type;
+    dst->tmp_obj = struct_obj;
 
     return curr_bb;
 }
@@ -3224,6 +3232,8 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
         return;
     }
 
+    AllocatorState mem_state = allocator_get_state(builder->tmp_arena);
+
     // Initialize stack of temporary anonymous objects.
     list_head_init(&sym->as_proc.tmp_objs);
     sym->as_proc.num_tmp_objs = 0;
@@ -3231,13 +3241,23 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     // Set procedure as the current scope.
     builder->curr_proc = sym;
     IR_push_scope(builder, dproc->scope);
+
+    // Reset iterator that points to the first available tmp obj.
     IR_reset_proc_tmp_obj_iterator(builder);
 
+    // Initialize freelists
+    builder->tmp_obj_freelist = NULL;
+    builder->sc_jmp_freelist = NULL;
+    builder->ujmp_freelist = NULL;
+
+    // Create stretchy buffer to hold basic blocks.
     sym->as_proc.bblocks = array_create(builder->arena, BBlock*, 8);
 
+    // Add the starting basic block.
     BBlock* start_bb = IR_alloc_bblock(builder);
     start_bb->flags |= BBLOCK_IS_START;
 
+    // Emit IR for procedure body.
     BBlock* last_bb = IR_emit_stmt_block_body(builder, start_bb, &dproc->stmts, NULL, NULL);
 
     // If proc doesn't have explicit returns, add one at the end.
@@ -3296,6 +3316,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     IR_print_out_proc(builder->tmp_arena, sym);
     IR_dump_proc_dot(builder->tmp_arena, sym);
 #endif
+    allocator_restore_state(mem_state);
 }
 
 static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, BucketList* str_lits, TypeCache* type_cache)
@@ -3306,8 +3327,6 @@ static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* p
                               .type_cache = type_cache,
                               .curr_proc = NULL,
                               .curr_scope = NULL};
-
-    AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 
     // Iterate through all procedures and generate IR instructions.
     size_t num_procs = procs->num_elems;
@@ -3320,6 +3339,4 @@ static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* p
 
         IR_build_proc(&builder, sym);
     }
-
-    allocator_restore_state(tmp_mem_state);
 }
