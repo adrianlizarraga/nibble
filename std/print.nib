@@ -9,7 +9,7 @@ enum PrintErr {
 }
 
 @exported
-proc print_out(format : [] char, vargs : ..any) => struct {usize; PrintErr;} {
+proc print_out(format : [] char, vargs : ..any) => {usize; PrintErr} {
     var buf : [128] char;
     var dst : FileBuffer = {buf = buf};
 
@@ -35,7 +35,7 @@ struct PrintState {
 
 typedef PutCharProc = proc(^void, char) => bool;
 
-proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, args : []any) => struct {usize; PrintErr;} {
+proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, args : []any) => {usize; PrintErr} {
     var state : PrintState = {arg = arg, put_char = put_char};
 
     for (var i := 0; i < format.length; ) {
@@ -82,12 +82,12 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
         }
     }
 
-    var r : struct {usize; PrintErr;} = {state.count, PrintErr::NONE};
+    var r : {usize; PrintErr} = {state.count, PrintErr::NONE};
 
     return r;
 }
 
-proc scan_num(format : []char, i : usize) => struct {usize; usize;} {
+proc scan_num(format : []char, i : usize) => {usize; usize} {
     var num : usize = 0;
 
     while (i < format.length && is_num(format[i])) {
@@ -96,7 +96,7 @@ proc scan_num(format : []char, i : usize) => struct {usize; usize;} {
         i = i + 1;
     }
 
-    var r : struct {usize; usize;} = {num, i};
+    var r : {usize; usize} = {num, i};
 
     return r;
 }
