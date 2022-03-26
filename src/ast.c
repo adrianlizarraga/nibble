@@ -1871,8 +1871,9 @@ char* ftprint_typespec(Allocator* allocator, TypeSpec* typespec)
 
                 for (ListNode* it = head->next; it != head; it = it->next) {
                     AggregateField* field = list_entry(it, AggregateField, lnode);
+                    const char* field_name = field->name ? field->name->str : "_anon_";
 
-                    ftprint_char_array(&dstr, false, "(%s %s)", field->name->str, ftprint_typespec(allocator, field->typespec));
+                    ftprint_char_array(&dstr, false, "(%s %s)", field_name, ftprint_typespec(allocator, field->typespec));
 
                     if (it->next != head)
                         ftprint_char_array(&dstr, false, " ");

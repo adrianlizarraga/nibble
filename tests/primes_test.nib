@@ -1,0 +1,85 @@
+import "./print.nib";
+
+proc find_prime_iterative(initial : int) => int {
+    var prime : int = 1;
+    var curr : int = 1;
+    var prime_count : int = 0;
+
+    while (prime_count < initial) {
+        for (var denom : int = 2; denom < curr; denom = denom + 1) {
+            if (curr % denom == 0) {
+                curr = curr + 1;
+                continue;
+            }
+        }
+        prime = curr;
+        curr = curr + 1;
+        prime_count = prime_count + 1;
+    }
+
+    return prime;
+}
+
+proc main() => int {
+    var out : int = find_prime_iterative(20000);
+    print_out("result: %0\n", out);
+    return 0;
+}
+
+/*
+_primes_test_nib_find_prime_iterative:
+    push rbp
+    mov rbp, rsp
+
+    sub rsp, 32
+    mov dword [rbp + -4], edi
+    L.0.0:
+    mov dword [rbp + -8], 0x1
+    mov dword [rbp + -12], 0x1
+    mov dword [rbp + -16], 0x0
+    jmp L.0.7
+    L.0.1:
+    mov dword [rbp + -20], 0x2
+    jmp L.0.5
+    L.0.2:
+    mov eax, dword [rbp + -12]
+    mov r10d, dword [rbp + -20]
+    cdq
+    idiv r10d
+    mov r10d, 0x0
+    cmp edx, r10d
+    jne L.0.4
+    L.0.3:
+    mov r10d, dword [rbp + -12]
+    add r10d, 0x1
+    mov dword [rbp + -12], r10d
+    L.0.4:
+    mov r10d, dword [rbp + -20]
+    add r10d, 0x1
+    mov dword [rbp + -20], r10d
+    L.0.5:
+    mov r10d, dword [rbp + -20]
+    mov r11d, dword [rbp + -12]
+    cmp r10d, r11d
+    jl L.0.2
+    L.0.6:
+    mov r10d, dword [rbp + -12]
+    mov dword [rbp + -8], r10d
+    mov r10d, dword [rbp + -12]
+    add r10d, 0x1
+    mov dword [rbp + -12], r10d
+    mov r10d, dword [rbp + -16]
+    add r10d, 0x1
+    mov dword [rbp + -16], r10d
+    L.0.7:
+    mov r10d, dword [rbp + -16]
+    mov r11d, dword [rbp + -4]
+    cmp r10d, r11d
+    jl L.0.1
+    L.0.8:
+    mov eax, dword [rbp + -8]
+    end._primes_test_nib_find_prime_iterative:
+    mov rsp, rbp
+    pop rbp
+    ret
+*/

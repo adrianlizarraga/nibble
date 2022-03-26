@@ -9,15 +9,19 @@
 #define IR_REG_COUNT 0xFFFFFFFF
 
 typedef u32 IR_Reg;
+typedef struct RegImm RegImm;
+typedef struct MemObj MemObj;
+typedef struct MemAddr MemAddr;
+typedef struct Instr Instr;
 
-typedef struct RegImm {
+struct RegImm {
     bool is_imm;
 
     union {
         IR_Reg reg;
         Scalar imm;
     };
-} RegImm;
+};
 
 typedef enum InstrKind {
     INSTR_NONE = 0,
@@ -59,25 +63,42 @@ typedef enum InstrKind {
 typedef enum MemBaseKind {
     MEM_BASE_NONE = 0,
     MEM_BASE_REG,
-    MEM_BASE_SYM,
-    MEM_BASE_OBJ,
+    MEM_BASE_MEM_OBJ,
     MEM_BASE_STR_LIT,
 } MemBaseKind;
 
-typedef struct MemAddr {
+struct MemAddr {
     MemBaseKind base_kind;
 
     union {
         IR_Reg reg;
-        Symbol* sym;
-        AnonObj* obj;
+        MemObj* obj;
         StrLit* str_lit;
     } base;
 
     IR_Reg index_reg;
     u8 scale;
     u32 disp;
-} MemAddr;
+};
+
+typedef enum MemObjKind {
+    MEM_OBJ_NONE = 0,
+    MEM_OBJ_ANON_OBJ,
+    MEM_OBJ_SYM,
+    MEM_OBJ_ADDR,
+    MEM_OBJ_ALIAS,
+} MemObjKind;
+
+struct MemObj {
+    MemObjKind kind;
+
+    union {
+        AnonObj* anon_obj;
+        Symbol* sym;
+        MemObj* alias;
+        MemAddr addr;
+    };
+};
 
 typedef struct InstrBinary {
     Type* type;
@@ -223,7 +244,7 @@ typedef struct InstrPhi {
     PhiArg* args;
 } InstrPhi;
 
-typedef struct Instr {
+struct Instr {
     InstrKind kind;
     long ino; // Instruction number
     bool is_leader;
@@ -249,9 +270,9 @@ typedef struct Instr {
         InstrPhi phi;
     };
 
-    struct Instr* prev;
-    struct Instr* next;
-} Instr;
+    Instr* prev;
+    Instr* next;
+};
 
 enum BBlockFlags {
     BBLOCK_IS_START    = 0x1,

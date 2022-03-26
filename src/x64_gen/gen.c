@@ -949,7 +949,7 @@ static u32 X64_get_sibd_addr(X64_Generator* generator, X64_SIBDAddr* sibd_addr, 
 {
     u32 used_regs = 0;
 
-    if (vaddr->kind == X64_ADDR_GLOBAL) {
+    if (vaddr->kind == X64_ADDR_GLOBAL_SYM) {
         sibd_addr->kind = X64_SIBD_ADDR_GLOBAL;
         sibd_addr->global = vaddr->global;
     }
@@ -958,23 +958,24 @@ static u32 X64_get_sibd_addr(X64_Generator* generator, X64_SIBDAddr* sibd_addr, 
         sibd_addr->str_lit = vaddr->str_lit;
     }
     else {
-        bool has_base = vaddr->local.base_reg != (u32)-1;
-        bool has_index = vaddr->local.scale && (vaddr->local.index_reg != (u32)-1);
+        assert(vaddr->kind == X64_ADDR_SIBD);
+        bool has_base = vaddr->sibd.base_reg != (u32)-1;
+        bool has_index = vaddr->sibd.scale && (vaddr->sibd.index_reg != (u32)-1);
         assert(has_base || has_index);
 
         sibd_addr->kind = X64_SIBD_ADDR_LOCAL;
-        sibd_addr->local.disp = vaddr->local.disp;
-        sibd_addr->local.scale = vaddr->local.scale;
+        sibd_addr->local.disp = vaddr->sibd.disp;
+        sibd_addr->local.scale = vaddr->sibd.scale;
 
         if (has_base) {
-            X64_LRegLoc base_loc = X64_lreg_loc(generator, vaddr->local.base_reg);
+            X64_LRegLoc base_loc = X64_lreg_loc(generator, vaddr->sibd.base_reg);
             assert(base_loc.kind == X64_LREG_LOC_REG);
 
             sibd_addr->local.base_reg = base_loc.reg;
             u32_set_bit(&used_regs, base_loc.reg);
 
             if (has_index) {
-                X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->local.index_reg);
+                X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->sibd.index_reg);
                 assert(index_loc.kind == X64_LREG_LOC_REG);
 
                 sibd_addr->local.index_reg = index_loc.reg;
@@ -985,7 +986,7 @@ static u32 X64_get_sibd_addr(X64_Generator* generator, X64_SIBDAddr* sibd_addr, 
             }
         }
         else {
-            X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->local.index_reg);
+            X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->sibd.index_reg);
             assert(index_loc.kind == X64_LREG_LOC_REG);
 
             sibd_addr->local.base_reg = X64_REG_COUNT;
@@ -1479,7 +1480,7 @@ static void X64_windows_cpy_ret_small_obj(X64_Generator* generator, Type* ret_ty
     }
 }
 
-static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_instr)
+static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_instr, long bblock_id)
 {
     static const char* binary_r_r_name[] = {[X64_INSTR_ADD_R_R] = "add", [X64_INSTR_SUB_R_R] = "sub", [X64_INSTR_IMUL_R_R] = "imul",
                                             [X64_INSTR_AND_R_R] = "and", [X64_INSTR_OR_R_R] = "or",   [X64_INSTR_XOR_R_R] = "xor"};
@@ -1678,7 +1679,11 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         break;
     }
     case X64_INSTR_JMP: {
-        X64_emit_text(generator, "    jmp %s", X64_get_label(generator, instr->jmp.target->id));
+        long target_id = instr->jmp.target->id;
+
+        if (target_id != bblock_id + 1) {
+            X64_emit_text(generator, "    jmp %s", X64_get_label(generator, target_id));
+        }
         break;
     }
     case X64_INSTR_JMPCC: {
@@ -1904,8 +1909,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     X64_emit_text(generator, "    push rbp");
     X64_emit_text(generator, "    mov rbp, rsp");
 
-    char** save_regs_inst = X64_emit_text(generator, NULL);
-    char** sub_rsp_inst = X64_emit_text(generator, NULL);
+    char** sub_rsp_inst = X64_emit_text(generator, NULL); // sub rsp, <stack_size>
 
     u32 stack_size = X64_assign_proc_stack_offsets(generator, sym); // NOTE: Spills argument registers.
 
@@ -1959,16 +1963,19 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     if (stack_size)
         X64_fill_line(generator, sub_rsp_inst, "    sub rsp, %u", stack_size);
 
+    char** save_regs_inst = X64_emit_text(generator, NULL);
+
     // Generate instructions.
     for (size_t ii = 0; ii < builder.num_bblocks; ii++) {
         X64_BBlock* bb = builder.bblocks[ii];
+        bool last_bb = ii == builder.num_bblocks - 1;
 
         X64_emit_text(generator, "    %s:", X64_get_label(generator, bb->id));
 
         for (X64_Instr* instr = bb->first; instr; instr = instr->next) {
-            bool last_instr = (ii == builder.num_bblocks - 1) && !instr->next;
+            bool last_instr = last_bb && !instr->next;
 
-            X64_gen_instr(generator, instr, last_instr);
+            X64_gen_instr(generator, instr, last_instr, bb->id);
         }
     }
 
@@ -2005,9 +2012,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
         }
     }
 
-    if (stack_size)
-        X64_emit_text(generator, "    mov rsp, rbp");
-
+    X64_emit_text(generator, "    mov rsp, rbp");
     X64_emit_text(generator, "    pop rbp");
     X64_emit_text(generator, "    ret");
 

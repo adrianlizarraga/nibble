@@ -7,7 +7,7 @@ static char* LIR_print_mem(Allocator* arena, X64_MemAddr* addr)
     ftprint_char_array(&dstr, false, "[");
 
     switch (addr->kind) {
-    case X64_ADDR_GLOBAL: {
+    case X64_ADDR_GLOBAL_SYM: {
         ftprint_char_array(&dstr, false, "global %s", symbol_mangled_name(arena, addr->global));
         break;
     }
@@ -15,35 +15,35 @@ static char* LIR_print_mem(Allocator* arena, X64_MemAddr* addr)
         ftprint_char_array(&dstr, false, "\"%s\"", cstr_escape(arena, addr->str_lit->str, addr->str_lit->len, 0));
         break;
     }
-    case X64_ADDR_LOCAL: {
-        bool has_base = addr->local.base_reg != X64_LIR_REG_COUNT;
-        bool has_index = addr->local.scale && (addr->local.index_reg != X64_LIR_REG_COUNT);
-        bool has_disp = addr->local.disp != 0;
+    case X64_ADDR_SIBD: {
+        bool has_base = addr->sibd.base_reg != X64_LIR_REG_COUNT;
+        bool has_index = addr->sibd.scale && (addr->sibd.index_reg != X64_LIR_REG_COUNT);
+        bool has_disp = addr->sibd.disp != 0;
 
         if (has_base) {
-            ftprint_char_array(&dstr, false, "r%d", addr->local.base_reg);
+            ftprint_char_array(&dstr, false, "r%d", addr->sibd.base_reg);
 
             if (has_index) {
-                u32 index_reg = addr->local.index_reg;
+                u32 index_reg = addr->sibd.index_reg;
 
                 if (has_disp)
-                    ftprint_char_array(&dstr, false, " + %d*r%d + %d", addr->local.scale, index_reg, (s32)addr->local.disp);
+                    ftprint_char_array(&dstr, false, " + %d*r%d + %d", addr->sibd.scale, index_reg, (s32)addr->sibd.disp);
                 else
-                    ftprint_char_array(&dstr, false, " + %d*r%d", addr->local.scale, index_reg);
+                    ftprint_char_array(&dstr, false, " + %d*r%d", addr->sibd.scale, index_reg);
             }
             else if (has_disp) {
-                ftprint_char_array(&dstr, false, " + %d", (s32)addr->local.disp);
+                ftprint_char_array(&dstr, false, " + %d", (s32)addr->sibd.disp);
             }
         }
         else {
             assert(has_index);
 
-            u32 index_reg = addr->local.index_reg;
+            u32 index_reg = addr->sibd.index_reg;
 
             if (has_disp)
-                ftprint_char_array(&dstr, false, " + %d*r%d + %d", addr->local.scale, index_reg, (s32)addr->local.disp);
+                ftprint_char_array(&dstr, false, " + %d*r%d + %d", addr->sibd.scale, index_reg, (s32)addr->sibd.disp);
             else
-                ftprint_char_array(&dstr, false, " + %d*r%d", addr->local.scale, index_reg);
+                ftprint_char_array(&dstr, false, " + %d*r%d", addr->sibd.scale, index_reg);
         }
         break;
     }
@@ -158,6 +158,10 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
     }
     case X64_INSTR_REP_MOVSB: {
         ftprint_char_array(&dstr, false, "rep movsb");
+        break;
+    }
+    case X64_INSTR_REP_STOSB: {
+        ftprint_char_array(&dstr, false, "rep stosb");
         break;
     }
     case X64_INSTR_MOV_R_RH: {

@@ -31,6 +31,16 @@ static char* IR_print_reg(Allocator* arena, IR_Reg reg)
     return dstr;
 }
 
+static char* IR_print_regimm(Allocator* arena, RegImm regimm)
+{
+    if (regimm.is_imm) {
+        return IR_print_imm(arena, regimm.imm);
+    }
+    else {
+        return IR_print_reg(arena, regimm.reg);
+    }
+}
+
 static char* IR_print_mem(Allocator* arena, MemAddr* addr)
 {
     char* dstr = array_create(arena, char, 16);
@@ -47,12 +57,20 @@ static char* IR_print_mem(Allocator* arena, MemAddr* addr)
         if (addr->base_kind == MEM_BASE_REG) {
             ftprint_char_array(&dstr, false, "%s", IR_print_reg(arena, addr->base.reg));
         }
-        else if (addr->base_kind == MEM_BASE_SYM) {
-            ftprint_char_array(&dstr, false, "%s %s", (addr->base.sym->is_local ? "local" : "global"),
-                               symbol_mangled_name(arena, addr->base.sym));
-        }
-        else if (addr->base_kind == MEM_BASE_OBJ) {
-            ftprint_char_array(&dstr, false, "obj %d", addr->base.obj->id);
+        else if (addr->base_kind == MEM_BASE_MEM_OBJ) {
+            MemObj* mem_obj = addr->base.obj;
+
+            while (mem_obj->kind == MEM_OBJ_ALIAS) {
+                mem_obj = mem_obj->alias;
+            }
+
+            if (mem_obj->kind == MEM_OBJ_SYM) {
+                ftprint_char_array(&dstr, false, "%s %s", (mem_obj->sym->is_local ? "local" : "global"),
+                                   symbol_mangled_name(arena, mem_obj->sym));
+            }
+            else if (mem_obj->kind == MEM_OBJ_ANON_OBJ) {
+                ftprint_char_array(&dstr, false, "obj %d", mem_obj->anon_obj->id);
+            }
         }
         else {
             assert(addr->base_kind == MEM_BASE_STR_LIT);
@@ -161,8 +179,14 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         break;
     }
     case INSTR_MEMCPY: {
-        ftprint_char_array(&dstr, false, "memcpy %s, %s, %llu", IR_print_mem(arena, &instr->memcpy.dst),
-                           IR_print_mem(arena, &instr->memcpy.src), instr->memcpy.size);
+        ftprint_char_array(&dstr, false, "memcpy %s, %s, %s", IR_print_mem(arena, &instr->memcpy.dst),
+                           IR_print_mem(arena, &instr->memcpy.src), IR_print_regimm(arena, instr->memcpy.size));
+
+        break;
+    }
+    case INSTR_MEMSET: {
+        ftprint_char_array(&dstr, false, "memset %s, %s, %s", IR_print_mem(arena, &instr->memset.dst),
+                           IR_print_regimm(arena, instr->memset.value), IR_print_regimm(arena, instr->memset.size));
 
         break;
     }
