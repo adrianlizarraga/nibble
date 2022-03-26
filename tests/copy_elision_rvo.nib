@@ -1,0 +1,53 @@
+
+proc test_divmod_copy_elision() => int {
+    var r := 13 /% 10; // Elide tmp object, and use var 'r' directly.
+
+    return r[0] + r[1]; // 1 + 3 = 4
+}
+
+proc get_arr4(x : ssize) => [4]ssize {
+    var r : [4]ssize = {x, x, x, x};
+
+    return r;
+}
+
+proc test_rvo() => int {
+    var r := get_arr4(3); // RVO
+
+    return r[0] + r[1]; // 6
+}
+
+
+proc large_buffer(x : char) => [1024]char {
+    var buf : [1024]char = ---;
+    buf[0] = x;
+    buf[1023] = x;
+
+    return buf;
+}
+
+proc test_large_rvo() => int {
+    var buffer := large_buffer(2); // Return value optimization! The address of buffer is passed to large_rvo() (instead of a tmp)
+
+    return buffer[0] + buffer[1023]; // 4
+}
+
+var g_arr2x4 : [2][4]ssize;
+var g_ptr : ^[4]ssize;
+
+proc test_assign_tmp_to_deref() => int {
+    var r :[2][4]ssize = ---;
+    var ptr : ^[4]ssize = r;
+
+    ptr[1] = get_arr4(2); // Elide tmp object in favor of memory address.
+
+    g_ptr = g_arr2x4;
+    g_ptr[1] = get_arr4(1); // Same but with a global variable.
+
+    return ptr[1][0] + (*(ptr + 1))[1] + g_ptr[1][2]; // 2 + 2 + 1 = 5
+}
+
+proc main() => int {
+    // 6 + 4 + 4 + 5 = 19
+    return test_rvo() + test_divmod_copy_elision() + test_large_rvo() + test_assign_tmp_to_deref();
+}

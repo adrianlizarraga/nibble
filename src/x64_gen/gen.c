@@ -949,7 +949,7 @@ static u32 X64_get_sibd_addr(X64_Generator* generator, X64_SIBDAddr* sibd_addr, 
 {
     u32 used_regs = 0;
 
-    if (vaddr->kind == X64_ADDR_GLOBAL) {
+    if (vaddr->kind == X64_ADDR_GLOBAL_SYM) {
         sibd_addr->kind = X64_SIBD_ADDR_GLOBAL;
         sibd_addr->global = vaddr->global;
     }
@@ -958,23 +958,24 @@ static u32 X64_get_sibd_addr(X64_Generator* generator, X64_SIBDAddr* sibd_addr, 
         sibd_addr->str_lit = vaddr->str_lit;
     }
     else {
-        bool has_base = vaddr->local.base_reg != (u32)-1;
-        bool has_index = vaddr->local.scale && (vaddr->local.index_reg != (u32)-1);
+        assert(vaddr->kind == X64_ADDR_SIBD);
+        bool has_base = vaddr->sibd.base_reg != (u32)-1;
+        bool has_index = vaddr->sibd.scale && (vaddr->sibd.index_reg != (u32)-1);
         assert(has_base || has_index);
 
         sibd_addr->kind = X64_SIBD_ADDR_LOCAL;
-        sibd_addr->local.disp = vaddr->local.disp;
-        sibd_addr->local.scale = vaddr->local.scale;
+        sibd_addr->local.disp = vaddr->sibd.disp;
+        sibd_addr->local.scale = vaddr->sibd.scale;
 
         if (has_base) {
-            X64_LRegLoc base_loc = X64_lreg_loc(generator, vaddr->local.base_reg);
+            X64_LRegLoc base_loc = X64_lreg_loc(generator, vaddr->sibd.base_reg);
             assert(base_loc.kind == X64_LREG_LOC_REG);
 
             sibd_addr->local.base_reg = base_loc.reg;
             u32_set_bit(&used_regs, base_loc.reg);
 
             if (has_index) {
-                X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->local.index_reg);
+                X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->sibd.index_reg);
                 assert(index_loc.kind == X64_LREG_LOC_REG);
 
                 sibd_addr->local.index_reg = index_loc.reg;
@@ -985,7 +986,7 @@ static u32 X64_get_sibd_addr(X64_Generator* generator, X64_SIBDAddr* sibd_addr, 
             }
         }
         else {
-            X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->local.index_reg);
+            X64_LRegLoc index_loc = X64_lreg_loc(generator, vaddr->sibd.index_reg);
             assert(index_loc.kind == X64_LREG_LOC_REG);
 
             sibd_addr->local.base_reg = X64_REG_COUNT;

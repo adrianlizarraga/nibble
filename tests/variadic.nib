@@ -35,6 +35,12 @@ proc add_v3(vecs : ..Vec3) => Vec3 {
     return r;
 }
 
+proc make_arr3(val : int) => [3]int {
+    var arr3 : [3]int = {val, val, val};
+
+    return arr3;
+}
+
 proc add_arr3(vecs : ..[3]int) => [3]int {
     var i : usize = 0;
     var r : [3]int;
@@ -63,6 +69,10 @@ proc add_any_ints(args : ..any) => int {
             var val : int = *(args[i].ptr :> ^int);
             r = r + val;
         }
+        else if (args[i].type == #typeid([3]int)) {
+            var arr3 : [3]int = *(args[i].ptr :> ^[3]int);
+            r = r + arr3[0] + arr3[1] + arr3[2];
+        }
 
         i = i + 1;
     }
@@ -85,10 +95,10 @@ proc main() => int {
     var arr2 := arr1;
     var arr3 := arr2;
 
-    var arr4 := add_arr3(arr1, arr2, arr3);
+    var arr4 := add_arr3(arr1, arr2, arr3, make_arr3(1));
 
     var int1 : int = 1;
 
-    // 12 + 18 + (1 + 2 + 2 + 1) + (-3 + -6 + 12) = 39
-    return r + (v.x + v.y + v.z) + add_any_ints(int1, 2, int1 + 1, int1 == 1, 'a') + (arr4[0] + arr4[1] + arr4[2]);
+    // 12 + 18 + (1 + 2 + 2 + 1 + 3) + (-2 + -5 + 13) = 45
+    return r + (v.x + v.y + v.z) + add_any_ints(int1, 2, int1 + 1, int1 == 1, 'a', make_arr3(1)) + (arr4[0] + arr4[1] + arr4[2]);
 }
