@@ -2457,8 +2457,8 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
     else {
         // Create array of bit flags: 1 bit per element in array.
         // Bit will be set to 1 if the array element has an initializer.
-        BitArray init_flags = {0};
-        bit_arr_init(&init_flags, builder->tmp_arena, num_elems);
+        BitArray inited_elems = {0};
+        bit_arr_init(&inited_elems, builder->tmp_arena, num_elems);
 
         // Iterate through initializers and: 1. mark element as having an initializer, 2. initialize element.
         List* head = &expr->initzers;
@@ -2480,7 +2480,7 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
             }
 
             // Mark array element as having an initializer.
-            bit_arr_set(&init_flags, elem_index, true);
+            bit_arr_set(&inited_elems, elem_index, true);
 
             // Emit IR for the initializer value
             IR_Operand elem_val_op = {0};
@@ -2502,7 +2502,7 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
         for (elem_index = 0; elem_index < num_elems; elem_index += 1) {
 
             // Skip array elements that have been initialized.
-            if (bit_arr_get(&init_flags, elem_index)) {
+            if (bit_arr_get(&inited_elems, elem_index)) {
                 continue;
             }
 
