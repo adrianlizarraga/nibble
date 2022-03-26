@@ -1192,66 +1192,61 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
     MemAddr dst_addr;
     IR_get_object_addr(builder, curr_bb, &dst_addr, lhs);
 
-    if (type_is_slice(lhs->type) && (rhs->type->kind == TYPE_ARRAY)) { // TODO: REMOVE and just do implicit casting + copy elision
-        curr_bb = IR_init_array_slice(builder, curr_bb, &dst_addr, lhs->type, rhs);
+    assert(lhs->type == rhs->type);
+
+    if (rhs->kind == IR_OPERAND_IMM) {
+        IR_Reg r = IR_next_reg(builder);
+
+        IR_emit_instr_limm(builder, curr_bb, rhs->type, r, rhs->imm);
+        IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, r);
+    }
+    else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
+        curr_bb = IR_emit_array_init(builder, curr_bb, lhs, rhs);
+    }
+    else if (rhs->kind == IR_OPERAND_STRUCT_INIT) {
+        curr_bb = IR_emit_struct_init(builder, curr_bb, lhs, rhs);
+    }
+    else if (rhs->kind == IR_OPERAND_UNION_INIT) {
+        curr_bb = IR_emit_union_init(builder, curr_bb, lhs, rhs);
+    }
+    else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_TMP_OBJ)) {
+        MemObj* r_mem_obj = rhs->tmp_obj->mem_obj;
+
+        assert(r_mem_obj->kind == MEM_OBJ_NONE);
+
+        // Alias tmp objects. rhs will refer to lhs.
+        r_mem_obj->kind = MEM_OBJ_ALIAS;
+        r_mem_obj->alias = lhs->tmp_obj->mem_obj;
+
+    }
+    else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_VAR)) {
+        MemObj* mem_obj = rhs->tmp_obj->mem_obj;
+
+        assert(mem_obj->kind == MEM_OBJ_NONE);
+
+        // Elide copy by replacing temporary object with the variable to which it would otherwise be copied.
+        mem_obj->kind = MEM_OBJ_SYM;
+        mem_obj->sym = lhs->sym;
+    }
+    else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_DEREF_ADDR)) {
+        MemObj* mem_obj = rhs->tmp_obj->mem_obj;
+
+        assert(mem_obj->kind == MEM_OBJ_NONE);
+
+        // Elide copy by replacing temporary object with the address to which it would otherwise be copied.
+        mem_obj->kind = MEM_OBJ_ADDR;
+        mem_obj->addr = lhs->addr;
+    }
+    else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
+        curr_bb = IR_op_to_r(builder, curr_bb, rhs);
+        IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
     }
     else {
-        assert(lhs->type == rhs->type);
+        MemAddr src_addr;
+        RegImm size = {.is_imm = true, .imm.as_int._u64 = lhs->type->size};
 
-        if (rhs->kind == IR_OPERAND_IMM) {
-            IR_Reg r = IR_next_reg(builder);
-
-            IR_emit_instr_limm(builder, curr_bb, rhs->type, r, rhs->imm);
-            IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, r);
-        }
-        else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
-            curr_bb = IR_emit_array_init(builder, curr_bb, lhs, rhs);
-        }
-        else if (rhs->kind == IR_OPERAND_STRUCT_INIT) {
-            curr_bb = IR_emit_struct_init(builder, curr_bb, lhs, rhs);
-        }
-        else if (rhs->kind == IR_OPERAND_UNION_INIT) {
-            curr_bb = IR_emit_union_init(builder, curr_bb, lhs, rhs);
-        }
-        else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_TMP_OBJ)) {
-            MemObj* r_mem_obj = rhs->tmp_obj->mem_obj;
-
-            assert(r_mem_obj->kind == MEM_OBJ_NONE);
-
-            // Alias tmp objects. rhs will refer to lhs.
-            r_mem_obj->kind = MEM_OBJ_ALIAS;
-            r_mem_obj->alias = lhs->tmp_obj->mem_obj;
-
-        }
-        else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_VAR)) {
-            MemObj* mem_obj = rhs->tmp_obj->mem_obj;
-
-            assert(mem_obj->kind == MEM_OBJ_NONE);
-
-            // Elide copy by replacing temporary object with the variable to which it would otherwise be copied.
-            mem_obj->kind = MEM_OBJ_SYM;
-            mem_obj->sym = lhs->sym;
-        }
-        else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_DEREF_ADDR)) {
-            MemObj* mem_obj = rhs->tmp_obj->mem_obj;
-
-            assert(mem_obj->kind == MEM_OBJ_NONE);
-
-            // Elide copy by replacing temporary object with the address to which it would otherwise be copied.
-            mem_obj->kind = MEM_OBJ_ADDR;
-            mem_obj->addr = lhs->addr;
-        }
-        else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
-            curr_bb = IR_op_to_r(builder, curr_bb, rhs);
-            IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
-        }
-        else {
-            MemAddr src_addr;
-            RegImm size = {.is_imm = true, .imm.as_int._u64 = lhs->type->size};
-
-            IR_get_object_addr(builder, curr_bb, &src_addr, rhs);
-            IR_emit_instr_memcpy(builder, curr_bb, dst_addr, src_addr, size);
-        }
+        IR_get_object_addr(builder, curr_bb, &src_addr, rhs);
+        IR_emit_instr_memcpy(builder, curr_bb, dst_addr, src_addr, size);
     }
 
     return curr_bb;
