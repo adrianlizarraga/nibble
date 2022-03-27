@@ -1,9 +1,6 @@
 /* TODO:
 
-    - Add '+=' and '-=' operators
-    - Make using tuples easier
-      - Shorter, optional syntax. EX: {int, int}
-      - #ret_type gives you the proc's return type!
+   - Add '+=' and '-=' operators
    - Only generate assembly for procs reachable from main()
      - Currently, we prune procs not reachable from the main _MODULE_, but unused procs in main module remain.
      - RELATED: Compile all module symbols, but only generate used symbols.
