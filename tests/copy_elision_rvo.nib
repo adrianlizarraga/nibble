@@ -47,7 +47,15 @@ proc test_assign_tmp_to_deref() => int {
     return ptr[1][0] + (*(ptr + 1))[1] + g_ptr[1][2]; // 2 + 2 + 1 = 5
 }
 
+proc test_slice_copy_elision() => int {
+    var arr : [4]int = {1,2,3,4};
+
+    var slice : []int = arr; // Elide copy here!
+
+    return slice[3];
+}
+
 proc main() => int {
-    // 6 + 4 + 4 + 5 = 19
-    return test_rvo() + test_divmod_copy_elision() + test_large_rvo() + test_assign_tmp_to_deref();
+    // 6 + 4 + 4 + 5 + 4 = 23
+    return test_rvo() + test_divmod_copy_elision() + test_large_rvo() + test_assign_tmp_to_deref() + test_slice_copy_elision();
 }
