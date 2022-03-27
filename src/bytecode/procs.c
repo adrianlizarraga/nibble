@@ -22,9 +22,6 @@ typedef enum IR_OperandKind {
     IR_OPERAND_MEM_ADDR,
     IR_OPERAND_DEREF_ADDR,
     IR_OPERAND_DEFERRED_CMP,
-    IR_OPERAND_ARRAY_INIT,
-    IR_OPERAND_STRUCT_INIT,
-    IR_OPERAND_UNION_INIT,
     IR_OPERAND_VAR,
     IR_OPERAND_TMP_OBJ,
     IR_OPERAND_STR_LIT,
@@ -56,23 +53,6 @@ typedef struct IR_DeferredCmp {
     IR_DeferredJmpcc final_jmp;
 } IR_DeferredCmp;
 
-typedef struct IR_ArrayMemberInitializer IR_ArrayMemberInitializer;
-
-typedef struct IR_ArrayInitializer {
-    u64 num_initzers;
-    IR_ArrayMemberInitializer* initzers;
-} IR_ArrayInitializer;
-
-typedef struct IR_StructInitializer {
-    size_t num_initzers;
-    struct IR_Operand** field_ops; // One per field
-} IR_StructInitializer;
-
-typedef struct IR_UnionInitializer {
-    size_t field_index;
-    struct IR_Operand* field_op;
-} IR_UnionInitializer;
-
 typedef struct IR_Operand {
     IR_OperandKind kind;
     Type* type;
@@ -84,17 +64,9 @@ typedef struct IR_Operand {
         Symbol* sym;
         IR_TmpObj* tmp_obj;
         IR_DeferredCmp cmp;
-        IR_ArrayInitializer array_initzer;
-        IR_StructInitializer struct_initzer;
-        IR_UnionInitializer union_initzer;
         StrLit* str_lit;
     };
 } IR_Operand;
-
-struct IR_ArrayMemberInitializer {
-    u64 index;
-    IR_Operand op;
-};
 
 static const Scalar ir_zero_imm = {.as_int._u64 = 0};
 static const Scalar ir_one_imm = {.as_int._u64 = 1};
@@ -938,225 +910,81 @@ static RegImm IR_op_to_ri(IR_ProcBuilder* builder, BBlock** p_bblock, IR_Operand
     return ri;
 }
 
+static void IR_zero_memory(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* addr, size_t size)
+{
+    if (size > (PTR_SIZE << 2)) {
+        RegImm v = {.is_imm = true, .imm.as_int._u64 = 0};
+        RegImm s = {.is_imm = true, .imm.as_int._u64 = size};
+        IR_emit_instr_memset(builder, bblock, *addr, v, s);
+        return;
+    }
+
+    Type* chunk_types[] = {
+        [1] = builtin_types[BUILTIN_TYPE_U8].type,
+        [2] = builtin_types[BUILTIN_TYPE_U16].type,
+        [4] = builtin_types[BUILTIN_TYPE_U32].type,
+        [8] = builtin_types[BUILTIN_TYPE_U64].type,
+    };
+
+    MemAddr chunk_addr = *addr;
+    size_t chunk_size = PTR_SIZE;
+    size_t rem_bytes = size;
+
+    while (chunk_size) {
+        size_t num_chunks = rem_bytes / chunk_size;
+
+        for (size_t i = 0; i < num_chunks; i++) {
+            Type* t = chunk_types[chunk_size]; // TODO: store instruction should NOT need a type
+            assert(t);
+
+            IR_Reg r = IR_next_reg(builder);
+
+            IR_emit_instr_limm(builder, bblock, t, r, ir_zero_imm);
+            IR_emit_instr_store(builder, bblock, t, chunk_addr, r);
+
+            chunk_addr.disp += chunk_size;
+        }
+
+        rem_bytes = rem_bytes % chunk_size;
+        chunk_size = chunk_size >> 1;
+    }
+
+    assert((chunk_addr.disp - addr->disp) == size);
+}
+
+static IR_TmpObj* IR_get_tmp_obj(IR_ProcBuilder* builder, IR_TmpObjList* obj_list, size_t size, size_t align)
+{
+    IR_TmpObj* tmp_obj;
+
+    // Try to get one from the free list. Otherwise, allocate one.
+    if (builder->tmp_obj_freelist) {
+        tmp_obj = builder->tmp_obj_freelist;
+        builder->tmp_obj_freelist = tmp_obj->next;
+    }
+    else {
+        tmp_obj = alloc_type(builder->tmp_arena, IR_TmpObj, false);
+    }
+
+    // Initialize tmp obj.
+    tmp_obj->size = size;
+    tmp_obj->align = align;
+    tmp_obj->mem_obj = alloc_type(builder->arena, MemObj, true);
+    tmp_obj->next = NULL;
+
+    // Add obj to the end of the list.
+    if (obj_list->last) {
+        obj_list->last->next = tmp_obj;
+    }
+    else {
+        obj_list->first = tmp_obj;
+    }
+
+    obj_list->last = tmp_obj;
+
+    return tmp_obj;
+}
+
 static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* lhs, IR_Operand* rhs);
-
-static void IR_clear_memory(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* addr, size_t size)
-{
-    RegImm v = {.is_imm = true, .imm.as_int._u64 = 0};
-    RegImm s = {.is_imm = true, .imm.as_int._u64 = size};
-    IR_emit_instr_memset(builder, bblock, *addr, v, s);
-}
-
-static void IR_get_default_val(Type* type, IR_Operand* zero_op)
-{
-    zero_op->type = type;
-
-    if (type->kind == TYPE_STRUCT) {
-        zero_op->kind = IR_OPERAND_STRUCT_INIT;
-        zero_op->struct_initzer.num_initzers = 0;
-        zero_op->struct_initzer.field_ops = NULL;
-    }
-    else if (type->kind == TYPE_UNION) {
-        zero_op->kind = IR_OPERAND_UNION_INIT;
-        zero_op->union_initzer.field_index = type->as_union.largest_field;
-        zero_op->union_initzer.field_op = NULL;
-    }
-    else if (type->kind == TYPE_ARRAY) {
-        zero_op->kind = IR_OPERAND_ARRAY_INIT;
-        zero_op->array_initzer.num_initzers = 0;
-        zero_op->array_initzer.initzers = NULL;
-    }
-    else {
-        assert(type_is_int_scalar(type));
-        zero_op->kind = IR_OPERAND_IMM;
-        zero_op->imm = ir_zero_imm;
-    }
-}
-
-static BBlock* IR_emit_struct_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* struct_op, IR_Operand* init_op)
-{
-    assert(struct_op->kind == IR_OPERAND_VAR || struct_op->kind == IR_OPERAND_DEREF_ADDR);
-    assert(struct_op->type->kind == TYPE_STRUCT);
-    assert(init_op->kind == IR_OPERAND_STRUCT_INIT);
-
-    BBlock* curr_bb = bblock;
-
-    MemAddr base_addr = {0};
-    IR_get_object_addr(builder, curr_bb, &base_addr, struct_op);
-
-    Type* type = struct_op->type;
-    TypeAggregateBody* type_agg = &type->as_struct.body;
-    size_t num_fields = type_agg->num_fields;
-    TypeAggregateField* fields = type_agg->fields;
-
-    size_t num_initzers = init_op->struct_initzer.num_initzers;
-
-    // Memset to 0 if did not specify any initializers AND we either have more than 4 fields or 
-    // the struct is larger than 4 pointers.
-    if ((num_initzers == 0) && ((num_fields > 4) || (type->size > (PTR_SIZE << 2)))) {
-        IR_clear_memory(builder, curr_bb, &base_addr, type->size);
-        return curr_bb;
-    }
-
-    assert(num_initzers <= num_fields);
-    size_t num_zero_fields = num_fields - num_initzers;
-    bool zero_first_pass = (num_zero_fields > 4);
-
-    if (zero_first_pass) {
-        IR_clear_memory(builder, curr_bb, &base_addr, type->size);
-    }
-
-    IR_Operand** field_ops = init_op->struct_initzer.field_ops;
-
-    // Initialize field with provided initializer OR zero.
-    for (size_t i = 0; i < num_fields; i++) {
-        TypeAggregateField* field = fields + i;
-        IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = base_addr};
-        field_ptr_op.addr.disp += field->offset;
-
-        if (field_ops && field_ops[i]) { // field <= initializer.
-            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, field_ops[i]);
-        }
-        else if (!zero_first_pass) { // field <= 0
-            IR_Operand zero_op = {0};
-            IR_get_default_val(field->type, &zero_op);
-
-            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &zero_op);
-        }
-    }
-
-    return curr_bb;
-}
-
-static BBlock* IR_emit_union_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* union_op, IR_Operand* init_op)
-{
-    assert(union_op->kind == IR_OPERAND_VAR || union_op->kind == IR_OPERAND_DEREF_ADDR);
-    assert(union_op->type->kind == TYPE_UNION);
-    assert(init_op->kind == IR_OPERAND_UNION_INIT);
-
-    BBlock* curr_bb = bblock;
-
-    Type* type = union_op->type;
-    IR_Operand* field_op = init_op->union_initzer.field_op;
-
-    MemAddr base_addr = {0};
-    IR_get_object_addr(builder, curr_bb, &base_addr, union_op);
-
-    if (!field_op && (type->size > (PTR_SIZE << 2))) {
-        IR_clear_memory(builder, curr_bb, &base_addr, type->size);
-        return curr_bb;
-    }
-
-    TypeAggregateField* field = &type->as_union.body.fields[init_op->union_initzer.field_index];
-    IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = base_addr};
-    field_ptr_op.addr.disp += field->offset; // Union fields all have an offset of 0, but keep this just in case one day they don't...
-
-    if (field_op) {
-        curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, field_op);
-    }
-    else {
-        IR_Operand zero_op = {0};
-        IR_get_default_val(field->type, &zero_op);
-
-        curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &zero_op);
-    }
-
-    return curr_bb;
-}
-
-// Emit code for initializing an array with an initializer.
-//    var a: [11] int = {0, 1, 2, 3};
-static BBlock* IR_emit_array_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* array_op, IR_Operand* init_op)
-{
-    assert(array_op->kind == IR_OPERAND_VAR || array_op->kind == IR_OPERAND_DEREF_ADDR);
-    assert(init_op->kind == IR_OPERAND_ARRAY_INIT);
-    assert(array_op->type->kind == TYPE_ARRAY);
-
-    BBlock* curr_bb = bblock;
-
-    Type* arr_type = array_op->type;
-    Type* elem_type = arr_type->as_array.base;
-
-    // Decay array into pointer to the first elem.
-    MemAddr base_addr = {0};
-    IR_get_object_addr(builder, curr_bb, &base_addr, array_op);
-
-    IR_ArrayMemberInitializer* initzers = init_op->array_initzer.initzers;
-    u64 num_initzers = init_op->array_initzer.num_initzers;
-    u64 num_elems = arr_type->as_array.len;
-
-    // Just memset to 0 if don't have any initializers and the array has more than 4 elements.
-    if ((num_initzers == 0) && (num_elems > 4)) {
-        IR_clear_memory(builder, curr_bb, &base_addr, arr_type->size);
-        return curr_bb;
-    }
-
-    assert(num_initzers <= num_elems);
-    size_t num_zero_elems = num_elems - num_initzers;
-    bool zero_first_pass = (num_zero_elems > 4);
-
-    if (zero_first_pass) {
-        IR_clear_memory(builder, curr_bb, &base_addr, arr_type->size);
-
-        for (size_t i = 0; i < num_initzers; i += 1) {
-            IR_ArrayMemberInitializer* initzer = initzers + i;
-            size_t elem_index = initzer->index;
-
-            // Initialize array element with value of the initializer.
-            IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_addr};
-            elem_ptr_op.addr.disp += elem_type->size * elem_index;
-            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &initzer->op);
-        }
-    }
-    else {
-        // Create array of bit flags: 1 bit per element in array.
-        // Bit will be set to 1 if the array element has an initializer.
-        const int num_bits = sizeof(size_t) * 8;
-        size_t num_flags = (num_elems + num_bits - 1) / num_bits;
-        size_t* init_flags = alloc_array(builder->tmp_arena, size_t, num_flags, true);
-
-        // Iterate through initializers and: 1. mark element as having an initializer, 2. initialize element.
-        for (size_t i = 0; i < num_initzers; i += 1) {
-            IR_ArrayMemberInitializer* initzer = initzers + i;
-            size_t elem_index = initzer->index;
-
-            // Mark array element as having an initializer.
-            size_t flag_index = elem_index / num_bits;
-            size_t bit_index = elem_index % num_bits;
-            size_t* flag = init_flags + flag_index;
-
-            *flag |= (1 << bit_index);
-
-            // Initialize array element with value of the initializer.
-            IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_addr};
-            elem_ptr_op.addr.disp += elem_type->size * elem_index;
-
-            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &initzer->op);
-        }
-
-        // For each array element, compute the pointer to the corresponding element and assign it
-        // a default value if not yet initialized.
-        IR_Operand zero_op = {0};
-
-        for (u64 elem_index = 0; elem_index < num_elems; elem_index += 1) {
-            size_t flag_index = elem_index / num_bits;
-            size_t bit_index = elem_index % num_bits;
-
-            // Skip array elements that have been initialized.
-            if (init_flags[flag_index] & (1 << bit_index)) {
-                continue;
-            }
-
-            IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = base_addr};
-            elem_ptr_op.addr.disp += elem_type->size * elem_index;
-
-            IR_get_default_val(elem_type, &zero_op);
-            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &zero_op);
-        }
-    }
-
-    return curr_bb;
-}
 
 static BBlock* IR_init_array_slice(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* slice_addr, Type* slice_type,
                                    IR_Operand* array_op)
@@ -1192,66 +1020,52 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
     MemAddr dst_addr;
     IR_get_object_addr(builder, curr_bb, &dst_addr, lhs);
 
-    if (type_is_slice(lhs->type) && (rhs->type->kind == TYPE_ARRAY)) { // TODO: REMOVE and just do implicit casting + copy elision
-        curr_bb = IR_init_array_slice(builder, curr_bb, &dst_addr, lhs->type, rhs);
+    assert(lhs->type == rhs->type);
+
+    if (rhs->kind == IR_OPERAND_IMM) {
+        IR_Reg r = IR_next_reg(builder);
+
+        IR_emit_instr_limm(builder, curr_bb, rhs->type, r, rhs->imm);
+        IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, r);
+    }
+    else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_TMP_OBJ)) {
+        MemObj* r_mem_obj = rhs->tmp_obj->mem_obj;
+
+        assert(r_mem_obj->kind == MEM_OBJ_NONE);
+
+        // Alias tmp objects. rhs will refer to lhs.
+        r_mem_obj->kind = MEM_OBJ_ALIAS;
+        r_mem_obj->alias = lhs->tmp_obj->mem_obj;
+
+    }
+    else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_VAR)) {
+        MemObj* mem_obj = rhs->tmp_obj->mem_obj;
+
+        assert(mem_obj->kind == MEM_OBJ_NONE);
+
+        // Elide copy by replacing temporary object with the variable to which it would otherwise be copied.
+        mem_obj->kind = MEM_OBJ_SYM;
+        mem_obj->sym = lhs->sym;
+    }
+    else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_DEREF_ADDR)) {
+        MemObj* mem_obj = rhs->tmp_obj->mem_obj;
+
+        assert(mem_obj->kind == MEM_OBJ_NONE);
+
+        // Elide copy by replacing temporary object with the address to which it would otherwise be copied.
+        mem_obj->kind = MEM_OBJ_ADDR;
+        mem_obj->addr = lhs->addr;
+    }
+    else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
+        curr_bb = IR_op_to_r(builder, curr_bb, rhs);
+        IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
     }
     else {
-        assert(lhs->type == rhs->type);
+        MemAddr src_addr;
+        RegImm size = {.is_imm = true, .imm.as_int._u64 = lhs->type->size};
 
-        if (rhs->kind == IR_OPERAND_IMM) {
-            IR_Reg r = IR_next_reg(builder);
-
-            IR_emit_instr_limm(builder, curr_bb, rhs->type, r, rhs->imm);
-            IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, r);
-        }
-        else if (rhs->kind == IR_OPERAND_ARRAY_INIT) {
-            curr_bb = IR_emit_array_init(builder, curr_bb, lhs, rhs);
-        }
-        else if (rhs->kind == IR_OPERAND_STRUCT_INIT) {
-            curr_bb = IR_emit_struct_init(builder, curr_bb, lhs, rhs);
-        }
-        else if (rhs->kind == IR_OPERAND_UNION_INIT) {
-            curr_bb = IR_emit_union_init(builder, curr_bb, lhs, rhs);
-        }
-        else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_TMP_OBJ)) {
-            MemObj* r_mem_obj = rhs->tmp_obj->mem_obj;
-
-            assert(r_mem_obj->kind == MEM_OBJ_NONE);
-
-            // Alias tmp objects. rhs will refer to lhs.
-            r_mem_obj->kind = MEM_OBJ_ALIAS;
-            r_mem_obj->alias = lhs->tmp_obj->mem_obj;
-
-        }
-        else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_VAR)) {
-            MemObj* mem_obj = rhs->tmp_obj->mem_obj;
-
-            assert(mem_obj->kind == MEM_OBJ_NONE);
-
-            // Elide copy by replacing temporary object with the variable to which it would otherwise be copied.
-            mem_obj->kind = MEM_OBJ_SYM;
-            mem_obj->sym = lhs->sym;
-        }
-        else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_DEREF_ADDR)) {
-            MemObj* mem_obj = rhs->tmp_obj->mem_obj;
-
-            assert(mem_obj->kind == MEM_OBJ_NONE);
-
-            // Elide copy by replacing temporary object with the address to which it would otherwise be copied.
-            mem_obj->kind = MEM_OBJ_ADDR;
-            mem_obj->addr = lhs->addr;
-        }
-        else if (IR_type_fits_in_reg(rhs->type) && IS_POW2(rhs->type->size)) {
-            curr_bb = IR_op_to_r(builder, curr_bb, rhs);
-            IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, rhs->reg);
-        }
-        else {
-            MemAddr src_addr;
-            RegImm size = {.is_imm = true, .imm.as_int._u64 = lhs->type->size};
-
-            IR_get_object_addr(builder, curr_bb, &src_addr, rhs);
-            IR_emit_instr_memcpy(builder, curr_bb, dst_addr, src_addr, size);
-        }
+        IR_get_object_addr(builder, curr_bb, &src_addr, rhs);
+        IR_emit_instr_memcpy(builder, curr_bb, dst_addr, src_addr, size);
     }
 
     return curr_bb;
@@ -1265,38 +1079,6 @@ static void IR_push_scope(IR_ProcBuilder* builder, Scope* scope)
 static void IR_pop_scope(IR_ProcBuilder* builder)
 {
     builder->curr_scope = builder->curr_scope->parent;
-}
-
-static IR_TmpObj* IR_get_tmp_obj(IR_ProcBuilder* builder, IR_TmpObjList* obj_list, size_t size, size_t align)
-{
-    IR_TmpObj* tmp_obj;
-
-    // Try to get one from the free list. Otherwise, allocate one.
-    if (builder->tmp_obj_freelist) {
-        tmp_obj = builder->tmp_obj_freelist;
-        builder->tmp_obj_freelist = tmp_obj->next;
-    }
-    else {
-        tmp_obj = alloc_type(builder->tmp_arena, IR_TmpObj, false);
-    }
-
-    // Initialize tmp obj.
-    tmp_obj->size = size;
-    tmp_obj->align = align;
-    tmp_obj->mem_obj = alloc_type(builder->arena, MemObj, true);
-    tmp_obj->next = NULL;
-
-    // Add obj to the end of the list.
-    if (obj_list->last) {
-        obj_list->last->next = tmp_obj;
-    }
-    else {
-        obj_list->first = tmp_obj;
-    }
-
-    obj_list->last = tmp_obj;
-
-    return tmp_obj;
 }
 
 static void IR_free_deferred_tmp_obj_list(IR_ProcBuilder* builder, IR_TmpObjList* obj_list)
@@ -1359,6 +1141,8 @@ static void IR_process_deferred_tmp_objs(IR_ProcBuilder* builder, IR_TmpObjList*
     // Make any remaining deferred objects into temporary anonymous objects.
     for (IR_TmpObj* it = obj_list->first; it; it = it->next) {
         MemObj* mem_obj = it->mem_obj;
+
+        assert(mem_obj);
 
         if (mem_obj->kind == MEM_OBJ_NONE) {
             mem_obj->kind = MEM_OBJ_ANON_OBJ;
@@ -2488,72 +2272,173 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
 static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     assert(expr->super.type->kind == TYPE_ARRAY);
-    assert(!expr->typespec);
-
-    u64 initzer_index = 0;
-    IR_ArrayMemberInitializer* ir_initzers = alloc_array(builder->tmp_arena, IR_ArrayMemberInitializer, expr->num_initzers, true);
-
-    List* head = &expr->initzers;
-    List* it = head->next;
-    u64 elem_index = 0;
-
     BBlock* curr_bb = bblock;
 
-    while (it != head) {
-        MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
-        IR_ArrayMemberInitializer* ir_initzer = ir_initzers + initzer_index;
+    Type* arr_type = expr->super.type;
+    Type* elem_type = arr_type->as_array.base;
 
-        if (initzer->designator.kind == DESIGNATOR_INDEX) {
-            IR_Operand desig_op = {0};
-            curr_bb = IR_emit_expr(builder, curr_bb, initzer->designator.index, &desig_op, tmp_obj_list);
+    // Create a temporary object for the array initializer.
+    IR_TmpObj* arr_obj = IR_get_tmp_obj(builder, tmp_obj_list, arr_type->size, arr_type->align);
+    MemAddr arr_addr = IR_tmp_obj_as_addr(arr_obj);
 
-            assert(desig_op.kind == IR_OPERAND_IMM);
-            elem_index = desig_op.imm.as_int._u64;
-        }
-        else {
-            assert(initzer->designator.kind == DESIGNATOR_NONE);
-        }
+    size_t num_initzers = expr->num_initzers;
+    size_t num_elems = arr_type->as_array.len;
 
-        ir_initzer->index = elem_index;
-        curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, &ir_initzer->op, tmp_obj_list);
+    // Just memset to 0 if don't have any initializers and the array has more than 4 elements.
+    if (num_initzers == 0) {
+        IR_zero_memory(builder, curr_bb, &arr_addr, arr_type->size);
 
-        elem_index += 1;
-        initzer_index += 1;
-        it = it->next;
+        dst->kind = IR_OPERAND_TMP_OBJ;
+        dst->type = arr_type;
+        dst->tmp_obj = arr_obj;
+
+        return curr_bb;
     }
 
-    dst->kind = IR_OPERAND_ARRAY_INIT;
-    dst->type = expr->super.type;
-    dst->array_initzer.num_initzers = expr->num_initzers;
-    dst->array_initzer.initzers = ir_initzers;
+    assert(num_initzers <= num_elems);
+    size_t num_zero_elems = num_elems - num_initzers;
+    bool zero_first_pass = (num_zero_elems > 4);
+
+    // If we have more than 4 uninitialized elems, clear entire array with memset before initializing individual elems.
+    if (zero_first_pass) {
+        IR_zero_memory(builder, curr_bb, &arr_addr, arr_type->size);
+
+        List* head = &expr->initzers;
+        List* it = head->next;
+        u64 elem_index = 0;
+
+        while (it != head) {
+            MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+
+            if (initzer->designator.kind == DESIGNATOR_INDEX) {
+                IR_Operand desig_op = {0};
+                curr_bb = IR_emit_expr(builder, curr_bb, initzer->designator.index, &desig_op, tmp_obj_list);
+
+                assert(desig_op.kind == IR_OPERAND_IMM);
+                elem_index = desig_op.imm.as_int._u64;
+            }
+            else {
+                assert(initzer->designator.kind == DESIGNATOR_NONE);
+            }
+
+            // Emit IR for the initializer value
+            IR_Operand elem_val_op = {0};
+            curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, &elem_val_op, tmp_obj_list);
+
+            // Initialize array element with value of the initializer.
+            IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = arr_addr};
+            elem_ptr_op.addr.disp += elem_type->size * elem_index;
+            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &elem_val_op);
+
+            elem_index += 1;
+            it = it->next;
+        }
+    }
+    else {
+        // Create array of bit flags: 1 bit per element in array.
+        // Bit will be set to 1 if the array element has an initializer.
+        BitArray inited_elems = {0};
+        bit_arr_init(&inited_elems, builder->tmp_arena, num_elems);
+
+        // Iterate through initializers and: 1. mark element as having an initializer, 2. initialize element.
+        List* head = &expr->initzers;
+        List* it = head->next;
+        u64 elem_index = 0;
+
+        while (it != head) {
+            MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+
+            if (initzer->designator.kind == DESIGNATOR_INDEX) {
+                IR_Operand desig_op = {0};
+                curr_bb = IR_emit_expr(builder, curr_bb, initzer->designator.index, &desig_op, tmp_obj_list);
+
+                assert(desig_op.kind == IR_OPERAND_IMM);
+                elem_index = desig_op.imm.as_int._u64;
+            }
+            else {
+                assert(initzer->designator.kind == DESIGNATOR_NONE);
+            }
+
+            // Mark array element as having an initializer.
+            bit_arr_set(&inited_elems, elem_index, true);
+
+            // Emit IR for the initializer value
+            IR_Operand elem_val_op = {0};
+            curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, &elem_val_op, tmp_obj_list);
+
+            // Initialize array element with value of the initializer.
+            IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = arr_addr};
+            elem_ptr_op.addr.disp += elem_type->size * elem_index;
+            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &elem_val_op);
+
+            elem_index += 1;
+            it = it->next;
+        }
+
+        // For each array element, compute the pointer to the corresponding element and clear it to zero.
+        for (elem_index = 0; elem_index < num_elems; elem_index += 1) {
+
+            // Skip array elements that have been initialized.
+            if (bit_arr_get(&inited_elems, elem_index)) {
+                continue;
+            }
+
+            MemAddr elem_addr = arr_addr;
+            elem_addr.disp += elem_type->size * elem_index;
+
+            IR_zero_memory(builder, curr_bb, &elem_addr, elem_type->size);
+        }
+    }
+
+    dst->kind = IR_OPERAND_TMP_OBJ;
+    dst->type = arr_type;
+    dst->tmp_obj = arr_obj;
 
     return curr_bb;
 }
 
 static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
-    Type* type = expr->super.type;
+    assert(expr->super.type->kind == TYPE_STRUCT);
 
-    assert(!expr->typespec);
-    assert(type->kind == TYPE_STRUCT);
+    Type* struct_type = expr->super.type;
+    BBlock* curr_bb = bblock;
 
-    TypeAggregateBody* type_agg = &type->as_struct.body;
+    // Allocate a temporary object for the struct literal object.
+    IR_TmpObj* struct_obj = IR_get_tmp_obj(builder, tmp_obj_list, struct_type->size, struct_type->align);
+    MemAddr struct_addr = IR_tmp_obj_as_addr(struct_obj);
+
+    TypeAggregateBody* type_agg = &struct_type->as_struct.body;
     TypeAggregateField* fields = type_agg->fields;
+
     size_t num_fields = type_agg->num_fields;
-    IR_Operand** field_ops = alloc_array(builder->tmp_arena, IR_Operand*, num_fields, true);
+    size_t num_initzers = expr->num_initzers;
+
+    // Memset to 0 if did not specify any initializers.
+    if (num_initzers == 0) {
+        IR_zero_memory(builder, curr_bb, &struct_addr, struct_type->size);
+
+        dst->kind = IR_OPERAND_TMP_OBJ;
+        dst->type = struct_type;
+        dst->tmp_obj = struct_obj;
+
+        return curr_bb;
+    }
 
     List* head = &expr->initzers;
     List* it = head->next;
     size_t field_index = 0;
 
-    BBlock* curr_bb = bblock;
+    // Collect initializer values into the array 'field_ops'. The 'field_ops' array has an element
+    // for each field in the struct type. Elements without an initializer are left as 'NULL'.
+    IR_Operand** field_ops = alloc_array(builder->tmp_arena, IR_Operand*, num_fields, true);
 
     while (it != head) {
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
         TypeAggregateField* field;
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            field = get_type_struct_field(type, initzer->designator.name);
+            field = get_type_struct_field(struct_type, initzer->designator.name);
             assert(field);
 
             field_index = field->index + 1;
@@ -2571,54 +2456,81 @@ static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, 
         it = it->next;
     }
 
-    dst->kind = IR_OPERAND_STRUCT_INIT;
-    dst->type = type;
-    dst->struct_initzer.num_initzers = expr->num_initzers;
-    dst->struct_initzer.field_ops = field_ops;
+    assert(num_initzers <= num_fields);
+    size_t num_zero_fields = num_fields - num_initzers;
+    bool zero_first_pass = (num_zero_fields > 4);
+
+    // Clear the struct memory (as a first pass) if more than 4 fields are uninitialized.
+    if (zero_first_pass) {
+        IR_zero_memory(builder, curr_bb, &struct_addr, struct_type->size);
+    }
+
+    // Initialize each field with the provided initializer OR the default 'zero' value.
+    for (size_t i = 0; i < num_fields; i++) {
+        TypeAggregateField* field = fields + i;
+        IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = struct_addr};
+        field_ptr_op.addr.disp += field->offset;
+
+        if (field_ops && field_ops[i]) { // field <= initializer.
+            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, field_ops[i]);
+        }
+        else if (!zero_first_pass) { // field <= 0
+            IR_zero_memory(builder, curr_bb, &field_ptr_op.addr, field->type->size);
+        }
+    }
+
+    dst->kind = IR_OPERAND_TMP_OBJ;
+    dst->type = struct_type;
+    dst->tmp_obj = struct_obj;
 
     return curr_bb;
 }
 
 static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
-    Type* type = expr->super.type;
+    Type* union_type = expr->super.type;
 
-    assert(!expr->typespec);
-    assert(type->kind == TYPE_UNION);
+    assert(union_type->kind == TYPE_UNION);
 
-    size_t field_index = 0;
-    IR_Operand* field_op = NULL;
+    BBlock* curr_bb = bblock;
+
+    // Allocate a temporary object for the union literal object.
+    IR_TmpObj* union_obj = IR_get_tmp_obj(builder, tmp_obj_list, union_type->size, union_type->align);
+    MemAddr union_addr = IR_tmp_obj_as_addr(union_obj);
 
     List* head = &expr->initzers;
     List* it = head->next;
 
-    BBlock* curr_bb = bblock;
-
     if (it != head) {
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        TypeAggregateField* field = NULL;
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            TypeAggregateField* field = get_type_union_field(type, initzer->designator.name);
-            assert(field);
-
-            field_index = field->index;
+            field = get_type_union_field(union_type, initzer->designator.name);
         }
         else {
             assert(initzer->designator.kind == DESIGNATOR_NONE);
-            field_index = 0;
+            field = &union_type->as_union.body.fields[0];
         }
 
-        field_op = alloc_type(builder->tmp_arena, IR_Operand, true);
-        curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, field_op, tmp_obj_list);
+        assert(field);
+
+        IR_Operand field_val_op = {0};
+        curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, &field_val_op, tmp_obj_list);
+
+        IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = union_addr};
+        field_ptr_op.addr.disp += field->offset; // Union fields all have an offset of 0, but keep this just in case one day they don't.
+
+        curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &field_val_op);
     }
     else {
-        field_index = type->as_union.largest_field;
+        IR_zero_memory(builder, curr_bb, &union_addr, union_type->size);
     }
 
-    dst->kind = IR_OPERAND_UNION_INIT;
-    dst->type = type;
-    dst->union_initzer.field_op = field_op;
-    dst->union_initzer.field_index = field_index;
+    dst->kind = IR_OPERAND_TMP_OBJ;
+    dst->type = union_type;
+    dst->tmp_obj = union_obj;
+
     return curr_bb;
 }
 
@@ -2758,16 +2670,19 @@ static BBlock* IR_emit_stmt_decl(IR_ProcBuilder* builder, BBlock* bblock, StmtDe
     IR_Operand lhs_op = {0};
     IR_operand_from_sym(&lhs_op, lookup_symbol(builder->curr_scope, dvar->super.name));
 
-    IR_Operand rhs_op = {0};
-
     if (dvar->init) {
+        IR_Operand rhs_op = {0};
+
         last_bb = IR_emit_expr(builder, last_bb, dvar->init, &rhs_op, tmp_obj_list);
+        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op);
     }
     else {
-        IR_get_default_val(lhs_op.type, &rhs_op);
+        MemAddr addr = {0};
+        IR_get_object_addr(builder, last_bb, &addr, &lhs_op);
+        IR_zero_memory(builder, last_bb, &addr, lhs_op.type->size);
     }
 
-    return IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op);
+    return last_bb;
 }
 
 static BBlock* IR_emit_stmt_expr(IR_ProcBuilder* builder, BBlock* bblock, StmtExpr* sexpr, IR_TmpObjList* tmp_obj_list)
@@ -3233,6 +3148,8 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
         return;
     }
 
+    AllocatorState mem_state = allocator_get_state(builder->tmp_arena);
+
     // Initialize stack of temporary anonymous objects.
     list_head_init(&sym->as_proc.tmp_objs);
     sym->as_proc.num_tmp_objs = 0;
@@ -3240,13 +3157,23 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     // Set procedure as the current scope.
     builder->curr_proc = sym;
     IR_push_scope(builder, dproc->scope);
+
+    // Reset iterator that points to the first available tmp obj.
     IR_reset_proc_tmp_obj_iterator(builder);
 
+    // Initialize freelists
+    builder->tmp_obj_freelist = NULL;
+    builder->sc_jmp_freelist = NULL;
+    builder->ujmp_freelist = NULL;
+
+    // Create stretchy buffer to hold basic blocks.
     sym->as_proc.bblocks = array_create(builder->arena, BBlock*, 8);
 
+    // Add the starting basic block.
     BBlock* start_bb = IR_alloc_bblock(builder);
     start_bb->flags |= BBLOCK_IS_START;
 
+    // Emit IR for procedure body.
     BBlock* last_bb = IR_emit_stmt_block_body(builder, start_bb, &dproc->stmts, NULL, NULL);
 
     // If proc doesn't have explicit returns, add one at the end.
@@ -3305,6 +3232,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     IR_print_out_proc(builder->tmp_arena, sym);
     IR_dump_proc_dot(builder->tmp_arena, sym);
 #endif
+    allocator_restore_state(mem_state);
 }
 
 static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, BucketList* str_lits, TypeCache* type_cache)
@@ -3315,8 +3243,6 @@ static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* p
                               .type_cache = type_cache,
                               .curr_proc = NULL,
                               .curr_scope = NULL};
-
-    AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 
     // Iterate through all procedures and generate IR instructions.
     size_t num_procs = procs->num_elems;
@@ -3329,6 +3255,4 @@ static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* p
 
         IR_build_proc(&builder, sym);
     }
-
-    allocator_restore_state(tmp_mem_state);
 }

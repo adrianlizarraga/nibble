@@ -351,6 +351,11 @@ static CastResult can_convert_eop(Resolver* resolver, ExprOperand* operand, Type
         convertible = (ptr_base == builtin_types[BUILTIN_TYPE_VOID].type) || (data_field->type == dst_type);
         bad_lvalue = !operand->is_lvalue && forbid_rvalue_decay;
     }
+    // Can convert an array into an array slice.
+    else if (type_is_slice(dst_type) && (src_type->kind == TYPE_ARRAY)) {
+        convertible = slice_and_array_compatible(src_type, dst_type);
+        bad_lvalue = !operand->is_lvalue && forbid_rvalue_decay;
+    }
     else if ((dst_type->kind == TYPE_PTR) && (src_type->kind == TYPE_PTR)) {
         Type* dst_pointed_type = dst_type->as_ptr.base;
         Type* src_pointed_type = src_type->as_ptr.base;
@@ -394,16 +399,6 @@ static CastResult can_cast_eop(Resolver* resolver, ExprOperand* eop, Type* dst_t
     }
     else if (type_is_ptr_like(dst_type) && type_is_ptr_like(src_type)) {
         r.success = true;
-    }
-    // Can cast an array into an array slice.
-    else if (type_is_slice(dst_type) && (src_type->kind == TYPE_ARRAY)) {
-        if (!eop->is_lvalue && forbid_rvalue_decay) {
-            r.success = false;
-            r.bad_lvalue = true;
-        }
-        else {
-            r.success = slice_and_array_compatible(src_type, dst_type);
-        }
     }
 
     return r;
@@ -2181,7 +2176,7 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
     return true;
 }
 
-static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+static bool resolve_expr_array_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
 {
     assert(type->kind == TYPE_ARRAY);
     Type* elem_type = type->as_array.base;
@@ -2201,7 +2196,6 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
     u64 array_len = type->as_array.len;
     u64 elem_index = 0;
     bool infer_len = array_len == 0;
-    bool is_compound_lit = expr->typespec != NULL; // Otherwise, it is an initializer
     bool all_initzers_constexpr = true;
 
     // Iterate through each initializer
@@ -2268,19 +2262,15 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
         type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, elem_type, elem_index);
     }
 
-    // TODO: HMMMMMM.... there's a difference between an array initializer (not lvalue) and a compound literal (lvalue),
-    // but the syntax is ambiguous.
     expr->super.type = type;
-    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_lvalue = false;
     expr->super.is_imm = false;
-    expr->super.is_constexpr =
-        !is_compound_lit &&
-        all_initzers_constexpr; // || (is_compound_lit && all_initzers_constexpr && type_is_const(type->as_array.base))
+    expr->super.is_constexpr = all_initzers_constexpr;
 
     return true;
 }
 
-static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+static bool resolve_expr_struct_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
 {
     assert(type->kind == TYPE_STRUCT);
     AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
@@ -2293,7 +2283,6 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
     BitArray seen_fields = {0};
     bit_arr_init(&seen_fields, &resolver->ctx->tmp_mem, num_fields);
 
-    bool is_compound_lit = expr->typespec != NULL;
     bool all_initzers_constexpr = true;
     size_t field_index = 0;
 
@@ -2350,29 +2339,12 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
 
-        // Allowing initializing slice field from array initializer.
-        if (type_is_slice(field->type) && (init_op.type->kind == TYPE_ARRAY)) {
-            if (!slice_and_array_compatible(init_op.type, field->type)) {
-                resolver_on_error(resolver, initzer->range,
-                                  "Invalid struct initializer. Cannot initialize slice of type `%s` from `%s`.",
-                                  type_name(field->type), type_name(init_op.type));
-                return false;
-            }
-
-            if (!init_op.is_lvalue) {
-                resolver_on_error(resolver, initzer->range, "Invalid struct initializer. "
-                                  "Cannot assign a temporary (r-value) array to an array slice variable.");
-                return false;
-            }
-        }
         // Initializer expression should be convertible to the field type.
-        else {
-            CastResult r = convert_eop(resolver, &init_op, field->type, true);
+        CastResult r = convert_eop(resolver, &init_op, field->type, true);
 
-            if (!r.success) {
-                resolver_cast_error(resolver, r, initzer->init->range, "Invalid struct initializer", init_op.type, field->type);
-                return false;
-            }
+        if (!r.success) {
+            resolver_cast_error(resolver, r, initzer->init->range, "Invalid struct initializer", init_op.type, field->type);
+            return false;
         }
 
         // If initializer expression is convertible to the field type, create a new AST node that makes the conversion
@@ -2386,16 +2358,16 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
     }
 
     expr->super.type = type;
-    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_lvalue = false;
     expr->super.is_imm = false;
-    expr->super.is_constexpr = !is_compound_lit && all_initzers_constexpr;
+    expr->super.is_constexpr = all_initzers_constexpr;
 
     allocator_restore_state(mem_state);
 
     return true;
 }
 
-static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+static bool resolve_expr_union_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
 {
     assert(type->kind == TYPE_UNION);
 
@@ -2404,7 +2376,6 @@ static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit*
         return false;
     }
 
-    bool is_compound_lit = expr->typespec != NULL;
     bool initzer_constexpr = true;
 
     TypeAggregateField* fields = type->as_union.body.fields;
@@ -2442,29 +2413,12 @@ static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit*
 
         ExprOperand init_op = OP_FROM_EXPR(initzer->init);
 
-        // Allowing initializing slice field from array initializer.
-        if (type_is_slice(field->type) && (init_op.type->kind == TYPE_ARRAY)) {
-            if (!slice_and_array_compatible(init_op.type, field->type)) {
-                resolver_on_error(resolver, initzer->range,
-                                  "Invalid union initializer. Cannot initialize slice of type `%s` from `%s`.",
-                                  type_name(field->type), type_name(init_op.type));
-                return false;
-            }
-
-            if (!init_op.is_lvalue) {
-                resolver_on_error(resolver, initzer->range, "Invalid union initializer. "
-                                  "Cannot assign a temporary (r-value) array to an array slice variable.");
-                return false;
-            }
-        }
         // Initializer expression should be convertible to the field type.
-        else {
-            CastResult r = convert_eop(resolver, &init_op, field->type, true);
+        CastResult r = convert_eop(resolver, &init_op, field->type, true);
 
-            if (!r.success) {
-                resolver_cast_error(resolver, r, initzer->init->range, "Invalid union initializer", init_op.type, field->type);
-                return false;
-            }
+        if (!r.success) {
+            resolver_cast_error(resolver, r, initzer->init->range, "Invalid union initializer", init_op.type, field->type);
+            return false;
         }
 
         // If initializer expression is convertible to the field type, create a new AST node that makes the conversion
@@ -2476,9 +2430,9 @@ static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit*
     }
 
     expr->super.type = type;
-    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_lvalue = false;
     expr->super.is_imm = false;
-    expr->super.is_constexpr = !is_compound_lit && initzer_constexpr;
+    expr->super.is_constexpr = initzer_constexpr;
 
     return true;
 }
@@ -2507,13 +2461,13 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
     }
 
     if (type->kind == TYPE_ARRAY) {
-        return resolve_expr_array_compound_lit(resolver, expr, type);
+        return resolve_expr_array_lit(resolver, expr, type);
     }
     else if (type->kind == TYPE_STRUCT) {
-        return resolve_expr_struct_compound_lit(resolver, expr, type);
+        return resolve_expr_struct_lit(resolver, expr, type);
     }
     else if (type->kind == TYPE_UNION) {
-        return resolve_expr_union_compound_lit(resolver, expr, type);
+        return resolve_expr_union_lit(resolver, expr, type);
     }
 
     resolver_on_error(resolver, expr->super.range, "Invalid compound literal type `%s`.", type_name(type));
@@ -2843,18 +2797,6 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
                 }
 
                 declared_type = right_eop.type;
-            }
-            else if (type_is_slice(declared_type) && (right_eop.type->kind == TYPE_ARRAY)) {
-                if (!slice_and_array_compatible(right_eop.type, declared_type)) {
-                    resolver_on_error(resolver, expr->range, "Incompatible types. Cannot initialize slice of type `%s` from `%s`.",
-                                      type_name(declared_type), type_name(right_eop.type));
-                    return false;
-                }
-
-                if (!right_eop.is_lvalue) {
-                    resolver_on_error(resolver, expr->range, "Cannot assign a temporary (r-value) array to an array slice variable.");
-                    return false;
-                }
             }
             else {
                 CastResult r = convert_eop(resolver, &right_eop, declared_type, true);
@@ -3484,26 +3426,11 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
     }
 
     ExprOperand right_eop = OP_FROM_EXPR(right_expr);
+    CastResult r = convert_eop(resolver, &right_eop, left_expr->type, true);
 
-    if (type_is_slice(left_expr->type) && (right_eop.type->kind == TYPE_ARRAY)) {
-        if (!slice_and_array_compatible(right_eop.type, left_expr->type)) {
-            resolver_on_error(resolver, stmt->range, "Incompatible types. Cannot initialize slice of type `%s` from `%s`.",
-                              type_name(left_expr->type), type_name(right_eop.type));
-            return false;
-        }
-
-        if (!right_eop.is_lvalue) {
-            resolver_on_error(resolver, stmt->range, "Cannot assign a temporary (r-value) array to an array slice variable.");
-            return false;
-        }
-    }
-    else {
-        CastResult r = convert_eop(resolver, &right_eop, left_expr->type, true);
-
-        if (!r.success) {
-            resolver_cast_error(resolver, r, right_expr->range, "Invalid assignment statement", right_eop.type, left_expr->type);
-            return 0;
-        }
+    if (!r.success) {
+        resolver_cast_error(resolver, r, right_expr->range, "Invalid assignment statement", right_eop.type, left_expr->type);
+        return 0;
     }
 
     sassign->right = try_wrap_cast_expr(resolver, &right_eop, sassign->right);

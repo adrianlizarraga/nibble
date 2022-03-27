@@ -735,7 +735,6 @@ typedef struct TypeStruct {
 
 typedef struct TypeUnion {
     TypeAggregateBody body;
-    size_t largest_field;
 } TypeUnion;
 
 typedef struct TypeIncompleteAggregate {

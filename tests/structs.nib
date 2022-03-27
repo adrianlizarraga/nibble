@@ -70,13 +70,7 @@ proc vec3_add(a : Vec3, b : Vec3) => Vec3 {
 }
 
 proc smol_vec3_add(a : SmolVec3, b : SmolVec3) => SmolVec3 {
-    var c : SmolVec3;
-
-    c.x = a.x + b.x;
-    c.y = a.y + b.y;
-    c.z = a.z + b.z;
-
-    return c;
+    return {a.x + b.x, a.y + b.y, a.z + b.z}; // Type is inferred from return type
 }
 
 proc smol_vec2_add(a : SmolVec2, b : SmolVec2) => SmolVec2 {
@@ -103,6 +97,10 @@ struct SliceWrapper {
     s : []char;
 }
 
+proc struct_lit_test() => int {
+    return {a = 10, b = 1 : GlobStruct}.b; // 1
+}
+
 var g_s : GlobStruct = {b = 7, a = 1};
 
 proc main() => int {
@@ -126,7 +124,7 @@ proc main() => int {
 
     var sv1 : SmolVec3;
     var sv2 : SmolVec3;
-    sv1.x = 3; sv1.y = 2; sv1.z = 1;
+    sv1 = {x = 3, y = 2, z = 1 : SmolVec3};
     sv2 = sv1;
 
     var r5 := smol_vec3_add(sv1, sv2);
@@ -149,7 +147,7 @@ proc main() => int {
 
     var sw : SliceWrapper = {s = buf.buf}; // Convert array to slice
 
-    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) - (0 + 9 + 0) + (1 + 0 + 0) + 20 = 91
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) - (0 + 9 + 0) + (1 + 0 + 0) + 20 - 1 = 90
     return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) +
-           (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b) - (d.x + d.y + d.z) + (n.b + n.a.x + n.c[0]) + sw.s[0];
+           (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b) - (d.x + d.y + d.z) + (n.b + n.a.x + n.c[0]) + sw.s[0] - struct_lit_test();
 }
