@@ -46,8 +46,7 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
             var arg_index := r.[0];
 
             if (arg_index >= args.length) {
-                var ret : struct {usize; PrintErr;} = {state.count, PrintErr::INVALID_ARG_INDEX};
-                return ret;
+                return {state.count, PrintErr::INVALID_ARG_INDEX};
             }
 
             var a := ^args[arg_index];
@@ -61,7 +60,6 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
                     var div_mod := val /% 10;
 
                     t_buf[j] = '0' + div_mod[1];
-
                     val = div_mod[0];
                     j = j + 1;
                 } while (val);
