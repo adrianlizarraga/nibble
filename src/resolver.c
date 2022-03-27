@@ -2176,7 +2176,7 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
     return true;
 }
 
-static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+static bool resolve_expr_array_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
 {
     assert(type->kind == TYPE_ARRAY);
     Type* elem_type = type->as_array.base;
@@ -2196,7 +2196,6 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
     u64 array_len = type->as_array.len;
     u64 elem_index = 0;
     bool infer_len = array_len == 0;
-    bool is_compound_lit = expr->typespec != NULL; // Otherwise, it is an initializer
     bool all_initzers_constexpr = true;
 
     // Iterate through each initializer
@@ -2263,19 +2262,15 @@ static bool resolve_expr_array_compound_lit(Resolver* resolver, ExprCompoundLit*
         type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, elem_type, elem_index);
     }
 
-    // TODO: HMMMMMM.... there's a difference between an array initializer (not lvalue) and a compound literal (lvalue),
-    // but the syntax is ambiguous.
     expr->super.type = type;
-    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_lvalue = false;
     expr->super.is_imm = false;
-    expr->super.is_constexpr =
-        !is_compound_lit &&
-        all_initzers_constexpr; // || (is_compound_lit && all_initzers_constexpr && type_is_const(type->as_array.base))
+    expr->super.is_constexpr = all_initzers_constexpr;
 
     return true;
 }
 
-static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+static bool resolve_expr_struct_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
 {
     assert(type->kind == TYPE_STRUCT);
     AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
@@ -2288,7 +2283,6 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
     BitArray seen_fields = {0};
     bit_arr_init(&seen_fields, &resolver->ctx->tmp_mem, num_fields);
 
-    bool is_compound_lit = expr->typespec != NULL;
     bool all_initzers_constexpr = true;
     size_t field_index = 0;
 
@@ -2364,16 +2358,16 @@ static bool resolve_expr_struct_compound_lit(Resolver* resolver, ExprCompoundLit
     }
 
     expr->super.type = type;
-    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_lvalue = false;
     expr->super.is_imm = false;
-    expr->super.is_constexpr = !is_compound_lit && all_initzers_constexpr;
+    expr->super.is_constexpr = all_initzers_constexpr;
 
     allocator_restore_state(mem_state);
 
     return true;
 }
 
-static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
+static bool resolve_expr_union_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
 {
     assert(type->kind == TYPE_UNION);
 
@@ -2382,7 +2376,6 @@ static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit*
         return false;
     }
 
-    bool is_compound_lit = expr->typespec != NULL;
     bool initzer_constexpr = true;
 
     TypeAggregateField* fields = type->as_union.body.fields;
@@ -2437,9 +2430,9 @@ static bool resolve_expr_union_compound_lit(Resolver* resolver, ExprCompoundLit*
     }
 
     expr->super.type = type;
-    expr->super.is_lvalue = is_compound_lit;
+    expr->super.is_lvalue = false;
     expr->super.is_imm = false;
-    expr->super.is_constexpr = !is_compound_lit && initzer_constexpr;
+    expr->super.is_constexpr = initzer_constexpr;
 
     return true;
 }
@@ -2468,13 +2461,13 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
     }
 
     if (type->kind == TYPE_ARRAY) {
-        return resolve_expr_array_compound_lit(resolver, expr, type);
+        return resolve_expr_array_lit(resolver, expr, type);
     }
     else if (type->kind == TYPE_STRUCT) {
-        return resolve_expr_struct_compound_lit(resolver, expr, type);
+        return resolve_expr_struct_lit(resolver, expr, type);
     }
     else if (type->kind == TYPE_UNION) {
-        return resolve_expr_union_compound_lit(resolver, expr, type);
+        return resolve_expr_union_lit(resolver, expr, type);
     }
 
     resolver_on_error(resolver, expr->super.range, "Invalid compound literal type `%s`.", type_name(type));

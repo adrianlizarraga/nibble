@@ -28,13 +28,7 @@ proc vec3_add(a : [3]int, b : [3]int) => [3]int {
 }
 
 proc smol_vec3_add(a : [3]char, b : [3]char) => [3]char {
-    var c : [3]char;
-
-    c[0] = a[0] + b[0];
-    c[1] = a[1] + b[1];
-    c[2] = a[2] + b[2];
-
-    return c;
+    return {a[0] + b[0], a[1] + b[1], a[2] + b[2]};
 }
 
 proc smol_vec2_add(a : [2]char, b : [2]char) => [2]char {
@@ -44,6 +38,10 @@ proc smol_vec2_add(a : [2]char, b : [2]char) => [2]char {
     c[1] = a[1] + b[1];
 
     return c;
+}
+
+proc test_array_lit() => int {
+    return {[0] = 10, [3] = -1 : [_]int}[3]; // -1
 }
 
 proc main() => int
@@ -93,7 +91,8 @@ proc main() => int
     var r6_ptr : ^[2]char = ^r6; // Pointer to the entire array.
     #static_assert(#length(*r6_ptr) == 2);
 
-    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (6 + 4 + 2) + (-4 + 2) = 84
-    return r + r2 + *r3 + r3[31] + (r4[0] + r4[1] + r4[2]) + (r5[0] + r5_elem_ptr[1] + r5[2]) + (r6[0] + (*r6_ptr)[1]);
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (6 + 4 + 2) + (-4 + 2) + -1 = 83
+    return r + r2 + *r3 + r3[31] + (r4[0] + r4[1] + r4[2]) + (r5[0] + r5_elem_ptr[1] + r5[2]) + (r6[0] + (*r6_ptr)[1]) +
+           test_array_lit();
 }
 

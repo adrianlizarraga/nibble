@@ -2272,7 +2272,6 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
 static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     assert(expr->super.type->kind == TYPE_ARRAY);
-    assert(!expr->typespec);
     BBlock* curr_bb = bblock;
 
     Type* arr_type = expr->super.type;
@@ -2400,7 +2399,6 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
 
 static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
-    assert(!expr->typespec);
     assert(expr->super.type->kind == TYPE_STRUCT);
 
     Type* struct_type = expr->super.type;
@@ -2492,7 +2490,6 @@ static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, E
 {
     Type* union_type = expr->super.type;
 
-    assert(!expr->typespec);
     assert(union_type->kind == TYPE_UNION);
 
     BBlock* curr_bb = bblock;

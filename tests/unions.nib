@@ -29,6 +29,10 @@ union UnionWithSlice {
     number : s64;
 }
 
+proc union_lit_test() => int {
+    return {number = 1 : UnionWithSlice}.number; // 1
+}
+
 proc main() => int {
     var val : Value;
     var p_val : ^Value = ^val;
@@ -49,6 +53,6 @@ proc main() => int {
     var arr : [16]int = {-31};
     var u_slice : UnionWithSlice = {slice = arr};
 
-    // 40 + 65 + -5 + -31 = 69
-    return g_val._u8 + g_val._u16 + p_val._s32 + val2._s8 + g_val2._s8 + u_slice.slice[0];
+    // 40 + 65 + -5 + -31 + 1 = 70
+    return g_val._u8 + g_val._u16 + p_val._s32 + val2._s8 + g_val2._s8 + u_slice.slice[0] + union_lit_test();
 }
