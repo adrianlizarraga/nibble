@@ -13,9 +13,7 @@ proc print_out(format : [] char, vargs : ..any) => {usize; PrintErr} {
     var buf : [128] char;
     var dst : FileBuffer = {buf = buf};
 
-    var r := print_out_internal(output_to_file, ^dst, format, vargs);
-
-    return r;
+    return print_out_internal(output_to_file, ^dst, format, vargs);
 }
 
 //
@@ -82,9 +80,7 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
         }
     }
 
-    var r : {usize; PrintErr} = {state.count, PrintErr::NONE};
-
-    return r;
+    return {state.count, PrintErr::NONE};
 }
 
 proc scan_num(format : []char, i : usize) => {usize; usize} {
@@ -96,9 +92,7 @@ proc scan_num(format : []char, i : usize) => {usize; usize} {
         i = i + 1;
     }
 
-    var r : {usize; usize} = {num, i};
-
-    return r;
+    return {num, i};
 }
 
 proc is_num(c : char) => bool {
