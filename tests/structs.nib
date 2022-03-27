@@ -70,13 +70,7 @@ proc vec3_add(a : Vec3, b : Vec3) => Vec3 {
 }
 
 proc smol_vec3_add(a : SmolVec3, b : SmolVec3) => SmolVec3 {
-    var c : SmolVec3;
-
-    c.x = a.x + b.x;
-    c.y = a.y + b.y;
-    c.z = a.z + b.z;
-
-    return c;
+    return {a.x + b.x, a.y + b.y, a.z + b.z : SmolVec3};
 }
 
 proc smol_vec2_add(a : SmolVec2, b : SmolVec2) => SmolVec2 {
@@ -126,7 +120,7 @@ proc main() => int {
 
     var sv1 : SmolVec3;
     var sv2 : SmolVec3;
-    sv1.x = 3; sv1.y = 2; sv1.z = 1;
+    sv1 = {x = 3, y = 2, z = 1 : SmolVec3};
     sv2 = sv1;
 
     var r5 := smol_vec3_add(sv1, sv2);
