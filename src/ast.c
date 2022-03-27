@@ -1168,7 +1168,6 @@ void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, co
 {
     size_t size = 0;
     size_t align = 0;
-    size_t largest_field = 0;
 
     TypeAggregateField* fields_cpy = mem_dup_array(allocator, TypeAggregateField, fields, num_fields);
 
@@ -1188,7 +1187,6 @@ void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, co
 
         if (field_size > size) {
             size = field_size;
-            largest_field = i;
         }
     }
 
@@ -1202,7 +1200,6 @@ void complete_union_type(Allocator* allocator, Type* type, size_t num_fields, co
 
     type->as_union.body.num_fields = num_fields;
     type->as_union.body.fields = fields_cpy;
-    type->as_union.largest_field = largest_field;
 }
 
 Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base)

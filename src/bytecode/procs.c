@@ -22,7 +22,6 @@ typedef enum IR_OperandKind {
     IR_OPERAND_MEM_ADDR,
     IR_OPERAND_DEREF_ADDR,
     IR_OPERAND_DEFERRED_CMP,
-    IR_OPERAND_UNION_INIT,
     IR_OPERAND_VAR,
     IR_OPERAND_TMP_OBJ,
     IR_OPERAND_STR_LIT,
@@ -54,11 +53,6 @@ typedef struct IR_DeferredCmp {
     IR_DeferredJmpcc final_jmp;
 } IR_DeferredCmp;
 
-typedef struct IR_UnionInitializer {
-    size_t field_index;
-    struct IR_Operand* field_op;
-} IR_UnionInitializer;
-
 typedef struct IR_Operand {
     IR_OperandKind kind;
     Type* type;
@@ -70,7 +64,6 @@ typedef struct IR_Operand {
         Symbol* sym;
         IR_TmpObj* tmp_obj;
         IR_DeferredCmp cmp;
-        IR_UnionInitializer union_initzer;
         StrLit* str_lit;
     };
 } IR_Operand;
@@ -991,36 +984,10 @@ static IR_TmpObj* IR_get_tmp_obj(IR_ProcBuilder* builder, IR_TmpObjList* obj_lis
     return tmp_obj;
 }
 
-static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* lhs, IR_Operand* rhs, IR_TmpObjList* tmp_obj_list);
-
-static BBlock* IR_emit_union_init(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* union_op, IR_Operand* init_op, IR_TmpObjList* tmp_obj_list)
-{
-    assert(union_op->kind == IR_OPERAND_VAR || union_op->kind == IR_OPERAND_DEREF_ADDR);
-    assert(union_op->type->kind == TYPE_UNION);
-    assert(init_op->kind == IR_OPERAND_UNION_INIT);
-
-    BBlock* curr_bb = bblock;
-
-    Type* type = union_op->type;
-    IR_Operand* field_op = init_op->union_initzer.field_op;
-
-    MemAddr base_addr = {0};
-    IR_get_object_addr(builder, curr_bb, &base_addr, union_op);
-
-    if (!field_op) {
-        IR_zero_memory(builder, curr_bb, &base_addr, type->size);
-        return curr_bb;
-    }
-
-    TypeAggregateField* field = &type->as_union.body.fields[init_op->union_initzer.field_index];
-    IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = base_addr};
-    field_ptr_op.addr.disp += field->offset; // Union fields all have an offset of 0, but keep this just in case one day they don't...
-
-    return IR_emit_assign(builder, curr_bb, &field_ptr_op, field_op, tmp_obj_list);
-}
+static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* lhs, IR_Operand* rhs);
 
 static BBlock* IR_init_array_slice(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* slice_addr, Type* slice_type,
-                                   IR_Operand* array_op, IR_TmpObjList* tmp_obj_list)
+                                   IR_Operand* array_op)
 {
     assert(array_op->type->kind == TYPE_ARRAY);
 
@@ -1041,13 +1008,13 @@ static BBlock* IR_init_array_slice(IR_ProcBuilder* builder, BBlock* bblock, MemA
 
     IR_Operand data_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = data_field->type, .addr = arr_addr};
 
-    curr_bb = IR_emit_assign(builder, curr_bb, &length_field_op, &length_val_op, tmp_obj_list);
-    curr_bb = IR_emit_assign(builder, curr_bb, &data_field_op, &data_val_op, tmp_obj_list);
+    curr_bb = IR_emit_assign(builder, curr_bb, &length_field_op, &length_val_op);
+    curr_bb = IR_emit_assign(builder, curr_bb, &data_field_op, &data_val_op);
 
     return curr_bb;
 }
 
-static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* lhs, IR_Operand* rhs, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* lhs, IR_Operand* rhs)
 {
     BBlock* curr_bb = bblock;
     MemAddr dst_addr;
@@ -1060,9 +1027,6 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
 
         IR_emit_instr_limm(builder, curr_bb, rhs->type, r, rhs->imm);
         IR_emit_instr_store(builder, curr_bb, lhs->type, dst_addr, r);
-    }
-    else if (rhs->kind == IR_OPERAND_UNION_INIT) {
-        curr_bb = IR_emit_union_init(builder, curr_bb, lhs, rhs, tmp_obj_list);
     }
     else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_TMP_OBJ)) {
         MemObj* r_mem_obj = rhs->tmp_obj->mem_obj;
@@ -1584,8 +1548,8 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         }
 
         // Copy quotient and remainer into the object.
-        curr_bb = IR_emit_assign(builder, curr_bb, &quot_op, &quot_val, tmp_obj_list);
-        curr_bb = IR_emit_assign(builder, curr_bb, &rem_op, &rem_val, tmp_obj_list);
+        curr_bb = IR_emit_assign(builder, curr_bb, &quot_op, &quot_val);
+        curr_bb = IR_emit_assign(builder, curr_bb, &rem_op, &rem_val);
 
         dst->kind = IR_OPERAND_TMP_OBJ;
         dst->type = result_type;
@@ -1983,7 +1947,7 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
         IR_TmpObj* slice_obj = IR_get_tmp_obj(builder, tmp_obj_list, slice_type->size, slice_type->align);
         MemAddr slice_addr = IR_tmp_obj_as_addr(slice_obj);
 
-        curr_bb = IR_init_array_slice(builder, curr_bb, &slice_addr, slice_type, &src_op, tmp_obj_list);
+        curr_bb = IR_init_array_slice(builder, curr_bb, &slice_addr, slice_type, &src_op);
 
         dst_op->kind = IR_OPERAND_TMP_OBJ;
         dst_op->tmp_obj = slice_obj;
@@ -2210,7 +2174,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 IR_TmpObj* cpy_obj = IR_get_tmp_obj(builder, tmp_obj_list, arg_op.type->size, arg_op.type->align);
                 IR_Operand cpy_obj_op = {.kind = IR_OPERAND_TMP_OBJ, .type = arg_op.type, .tmp_obj = cpy_obj};
 
-                *p_bblock = IR_emit_assign(builder, *p_bblock, &cpy_obj_op, &arg_op, tmp_obj_list); // Do the copy.
+                *p_bblock = IR_emit_assign(builder, *p_bblock, &cpy_obj_op, &arg_op); // Do the copy.
 
                 // Initialize the `any` object's fields. Note that we're directly modifying the array element.
                 MemAddr any_obj_addr = elem_ptr_op.addr;
@@ -2221,7 +2185,7 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 IR_Operand type_val_op = {.kind = IR_OPERAND_IMM, .type = type_field->type, .imm.as_int._u64 = arg_op.type->id};
 
                 type_field_op.addr.disp += type_field->offset;
-                *p_bblock = IR_emit_assign(builder, *p_bblock, &type_field_op, &type_val_op, tmp_obj_list);
+                *p_bblock = IR_emit_assign(builder, *p_bblock, &type_field_op, &type_val_op);
 
                 // Set the object's ptr field to the arg's address.
                 TypeAggregateField* ptr_field = get_type_struct_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
@@ -2229,10 +2193,10 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                 IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = IR_tmp_obj_as_addr(cpy_obj)};
 
                 ptr_field_op.addr.disp += ptr_field->offset;
-                *p_bblock = IR_emit_assign(builder, *p_bblock, &ptr_field_op, &ptr_val_op, tmp_obj_list);
+                *p_bblock = IR_emit_assign(builder, *p_bblock, &ptr_field_op, &ptr_val_op);
             }
             else {
-                *p_bblock = IR_emit_assign(builder, *p_bblock, &elem_ptr_op, &arg_op, tmp_obj_list);
+                *p_bblock = IR_emit_assign(builder, *p_bblock, &elem_ptr_op, &arg_op);
             }
 
             elem_ptr_op.addr.disp += elem_type->size;
@@ -2259,8 +2223,8 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
         IR_Operand length_val_op = {.kind = IR_OPERAND_IMM, .type = length_field->type, .imm.as_int._u64 = num_vargs};
         IR_Operand data_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = data_field->type, .addr = arr_addr};
 
-        *p_bblock = IR_emit_assign(builder, *p_bblock, &length_field_op, &length_val_op, tmp_obj_list);
-        *p_bblock = IR_emit_assign(builder, *p_bblock, &data_field_op, &data_val_op, tmp_obj_list);
+        *p_bblock = IR_emit_assign(builder, *p_bblock, &length_field_op, &length_val_op);
+        *p_bblock = IR_emit_assign(builder, *p_bblock, &data_field_op, &data_val_op);
 
         args[n].type = struct_type;
         args[n].addr = struct_addr;
@@ -2365,7 +2329,7 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
             // Initialize array element with value of the initializer.
             IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = arr_addr};
             elem_ptr_op.addr.disp += elem_type->size * elem_index;
-            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &elem_val_op, tmp_obj_list);
+            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &elem_val_op);
 
             elem_index += 1;
             it = it->next;
@@ -2406,7 +2370,7 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
             // Initialize array element with value of the initializer.
             IR_Operand elem_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = elem_type, .addr = arr_addr};
             elem_ptr_op.addr.disp += elem_type->size * elem_index;
-            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &elem_val_op, tmp_obj_list);
+            curr_bb = IR_emit_assign(builder, curr_bb, &elem_ptr_op, &elem_val_op);
 
             elem_index += 1;
             it = it->next;
@@ -2510,7 +2474,7 @@ static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, 
         field_ptr_op.addr.disp += field->offset;
 
         if (field_ops && field_ops[i]) { // field <= initializer.
-            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, field_ops[i], tmp_obj_list);
+            curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, field_ops[i]);
         }
         else if (!zero_first_pass) { // field <= 0
             IR_zero_memory(builder, curr_bb, &field_ptr_op.addr, field->type->size);
@@ -2526,44 +2490,50 @@ static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, 
 
 static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
-    Type* type = expr->super.type;
+    Type* union_type = expr->super.type;
 
     assert(!expr->typespec);
-    assert(type->kind == TYPE_UNION);
+    assert(union_type->kind == TYPE_UNION);
 
-    size_t field_index = 0;
-    IR_Operand* field_op = NULL;
+    BBlock* curr_bb = bblock;
+
+    // Allocate a temporary object for the union literal object.
+    IR_TmpObj* union_obj = IR_get_tmp_obj(builder, tmp_obj_list, union_type->size, union_type->align);
+    MemAddr union_addr = IR_tmp_obj_as_addr(union_obj);
 
     List* head = &expr->initzers;
     List* it = head->next;
 
-    BBlock* curr_bb = bblock;
-
     if (it != head) {
         MemberInitializer* initzer = list_entry(it, MemberInitializer, lnode);
+        TypeAggregateField* field = NULL;
 
         if (initzer->designator.kind == DESIGNATOR_NAME) {
-            TypeAggregateField* field = get_type_union_field(type, initzer->designator.name);
-            assert(field);
-
-            field_index = field->index;
+            field = get_type_union_field(union_type, initzer->designator.name);
         }
         else {
             assert(initzer->designator.kind == DESIGNATOR_NONE);
-            field_index = 0;
+            field = &union_type->as_union.body.fields[0];
         }
 
-        field_op = alloc_type(builder->tmp_arena, IR_Operand, true);
-        curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, field_op, tmp_obj_list);
+        assert(field);
+
+        IR_Operand field_val_op = {0};
+        curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, &field_val_op, tmp_obj_list);
+
+        IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = union_addr};
+        field_ptr_op.addr.disp += field->offset; // Union fields all have an offset of 0, but keep this just in case one day they don't.
+
+        curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &field_val_op);
     }
     else {
-        field_index = type->as_union.largest_field;
+        IR_zero_memory(builder, curr_bb, &union_addr, union_type->size);
     }
 
-    dst->kind = IR_OPERAND_UNION_INIT;
-    dst->type = type;
-    dst->union_initzer.field_op = field_op;
-    dst->union_initzer.field_index = field_index;
+    dst->kind = IR_OPERAND_TMP_OBJ;
+    dst->type = union_type;
+    dst->tmp_obj = union_obj;
+
     return curr_bb;
 }
 
@@ -2707,7 +2677,7 @@ static BBlock* IR_emit_stmt_decl(IR_ProcBuilder* builder, BBlock* bblock, StmtDe
         IR_Operand rhs_op = {0};
 
         last_bb = IR_emit_expr(builder, last_bb, dvar->init, &rhs_op, tmp_obj_list);
-        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op, tmp_obj_list);
+        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op);
     }
     else {
         MemAddr addr = {0};
@@ -2752,7 +2722,7 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
 
         last_bb = IR_emit_expr(builder, last_bb, stmt->left, &lhs_op, tmp_obj_list);
         last_bb = IR_emit_expr(builder, last_bb, stmt->right, &rhs_op, tmp_obj_list);
-        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op, tmp_obj_list);
+        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op);
         break;
     }
     default:
