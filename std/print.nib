@@ -5,7 +5,9 @@
 @exported
 enum PrintErr {
     NONE = 0,
-    INVALID_ARG_INDEX
+    INVALID_ARG_INDEX,
+    UNSUPPORTED_ARG_TYPE,
+    MISSING_END_BRACE
 }
 
 @exported
@@ -20,36 +22,83 @@ proc print_out(format : [] char, vargs : ..any) => {usize; PrintErr} {
 // Internal
 //
 
+typedef PutCharProc = proc(^void, char) => bool;
+
+enum FormatFlag {
+    LEFT_JUSTIFIED = 1 << 0,
+    FORCE_SIGN     = 1 << 1,
+    SPACE_SIGN     = 1 << 2,
+    HASH           = 1 << 3,
+    ZERO_PAD       = 1 << 4,
+    WIDTH          = 1 << 5,
+    PRECISION      = 1 << 6,
+    UPPERCASE      = 1 << 7
+}
+
 struct FileBuffer {
     buf : []char;
     idx : s64;
 }
 
-struct PrintState {
+struct WriteState {
     count : u64;
     arg : ^void;
     put_char : PutCharProc;
 }
 
-typedef PutCharProc = proc(^void, char) => bool;
+struct ReadState {
+    fmt : []char;
+    at : usize;
+}
+
+proc curr_char(read_state : ^ReadState) => char {
+    return read_state.fmt[read_state.at];
+}
+
+proc eat_char(read_state : ^ReadState) {
+    read_state.at = read_state.at + 1;
+}
 
 proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, args : []any) => {usize; PrintErr} {
-    var state : PrintState = {arg = arg, put_char = put_char};
+    var write_state : WriteState = {arg = arg, put_char = put_char};
+    var read_state : ReadState = {fmt = format};
+    var arg_idx := 0;
 
-    for (var i := 0; i < format.length; ) {
-        var c := format[i];
+    while (read_state.at < read_state.fmt.length) {
 
-        if (c == '%') {
-            i = i + 1;
+        // Replacement field. Must have at least 1 character remaining in format string.
+        if ((curr_char(^read_state) == '{') && (read_state.at < read_state.fmt.length - 1)) {
+            eat_char(^read_state);
 
-            var r := scan_num(format, i);
-            var arg_index := r.[0];
-
-            if (arg_index >= args.length) {
-                return {state.count, PrintErr::INVALID_ARG_INDEX};
+            // Escaped '{'.
+            if (curr_char(^read_state) == '{') {
+                put_char_wrapper(^write_state, curr_char(^read_state));
+                eat_char(^read_state);
+                continue;
             }
 
-            var a := ^args[arg_index];
+            // Get argument index.
+            if (is_dec_digit(curr_char(^read_state))) {
+                arg_idx = scan_num(^read_state);
+            }
+            else {
+                arg_idx = arg_idx + 1;
+            }
+
+            // Check if arg index is within bounds.
+            if (arg_idx >= args.length) {
+                return {write_state.count, PrintErr::INVALID_ARG_INDEX};
+            }
+
+            // Get options.
+            var options : FormatOptions;
+
+            if (curr_char(^read_state) == ':') {
+                eat_char(^read_state);
+                options = scan_options(^read_state);
+            }
+
+            var a := ^args[arg_idx];
 
             if (a.type == #typeid(int)) {
                 var t_buf : [32]char;
@@ -65,47 +114,67 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
                 } while (val);
 
                 while (j) {
-                    put_char_wrapper(^state, t_buf[j - 1]);
+                    put_char_wrapper(^write_state, t_buf[j - 1]);
                     j = j - 1;
                 }
             }
+            else {
+                return {write_state.count, PrintErr::UNSUPPORTED_ARG_TYPE};
+            }
 
-            i = r.[1];
+            // Check for ending '}'.
+            if ((read_state.at >= read_state.fmt.length) || (curr_char(^read_state) != '}')) {
+                return {write_state.count, PrintErr::MISSING_END_BRACE};
+            }
+
+            eat_char(^read_state);
         }
+        // Just print character.
         else {
-            put_char_wrapper(^state, c);
-            i = i + 1;
+            put_char_wrapper(^write_state, curr_char(^read_state));
+            eat_char(^read_state);
         }
     }
 
-    return {state.count, PrintErr::NONE};
+    return {write_state.count, PrintErr::NONE};
 }
 
-proc scan_num(format : []char, i : usize) => {usize; usize} {
+struct FormatOptions {
+    flags : u32;
+    precision : u32;
+    width : u32;
+}
+
+proc scan_options(read_state : ^ReadState) => FormatOptions {
+    // TODO: Implement
+    return {};
+}
+
+proc scan_num(read_state : ^ReadState) => usize {
     var num : usize = 0;
 
-    while (i < format.length && is_num(format[i])) {
+    while (read_state.at < read_state.fmt.length && is_dec_digit(curr_char(read_state))) {
         num = num * 10;
-        num = num + (format[i] - '0');
-        i = i + 1;
+        num = num + (curr_char(read_state) - '0');
+        eat_char(read_state);
     }
 
-    return {num, i};
+    return num;
 }
 
-proc is_num(c : char) => bool {
+proc is_dec_digit(c : char) => bool {
     return (c >= '0') && (c <= '9');
 }
 
-proc put_char_wrapper(state : ^PrintState, c : char) => bool {
+proc put_char_wrapper(write_state : ^WriteState, c : char) => bool {
     var r : bool = 1;
 
-    if (state.put_char) {
-        r = state.put_char(state.arg, c);
+    if (write_state.put_char) {
+        r = write_state.put_char(write_state.arg, c);
     }
 
     if (r && c) {
-        state.count = state.count + 1;
+        write_state.count = write_state.count + 1;
     }
 
     return r;

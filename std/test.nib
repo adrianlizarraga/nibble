@@ -82,7 +82,7 @@ proc main() => int {
         #writeout("Pass\n", 5);
     }
 
-    var r := print_out("Print nums %0, %1, %2!\n", 321, 2, 4333);
+    var r := print_out("Print nums {0}, {}, {2}, {1}!\n", 321, 2, 4333);
 
     if (r.[1] != PrintErr::NONE) {
         #writeout("Error!\n", 7);
