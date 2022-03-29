@@ -11,7 +11,7 @@ enum PrintErr {
 }
 
 @exported
-proc print_out(format : [] char, vargs : ..any) => {usize; PrintErr} {
+proc print_out(format : ^char, vargs : ..any) => {usize; PrintErr} {
     var buf : [128] char;
     var dst : FileBuffer = {buf = buf};
 
@@ -46,40 +46,27 @@ struct WriteState {
     put_char : PutCharProc;
 }
 
-struct ReadState {
-    fmt : []char;
-    at : usize;
-}
-
-proc curr_char(read_state : ^ReadState) => char {
-    return read_state.fmt[read_state.at];
-}
-
-proc eat_char(read_state : ^ReadState) {
-    read_state.at = read_state.at + 1;
-}
-
-proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, args : []any) => {usize; PrintErr} {
+proc print_out_internal(put_char : PutCharProc, arg : ^void, format : ^char, args : []any) => {usize; PrintErr} {
     var write_state : WriteState = {arg = arg, put_char = put_char};
-    var read_state : ReadState = {fmt = format};
     var arg_idx := 0;
+    var at := format;
 
-    while (read_state.at < read_state.fmt.length) {
+    while (*at) {
 
         // Replacement field. Must have at least 1 character remaining in format string.
-        if ((curr_char(^read_state) == '{') && (read_state.at < read_state.fmt.length - 1)) {
-            eat_char(^read_state);
+        if (*at == '{') {
+            at = at + 1;
 
             // Escaped '{'.
-            if (curr_char(^read_state) == '{') {
-                put_char_wrapper(^write_state, curr_char(^read_state));
-                eat_char(^read_state);
+            if (*at == '{') {
+                put_char_wrapper(^write_state, *at);
+                at = at + 1;
                 continue;
             }
 
             // Get argument index.
-            if (is_dec_digit(curr_char(^read_state))) {
-                arg_idx = scan_num(^read_state);
+            if (is_dec_digit(*at)) {
+                arg_idx = scan_num(^at);
             }
             else {
                 arg_idx = arg_idx + 1;
@@ -93,9 +80,9 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
             // Get options.
             var options : FormatOptions;
 
-            if (curr_char(^read_state) == ':') {
-                eat_char(^read_state);
-                options = scan_options(^read_state);
+            if (*at  == ':') {
+                at = at + 1;
+                options = scan_options(^at);
             }
 
             var a := ^args[arg_idx];
@@ -123,18 +110,20 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : []char, ar
             }
 
             // Check for ending '}'.
-            if ((read_state.at >= read_state.fmt.length) || (curr_char(^read_state) != '}')) {
+            if (*at != '}') {
                 return {write_state.count, PrintErr::MISSING_END_BRACE};
             }
 
-            eat_char(^read_state);
+            at = at + 1;
         }
         // Just print character.
         else {
-            put_char_wrapper(^write_state, curr_char(^read_state));
-            eat_char(^read_state);
+            put_char_wrapper(^write_state, *at);
+            at = at + 1;
         }
     }
+
+    put_char_wrapper(^write_state, *at); // Write null-terminator to flush contents.
 
     return {write_state.count, PrintErr::NONE};
 }
@@ -145,18 +134,18 @@ struct FormatOptions {
     width : u32;
 }
 
-proc scan_options(read_state : ^ReadState) => FormatOptions {
+proc scan_options(at_ptr : ^^char) => FormatOptions {
     // TODO: Implement
     return {};
 }
 
-proc scan_num(read_state : ^ReadState) => usize {
+proc scan_num(at_ptr : ^^char) => usize {
     var num : usize = 0;
 
-    while (read_state.at < read_state.fmt.length && is_dec_digit(curr_char(read_state))) {
+    while (is_dec_digit(**at_ptr)) {
         num = num * 10;
-        num = num + (curr_char(read_state) - '0');
-        eat_char(read_state);
+        num = num + (**at_ptr - '0');
+        *at_ptr = *at_ptr + 1;
     }
 
     return num;
