@@ -1134,22 +1134,6 @@ static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
     return true;
 }
 
-static void resolve_binary_eop(Resolver* resolver, TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
-{
-    convert_arith_eops(resolver, left, right);
-
-    if (left->is_constexpr && right->is_constexpr) {
-        assert(left->is_imm && right->is_imm);
-        eval_const_binary_op(resolver, op, dst, left->type, left->imm, right->imm);
-    }
-    else {
-        dst->type = left->type;
-        dst->is_constexpr = false;
-        dst->is_imm = false;
-        dst->is_lvalue = false;
-    }
-}
-
 static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOperand* ptr, ExprOperand* int_eop)
 {
     // Convert ^void to ^s8
@@ -1178,6 +1162,22 @@ static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOper
     dst->type = ptr->type;
 
     return true;
+}
+
+static void resolve_binary_eop(Resolver* resolver, TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
+{
+    convert_arith_eops(resolver, left, right);
+
+    if (left->is_constexpr && right->is_constexpr) {
+        assert(left->is_imm && right->is_imm);
+        eval_const_binary_op(resolver, op, dst, left->type, left->imm, right->imm);
+    }
+    else {
+        dst->type = left->type;
+        dst->is_constexpr = false;
+        dst->is_imm = false;
+        dst->is_lvalue = false;
+    }
 }
 
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
@@ -3405,35 +3405,77 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
 static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 {
     StmtExprAssign* sassign = (StmtExprAssign*)stmt;
-    Expr* left_expr = sassign->left;
-    Expr* right_expr = sassign->right;
+    Expr* lhs_expr = sassign->left;
+    Expr* rhs_expr = sassign->right;
 
-    if (!resolve_expr(resolver, left_expr, NULL))
+    if (!resolve_expr(resolver, lhs_expr, NULL))
         return 0;
 
-    if (!resolve_expr(resolver, right_expr, NULL))
+    if (!resolve_expr(resolver, rhs_expr, NULL))
         return 0;
 
-    if (!left_expr->is_lvalue) {
-        resolver_on_error(resolver, left_expr->range, "Left side of assignment statement must be an l-value");
+    if (!lhs_expr->is_lvalue) {
+        resolver_on_error(resolver, lhs_expr->range, "Left side of assignment statement must be an l-value");
         return 0;
     }
 
     // TODO: Support other assignment operators.
-    if (sassign->op_assign != TKN_ASSIGN) {
+    if (sassign->op_assign == TKN_ASSIGN) {
+        ExprOperand rhs_eop = OP_FROM_EXPR(rhs_expr);
+        CastResult r = convert_eop(resolver, &rhs_eop, lhs_expr->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, rhs_expr->range, "Invalid assignment statement", rhs_eop.type, lhs_expr->type);
+            return 0;
+        }
+
+        sassign->right = try_wrap_cast_expr(resolver, &rhs_eop, sassign->right);
+    }
+    else if (sassign->op_assign == TKN_ADD_ASSIGN) {
+        // TODO: THIS IS WRONG. Side-effects of lhs must occur only once.
+        // Copy lhs expression.
+        Expr* left_expr = copy_expr(&resolver->ctx->ast_mem, lhs_expr);
+        Expr* right_expr = rhs_expr;
+
+        ExprOperand left_op = OP_FROM_EXPR(left_expr);
+        ExprOperand right_op = OP_FROM_EXPR(right_expr);
+
+        // Ensure lhs and rhs are arithmetic types.
+        if (!type_is_arithmetic(left_op.type) || !type_is_arithmetic(right_op.type)) {
+            resolver_on_error(resolver, stmt->range, "Can only add arithmetic and pointer types.");
+            return 0;
+        }
+
+        // Perform usual arithmetic conversions on left and right subexpressions.
+        ExprOperand binary_op = {0};
+        resolve_binary_eop(resolver, TKN_PLUS, &binary_op, &left_op, &right_op);
+
+        left_expr = try_wrap_cast_expr(resolver, &left_op, left_expr);
+        right_expr = try_wrap_cast_expr(resolver, &right_op, right_expr);
+
+        // Create artificial binary '+' expression.
+        Expr* binary_expr = new_expr_binary(&resolver->ctx->ast_mem, TKN_PLUS, left_expr, right_expr);
+        binary_expr->type = binary_op.type;
+        binary_expr->is_lvalue = false;
+        binary_expr->is_constexpr = false;
+        binary_expr->is_imm = false;
+
+        // Convert binary operation's result to lhs's type.
+        CastResult r = convert_eop(resolver, &binary_op, lhs_expr->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, stmt->range, "Invalid compound assignment statement", binary_op.type, lhs_expr->type);
+            return 0;
+        }
+
+        // Force statement to become an ordinary assignment statement.
+        sassign->op_assign = TKN_ASSIGN;
+        sassign->right = try_wrap_cast_expr(resolver, &binary_op, binary_expr);
+    }
+    else {
         resolver_on_error(resolver, stmt->range, "Sorry! Only the `=` assignment operator is currently supported. Soon!");
         return 0;
     }
-
-    ExprOperand right_eop = OP_FROM_EXPR(right_expr);
-    CastResult r = convert_eop(resolver, &right_eop, left_expr->type, true);
-
-    if (!r.success) {
-        resolver_cast_error(resolver, r, right_expr->range, "Invalid assignment statement", right_eop.type, left_expr->type);
-        return 0;
-    }
-
-    sassign->right = try_wrap_cast_expr(resolver, &right_eop, sassign->right);
 
     return RESOLVE_STMT_SUCCESS;
 }

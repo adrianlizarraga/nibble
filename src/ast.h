@@ -340,6 +340,8 @@ Expr* new_expr_length(Allocator* allocator, Expr* arg, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
 Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range);
 
+Expr* copy_expr(Allocator* allocator, Expr* src);
+
 char* ftprint_expr(Allocator* allocator, Expr* expr);
 /////////////////////////////
 //        Statements
