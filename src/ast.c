@@ -312,60 +312,6 @@ DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRang
     return annotation;
 }
 
-/*
-Expr* copy_expr(Allocator* alloc, Expr* src)
-{
-    Expr* ret = NULL;
-
-    switch (src->kind) {
-    case CST_EXPR_TERNARY: {
-        Expr* s = (ExprTernary*)src;
-
-        ret = new_expr_ternary(alloc, copy_expr(alloc, s->cond), copy_expr(alloc, s->then_expr), copy_expr(alloc, s->else_expr));
-        break;
-    }
-    case CST_EXPR_BINARY: {
-        Expr* s = (ExprBinary*)src;
-
-        ret = new_expr_binary(alloc, s->op, copy_expr(alloc, s->left), copy_expr(alloc, s->right));
-        break;
-    }
-    case CST_ExprUnary: {
-        Expr* s = (ExprUnary*)src;
-
-        ret = new_expr_unary(alloc, s->op, copy_expr(alloc, s->expr), s->super.range);
-        break;
-    }
-    case CST_ExprCall: {break;}
-    case CST_ExprIndex: {break;}
-    case CST_ExprField: {break;}
-    case CST_ExprFieldIndex: {break;}
-    case CST_ExprInt: {break;}
-    case CST_ExprFloat: {break;}
-    case CST_ExprStr: {break;}
-    case CST_ExprIdent: {break;}
-    case CST_ExprCast: {break;}
-    case CST_ExprSizeof: {break;}
-    case CST_ExprTypeid: {break;}
-    case CST_ExprOffsetof: {break;}
-    case CST_ExprIndexof: {break;}
-    case CST_ExprLength: {break;}
-    case CST_ExprCompoundLit: {break;}
-    default:
-        assert(0);
-        break;
-    }
-
-    ret->type = src->type;
-    ret->is_constexpr = src->is_constexpr;
-    ret->is_lvalue = src->is_lvalue;
-    ret->is_imm = src->is_imm;
-    ret->imm = src->imm;
-
-    return ret;
-}
-*/
-
 #define new_decl(a, k, n, r) (k*)new_decl_((a), sizeof(k), alignof(k), CST_##k, (n), (r))
 static Decl* new_decl_(Allocator* allocator, size_t size, size_t align, DeclKind kind, Identifier* name, ProgRange range)
 {

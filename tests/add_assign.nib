@@ -1,0 +1,17 @@
+var g_num : int = 0;
+
+proc foo() => int {
+    var r := g_num;
+
+    g_num += 1;
+
+    return r;
+}
+
+proc main() => int {
+    var arr : [8]int;
+    arr[foo()] += 1;
+
+    // 1 + 0 + 1 + 2 + 3 = 7
+    return arr[0] + foo() + foo() + foo() + foo();
+}

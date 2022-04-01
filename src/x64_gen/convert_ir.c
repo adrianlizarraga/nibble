@@ -147,7 +147,7 @@ static void X64_force_any_reg(X64_LIRBuilder* builder, u32 lreg, u32 banned_regs
     X64_LRegRange* range = &builder->lreg_ranges[lreg];
 
     assert(range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_FORCE_REG);
-    assert(range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_FORCE_ANY_REG);
+    assert(range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_FORCE_ANY_REG); // TODO: Handle this case (combine banned regs).
     assert(range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL);
     range->ra_ctrl_kind = X64_REG_ALLOC_CTRL_FORCE_ANY_REG;
     range->ra_ctrl.preg_mask = x64_target.scratch_reg_mask & (~banned_regs);

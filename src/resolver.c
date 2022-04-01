@@ -3432,7 +3432,7 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         sassign->right = try_wrap_cast_expr(resolver, &rhs_eop, sassign->right);
     }
     else if (sassign->op_assign == TKN_ADD_ASSIGN) {
-        // TODO: THIS IS WRONG. Side-effects of lhs must occur only once.
+        // NOTE: Side-effects of lhs must occur only once.
         //
         // EX: Assume foo() returns a monotonically increasing integer every time it is called.
         //
@@ -3445,12 +3445,8 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         // *_ptr = *_ptr + 1.0
         //
 
-        // Copy lhs expression.
-        Expr* left_expr = copy_expr(&resolver->ctx->ast_mem, lhs_expr);
-        Expr* right_expr = rhs_expr;
-
-        ExprOperand left_op = OP_FROM_EXPR(left_expr);
-        ExprOperand right_op = OP_FROM_EXPR(right_expr);
+        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
+        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
 
         // Ensure lhs and rhs are arithmetic types.
         if (!type_is_arithmetic(left_op.type) || !type_is_arithmetic(right_op.type)) {
@@ -3462,17 +3458,7 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         ExprOperand binary_op = {0};
         resolve_binary_eop(resolver, TKN_PLUS, &binary_op, &left_op, &right_op);
 
-        left_expr = try_wrap_cast_expr(resolver, &left_op, left_expr);
-        right_expr = try_wrap_cast_expr(resolver, &right_op, right_expr);
-
-        // Create artificial binary '+' expression.
-        Expr* binary_expr = new_expr_binary(&resolver->ctx->ast_mem, TKN_PLUS, left_expr, right_expr);
-        binary_expr->type = binary_op.type;
-        binary_expr->is_lvalue = false;
-        binary_expr->is_constexpr = false;
-        binary_expr->is_imm = false;
-
-        // Convert binary operation's result to lhs's type.
+        // Ensure that binary operation's result can be implicitly converted to lhs's type.
         CastResult r = convert_eop(resolver, &binary_op, lhs_expr->type, true);
 
         if (!r.success) {
@@ -3480,9 +3466,8 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
             return 0;
         }
 
-        // Force statement to become an ordinary assignment statement.
-        sassign->op_assign = TKN_ASSIGN;
-        sassign->right = try_wrap_cast_expr(resolver, &binary_op, binary_expr);
+        // Only cast right subexpression. Bytecode generator will manually cast lhs to the same type.
+        sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
     }
     else {
         resolver_on_error(resolver, stmt->range, "Sorry! Only the `=` assignment operator is currently supported. Soon!");
