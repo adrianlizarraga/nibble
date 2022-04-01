@@ -3433,6 +3433,18 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
     }
     else if (sassign->op_assign == TKN_ADD_ASSIGN) {
         // TODO: THIS IS WRONG. Side-effects of lhs must occur only once.
+        //
+        // EX: Assume foo() returns a monotonically increasing integer every time it is called.
+        //
+        // var arr : [3]int = ...;
+        // arr[foo()] += 1.0;
+        //
+        // Should become =>
+        //
+        // var _ptr : ^int = ^arr[foo()];
+        // *_ptr = *_ptr + 1.0
+        //
+
         // Copy lhs expression.
         Expr* left_expr = copy_expr(&resolver->ctx->ast_mem, lhs_expr);
         Expr* right_expr = rhs_expr;
