@@ -10,8 +10,10 @@ proc foo() => int {
 
 proc main() => int {
     var arr : [8]int;
+
+    // The left-hand-side is only evaluated once. Therefore, arr[0] == 1 after the statement below.
     arr[foo()] += 1;
 
-    // 1 + 0 + 1 + 2 + 3 = 7
+    // 1 + 1 + 2 + 3 + 4 = 11
     return arr[0] + foo() + foo() + foo() + foo();
 }
