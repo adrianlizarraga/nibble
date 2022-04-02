@@ -1381,6 +1381,9 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     return last_bb;
 }
 
+typedef BBlock* IR_EmitBinOpProc(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op,
+                                 IR_Operand* dst_op, Type* dst_type);
+
 static BBlock* IR_emit_op_add(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
                               Type* dst_type)
 {
@@ -2746,6 +2749,12 @@ static BBlock* IR_emit_stmt_expr(IR_ProcBuilder* builder, BBlock* bblock, StmtEx
 
 static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock, StmtExprAssign* stmt, IR_TmpObjList* tmp_obj_list)
 {
+    // TODO: Create separate CompoundAssignmentKind enum. Too many token kinds.
+    static IR_EmitBinOpProc* proc_table[TKN_KIND_COUNT] = {
+        [TKN_ADD_ASSIGN] = IR_emit_op_add,
+        [TKN_SUB_ASSIGN] = IR_emit_op_sub,
+    };
+
     BBlock* last_bb = bblock;
 
     switch (stmt->op_assign) {
@@ -2758,7 +2767,14 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
         last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op);
         break;
     }
-    case TKN_ADD_ASSIGN: {
+    default: {
+        IR_EmitBinOpProc* bin_op_proc = proc_table[stmt->op_assign];
+
+        if (!bin_op_proc) {
+            NIBBLE_FATAL_EXIT("Unsupported compound assignment operator kind `%d` in IR generator.\n", stmt->op_assign);
+            return NULL; // Never executes.
+        }
+
         IR_Operand lhs_op = {0};
         IR_Operand rhs_op = {0};
 
@@ -2776,29 +2792,25 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
             casted_lhs_op = lhs_cpy_op;
         }
 
-        // Emit add instruction.
-        IR_Operand add_op = {0};
+        // Emit binary instruction.
+        IR_Operand bin_op = {0};
 
-        // TODO: Put binary ops into a jump table.
-        last_bb = IR_emit_op_add(builder, last_bb, &casted_lhs_op, &rhs_op, &add_op, rhs_op.type);
+        last_bb = bin_op_proc(builder, last_bb, &casted_lhs_op, &rhs_op, &bin_op, rhs_op.type);
 
-        // Cast addition result to lhs_op's type.
-        IR_Operand casted_add_op = {0};
+        // Cast the binary operation's result to lhs_op's type.
+        IR_Operand casted_bin_op = {0};
 
-        if (add_op.type != lhs_op.type) {
-            last_bb = IR_emit_op_cast(builder, last_bb, tmp_obj_list, &add_op, &casted_add_op, lhs_op.type);
+        if (bin_op.type != lhs_op.type) {
+            last_bb = IR_emit_op_cast(builder, last_bb, tmp_obj_list, &bin_op, &casted_bin_op, lhs_op.type);
         }
         else {
-            casted_add_op = add_op;
+            casted_bin_op = bin_op;
         }
 
         // Assign result to lhs_op.
-        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &casted_add_op);
+        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &casted_bin_op);
         break;
     }
-    default:
-        assert(!"Unsupported assignment operator in IR generation");
-        break;
     }
 
     return last_bb;
