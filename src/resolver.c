@@ -1896,7 +1896,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     }
 
     if (array_op.type->kind != TYPE_PTR) {
-        resolver_on_error(resolver, eindex->array->range, "Cannot index non-pointer or non-array type `%s`",
+        resolver_on_error(resolver, eindex->array->range, "Cannot index value of type `%s`",
                           type_name(eindex->array->type));
         return false;
     }
