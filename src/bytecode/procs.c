@@ -1411,6 +1411,59 @@ static BBlock* IR_emit_op_add(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
     return curr_bb;
 }
 
+static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+    bool left_is_ptr = left_op->type->kind == TYPE_PTR;
+    bool right_is_ptr = right_op->type->kind == TYPE_PTR;
+
+    // ptr - int => ptr
+    if (left_is_ptr && !right_is_ptr) {
+        curr_bb = IR_emit_ptr_int_add(builder, curr_bb, dst_op, left_op, right_op, false);
+    }
+    // ptr - ptr => s64
+    else if (left_is_ptr && right_is_ptr) {
+        u64 base_size = left_op->type->as_ptr.base->size;
+        u32 base_size_log2 = (u32)clp2(base_size);
+
+        curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+        curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+        IR_Reg dst_reg = IR_next_reg(builder);
+
+        IR_emit_instr_sub(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+        if (base_size_log2 > 0) {
+            // Load shift amount into a register.
+            Scalar shift_arg = {.as_int._u32 = base_size_log2};
+            IR_Reg shift_reg = IR_next_reg(builder);
+            IR_emit_instr_limm(builder, curr_bb, builtin_types[BUILTIN_TYPE_U8].type, shift_reg, shift_arg);
+
+            // Shift result of subtraction by the shift amount.
+            IR_Reg tmp_reg = dst_reg;
+            dst_reg = IR_next_reg(builder);
+            IR_emit_instr_sar(builder, curr_bb, dst_type, dst_reg, tmp_reg, shift_reg);
+        }
+
+        dst_op->kind = IR_OPERAND_REG;
+        dst_op->type = dst_type;
+        dst_op->reg = dst_reg;
+    }
+    // int - int => int
+    else {
+        curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+        curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+        IR_Reg dst_reg = IR_next_reg(builder);
+        IR_emit_instr_sub(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+        dst_op->kind = IR_OPERAND_REG;
+        dst_op->type = dst_type;
+        dst_op->reg = dst_reg;
+    }
+
+    return curr_bb;
+}
+
 static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, ExprBinary* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     if (expr->op == TKN_LOGIC_AND || expr->op == TKN_LOGIC_OR) {
@@ -1430,51 +1483,7 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         break;
     }
     case TKN_MINUS: {
-        bool left_is_ptr = left.type->kind == TYPE_PTR;
-        bool right_is_ptr = right.type->kind == TYPE_PTR;
-
-        // ptr - int => ptr
-        if (left_is_ptr && !right_is_ptr) {
-            curr_bb = IR_emit_ptr_int_add(builder, curr_bb, dst, &left, &right, false);
-        }
-        // ptr - ptr => s64
-        else if (left_is_ptr && right_is_ptr) {
-            u64 base_size = left.type->as_ptr.base->size;
-            u32 base_size_log2 = (u32)clp2(base_size);
-
-            curr_bb = IR_op_to_r(builder, curr_bb, &left);
-            curr_bb = IR_op_to_r(builder, curr_bb, &right);
-            IR_Reg dst_reg = IR_next_reg(builder);
-
-            IR_emit_instr_sub(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-            if (base_size_log2 > 0) {
-                // Load shift amount into a register.
-                Scalar shift_arg = {.as_int._u32 = base_size_log2};
-                IR_Reg shift_reg = IR_next_reg(builder);
-                IR_emit_instr_limm(builder, curr_bb, builtin_types[BUILTIN_TYPE_U8].type, shift_reg, shift_arg);
-
-                // Shift result of subtraction by the shift amount.
-                IR_Reg tmp_reg = dst_reg;
-                dst_reg = IR_next_reg(builder);
-                IR_emit_instr_sar(builder, curr_bb, result_type, dst_reg, tmp_reg, shift_reg);
-            }
-
-            dst->kind = IR_OPERAND_REG;
-            dst->type = result_type;
-            dst->reg = dst_reg;
-        }
-        // int - int => int
-        else {
-            curr_bb = IR_op_to_r(builder, curr_bb, &left);
-            curr_bb = IR_op_to_r(builder, curr_bb, &right);
-            IR_Reg dst_reg = IR_next_reg(builder);
-            IR_emit_instr_sub(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-            dst->kind = IR_OPERAND_REG;
-            dst->type = result_type;
-            dst->reg = dst_reg;
-        }
+        curr_bb = IR_emit_op_sub(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_ASTERISK: {
@@ -2770,6 +2779,7 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
         // Emit add instruction.
         IR_Operand add_op = {0};
 
+        // TODO: Put binary ops into a jump table.
         last_bb = IR_emit_op_add(builder, last_bb, &casted_lhs_op, &rhs_op, &add_op, rhs_op.type);
 
         // Cast addition result to lhs_op's type.
