@@ -1868,9 +1868,12 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
         return false;
     }
 
+    bool is_lvalue = true;
     ExprOperand array_op = OP_FROM_EXPR(eindex->array);
 
     if (array_op.type->kind == TYPE_ARRAY) {
+        is_lvalue = array_op.is_lvalue;
+
         // We can do bounds checking if the index is a constant expression.
         if (index_op.is_constexpr) {
             assert(index_op.is_imm);
@@ -1887,6 +1890,8 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
         eop_array_decay(resolver, &array_op);
     }
     else if (type_is_slice(array_op.type)) {
+        is_lvalue = array_op.is_lvalue;
+
         eop_array_slice_decay(&array_op);
     }
 
@@ -1902,7 +1907,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
 
     // Set overall expression type and attributes.
     expr->type = array_op.type->as_ptr.base;
-    expr->is_lvalue = true;
+    expr->is_lvalue = is_lvalue;
     expr->is_constexpr = false;
     expr->is_imm = false;
 
