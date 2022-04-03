@@ -1467,6 +1467,63 @@ static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
     return curr_bb;
 }
 
+static BBlock* IR_emit_op_mul(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    // TODO: Emit a shift instruction if one of the operands is a power-of-two immediate.
+    IR_emit_instr_mul(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_div(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    // TODO: Emit a shift instruction if the second operand is a power-of-two immediate.
+    IR_emit_instr_div(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_mod(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    // TODO: Emit a masking instruction if the second operand is a power-of-two immediate.
+    IR_emit_instr_mod(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
 static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, ExprBinary* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     if (expr->op == TKN_LOGIC_AND || expr->op == TKN_LOGIC_OR) {
@@ -1490,42 +1547,15 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         break;
     }
     case TKN_ASTERISK: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        // TODO: Emit a shift instruction if one of the operands is a power-of-two immediate.
-        IR_emit_instr_mul(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_mul(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_DIV: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        // TODO: Emit a shift instruction if the second operand is a power-of-two immediate.
-        IR_emit_instr_div(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_div(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_MOD: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        // TODO: Emit a masking instruction if the second operand is a power-of-two immediate.
-        IR_emit_instr_mod(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_mod(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_DIVMOD: {
@@ -2749,6 +2779,15 @@ static BBlock* IR_emit_stmt_expr(IR_ProcBuilder* builder, BBlock* bblock, StmtEx
 
 static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock, StmtExprAssign* stmt, IR_TmpObjList* tmp_obj_list)
 {
+    // TODO: Create a separate (smaller) enum for compound assignment kinds.
+    static IR_EmitBinOpProc* bin_procs[TKN_KIND_COUNT] = {
+        [TKN_ADD_ASSIGN] = IR_emit_op_add,
+        [TKN_SUB_ASSIGN] = IR_emit_op_sub,
+        [TKN_MUL_ASSIGN] = IR_emit_op_mul,
+        [TKN_DIV_ASSIGN] = IR_emit_op_div,
+        [TKN_MOD_ASSIGN] = IR_emit_op_mod
+    };
+
     BBlock* last_bb = bblock;
 
     switch (stmt->op_assign) {
@@ -2762,7 +2801,23 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
         break;
     }
     case TKN_ADD_ASSIGN:
-    case TKN_SUB_ASSIGN: {
+    case TKN_SUB_ASSIGN:
+    case TKN_MUL_ASSIGN:
+    case TKN_DIV_ASSIGN:
+    case TKN_MOD_ASSIGN: {
+        // NOTE: Side-effects of lhs must occur only once.
+        //
+        // EX: Assume foo() returns a monotonically increasing integer every time it is called.
+        //
+        // var arr : [3]int = ...;
+        // arr[foo()] += 1.0;
+        //
+        // Should become =>
+        //
+        // var _ptr : ^int = ^arr[foo()];
+        // *_ptr = *_ptr + 1.0
+        //
+
         IR_Operand lhs_op = {0};
         IR_Operand rhs_op = {0};
 
@@ -2782,7 +2837,7 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
 
         // Emit binary instruction.
         IR_Operand bin_op = {0};
-        IR_EmitBinOpProc* bin_op_proc = (stmt->op_assign == TKN_ADD_ASSIGN) ? IR_emit_op_add : IR_emit_op_sub;
+        IR_EmitBinOpProc* bin_op_proc = bin_procs[stmt->op_assign];
 
         last_bb = bin_op_proc(builder, last_bb, &casted_lhs_op, &rhs_op, &bin_op, rhs_op.type);
 

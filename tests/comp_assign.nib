@@ -18,11 +18,17 @@ proc main() => int {
     for (var i := 0; i < 5; i += 1) {
         arr[1] += amnt;
     }
+    var _a := 1;
+    arr[1] *= _a + 1;
 
     arr[2] = 30;
     for (var i := 0; i < 5; i += 1) {
         arr[2] -= amnt + 1; // Subtract 3 each time
     }
+    arr[2] /= _a + 2;
+
+    arr[3] = 13;
+    arr[3] %= 10;
 
     var p_arr1 : ^int = arr;
     p_arr1 += 1; // Pointer to 2nd elem
@@ -30,6 +36,6 @@ proc main() => int {
     var p_arr2 : ^int = ^arr[#length(arr) - 1]; // Pointer to last elem
     p_arr2 -= (#length(arr) - 1 - 2); // Pointer to 3rd elem
 
-    // 1 + 10 + 15 + 1 + 2 + 3 + 4 = 36
-    return arr[0] + *p_arr1 + *p_arr2 + foo() + foo() + foo() + foo();
+    // 1 + 20 + 5 + 3 + 1 + 2 + 3 + 4 = 39
+    return arr[0] + *p_arr1 + *p_arr2 + arr[3] + foo() + foo() + foo() + foo();
 }

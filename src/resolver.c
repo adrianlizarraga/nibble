@@ -1164,6 +1164,16 @@ static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOper
     return true;
 }
 
+static void resolve_non_const_binary_eop(Resolver* resolver, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
+{
+    convert_arith_eops(resolver, left, right);
+
+    dst->type = left->type;
+    dst->is_constexpr = false;
+    dst->is_imm = false;
+    dst->is_lvalue = false;
+}
+
 static void resolve_binary_eop(Resolver* resolver, TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
 {
     convert_arith_eops(resolver, left, right);
@@ -3433,19 +3443,6 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
     }
     case TKN_ADD_ASSIGN:
     case TKN_SUB_ASSIGN: {
-        // NOTE: Side-effects of lhs must occur only once.
-        //
-        // EX: Assume foo() returns a monotonically increasing integer every time it is called.
-        //
-        // var arr : [3]int = ...;
-        // arr[foo()] += 1.0;
-        //
-        // Should become =>
-        //
-        // var _ptr : ^int = ^arr[foo()];
-        // *_ptr = *_ptr + 1.0
-        //
-
         ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
         ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
         ExprOperand binary_op = {0};
@@ -3455,10 +3452,9 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         const char* prep_str;
         if (op_assign == TKN_ADD_ASSIGN) { op_name = "add"; prep_str = "to"; } else { op_name = "subtract"; prep_str = "from"; }
 
-        // Resolve left and right operands of a binary expression.
-        // NOTE: ptr arithmetic is only allowed if left is a pointer (unlike normal binary expression).
+        // Resolve left and right operands of a "+" or "-" expression.
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
-            resolve_binary_eop(resolver, TKN_PLUS, &binary_op, &left_op, &right_op);
+            resolve_non_const_binary_eop(resolver, &binary_op, &left_op, &right_op);
         }
         else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
             if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
@@ -3486,7 +3482,43 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
             return 0;
         }
 
-        // Only cast right subexpression. Bytecode generator will manually cast lhs to the same type.
+        // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
+        sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
+        break;
+    }
+    case TKN_MUL_ASSIGN:
+    case TKN_DIV_ASSIGN:
+    case TKN_MOD_ASSIGN: {
+        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
+        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
+        ExprOperand binary_op = {0};
+
+        // Resolve left and right operands of a binary "*", "/", or "%" expression.
+        if (!type_is_arithmetic(left_op.type)) {
+            resolver_on_error(resolver, lhs_expr->range,
+                              "Left-hand side of operator `%s` must be an arithmetic type, not type `%s`",
+                              token_kind_names[op_assign], type_name(left_op.type));
+            return 0;
+        }
+
+        if (!type_is_arithmetic(right_op.type)) {
+            resolver_on_error(resolver, rhs_expr->range,
+                              "Right-hand side of operator `%s` must be an arithmetic type, not type `%s`",
+                              token_kind_names[op_assign], type_name(right_op.type));
+            return 0;
+        }
+
+        resolve_non_const_binary_eop(resolver, &binary_op, &left_op, &right_op);
+
+        // Ensure that binary operation's result can be implicitly converted to lhs's type.
+        CastResult r = convert_eop(resolver, &binary_op, lhs_expr->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, stmt->range, "Invalid compound assignment statement", binary_op.type, lhs_expr->type);
+            return 0;
+        }
+
+        // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
         sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
         break;
     }
