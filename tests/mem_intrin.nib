@@ -15,7 +15,7 @@ proc main() => int {
 
     var limit := #length(arr) >> 1;
     var val_4 := 0x4;
-    #memset(arr + 1, val_4, limit);
+    #memset(^arr[1], val_4, limit);
 
     // 10 + 10 + (5 + 4 + 5) = 34
     return b + c + arr[0] + arr[63] + arr[127];

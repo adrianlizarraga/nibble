@@ -103,12 +103,12 @@ static void resolver_cast_error(Resolver* resolver, CastResult cast_res, ProgRan
     assert(!cast_res.success);
 
     if (cast_res.bad_lvalue) {
-        resolver_on_error(resolver, range, "%s: cannot convert a temporary (`%s`) to type `%s`.", err_prefix,
-                          type_name(src_type), type_name(dst_type));
+        resolver_on_error(resolver, range, "%s: cannot convert a temporary (`%s`) to type `%s`.", err_prefix, type_name(src_type),
+                          type_name(dst_type));
     }
     else {
-        resolver_on_error(resolver, range, "%s: cannot convert `%s` to type `%s`.", err_prefix,
-                          type_name(src_type), type_name(dst_type));
+        resolver_on_error(resolver, range, "%s: cannot convert `%s` to type `%s`.", err_prefix, type_name(src_type),
+                          type_name(dst_type));
     }
 }
 
@@ -245,7 +245,6 @@ static CastResult cast_eop(Resolver* resolver, ExprOperand* eop, Type* dst_type,
             else {
                 dst_int_kind = dst_type->as_integer.kind;
             }
-
 
             switch (src_int_kind) {
                 CASE_INT_CAST(INTEGER_U8, eop, dst_int_kind, _u8)
@@ -1370,9 +1369,6 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             return false;
         }
 
-        promote_int_eops(resolver, &left_op);
-        promote_int_eops(resolver, &right_op);
-
         if (left_op.is_constexpr && right_op.is_constexpr) {
             assert(left_op.is_imm && right_op.is_imm);
             eval_const_binary_op(resolver, ebinary->op, &dst_op, left_op.type, left_op.imm, right_op.imm);
@@ -1898,8 +1894,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     }
 
     if (array_op.type->kind != TYPE_PTR) {
-        resolver_on_error(resolver, eindex->array->range, "Cannot index value of type `%s`",
-                          type_name(eindex->array->type));
+        resolver_on_error(resolver, eindex->array->range, "Cannot index value of type `%s`", type_name(eindex->array->type));
         return false;
     }
 
@@ -1943,8 +1938,9 @@ static Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident)
             Identifier* sym_name = get_import_sym_name(stmt, inode->ident);
 
             if (!sym_name) {
-                resolver_on_error(resolver, ns_ident->range, "Identifier `%s` is not among the imported symbols in module namespace `%s`",
-                                  inode->ident->str, sym->name->str);
+                resolver_on_error(resolver, ns_ident->range,
+                                  "Identifier `%s` is not among the imported symbols in module namespace `%s`", inode->ident->str,
+                                  sym->name->str);
                 return NULL;
             }
 
@@ -2331,7 +2327,8 @@ static bool resolve_expr_struct_lit(Resolver* resolver, ExprCompoundLit* expr, T
         // Report error if already provided an initializer for this field.
         if (bit_arr_get(&seen_fields, field->index)) {
             const char* name = field->name ? field->name->str : "_anonymous_";
-            resolver_on_error(resolver, initzer->range, "Initializer sets field more than once. "
+            resolver_on_error(resolver, initzer->range,
+                              "Initializer sets field more than once. "
                               "The field's name and index are `%s` and `%llu`.",
                               name, field->index);
             return false;
@@ -2729,8 +2726,8 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             return NULL;
         }
 
-        Type* type = type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.structs, TYPE_STRUCT,
-                                         array_len(fields), fields);
+        Type* type =
+            type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.structs, TYPE_STRUCT, array_len(fields), fields);
 
         assert(type->kind == TYPE_STRUCT);
         allocator_restore_state(mem_state);
@@ -2747,8 +2744,8 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             return NULL;
         }
 
-        Type* type = type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.unions, TYPE_UNION,
-                                         array_len(fields), fields);
+        Type* type =
+            type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.unions, TYPE_UNION, array_len(fields), fields);
 
         assert(type->kind == TYPE_UNION);
         allocator_restore_state(mem_state);
@@ -3121,8 +3118,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         }
 
         if (type_is_incomplete_array(ret_type)) {
-            resolver_on_error(resolver, decl->ret->range,
-                              "Procedure return type cannot be an array with an inferred length.");
+            resolver_on_error(resolver, decl->ret->range, "Procedure return type cannot be an array with an inferred length.");
             return false;
         }
 
@@ -3450,7 +3446,14 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         // Initialize strings used for error messages.
         const char* op_name;
         const char* prep_str;
-        if (op_assign == TKN_ADD_ASSIGN) { op_name = "add"; prep_str = "to"; } else { op_name = "subtract"; prep_str = "from"; }
+        if (op_assign == TKN_ADD_ASSIGN) {
+            op_name = "add";
+            prep_str = "to";
+        }
+        else {
+            op_name = "subtract";
+            prep_str = "from";
+        }
 
         // Resolve left and right operands of a "+" or "-" expression.
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
@@ -3495,15 +3498,13 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 
         // Resolve left and right operands of a binary "*", "/", or "%" expression.
         if (!type_is_arithmetic(left_op.type)) {
-            resolver_on_error(resolver, lhs_expr->range,
-                              "Left-hand side of operator `%s` must be an arithmetic type, not type `%s`",
+            resolver_on_error(resolver, lhs_expr->range, "Left-hand side of operator `%s` must be an arithmetic type, not type `%s`",
                               token_kind_names[op_assign], type_name(left_op.type));
             return 0;
         }
 
         if (!type_is_arithmetic(right_op.type)) {
-            resolver_on_error(resolver, rhs_expr->range,
-                              "Right-hand side of operator `%s` must be an arithmetic type, not type `%s`",
+            resolver_on_error(resolver, rhs_expr->range, "Right-hand side of operator `%s` must be an arithmetic type, not type `%s`",
                               token_kind_names[op_assign], type_name(right_op.type));
             return 0;
         }
@@ -3531,15 +3532,13 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 
         // Resolve left and right operands of a binary "*", "/", or "%" expression.
         if (!type_is_integer_like(left_op.type)) {
-            resolver_on_error(resolver, lhs_expr->range,
-                              "Left-hand side of operator `%s` must be an integer type, not type `%s`",
+            resolver_on_error(resolver, lhs_expr->range, "Left-hand side of operator `%s` must be an integer type, not type `%s`",
                               token_kind_names[op_assign], type_name(left_op.type));
             return 0;
         }
 
         if (!type_is_integer_like(right_op.type)) {
-            resolver_on_error(resolver, rhs_expr->range,
-                              "Right-hand side of operator `%s` must be an integer type, not type `%s`",
+            resolver_on_error(resolver, rhs_expr->range, "Right-hand side of operator `%s` must be an integer type, not type `%s`",
                               token_kind_names[op_assign], type_name(right_op.type));
             return 0;
         }
@@ -3556,6 +3555,25 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 
         // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
         sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
+        break;
+    }
+    case TKN_RSHIFT_ASSIGN:
+    case TKN_LSHIFT_ASSIGN: {
+        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
+        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
+
+        if (left_op.type->kind != TYPE_INTEGER) {
+            resolver_on_error(resolver, lhs_expr->range, "Left-hand side of operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[op_assign], type_name(left_op.type));
+            return 0;
+        }
+
+        if (right_op.type->kind != TYPE_INTEGER) {
+            resolver_on_error(resolver, rhs_expr->range, "Right-hand side of operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[op_assign], type_name(right_op.type));
+            return 0;
+        }
+
         break;
     }
     default:

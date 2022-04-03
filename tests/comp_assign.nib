@@ -18,14 +18,14 @@ proc main() => int {
     for (var i := 0; i < 5; i += 1) {
         arr[1] += amnt;
     }
-    var _a := 1;
-    arr[1] *= _a + 1;
+    var _one := 1;
+    arr[1] *= _one + 1;
 
     arr[2] = 30;
     for (var i := 0; i < 5; i += 1) {
         arr[2] -= amnt + 1; // Subtract 3 each time
     }
-    arr[2] /= _a + 2;
+    arr[2] /= _one + 2;
 
     arr[3] = 13;
     arr[3] %= 10;
@@ -45,6 +45,12 @@ proc main() => int {
     var z := 0xFF;
     z ^= z; // 0
 
-    // 1 + 20 + 5 + 3 + 1 + 2 + 3 + 4 + (15 + 3 + 0) = 57
-    return arr[0] + *p_arr1 + *p_arr2 + arr[3] + foo() + foo() + foo() + foo() + (x + y + z) ;
+    var x_shr := x;
+    x_shr >>= (1 :> u8); // 7
+
+    var y_shl := y;
+    y_shl <<= 1 + _one; // 12
+
+    // 1 + 20 + 5 + 3 + 1 + 2 + 3 + 4 + (15 + 3 + 0) + (7 + 12) = 76
+    return arr[0] + *p_arr1 + *p_arr2 + arr[3] + foo() + foo() + foo() + foo() + (x + y + z) + (x_shr + y_shl);
 }
