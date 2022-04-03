@@ -78,6 +78,8 @@ static const uint8_t token_kind_props[TKN_KIND_COUNT] = {
     [TKN_OR_ASSIGN] = OP_ASSIGN,
     [TKN_XOR_ASSIGN] = OP_ASSIGN,
     [TKN_MOD_ASSIGN] = OP_ASSIGN,
+    [TKN_RSHIFT_ASSIGN] = OP_ASSIGN,
+    [TKN_LSHIFT_ASSIGN] = OP_ASSIGN
 };
 
 bool is_token_prop_kind(Parser* parser, uint8_t props)

@@ -894,7 +894,8 @@ static BBlock* IR_op_to_r(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* o
     }
 }
 
-static RegImm IR_op_to_ri(IR_ProcBuilder* builder, BBlock** p_bblock, IR_Operand* op) {
+static RegImm IR_op_to_ri(IR_ProcBuilder* builder, BBlock** p_bblock, IR_Operand* op)
+{
     RegImm ri;
 
     if (op->kind == IR_OPERAND_IMM) {
@@ -1036,7 +1037,6 @@ static BBlock* IR_emit_assign(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
         // Alias tmp objects. rhs will refer to lhs.
         r_mem_obj->kind = MEM_OBJ_ALIAS;
         r_mem_obj->alias = lhs->tmp_obj->mem_obj;
-
     }
     else if ((rhs->kind == IR_OPERAND_TMP_OBJ) && (lhs->kind == IR_OPERAND_VAR)) {
         MemObj* mem_obj = rhs->tmp_obj->mem_obj;
@@ -1258,7 +1258,8 @@ static BBlock* IR_emit_binary_cmp(IR_ProcBuilder* builder, BBlock* bblock, Condi
     return curr_bb;
 }
 
-static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* dst_op, ExprBinary* expr, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* dst_op, ExprBinary* expr,
+                                         IR_TmpObjList* tmp_obj_list)
 {
     //
     // NOTE: This procedure will create a deferred comparison containing an array of short-circuit jumps and one final
@@ -1381,7 +1382,241 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     return last_bb;
 }
 
-static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, ExprBinary* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
+typedef BBlock* IR_EmitBinOpProc(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op,
+                                 IR_Operand* dst_op, Type* dst_type);
+
+static BBlock* IR_emit_op_add(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+    bool left_is_ptr = left_op->type->kind == TYPE_PTR;
+    bool right_is_ptr = right_op->type->kind == TYPE_PTR;
+
+    if (left_is_ptr) {
+        curr_bb = IR_emit_ptr_int_add(builder, curr_bb, dst_op, left_op, right_op, true);
+    }
+    else if (right_is_ptr) {
+        curr_bb = IR_emit_ptr_int_add(builder, curr_bb, dst_op, right_op, left_op, true);
+    }
+    else {
+        assert(left_op->type == right_op->type);
+        curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+        curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+
+        IR_Reg dst_reg = IR_next_reg(builder);
+
+        IR_emit_instr_add(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+        dst_op->kind = IR_OPERAND_REG;
+        dst_op->type = dst_type;
+        dst_op->reg = dst_reg;
+    }
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+    bool left_is_ptr = left_op->type->kind == TYPE_PTR;
+    bool right_is_ptr = right_op->type->kind == TYPE_PTR;
+
+    // ptr - int => ptr
+    if (left_is_ptr && !right_is_ptr) {
+        curr_bb = IR_emit_ptr_int_add(builder, curr_bb, dst_op, left_op, right_op, false);
+    }
+    // ptr - ptr => s64
+    else if (left_is_ptr && right_is_ptr) {
+        u64 base_size = left_op->type->as_ptr.base->size;
+        u32 base_size_log2 = (u32)clp2(base_size);
+
+        curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+        curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+        IR_Reg dst_reg = IR_next_reg(builder);
+
+        IR_emit_instr_sub(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+        if (base_size_log2 > 0) {
+            // Load shift amount into a register.
+            Scalar shift_arg = {.as_int._u32 = base_size_log2};
+            IR_Reg shift_reg = IR_next_reg(builder);
+            IR_emit_instr_limm(builder, curr_bb, builtin_types[BUILTIN_TYPE_U8].type, shift_reg, shift_arg);
+
+            // Shift result of subtraction by the shift amount.
+            IR_Reg tmp_reg = dst_reg;
+            dst_reg = IR_next_reg(builder);
+            IR_emit_instr_sar(builder, curr_bb, dst_type, dst_reg, tmp_reg, shift_reg);
+        }
+
+        dst_op->kind = IR_OPERAND_REG;
+        dst_op->type = dst_type;
+        dst_op->reg = dst_reg;
+    }
+    // int - int => int
+    else {
+        curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+        curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+        IR_Reg dst_reg = IR_next_reg(builder);
+        IR_emit_instr_sub(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+        dst_op->kind = IR_OPERAND_REG;
+        dst_op->type = dst_type;
+        dst_op->reg = dst_reg;
+    }
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_mul(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    // TODO: Emit a shift instruction if one of the operands is a power-of-two immediate.
+    IR_emit_instr_mul(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_div(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    // TODO: Emit a shift instruction if the second operand is a power-of-two immediate.
+    IR_emit_instr_div(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_mod(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    // TODO: Emit a masking instruction if the second operand is a power-of-two immediate.
+    IR_emit_instr_mod(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_and(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    IR_emit_instr_and(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_or(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                             Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    IR_emit_instr_or(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_xor(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    IR_emit_instr_xor(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_sar(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    IR_emit_instr_sar(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_shl(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op, IR_Operand* dst_op,
+                              Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    IR_emit_instr_shl(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, ExprBinary* expr, IR_Operand* dst,
+                                   IR_TmpObjList* tmp_obj_list)
 {
     if (expr->op == TKN_LOGIC_AND || expr->op == TKN_LOGIC_OR) {
         return IR_emit_short_circuit_cmp(builder, bblock, dst, expr, tmp_obj_list);
@@ -1396,114 +1631,23 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
 
     switch (expr->op) {
     case TKN_PLUS: {
-        bool left_is_ptr = left.type->kind == TYPE_PTR;
-        bool right_is_ptr = right.type->kind == TYPE_PTR;
-
-        if (left_is_ptr) {
-            curr_bb = IR_emit_ptr_int_add(builder, curr_bb, dst, &left, &right, true);
-        }
-        else if (right_is_ptr) {
-            curr_bb = IR_emit_ptr_int_add(builder, curr_bb, dst, &right, &left, true);
-        }
-        else {
-            curr_bb = IR_op_to_r(builder, curr_bb, &left);
-            curr_bb = IR_op_to_r(builder, curr_bb, &right);
-
-            IR_Reg dst_reg = IR_next_reg(builder);
-
-            IR_emit_instr_add(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-            dst->kind = IR_OPERAND_REG;
-            dst->type = result_type;
-            dst->reg = dst_reg;
-        }
+        curr_bb = IR_emit_op_add(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_MINUS: {
-        bool left_is_ptr = left.type->kind == TYPE_PTR;
-        bool right_is_ptr = right.type->kind == TYPE_PTR;
-
-        // ptr - int => ptr
-        if (left_is_ptr && !right_is_ptr) {
-            curr_bb = IR_emit_ptr_int_add(builder, curr_bb, dst, &left, &right, false);
-        }
-        // ptr - ptr => s64
-        else if (left_is_ptr && right_is_ptr) {
-            u64 base_size = left.type->as_ptr.base->size;
-            u32 base_size_log2 = (u32)clp2(base_size);
-
-            curr_bb = IR_op_to_r(builder, curr_bb, &left);
-            curr_bb = IR_op_to_r(builder, curr_bb, &right);
-            IR_Reg dst_reg = IR_next_reg(builder);
-
-            IR_emit_instr_sub(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-            if (base_size_log2 > 0) {
-                // Load shift amount into a register.
-                Scalar shift_arg = {.as_int._u32 = base_size_log2};
-                IR_Reg shift_reg = IR_next_reg(builder);
-                IR_emit_instr_limm(builder, curr_bb, builtin_types[BUILTIN_TYPE_U8].type, shift_reg, shift_arg);
-
-                // Shift result of subtraction by the shift amount.
-                IR_Reg tmp_reg = dst_reg;
-                dst_reg = IR_next_reg(builder);
-                IR_emit_instr_sar(builder, curr_bb, result_type, dst_reg, tmp_reg, shift_reg);
-            }
-
-            dst->kind = IR_OPERAND_REG;
-            dst->type = result_type;
-            dst->reg = dst_reg;
-        }
-        // int - int => int
-        else {
-            curr_bb = IR_op_to_r(builder, curr_bb, &left);
-            curr_bb = IR_op_to_r(builder, curr_bb, &right);
-            IR_Reg dst_reg = IR_next_reg(builder);
-            IR_emit_instr_sub(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-            dst->kind = IR_OPERAND_REG;
-            dst->type = result_type;
-            dst->reg = dst_reg;
-        }
+        curr_bb = IR_emit_op_sub(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_ASTERISK: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        // TODO: Emit a shift instruction if one of the operands is a power-of-two immediate.
-        IR_emit_instr_mul(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_mul(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_DIV: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        // TODO: Emit a shift instruction if the second operand is a power-of-two immediate.
-        IR_emit_instr_div(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_div(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_MOD: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        // TODO: Emit a masking instruction if the second operand is a power-of-two immediate.
-        IR_emit_instr_mod(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_mod(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_DIVMOD: {
@@ -1557,63 +1701,23 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         break;
     }
     case TKN_RSHIFT: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_sar(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_sar(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_LSHIFT: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_shl(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_shl(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_AND: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_and(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_and(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_OR: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_or(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_or(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_CARET: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_xor(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_xor(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_EQ: {
@@ -1656,7 +1760,8 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprUnary* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprUnary* expr, IR_Operand* dst,
+                                  IR_TmpObjList* tmp_obj_list)
 {
     Type* result_type = expr->super.type;
     BBlock* curr_bb = bblock;
@@ -1792,7 +1897,8 @@ static BBlock* IR_emit_obj_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* o
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_field(IR_ProcBuilder* builder, BBlock* bblock, ExprField* expr_field, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_field(IR_ProcBuilder* builder, BBlock* bblock, ExprField* expr_field, IR_Operand* dst,
+                                  IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand obj_op = {0};
     BBlock* curr_bb = IR_emit_obj_expr(builder, bblock, expr_field->object, &obj_op, tmp_obj_list);
@@ -1810,7 +1916,8 @@ static BBlock* IR_emit_expr_field(IR_ProcBuilder* builder, BBlock* bblock, ExprF
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_field_index(IR_ProcBuilder* builder, BBlock* bblock, ExprFieldIndex* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_field_index(IR_ProcBuilder* builder, BBlock* bblock, ExprFieldIndex* expr, IR_Operand* dst,
+                                        IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand obj_op = {0};
     BBlock* curr_bb = IR_emit_obj_expr(builder, bblock, expr->object, &obj_op, tmp_obj_list);
@@ -1834,7 +1941,8 @@ static BBlock* IR_emit_expr_field_index(IR_ProcBuilder* builder, BBlock* bblock,
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_index(IR_ProcBuilder* builder, BBlock* bblock, ExprIndex* expr_index, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_index(IR_ProcBuilder* builder, BBlock* bblock, ExprIndex* expr_index, IR_Operand* dst,
+                                  IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand array_op = {0};
     IR_Operand index_op = {0};
@@ -1911,29 +2019,27 @@ static BBlock* IR_emit_int_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_Oper
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCast* expr_cast, IR_Operand* dst_op, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpObjList* tmp_obj_list, IR_Operand* src_op,
+                               IR_Operand* dst_op, Type* dst_type)
 {
-    // Emit instructions for source expression that will be casted.
-    IR_Operand src_op = {0};
-    BBlock* curr_bb = IR_emit_expr(builder, bblock, expr_cast->expr, &src_op, tmp_obj_list);
-
-    dst_op->type = expr_cast->super.type;
+    BBlock* curr_bb = bblock;
+    dst_op->type = dst_type;
 
     // TODO: Support floats.
-    assert(src_op.type->kind != TYPE_FLOAT);
+    assert(src_op->type->kind != TYPE_FLOAT);
     assert(dst_op->type->kind != TYPE_FLOAT);
-    assert(src_op.type != dst_op->type); // Should be prevented by resolver.
+    assert(src_op->type != dst_op->type); // Should be prevented by resolver.
 
-    if ((src_op.type->kind == TYPE_ARRAY) && (dst_op->type->kind == TYPE_PTR)) {
+    if ((src_op->type->kind == TYPE_ARRAY) && (dst_op->type->kind == TYPE_PTR)) {
         dst_op->kind = IR_OPERAND_MEM_ADDR;
 
-        IR_get_object_addr(builder, curr_bb, &dst_op->addr, &src_op);
+        IR_get_object_addr(builder, curr_bb, &dst_op->addr, src_op);
     }
-    else if (type_is_slice(src_op.type) && (dst_op->type->kind == TYPE_PTR)) {
+    else if (type_is_slice(src_op->type) && (dst_op->type->kind == TYPE_PTR)) {
         MemAddr slice_addr = {0};
-        IR_get_object_addr(builder, curr_bb, &slice_addr, &src_op);
+        IR_get_object_addr(builder, curr_bb, &slice_addr, src_op);
 
-        TypeAggregateField* data_field = get_type_struct_field(src_op.type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+        TypeAggregateField* data_field = get_type_struct_field(src_op->type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
         assert(data_field->type == dst_op->type);
 
         dst_op->kind = IR_OPERAND_DEREF_ADDR;
@@ -1942,23 +2048,34 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
 
         IR_execute_deref(builder, curr_bb, dst_op);
     }
-    else if ((src_op.type->kind == TYPE_ARRAY) && type_is_slice(dst_op->type)) {
+    else if ((src_op->type->kind == TYPE_ARRAY) && type_is_slice(dst_op->type)) {
         Type* slice_type = dst_op->type;
         IR_TmpObj* slice_obj = IR_get_tmp_obj(builder, tmp_obj_list, slice_type->size, slice_type->align);
         MemAddr slice_addr = IR_tmp_obj_as_addr(slice_obj);
 
-        curr_bb = IR_init_array_slice(builder, curr_bb, &slice_addr, slice_type, &src_op);
+        curr_bb = IR_init_array_slice(builder, curr_bb, &slice_addr, slice_type, src_op);
 
         dst_op->kind = IR_OPERAND_TMP_OBJ;
         dst_op->tmp_obj = slice_obj;
     }
     else {
-        assert(type_is_scalar(src_op.type) && src_op.type->kind != TYPE_FLOAT &&
-               type_is_scalar(dst_op->type) && dst_op->type->kind != TYPE_FLOAT);
-        curr_bb = IR_emit_int_cast(builder, curr_bb, &src_op, dst_op);
+        assert(type_is_scalar(src_op->type) && src_op->type->kind != TYPE_FLOAT && type_is_scalar(dst_op->type) &&
+               dst_op->type->kind != TYPE_FLOAT);
+        curr_bb = IR_emit_int_cast(builder, curr_bb, src_op, dst_op);
     }
 
     return curr_bb;
+}
+
+static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCast* expr_cast, IR_Operand* dst_op,
+                                 IR_TmpObjList* tmp_obj_list)
+{
+    Type* dst_type = expr_cast->super.type;
+    IR_Operand src_op = {0};
+
+    BBlock* curr_bb = IR_emit_expr(builder, bblock, expr_cast->expr, &src_op, tmp_obj_list);
+
+    return IR_emit_op_cast(builder, curr_bb, tmp_obj_list, &src_op, dst_op, dst_type);
 }
 
 static BBlock* IR_emit_memcpy_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args, IR_TmpObjList* tmp_obj_list)
@@ -2088,7 +2205,8 @@ static IR_Value IR_setup_call_ret(IR_ProcBuilder* builder, Type* ret_type, IR_Op
     return ret_val;
 }
 
-static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call, size_t* p_num_args, IR_TmpObjList* tmp_obj_list)
+static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, ExprCall* expr_call, size_t* p_num_args,
+                                    IR_TmpObjList* tmp_obj_list)
 {
     Type* proc_type = expr_call->proc->type;
     bool is_variadic = proc_type->as_proc.is_variadic;
@@ -2209,7 +2327,9 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                     // Set the object's ptr field to the arg's address.
                     TypeAggregateField* ptr_field = get_type_struct_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
                     IR_Operand ptr_field_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = ptr_field->type, .addr = any_obj_addr};
-                    IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR, .type = ptr_field->type, .addr = IR_tmp_obj_as_addr(cpy_obj)};
+                    IR_Operand ptr_val_op = {.kind = IR_OPERAND_MEM_ADDR,
+                                             .type = ptr_field->type,
+                                             .addr = IR_tmp_obj_as_addr(cpy_obj)};
 
                     ptr_field_op.addr.disp += ptr_field->offset;
                     *p_bblock = IR_emit_assign(builder, *p_bblock, &ptr_field_op, &ptr_val_op);
@@ -2242,7 +2362,8 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
     return args;
 }
 
-static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCall* expr_call, IR_Operand* dst_op, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCall* expr_call, IR_Operand* dst_op,
+                                 IR_TmpObjList* tmp_obj_list)
 {
     BBlock* curr_bb = bblock;
 
@@ -2278,7 +2399,8 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst,
+                                      IR_TmpObjList* tmp_obj_list)
 {
     assert(expr->super.type->kind == TYPE_ARRAY);
     BBlock* curr_bb = bblock;
@@ -2386,7 +2508,6 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
 
         // For each array element, compute the pointer to the corresponding element and clear it to zero.
         for (elem_index = 0; elem_index < num_elems; elem_index += 1) {
-
             // Skip array elements that have been initialized.
             if (bit_arr_get(&inited_elems, elem_index)) {
                 continue;
@@ -2406,7 +2527,8 @@ static BBlock* IR_emit_expr_array_lit(IR_ProcBuilder* builder, BBlock* bblock, E
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst,
+                                       IR_TmpObjList* tmp_obj_list)
 {
     assert(expr->super.type->kind == TYPE_STRUCT);
 
@@ -2495,7 +2617,8 @@ static BBlock* IR_emit_expr_struct_lit(IR_ProcBuilder* builder, BBlock* bblock, 
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst,
+                                      IR_TmpObjList* tmp_obj_list)
 {
     Type* union_type = expr->super.type;
 
@@ -2528,7 +2651,8 @@ static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, E
         curr_bb = IR_emit_expr(builder, curr_bb, initzer->init, &field_val_op, tmp_obj_list);
 
         IR_Operand field_ptr_op = {.kind = IR_OPERAND_DEREF_ADDR, .type = field->type, .addr = union_addr};
-        field_ptr_op.addr.disp += field->offset; // Union fields all have an offset of 0, but keep this just in case one day they don't.
+        field_ptr_op.addr.disp +=
+            field->offset; // Union fields all have an offset of 0, but keep this just in case one day they don't.
 
         curr_bb = IR_emit_assign(builder, curr_bb, &field_ptr_op, &field_val_op);
     }
@@ -2543,7 +2667,8 @@ static BBlock* IR_emit_expr_union_lit(IR_ProcBuilder* builder, BBlock* bblock, E
     return curr_bb;
 }
 
-static BBlock* IR_emit_expr_compound_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_compound_lit(IR_ProcBuilder* builder, BBlock* bblock, ExprCompoundLit* expr, IR_Operand* dst,
+                                         IR_TmpObjList* tmp_obj_list)
 {
     Type* type = expr->super.type;
 
@@ -2719,9 +2844,17 @@ static BBlock* IR_emit_stmt_expr(IR_ProcBuilder* builder, BBlock* bblock, StmtEx
 
 static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock, StmtExprAssign* stmt, IR_TmpObjList* tmp_obj_list)
 {
-    BBlock* last_bb = bblock;
+    // TODO: Create a separate (smaller) enum for compound assignment kinds.
+    static IR_EmitBinOpProc* bin_procs[TKN_KIND_COUNT] = {
+        [TKN_ADD_ASSIGN] = IR_emit_op_add,   [TKN_SUB_ASSIGN] = IR_emit_op_sub, [TKN_MUL_ASSIGN] = IR_emit_op_mul,
+        [TKN_DIV_ASSIGN] = IR_emit_op_div,   [TKN_MOD_ASSIGN] = IR_emit_op_mod, [TKN_AND_ASSIGN] = IR_emit_op_and,
+        [TKN_OR_ASSIGN] = IR_emit_op_or,     [TKN_XOR_ASSIGN] = IR_emit_op_xor, [TKN_RSHIFT_ASSIGN] = IR_emit_op_sar,
+        [TKN_LSHIFT_ASSIGN] = IR_emit_op_shl};
 
-    switch (stmt->op_assign) {
+    BBlock* last_bb = bblock;
+    TokenKind op_assign = stmt->op_assign;
+
+    switch (op_assign) {
     case TKN_ASSIGN: {
         IR_Operand lhs_op = {0};
         IR_Operand rhs_op = {0};
@@ -2731,15 +2864,131 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
         last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &rhs_op);
         break;
     }
-    default:
-        assert(!"Unsupported assignment operator in IR generation");
+
+    // NOTE: Side-effects of lhs must occur only once.
+    //
+    // EX: Assume foo() returns a monotonically increasing integer every time it is called.
+    //
+    // var arr : [3]int = ...;
+    // arr[foo()] += 1.0;
+    //
+    // Should become =>
+    //
+    // var _ptr : ^int = ^arr[foo()];
+    // *_ptr = *_ptr + 1.0
+    //
+    case TKN_ADD_ASSIGN:
+    case TKN_SUB_ASSIGN: {
+        IR_Operand lhs_op = {0};
+        IR_Operand rhs_op = {0};
+
+        last_bb = IR_emit_expr(builder, last_bb, stmt->left, &lhs_op, tmp_obj_list);
+        last_bb = IR_emit_expr(builder, last_bb, stmt->right, &rhs_op, tmp_obj_list);
+
+        // Cast "copy" of lhs_op to rhs_op's type if both operands are arithmetic.
+        IR_Operand lhs_cpy_op = lhs_op;
+        IR_Operand casted_lhs_op = {0};
+
+        if (lhs_cpy_op.type != rhs_op.type && type_is_arithmetic(lhs_cpy_op.type) && type_is_arithmetic(rhs_op.type)) {
+            last_bb = IR_emit_op_cast(builder, last_bb, tmp_obj_list, &lhs_cpy_op, &casted_lhs_op, rhs_op.type);
+        }
+        else {
+            casted_lhs_op = lhs_cpy_op;
+        }
+
+        // Emit binary instruction.
+        IR_Operand bin_op = {0};
+        IR_EmitBinOpProc* bin_op_proc = bin_procs[stmt->op_assign];
+        last_bb = bin_op_proc(builder, last_bb, &casted_lhs_op, &rhs_op, &bin_op, rhs_op.type);
+
+        // Cast the binary operation's result to lhs_op's type.
+        IR_Operand casted_bin_op = {0};
+
+        if (bin_op.type != lhs_op.type) {
+            last_bb = IR_emit_op_cast(builder, last_bb, tmp_obj_list, &bin_op, &casted_bin_op, lhs_op.type);
+        }
+        else {
+            casted_bin_op = bin_op;
+        }
+
+        // Assign result to lhs_op.
+        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &casted_bin_op);
         break;
+    }
+    case TKN_MUL_ASSIGN:
+    case TKN_DIV_ASSIGN:
+    case TKN_MOD_ASSIGN:
+    case TKN_AND_ASSIGN:
+    case TKN_OR_ASSIGN:
+    case TKN_XOR_ASSIGN: {
+        IR_Operand lhs_op = {0};
+        IR_Operand rhs_op = {0};
+
+        last_bb = IR_emit_expr(builder, last_bb, stmt->left, &lhs_op, tmp_obj_list);
+        last_bb = IR_emit_expr(builder, last_bb, stmt->right, &rhs_op, tmp_obj_list);
+
+        // Cast "copy" of lhs_op to rhs_op's type if both operands are arithmetic.
+        IR_Operand lhs_cpy_op = lhs_op;
+        IR_Operand casted_lhs_op = {0};
+
+        if (lhs_cpy_op.type != rhs_op.type) {
+            last_bb = IR_emit_op_cast(builder, last_bb, tmp_obj_list, &lhs_cpy_op, &casted_lhs_op, rhs_op.type);
+        }
+        else {
+            casted_lhs_op = lhs_cpy_op;
+        }
+
+        // Emit binary instruction.
+        IR_Operand bin_op = {0};
+        IR_EmitBinOpProc* bin_op_proc = bin_procs[stmt->op_assign];
+
+        last_bb = bin_op_proc(builder, last_bb, &casted_lhs_op, &rhs_op, &bin_op, rhs_op.type);
+
+        // Cast the binary operation's result to lhs_op's type.
+        IR_Operand casted_bin_op = {0};
+
+        if (bin_op.type != lhs_op.type) {
+            last_bb = IR_emit_op_cast(builder, last_bb, tmp_obj_list, &bin_op, &casted_bin_op, lhs_op.type);
+        }
+        else {
+            casted_bin_op = bin_op;
+        }
+
+        // Assign result to lhs_op.
+        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &casted_bin_op);
+        break;
+    }
+    case TKN_RSHIFT_ASSIGN:
+    case TKN_LSHIFT_ASSIGN: {
+        IR_Operand lhs_op = {0};
+        IR_Operand rhs_op = {0};
+
+        last_bb = IR_emit_expr(builder, last_bb, stmt->left, &lhs_op, tmp_obj_list);
+        last_bb = IR_emit_expr(builder, last_bb, stmt->right, &rhs_op, tmp_obj_list);
+
+        // Cast "copy" of lhs_op to rhs_op's type if both operands are arithmetic.
+        IR_Operand lhs_cpy_op = lhs_op;
+
+        // Emit binary instruction.
+        IR_Operand bin_op = {0};
+        IR_EmitBinOpProc* bin_op_proc = bin_procs[stmt->op_assign];
+
+        last_bb = bin_op_proc(builder, last_bb, &lhs_cpy_op, &rhs_op, &bin_op, lhs_cpy_op.type);
+
+        // Assign result to lhs_op.
+        last_bb = IR_emit_assign(builder, last_bb, &lhs_op, &bin_op);
+        break;
+    }
+    default:
+        NIBBLE_FATAL_EXIT("Unsupported compound assignment operator kind `%d` in IR generator.\n", stmt->op_assign);
+        break; // Does not execute.
     }
 
     return last_bb;
 }
 
-static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* hdr_bb, bool jmp_result, BBlock* jmp_bb, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* hdr_bb, bool jmp_result, BBlock* jmp_bb,
+                                   IR_TmpObjList* tmp_obj_list)
 {
     IR_Operand cond_op = {0};
     BBlock* curr_bb = IR_emit_expr(builder, hdr_bb, expr, &cond_op, tmp_obj_list);
