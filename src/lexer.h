@@ -67,6 +67,8 @@ typedef enum TokenKind {
     TKN_OR_ASSIGN,
     TKN_XOR_ASSIGN,
     TKN_MOD_ASSIGN,
+    TKN_RSHIFT_ASSIGN,
+    TKN_LSHIFT_ASSIGN,
 
     TKN_KIND_COUNT,
 } TokenKind;

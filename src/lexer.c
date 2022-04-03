@@ -539,6 +539,8 @@ const char* token_kind_names[] = {
     [TKN_OR_ASSIGN] = "|=",
     [TKN_XOR_ASSIGN] = "^=",
     [TKN_MOD_ASSIGN] = "%=",
+    [TKN_RSHIFT_ASSIGN] = ">>=",
+    [TKN_LSHIFT_ASSIGN] = "<<="
 };
 
 int print_token(Token* token, char* buf, size_t size)
@@ -727,6 +729,11 @@ top:
         else if (lexer->at[0] == '>') {
             lexer->at++;
             token.kind = TKN_RSHIFT;
+
+            if (lexer->at[0] == '=') {
+                lexer->at++;
+                token.kind = TKN_RSHIFT_ASSIGN;
+            }
         }
 
         break;
@@ -741,6 +748,11 @@ top:
         else if (lexer->at[0] == '<') {
             lexer->at++;
             token.kind = TKN_LSHIFT;
+
+            if (lexer->at[0] == '=') {
+                lexer->at++;
+                token.kind = TKN_LSHIFT_ASSIGN;
+            }
         }
 
         break;
