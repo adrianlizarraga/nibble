@@ -1199,11 +1199,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
             resolve_binary_eop(resolver, TKN_PLUS, &dst_op, &left_op, &right_op);
         }
-        else if ((left_op.type->kind == TYPE_PTR || left_op.type->kind == TYPE_ARRAY) && type_is_integer_like(right_op.type)) {
-            if (left_op.type->kind == TYPE_ARRAY) {
-                eop_array_decay(resolver, &left_op);
-            }
-
+        else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
             if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
                 return false;
             }
@@ -1215,11 +1211,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 return false;
             }
         }
-        else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR || right_op.type->kind == TYPE_ARRAY)) {
-            if (right_op.type->kind == TYPE_ARRAY) {
-                eop_array_decay(resolver, &right_op);
-            }
-
+        else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR)) {
             if (!try_complete_aggregate_type(resolver, right_op.type->as_ptr.base)) {
                 return false;
             }
@@ -3424,8 +3416,10 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         return 0;
     }
 
-    // TODO: Support other assignment operators.
-    if (sassign->op_assign == TKN_ASSIGN) {
+    TokenKind op_assign = sassign->op_assign;
+
+    switch (op_assign) {
+    case TKN_ASSIGN: {
         ExprOperand rhs_eop = OP_FROM_EXPR(rhs_expr);
         CastResult r = convert_eop(resolver, &rhs_eop, lhs_expr->type, true);
 
@@ -3435,8 +3429,10 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         }
 
         sassign->right = try_wrap_cast_expr(resolver, &rhs_eop, sassign->right);
+        break;
     }
-    else if (sassign->op_assign == TKN_ADD_ASSIGN) {
+    case TKN_ADD_ASSIGN:
+    case TKN_SUB_ASSIGN: {
         // NOTE: Side-effects of lhs must occur only once.
         //
         // EX: Assume foo() returns a monotonically increasing integer every time it is called.
@@ -3452,16 +3448,35 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 
         ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
         ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
+        ExprOperand binary_op = {0};
 
-        // Ensure lhs and rhs are arithmetic types.
-        if (!type_is_arithmetic(left_op.type) || !type_is_arithmetic(right_op.type)) {
-            resolver_on_error(resolver, stmt->range, "Can only add arithmetic and pointer types.");
+        // Initialize strings used for error messages.
+        const char* op_name;
+        const char* prep_str;
+        if (op_assign == TKN_ADD_ASSIGN) { op_name = "add"; prep_str = "to"; } else { op_name = "subtract"; prep_str = "from"; }
+
+        // Resolve left and right operands of a binary expression.
+        // NOTE: ptr arithmetic is only allowed if left is a pointer (unlike normal binary expression).
+        if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
+            resolve_binary_eop(resolver, TKN_PLUS, &binary_op, &left_op, &right_op);
+        }
+        else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
+            if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
+                return 0;
+            }
+
+            if (!resolve_ptr_int_arith(resolver, &binary_op, &left_op, &right_op)) {
+                resolver_on_error(resolver, lhs_expr->range, "Cannot %s %s a pointer with a base type (%s) of zero size", op_name,
+                                  prep_str, type_name(left_op.type->as_ptr.base));
+
+                return 0;
+            }
+        }
+        else {
+            resolver_on_error(resolver, stmt->range, "Cannot %s a value of type `%s` %s a `%s` in a compound assignment statement.",
+                              op_name, type_name(right_op.type), prep_str, type_name(left_op.type));
             return 0;
         }
-
-        // Perform usual arithmetic conversions on left and right subexpressions.
-        ExprOperand binary_op = {0};
-        resolve_binary_eop(resolver, TKN_PLUS, &binary_op, &left_op, &right_op);
 
         // Ensure that binary operation's result can be implicitly converted to lhs's type.
         CastResult r = convert_eop(resolver, &binary_op, lhs_expr->type, true);
@@ -3473,8 +3488,9 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 
         // Only cast right subexpression. Bytecode generator will manually cast lhs to the same type.
         sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
+        break;
     }
-    else {
+    default:
         resolver_on_error(resolver, stmt->range, "Sorry! Only the `=` assignment operator is currently supported. Soon!");
         return 0;
     }
