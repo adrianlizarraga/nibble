@@ -36,6 +36,15 @@ proc main() => int {
     var p_arr2 : ^int = ^arr[#length(arr) - 1]; // Pointer to last elem
     p_arr2 -= (#length(arr) - 1 - 2); // Pointer to 3rd elem
 
-    // 1 + 20 + 5 + 3 + 1 + 2 + 3 + 4 = 39
-    return arr[0] + *p_arr1 + *p_arr2 + arr[3] + foo() + foo() + foo() + foo();
+    var x := 0xFF;
+    x &= 0xF; // 15
+
+    var y := 1;
+    y |= 0x2; // 3
+
+    var z := 0xFF;
+    z ^= z; // 0
+
+    // 1 + 20 + 5 + 3 + 1 + 2 + 3 + 4 + (15 + 3 + 0) = 57
+    return arr[0] + *p_arr1 + *p_arr2 + arr[3] + foo() + foo() + foo() + foo() + (x + y + z) ;
 }

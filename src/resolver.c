@@ -3522,6 +3522,42 @@ static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
         sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
         break;
     }
+    case TKN_AND_ASSIGN:
+    case TKN_OR_ASSIGN:
+    case TKN_XOR_ASSIGN: {
+        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
+        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
+        ExprOperand binary_op = {0};
+
+        // Resolve left and right operands of a binary "*", "/", or "%" expression.
+        if (!type_is_integer_like(left_op.type)) {
+            resolver_on_error(resolver, lhs_expr->range,
+                              "Left-hand side of operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[op_assign], type_name(left_op.type));
+            return 0;
+        }
+
+        if (!type_is_integer_like(right_op.type)) {
+            resolver_on_error(resolver, rhs_expr->range,
+                              "Right-hand side of operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[op_assign], type_name(right_op.type));
+            return 0;
+        }
+
+        resolve_non_const_binary_eop(resolver, &binary_op, &left_op, &right_op);
+
+        // Ensure that binary operation's result can be implicitly converted to lhs's type.
+        CastResult r = convert_eop(resolver, &binary_op, lhs_expr->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, stmt->range, "Invalid compound assignment statement", binary_op.type, lhs_expr->type);
+            return 0;
+        }
+
+        // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
+        sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
+        break;
+    }
     default:
         resolver_on_error(resolver, stmt->range, "Sorry! Only the `=` assignment operator is currently supported. Soon!");
         return 0;

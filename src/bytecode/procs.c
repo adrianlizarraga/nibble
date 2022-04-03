@@ -1524,6 +1524,60 @@ static BBlock* IR_emit_op_mod(IR_ProcBuilder* builder, BBlock* bblock, IR_Operan
     return curr_bb;
 }
 
+static BBlock* IR_emit_op_and(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op,
+                                  IR_Operand* dst_op, Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    IR_emit_instr_and(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_or(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op,
+                                 IR_Operand* dst_op, Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    IR_emit_instr_or(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
+static BBlock* IR_emit_op_xor(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* left_op, IR_Operand* right_op,
+                                 IR_Operand* dst_op, Type* dst_type)
+{
+    BBlock* curr_bb = bblock;
+
+    curr_bb = IR_op_to_r(builder, curr_bb, left_op);
+    curr_bb = IR_op_to_r(builder, curr_bb, right_op);
+    IR_Reg dst_reg = IR_next_reg(builder);
+
+    IR_emit_instr_xor(builder, curr_bb, dst_type, dst_reg, left_op->reg, right_op->reg);
+
+    dst_op->kind = IR_OPERAND_REG;
+    dst_op->type = dst_type;
+    dst_op->reg = dst_reg;
+
+    return curr_bb;
+}
+
 static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, ExprBinary* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     if (expr->op == TKN_LOGIC_AND || expr->op == TKN_LOGIC_OR) {
@@ -1633,39 +1687,15 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         break;
     }
     case TKN_AND: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_and(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_and(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_OR: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_or(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_or(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_CARET: {
-        curr_bb = IR_op_to_r(builder, curr_bb, &left);
-        curr_bb = IR_op_to_r(builder, curr_bb, &right);
-        IR_Reg dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_xor(builder, curr_bb, result_type, dst_reg, left.reg, right.reg);
-
-        dst->kind = IR_OPERAND_REG;
-        dst->type = result_type;
-        dst->reg = dst_reg;
+        curr_bb = IR_emit_op_xor(builder, curr_bb, &left, &right, dst, result_type);
         break;
     }
     case TKN_EQ: {
@@ -2785,7 +2815,10 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
         [TKN_SUB_ASSIGN] = IR_emit_op_sub,
         [TKN_MUL_ASSIGN] = IR_emit_op_mul,
         [TKN_DIV_ASSIGN] = IR_emit_op_div,
-        [TKN_MOD_ASSIGN] = IR_emit_op_mod
+        [TKN_MOD_ASSIGN] = IR_emit_op_mod,
+        [TKN_AND_ASSIGN] = IR_emit_op_and,
+        [TKN_OR_ASSIGN]  = IR_emit_op_or,
+        [TKN_XOR_ASSIGN] = IR_emit_op_xor
     };
 
     BBlock* last_bb = bblock;
@@ -2804,7 +2837,10 @@ static BBlock* IR_emit_stmt_expr_assign(IR_ProcBuilder* builder, BBlock* bblock,
     case TKN_SUB_ASSIGN:
     case TKN_MUL_ASSIGN:
     case TKN_DIV_ASSIGN:
-    case TKN_MOD_ASSIGN: {
+    case TKN_MOD_ASSIGN:
+    case TKN_AND_ASSIGN:
+    case TKN_OR_ASSIGN:
+    case TKN_XOR_ASSIGN: {
         // NOTE: Side-effects of lhs must occur only once.
         //
         // EX: Assume foo() returns a monotonically increasing integer every time it is called.
