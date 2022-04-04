@@ -671,6 +671,7 @@ static BBlock* IR_copy_sc_jmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Deferr
 static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEFERRED_CMP);
+    assert(type_is_bool(operand->type));
 
     BBlock* e_bblock;
     IR_DeferredCmp* def_cmp = &operand->cmp;
@@ -681,10 +682,7 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
 
     if (!has_sc_jmps && !has_final_jmp) {
         e_bblock = bblock;
-        dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_zext(builder, bblock, operand->type, builtin_types[BUILTIN_TYPE_U8].type, dst_reg,
-                           def_cmp->final_jmp.cmp->cmp.r);
+        dst_reg = def_cmp->final_jmp.cmp->cmp.r;
     }
     else {
         // Fix final jmp condition so that it jumps to "false" control path.
@@ -2057,6 +2055,29 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
 
         dst_op->kind = IR_OPERAND_TMP_OBJ;
         dst_op->tmp_obj = slice_obj;
+    }
+    else if (type_is_bool(dst_op->type)) {
+        assert(type_is_scalar(src_op->type));
+        assert(src_op->kind != IR_OPERAND_DEFERRED_CMP);
+
+        // Load src into a register.
+        curr_bb = IR_op_to_r(builder, curr_bb, src_op);
+
+        // Load zero into a register.
+        IR_Reg zero_reg = IR_next_reg(builder);
+        IR_emit_instr_limm(builder, curr_bb, src_op->type, zero_reg, ir_zero_imm);
+
+        // Check if src != 0.
+        IR_Reg cmp_reg = IR_next_reg(builder);
+        Instr* cmp_instr = IR_emit_instr_cmp(builder, curr_bb, src_op->type, COND_NEQ, cmp_reg, src_op->reg, zero_reg);
+
+        // Create a "deferred" comparison that will either be resolved into a boolean value or used in a conditional jump.
+        dst_op->kind = IR_OPERAND_DEFERRED_CMP;
+        dst_op->cmp.final_jmp.cmp = cmp_instr;
+        dst_op->cmp.final_jmp.result = true;
+        dst_op->cmp.final_jmp.jmp = NULL;
+        dst_op->cmp.first_sc_jmp = NULL;
+        dst_op->cmp.last_sc_jmp = NULL;
     }
     else {
         assert(type_is_scalar(src_op->type) && src_op->type->kind != TYPE_FLOAT && type_is_scalar(dst_op->type) &&

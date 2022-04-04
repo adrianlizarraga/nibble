@@ -816,6 +816,7 @@ extern int type_integer_ranks[];
 void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, TypeCache* type_cache);
 const char* type_name(Type* type);
 bool type_is_integer_like(Type* type);
+bool type_is_bool(Type* type);
 bool type_is_signed(Type* type);
 bool type_is_arithmetic(Type* type);
 bool type_is_scalar(Type* type);

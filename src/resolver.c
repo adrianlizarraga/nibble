@@ -171,38 +171,41 @@ static void exit_proc(Resolver* resolver, ModuleState state)
     exit_module(resolver, state);
 }
 
-#define CASE_INT_CAST(k, o, t, f)                      \
-    case k:                                            \
-        switch (t) {                                   \
-        case INTEGER_U8:                               \
-            o->imm.as_int._u8 = (u8)o->imm.as_int.f;   \
-            break;                                     \
-        case INTEGER_S8:                               \
-            o->imm.as_int._s8 = (s8)o->imm.as_int.f;   \
-            break;                                     \
-        case INTEGER_U16:                              \
-            o->imm.as_int._u16 = (u16)o->imm.as_int.f; \
-            break;                                     \
-        case INTEGER_S16:                              \
-            o->imm.as_int._s16 = (s16)o->imm.as_int.f; \
-            break;                                     \
-        case INTEGER_U32:                              \
-            o->imm.as_int._u32 = (u32)o->imm.as_int.f; \
-            break;                                     \
-        case INTEGER_S32:                              \
-            o->imm.as_int._s32 = (s32)o->imm.as_int.f; \
-            break;                                     \
-        case INTEGER_U64:                              \
-            o->imm.as_int._u64 = (u64)o->imm.as_int.f; \
-            break;                                     \
-        case INTEGER_S64:                              \
-            o->imm.as_int._s64 = (s64)o->imm.as_int.f; \
-            break;                                     \
-        default:                                       \
-            o->is_constexpr = false;                   \
-            assert(0);                                 \
-            break;                                     \
-        }                                              \
+#define CASE_INT_CAST(k, o, t, f)                       \
+    case k:                                             \
+        switch (t) {                                    \
+        case INTEGER_BOOL:                              \
+            o->imm.as_int._bool = o->imm.as_int.f != 0; \
+            break;                                      \
+        case INTEGER_U8:                                \
+            o->imm.as_int._u8 = (u8)o->imm.as_int.f;    \
+            break;                                      \
+        case INTEGER_S8:                                \
+            o->imm.as_int._s8 = (s8)o->imm.as_int.f;    \
+            break;                                      \
+        case INTEGER_U16:                               \
+            o->imm.as_int._u16 = (u16)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_S16:                               \
+            o->imm.as_int._s16 = (s16)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_U32:                               \
+            o->imm.as_int._u32 = (u32)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_S32:                               \
+            o->imm.as_int._s32 = (s32)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_U64:                               \
+            o->imm.as_int._u64 = (u64)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_S64:                               \
+            o->imm.as_int._s64 = (s64)o->imm.as_int.f;  \
+            break;                                      \
+        default:                                        \
+            o->is_constexpr = false;                    \
+            assert(0);                                  \
+            break;                                      \
+        }                                               \
         break;
 
 static CastResult cast_eop(Resolver* resolver, ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay)
@@ -247,6 +250,7 @@ static CastResult cast_eop(Resolver* resolver, ExprOperand* eop, Type* dst_type,
             }
 
             switch (src_int_kind) {
+                CASE_INT_CAST(INTEGER_BOOL, eop, dst_int_kind, _bool)
                 CASE_INT_CAST(INTEGER_U8, eop, dst_int_kind, _u8)
                 CASE_INT_CAST(INTEGER_S8, eop, dst_int_kind, _s8)
                 CASE_INT_CAST(INTEGER_U16, eop, dst_int_kind, _u16)
@@ -329,6 +333,10 @@ static CastResult can_convert_eop(Resolver* resolver, ExprOperand* operand, Type
     // Can convert between arithmetic types
     else if (type_is_arithmetic(dst_type) && type_is_arithmetic(src_type)) {
         convertible = true;
+    }
+    // Can convert a pointer to a bool.
+    else if (type_is_bool(dst_type)) {
+        convertible = type_is_ptr_like(src_type);
     }
     // Can convert const NULL (or 0) to a ptr (or proc ptr).
     else if (type_is_ptr_like(dst_type) && eop_is_null_ptr(resolver, *operand)) {
@@ -1408,8 +1416,8 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
             resolve_binary_eop(resolver, ebinary->op, &dst_op, &left_op, &right_op);
 
-            // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
-            cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+            // NOTE: resolve_binary_eop will cast to the common type, so cast to bool.
+            cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
         }
         else if (left_is_ptr && right_is_ptr) {
             bool same_type = (left_op.type == right_op.type);
@@ -1431,11 +1439,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 dst_op.is_imm = true;
                 dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
 
-                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
             }
             else {
                 dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
-                dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             }
         }
         else if (left_is_ptr && eop_is_null_ptr(resolver, right_op)) {
@@ -1447,11 +1455,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 dst_op.is_imm = true;
                 dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, 0);
 
-                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
             }
             else {
                 dst_op.is_constexpr = left_op.is_constexpr;
-                dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             }
         }
         else if (right_is_ptr && eop_is_null_ptr(resolver, left_op)) {
@@ -1463,11 +1471,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 dst_op.is_imm = true;
                 dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, right_u64, 0);
 
-                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
             }
             else {
                 dst_op.is_constexpr = right_op.is_constexpr;
-                dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             }
         }
         else {
@@ -1488,8 +1496,8 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
             resolve_binary_eop(resolver, ebinary->op, &dst_op, &left_op, &right_op);
 
-            // NOTE: resolve_binary_eop will cast to the common type, so cast to s32.
-            cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+            // NOTE: resolve_binary_eop will cast to the common type, so cast to bool.
+            cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
         }
         else if (left_is_ptr && right_is_ptr) {
             Type* left_base_type = left_op.type->as_ptr.base;
@@ -1510,11 +1518,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 dst_op.is_imm = true;
                 dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
 
-                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
             }
             else {
                 dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
-                dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             }
         }
         else if (left_is_ptr && eop_is_null_ptr(resolver, right_op)) {
@@ -1526,11 +1534,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 dst_op.is_imm = true;
                 dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, 0);
 
-                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
             }
             else {
                 dst_op.is_constexpr = left_op.is_constexpr;
-                dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             }
         }
         else if (right_is_ptr && eop_is_null_ptr(resolver, left_op)) {
@@ -1542,11 +1550,11 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 dst_op.is_imm = true;
                 dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, right_u64, 0);
 
-                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
             }
             else {
                 dst_op.is_constexpr = right_op.is_constexpr;
-                dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             }
         }
         else {
@@ -1572,10 +1580,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 dst_op.is_imm = true;
                 dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
 
-                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
             }
             else {
-                dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
                 dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
             }
         }
@@ -1662,10 +1670,10 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
             dst_op.is_imm = true;
             dst_op.imm.as_int._u64 = eval_unary_op_u64(eunary->op, src_u64);
 
-            cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_S32].type, false);
+            cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
         }
         else {
-            dst_op.type = builtin_types[BUILTIN_TYPE_S32].type;
+            dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             dst_op.is_constexpr = src_op.is_constexpr;
         }
 
@@ -3228,9 +3236,10 @@ static bool resolve_cond_expr(Resolver* resolver, Expr* expr, ExprOperand* expr_
     expr_eop->is_lvalue = expr->is_lvalue;
     expr_eop->imm = expr->imm;
 
-    if (!type_is_scalar(expr_eop->type)) {
-        resolver_on_error(resolver, expr->range, "Conditional expression must resolve to a scalar type, have type `%s`",
-                          type_name(expr_eop->type));
+    CastResult r = convert_eop(resolver, expr_eop, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+
+    if (!r.success) {
+        resolver_cast_error(resolver, r, expr->range, "Invalid condition type", expr_eop->type, builtin_types[BUILTIN_TYPE_BOOL].type);
         return false;
     }
 

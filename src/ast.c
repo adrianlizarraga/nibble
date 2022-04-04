@@ -714,14 +714,16 @@ int type_integer_ranks[] = {
 };
 
 static const char* type_names[] = {
-    [TYPE_VOID] = "void",   [TYPE_INTEGER] = "_integer_", [TYPE_FLOAT] = "_float_",   [TYPE_ENUM] = "_enum_",   [TYPE_PTR] = "_ptr_",
-    [TYPE_PROC] = "_proc_", [TYPE_ARRAY] = "_array_",     [TYPE_STRUCT] = "_struct_", [TYPE_UNION] = "_union_",
-    [TYPE_INCOMPLETE_AGGREGATE] = "_incomplete_aggregate_",
+    [TYPE_VOID] = "void",     [TYPE_INTEGER] = "_integer_",
+    [TYPE_FLOAT] = "_float_", [TYPE_ENUM] = "_enum_",
+    [TYPE_PTR] = "_ptr_",     [TYPE_PROC] = "_proc_",
+    [TYPE_ARRAY] = "_array_", [TYPE_STRUCT] = "_struct_",
+    [TYPE_UNION] = "_union_", [TYPE_INCOMPLETE_AGGREGATE] = "_incomplete_aggregate_",
 };
 
 static const char* type_integer_names[] = {
-    [INTEGER_U8] = "u8",   [INTEGER_S8] = "s8",   [INTEGER_U16] = "u16", [INTEGER_S16] = "s16",
-    [INTEGER_U32] = "u32", [INTEGER_S32] = "s32", [INTEGER_U64] = "u64", [INTEGER_S64] = "s64",
+    [INTEGER_BOOL] = "bool", [INTEGER_U8] = "u8",   [INTEGER_S8] = "s8",   [INTEGER_U16] = "u16", [INTEGER_S16] = "s16",
+    [INTEGER_U32] = "u32",   [INTEGER_S32] = "s32", [INTEGER_U64] = "u64", [INTEGER_S64] = "s64",
 };
 
 static const char* type_float_names[] = {
@@ -751,6 +753,11 @@ bool type_is_integer_like(Type* type)
     TypeKind kind = type->kind;
 
     return (kind == TYPE_INTEGER) || (kind == TYPE_ENUM);
+}
+
+bool type_is_bool(Type* type)
+{
+    return (type->kind == TYPE_INTEGER) && (type->as_integer.kind == INTEGER_BOOL);
 }
 
 bool type_is_signed(Type* type)
@@ -904,6 +911,8 @@ Type* type_unsigned_int(Type* type_int)
     assert(type_int->kind == TYPE_INTEGER);
 
     switch (type_int->as_integer.kind) {
+    case INTEGER_BOOL:
+        return type_int;
     case INTEGER_U8:
     case INTEGER_S8:
         return builtin_types[BUILTIN_TYPE_U8].type;
@@ -1012,7 +1021,7 @@ TypeAggregateField* get_type_union_field(Type* type, Identifier* name)
             return field;
         }
     }
-    
+
     return NULL;
 }
 
@@ -1064,7 +1073,7 @@ static u64 hash_aggregate_fields(size_t num_fields, const TypeAggregateField* fi
         h = hash_bytes(&f->name, sizeof(Identifier*), t_h);
 
         i += 1;
-    } while(i < num_fields);
+    } while (i < num_fields);
 
     return h;
 }
@@ -1299,6 +1308,7 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     bool invalid_os_arch = false;
 
     builtin_types[BUILTIN_TYPE_VOID] = (BuiltinType){.name = "void", .type = type_alloc(ast_mem, TYPE_VOID)};
+    builtin_types[BUILTIN_TYPE_BOOL] = (BuiltinType){.name = "bool", .type = type_int_alloc(ast_mem, INTEGER_BOOL, 1, false, 0x1)};
     builtin_types[BUILTIN_TYPE_U8] = (BuiltinType){.name = "u8", .type = type_int_alloc(ast_mem, INTEGER_U8, 1, false, 0xFF)};
     builtin_types[BUILTIN_TYPE_S8] = (BuiltinType){.name = "s8", .type = type_int_alloc(ast_mem, INTEGER_S8, 1, true, 0x7F)};
     builtin_types[BUILTIN_TYPE_U16] = (BuiltinType){.name = "u16", .type = type_int_alloc(ast_mem, INTEGER_U16, 2, false, 0xFFFF)};
@@ -1312,7 +1322,6 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     builtin_types[BUILTIN_TYPE_F32] = (BuiltinType){.name = "f32", .type = type_float_alloc(ast_mem, FLOAT_F32, 4)};
     builtin_types[BUILTIN_TYPE_F64] = (BuiltinType){.name = "f64", .type = type_float_alloc(ast_mem, FLOAT_F64, 8)};
 
-    builtin_types[BUILTIN_TYPE_BOOL] = (BuiltinType){.name = "bool", .type = builtin_types[BUILTIN_TYPE_S8].type};
     builtin_types[BUILTIN_TYPE_CHAR] = (BuiltinType){.name = "char", .type = builtin_types[BUILTIN_TYPE_S8].type};
     builtin_types[BUILTIN_TYPE_SCHAR] = (BuiltinType){.name = "schar", .type = builtin_types[BUILTIN_TYPE_S8].type};
     builtin_types[BUILTIN_TYPE_UCHAR] = (BuiltinType){.name = "uchar", .type = builtin_types[BUILTIN_TYPE_U8].type};
@@ -1430,9 +1439,9 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
 //////////////////////////////
 
 const SymbolKind decl_sym_kind[CST_DECL_KIND_COUNT] = {
-    [CST_DECL_NONE] = SYMBOL_NONE, [CST_DeclVar] = SYMBOL_VAR, [CST_DeclConst] = SYMBOL_CONST, [CST_DeclEnum] = SYMBOL_TYPE,
-    [CST_DeclEnumItem] = SYMBOL_CONST, [CST_DeclUnion] = SYMBOL_TYPE, [CST_DeclStruct] = SYMBOL_TYPE, [CST_DeclProc] = SYMBOL_PROC,
-    [CST_DeclTypedef] = SYMBOL_TYPE,
+    [CST_DECL_NONE] = SYMBOL_NONE,  [CST_DeclVar] = SYMBOL_VAR,        [CST_DeclConst] = SYMBOL_CONST,
+    [CST_DeclEnum] = SYMBOL_TYPE,   [CST_DeclEnumItem] = SYMBOL_CONST, [CST_DeclUnion] = SYMBOL_TYPE,
+    [CST_DeclStruct] = SYMBOL_TYPE, [CST_DeclProc] = SYMBOL_PROC,      [CST_DeclTypedef] = SYMBOL_TYPE,
 };
 
 const char* sym_kind_names[SYMBOL_KIND_COUNT] = {
@@ -1787,7 +1796,6 @@ char* ftprint_ns_ident(Allocator* allocator, NSIdent* ns_ident)
     List* head = &ns_ident->idents;
     List* it = head->next;
 
-
     // Print namespaces.
     while (it->next != head) {
         IdentNode* inode = list_entry(it, IdentNode, lnode);
@@ -1985,7 +1993,8 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
         case CST_ExprFieldIndex: {
             ExprFieldIndex* e = (ExprFieldIndex*)expr;
             dstr = array_create(allocator, char, 8);
-            ftprint_char_array(&dstr, false, "(field-index %s %s)", ftprint_expr(allocator, e->object), ftprint_expr(allocator, e->index));
+            ftprint_char_array(&dstr, false, "(field-index %s %s)", ftprint_expr(allocator, e->object),
+                               ftprint_expr(allocator, e->index));
         } break;
         case CST_ExprInt: {
             ExprInt* e = (ExprInt*)expr;

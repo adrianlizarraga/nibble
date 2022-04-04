@@ -1,0 +1,30 @@
+proc foo(a : int) => int {
+    if (a) {
+        return 10;
+    }
+    else {
+        return 3;
+    }
+}
+
+proc main() => int {
+    const b1 : bool = 15; // Casting an integer to bool reduces range to false (0) or true (1)
+    #static_assert(b1 == 1);
+
+    const b2 : bool = 0;
+    #static_assert(b2 == 0);
+
+    var num : int = 11;
+    var b3 : bool = num;
+
+    var b4 : bool = -1; // If integer != 0, the bool is true (1).
+
+    var ptr : ^int = ^num;
+    var b5 : bool = ptr; // Non-null pointer is true (1).
+
+    var null_ptr : ^int = 0;
+    var b6 : bool = null_ptr; // Null pointer is false (0).
+
+    // 1 + 0 + 1 + 1 + 1 + 0 + 10 - 3 = 11
+    return b1 + b2 + b3 + b4 + b5 + b6 + foo(5) - foo(0);
+}
