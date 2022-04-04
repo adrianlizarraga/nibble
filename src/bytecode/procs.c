@@ -1299,6 +1299,9 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     // with the opposite "short-circuit value" are compared to the right subexpression.
     //
     // The left subexpression's final jump is added as a short-circuit jump.
+    //
+    // LEFT OFF HERE!!!! nocheckin
+    // TODO: BOTH operands of && and || are now bools! So they will always be DEFERRED_CMP!!!!!!!!!!
     if (left_op.kind == IR_OPERAND_DEFERRED_CMP) {
         // Copy list of short-circuit jumps.
         dst_op->cmp.first_sc_jmp = left_op.cmp.first_sc_jmp;

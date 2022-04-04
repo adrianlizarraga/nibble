@@ -157,6 +157,10 @@ typedef enum Keyword {
     KW_CASE,
     KW_UNDERSCORE,
 
+    KW_TRUE,
+    KW_FALSE,
+    KW_NULL,
+
     KW_COUNT,
 } Keyword;
 

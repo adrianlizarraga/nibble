@@ -303,6 +303,21 @@ Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* typespec, size_t num
     return (Expr*)expr;
 }
 
+Expr* new_expr_bool_lit(Allocator* allocator, bool val, ProgRange range)
+{
+    ExprBoolLit* expr = new_expr(allocator, ExprBoolLit, range);
+    expr->val = val;
+
+    return (Expr*)expr;
+}
+
+Expr* new_expr_null_lit(Allocator* allocator, ProgRange range)
+{
+    ExprNullLit* expr = new_expr(allocator, ExprNullLit, range);
+
+    return (Expr*)expr;
+}
+
 DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRange range)
 {
     DeclAnnotation* annotation = alloc_type(allocator, DeclAnnotation, true);
@@ -2081,6 +2096,15 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             }
 
             ftprint_char_array(&dstr, false, "})");
+        } break;
+        case CST_ExprBoolLit: {
+            ExprBoolLit* e = (ExprBoolLit*)expr;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "%s", e->val ? "true" : "false");
+        } break;
+        case CST_ExprNullLit: {
+            dstr = array_create(allocator, char, 6);
+            ftprint_char_array(&dstr, false, "null");
         } break;
         default: {
             ftprint_err("Unknown expr kind: %d\n", expr->kind);

@@ -45,6 +45,8 @@ static Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident);
 
 static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
 static bool resolve_expr_int(Resolver* resolver, Expr* expr);
+static bool resolve_expr_bool_lit(Resolver* resolver, ExprBoolLit* expr);
+static bool resolve_expr_null_lit(Resolver* resolver, ExprNullLit* expr);
 static void resolve_binary_eop(Resolver* resolver, TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right);
 static void resolve_unary_eop(Resolver* resolver, TokenKind op, ExprOperand* dst, ExprOperand* src);
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr);
@@ -1000,6 +1002,32 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     return true;
 }
 
+static bool resolve_expr_bool_lit(Resolver* resolver, ExprBoolLit* expr)
+{
+    (void)resolver;
+
+    expr->super.type = builtin_types[BUILTIN_TYPE_BOOL].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_int._bool = expr->val;
+
+    return true;
+}
+
+static bool resolve_expr_null_lit(Resolver* resolver, ExprNullLit* expr)
+{
+    (void)resolver;
+
+    expr->super.type = type_ptr_void;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_int._u64 = 0;
+
+    return true;
+}
+
 static bool resolve_expr_sizeof(Resolver* resolver, ExprSizeof* expr)
 {
     Type* type = resolve_typespec(resolver, expr->typespec);
@@ -1566,34 +1594,39 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         break;
     }
     case TKN_LOGIC_AND:
-    case TKN_LOGIC_OR:
-        if (type_is_scalar(left_op.type) && type_is_scalar(right_op.type)) {
-            if (left_op.is_constexpr && left_op.is_imm && right_op.is_constexpr && right_op.is_imm) {
-                cast_eop(resolver, &left_op, builtin_types[BUILTIN_TYPE_U64].type, false);
-                cast_eop(resolver, &right_op, builtin_types[BUILTIN_TYPE_U64].type, false);
+    case TKN_LOGIC_OR: {
+        CastResult r = convert_eop(resolver, &left_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
 
-                u64 left_u64 = left_op.imm.as_int._u64;
-                u64 right_u64 = right_op.imm.as_int._u64;
-
-                dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
-                dst_op.is_constexpr = true;
-                dst_op.is_imm = true;
-                dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
-
-                cast_eop(resolver, &dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
-            }
-            else {
-                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
-                dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
-            }
-        }
-        else {
-            resolver_on_error(resolver, expr->range, "Can only compare arithmetic types, or compatible pointer types with `%s`",
+        if (!r.success) {
+            resolver_on_error(resolver, ebinary->left->range, "Left operand of logical operator `%s` must be convertible to `bool`",
                               token_kind_names[ebinary->op]);
             return false;
         }
 
+        r = convert_eop(resolver, &right_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+
+        if (!r.success) {
+            resolver_on_error(resolver, ebinary->right->range, "Right operand of logical operator `%s` must be convertible to `bool`",
+                              token_kind_names[ebinary->op]);
+            return false;
+        }
+
+        if (left_op.is_constexpr && left_op.is_imm && right_op.is_constexpr && right_op.is_imm) {
+            u64 left_bool = left_op.imm.as_int._bool;
+            u64 right_bool = right_op.imm.as_int._bool;
+
+            dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
+            dst_op.is_constexpr = true;
+            dst_op.is_imm = true;
+            dst_op.imm.as_int._bool = ebinary->op == TKN_LOGIC_AND ? (left_bool && right_bool) : (left_bool || right_bool);
+        }
+        else {
+            dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
+            dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
+        }
+
         break;
+    }
     default:
         resolver_on_error(resolver, expr->range, "Binary operator `%s` not supported", token_kind_names[ebinary->op]);
         return false;
@@ -2492,6 +2525,10 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
     switch (expr->kind) {
     case CST_ExprInt:
         return resolve_expr_int(resolver, expr);
+    case CST_ExprBoolLit:
+        return resolve_expr_bool_lit(resolver, (ExprBoolLit*)expr);
+    case CST_ExprNullLit:
+        return resolve_expr_null_lit(resolver, (ExprNullLit*)expr);
     case CST_ExprIdent:
         return resolve_expr_ident(resolver, expr);
     case CST_ExprBinary:
