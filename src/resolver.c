@@ -103,12 +103,12 @@ static void resolver_cast_error(Resolver* resolver, CastResult cast_res, ProgRan
     assert(!cast_res.success);
 
     if (cast_res.bad_lvalue) {
-        resolver_on_error(resolver, range, "%s: cannot convert a temporary (`%s`) to type `%s`.", err_prefix,
-                          type_name(src_type), type_name(dst_type));
+        resolver_on_error(resolver, range, "%s: cannot convert a temporary (`%s`) to type `%s`.", err_prefix, type_name(src_type),
+                          type_name(dst_type));
     }
     else {
-        resolver_on_error(resolver, range, "%s: cannot convert `%s` to type `%s`.", err_prefix,
-                          type_name(src_type), type_name(dst_type));
+        resolver_on_error(resolver, range, "%s: cannot convert `%s` to type `%s`.", err_prefix, type_name(src_type),
+                          type_name(dst_type));
     }
 }
 
@@ -245,7 +245,6 @@ static CastResult cast_eop(Resolver* resolver, ExprOperand* eop, Type* dst_type,
             else {
                 dst_int_kind = dst_type->as_integer.kind;
             }
-
 
             switch (src_int_kind) {
                 CASE_INT_CAST(INTEGER_U8, eop, dst_int_kind, _u8)
@@ -1134,22 +1133,6 @@ static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
     return true;
 }
 
-static void resolve_binary_eop(Resolver* resolver, TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
-{
-    convert_arith_eops(resolver, left, right);
-
-    if (left->is_constexpr && right->is_constexpr) {
-        assert(left->is_imm && right->is_imm);
-        eval_const_binary_op(resolver, op, dst, left->type, left->imm, right->imm);
-    }
-    else {
-        dst->type = left->type;
-        dst->is_constexpr = false;
-        dst->is_imm = false;
-        dst->is_lvalue = false;
-    }
-}
-
 static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOperand* ptr, ExprOperand* int_eop)
 {
     // Convert ^void to ^s8
@@ -1180,6 +1163,32 @@ static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOper
     return true;
 }
 
+static void resolve_non_const_binary_eop(Resolver* resolver, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
+{
+    convert_arith_eops(resolver, left, right);
+
+    dst->type = left->type;
+    dst->is_constexpr = false;
+    dst->is_imm = false;
+    dst->is_lvalue = false;
+}
+
+static void resolve_binary_eop(Resolver* resolver, TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
+{
+    convert_arith_eops(resolver, left, right);
+
+    if (left->is_constexpr && right->is_constexpr) {
+        assert(left->is_imm && right->is_imm);
+        eval_const_binary_op(resolver, op, dst, left->type, left->imm, right->imm);
+    }
+    else {
+        dst->type = left->type;
+        dst->is_constexpr = false;
+        dst->is_imm = false;
+        dst->is_lvalue = false;
+    }
+}
+
 static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 {
     ExprBinary* ebinary = (ExprBinary*)expr;
@@ -1199,11 +1208,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
             resolve_binary_eop(resolver, TKN_PLUS, &dst_op, &left_op, &right_op);
         }
-        else if ((left_op.type->kind == TYPE_PTR || left_op.type->kind == TYPE_ARRAY) && type_is_integer_like(right_op.type)) {
-            if (left_op.type->kind == TYPE_ARRAY) {
-                eop_array_decay(resolver, &left_op);
-            }
-
+        else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
             if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
                 return false;
             }
@@ -1215,11 +1220,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 return false;
             }
         }
-        else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR || right_op.type->kind == TYPE_ARRAY)) {
-            if (right_op.type->kind == TYPE_ARRAY) {
-                eop_array_decay(resolver, &right_op);
-            }
-
+        else if (type_is_integer_like(left_op.type) && (right_op.type->kind == TYPE_PTR)) {
             if (!try_complete_aggregate_type(resolver, right_op.type->as_ptr.base)) {
                 return false;
             }
@@ -1367,9 +1368,6 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                               token_kind_names[ebinary->op], type_name(right_op.type));
             return false;
         }
-
-        promote_int_eops(resolver, &left_op);
-        promote_int_eops(resolver, &right_op);
 
         if (left_op.is_constexpr && right_op.is_constexpr) {
             assert(left_op.is_imm && right_op.is_imm);
@@ -1868,9 +1866,12 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
         return false;
     }
 
+    bool is_lvalue = true;
     ExprOperand array_op = OP_FROM_EXPR(eindex->array);
 
     if (array_op.type->kind == TYPE_ARRAY) {
+        is_lvalue = array_op.is_lvalue;
+
         // We can do bounds checking if the index is a constant expression.
         if (index_op.is_constexpr) {
             assert(index_op.is_imm);
@@ -1887,12 +1888,13 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
         eop_array_decay(resolver, &array_op);
     }
     else if (type_is_slice(array_op.type)) {
+        is_lvalue = array_op.is_lvalue;
+
         eop_array_slice_decay(&array_op);
     }
 
     if (array_op.type->kind != TYPE_PTR) {
-        resolver_on_error(resolver, eindex->array->range, "Cannot index non-pointer or non-array type `%s`",
-                          type_name(eindex->array->type));
+        resolver_on_error(resolver, eindex->array->range, "Cannot index value of type `%s`", type_name(eindex->array->type));
         return false;
     }
 
@@ -1902,7 +1904,7 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
 
     // Set overall expression type and attributes.
     expr->type = array_op.type->as_ptr.base;
-    expr->is_lvalue = true;
+    expr->is_lvalue = is_lvalue;
     expr->is_constexpr = false;
     expr->is_imm = false;
 
@@ -1936,8 +1938,9 @@ static Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident)
             Identifier* sym_name = get_import_sym_name(stmt, inode->ident);
 
             if (!sym_name) {
-                resolver_on_error(resolver, ns_ident->range, "Identifier `%s` is not among the imported symbols in module namespace `%s`",
-                                  inode->ident->str, sym->name->str);
+                resolver_on_error(resolver, ns_ident->range,
+                                  "Identifier `%s` is not among the imported symbols in module namespace `%s`", inode->ident->str,
+                                  sym->name->str);
                 return NULL;
             }
 
@@ -2324,7 +2327,8 @@ static bool resolve_expr_struct_lit(Resolver* resolver, ExprCompoundLit* expr, T
         // Report error if already provided an initializer for this field.
         if (bit_arr_get(&seen_fields, field->index)) {
             const char* name = field->name ? field->name->str : "_anonymous_";
-            resolver_on_error(resolver, initzer->range, "Initializer sets field more than once. "
+            resolver_on_error(resolver, initzer->range,
+                              "Initializer sets field more than once. "
                               "The field's name and index are `%s` and `%llu`.",
                               name, field->index);
             return false;
@@ -2722,8 +2726,8 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             return NULL;
         }
 
-        Type* type = type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.structs, TYPE_STRUCT,
-                                         array_len(fields), fields);
+        Type* type =
+            type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.structs, TYPE_STRUCT, array_len(fields), fields);
 
         assert(type->kind == TYPE_STRUCT);
         allocator_restore_state(mem_state);
@@ -2740,8 +2744,8 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
             return NULL;
         }
 
-        Type* type = type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.unions, TYPE_UNION,
-                                         array_len(fields), fields);
+        Type* type =
+            type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.unions, TYPE_UNION, array_len(fields), fields);
 
         assert(type->kind == TYPE_UNION);
         allocator_restore_state(mem_state);
@@ -3114,8 +3118,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         }
 
         if (type_is_incomplete_array(ret_type)) {
-            resolver_on_error(resolver, decl->ret->range,
-                              "Procedure return type cannot be an array with an inferred length.");
+            resolver_on_error(resolver, decl->ret->range, "Procedure return type cannot be an array with an inferred length.");
             return false;
         }
 
@@ -3405,35 +3408,178 @@ static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig
 static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
 {
     StmtExprAssign* sassign = (StmtExprAssign*)stmt;
-    Expr* left_expr = sassign->left;
-    Expr* right_expr = sassign->right;
+    Expr* lhs_expr = sassign->left;
+    Expr* rhs_expr = sassign->right;
 
-    if (!resolve_expr(resolver, left_expr, NULL))
+    if (!resolve_expr(resolver, lhs_expr, NULL))
         return 0;
 
-    if (!resolve_expr(resolver, right_expr, NULL))
+    if (!resolve_expr(resolver, rhs_expr, NULL))
         return 0;
 
-    if (!left_expr->is_lvalue) {
-        resolver_on_error(resolver, left_expr->range, "Left side of assignment statement must be an l-value");
+    if (!lhs_expr->is_lvalue) {
+        resolver_on_error(resolver, lhs_expr->range, "Left side of assignment statement must be an l-value");
         return 0;
     }
 
-    // TODO: Support other assignment operators.
-    if (sassign->op_assign != TKN_ASSIGN) {
+    TokenKind op_assign = sassign->op_assign;
+
+    switch (op_assign) {
+    case TKN_ASSIGN: {
+        ExprOperand rhs_eop = OP_FROM_EXPR(rhs_expr);
+        CastResult r = convert_eop(resolver, &rhs_eop, lhs_expr->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, rhs_expr->range, "Invalid assignment statement", rhs_eop.type, lhs_expr->type);
+            return 0;
+        }
+
+        sassign->right = try_wrap_cast_expr(resolver, &rhs_eop, sassign->right);
+        break;
+    }
+    case TKN_ADD_ASSIGN:
+    case TKN_SUB_ASSIGN: {
+        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
+        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
+        ExprOperand binary_op = {0};
+
+        // Initialize strings used for error messages.
+        const char* op_name;
+        const char* prep_str;
+        if (op_assign == TKN_ADD_ASSIGN) {
+            op_name = "add";
+            prep_str = "to";
+        }
+        else {
+            op_name = "subtract";
+            prep_str = "from";
+        }
+
+        // Resolve left and right operands of a "+" or "-" expression.
+        if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
+            resolve_non_const_binary_eop(resolver, &binary_op, &left_op, &right_op);
+        }
+        else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
+            if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
+                return 0;
+            }
+
+            if (!resolve_ptr_int_arith(resolver, &binary_op, &left_op, &right_op)) {
+                resolver_on_error(resolver, lhs_expr->range, "Cannot %s %s a pointer with a base type (%s) of zero size", op_name,
+                                  prep_str, type_name(left_op.type->as_ptr.base));
+
+                return 0;
+            }
+        }
+        else {
+            resolver_on_error(resolver, stmt->range, "Cannot %s a value of type `%s` %s a `%s` in a compound assignment statement.",
+                              op_name, type_name(right_op.type), prep_str, type_name(left_op.type));
+            return 0;
+        }
+
+        // Ensure that binary operation's result can be implicitly converted to lhs's type.
+        CastResult r = convert_eop(resolver, &binary_op, lhs_expr->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, stmt->range, "Invalid compound assignment statement", binary_op.type, lhs_expr->type);
+            return 0;
+        }
+
+        // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
+        sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
+        break;
+    }
+    case TKN_MUL_ASSIGN:
+    case TKN_DIV_ASSIGN:
+    case TKN_MOD_ASSIGN: {
+        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
+        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
+        ExprOperand binary_op = {0};
+
+        // Resolve left and right operands of a binary "*", "/", or "%" expression.
+        if (!type_is_arithmetic(left_op.type)) {
+            resolver_on_error(resolver, lhs_expr->range, "Left-hand side of operator `%s` must be an arithmetic type, not type `%s`",
+                              token_kind_names[op_assign], type_name(left_op.type));
+            return 0;
+        }
+
+        if (!type_is_arithmetic(right_op.type)) {
+            resolver_on_error(resolver, rhs_expr->range, "Right-hand side of operator `%s` must be an arithmetic type, not type `%s`",
+                              token_kind_names[op_assign], type_name(right_op.type));
+            return 0;
+        }
+
+        resolve_non_const_binary_eop(resolver, &binary_op, &left_op, &right_op);
+
+        // Ensure that binary operation's result can be implicitly converted to lhs's type.
+        CastResult r = convert_eop(resolver, &binary_op, lhs_expr->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, stmt->range, "Invalid compound assignment statement", binary_op.type, lhs_expr->type);
+            return 0;
+        }
+
+        // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
+        sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
+        break;
+    }
+    case TKN_AND_ASSIGN:
+    case TKN_OR_ASSIGN:
+    case TKN_XOR_ASSIGN: {
+        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
+        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
+        ExprOperand binary_op = {0};
+
+        // Resolve left and right operands of a binary "*", "/", or "%" expression.
+        if (!type_is_integer_like(left_op.type)) {
+            resolver_on_error(resolver, lhs_expr->range, "Left-hand side of operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[op_assign], type_name(left_op.type));
+            return 0;
+        }
+
+        if (!type_is_integer_like(right_op.type)) {
+            resolver_on_error(resolver, rhs_expr->range, "Right-hand side of operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[op_assign], type_name(right_op.type));
+            return 0;
+        }
+
+        resolve_non_const_binary_eop(resolver, &binary_op, &left_op, &right_op);
+
+        // Ensure that binary operation's result can be implicitly converted to lhs's type.
+        CastResult r = convert_eop(resolver, &binary_op, lhs_expr->type, true);
+
+        if (!r.success) {
+            resolver_cast_error(resolver, r, stmt->range, "Invalid compound assignment statement", binary_op.type, lhs_expr->type);
+            return 0;
+        }
+
+        // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
+        sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
+        break;
+    }
+    case TKN_RSHIFT_ASSIGN:
+    case TKN_LSHIFT_ASSIGN: {
+        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
+        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
+
+        if (left_op.type->kind != TYPE_INTEGER) {
+            resolver_on_error(resolver, lhs_expr->range, "Left-hand side of operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[op_assign], type_name(left_op.type));
+            return 0;
+        }
+
+        if (right_op.type->kind != TYPE_INTEGER) {
+            resolver_on_error(resolver, rhs_expr->range, "Right-hand side of operator `%s` must be an integer type, not type `%s`",
+                              token_kind_names[op_assign], type_name(right_op.type));
+            return 0;
+        }
+
+        break;
+    }
+    default:
         resolver_on_error(resolver, stmt->range, "Sorry! Only the `=` assignment operator is currently supported. Soon!");
         return 0;
     }
-
-    ExprOperand right_eop = OP_FROM_EXPR(right_expr);
-    CastResult r = convert_eop(resolver, &right_eop, left_expr->type, true);
-
-    if (!r.success) {
-        resolver_cast_error(resolver, r, right_expr->range, "Invalid assignment statement", right_eop.type, left_expr->type);
-        return 0;
-    }
-
-    sassign->right = try_wrap_cast_expr(resolver, &right_eop, sassign->right);
 
     return RESOLVE_STMT_SUCCESS;
 }

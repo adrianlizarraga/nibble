@@ -1,0 +1,56 @@
+var g_num : int = 0;
+
+proc foo() => int {
+    var r := g_num;
+
+    g_num += 1;
+
+    return r;
+}
+
+proc main() => int {
+    var arr : [8]int;
+
+    // The left-hand-side is only evaluated once. Therefore, arr[0] == 1 after the statement below.
+    arr[foo()] += 1;
+
+    var amnt : int = 2;
+    for (var i := 0; i < 5; i += 1) {
+        arr[1] += amnt;
+    }
+    var _one := 1;
+    arr[1] *= _one + 1;
+
+    arr[2] = 30;
+    for (var i := 0; i < 5; i += 1) {
+        arr[2] -= amnt + 1; // Subtract 3 each time
+    }
+    arr[2] /= _one + 2;
+
+    arr[3] = 13;
+    arr[3] %= 10;
+
+    var p_arr1 : ^int = arr;
+    p_arr1 += 1; // Pointer to 2nd elem
+
+    var p_arr2 : ^int = ^arr[#length(arr) - 1]; // Pointer to last elem
+    p_arr2 -= (#length(arr) - 1 - 2); // Pointer to 3rd elem
+
+    var x := 0xFF;
+    x &= 0xF; // 15
+
+    var y := 1;
+    y |= 0x2; // 3
+
+    var z := 0xFF;
+    z ^= z; // 0
+
+    var x_shr := x;
+    x_shr >>= (1 :> u8); // 7
+
+    var y_shl := y;
+    y_shl <<= 1 + _one; // 12
+
+    // 1 + 20 + 5 + 3 + 1 + 2 + 3 + 4 + (15 + 3 + 0) + (7 + 12) = 76
+    return arr[0] + *p_arr1 + *p_arr2 + arr[3] + foo() + foo() + foo() + foo() + (x + y + z) + (x_shr + y_shl);
+}

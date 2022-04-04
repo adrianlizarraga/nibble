@@ -11,6 +11,7 @@
 */
 
 /* Wishlist:
+    - Anonymous procedures. Can put code in array indexed by an enum kind!
     - Enum sub types. EX: A proc only expects a subset of possible enum values.
 */
 
