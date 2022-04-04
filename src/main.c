@@ -1,7 +1,7 @@
 /* TODO:
 
-   - add '|=' assignment operator!
-   - Add '+=' and '-=' operators
+   - Proper boolean type (0 or not 0)
+   - Built-in constants: true, false, null
    - Only generate assembly for procs reachable from main()
      - Currently, we prune procs not reachable from the main _MODULE_, but unused procs in main module remain.
      - RELATED: Compile all module symbols, but only generate used symbols.
