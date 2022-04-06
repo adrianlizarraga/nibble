@@ -27,11 +27,6 @@ proc main() => int {
     var null_ptr : ^int = null;
     var b6 : bool = null_ptr; // Null pointer is false (0).
 
-    var x : int;
-    if (num == true) { // 11 is true
-        x = 2;
-    }
-
-    // 1 + 0 + 1 + 1 + 1 + 0 + 10 - 3 (1 + 0) + 2 = 14
-    return b1 + b2 + b3 + b4 + b5 + b6 + foo(5) - foo(0) + (true + false) + x;
+    // 1 + 0 + 1 + 1 + 1 + 0 + 10 - 3 + (1 + 0) = 12
+    return b1 + b2 + b3 + b4 + b5 + b6 + foo(5) - foo(0) + (true + false) ;
 }
