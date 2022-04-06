@@ -169,6 +169,8 @@ typedef enum ExprKind {
     CST_ExprIndexof,
     CST_ExprLength,
     CST_ExprCompoundLit,
+    CST_ExprBoolLit,
+    CST_ExprNullLit,
 } ExprKind;
 
 struct Expr {
@@ -319,6 +321,15 @@ typedef struct ExprCompoundLit {
     List initzers;
 } ExprCompoundLit;
 
+typedef struct ExprBoolLit {
+    Expr super;
+    bool val;
+} ExprBoolLit;
+
+typedef struct ExprNullLit {
+    Expr super;
+} ExprNullLit;
+
 Expr* new_expr_ternary(Allocator* allocator, Expr* cond, Expr* then_expr, Expr* else_expr);
 Expr* new_expr_binary(Allocator* allocator, TokenKind op, Expr* left, Expr* right);
 Expr* new_expr_unary(Allocator* allocator, TokenKind op, Expr* expr, ProgRange range);
@@ -339,6 +350,8 @@ Expr* new_expr_indexof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field
 Expr* new_expr_length(Allocator* allocator, Expr* arg, ProgRange range);
 MemberInitializer* new_member_initializer(Allocator* allocator, Expr* init, Designator designator, ProgRange range);
 Expr* new_expr_compound_lit(Allocator* allocator, TypeSpec* type, size_t num_initzers, List* initzers, ProgRange range);
+Expr* new_expr_bool_lit(Allocator* allocator, bool val, ProgRange range);
+Expr* new_expr_null_lit(Allocator* allocator, ProgRange range);
 
 char* ftprint_expr(Allocator* allocator, Expr* expr);
 /////////////////////////////
@@ -816,6 +829,7 @@ extern int type_integer_ranks[];
 void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, TypeCache* type_cache);
 const char* type_name(Type* type);
 bool type_is_integer_like(Type* type);
+bool type_is_bool(Type* type);
 bool type_is_signed(Type* type);
 bool type_is_arithmetic(Type* type);
 bool type_is_scalar(Type* type);

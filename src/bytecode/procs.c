@@ -671,6 +671,7 @@ static BBlock* IR_copy_sc_jmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Deferr
 static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* operand)
 {
     assert(operand->kind == IR_OPERAND_DEFERRED_CMP);
+    assert(type_is_bool(operand->type));
 
     BBlock* e_bblock;
     IR_DeferredCmp* def_cmp = &operand->cmp;
@@ -681,10 +682,7 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
 
     if (!has_sc_jmps && !has_final_jmp) {
         e_bblock = bblock;
-        dst_reg = IR_next_reg(builder);
-
-        IR_emit_instr_zext(builder, bblock, operand->type, builtin_types[BUILTIN_TYPE_U8].type, dst_reg,
-                           def_cmp->final_jmp.cmp->cmp.r);
+        dst_reg = def_cmp->final_jmp.cmp->cmp.r;
     }
     else {
         // Fix final jmp condition so that it jumps to "false" control path.
@@ -1263,10 +1261,8 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
 {
     //
     // NOTE: This procedure will create a deferred comparison containing an array of short-circuit jumps and one final
-    // jump. If the left and right subexpressions are themselves deferred comparisons, then they will be merged into
-    // this parent expression's deferred comparison. Otherwise, subexpressions that are not deferred comparisons will be
-    // compared to zero and converted to either a short-circuit jump (left subexpression) or a final jump (right
-    // subexpression).
+    // jump. The left and right subexpressions are themselves deferred comparisons, and will be merged into
+    // this parent expression's deferred comparison.
     //
 
     dst_op->kind = IR_OPERAND_DEFERRED_CMP;
@@ -1275,24 +1271,13 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     IR_Operand left_op = {0};
     IR_Operand right_op = {0};
 
-    bool short_circuit_val;
-    ConditionKind short_circuit_cond;
-
-    if (expr->op == TKN_LOGIC_AND) {
-        short_circuit_val = false;
-        short_circuit_cond = COND_EQ;
-    }
-    else {
-        assert(expr->op == TKN_LOGIC_OR);
-        short_circuit_val = true;
-        short_circuit_cond = COND_NEQ;
-    }
+    bool short_circuit_val = (expr->op == TKN_LOGIC_OR);
 
     // Emit instructions for the left expression.
     BBlock* left_end_bb = IR_emit_expr(builder, bblock, expr->left, &left_op, tmp_obj_list);
     BBlock* right_bb;
 
-    // If the left subexpression is a deferred comparison, merge into this deferred comparison result.
+    // Merge the left sub-expression into this deferred comparison result.
     //
     // Short-circuit jumps from the left subexpression with the same "short-circuit value" are kept as-is.
     //
@@ -1301,83 +1286,50 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     // with the opposite "short-circuit value" are compared to the right subexpression.
     //
     // The left subexpression's final jump is added as a short-circuit jump.
-    if (left_op.kind == IR_OPERAND_DEFERRED_CMP) {
-        // Copy list of short-circuit jumps.
-        dst_op->cmp.first_sc_jmp = left_op.cmp.first_sc_jmp;
-        dst_op->cmp.last_sc_jmp = left_op.cmp.last_sc_jmp;
+    //
+    assert(left_op.kind == IR_OPERAND_DEFERRED_CMP);
 
-        // Convert left expression's final jmp to a short-circuit jmp.
-        IR_DeferredJmpcc j;
+    // Copy list of short-circuit jumps.
+    dst_op->cmp.first_sc_jmp = left_op.cmp.first_sc_jmp;
+    dst_op->cmp.last_sc_jmp = left_op.cmp.last_sc_jmp;
 
-        right_bb = IR_copy_sc_jmp(builder, left_end_bb, &j, &left_op.cmp.final_jmp, short_circuit_val);
-        IR_new_deferred_sc_jmp(builder, &dst_op->cmp, j.cmp, j.result, j.jmp);
+    // Convert left expression's final jmp to a short-circuit jmp.
+    IR_DeferredJmpcc j;
 
-        // Patch and remove short-circuit jumps with the opposite "short-circuit value".
-        IR_DeferredJmpcc* it = dst_op->cmp.first_sc_jmp;
-        IR_DeferredJmpcc* prev_it = NULL;
+    right_bb = IR_copy_sc_jmp(builder, left_end_bb, &j, &left_op.cmp.final_jmp, short_circuit_val);
+    IR_new_deferred_sc_jmp(builder, &dst_op->cmp, j.cmp, j.result, j.jmp);
 
-        while (it) {
-            IR_DeferredJmpcc* next_it = it->next;
+    // Patch and remove short-circuit jumps with the opposite "short-circuit value".
+    IR_DeferredJmpcc* it = dst_op->cmp.first_sc_jmp;
+    IR_DeferredJmpcc* prev_it = NULL;
 
-            if (it->result != short_circuit_val) {
-                IR_patch_jmp_target(it->jmp, right_bb);
-                IR_del_deferred_sc_jmp(builder, &dst_op->cmp, prev_it, it);
-            }
+    while (it) {
+        IR_DeferredJmpcc* next_it = it->next;
 
-            it = next_it;
-            prev_it = it;
+        if (it->result != short_circuit_val) {
+            IR_patch_jmp_target(it->jmp, right_bb);
+            IR_del_deferred_sc_jmp(builder, &dst_op->cmp, prev_it, it);
         }
-    }
 
-    // The left subexpression is some computation (not a deferred comparison). Compare the left subexpression to zero
-    // and create a short-circuit jmp.
-    else {
-        left_end_bb = IR_op_to_r(builder, left_end_bb, &left_op);
-
-        IR_Reg imm_reg = IR_next_reg(builder);
-        IR_emit_instr_limm(builder, left_end_bb, left_op.type, imm_reg, ir_zero_imm);
-
-        IR_Reg cmp_reg = IR_next_reg(builder);
-        Instr* cmp_instr = IR_emit_instr_cmp(builder, left_end_bb, left_op.type, short_circuit_cond, cmp_reg, left_op.reg, imm_reg);
-
-        right_bb = IR_alloc_bblock(builder);
-        Instr* jmp_instr = IR_emit_instr_cond_jmp(builder, left_end_bb, NULL, right_bb, cmp_reg);
-
-        IR_new_deferred_sc_jmp(builder, &dst_op->cmp, cmp_instr, short_circuit_val, jmp_instr);
+        it = next_it;
+        prev_it = it;
     }
 
     // Emit instructions for the right expression.
     BBlock* right_end_bb = IR_emit_expr(builder, right_bb, expr->right, &right_op, tmp_obj_list);
     BBlock* last_bb;
 
-    // If the right subexpression is a deferred comparison, merge into this deferred comparison result.
+    // Merge the right sub-expression into this deferred comparison result.
+    //
     // The right subexpression's short-circuit jumps are kept as-is.
     // The right subexpression's final jump is converted to a final jump to the "false" control path.
-    if (right_op.kind == IR_OPERAND_DEFERRED_CMP) {
-        // Merge lists of short-circuit jumps.
-        IR_mov_deferred_sc_jmp_list(&dst_op->cmp, &right_op.cmp);
+    assert(right_op.kind == IR_OPERAND_DEFERRED_CMP);
 
-        // Convert the right expression's final jmp into a final jmp to the "false" path.
-        last_bb = IR_copy_sc_jmp(builder, right_end_bb, &dst_op->cmp.final_jmp, &right_op.cmp.final_jmp, false);
-    }
-    // The right subexpression is some computation (not a deferred comparison). Compare the right subexpression to zero
-    // and create a final jump.
-    else {
-        right_end_bb = IR_op_to_r(builder, right_end_bb, &right_op);
+    // Merge lists of short-circuit jumps.
+    IR_mov_deferred_sc_jmp_list(&dst_op->cmp, &right_op.cmp);
 
-        IR_Reg imm_reg = IR_next_reg(builder);
-        IR_emit_instr_limm(builder, right_end_bb, right_op.type, imm_reg, ir_zero_imm);
-
-        IR_Reg cmp_reg = IR_next_reg(builder);
-        Instr* cmp_instr = IR_emit_instr_cmp(builder, right_end_bb, right_op.type, COND_EQ, cmp_reg, right_op.reg, imm_reg);
-
-        last_bb = IR_alloc_bblock(builder);
-        Instr* jmp_instr = IR_emit_instr_cond_jmp(builder, right_end_bb, NULL, last_bb, cmp_reg);
-
-        dst_op->cmp.final_jmp.result = false;
-        dst_op->cmp.final_jmp.jmp = jmp_instr;
-        dst_op->cmp.final_jmp.cmp = cmp_instr;
-    }
+    // Convert the right expression's final jmp into a final jmp to the "false" path.
+    last_bb = IR_copy_sc_jmp(builder, right_end_bb, &dst_op->cmp.final_jmp, &right_op.cmp.final_jmp, false);
 
     return last_bb;
 }
@@ -2057,6 +2009,29 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
 
         dst_op->kind = IR_OPERAND_TMP_OBJ;
         dst_op->tmp_obj = slice_obj;
+    }
+    else if (type_is_bool(dst_op->type)) {
+        assert(type_is_scalar(src_op->type));
+        assert(src_op->kind != IR_OPERAND_DEFERRED_CMP);
+
+        // Load src into a register.
+        curr_bb = IR_op_to_r(builder, curr_bb, src_op);
+
+        // Load zero into a register.
+        IR_Reg zero_reg = IR_next_reg(builder);
+        IR_emit_instr_limm(builder, curr_bb, src_op->type, zero_reg, ir_zero_imm);
+
+        // Check if src != 0.
+        IR_Reg cmp_reg = IR_next_reg(builder);
+        Instr* cmp_instr = IR_emit_instr_cmp(builder, curr_bb, src_op->type, COND_NEQ, cmp_reg, src_op->reg, zero_reg);
+
+        // Create a "deferred" comparison that will either be resolved into a boolean value or used in a conditional jump.
+        dst_op->kind = IR_OPERAND_DEFERRED_CMP;
+        dst_op->cmp.final_jmp.cmp = cmp_instr;
+        dst_op->cmp.final_jmp.result = true;
+        dst_op->cmp.final_jmp.jmp = NULL;
+        dst_op->cmp.first_sc_jmp = NULL;
+        dst_op->cmp.last_sc_jmp = NULL;
     }
     else {
         assert(type_is_scalar(src_op->type) && src_op->type->kind != TYPE_FLOAT && type_is_scalar(dst_op->type) &&

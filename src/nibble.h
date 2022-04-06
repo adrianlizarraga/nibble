@@ -80,6 +80,7 @@ typedef struct Float {
 } Float;
 
 typedef enum IntegerKind {
+    INTEGER_BOOL,
     INTEGER_U8,
     INTEGER_S8,
     INTEGER_U16,
@@ -92,6 +93,7 @@ typedef enum IntegerKind {
 
 typedef struct Integer {
     union {
+        bool _bool;
         u8 _u8;
         s8 _s8;
         u16 _u16;
@@ -154,6 +156,10 @@ typedef enum Keyword {
     KW_SWITCH,
     KW_CASE,
     KW_UNDERSCORE,
+
+    KW_TRUE,
+    KW_FALSE,
+    KW_NULL,
 
     KW_COUNT,
 } Keyword;

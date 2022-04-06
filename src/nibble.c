@@ -418,6 +418,9 @@ static bool init_keywords()
         [KW_SWITCH] = string_view_lit("switch"),
         [KW_CASE] = string_view_lit("case"),
         [KW_UNDERSCORE] = string_view_lit("_"),
+        [KW_TRUE] = string_view_lit("true"),
+        [KW_FALSE] = string_view_lit("false"),
+        [KW_NULL] = string_view_lit("null")
     };
 
     for (int i = 0; i < KW_COUNT; i += 1) {
