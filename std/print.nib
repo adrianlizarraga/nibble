@@ -123,8 +123,8 @@ enum FormatFlag {
     SPACE_SIGN     = 1 << 2,
     HASH           = 1 << 3,
     ZERO_PAD       = 1 << 4,
-    HAS_WIDTH          = 1 << 5,
-    HAS_PRECISION      = 1 << 6,
+    HAS_WIDTH      = 1 << 5,
+    HAS_PRECISION  = 1 << 6,
     UPPERCASE      = 1 << 7
 }
 
@@ -136,32 +136,32 @@ struct FormatOptions {
 
 proc scan_options(at_ptr : ^^char) => FormatOptions {
     var options : FormatOptions;
-    var parsing : bool = 1;
+    var parsing : bool = true;
 
     // Parse flags.
     while (parsing) {
         if (**at_ptr == '-') {
             options.flags |= FormatFlag::LEFT_JUSTIFIED;
-            *at_ptr = *at_ptr + 1;
+            *at_ptr += 1;
         }
         else if (**at_ptr == '+') {
             options.flags |= FormatFlag::FORCE_SIGN;
-            *at_ptr = *at_ptr + 1;
+            *at_ptr += 1;
         }
         else if (**at_ptr == ' ') {
             options.flags |= FormatFlag::SPACE_SIGN;
-            *at_ptr = *at_ptr + 1;
+            *at_ptr += 1;
         }
         else if (**at_ptr == '#') {
             options.flags |= FormatFlag::HASH;
-            *at_ptr = *at_ptr + 1;
+            *at_ptr += 1;
         }
         else if (**at_ptr == '0') {
             options.flags |= FormatFlag::ZERO_PAD;
-            *at_ptr = *at_ptr + 1;
+            *at_ptr += 1;
         }
         else {
-            parsing = 0;
+            parsing = false;
         }
     }
 
@@ -173,7 +173,7 @@ proc scan_options(at_ptr : ^^char) => FormatOptions {
 
     // Parse precision.
     if (**at_ptr == '.') {
-        *at_ptr = *at_ptr + 1;
+        *at_ptr += 1;
         options.flags |= FormatFlag::HAS_PRECISION;
 
         if (is_dec_digit(**at_ptr)) {
@@ -201,7 +201,7 @@ proc is_dec_digit(c : char) => bool {
 }
 
 proc put_char_wrapper(write_state : ^WriteState, c : char) => bool {
-    var r : bool = 1;
+    var r : bool = true;
 
     if (write_state.put_char) {
         r = write_state.put_char(write_state.arg, c);
