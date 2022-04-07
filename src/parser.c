@@ -977,6 +977,9 @@ static Expr* parse_expr_ident(Parser* parser)
 // expr_base = TKN_INT
 //           | TKN_FLOAT
 //           | TKN_STR
+//           | KW_TRUE
+//           | KW_FALSE
+//           | KW_NULL
 //           | expr_ident
 //           | expr_compound_init
 //           | expr_sizeof
@@ -1018,6 +1021,15 @@ static Expr* parse_expr_base(Parser* parser)
         return parse_expr_compound_lit(parser);
     case TKN_KW: {
         switch (token.as_kw.ident->kw) {
+        case KW_TRUE:
+            next_token(parser);
+            return new_expr_bool_lit(parser->ast_arena, true, token.range);
+        case KW_FALSE:
+            next_token(parser);
+            return new_expr_bool_lit(parser->ast_arena, false, token.range);
+        case KW_NULL:
+            next_token(parser);
+            return new_expr_null_lit(parser->ast_arena, token.range);
         case KW_SIZEOF:
             return parse_expr_sizeof(parser);
         case KW_TYPEID:
