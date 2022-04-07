@@ -215,7 +215,7 @@ proc put_char_wrapper(write_state : ^WriteState, c : char) => bool {
 }
 
 proc output_to_file(data : ^void, c : char) => bool {
-    var ret : bool = 1;
+    var ret : bool = true;
     var dst : ^FileBuffer = data :> ^FileBuffer;
     var write_char := c;
 
@@ -227,7 +227,7 @@ proc output_to_file(data : ^void, c : char) => bool {
     }
     else {
         if (!flush_file_buffer(dst)) {
-            return 0;
+            return false;
         }
 
         if (write_char) {
@@ -248,9 +248,9 @@ proc flush_file_buffer(fb : ^FileBuffer) => bool {
 
     if (n == fb.idx) {
         fb.idx = 0;
-        return 1;
+        return true;
     }
 
-    return 0;
+    return false;
 }
 
