@@ -1,5 +1,7 @@
 /* TODO:
 
+   - Consider making string literals evaluate to slices rather than arrays
+   - Support ternary operator.
    - Only generate assembly for procs reachable from main()
      - Currently, we prune procs not reachable from the main _MODULE_, but unused procs in main module remain.
      - RELATED: Compile all module symbols, but only generate used symbols.

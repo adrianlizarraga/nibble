@@ -254,10 +254,52 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : ^char, arg
 
             var a := ^args[arg_idx];
 
-            if (a.type == #typeid(int)) {
-                var val : ssize = *(a.ptr :> ^int);
+            if (a.type == #typeid(u8)) {
+                var val : ssize = *(a.ptr :> ^u8);
 
                 print_int(^write_state, val, 10, options);
+            }
+            else if (a.type == #typeid(s8)) {
+                var val : ssize = *(a.ptr :> ^s8);
+
+                print_int(^write_state, val, 10, options);
+            }
+            else if (a.type == #typeid(u16)) {
+                var val : ssize = *(a.ptr :> ^u16);
+
+                print_int(^write_state, val, 10, options);
+            }
+            else if (a.type == #typeid(s16)) {
+                var val : ssize = *(a.ptr :> ^s16);
+
+                print_int(^write_state, val, 10, options);
+            }
+            else if (a.type == #typeid(u32)) {
+                var val : ssize = *(a.ptr :> ^u32);
+
+                print_int(^write_state, val, 10, options);
+            }
+            else if (a.type == #typeid(s32)) {
+                var val : ssize = *(a.ptr :> ^s32);
+
+                print_int(^write_state, val, 10, options);
+            }
+            else if (a.type == #typeid(u64)) {
+                var val : ssize = *(a.ptr :> ^u64);
+
+                print_int(^write_state, val, 10, options);
+            }
+            else if (a.type == #typeid(s64)) {
+                var val : ssize = *(a.ptr :> ^s64);
+
+                print_int(^write_state, val, 10, options);
+            }
+            else if (a.type == #typeid([]char)) {
+                var str : []char = *(a.ptr :> ^[]char);
+
+                for (var ii : usize = 0; ii < str.length; ii += 1) {
+                    put_char_wrapper(^write_state, str[ii]);
+                }
             }
             else {
                 return {write_state.count, PrintErr::UNSUPPORTED_ARG_TYPE};
