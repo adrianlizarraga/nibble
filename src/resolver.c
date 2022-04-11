@@ -407,6 +407,18 @@ static void promote_int_eops(ExprOperand* eop)
     }
 }
 
+static Type* convert_ptr_eops(ExprOperand* a_op, ExprOperand* b_op)
+{
+    Type* common_type = common_ptr_type(a_op->type, b_op->type);
+
+    if (common_type) {
+        a_op->type = common_type;
+        b_op->type = common_type;
+    }
+
+    return common_type;
+}
+
 static Type* convert_arith_eops(ExprOperand* left, ExprOperand* right)
 {
     // If one is an f64, cast the other to f64.
@@ -1429,15 +1441,12 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
         }
         else if (left_is_ptr && right_is_ptr) {
-            Type* common_type = common_ptr_type(left_op.type, right_op.type);
+            Type* common_type = convert_ptr_eops(&left_op, &right_op);
 
             if (!common_type) {
                 resolver_on_error(resolver, expr->range, "Cannot compare pointers of incompatible types");
                 return false;
             }
-
-            left_op.type = common_type;
-            right_op.type = common_type;
 
             if (left_op.is_constexpr && left_op.is_imm && right_op.is_constexpr && right_op.is_imm) {
                 u64 left_u64 = left_op.imm.as_int._u64;
@@ -1477,15 +1486,12 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
         }
         else if (left_is_ptr && right_is_ptr) {
-            Type* common_type = common_ptr_type(left_op.type, right_op.type);
+            Type* common_type = convert_ptr_eops(&left_op, &right_op);
 
             if (!common_type) {
                 resolver_on_error(resolver, expr->range, "Cannot compare pointers of incompatible types");
                 return false;
             }
-
-            left_op.type = common_type;
-            right_op.type = common_type;
 
             if (left_op.is_constexpr && left_op.is_imm && right_op.is_constexpr && right_op.is_imm) {
                 u64 left_u64 = left_op.imm.as_int._u64;
@@ -1595,7 +1601,7 @@ static bool resolve_expr_ternary(Resolver* resolver, ExprTernary* expr)
         dst_op.type = convert_arith_eops(&then_op, &else_op);
     }
     else if (then_op.type->kind == TYPE_PTR && else_op.type->kind == TYPE_PTR) {
-        Type* common_type = common_ptr_type(then_op.type, else_op.type);
+        Type* common_type = convert_ptr_eops(&then_op, &else_op);
 
         if (!common_type) {
             resolver_on_error(resolver, merge_ranges(expr->then_expr->range, expr->else_expr->range),
@@ -1605,9 +1611,6 @@ static bool resolve_expr_ternary(Resolver* resolver, ExprTernary* expr)
         }
 
         dst_op.type = common_type;
-        then_op.type = common_type;
-        else_op.type = common_type;
-
     }
     else if (then_op.type == else_op.type) {
         dst_op.type = then_op.type;
