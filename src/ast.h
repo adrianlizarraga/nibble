@@ -842,6 +842,8 @@ bool slice_and_array_compatible(Type* array_type, Type* slice_type);
 bool type_is_incomplete_array(Type* type);
 bool type_has_incomplete_array(Type* type);
 bool types_are_compatible(Type* t, Type* u);
+bool ptr_types_are_derived(Type* base, Type* derived);
+Type* common_ptr_type(Type* t, Type* u);
 
 Type* try_array_decay(Allocator* allocator, HMap* type_ptr_cache, Type* type);
 

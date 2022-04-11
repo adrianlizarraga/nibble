@@ -47,6 +47,8 @@ typedef struct ProgRange {
     ProgPos end;
 } ProgRange;
 
+ProgRange merge_ranges(ProgRange a, ProgRange b);
+
 typedef struct StringView {
     const char* str;
     size_t len;
