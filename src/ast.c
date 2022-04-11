@@ -869,6 +869,50 @@ bool type_has_incomplete_array(Type* type)
     return false;
 }
 
+bool ptr_types_are_derived(Type* base, Type* derived)
+{
+    assert(base->kind == TYPE_PTR && derived->kind == TYPE_PTR);
+
+    Type* base_pointed_type = base->as_ptr.base;
+    Type* derived_pointed_type = derived->as_ptr.base;
+
+    // A type is "derived" if its first field is of type "base".
+    // Ex: struct Base { ... };  struct Derived { Base base;};
+    // Derived* d = malloc(...);
+    // Base* b = d;
+    if (type_is_aggregate(base_pointed_type) && (derived_pointed_type->kind == TYPE_STRUCT) &&
+        (base_pointed_type == derived_pointed_type->as_struct.body.fields[0].type)) {
+        return true;
+    }
+
+    return false;
+}
+
+Type* common_ptr_type(Type* t, Type* u)
+{
+    assert(t->kind == TYPE_PTR && u->kind == TYPE_PTR);
+
+    Type* common = NULL;
+
+    if (types_are_compatible(t, u)) {
+        common = t;
+    }
+    else if (ptr_types_are_derived(t, u)) {
+        common = t;
+    }
+    else if (ptr_types_are_derived(u, t)) {
+        common = u;
+    }
+    else if (t == type_ptr_void) {
+        common = u;
+    }
+    else if (u == type_ptr_void) {
+        common = t;
+    }
+
+    return common;
+}
+
 bool types_are_compatible(Type* t, Type* u)
 {
     if (t == u) {

@@ -1,0 +1,26 @@
+var g_x1 : int;
+var g_r1 : int = ^g_x1 ? 0x2 : 0x0;
+
+proc chain(c : char) => int {
+    var r : int = c == '0' ? 0 :
+                  c == '1' ? 1 :
+                  c == '2' ? 2 :
+                  c == '3' ? 3 : -1;
+
+
+    return r;
+}
+
+proc main() => int {
+    var x1 : int = 10;
+    var r1 := x1 > 20 ? 20 : x1;
+
+    var x2 : {int; int} = {3, 4};
+    var x3 : {int; int};
+    var r2 := x1 > 11 ? x3 : x2;
+
+    const r3 := #sizeof(u32) == 4 ? 1 : 0;
+
+    // 10 + 3 + 4 + 1 + 2 + (0 + 1 + 2 + 3 + -1) = 25
+    return r1 + r2.[0] + r2.[1] + r3 + g_r1 + chain('0') + chain('1') + chain('2') + chain('3') + chain('F');
+}
