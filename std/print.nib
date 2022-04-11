@@ -101,29 +101,14 @@ proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: 
         return;
     }
 
-    // TODO: Ternary operator.
-    var base_10_digit : char = ---;
-    if (uppercased) {
-        base_10_digit = 'A';
-    }
-    else {
-        base_10_digit = 'a';
-    }
+    var base_10_digit : char = uppercased ? 'A' : 'a';
 
     // Write the value into the temporary buffer in reverse order.
     var len : usize;
 
     do {
         var div_mod := value /% base; // (digit, next_value)
-        var base_digit : char = ---;
-
-        // TODO: Ternary operator.
-        if (div_mod[1] >= 10) {
-            base_digit = base_10_digit - 10;
-        }
-        else {
-            base_digit = '0';
-        }
+        var base_digit : char = div_mod[1] >= 10 ? base_10_digit - 10 : '0';
 
         // TODO: Will overflow for large bases
         // Consider using an enum for bases
@@ -185,29 +170,11 @@ proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: 
             put_char_wrapper(wstate, 'b');
         }
         else if (base == 16) {
-            // TODO: Ternary operator.
-            var c : char = ---;
-            if (uppercased) {
-                c = 'X';
-            }
-            else {
-                c = 'x';
-            }
-
-            put_char_wrapper(wstate, c);
+            put_char_wrapper(wstate, uppercased ? 'X' : 'x');
         }
     }
     else if (print_sign) {
-        // TODO: Ternary operator.
-        var c : char = ---;
-        if (is_neg) {
-            c = '-';
-        }
-        else {
-            c = '+';
-        }
-
-        put_char_wrapper(wstate, c);
+        put_char_wrapper(wstate, is_neg ? '-' : '+');
     }
 
     // Print zero padding.
