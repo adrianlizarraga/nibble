@@ -71,6 +71,13 @@ bool slurp_file(StringView* contents, Allocator* allocator, const char* filename
     return true;
 }
 
+ProgRange merge_ranges(ProgRange a, ProgRange b)
+{
+    ProgRange r = { .start = (a.start < b.start ?  a.start : b.start), .end = (a.end > b.end ? a.end : b.end) };
+
+    return r;
+}
+
 void report_error(ProgRange range, const char* format, ...)
 {
     char buf[MAX_ERROR_LEN];
