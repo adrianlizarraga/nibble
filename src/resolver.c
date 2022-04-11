@@ -407,7 +407,7 @@ static void promote_int_eops(ExprOperand* eop)
     }
 }
 
-static void convert_arith_eops(ExprOperand* left, ExprOperand* right)
+static Type* convert_arith_eops(ExprOperand* left, ExprOperand* right)
 {
     // If one is an f64, cast the other to f64.
     if (left->type == builtin_types[BUILTIN_TYPE_F64].type) {
@@ -497,6 +497,8 @@ static void convert_arith_eops(ExprOperand* left, ExprOperand* right)
     }
 
     assert(left->type == right->type);
+
+    return left->type;
 }
 
 static s64 eval_unary_op_s64(TokenKind op, s64 val)
@@ -1182,9 +1184,7 @@ static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOper
 
 static void resolve_non_const_binary_eop(ExprOperand* dst, ExprOperand* left, ExprOperand* right)
 {
-    convert_arith_eops(left, right);
-
-    dst->type = left->type;
+    dst->type = convert_arith_eops(left, right);
     dst->is_constexpr = false;
     dst->is_imm = false;
     dst->is_lvalue = false;
@@ -1192,14 +1192,14 @@ static void resolve_non_const_binary_eop(ExprOperand* dst, ExprOperand* left, Ex
 
 static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
 {
-    convert_arith_eops(left, right);
+    Type* type = convert_arith_eops(left, right);
 
     if (left->is_constexpr && right->is_constexpr) {
         assert(left->is_imm && right->is_imm);
-        eval_const_binary_op(op, dst, left->type, left->imm, right->imm);
+        eval_const_binary_op(op, dst, type, left->imm, right->imm);
     }
     else {
-        dst->type = left->type;
+        dst->type = type;
         dst->is_constexpr = false;
         dst->is_imm = false;
         dst->is_lvalue = false;
@@ -1362,9 +1362,9 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             return false;
         }
 
-        convert_arith_eops(&left_op, &right_op);
+        Type* op_type = convert_arith_eops(&left_op, &right_op);
 
-        dst_op.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, left_op.type, 2);
+        dst_op.type = type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, op_type, 2);
         dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
         dst_op.is_imm = false;
         dst_op.is_lvalue = false;
@@ -1592,8 +1592,7 @@ static bool resolve_expr_ternary(Resolver* resolver, ExprTernary* expr)
     ExprOperand dst_op  = {0}; // Not an lvalue.
 
     if (type_is_arithmetic(then_op.type) && type_is_arithmetic(else_op.type)) {
-        convert_arith_eops(&then_op, &else_op);
-        dst_op.type = then_op.type;
+        dst_op.type = convert_arith_eops(&then_op, &else_op);
     }
     else if (then_op.type->kind == TYPE_PTR && else_op.type->kind == TYPE_PTR) {
         Type* common_type = common_ptr_type(then_op.type, else_op.type);
