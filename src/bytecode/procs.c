@@ -1762,6 +1762,88 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
     return curr_bb;
 }
 
+static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* hdr_bb, bool jmp_result, BBlock* jmp_bb,
+                                   IR_TmpObjList* tmp_obj_list);
+
+static BBlock* IR_emit_expr_ternary(IR_ProcBuilder* builder, BBlock* bblock, ExprTernary* expr, IR_Operand* dst,
+                                    IR_TmpObjList* tmp_obj_list)
+{
+    // If the condition is a compile-time constant, do not generate an unnecessary branch.
+    if (expr->cond->is_constexpr) {
+        assert(expr->cond->is_imm);
+        Expr* e = expr->cond->imm.as_int._bool ? expr->then_expr : expr->else_expr;
+
+        return IR_emit_expr(builder, bblock, e, dst, tmp_obj_list);
+    }
+
+    Type* result_type = expr->super.type;
+    assert(result_type == expr->then_expr->type);
+    assert(result_type == expr->else_expr->type);
+    bool obj_like = type_is_obj_like(result_type);
+
+    BBlock* false_bb = IR_alloc_bblock(builder);
+    BBlock* last_bb = IR_alloc_bblock(builder);
+    BBlock* false_tgt = false_bb;
+
+    // Process condition.
+    BBlock* true_bb = IR_process_cfg_cond(builder, expr->cond, bblock, false, false_tgt, tmp_obj_list);
+
+    // Emit instructions for then-expression
+    IR_Operand then_op = {0};
+    BBlock* true_end_bb = IR_emit_expr(builder, true_bb, expr->then_expr, &then_op, tmp_obj_list);
+
+    if (obj_like) {
+        IR_TmpObj* tmp_obj = IR_get_tmp_obj(builder, tmp_obj_list, result_type->size, result_type->align);
+        IR_Operand tmp_obj_op = {.kind = IR_OPERAND_TMP_OBJ, .type = result_type, .tmp_obj = tmp_obj};
+
+        true_end_bb = IR_emit_assign(builder, true_end_bb, &tmp_obj_op, &then_op);
+        then_op = tmp_obj_op;
+    }
+    else {
+        true_end_bb = IR_op_to_r(builder, true_end_bb, &then_op);
+    }
+
+    // Skip 'else' expression
+    assert(true_end_bb);
+    IR_emit_instr_jmp(builder, true_end_bb, last_bb);
+
+    // Emit instructions for else-expression.
+    IR_Operand else_op = {0};
+    BBlock* false_end_bb = IR_emit_expr(builder, false_bb, expr->else_expr, &else_op, tmp_obj_list);
+
+    if (obj_like) {
+        assert(then_op.kind == IR_OPERAND_TMP_OBJ);
+        IR_TmpObj* tmp_obj = then_op.tmp_obj; // Reuse the same temporary object!
+        IR_Operand tmp_obj_op = {.kind = IR_OPERAND_TMP_OBJ, .type = result_type, .tmp_obj = tmp_obj};
+
+        false_end_bb = IR_emit_assign(builder, false_end_bb, &tmp_obj_op, &else_op);
+        else_op = tmp_obj_op;
+    }
+    else {
+        false_end_bb = IR_op_to_r(builder, false_end_bb, &else_op);
+    }
+
+    // Jump from else bblock to last bblock.
+    assert(false_end_bb);
+    IR_emit_instr_jmp(builder, false_end_bb, last_bb);
+
+    if (obj_like) {
+        dst->kind = IR_OPERAND_TMP_OBJ;
+        dst->type = result_type;
+        dst->tmp_obj = then_op.tmp_obj;
+    }
+    else {
+        dst->kind = IR_OPERAND_REG;
+        dst->type = result_type;
+        dst->reg = IR_next_reg(builder);
+
+        PhiArg phi_args[2] = {{.bblock = true_end_bb, .ireg = then_op.reg}, {.bblock = false_end_bb, .ireg = else_op.reg}};
+        IR_emit_instr_phi(builder, last_bb, result_type, dst->reg, 2, phi_args);
+    }
+
+    return last_bb;
+}
+
 static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprUnary* expr, IR_Operand* dst,
                                   IR_TmpObjList* tmp_obj_list)
 {
@@ -2728,10 +2810,12 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
         return IR_emit_expr_call(builder, bblock, (ExprCall*)expr, dst, tmp_obj_list);
     case CST_ExprCast:
         return IR_emit_expr_cast(builder, bblock, (ExprCast*)expr, dst, tmp_obj_list);
-    case CST_ExprBinary:
-        return IR_emit_expr_binary(builder, bblock, (ExprBinary*)expr, dst, tmp_obj_list);
     case CST_ExprUnary:
         return IR_emit_expr_unary(builder, bblock, (ExprUnary*)expr, dst, tmp_obj_list);
+    case CST_ExprBinary:
+        return IR_emit_expr_binary(builder, bblock, (ExprBinary*)expr, dst, tmp_obj_list);
+    case CST_ExprTernary:
+        return IR_emit_expr_ternary(builder, bblock, (ExprTernary*)expr, dst, tmp_obj_list);
     case CST_ExprIndex:
         return IR_emit_expr_index(builder, bblock, (ExprIndex*)expr, dst, tmp_obj_list);
     case CST_ExprField:

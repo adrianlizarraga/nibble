@@ -1460,7 +1460,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
             }
             else {
-                dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
+                // NOTE: The only constexpr ptr that is NOT an immediate, is the addresses of a global variable.
+                // Comparison of global addresses is not a compile-time constexpr because we won't know the address values
+                // until after code generation.
+                dst_op.is_constexpr = false;
                 dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             }
         }
@@ -1505,7 +1508,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
             }
             else {
-                dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
+                // NOTE: The only constexpr ptr that is NOT an immediate, is the addresses of a global variable.
+                // Comparison of global addresses is not a compile-time constexpr because we won't know the address values
+                // until after code generation.
+                dst_op.is_constexpr = false;
                 dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             }
         }
@@ -1544,9 +1550,17 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             dst_op.is_imm = true;
             dst_op.imm.as_int._bool = ebinary->op == TKN_LOGIC_AND ? (left_bool && right_bool) : (left_bool || right_bool);
         }
+        else if (left_op.is_constexpr && (left_op.type->kind == TYPE_PTR) && right_op.is_constexpr &&
+                 (right_op.type->kind == TYPE_PTR)) {
+            // If left and right operands are addresses of global variables, return true.
+            dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
+            dst_op.is_constexpr = true;
+            dst_op.is_imm = true;
+            dst_op.imm.as_int._bool = true;
+        }
         else {
             dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
-            dst_op.is_constexpr = left_op.is_constexpr && right_op.is_constexpr;
+            dst_op.is_constexpr = false;
         }
 
         break;
@@ -1625,7 +1639,7 @@ static bool resolve_expr_ternary(Resolver* resolver, ExprTernary* expr)
     // NOTE: Must check `.is_imm` because the address of a global variable is a constant expression that does not yet
     // have an immediate value.
     if (cond_op.is_constexpr && then_op.is_constexpr && then_op.is_imm && else_op.is_constexpr && else_op.is_imm) {
-        Scalar result_imm = cond_op.imm.as_int._bool ? then_op.imm : else_op.imm;
+        Scalar result_imm = (!cond_op.is_imm || cond_op.imm.as_int._bool) ? then_op.imm : else_op.imm;
 
         dst_op.is_constexpr = true;
         dst_op.is_imm = true;

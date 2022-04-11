@@ -115,6 +115,17 @@ static void IR_emit_global_expr_unary(IR_VarBuilder* builder, ExprUnary* expr_un
     }
 }
 
+static void IR_emit_global_expr_ternary(IR_VarBuilder* builder, ExprTernary* expr_ternary, ConstExpr* dst)
+{
+    Expr* cond_expr = expr_ternary->cond;
+    assert(cond_expr->is_constexpr);
+
+    // NOTE: If the cond_expr is not an immediate, then it is a pointer to a global.
+    Expr* actual_expr = (!cond_expr->is_imm || cond_expr->imm.as_int._bool) ? expr_ternary->then_expr : expr_ternary->else_expr;
+
+    IR_emit_global_expr(builder, actual_expr, dst);
+}
+
 static void IR_emit_global_ptr_int_add(ConstExpr* dst, ConstExpr* ptr_op, ConstExpr* int_op, bool add)
 {
     assert(int_op->kind == CONST_EXPR_IMM);
@@ -327,11 +338,14 @@ static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* d
     case CST_ExprCast:
         IR_emit_global_expr_cast(builder, (ExprCast*)expr, dst);
         break;
+    case CST_ExprUnary:
+        IR_emit_global_expr_unary(builder, (ExprUnary*)expr, dst);
+        break;
     case CST_ExprBinary:
         IR_emit_global_expr_binary(builder, (ExprBinary*)expr, dst);
         break;
-    case CST_ExprUnary:
-        IR_emit_global_expr_unary(builder, (ExprUnary*)expr, dst);
+    case CST_ExprTernary:
+        IR_emit_global_expr_ternary(builder, (ExprTernary*)expr, dst);
         break;
     case CST_ExprCompoundLit:
         IR_emit_global_expr_compound_lit(builder, (ExprCompoundLit*)expr, dst);
