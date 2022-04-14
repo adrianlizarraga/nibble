@@ -210,6 +210,42 @@ static void exit_proc(Resolver* resolver, ModuleState state)
         }                                               \
         break;
 
+#define CASE_FLOAT_INT_CAST(k, o, t, f)                     \
+    case k:                                                 \
+        switch (t) {                                        \
+        case INTEGER_BOOL:                                  \
+            o->imm.as_int._bool = o->imm.as_float.f != 0.0; \
+            break;                                          \
+        case INTEGER_U8:                                    \
+            o->imm.as_int._u8 = (u8)o->imm.as_float.f;      \
+            break;                                          \
+        case INTEGER_S8:                                    \
+            o->imm.as_int._s8 = (s8)o->imm.as_float.f;      \
+            break;                                          \
+        case INTEGER_U16:                                   \
+            o->imm.as_int._u16 = (u16)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_S16:                                   \
+            o->imm.as_int._s16 = (s16)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_U32:                                   \
+            o->imm.as_int._u32 = (u32)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_S32:                                   \
+            o->imm.as_int._s32 = (s32)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_U64:                                   \
+            o->imm.as_int._u64 = (u64)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_S64:                                   \
+            o->imm.as_int._s64 = (s64)o->imm.as_float.f;    \
+            break;                                          \
+        default:                                            \
+            assert(0);                                      \
+            break;                                          \
+        }                                                   \
+        break;
+
 static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay)
 {
     Type* src_type = eop->type;
@@ -224,8 +260,40 @@ static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_
     // 2) types are castable.
 
     if (eop->is_constexpr && eop->is_imm) {
-        if (src_type->kind == TYPE_FLOAT) {
-            eop->is_constexpr = dst_type->kind != TYPE_INTEGER;
+        if (src_type->kind == TYPE_FLOAT && dst_type->kind == TYPE_FLOAT) {
+            FloatKind src_float_kind = src_type->as_float.kind;
+            FloatKind dst_float_kind = dst_type->as_float.kind;
+
+            switch (src_float_kind) {
+            case FLOAT_F32: {
+                if (dst_float_kind == FLOAT_F64) {
+                    eop->imm.as_float._f64 = (f64)eop->imm.as_float._f32;
+                }
+                break;
+            }
+            case FLOAT_F64: {
+                if (dst_float_kind == FLOAT_F32) {
+                    eop->imm.as_float._f32 = (f32)eop->imm.as_float._f64;
+                }
+                break;
+            }
+            default:
+                assert(0);
+                break;
+            }
+        }
+        else if (src_type->kind == TYPE_FLOAT && type_is_integer_like(dst_type)) {
+            FloatKind src_float_kind = src_type->as_float.kind;
+            IntegerKind dst_int_kind = dst_type->kind == TYPE_ENUM ? dst_type->as_enum.base->as_integer.kind :
+                                       dst_type->as_integer.kind;
+
+            switch (src_float_kind) {
+                CASE_FLOAT_INT_CAST(FLOAT_F32, eop, dst_int_kind, _f32)
+                CASE_FLOAT_INT_CAST(FLOAT_F64, eop, dst_int_kind, _f64)
+            default:
+                assert(0);
+                break;
+            }
         }
         else {
             IntegerKind src_int_kind;
@@ -262,7 +330,6 @@ static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_
                 CASE_INT_CAST(INTEGER_U64, eop, dst_int_kind, _u64)
                 CASE_INT_CAST(INTEGER_S64, eop, dst_int_kind, _s64)
             default:
-                eop->is_constexpr = false;
                 assert(0);
                 break;
             }
@@ -993,6 +1060,20 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     expr->is_imm = true;
     expr->is_lvalue = false;
     expr->imm.as_int._u64 = value;
+
+    return true;
+}
+
+static bool resolve_expr_float(Resolver* resolver, ExprFloat* expr)
+{
+    (void)resolver;
+
+    expr->super.type = (expr->fkind == FLOAT_F64) ? builtin_types[BUILTIN_TYPE_F64].type :
+                       builtin_types[BUILTIN_TYPE_F32].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_float = expr->value;
 
     return true;
 }
@@ -2543,6 +2624,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
     switch (expr->kind) {
     case CST_ExprInt:
         return resolve_expr_int(resolver, expr);
+    case CST_ExprFloat:
+        return resolve_expr_float(resolver, (ExprFloat*)expr);
     case CST_ExprBoolLit:
         return resolve_expr_bool_lit(resolver, (ExprBoolLit*)expr);
     case CST_ExprNullLit:
