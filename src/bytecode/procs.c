@@ -265,10 +265,7 @@ static void IR_emit_instr_shift(IR_ProcBuilder* builder, BBlock* bblock, InstrKi
 
 static void IR_emit_instr_div(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, IR_Reg a, IR_Reg b)
 {
-    assert(type->kind == TYPE_INTEGER);
-
-    InstrKind kind = type->as_integer.is_signed ? INSTR_SDIV : INSTR_UDIV;
-    Instr* instr = IR_new_instr(builder->arena, kind);
+    Instr* instr = IR_new_instr(builder->arena, INSTR_DIV);
 
     instr->binary.type = type;
     instr->binary.r = r;
@@ -282,8 +279,7 @@ static void IR_emit_instr_mod(IR_ProcBuilder* builder, BBlock* bblock, Type* typ
 {
     assert(type->kind == TYPE_INTEGER);
 
-    InstrKind kind = type->as_integer.is_signed ? INSTR_SMOD : INSTR_UMOD;
-    Instr* instr = IR_new_instr(builder->arena, kind);
+    Instr* instr = IR_new_instr(builder->arena, INSTR_MOD);
 
     instr->binary.type = type;
     instr->binary.r = r;
@@ -297,8 +293,7 @@ static void IR_emit_instr_divmod(IR_ProcBuilder* builder, BBlock* bblock, Type* 
 {
     assert(type->kind == TYPE_INTEGER);
 
-    InstrKind kind = type->as_integer.is_signed ? INSTR_SDIVMOD : INSTR_UDIVMOD;
-    Instr* instr = IR_new_instr(builder->arena, kind);
+    Instr* instr = IR_new_instr(builder->arena, INSTR_DIVMOD);
 
     instr->divmod.type = type;
     instr->divmod.q = q;

@@ -106,10 +106,9 @@ static char* IR_print_mem(Allocator* arena, MemAddr* addr)
 char* IR_print_instr(Allocator* arena, Instr* instr)
 {
     static const char* binary_kind_name[] = {
-        [INSTR_ADD] = "add", [INSTR_SUB] = "sub", [INSTR_MUL] = "mul", [INSTR_UDIV] = "udiv", [INSTR_SDIV] = "sdiv",
-        [INSTR_UMOD] = "umod", [INSTR_SMOD] = "smod", [INSTR_SAR] = "sar", [INSTR_SHL] = "shl", [INSTR_AND] = "and",
+        [INSTR_ADD] = "add", [INSTR_SUB] = "sub", [INSTR_MUL] = "mul", [INSTR_DIV] = "div",
+        [INSTR_MOD] = "mod", [INSTR_SAR] = "sar", [INSTR_SHL] = "shl", [INSTR_AND] = "and",
         [INSTR_OR] = "or",     [INSTR_XOR] = "xor"};
-    static const char* divmod_kind_name[] = {[INSTR_UDIVMOD] = "udivmod", [INSTR_SDIVMOD] = "sdivmod"};
     static const char* unary_kind_name[] = {[INSTR_NOT] = "not", [INSTR_NEG] = "neg"};
     static const char* convert_kind_name[] = {[INSTR_TRUNC] = "trunc", [INSTR_ZEXT] = "zext", [INSTR_SEXT] = "sext"};
     char* dstr = array_create(arena, char, 16);
@@ -118,10 +117,8 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
     case INSTR_ADD:
     case INSTR_SUB:
     case INSTR_MUL:
-    case INSTR_UDIV:
-    case INSTR_SDIV:
-    case INSTR_UMOD:
-    case INSTR_SMOD:
+    case INSTR_DIV:
+    case INSTR_MOD:
     case INSTR_SAR:
     case INSTR_SHL:
     case INSTR_AND:
@@ -133,10 +130,8 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
                            IR_print_reg(arena, instr->binary.b));
         break;
     }
-    case INSTR_UDIVMOD:
-    case INSTR_SDIVMOD: {
-        const char* op_name = divmod_kind_name[instr->kind];
-        ftprint_char_array(&dstr, false, "%s <%s> %s, %s, %s, %s", op_name, type_name(instr->divmod.type),
+    case INSTR_DIVMOD: {
+        ftprint_char_array(&dstr, false, "divmod <%s> %s, %s, %s, %s", type_name(instr->divmod.type),
                            IR_print_reg(arena, instr->divmod.q), IR_print_reg(arena, instr->divmod.r),
                            IR_print_reg(arena, instr->divmod.a), IR_print_reg(arena, instr->divmod.b));
         break;

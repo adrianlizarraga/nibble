@@ -9,10 +9,6 @@ static X64_InstrKind binary_r_i_kind[] = {
     [INSTR_ADD] = X64_INSTR_ADD_R_I, [INSTR_SUB] = X64_INSTR_SUB_R_I, [INSTR_MUL] = X64_INSTR_IMUL_R_I,
     [INSTR_AND] = X64_INSTR_AND_R_I, [INSTR_OR] = X64_INSTR_OR_R_I,   [INSTR_XOR] = X64_INSTR_XOR_R_I};
 
-static X64_InstrKind div_kind[] = {[INSTR_UDIV] = X64_INSTR_DIV, [INSTR_SDIV] = X64_INSTR_IDIV,
-                                   [INSTR_UMOD] = X64_INSTR_DIV, [INSTR_SMOD] = X64_INSTR_IDIV,
-                                   [INSTR_UDIVMOD] = X64_INSTR_DIV, [INSTR_SDIVMOD] = X64_INSTR_IDIV};
-
 static X64_InstrKind shift_kind[] = {[INSTR_SHL] = X64_INSTR_SHL_R_R, [INSTR_SAR] = X64_INSTR_SAR_R_R};
 
 static X64_InstrKind shift_r_i_kind[] = {[INSTR_SHL] = X64_INSTR_SHL_R_I, [INSTR_SAR] = X64_INSTR_SAR_R_I};
@@ -839,8 +835,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[ir_instr->kind], size, r, b);
         break;
     }
-    case INSTR_UDIV:
-    case INSTR_SDIV: {
+    case INSTR_DIV: {
         // EX: r = a / b
         //
         // mov _ax, a ; Only if `a` is not already in `_ax`
@@ -848,7 +843,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // div b
         // mov r, _ax
 
-        size_t size = ir_instr->binary.type->size;
+        Type* type = ir_instr->binary.type;
+        size_t size = type->size;
         bool uses_dx = size >= 2;
 
         u32 a = X64_get_lir_reg(builder, ir_instr->binary.a);
@@ -867,7 +863,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // div b
         u32 b = X64_get_lir_reg(builder, ir_instr->binary.b);
-        X64_emit_instr_div(builder, xbblock, div_kind[ir_instr->kind], size, dx, ax, b);
+        X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV : X64_INSTR_DIV;
+        X64_emit_instr_div(builder, xbblock, x64_div_kind, size, dx, ax, b);
 
         // mov r, _ax
         u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
@@ -875,8 +872,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_hint_same_reg(builder, r, ax);
         break;
     }
-    case INSTR_UMOD:
-    case INSTR_SMOD: {
+    case INSTR_MOD: {
         // EX: r = a % b
         //
         // mov _ax, a ; Only if `a` is not already in `_ax`
@@ -884,7 +880,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // div b
         // mov r, _dx ; _ax[h] if size < 2 bytes
 
-        size_t size = ir_instr->binary.type->size;
+        Type* type = ir_instr->binary.type;
+        size_t size = type->size;
         bool uses_dx = size >= 2;
 
         u32 a = X64_get_lir_reg(builder, ir_instr->binary.a);
@@ -903,7 +900,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // div b
         u32 b = X64_get_lir_reg(builder, ir_instr->binary.b);
-        X64_emit_instr_div(builder, xbblock, div_kind[ir_instr->kind], size, dx, ax, b);
+        X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV : X64_INSTR_DIV;
+        X64_emit_instr_div(builder, xbblock, x64_div_kind, size, dx, ax, b);
 
         if (uses_dx) {
             // mov r, _dx
@@ -919,8 +917,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_UDIVMOD:
-    case INSTR_SDIVMOD: {
+    case INSTR_DIVMOD: {
         // EX: q,r = a % b
         //
         // mov _ax, a ; Only if `a` is not already in `_ax`
@@ -929,7 +926,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // mov r, _dx ; _ax[h] if size < 2 bytes
         // mov q, _ax
 
-        size_t size = ir_instr->divmod.type->size;
+        Type* type = ir_instr->divmod.type;
+        size_t size = type->size;
         bool uses_dx = size >= 2;
 
         u32 a = X64_get_lir_reg(builder, ir_instr->divmod.a);
@@ -948,7 +946,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // div b
         u32 b = X64_get_lir_reg(builder, ir_instr->divmod.b);
-        X64_emit_instr_div(builder, xbblock, div_kind[ir_instr->kind], size, dx, ax, b);
+        X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV : X64_INSTR_DIV;
+        X64_emit_instr_div(builder, xbblock, x64_div_kind, size, dx, ax, b);
 
         if (uses_dx) {
             // mov r, _dx
