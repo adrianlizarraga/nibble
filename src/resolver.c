@@ -1421,7 +1421,6 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         break;
     }
     case TKN_DIV:
-    case TKN_MOD:
     case TKN_ASTERISK:
         if (!type_is_arithmetic(left_op.type)) {
             resolver_on_error(resolver, ebinary->left->range,
@@ -1434,6 +1433,22 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             resolver_on_error(resolver, ebinary->right->range,
                               "Right operand of binary operator `%s` must be an arithmetic type, not type `%s`",
                               token_kind_names[ebinary->op], type_name(right_op.type));
+            return false;
+        }
+
+        resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
+
+        break;
+    case TKN_MOD:
+        if (!type_is_integer_like(left_op.type)) {
+            resolver_on_error(resolver, ebinary->left->range,
+                              "Left operand of operator `%%` must be an integer type, not type `%s`.", type_name(left_op.type));
+            return false;
+        }
+
+        if (!type_is_integer_like(right_op.type)) {
+            resolver_on_error(resolver, ebinary->right->range,
+                              "Right operand of operator `%%` must be an integer type, not type `%s`.", type_name(right_op.type));
             return false;
         }
 
