@@ -17,6 +17,14 @@ typedef enum X64_InstrKind
     X64_INSTR_ADD_R_R,
     X64_INSTR_ADD_R_I,
 
+    // f32 add
+    X64_INSTR_ADDSS_R_R,
+    X64_INSTR_ADDSS_R_M,
+
+    // f64 add
+    X64_INSTR_ADDSD_R_R,
+    X64_INSTR_ADDSD_R_M,
+
     // Subtraction
     X64_INSTR_SUB_R_R,
     X64_INSTR_SUB_R_I,
@@ -73,6 +81,16 @@ typedef enum X64_InstrKind
     // Sign-extend
     X64_INSTR_MOVSX_R_R,
     X64_INSTR_SEXT_AX_TO_DX,
+
+    // f32 mov
+    X64_INSTR_MOVSS_R_R,
+    X64_INSTR_MOVSS_R_M,
+    X64_INSTR_MOVSS_M_R,
+
+    // f64 mov
+    X64_INSTR_MOVSD_R_R,
+    X64_INSTR_MOVSD_R_M,
+    X64_INSTR_MOVSD_M_R,
 
     // Load an address computation into a register.
     X64_INSTR_LEA,

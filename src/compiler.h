@@ -15,6 +15,7 @@ struct NibbleCtx {
 
     HMap ident_map;
     HMap str_lit_map;
+    HMap float_lit_map;
     HMap mod_map;
 
     BucketList src_files;

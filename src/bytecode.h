@@ -62,6 +62,7 @@ typedef enum MemBaseKind {
     MEM_BASE_REG,
     MEM_BASE_MEM_OBJ,
     MEM_BASE_STR_LIT,
+    MEM_BASE_FLOAT_LIT,
 } MemBaseKind;
 
 struct MemAddr {
@@ -71,6 +72,7 @@ struct MemAddr {
         IR_Reg reg;
         MemObj* obj;
         StrLit* str_lit;
+        FloatLit* float_lit;
     } base;
 
     IR_Reg index_reg;

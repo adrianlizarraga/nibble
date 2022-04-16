@@ -81,6 +81,18 @@ typedef struct Float {
     };
 } Float;
 
+static inline bool float_eq(FloatKind kind, Float a, Float b)
+{
+    return kind == FLOAT_F64 ? a._f64 == b._f64 : a._f32 == b._f32;
+}
+
+typedef struct FloatLit {
+    struct FloatLit* next;
+    size_t id;
+    FloatKind kind;
+    Float value;
+} FloatLit;
+
 typedef enum IntegerKind {
     INTEGER_BOOL,
     INTEGER_U8,
@@ -229,6 +241,7 @@ extern Identifier* builtin_struct_fields[BUILTIN_STRUCT_FIELD_COUNT];
 extern Identifier* main_proc_ident;
 
 StrLit* intern_str_lit(const char* str, size_t len);
+FloatLit* intern_float_lit(FloatKind kind, Float value);
 Identifier* intern_ident(const char* str, size_t len);
 
 bool slurp_file(StringView* contents, Allocator* allocator, const char* filename);

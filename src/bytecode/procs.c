@@ -25,6 +25,7 @@ typedef enum IR_OperandKind {
     IR_OPERAND_VAR,
     IR_OPERAND_TMP_OBJ,
     IR_OPERAND_STR_LIT,
+    IR_OPERAND_FLOAT_LIT,
     IR_OPERAND_PROC,
 } IR_OperandKind;
 
@@ -65,6 +66,7 @@ typedef struct IR_Operand {
         IR_TmpObj* tmp_obj;
         IR_DeferredCmp cmp;
         StrLit* str_lit;
+        FloatLit* float_lit;
     };
 } IR_Operand;
 
@@ -521,6 +523,12 @@ static MemAddr IR_strlit_as_addr(StrLit* str_lit)
     return addr;
 }
 
+static MemAddr IR_floatlit_as_addr(FloatLit* float_lit)
+{
+    MemAddr addr = {.base_kind = MEM_BASE_FLOAT_LIT, .base.float_lit = float_lit, .index_reg = IR_REG_COUNT};
+    return addr;
+}
+
 static void IR_get_object_addr(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* dst, IR_Operand* src)
 {
     Type* src_type = src->type;
@@ -868,6 +876,15 @@ static BBlock* IR_op_to_r(IR_ProcBuilder* builder, BBlock* bblock, IR_Operand* o
 
         IR_Reg reg = IR_next_reg(builder);
         IR_emit_instr_load(builder, bblock, operand->type, reg, IR_strlit_as_addr(operand->str_lit));
+
+        operand->kind = IR_OPERAND_REG;
+        operand->reg = reg;
+
+        return bblock;
+    }
+    case IR_OPERAND_FLOAT_LIT: {
+        IR_Reg reg = IR_next_reg(builder);
+        IR_emit_instr_load(builder, bblock, operand->type, reg, IR_floatlit_as_addr(operand->float_lit));
 
         operand->kind = IR_OPERAND_REG;
         operand->reg = reg;
@@ -2789,10 +2806,22 @@ static BBlock* IR_emit_expr_compound_lit(IR_ProcBuilder* builder, BBlock* bblock
 static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr, IR_Operand* dst, IR_TmpObjList* tmp_obj_list)
 {
     if (expr->is_constexpr && expr->is_imm) {
-        assert(type_is_scalar(expr->type));
-        dst->kind = IR_OPERAND_IMM;
-        dst->type = expr->type;
-        dst->imm = expr->imm;
+        Type* type = expr->type;
+        Scalar imm = expr->imm;
+
+        if (type->kind == TYPE_FLOAT) {
+            FloatLit* float_lit = intern_float_lit(type->as_float.kind, imm.as_float);
+
+            dst->kind = IR_OPERAND_FLOAT_LIT;
+            dst->type = type;
+            dst->float_lit = float_lit;
+        }
+        else {
+            assert(type_is_scalar(type));
+            dst->kind = IR_OPERAND_IMM;
+            dst->type = type;
+            dst->imm = imm;
+        }
 
         return bblock;
     }
