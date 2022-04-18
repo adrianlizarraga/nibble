@@ -696,47 +696,77 @@ static void X64_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbbloc
     }
 }
 
+static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
+{
+    // EX: r = a + b
+    //
+    // mov r, a
+    // add r, b
+    size_t size = ir_instr->binary.type->size;
+    RegImm ir_a = ir_instr->binary.a;
+    RegImm ir_b = ir_instr->binary.b;
+
+    assert(!ir_a.is_imm || !ir_b.is_imm); // Only one should be an immediate.
+    u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
+
+    // mov r, a
+    if (ir_a.is_imm) {
+        X64_emit_instr_mov_r_i(builder, xbblock, size, r, ir_a.imm);
+    }
+    else {
+        u32 a = X64_get_lir_reg(builder, ir_a.reg);
+        X64_hint_same_reg(builder, r, a);
+        X64_emit_instr_mov_r_r(builder, xbblock, size, r, a);
+    }
+
+    // <bin_instr> r, b
+    if (ir_b.is_imm) {
+        X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
+    }
+    else {
+        u32 b = X64_get_lir_reg(builder, ir_b.reg);
+        X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[ir_instr->kind], size, r, b);
+    }
+}
+
 static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
 {
     Instr* next_instr = ir_instr->next;
 
     switch (ir_instr->kind) {
-    case INSTR_ADD:
+    case INSTR_ADD: {
+        Type* type = ir_instr->binary.type;
+
+        if (type->kind == TYPE_FLOAT) {
+            /*
+            assert(type->as_float.kind == FLOAT_32); // TODO: Support f64
+            size_t size = ir_instr->binary.type->size;
+            RegImm ir_a = ir_instr->binary.a;
+            RegImm ir_b = ir_instr->binary.b;
+            
+            assert(!ir_a.is_imm || !ir_b.is_imm); // Only one should be an immediate.
+
+            // movss r, a
+            u32 r = X64_get_lir_fp_reg(builder, ir_instr->binary.r);
+
+            if (ir_a.is_imm) {
+                X64_MemAddr addr = {.kind = X64_ADDR_FLOAT_LIT, .float_lit = float_lit};
+                X64_emit_instr_movss_r_m(builder, xbblock, r, addr);
+            }
+            */
+
+        }
+        else {
+            X64_convert_int_binary_instr(builder, xbblock, ir_instr);
+        }
+        break;
+    }
     case INSTR_SUB:
     case INSTR_MUL:
     case INSTR_AND:
     case INSTR_OR:
     case INSTR_XOR: {
-        // EX: r = a + b
-        //
-        // mov r, a
-        // add r, b
-        size_t size = ir_instr->binary.type->size;
-        RegImm ir_a = ir_instr->binary.a;
-        RegImm ir_b = ir_instr->binary.b;
-
-        assert(!ir_a.is_imm || !ir_b.is_imm); // Only one should be an immediate.
-        u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
-
-        // mov r, a
-        if (ir_a.is_imm) {
-            X64_emit_instr_mov_r_i(builder, xbblock, size, r, ir_a.imm);
-        }
-        else {
-            u32 a = X64_get_lir_reg(builder, ir_a.reg);
-            X64_hint_same_reg(builder, r, a);
-            X64_emit_instr_mov_r_r(builder, xbblock, size, r, a);
-        }
-
-        // sub r, b
-        if (ir_b.is_imm) {
-            X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
-        }
-        else {
-            u32 b = X64_get_lir_reg(builder, ir_b.reg);
-            X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[ir_instr->kind], size, r, b);
-        }
-
+        X64_convert_int_binary_instr(builder, xbblock, ir_instr);
         break;
     }
     case INSTR_DIV: {
