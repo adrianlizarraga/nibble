@@ -430,6 +430,7 @@ void X64_emit_instr_mov_r_rh(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 d
 void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, X64_MemAddr src);
 void X64_emit_instr_mov_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, Scalar src);
 void X64_emit_instr_mov_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr dst, u32 src);
+void X64_emit_instr_mov_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr dst, Scalar src);
 void X64_emit_instr_convert_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t dst_size, u32 dst,
                                 size_t src_size, u32 src);
 void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 rdx, u32 rax);

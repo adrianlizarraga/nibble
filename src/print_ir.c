@@ -126,14 +126,14 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
     case INSTR_XOR: {
         const char* op_name = binary_kind_name[instr->kind];
         ftprint_char_array(&dstr, false, "%s <%s> %s, %s, %s", op_name, type_name(instr->binary.type),
-                           IR_print_reg(arena, instr->binary.r), IR_print_reg(arena, instr->binary.a),
-                           IR_print_reg(arena, instr->binary.b));
+                           IR_print_reg(arena, instr->binary.r), IR_print_regimm(arena, instr->binary.a),
+                           IR_print_regimm(arena, instr->binary.b));
         break;
     }
     case INSTR_DIVMOD: {
         ftprint_char_array(&dstr, false, "divmod <%s> %s, %s, %s, %s", type_name(instr->divmod.type),
                            IR_print_reg(arena, instr->divmod.q), IR_print_reg(arena, instr->divmod.r),
-                           IR_print_reg(arena, instr->divmod.a), IR_print_reg(arena, instr->divmod.b));
+                           IR_print_regimm(arena, instr->divmod.a), IR_print_regimm(arena, instr->divmod.b));
         break;
     }
     case INSTR_PHI: {
@@ -192,12 +192,12 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
     }
     case INSTR_STORE: {
         ftprint_char_array(&dstr, false, "store <%s> %s, %s", type_name(instr->store.type), IR_print_mem(arena, &instr->store.addr),
-                           IR_print_reg(arena, instr->store.a));
+                           IR_print_regimm(arena, instr->store.a));
         break;
     }
     case INSTR_CMP: {
         ftprint_char_array(&dstr, false, "cmp <%s> %s, %s %s %s", type_name(instr->cmp.type), IR_print_reg(arena, instr->cmp.r),
-                           IR_print_reg(arena, instr->cmp.a), ir_cond_names[instr->cmp.cond], IR_print_reg(arena, instr->cmp.b));
+                           IR_print_regimm(arena, instr->cmp.a), ir_cond_names[instr->cmp.cond], IR_print_regimm(arena, instr->cmp.b));
         break;
     }
     case INSTR_JMP: {

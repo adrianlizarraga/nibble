@@ -102,23 +102,23 @@ struct MemObj {
 typedef struct InstrBinary {
     Type* type;
     IR_Reg r;
-    IR_Reg a;
-    IR_Reg b;
+    RegImm a;
+    RegImm b;
 } InstrBinary;
 
 typedef struct InstrDivmod {
     Type* type;
     IR_Reg q; // quotient
     IR_Reg r; // remainder
-    IR_Reg a; // dividend
-    IR_Reg b; // divisor
+    RegImm a; // dividend
+    RegImm b; // divisor
 } InstrDivmod;
 
 typedef struct InstrShift {
     Type* type;
     IR_Reg r;
-    IR_Reg a;
-    IR_Reg b;
+    RegImm a;
+    RegImm b;
 } InstrShift;
 
 typedef struct InstrUnary {
@@ -155,7 +155,7 @@ typedef struct InstrLAddr {
 typedef struct InstrStore {
     Type* type;
     MemAddr addr;
-    IR_Reg a;
+    RegImm a;
 } InstrStore;
 
 typedef enum ConditionKind {
@@ -175,8 +175,8 @@ typedef struct InstrCmp {
     Type* type;
     ConditionKind cond;
     IR_Reg r;
-    IR_Reg a;
-    IR_Reg b;
+    RegImm a;
+    RegImm b;
 } InstrCmp;
 
 typedef struct InstrJmp {
