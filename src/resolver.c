@@ -753,6 +753,7 @@ static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Sca
         cast_eop(dst, type, false);
     }
     else {
+        // TODO
         assert(type->kind == TYPE_FLOAT);
     }
 }
