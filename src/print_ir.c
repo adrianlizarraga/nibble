@@ -31,7 +31,7 @@ static char* IR_print_reg(Allocator* arena, IR_Reg reg)
     return dstr;
 }
 
-static char* IR_print_regimm(Allocator* arena, RegImm regimm)
+static char* IR_print_regimm(Allocator* arena, OpRI regimm)
 {
     if (regimm.is_imm) {
         return IR_print_imm(arena, regimm.imm);

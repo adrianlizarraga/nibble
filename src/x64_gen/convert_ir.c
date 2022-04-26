@@ -323,19 +323,19 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
     }
 }
 
-static void X64_load_regimm(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 lreg, unsigned size, RegImm iregimm)
+static void X64_load_op_ri(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 lreg, unsigned size, OpRI op_ri)
 {
-    if (iregimm.is_imm) {
-        X64_emit_instr_mov_r_i(builder, xbblock, size, lreg, iregimm.imm);
+    if (op_ri.is_imm) {
+        X64_emit_instr_mov_r_i(builder, xbblock, size, lreg, op_ri.imm);
     }
     else {
-        u32 s = X64_get_lir_reg(builder, iregimm.reg);
+        u32 s = X64_get_lir_reg(builder, op_ri.reg);
         X64_hint_same_reg(builder, s, lreg);
         X64_emit_instr_mov_r_r(builder, xbblock, size, lreg, s);
     }
 }
 
-static void X64_emit_memcpy(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, X64_MemAddr src, RegImm size)
+static void X64_emit_memcpy(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, X64_MemAddr src, OpRI size)
 {
     // lea rdi, [..dst]
     // lea rsi, [..src]
@@ -349,12 +349,12 @@ static void X64_emit_memcpy(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Me
     X64_emit_instr_lea(builder, xbblock, rsi, src);
 
     u32 rcx = X64_def_phys_reg(builder, X64_RCX);
-    X64_load_regimm(builder, xbblock, rcx, PTR_SIZE, size);
+    X64_load_op_ri(builder, xbblock, rcx, PTR_SIZE, size);
 
     X64_emit_instr_rep_movsb(builder, xbblock, rdi, rsi, rcx);
 }
 
-static void X64_emit_memset(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, RegImm value, RegImm size)
+static void X64_emit_memset(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, OpRI value, OpRI size)
 {
     // lea rdi, [..dst]
     // mov al, value
@@ -365,10 +365,10 @@ static void X64_emit_memset(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Me
     X64_emit_instr_lea(builder, xbblock, rdi, dst);
 
     u32 al = X64_def_phys_reg(builder, X64_RAX);
-    X64_load_regimm(builder, xbblock, al, 1, value);
+    X64_load_op_ri(builder, xbblock, al, 1, value);
 
     u32 rcx = X64_def_phys_reg(builder, X64_RCX);
-    X64_load_regimm(builder, xbblock, rcx, PTR_SIZE, size);
+    X64_load_op_ri(builder, xbblock, rcx, PTR_SIZE, size);
 
     X64_emit_instr_rep_stosb(builder, xbblock, rdi, al, rcx);
 }
@@ -703,8 +703,8 @@ static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xb
     // mov r, a
     // add r, b
     size_t size = ir_instr->binary.type->size;
-    RegImm ir_a = ir_instr->binary.a;
-    RegImm ir_b = ir_instr->binary.b;
+    OpRI ir_a = ir_instr->binary.a;
+    OpRI ir_b = ir_instr->binary.b;
 
     assert(!ir_a.is_imm || !ir_b.is_imm); // Only one should be an immediate.
     u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
@@ -741,8 +741,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             /*
             assert(type->as_float.kind == FLOAT_32); // TODO: Support f64
             size_t size = ir_instr->binary.type->size;
-            RegImm ir_a = ir_instr->binary.a;
-            RegImm ir_b = ir_instr->binary.b;
+            OpRI ir_a = ir_instr->binary.a;
+            OpRI ir_b = ir_instr->binary.b;
             
             assert(!ir_a.is_imm || !ir_b.is_imm); // Only one should be an immediate.
 
@@ -781,8 +781,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         size_t size = type->size;
         bool uses_dx = size >= 2;
 
-        RegImm ir_a = ir_instr->binary.a;
-        RegImm ir_b = ir_instr->binary.b;
+        OpRI ir_a = ir_instr->binary.a;
+        OpRI ir_b = ir_instr->binary.b;
 
         // mov _ax, a
         u32 ax = X64_def_phys_reg(builder, X64_RAX);
@@ -834,8 +834,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         size_t size = type->size;
         bool uses_dx = size >= 2;
 
-        RegImm ir_a = ir_instr->binary.a;
-        RegImm ir_b = ir_instr->binary.b;
+        OpRI ir_a = ir_instr->binary.a;
+        OpRI ir_b = ir_instr->binary.b;
 
         // mov _ax, a
         u32 ax = X64_def_phys_reg(builder, X64_RAX);
@@ -896,8 +896,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         size_t size = type->size;
         bool uses_dx = size >= 2;
 
-        RegImm ir_a = ir_instr->divmod.a;
-        RegImm ir_b = ir_instr->divmod.b;
+        OpRI ir_a = ir_instr->divmod.a;
+        OpRI ir_b = ir_instr->divmod.b;
 
         // mov _ax, a
         u32 ax = X64_def_phys_reg(builder, X64_RAX);
@@ -953,8 +953,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     case INSTR_SAR:
     case INSTR_SHL: {
         size_t size = ir_instr->shift.type->size;
-        RegImm ir_a = ir_instr->shift.a;
-        RegImm ir_b = ir_instr->shift.b;
+        OpRI ir_a = ir_instr->shift.a;
+        OpRI ir_b = ir_instr->shift.b;
 
         u32 r = X64_get_lir_reg(builder, ir_instr->shift.r);
 
@@ -1068,7 +1068,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // mov [..addr], a
 
         size_t size = ir_instr->store.type->size;
-        RegImm ir_a = ir_instr->store.a;
+        OpRI ir_a = ir_instr->store.a;
 
         X64_MemAddr addr;
         X64_get_lir_addr(builder, xbblock, &addr, &ir_instr->store.addr, 0);
@@ -1084,8 +1084,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     }
     case INSTR_CMP: {
         size_t size = ir_instr->cmp.type->size;
-        RegImm ir_a = ir_instr->cmp.a;
-        RegImm ir_b = ir_instr->cmp.b;
+        OpRI ir_a = ir_instr->cmp.a;
+        OpRI ir_b = ir_instr->cmp.b;
 
         assert(!ir_a.is_imm || !ir_b.is_imm); // Only one should be an immediate.
 
