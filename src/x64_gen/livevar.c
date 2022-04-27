@@ -56,11 +56,28 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_lreg(builder, instr->binary_r_i.dst, ino);
             break; 
         }
-        case X64_INSTR_DIV:
-        case X64_INSTR_IDIV: {
-            X64_touch_lreg(builder, instr->div.rdx, ino);
-            X64_touch_lreg(builder, instr->div.rax, ino);
-            X64_touch_lreg(builder, instr->div.src, ino);
+        case X64_INSTR_ADD_R_M:
+        case X64_INSTR_SUB_R_M:
+        case X64_INSTR_IMUL_R_M:
+        case X64_INSTR_AND_R_M:
+        case X64_INSTR_OR_R_M:
+        case X64_INSTR_XOR_R_M: {
+            X64_touch_lreg(builder, instr->binary_r_m.dst, ino);
+            X64_touch_mem_lregs(builder, &instr->binary_r_m.src, ino);
+            break; 
+        }
+        case X64_INSTR_DIV_R:
+        case X64_INSTR_IDIV_R: {
+            X64_touch_lreg(builder, instr->div_r.rdx, ino);
+            X64_touch_lreg(builder, instr->div_r.rax, ino);
+            X64_touch_lreg(builder, instr->div_r.src, ino);
+            break;
+        }
+        case X64_INSTR_DIV_M:
+        case X64_INSTR_IDIV_M: {
+            X64_touch_lreg(builder, instr->div_m.rdx, ino);
+            X64_touch_lreg(builder, instr->div_m.rax, ino);
+            X64_touch_mem_lregs(builder, &instr->div_m.src, ino);
             break;
         }
         case X64_INSTR_SEXT_AX_TO_DX: {
@@ -142,6 +159,20 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         }
         case X64_INSTR_CMP_R_I: {
             X64_touch_lreg(builder, instr->cmp_r_i.op1, ino);
+            break;
+        }
+        case X64_INSTR_CMP_R_M: {
+            X64_touch_lreg(builder, instr->cmp_r_m.op1, ino);
+            X64_touch_mem_lregs(builder, &instr->cmp_r_m.op2, ino);
+            break;
+        }
+        case X64_INSTR_CMP_M_R: {
+            X64_touch_mem_lregs(builder, &instr->cmp_m_r.op1, ino);
+            X64_touch_lreg(builder, instr->cmp_m_r.op2, ino);
+            break;
+        }
+        case X64_INSTR_CMP_M_I: {
+            X64_touch_mem_lregs(builder, &instr->cmp_m_i.op1, ino);
             break;
         }
         case X64_INSTR_JMP:

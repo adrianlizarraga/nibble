@@ -77,6 +77,15 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         [X64_INSTR_XOR_R_I] = "xor"
     };
 
+    static const char* binary_r_m_name[] = {
+        [X64_INSTR_ADD_R_M] = "add",
+        [X64_INSTR_SUB_R_M] = "sub",
+        [X64_INSTR_IMUL_R_M] = "imul",
+        [X64_INSTR_AND_R_M] = "and",
+        [X64_INSTR_OR_R_M] = "or",
+        [X64_INSTR_XOR_R_M] = "xor"
+    };
+
     static const char* shift_r_r_name[] = {
         [X64_INSTR_SAR_R_R] = "sar",
         [X64_INSTR_SHL_R_R] = "shl"
@@ -119,13 +128,32 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            instr->binary_r_i.dst, instr->binary_r_i.src.as_int._u64);
         break;
     }
-    case X64_INSTR_DIV:
-    case X64_INSTR_IDIV: {
-        const char* instr_name = instr->kind == X64_INSTR_IDIV ? "idiv" : "div";
-        u32 size = (u32)instr->div.size;
+    case X64_INSTR_ADD_R_M:
+    case X64_INSTR_SUB_R_M:
+    case X64_INSTR_IMUL_R_M:
+    case X64_INSTR_AND_R_M:
+    case X64_INSTR_OR_R_M:
+    case X64_INSTR_XOR_R_M: {
+        u32 size = (u32)instr->binary_r_m.size;
 
-        ftprint_char_array(&dstr, false, "%s <%lu> r%d", instr_name, size, instr->div.src);
+        ftprint_char_array(&dstr, false, "%s <%lu> r%d, %s", binary_r_m_name[instr->kind], size,
+                           instr->binary_r_m.dst, LIR_print_mem(arena, &instr->binary_r_m.src));
+        break;
+    }
+    case X64_INSTR_DIV_R:
+    case X64_INSTR_IDIV_R: {
+        const char* instr_name = instr->kind == X64_INSTR_IDIV_R ? "idiv" : "div";
+        u32 size = (u32)instr->div_r.size;
 
+        ftprint_char_array(&dstr, false, "%s <%lu> r%d", instr_name, size, instr->div_r.src);
+        break;
+    }
+    case X64_INSTR_DIV_M:
+    case X64_INSTR_IDIV_M: {
+        const char* instr_name = instr->kind == X64_INSTR_IDIV_M ? "idiv" : "div";
+        u32 size = (u32)instr->div_m.size;
+
+        ftprint_char_array(&dstr, false, "%s <%lu> %s", instr_name, size, LIR_print_mem(arena, &instr->div_m.src));
         break;
     }
     case X64_INSTR_SEXT_AX_TO_DX: {
@@ -230,6 +258,25 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         u32 size = (u32)instr->cmp_r_i.size;
 
         ftprint_char_array(&dstr, false, "cmp <%lu> r%d, 0x%lx", size, instr->cmp_r_i.op1, instr->cmp_r_i.op2.as_int._u64);
+        break;
+    }
+    case X64_INSTR_CMP_R_M: {
+        u32 size = (u32)instr->cmp_r_m.size;
+
+        ftprint_char_array(&dstr, false, "cmp <%lu> r%d, %s", size, instr->cmp_r_m.op1, LIR_print_mem(arena, &instr->cmp_r_m.op2));
+        break;
+    }
+    case X64_INSTR_CMP_M_R: {
+        u32 size = (u32)instr->cmp_m_r.size;
+
+        ftprint_char_array(&dstr, false, "cmp <%lu> %s, r%d", size, LIR_print_mem(arena, &instr->cmp_m_r.op1), instr->cmp_m_r.op2);
+        break;
+    }
+    case X64_INSTR_CMP_M_I: {
+        u32 size = (u32)instr->cmp_m_i.size;
+
+        ftprint_char_array(&dstr, false, "cmp <%lu> %s, 0x%lx", size, LIR_print_mem(arena, &instr->cmp_m_i.op1),
+                           instr->cmp_m_i.op2.as_int._u64);
         break;
     }
     case X64_INSTR_JMP: {

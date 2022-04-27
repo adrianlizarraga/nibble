@@ -77,14 +77,19 @@ static const ConditionKind ir_opposite_cond[] = {
     [COND_EQ] = COND_NEQ,      [COND_NEQ] = COND_EQ,
 };
 
-static inline OpRI op_ri_from_reg(IR_Reg reg)
-{
-    return (OpRI){.is_imm = false, .reg = reg};
-}
-
 static inline OpRI op_ri_from_imm(Scalar imm)
 {
     return (OpRI){.is_imm = true, .imm = imm};
+}
+
+static inline OpRIA op_ria_from_reg(IR_Reg reg)
+{
+    return (OpRIA){.kind = OP_RIA_REG, .reg = reg};
+}
+
+static inline OpRIA op_ria_from_imm(Scalar imm)
+{
+    return (OpRIA){.kind = OP_RIA_IMM, .imm = imm};
 }
 
 //////////////////////////////////////////////////////
@@ -249,7 +254,7 @@ static Instr* IR_new_instr(Allocator* arena, InstrKind kind)
 #define IR_emit_instr_or(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_OR, (t), (r), (a), (b))
 #define IR_emit_instr_xor(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_XOR, (t), (r), (a), (b))
 
-static void IR_emit_instr_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, OpRI a, OpRI b)
+static void IR_emit_instr_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
     instr->binary.type = type;
@@ -262,7 +267,7 @@ static void IR_emit_instr_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrK
 
 #define IR_emit_instr_sar(bld, blk, t, r, a, b) IR_emit_instr_shift((bld), (blk), INSTR_SAR, (t), (r), (a), (b))
 #define IR_emit_instr_shl(bld, blk, t, r, a, b) IR_emit_instr_shift((bld), (blk), INSTR_SHL, (t), (r), (a), (b))
-static void IR_emit_instr_shift(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, OpRI a, OpRI b)
+static void IR_emit_instr_shift(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
     instr->shift.type = type;
@@ -273,7 +278,7 @@ static void IR_emit_instr_shift(IR_ProcBuilder* builder, BBlock* bblock, InstrKi
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_div(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRI a, OpRI b)
+static void IR_emit_instr_div(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_DIV);
 
@@ -285,7 +290,7 @@ static void IR_emit_instr_div(IR_ProcBuilder* builder, BBlock* bblock, Type* typ
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_mod(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRI a, OpRI b)
+static void IR_emit_instr_mod(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
     assert(type->kind == TYPE_INTEGER);
 
@@ -299,7 +304,7 @@ static void IR_emit_instr_mod(IR_ProcBuilder* builder, BBlock* bblock, Type* typ
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_divmod(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg q, IR_Reg r, OpRI a, OpRI b)
+static void IR_emit_instr_divmod(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg q, IR_Reg r, OpRIA a, OpRIA b)
 {
     assert(type->kind == TYPE_INTEGER);
 
@@ -383,7 +388,7 @@ static void IR_emit_instr_store(IR_ProcBuilder* builder, BBlock* bblock, Type* t
     IR_add_instr(builder, bblock, instr);
 }
 
-static Instr* IR_emit_instr_cmp(IR_ProcBuilder* builder, BBlock* bblock, Type* type, ConditionKind cond, IR_Reg r, OpRI a, OpRI b)
+static Instr* IR_emit_instr_cmp(IR_ProcBuilder* builder, BBlock* bblock, Type* type, ConditionKind cond, IR_Reg r, OpRIA a, OpRIA b)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_CMP);
     instr->cmp.type = type;
@@ -897,26 +902,68 @@ static BBlock* IR_expr_result_to_reg(IR_ProcBuilder* builder, BBlock* bblock, IR
     }
 }
 
-static OpRI IR_expr_result_to_op_ri(IR_ProcBuilder* builder, BBlock** p_bblock, IR_ExprResult* op)
+static OpRI IR_expr_result_to_op_ri(IR_ProcBuilder* builder, BBlock** p_bblock, IR_ExprResult* expr_result)
 {
     OpRI ri;
 
-    if (op->kind == IR_EXPR_RESULT_IMM) {
+    if (expr_result->kind == IR_EXPR_RESULT_REG) {
+        ri.is_imm = false;
+        ri.reg = expr_result->reg;
+    }
+    else if (expr_result->kind == IR_EXPR_RESULT_IMM) {
         ri.is_imm = true;
-        ri.imm = op->imm;
+        ri.imm = expr_result->imm;
     }
     else {
-        *p_bblock = IR_expr_result_to_reg(builder, *p_bblock, op);
+        *p_bblock = IR_expr_result_to_reg(builder, *p_bblock, expr_result);
         ri.is_imm = false;
-        ri.reg = op->reg;
+        ri.reg = expr_result->reg;
     }
 
     return ri;
 }
 
-static OpRI IR_expr_result_to_op_ria(IR_ProcBuilder* builder, BBlock** p_bblock, IR_ExprResult* op)
+static OpRIA IR_expr_result_to_op_ria(IR_ProcBuilder* builder, BBlock** p_bblock, IR_ExprResult* expr_result)
 {
-    // TODO: Left off here
+    OpRIA ria = {0};
+
+    switch (expr_result->kind) {
+    case IR_EXPR_RESULT_REG:
+        ria.kind = OP_RIA_REG;
+        ria.reg = expr_result->reg;
+        break;
+    case IR_EXPR_RESULT_IMM:
+        ria.kind = OP_RIA_IMM;
+        ria.imm = expr_result->imm;
+        break;
+    case IR_EXPR_RESULT_VAR:
+        ria.kind = OP_RIA_ADDR;
+        ria.addr = IR_sym_as_addr(builder, expr_result->sym);
+        break;
+    case IR_EXPR_RESULT_DEREF_ADDR:
+        ria.kind = OP_RIA_ADDR;
+        ria.addr = expr_result->addr;
+        break;
+    case IR_EXPR_RESULT_TMP_OBJ:
+        ria.kind = OP_RIA_ADDR;
+        ria.addr = IR_tmp_obj_as_addr(expr_result->tmp_obj);
+        break;
+    case IR_EXPR_RESULT_STR_LIT:
+        ria.kind = OP_RIA_ADDR;
+        ria.addr = IR_strlit_as_addr(expr_result->str_lit);
+        break;
+    case IR_EXPR_RESULT_MEM_ADDR:
+    case IR_EXPR_RESULT_DEFERRED_CMP:
+    case IR_EXPR_RESULT_PROC:
+        *p_bblock = IR_expr_result_to_reg(builder, *p_bblock, expr_result);
+        ria.kind = OP_RIA_REG;
+        ria.reg = expr_result->reg;
+        break;
+    default:
+        NIBBLE_FATAL_EXIT("IR_expr_result_to_op_ria(): Unexpected IR_ExprResultKind %d", expr_result->kind);
+    }
+
+    return ria;
 }
 
 static void IR_zero_memory(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* addr, size_t size)
@@ -1209,8 +1256,8 @@ static BBlock* IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_E
             curr_bb = IR_expr_result_to_reg(builder, curr_bb, int_er);
 
             IR_Reg r = IR_next_reg(builder);
-            OpRI a = op_ri_from_reg(ptr_er->addr.index_reg);
-            OpRI b = op_ri_from_reg(int_er->reg);
+            OpRIA a = op_ria_from_reg(ptr_er->addr.index_reg);
+            OpRIA b = op_ria_from_reg(int_er->reg);
 
             if (add)
                 IR_emit_instr_add(builder, curr_bb, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
@@ -1245,8 +1292,8 @@ static BBlock* IR_emit_binary_cmp(IR_ProcBuilder* builder, BBlock* bblock, Condi
     assert(left_er->type == right_er->type);
     BBlock* curr_bb = bblock;
 
-    OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-    OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
 
     IR_Reg cmp_reg = IR_next_reg(builder);
     Instr* cmp_instr = IR_emit_instr_cmp(builder, curr_bb, left_er->type, cond_kind, cmp_reg, a, b);
@@ -1340,8 +1387,8 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     else {
         left_end_bb = IR_expr_result_to_reg(builder, left_end_bb, &left_er);
 
-        OpRI a = op_ri_from_reg(left_er.reg);
-        OpRI b = op_ri_from_imm(ir_zero_imm);
+        OpRIA a = op_ria_from_reg(left_er.reg);
+        OpRIA b = op_ria_from_imm(ir_zero_imm);
 
         IR_Reg cmp_reg = IR_next_reg(builder);
         Instr* cmp_instr = IR_emit_instr_cmp(builder, left_end_bb, left_er.type, short_circuit_cond, cmp_reg, a, b);
@@ -1373,8 +1420,8 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     else {
         right_end_bb = IR_expr_result_to_reg(builder, right_end_bb, &right_er);
 
-        OpRI a = op_ri_from_reg(right_er.reg);
-        OpRI b = op_ri_from_imm(ir_zero_imm);
+        OpRIA a = op_ria_from_reg(right_er.reg);
+        OpRIA b = op_ria_from_imm(ir_zero_imm);
 
         IR_Reg cmp_reg = IR_next_reg(builder);
         Instr* cmp_instr = IR_emit_instr_cmp(builder, right_end_bb, right_er.type, COND_EQ, cmp_reg, a, b);
@@ -1408,8 +1455,8 @@ static BBlock* IR_emit_op_add(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     }
     else {
         assert(left_er->type == right_er->type);
-        OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-        OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+        OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+        OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
         IR_emit_instr_add(builder, curr_bb, dst_type, dst_reg, a, b);
@@ -1438,16 +1485,16 @@ static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
         u64 base_size = left_er->type->as_ptr.base->size;
         u32 base_size_log2 = (u32)clp2(base_size);
 
-        OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-        OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+        OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+        OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
         IR_emit_instr_sub(builder, curr_bb, dst_type, dst_reg, a, b);
 
         if (base_size_log2 > 0) {
             // Shift result of subtraction by the shift amount.
-            OpRI unshifted = op_ri_from_reg(dst_reg);
-            OpRI shift_arg = op_ri_from_imm((Scalar){.as_int._u32 = base_size_log2});
+            OpRIA unshifted = op_ria_from_reg(dst_reg);
+            OpRIA shift_arg = op_ria_from_imm((Scalar){.as_int._u32 = base_size_log2});
             dst_reg = IR_next_reg(builder);
             IR_emit_instr_sar(builder, curr_bb, dst_type, dst_reg, unshifted, shift_arg);
         }
@@ -1458,8 +1505,8 @@ static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     }
     // int - int => int
     else {
-        OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-        OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+        OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+        OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
         IR_emit_instr_sub(builder, curr_bb, dst_type, dst_reg, a, b);
@@ -1477,8 +1524,8 @@ static BBlock* IR_emit_op_mul(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
 {
     BBlock* curr_bb = bblock;
 
-    OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-    OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
     // TODO: Emit a shift instruction if one of the expr_results is a power-of-two immediate.
@@ -1496,8 +1543,8 @@ static BBlock* IR_emit_op_div(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
 {
     BBlock* curr_bb = bblock;
 
-    OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-    OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
     // TODO: Emit a shift instruction if the second expr_result is a power-of-two immediate.
@@ -1515,8 +1562,8 @@ static BBlock* IR_emit_op_mod(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
 {
     BBlock* curr_bb = bblock;
 
-    OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-    OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
     // TODO: Emit a masking instruction if the second expr_result is a power-of-two immediate.
@@ -1534,8 +1581,8 @@ static BBlock* IR_emit_op_and(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
 {
     BBlock* curr_bb = bblock;
 
-    OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-    OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
     IR_emit_instr_and(builder, curr_bb, dst_type, dst_reg, a, b);
@@ -1552,8 +1599,8 @@ static BBlock* IR_emit_op_or(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRes
 {
     BBlock* curr_bb = bblock;
 
-    OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-    OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
     IR_emit_instr_or(builder, curr_bb, dst_type, dst_reg, a, b);
@@ -1570,8 +1617,8 @@ static BBlock* IR_emit_op_xor(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
 {
     BBlock* curr_bb = bblock;
 
-    OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-    OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
     IR_emit_instr_xor(builder, curr_bb, dst_type, dst_reg, a, b);
@@ -1588,8 +1635,8 @@ static BBlock* IR_emit_op_sar(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
 {
     BBlock* curr_bb = bblock;
 
-    OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-    OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
     IR_emit_instr_sar(builder, curr_bb, dst_type, dst_reg, a, b);
@@ -1606,8 +1653,8 @@ static BBlock* IR_emit_op_shl(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
 {
     BBlock* curr_bb = bblock;
 
-    OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, left_er);
-    OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, right_er);
+    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
     IR_emit_instr_shl(builder, curr_bb, dst_type, dst_reg, a, b);
@@ -1680,8 +1727,8 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
             }
         }
         else {
-            OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, &left);
-            OpRI b = IR_expr_result_to_op_ri(builder, &curr_bb, &right);
+            OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, &left);
+            OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, &right);
             IR_Reg quot_reg = IR_next_reg(builder);
             IR_Reg rem_reg = IR_next_reg(builder);
 
@@ -1911,8 +1958,8 @@ static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprU
             dst->cmp.final_jmp.result = !inner_er.cmp.final_jmp.result;
         }
         else {
-            OpRI a = IR_expr_result_to_op_ri(builder, &curr_bb, &inner_er);
-            OpRI b = op_ri_from_imm(ir_zero_imm);
+            OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, &inner_er);
+            OpRIA b = op_ria_from_imm(ir_zero_imm);
 
             IR_Reg dst_reg = IR_next_reg(builder);
             Instr* cmp_instr = IR_emit_instr_cmp(builder, curr_bb, inner_er.type, COND_EQ, dst_reg, a, b);
@@ -2146,8 +2193,8 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         assert(type_is_scalar(src_er->type));
         assert(src_er->kind != IR_EXPR_RESULT_DEFERRED_CMP);
 
-        OpRI s = IR_expr_result_to_op_ri(builder, &curr_bb, src_er);
-        OpRI z = op_ri_from_imm(ir_zero_imm);
+        OpRIA s = IR_expr_result_to_op_ria(builder, &curr_bb, src_er);
+        OpRIA z = op_ria_from_imm(ir_zero_imm);
 
         // Check if src != 0.
         IR_Reg cmp_reg = IR_next_reg(builder);
@@ -3123,8 +3170,8 @@ static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* 
         }
     }
     else {
-        OpRI c = IR_expr_result_to_op_ri(builder, &curr_bb, &cond_er);
-        OpRI z = op_ri_from_imm(ir_zero_imm);
+        OpRIA c = IR_expr_result_to_op_ria(builder, &curr_bb, &cond_er);
+        OpRIA z = op_ria_from_imm(ir_zero_imm);
 
         ConditionKind cond_kind = jmp_result ? COND_NEQ : COND_EQ;
 

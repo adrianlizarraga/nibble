@@ -16,6 +16,7 @@ typedef enum X64_InstrKind
     // Addition
     X64_INSTR_ADD_R_R,
     X64_INSTR_ADD_R_I,
+    X64_INSTR_ADD_R_M,
 
     // f32 add
     X64_INSTR_ADDSS_R_R,
@@ -28,28 +29,35 @@ typedef enum X64_InstrKind
     // Subtraction
     X64_INSTR_SUB_R_R,
     X64_INSTR_SUB_R_I,
+    X64_INSTR_SUB_R_M,
 
     // Multiplication
     X64_INSTR_IMUL_R_R,
     X64_INSTR_IMUL_R_I,
+    X64_INSTR_IMUL_R_M,
 
     // Unsigned division
-    X64_INSTR_DIV,
+    X64_INSTR_DIV_R,
+    X64_INSTR_DIV_M,
 
     // Signed division
-    X64_INSTR_IDIV,
+    X64_INSTR_IDIV_R,
+    X64_INSTR_IDIV_M,
 
     // Bitwise AND
     X64_INSTR_AND_R_R,
     X64_INSTR_AND_R_I,
+    X64_INSTR_AND_R_M,
 
     // Bitwise OR
     X64_INSTR_OR_R_R,
     X64_INSTR_OR_R_I,
+    X64_INSTR_OR_R_M,
 
     // Bitwise XOR
     X64_INSTR_XOR_R_R,
     X64_INSTR_XOR_R_I,
+    X64_INSTR_XOR_R_M,
 
     // Arithmetic shift right
     X64_INSTR_SAR_R_R,
@@ -98,6 +106,9 @@ typedef enum X64_InstrKind
     // Compare two values and set condition flags
     X64_INSTR_CMP_R_R,
     X64_INSTR_CMP_R_I,
+    X64_INSTR_CMP_R_M,
+    X64_INSTR_CMP_M_R,
+    X64_INSTR_CMP_M_I,
 
     // Jump to instruction index
     X64_INSTR_JMP,
@@ -155,6 +166,12 @@ typedef struct X64_InstrBinary_R_I {
     Scalar src;
 } X64_InstrBinary_R_I;
 
+typedef struct X64_InstrBinary_R_M {
+    size_t size;
+    u32 dst;
+    X64_MemAddr src;
+} X64_InstrBinary_R_M;
+
 typedef struct X64_InstrShift_R_R {
     size_t size;
     u32 dst;
@@ -167,12 +184,19 @@ typedef struct X64_InstrShift_R_I {
     Scalar src;
 } X64_InstrShift_R_I;
 
-typedef struct X64_InstrDiv {
+typedef struct X64_InstrDiv_R {
     size_t size;
     u32 rdx;
     u32 rax;
     u32 src;
-} X64_InstrDiv;
+} X64_InstrDiv_R;
+
+typedef struct X64_InstrDiv_M {
+    size_t size;
+    u32 rdx;
+    u32 rax;
+    X64_MemAddr src;
+} X64_InstrDiv_M;
 
 typedef struct X64_InstrUnary {
     size_t size;
@@ -255,6 +279,24 @@ typedef struct X64_InstrCmp_R_I {
     u32 op1;
     Scalar op2;
 } X64_InstrCmp_R_I;
+
+typedef struct X64_InstrCmp_R_M {
+    size_t size;
+    u32 op1;
+    X64_MemAddr op2;
+} X64_InstrCmp_R_M;
+
+typedef struct X64_InstrCmp_M_R {
+    size_t size;
+    X64_MemAddr op1;
+    u32 op2;
+} X64_InstrCmp_M_R;
+
+typedef struct X64_InstrCmp_M_I {
+    size_t size;
+    X64_MemAddr op1;
+    Scalar op2;
+} X64_InstrCmp_M_I;
 
 typedef struct X64_InstrJmpCC {
     ConditionKind cond;
@@ -343,11 +385,13 @@ struct X64_Instr {
     union {
         X64_InstrBinary_R_R binary_r_r;
         X64_InstrBinary_R_I binary_r_i;
+        X64_InstrBinary_R_M binary_r_m;
 
         X64_InstrShift_R_R shift_r_r;
         X64_InstrShift_R_I shift_r_i;
 
-        X64_InstrDiv div;
+        X64_InstrDiv_R div_r;
+        X64_InstrDiv_M div_m;
 
         X64_InstrUnary unary;
 
@@ -369,6 +413,9 @@ struct X64_Instr {
 
         X64_InstrCmp_R_R cmp_r_r;
         X64_InstrCmp_R_I cmp_r_i;
+        X64_InstrCmp_R_M cmp_r_m;
+        X64_InstrCmp_M_R cmp_m_r;
+        X64_InstrCmp_M_I cmp_m_i;
 
         X64_InstrJmp jmp;
 
@@ -421,9 +468,12 @@ u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r);
 
 void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, u32 src);
 void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
+void X64_emit_instr_binary_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, X64_MemAddr src);
 void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, u32 src);
 void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
-void X64_emit_instr_div(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 rdx, u32 rax, u32 src);
+void X64_emit_instr_div_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 rdx, u32 rax, u32 src);
+void X64_emit_instr_div_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 rdx, u32 rax,
+                          X64_MemAddr src);
 void X64_emit_instr_unary(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst);
 void X64_emit_instr_mov_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, u32 src);
 void X64_emit_instr_mov_r_rh(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
@@ -437,6 +487,9 @@ void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, 
 void X64_emit_instr_lea(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr mem);
 void X64_emit_instr_cmp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, u32 op2);
 void X64_emit_instr_cmp_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, Scalar op2);
+void X64_emit_instr_cmp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, X64_MemAddr op2);
+void X64_emit_instr_cmp_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr op1, u32 op2);
+void X64_emit_instr_cmp_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr op1, Scalar op2);
 void X64_emit_instr_jmp(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_BBlock* target);
 void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, X64_BBlock* true_bb,
                           X64_BBlock* false_bb);

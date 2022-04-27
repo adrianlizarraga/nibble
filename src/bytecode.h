@@ -24,22 +24,6 @@ struct OpRI {
     };
 };
 
-typedef enum OpRIAKind {
-    OP_RIA_REG,
-    OP_RIA_IMM,
-    OP_RIA_ADDR
-} OpRIAKind;
-
-struct OpRIA {
-    OpRIAKind kind;
-
-    union {
-        IR_Reg reg;
-        Scalar imm;
-        MemAddr addr;
-    };
-};
-
 typedef enum InstrKind {
     INSTR_NONE = 0,
     INSTR_ADD,
@@ -97,6 +81,23 @@ struct MemAddr {
     u32 disp;
 };
 
+typedef enum OpRIAKind {
+    OP_RIA_NONE = 0,
+    OP_RIA_REG,
+    OP_RIA_IMM,
+    OP_RIA_ADDR
+} OpRIAKind;
+
+struct OpRIA {
+    OpRIAKind kind;
+
+    union {
+        IR_Reg reg;
+        Scalar imm;
+        MemAddr addr;
+    };
+};
+
 typedef enum MemObjKind {
     MEM_OBJ_NONE = 0,
     MEM_OBJ_ANON_OBJ,
@@ -119,23 +120,23 @@ struct MemObj {
 typedef struct InstrBinary {
     Type* type;
     IR_Reg r;
-    OpRI a;
-    OpRI b;
+    OpRIA a;
+    OpRIA b;
 } InstrBinary;
 
 typedef struct InstrDivmod {
     Type* type;
     IR_Reg q; // quotient
     IR_Reg r; // remainder
-    OpRI a; // dividend
-    OpRI b; // divisor
+    OpRIA a; // dividend
+    OpRIA b; // divisor
 } InstrDivmod;
 
 typedef struct InstrShift {
     Type* type;
     IR_Reg r;
-    OpRI a;
-    OpRI b;
+    OpRIA a;
+    OpRIA b;
 } InstrShift;
 
 typedef struct InstrUnary {
@@ -192,8 +193,8 @@ typedef struct InstrCmp {
     Type* type;
     ConditionKind cond;
     IR_Reg r;
-    OpRI a;
-    OpRI b;
+    OpRIA a;
+    OpRIA b;
 } InstrCmp;
 
 typedef struct InstrJmp {

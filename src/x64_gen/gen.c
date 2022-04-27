@@ -1488,6 +1488,9 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
     static const char* binary_r_i_name[] = {[X64_INSTR_ADD_R_I] = "add", [X64_INSTR_SUB_R_I] = "sub", [X64_INSTR_IMUL_R_I] = "imul",
                                             [X64_INSTR_AND_R_I] = "and", [X64_INSTR_OR_R_I] = "or",   [X64_INSTR_XOR_R_I] = "xor"};
 
+    static const char* binary_r_m_name[] = {[X64_INSTR_ADD_R_M] = "add", [X64_INSTR_SUB_R_M] = "sub", [X64_INSTR_IMUL_R_M] = "imul",
+                                            [X64_INSTR_AND_R_M] = "and", [X64_INSTR_OR_R_M] = "or",   [X64_INSTR_XOR_R_M] = "xor"};
+
     static const char* shift_r_r_name[] = {[X64_INSTR_SAR_R_R] = "sar", [X64_INSTR_SHL_R_R] = "shl"};
 
     static const char* shift_r_i_name[] = {[X64_INSTR_SAR_R_I] = "sar", [X64_INSTR_SHL_R_I] = "shl"};
@@ -1519,17 +1522,39 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_ri_instr(generator, binary_r_i_name[instr->kind], size, instr->binary_r_i.dst, size, instr->binary_r_i.src);
         break;
     }
-    case X64_INSTR_DIV:
-    case X64_INSTR_IDIV: {
-        const char* instr_name = instr->kind == X64_INSTR_IDIV ? "idiv" : "div";
-        u32 size = (u32)instr->div.size;
+    case X64_INSTR_ADD_R_M:
+    case X64_INSTR_SUB_R_M:
+    case X64_INSTR_IMUL_R_M:
+    case X64_INSTR_AND_R_M:
+    case X64_INSTR_OR_R_M:
+    case X64_INSTR_XOR_R_M: {
+        u32 size = (u32)instr->binary_r_m.size;
 
-        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->div.src);
+        X64_emit_rm_instr(generator, binary_r_m_name[instr->kind], true, size, instr->binary_r_m.dst, size, &instr->binary_r_m.src);
+        break;
+    }
+    case X64_INSTR_DIV_R:
+    case X64_INSTR_IDIV_R: {
+        const char* instr_name = instr->kind == X64_INSTR_IDIV_R ? "idiv" : "div";
+        u32 size = (u32)instr->div_r.size;
+
+        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->div_r.src);
         bool src_is_reg = src_loc.kind == X64_LREG_LOC_REG;
         const char* src_op_str =
             src_is_reg ? x64_reg_names[size][src_loc.reg] : X64_print_stack_offset(generator->tmp_mem, src_loc.offset, size);
 
         X64_emit_text(generator, "    %s %s", instr_name, src_op_str);
+
+        break;
+    }
+    case X64_INSTR_DIV_M:
+    case X64_INSTR_IDIV_M: {
+        const char* instr_name = instr->kind == X64_INSTR_IDIV_M ? "idiv" : "div";
+        u32 size = (u32)instr->div_m.size;
+        X64_SIBDAddr op_addr = {0};
+
+        X64_get_sibd_addr(generator, &op_addr, &instr->div_m.src);
+        X64_emit_text(generator, "    %s %s", instr_name, X64_print_sibd_addr(generator->tmp_mem, &op_addr, size));
 
         break;
     }
@@ -1690,6 +1715,24 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         u32 size = (u32)instr->cmp_r_i.size;
 
         X64_emit_ri_instr(generator, "cmp", size, instr->cmp_r_i.op1, size, instr->cmp_r_i.op2);
+        break;
+    }
+    case X64_INSTR_CMP_R_M: {
+        u32 size = (u32)instr->cmp_r_m.size;
+
+        X64_emit_rm_instr(generator, "cmp", false, size, instr->cmp_r_m.op1, size, &instr->cmp_r_m.op2);
+        break;
+    }
+    case X64_INSTR_CMP_M_R: {
+        u32 size = (u32)instr->cmp_m_r.size;
+
+        X64_emit_mr_instr(generator, "cmp", size, &instr->cmp_m_r.op1, size, instr->cmp_m_r.op2);
+        break;
+    }
+    case X64_INSTR_CMP_M_I: {
+        u32 size = (u32)instr->cmp_m_i.size;
+
+        X64_emit_mi_instr(generator, "cmp", size, &instr->cmp_m_i.op1, size, instr->cmp_m_i.op2);
         break;
     }
     case X64_INSTR_JMP: {
