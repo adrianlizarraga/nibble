@@ -88,6 +88,7 @@ static inline bool float_eq(FloatKind kind, Float a, Float b)
 
 typedef struct FloatLit {
     struct FloatLit* next;
+    bool used;
     size_t id;
     FloatKind kind;
     Float value;

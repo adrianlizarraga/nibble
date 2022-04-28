@@ -10,6 +10,7 @@
 
 #define X64_INIT_LINE_LEN 128
 #define X64_STR_LIT_PRE "__nibble_str_lit_"
+#define X64_FLOAT_LIT_PRE "__nibble_float_lit_"
 
 static const char* x64_reg_h_names[X64_REG_COUNT] = {
     [X64_RAX] = "ah",
@@ -101,6 +102,7 @@ typedef enum X64_SIBDAddrKind {
     X64_SIBD_ADDR_GLOBAL,
     X64_SIBD_ADDR_LOCAL,
     X64_SIBD_ADDR_STR_LIT,
+    X64_SIBD_ADDR_FLOAT_LIT,
 } X64_SIBDAddrKind;
 
 typedef struct X64_SIBDAddr {
@@ -114,6 +116,7 @@ typedef struct X64_SIBDAddr {
             u8 scale;
         } local;
         StrLit* str_lit;
+        FloatLit* float_lit;
     };
 } X64_SIBDAddr;
 
@@ -409,6 +412,11 @@ static void X64_print_global_val(Allocator* allocator, ConstExpr* const_expr, ch
 
         ftprint_char_array(line, false, "0x00\n");
 
+        break;
+    }
+    case CONST_EXPR_FLOAT_LIT: {
+        // TODO: Implement!
+        assert(0);
         break;
     }
     case CONST_EXPR_PROC: {
@@ -957,6 +965,10 @@ static u32 X64_get_sibd_addr(X64_Generator* generator, X64_SIBDAddr* sibd_addr, 
         sibd_addr->kind = X64_SIBD_ADDR_STR_LIT;
         sibd_addr->str_lit = vaddr->str_lit;
     }
+    else if (vaddr->kind == X64_ADDR_FLOAT_LIT) {
+        sibd_addr->kind = X64_SIBD_ADDR_FLOAT_LIT;
+        sibd_addr->float_lit = vaddr->float_lit;
+    }
     else {
         assert(vaddr->kind == X64_ADDR_SIBD);
         bool has_base = vaddr->sibd.base_reg != (u32)-1;
@@ -1006,6 +1018,9 @@ static char* X64_print_sibd_addr(Allocator* allocator, X64_SIBDAddr* addr, u32 m
 
     if (addr->kind == X64_SIBD_ADDR_STR_LIT) {
         ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_STR_LIT_PRE, addr->str_lit->id);
+    }
+    else if (addr->kind == X64_SIBD_ADDR_FLOAT_LIT) {
+        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_FLOAT_LIT_PRE, addr->float_lit->id);
     }
     else if (addr->kind == X64_SIBD_ADDR_GLOBAL) {
         ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, symbol_mangled_name(allocator, addr->global));
@@ -2076,7 +2091,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     allocator_restore_state(mem_state);
 }
 
-static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, BucketList* str_lits)
+static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, BucketList* str_lits, BucketList* float_lits)
 {
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
@@ -2097,6 +2112,28 @@ static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, Buck
 
         X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
         X64_emit_data(generator, "db `%s\\0`", escaped_str);
+    }
+
+    // Emit static/const float literals
+    size_t num_float_lits = float_lits->num_elems;
+
+    for (size_t i = 0; i < num_float_lits; i++) {
+        void** float_lit_ptr = bucket_list_get_elem_packed(float_lits, i);
+        assert(float_lit_ptr);
+
+        FloatLit* float_lit = (FloatLit*)(*float_lit_ptr);
+
+        assert(float_lit->used);
+
+        X64_emit_data(generator, "%s_%llu: ", X64_FLOAT_LIT_PRE, float_lit->id);
+        
+        if (float_lit->kind == FLOAT_F64) {
+            X64_emit_data(generator, "%s %f", x64_data_size_label[8],  float_lit->value._f64);
+        }
+        else {
+            assert(float_lit->kind == FLOAT_F32);
+            X64_emit_data(generator, "%s %f", x64_data_size_label[4],  float_lit->value._f32);
+        }
     }
 
     X64_emit_data(generator, "\nSECTION .data\n");
@@ -2140,7 +2177,7 @@ static void X64_write_output_file(X64_Generator* generator, FILE* out_fd)
 }
 
 bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs, BucketList* str_lits,
-                    const char* output_file)
+                    BucketList* float_lits, const char* output_file)
 {
     FILE* out_fd = fopen(output_file, "w");
     if (!out_fd) {
@@ -2156,7 +2193,7 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bu
     };
 
     // Generate global variables.
-    X64_gen_global_vars(&generator, vars, str_lits);
+    X64_gen_global_vars(&generator, vars, str_lits, float_lits);
 
     // Generate instructions for each procedure.
     size_t num_procs = procs->num_elems;

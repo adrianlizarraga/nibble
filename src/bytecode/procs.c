@@ -5,6 +5,7 @@ typedef struct IR_ProcBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
     BucketList* str_lits;
+    BucketList* float_lits;
     TypeCache* type_cache;
     Symbol* curr_proc;
     Scope* curr_scope;
@@ -25,6 +26,7 @@ typedef enum IR_ExprResultKind {
     IR_EXPR_RESULT_VAR,
     IR_EXPR_RESULT_TMP_OBJ,
     IR_EXPR_RESULT_STR_LIT,
+    IR_EXPR_RESULT_FLOAT_LIT,
     IR_EXPR_RESULT_PROC,
 } IR_ExprResultKind;
 
@@ -65,6 +67,7 @@ typedef struct IR_ExprResult {
         IR_TmpObj* tmp_obj;
         IR_DeferredCmp cmp;
         StrLit* str_lit;
+        FloatLit* float_lit;
     };
 } IR_ExprResult;
 
@@ -536,6 +539,12 @@ static MemAddr IR_strlit_as_addr(StrLit* str_lit)
     return addr;
 }
 
+static MemAddr IR_floatlit_as_addr(FloatLit* float_lit)
+{
+    MemAddr addr = {.base_kind = MEM_BASE_FLOAT_LIT, .base.float_lit = float_lit, .index_reg = IR_REG_COUNT};
+    return addr;
+}
+
 static void IR_get_object_addr(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* dst, IR_ExprResult* src)
 {
     Type* src_type = src->type;
@@ -889,6 +898,15 @@ static BBlock* IR_expr_result_to_reg(IR_ProcBuilder* builder, BBlock* bblock, IR
 
         return bblock;
     }
+    case IR_EXPR_RESULT_FLOAT_LIT: {
+        IR_Reg reg = IR_next_reg(builder);
+        IR_emit_instr_load(builder, bblock, expr_result->type, reg, IR_floatlit_as_addr(expr_result->float_lit));
+
+        expr_result->kind = IR_EXPR_RESULT_REG;
+        expr_result->reg = reg;
+
+        return bblock;
+    }
     default: {
         assert(expr_result->kind == IR_EXPR_RESULT_VAR);
         IR_Reg reg = IR_next_reg(builder);
@@ -951,6 +969,10 @@ static OpRIA IR_expr_result_to_op_ria(IR_ProcBuilder* builder, BBlock** p_bblock
     case IR_EXPR_RESULT_STR_LIT:
         ria.kind = OP_RIA_ADDR;
         ria.addr = IR_strlit_as_addr(expr_result->str_lit);
+        break;
+    case IR_EXPR_RESULT_FLOAT_LIT:
+        ria.kind = OP_RIA_ADDR;
+        ria.addr = IR_floatlit_as_addr(expr_result->float_lit);
         break;
     case IR_EXPR_RESULT_MEM_ADDR:
     case IR_EXPR_RESULT_DEFERRED_CMP:
@@ -2840,10 +2862,24 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
         Type* type = expr->type;
         Scalar imm = expr->imm;
 
-        assert(type_is_scalar(type));
-        dst->kind = IR_EXPR_RESULT_IMM;
-        dst->type = type;
-        dst->imm = imm;
+        if (type->kind == TYPE_FLOAT) {
+            FloatLit* float_lit = intern_float_lit(type->as_float.kind, imm.as_float);
+
+            dst->kind = IR_EXPR_RESULT_FLOAT_LIT;
+            dst->type = type;
+            dst->float_lit = float_lit;
+
+            if (!float_lit->used) {
+                float_lit->used = true;
+                bucket_list_add_elem(builder->float_lits, float_lit);
+            }
+        }
+        else {
+            assert(type_is_scalar(type));
+            dst->kind = IR_EXPR_RESULT_IMM;
+            dst->type = type;
+            dst->imm = imm;
+        }
 
         return bblock;
     }
@@ -3645,11 +3681,13 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     allocator_restore_state(mem_state);
 }
 
-static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, BucketList* str_lits, TypeCache* type_cache)
+static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, BucketList* str_lits, BucketList* float_lits,
+                           TypeCache* type_cache)
 {
     IR_ProcBuilder builder = {.arena = arena,
                               .tmp_arena = tmp_arena,
                               .str_lits = str_lits,
+                              .float_lits = float_lits,
                               .type_cache = type_cache,
                               .curr_proc = NULL,
                               .curr_scope = NULL};

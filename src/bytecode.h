@@ -311,5 +311,5 @@ struct BBlock {
 };
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, BucketList* str_lits,
-                     TypeCache* type_cache);
+                     BucketList* float_lits, TypeCache* type_cache);
 #endif

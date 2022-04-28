@@ -137,6 +137,7 @@ typedef enum X64_MemAddrKind
     X64_ADDR_GLOBAL_SYM,
     X64_ADDR_SIBD,
     X64_ADDR_STR_LIT,
+    X64_ADDR_FLOAT_LIT,
 } X64_MemAddrKind;
 
 typedef struct X64_MemAddr {
@@ -151,6 +152,7 @@ typedef struct X64_MemAddr {
             u8 scale;
         } sibd;
         StrLit* str_lit;
+        FloatLit* float_lit;
     };
 } X64_MemAddr;
 

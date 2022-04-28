@@ -4,6 +4,6 @@
 
 bool init_code_gen(OS target_os, Arch target_arch);
 bool gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs, BucketList* str_lits,
-                const char* output_file);
+                BucketList* float_lits, const char* output_file);
 
 #endif

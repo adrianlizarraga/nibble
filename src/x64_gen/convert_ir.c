@@ -213,18 +213,23 @@ static u32 X64_lea_sib(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 index_r
 
 static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr* dst, MemAddr* src, u32 banned_regs)
 {
+    if (src->base_kind == MEM_BASE_STR_LIT) {
+        dst->kind = X64_ADDR_STR_LIT;
+        dst->str_lit = src->base.str_lit;
+        return;
+    }
+
+    if (src->base_kind == MEM_BASE_FLOAT_LIT) {
+        dst->kind = X64_ADDR_FLOAT_LIT;
+        dst->float_lit = src->base.float_lit;
+        return;
+    }
+
     bool has_base = src->base_kind != MEM_BASE_NONE;
     bool has_index = src->scale && (src->index_reg < IR_REG_COUNT);
     assert(has_base || has_index);
 
     if (has_base) {
-        if (src->base_kind == MEM_BASE_STR_LIT) {
-            dst->kind = X64_ADDR_STR_LIT;
-            dst->str_lit = src->base.str_lit;
-
-            return;
-        }
-
         u32 base_reg = (u32)-1;
         u32 index_reg = (u32)-1;
         s8 scale = src->scale;
