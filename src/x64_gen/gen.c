@@ -125,8 +125,7 @@ typedef struct X64_ProcState {
     u32 id;
     X64_LIRBuilder* builder;
 
-    X64_Reg* scratch_regs;
-    u32 num_scratch_regs;
+    X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT];
 } X64_ProcState;
 
 typedef struct X64_Generator {
@@ -419,9 +418,6 @@ static void X64_print_global_val(Allocator* allocator, ConstExpr* const_expr, ch
         Scalar imm = {.as_float = float_lit->value};
         size_t size = float_kind_sizes[float_lit->kind];
 
-        if (size == 4) printf("f32: 0x%X\n", imm.as_int._u32);
-        else printf("f64: 0x%lX\n", imm.as_int._u64);
-
         X64_print_global_int_bytes(imm, size, line);
         break;
     }
@@ -518,8 +514,9 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, u32 lreg, u32 size, bool store, 
     // to be restored later.
 
     X64_Generator* generator = group->generator;
-    u32 num_scratch_regs = generator->curr_proc.num_scratch_regs;
-    X64_Reg* scratch_regs = generator->curr_proc.scratch_regs;
+    X64_ScratchRegs* int_scratch_regs = &(*generator->curr_proc.scratch_regs)[X64_REG_CLASS_INT];
+    u32 num_scratch_regs = int_scratch_regs->num_regs;
+    X64_Reg* scratch_regs = int_scratch_regs->regs;
 
     assert(lreg_loc.kind == X64_LREG_LOC_STACK);
     assert(group->num_tmp_regs < num_scratch_regs);
@@ -1968,14 +1965,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     bool is_nonleaf = sym->as_proc.is_nonleaf;
 
     // Set different scratch register order for leaf vs nonleaf procedures.
-    if (is_nonleaf) {
-        generator->curr_proc.scratch_regs = x64_target.nonleaf_scratch_regs;
-        generator->curr_proc.num_scratch_regs = x64_target.num_nonleaf_scratch_regs;
-    }
-    else {
-        generator->curr_proc.scratch_regs = x64_target.leaf_scratch_regs;
-        generator->curr_proc.num_scratch_regs = x64_target.num_leaf_scratch_regs;
-    }
+    generator->curr_proc.scratch_regs = is_nonleaf ? x64_target.nonleaf_scratch_regs : x64_target.leaf_scratch_regs;
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
@@ -2005,7 +1995,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     X64_compute_live_intervals(&builder);
 
     X64_RegAllocResult reg_alloc =
-        X64_linear_scan_reg_alloc(&builder, generator->curr_proc.num_scratch_regs, generator->curr_proc.scratch_regs, stack_size);
+        X64_linear_scan_reg_alloc(&builder, generator->curr_proc.scratch_regs, stack_size);
 
     if (!reg_alloc.success) {
         NIBBLE_FATAL_EXIT("Register allocation for procedure `%s` failed.", sym->name->str);

@@ -19,7 +19,12 @@ var g_str : ^char = "global\n";
 var g_p_var : ^^char = ^g_str;
 var g_p_imm : ^char = 0xdeadbeef :> ^char;
 
+var g_f64 : f64 = 1.2;
+var g_f32 : f32 = 1.2f;
+
 proc main() => int {
+    var l_f64 : f64 = 1.2;
+    var l_f32 : f32 = 1.2f;
     var nl : char = '\n';
 
     #writeout(g_b[0], 2);

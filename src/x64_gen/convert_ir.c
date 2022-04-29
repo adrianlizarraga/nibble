@@ -71,25 +71,25 @@ static void X64_alias_lir_regs(X64_LIRBuilder* builder, u32 u, u32 v)
     }
 }
 
-static u32 X64_next_lir_reg(X64_LIRBuilder* builder)
+static u32 X64_next_lir_reg(X64_LIRBuilder* builder, X64_RegClass reg_class)
 {
     u32 next_reg = builder->num_regs++;
 
     assert(next_reg != X64_LIR_REG_COUNT);
 
-    array_push(builder->lreg_ranges, (X64_LRegRange){.lreg = next_reg, .start = -1, .end = -1});
+    array_push(builder->lreg_ranges, (X64_LRegRange){.lreg = next_reg, .start = -1, .end = -1, .reg_class = reg_class});
     array_push(builder->lreg_aliases, next_reg);
     array_push(builder->lreg_sizes, 1);
 
     return next_reg;
 }
 
-static u32 X64_get_lir_reg(X64_LIRBuilder* builder, u32 ireg)
+static u32 X64_get_lir_reg(X64_LIRBuilder* builder, u32 ireg, X64_RegClass reg_class)
 {
     u32 result = builder->reg_map[ireg];
 
     if (result == (u32)-1) {
-        result = X64_next_lir_reg(builder);
+        result = X64_next_lir_reg(builder, reg_class);
         builder->reg_map[ireg] = result;
     }
     else {
@@ -101,7 +101,7 @@ static u32 X64_get_lir_reg(X64_LIRBuilder* builder, u32 ireg)
 
 static u32 X64_def_phys_reg(X64_LIRBuilder* builder, X64_Reg phys_reg)
 {
-    u32 result = X64_next_lir_reg(builder);
+    u32 result = X64_next_lir_reg(builder, x64_reg_classes[phys_reg]);
     X64_LRegRange* range = &builder->lreg_ranges[result];
     assert(result == array_len(builder->lreg_ranges) - 1);
 
@@ -236,7 +236,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
         s32 disp = src->disp;
 
         if (has_index) {
-            index_reg = X64_get_lir_reg(builder, src->index_reg);
+            index_reg = X64_get_lir_reg(builder, src->index_reg, X64_REG_CLASS_INT);
             X64_force_any_reg(builder, index_reg, banned_regs);
         }
 
@@ -260,7 +260,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
 
                 if (sym->as_var.is_ptr) {
                     // Load the variable's actual address into `base_reg`.
-                    base_reg = X64_next_lir_reg(builder);
+                    base_reg = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
                     X64_force_any_reg(builder, base_reg, banned_regs);
 
                     X64_MemAddr ptr_addr = {
@@ -301,7 +301,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
             }
         }
         else {
-            base_reg = X64_get_lir_reg(builder, src->base.reg);
+            base_reg = X64_get_lir_reg(builder, src->base.reg, X64_REG_CLASS_INT);
             X64_force_any_reg(builder, base_reg, banned_regs);
         }
 
@@ -312,7 +312,7 @@ static void X64_get_lir_addr(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_M
         dst->sibd.index_reg = index_reg;
     }
     else {
-        u32 index_reg = X64_get_lir_reg(builder, src->index_reg);
+        u32 index_reg = X64_get_lir_reg(builder, src->index_reg, X64_REG_CLASS_INT);
         X64_force_any_reg(builder, index_reg, banned_regs);
 
         dst->kind = X64_ADDR_SIBD;
@@ -338,7 +338,7 @@ static void X64_load_op_ri(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 lre
         X64_emit_instr_mov_r_i(builder, xbblock, size, lreg, op_ri.imm);
     }
     else {
-        u32 s = X64_get_lir_reg(builder, op_ri.reg);
+        u32 s = X64_get_lir_reg(builder, op_ri.reg, X64_REG_CLASS_INT);
         X64_hint_same_reg(builder, s, lreg);
         X64_emit_instr_mov_r_r(builder, xbblock, size, lreg, s);
     }
@@ -391,7 +391,7 @@ static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* 
     assert(size <= X64_MAX_INT_REG_SIZE);
 
     dst->type = type;
-    dst->val.reg = X64_get_lir_reg(builder, src->reg);
+    dst->val.reg = X64_get_lir_reg(builder, src->reg, X64_REG_CLASS_INT);
 
     if (*arg_reg_index >= x64_target.num_arg_regs) {
         dst->slot.prim.in_reg = false;
@@ -473,7 +473,7 @@ static void X64_windows_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg
     assert(size <= X64_MAX_INT_REG_SIZE);
 
     dst->type = type;
-    dst->val.reg = X64_get_lir_reg(builder, src->reg);
+    dst->val.reg = X64_get_lir_reg(builder, src->reg, X64_REG_CLASS_INT);
 
     if (arg_index >= x64_target.num_arg_regs) {
         dst->slot.prim.in_reg = false;
@@ -631,7 +631,7 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
             }
         }
         else {
-            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg);
+            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg, X64_REG_CLASS_INT);
             ax = X64_def_phys_reg(builder, X64_RAX);
 
             X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
@@ -684,7 +684,7 @@ static void X64_windows_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock
             }
         }
         else {
-            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg);
+            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg, X64_REG_CLASS_INT);
             ax = X64_def_phys_reg(builder, X64_RAX);
 
             X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
@@ -712,7 +712,7 @@ static void X64_mov_op_ria_into_reg(X64_LIRBuilder* builder, X64_BBlock* xbblock
         X64_emit_instr_mov_r_i(builder, xbblock, size, dst, src.imm);
     }
     else if (src.kind == OP_RIA_REG) {
-        u32 a = X64_get_lir_reg(builder, src.reg);
+        u32 a = X64_get_lir_reg(builder, src.reg, X64_REG_CLASS_INT);
         X64_hint_same_reg(builder, dst, a);
         X64_emit_instr_mov_r_r(builder, xbblock, size, dst, a);
     }
@@ -735,7 +735,7 @@ static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xb
     OpRIA ir_b = ir_instr->binary.b;
 
     assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM); // Only one should be an immediate.
-    u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
+    u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_INT);
 
     // mov r, a
     X64_mov_op_ria_into_reg(builder, xbblock, size, r, ir_a);
@@ -745,7 +745,7 @@ static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xb
         X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
     }
     else if (ir_b.kind == OP_RIA_REG) {
-        u32 b = X64_get_lir_reg(builder, ir_b.reg);
+        u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
         X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[ir_instr->kind], size, r, b);
     }
     else {
@@ -825,13 +825,13 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // div b
         if (ir_b.kind == OP_RIA_IMM) {
             X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
-            u32 b = X64_next_lir_reg(builder);
+            u32 b = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_i(builder, xbblock, size, b, ir_b.imm);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else if (ir_b.kind == OP_RIA_REG) {
             X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
-            u32 b = X64_get_lir_reg(builder, ir_b.reg);
+            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else {
@@ -843,7 +843,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
 
         // mov r, _ax
-        u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
+        u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_INT);
         X64_emit_instr_mov_r_r(builder, xbblock, size, r, ax);
         X64_hint_same_reg(builder, r, ax);
         break;
@@ -877,13 +877,13 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // div b
         if (ir_b.kind == OP_RIA_IMM) {
             X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
-            u32 b = X64_next_lir_reg(builder);
+            u32 b = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_i(builder, xbblock, size, b, ir_b.imm);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else if (ir_b.kind == OP_RIA_REG) {
             X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
-            u32 b = X64_get_lir_reg(builder, ir_b.reg);
+            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else {
@@ -896,13 +896,13 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         if (uses_dx) {
             // mov r, _dx
-            u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
+            u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_r(builder, xbblock, size, r, dx);
             X64_hint_same_reg(builder, r, dx);
         }
         else {
             // mov r, _ax[h]
-            u32 r = X64_get_lir_reg(builder, ir_instr->binary.r);
+            u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_rh(builder, xbblock, r, ax);
         }
 
@@ -938,13 +938,13 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // div b
         if (ir_b.kind == OP_RIA_IMM) {
             X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
-            u32 b = X64_next_lir_reg(builder);
+            u32 b = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_i(builder, xbblock, size, b, ir_b.imm);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else if (ir_b.kind == OP_RIA_REG) {
             X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
-            u32 b = X64_get_lir_reg(builder, ir_b.reg);
+            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else {
@@ -957,18 +957,18 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         if (uses_dx) {
             // mov r, _dx
-            u32 r = X64_get_lir_reg(builder, ir_instr->divmod.r);
+            u32 r = X64_get_lir_reg(builder, ir_instr->divmod.r, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_r(builder, xbblock, size, r, dx);
             X64_hint_same_reg(builder, r, dx);
         }
         else {
             // mov r, _ax[h]
-            u32 r = X64_get_lir_reg(builder, ir_instr->divmod.r);
+            u32 r = X64_get_lir_reg(builder, ir_instr->divmod.r, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_rh(builder, xbblock, r, ax);
         }
 
         // mov q, _ax
-        u32 q = X64_get_lir_reg(builder, ir_instr->divmod.q);
+        u32 q = X64_get_lir_reg(builder, ir_instr->divmod.q, X64_REG_CLASS_INT);
         X64_emit_instr_mov_r_r(builder, xbblock, size, q, ax);
         X64_hint_same_reg(builder, q, ax);
 
@@ -981,7 +981,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         OpRIA ir_b = ir_instr->shift.b;
 
         // mov r, a
-        u32 r = X64_get_lir_reg(builder, ir_instr->shift.r);
+        u32 r = X64_get_lir_reg(builder, ir_instr->shift.r, X64_REG_CLASS_INT);
         X64_mov_op_ria_into_reg(builder, xbblock, size, r, ir_a);
 
         if (ir_b.kind == OP_RIA_IMM) {
@@ -990,7 +990,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         else if (ir_b.kind == OP_RIA_REG) {
             // mov _cx, b
             u32 cx = X64_def_phys_reg(builder, X64_RCX);
-            u32 b = X64_get_lir_reg(builder, ir_b.reg);
+            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
             X64_hint_phys_reg(builder, b, X64_RCX);
             X64_emit_instr_mov_r_r(builder, xbblock, size, cx, b);
 
@@ -1019,8 +1019,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // neg r
         size_t size = ir_instr->unary.type->size;
 
-        u32 r = X64_get_lir_reg(builder, ir_instr->unary.r);
-        u32 a = X64_get_lir_reg(builder, ir_instr->unary.a);
+        u32 r = X64_get_lir_reg(builder, ir_instr->unary.r, X64_REG_CLASS_INT);
+        u32 a = X64_get_lir_reg(builder, ir_instr->unary.a, X64_REG_CLASS_INT);
         X64_hint_same_reg(builder, r, a);
 
         X64_emit_instr_mov_r_r(builder, xbblock, size, r, a);
@@ -1030,8 +1030,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     case INSTR_TRUNC: {
         size_t dst_size = ir_instr->convert.dst_type->size;
 
-        u32 r = X64_get_lir_reg(builder, ir_instr->convert.r);
-        u32 a = X64_get_lir_reg(builder, ir_instr->convert.a);
+        u32 r = X64_get_lir_reg(builder, ir_instr->convert.r, X64_REG_CLASS_INT);
+        u32 a = X64_get_lir_reg(builder, ir_instr->convert.a, X64_REG_CLASS_INT);
 
         X64_emit_instr_mov_r_r(builder, xbblock, dst_size, r, a);
         break;
@@ -1045,8 +1045,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         size_t dst_size = ir_instr->convert.dst_type->size;
         size_t src_size = ir_instr->convert.src_type->size;
 
-        u32 r = X64_get_lir_reg(builder, ir_instr->convert.r);
-        u32 a = X64_get_lir_reg(builder, ir_instr->convert.a);
+        u32 r = X64_get_lir_reg(builder, ir_instr->convert.r, X64_REG_CLASS_INT);
+        u32 a = X64_get_lir_reg(builder, ir_instr->convert.a, X64_REG_CLASS_INT);
 
         X64_emit_instr_convert_r_r(builder, xbblock, convert_kind[ir_instr->kind], dst_size, r, src_size, a);
         break;
@@ -1057,7 +1057,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // mov r, 10
 
         size_t size = ir_instr->limm.type->size;
-        u32 r = X64_get_lir_reg(builder, ir_instr->limm.r);
+        u32 r = X64_get_lir_reg(builder, ir_instr->limm.r, X64_REG_CLASS_INT);
         X64_emit_instr_mov_r_i(builder, xbblock, size, r, ir_instr->limm.imm);
 
         break;
@@ -1067,13 +1067,20 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         //
         // mov r, [base + scale * index + disp]
 
-        size_t size = ir_instr->load.type->size;
+        Type* type = ir_instr->load.type;
+        size_t size = type->size;
 
         X64_MemAddr addr = {0};
         X64_get_lir_addr(builder, xbblock, &addr, &ir_instr->load.addr, 0);
 
-        u32 r = X64_get_lir_reg(builder, ir_instr->load.r);
-        X64_emit_instr_mov_r_m(builder, xbblock, size, r, addr);
+        if (type->kind == TYPE_FLOAT) {
+            // TODO: Left off here!
+            assert(0);
+        }
+        else {
+            u32 r = X64_get_lir_reg(builder, ir_instr->load.r, X64_REG_CLASS_INT);
+            X64_emit_instr_mov_r_m(builder, xbblock, size, r, addr);
+        }
         break;
     }
     case INSTR_LADDR: {
@@ -1084,7 +1091,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_MemAddr addr;
         X64_get_lir_addr(builder, xbblock, &addr, &ir_instr->laddr.addr, 0);
 
-        u32 r = X64_get_lir_reg(builder, ir_instr->laddr.r);
+        u32 r = X64_get_lir_reg(builder, ir_instr->laddr.r, X64_REG_CLASS_INT);
         X64_emit_instr_lea(builder, xbblock, r, addr);
         break;
     }
@@ -1103,7 +1110,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             X64_emit_instr_mov_m_i(builder, xbblock, size, addr, ir_a.imm);
         }
         else {
-            u32 a = X64_get_lir_reg(builder, ir_a.reg);
+            u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_INT);
             X64_emit_instr_mov_m_r(builder, xbblock, size, addr, a);
         }
         break;
@@ -1116,12 +1123,12 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM); // Only one should be an immediate.
 
         if (ir_a.kind == OP_RIA_IMM) {
-            u32 a = X64_next_lir_reg(builder);
+            u32 a = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_i(builder, xbblock, size, a, ir_a.imm);
 
             // cmp r, r
             if (ir_b.kind == OP_RIA_REG) {
-                u32 b = X64_get_lir_reg(builder, ir_b.reg);
+                u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
                 X64_emit_instr_cmp_r_r(builder, xbblock, size, a, b);
             }
             // cmp r, m
@@ -1133,7 +1140,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             }
         }
         else if (ir_a.kind == OP_RIA_REG) {
-            u32 a = X64_get_lir_reg(builder, ir_a.reg);
+            u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_INT);
 
             // cmp r, imm
             if (ir_b.kind == OP_RIA_IMM) {
@@ -1141,7 +1148,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             }
             // cmp r, r
             else if (ir_b.kind == OP_RIA_REG) {
-                u32 b = X64_get_lir_reg(builder, ir_b.reg);
+                u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
                 X64_emit_instr_cmp_r_r(builder, xbblock, size, a, b);
             }
             // cmp r, m
@@ -1163,7 +1170,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             }
             // cmp m, r
             else  if (ir_b.kind == OP_RIA_REG) {
-                u32 b = X64_get_lir_reg(builder, ir_b.reg);
+                u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
                 X64_emit_instr_cmp_m_r(builder, xbblock, size, a, b);
             }
             else {
@@ -1171,7 +1178,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
                 X64_MemAddr b_addr = {0};
                 X64_get_lir_addr(builder, xbblock, &b_addr, &ir_b.addr, 0);
 
-                u32 b = X64_next_lir_reg(builder);
+                u32 b = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
                 X64_emit_instr_mov_r_m(builder, xbblock, size, b, b_addr);
                 X64_emit_instr_cmp_m_r(builder, xbblock, size, a, b);
             }
@@ -1199,7 +1206,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             // cmp a, b
             // set_<cond> r
 
-            u32 r = X64_get_lir_reg(builder, ir_instr->cmp.r);
+            u32 r = X64_get_lir_reg(builder, ir_instr->cmp.r, X64_REG_CLASS_INT);
             X64_emit_instr_setcc(builder, xbblock, ir_instr->cmp.cond, r);
         }
 
@@ -1218,7 +1225,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         //     cmp a, 0
         //     jne <target>
 
-        u32 a = X64_get_lir_reg(builder, ir_instr->cond_jmp.a);
+        u32 a = X64_get_lir_reg(builder, ir_instr->cond_jmp.a, X64_REG_CLASS_INT);
         Scalar zero = {0};
 
         X64_emit_instr_cmp_r_i(builder, xbblock, 1, a, zero);
@@ -1229,12 +1236,12 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     case INSTR_PHI: {
         // For now, just force all registers in PHI instruction into the same physical register.
 
-        u32 r = X64_get_lir_reg(builder, ir_instr->phi.r);
+        u32 r = X64_get_lir_reg(builder, ir_instr->phi.r, X64_REG_CLASS_INT);
         size_t num_args = ir_instr->phi.num_args;
         PhiArg* args = ir_instr->phi.args;
 
         for (size_t i = 0; i < num_args; i++) {
-            u32 x = X64_get_lir_reg(builder, args[i].ireg);
+            u32 x = X64_get_lir_reg(builder, args[i].ireg, X64_REG_CLASS_INT);
             X64_alias_lir_regs(builder, x, r);
         }
         break;
@@ -1315,7 +1322,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
                 X64_get_lir_addr(builder, xbblock, &r.addr, &ir_r.addr, (1UL << X64_RAX) | (1UL << X64_RDX));
             }
             else {
-                r.reg = X64_get_lir_reg(builder, ir_r.reg);
+                r.reg = X64_get_lir_reg(builder, ir_r.reg, X64_REG_CLASS_INT);
             }
         }
 
@@ -1325,7 +1332,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             instr = X64_emit_instr_call(builder, xbblock, ir_instr->call.sym, r, num_args, x64_args, stack_info);
         }
         else {
-            u32 proc_r = X64_get_lir_reg(builder, ir_instr->calli.loc);
+            u32 proc_r = X64_get_lir_reg(builder, ir_instr->calli.loc, X64_REG_CLASS_INT);
             instr = X64_emit_instr_call_r(builder, xbblock, proc_type, proc_r, r, num_args, x64_args, stack_info);
         }
 

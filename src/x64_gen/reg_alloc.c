@@ -3,6 +3,7 @@
 typedef struct X64_IntervalList {
     List list;
     u32 count;
+    u32 class_counts[X64_REG_CLASS_COUNT];
 } X64_IntervalList;
 
 typedef struct X64_RegAllocState {
@@ -17,8 +18,7 @@ typedef struct X64_RegAllocState {
 
     // Subset of the physical registers to actually use for allocation.
     // We don't want to use RBP or RSP, for example, as general registers.
-    u32 num_scratch_regs;
-    X64_Reg* scratch_regs;
+    X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT];
 
     // Maps a physical register into the virtual register/interval that occupies it.
     // A value of all ones (0xFFFFFFFF) means unoccupied.
@@ -41,13 +41,14 @@ static void X64_alloc_reg(X64_RegAllocState* state, X64_Reg reg, u32 lreg)
     }
 }
 
-static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs, X64_Reg preg_hint)
+static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, X64_RegClass reg_class, u32 banned_regs, X64_Reg preg_hint)
 {
     // Try to allocate hint register first if:
     // - Provided a hint register
     // - Hint register is not banned
     // - Hint register is available
     if ((preg_hint != X64_REG_COUNT) && !u32_is_bit_set(banned_regs, preg_hint) && (state->rmap[preg_hint] == (u32)-1)) {
+        assert(reg_class == x64_reg_classes[preg_hint]);
         X64_alloc_reg(state, preg_hint, lreg);
 
         return preg_hint;
@@ -56,8 +57,9 @@ static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs,
     // Get the first available scratch register.
     X64_Reg reg = X64_REG_COUNT;
 
-    u32 nregs = state->num_scratch_regs;
-    X64_Reg* regs = state->scratch_regs;
+    X64_ScratchRegs* class_regs = &(*state->scratch_regs)[reg_class];
+    u32 nregs = class_regs->num_regs;
+    X64_Reg* regs = class_regs->regs;
 
     for (u32 i = 0; i < nregs; i += 1) {
         X64_Reg r = regs[i];
@@ -73,6 +75,7 @@ static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, u32 banned_regs,
         X64_alloc_reg(state, reg, lreg);
     }
 
+    assert(reg_class == x64_reg_classes[reg]);
     assert(reg != X64_RBP);
     assert(reg != X64_RSP);
 
@@ -85,6 +88,15 @@ static void X64_init_free_regs(X64_RegAllocState* state)
         state->rmap[i] = (u32)-1;
 }
 
+static bool X64_out_of_regs(X64_RegAllocState* state, X64_RegClass reg_class)
+{
+    u32 num_used_regs = state->active.class_counts[reg_class];
+    u32 num_total_regs = (*state->scratch_regs)[reg_class].num_regs;
+
+    assert(num_used_regs <= num_total_regs);
+    return num_used_regs == num_total_regs;
+}
+
 static void X64_lreg_interval_list_rm(X64_IntervalList* list, X64_LRegRange* interval)
 {
     assert(!list_empty(&list->list));
@@ -93,6 +105,7 @@ static void X64_lreg_interval_list_rm(X64_IntervalList* list, X64_LRegRange* int
     list_rm(&interval->lnode);
 
     list->count -= 1;
+    list->class_counts[interval->reg_class] -= 1;
 }
 
 typedef enum X64_IntervalSortKind {
@@ -123,6 +136,7 @@ static void X64_lreg_interval_list_add(X64_IntervalList* list, X64_LRegRange* in
     list_add(it->prev, &interval->lnode);
 
     list->count += 1;
+    list->class_counts[interval->reg_class] += 1;
 }
 
 static void X64_spill_reg_loc(X64_RegAllocState* state, X64_LRegRange* interval)
@@ -164,11 +178,10 @@ static void X64_steal_reg(X64_RegAllocState* state, X64_LRegRange* from, X64_LRe
 //
 // This register allocator is pretty basic and not very good, but we just need something that works for now.
 //
-X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x64_regs, X64_Reg* x64_scratch_regs,
+X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT],
                                              u32 init_stack_offset)
 {
-    X64_RegAllocState state = {.num_scratch_regs = num_x64_regs,
-                               .scratch_regs = x64_scratch_regs,
+    X64_RegAllocState state = {.scratch_regs = scratch_regs,
                                .result = {.stack_offset = init_stack_offset}};
 
     X64_init_free_regs(&state);
@@ -250,7 +263,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
             assert(interval->ra_ctrl.preg_mask);
 
-            X64_Reg reg = X64_next_reg(&state, interval->lreg, ~interval->ra_ctrl.preg_mask, X64_REG_COUNT);
+            X64_Reg reg = X64_next_reg(&state, interval->lreg, interval->reg_class, ~interval->ra_ctrl.preg_mask, X64_REG_COUNT);
 
             assert(reg != X64_REG_COUNT);
             interval->loc.kind = X64_LREG_LOC_REG;
@@ -260,7 +273,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
         else if (interval->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL) {
             assert(interval->ra_ctrl.preg_mask);
             
-            X64_Reg reg = X64_next_reg(&state, interval->lreg, ~interval->ra_ctrl.preg_mask, X64_REG_COUNT);
+            X64_Reg reg = X64_next_reg(&state, interval->lreg, interval->reg_class, ~interval->ra_ctrl.preg_mask, X64_REG_COUNT);
 
             if (reg != X64_REG_COUNT) {
                 interval->loc.kind = X64_LREG_LOC_REG;
@@ -299,8 +312,9 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
             }
 
             X64_RegAllocControlKind ra_ctrl_kind = interval->ra_ctrl_kind;
+            X64_RegClass reg_class = interval->reg_class;
 
-            if (state.active.count == state.num_scratch_regs) {
+            if (X64_out_of_regs(&state, reg_class)) {
                 // Exhausted all available free registers. Spill the longest interval that IS NOT forced into a register.
 
                 bool force_reg = (ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG) || (ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_ANY_REG);
@@ -311,8 +325,14 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
 
                 for (; it != head; it = it->prev) {
                     X64_LRegRange* it_e = list_entry(it, X64_LRegRange, lnode);
+
                     if (it_e->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG ||
                         it_e->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_ANY_REG) continue;
+
+                    // Skip if not the same class of register.
+                    if (it_e->reg_class != reg_class) {
+                        continue;
+                    }
 
                     bool using_banned_reg = (it_e->loc.kind == X64_LREG_LOC_REG) && u32_is_bit_set(banned_regs, it_e->loc.reg);
                     if (!using_banned_reg) break;
@@ -363,7 +383,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, u32 num_x6
                 }
 
                 // Try to allocate the next free reg.
-                X64_Reg reg = X64_next_reg(&state, interval->lreg, banned_regs, preg_hint);
+                X64_Reg reg = X64_next_reg(&state, interval->lreg, interval->reg_class, banned_regs, preg_hint);
 
                 if (reg == X64_REG_COUNT) {
                     state.result.success = false;
