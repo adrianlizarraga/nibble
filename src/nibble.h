@@ -70,9 +70,12 @@ typedef float f32;
 typedef double f64;
 
 typedef enum FloatKind {
-    FLOAT_F64,
+    FLOAT_F64 = 0,
     FLOAT_F32,
+    FLOAT_KIND_COUNT
 } FloatKind;
+
+extern const size_t float_kind_sizes[FLOAT_KIND_COUNT];
 
 typedef struct Float {
     union {
@@ -104,7 +107,10 @@ typedef enum IntegerKind {
     INTEGER_S32,
     INTEGER_U64,
     INTEGER_S64,
+    INTEGER_KIND_COUNT
 } IntegerKind;
+
+extern const size_t int_kind_sizes[INTEGER_KIND_COUNT];
 
 typedef struct Integer {
     union {

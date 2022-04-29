@@ -415,8 +415,14 @@ static void X64_print_global_val(Allocator* allocator, ConstExpr* const_expr, ch
         break;
     }
     case CONST_EXPR_FLOAT_LIT: {
-        // TODO: Implement!
-        assert(0);
+        FloatLit* float_lit = const_expr->float_lit;
+        Scalar imm = {.as_float = float_lit->value};
+        size_t size = float_kind_sizes[float_lit->kind];
+
+        if (size == 4) printf("f32: 0x%X\n", imm.as_int._u32);
+        else printf("f64: 0x%lX\n", imm.as_int._u64);
+
+        X64_print_global_int_bytes(imm, size, line);
         break;
     }
     case CONST_EXPR_PROC: {
