@@ -1719,6 +1719,66 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_rr_instr(generator, movsx, true, dst_size, instr->convert_r_r.dst, src_size, instr->convert_r_r.src);
         break;
     }
+    case X64_INSTR_MOVSS_R_M: {
+        X64_SIBDAddr src = {0};
+        X64_get_sibd_addr(generator, &src, &instr->movfp_r_m.src);
+
+        X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->movfp_r_m.dst);
+
+        // TODO: Handle case when dst is not allocated into an xmm register.
+        // Modify X64_get_reg() and X64_emit_rm_instr() to handle floating-point class of registers.
+        assert(dst_loc.kind == X64_LREG_LOC_REG);
+
+        X64_emit_text(generator, "    movss %s, %s", x64_fp_reg_names[dst_loc.reg],
+                      X64_print_sibd_addr(generator->tmp_mem, &src, float_kind_sizes[FLOAT_F32]));
+
+        break;
+    }
+    case X64_INSTR_MOVSD_R_M: {
+        X64_SIBDAddr src = {0};
+        X64_get_sibd_addr(generator, &src, &instr->movfp_r_m.src);
+
+        X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->movfp_r_m.dst);
+
+        // TODO: Handle case when dst is not allocated into an xmm register.
+        // Modify X64_get_reg() and X64_emit_rm_instr() to handle floating-point class of registers.
+        assert(dst_loc.kind == X64_LREG_LOC_REG);
+
+        X64_emit_text(generator, "    movsd %s, %s", x64_fp_reg_names[dst_loc.reg],
+                      X64_print_sibd_addr(generator->tmp_mem, &src, float_kind_sizes[FLOAT_F64]));
+
+        break;
+    }
+    case X64_INSTR_MOVSS_M_R: {
+        X64_SIBDAddr dst = {0};
+        X64_get_sibd_addr(generator, &dst, &instr->movfp_m_r.dst);
+
+        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->movfp_m_r.src);
+
+        // TODO: Handle case when src is not allocated into an xmm register.
+        // Modify X64_get_reg() and X64_emit_rm_instr() to handle floating-point class of registers.
+        assert(src_loc.kind == X64_LREG_LOC_REG);
+
+        X64_emit_text(generator, "    movss %s, %s", X64_print_sibd_addr(generator->tmp_mem, &dst, float_kind_sizes[FLOAT_F32]),
+                      x64_fp_reg_names[src_loc.reg]);
+
+        break;
+    }
+    case X64_INSTR_MOVSD_M_R: {
+        X64_SIBDAddr dst = {0};
+        X64_get_sibd_addr(generator, &dst, &instr->movfp_m_r.dst);
+
+        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->movfp_m_r.src);
+
+        // TODO: Handle case when src is not allocated into an xmm register.
+        // Modify X64_get_reg() and X64_emit_rm_instr() to handle floating-point class of registers.
+        assert(src_loc.kind == X64_LREG_LOC_REG);
+
+        X64_emit_text(generator, "    movsd %s, %s", X64_print_sibd_addr(generator->tmp_mem, &dst, float_kind_sizes[FLOAT_F64]),
+                      x64_fp_reg_names[src_loc.reg]);
+
+        break;
+    }
     case X64_INSTR_LEA: {
         X64_emit_rm_instr(generator, "lea", true, X64_MAX_INT_REG_SIZE, instr->lea.dst, 0, &instr->lea.mem);
         break;
@@ -2060,6 +2120,8 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
+            // TODO: Handle floating-point registers (Windows)!
+            assert(x64_reg_classes[reg] != X64_REG_CLASS_FLOAT);
             ftprint_char_array(&tmp_line, false, "    push %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
         }
     }

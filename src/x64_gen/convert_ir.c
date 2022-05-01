@@ -1074,8 +1074,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_get_lir_addr(builder, xbblock, &addr, &ir_instr->load.addr, 0);
 
         if (type->kind == TYPE_FLOAT) {
-            // TODO: Left off here!
-            assert(0);
+            u32 r = X64_get_lir_reg(builder, ir_instr->load.r, X64_REG_CLASS_FLOAT);
+            X64_emit_instr_movfp_r_m(builder, xbblock, type->as_float.kind, r, addr);
         }
         else {
             u32 r = X64_get_lir_reg(builder, ir_instr->load.r, X64_REG_CLASS_INT);
@@ -1100,13 +1100,19 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         //
         // mov [..addr], a
 
-        size_t size = ir_instr->store.type->size;
+        Type* type = ir_instr->store.type;
+        size_t size = type->size;
         OpRI ir_a = ir_instr->store.a;
 
         X64_MemAddr addr;
         X64_get_lir_addr(builder, xbblock, &addr, &ir_instr->store.addr, 0);
 
-        if (ir_a.is_imm) {
+        if (type->kind == TYPE_FLOAT) {
+            assert(!ir_a.is_imm);
+            u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_FLOAT);
+            X64_emit_instr_movfp_m_r(builder, xbblock, type->as_float.kind, addr, a);
+        }
+        else if (ir_a.is_imm) {
             X64_emit_instr_mov_m_i(builder, xbblock, size, addr, ir_a.imm);
         }
         else {

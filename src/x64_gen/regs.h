@@ -53,6 +53,7 @@ typedef enum X64_RegClass {
 } X64_RegClass;
 
 extern const X64_RegClass x64_reg_classes[X64_REG_COUNT];
+extern const char* x64_fp_reg_names[X64_REG_COUNT];
 
 typedef struct X64_ScratchRegs {
     unsigned num_regs;

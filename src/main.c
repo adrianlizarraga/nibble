@@ -11,6 +11,8 @@
 /* Wishlist:
     - Anonymous procedures. Can put code in array indexed by an enum kind!
     - Enum sub types. EX: A proc only expects a subset of possible enum values.
+    - Programmer should be able to map constants (enums) to other constants (enums) at compile-time, without
+      having to create a global/static/readonly mapping array. Need some way of communicating this intent to compiler.
 */
 
 //#define NDEBUG 1
