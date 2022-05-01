@@ -1327,7 +1327,7 @@ FloatLit* intern_float_lit(FloatKind kind, Float value)
     Allocator* allocator = &nibble->gen_mem;
     HMap* float_lit_map = &nibble->float_lit_map;
 
-    u64 num_bytes = kind == FLOAT_F64 ? 8 : 4; // TODO: Magic numbers
+    u64 num_bytes = float_kind_sizes[kind];
     u64 key = hash_bytes(&value, num_bytes, FNV_INIT);
     u64* pval = hmap_get(float_lit_map, key);
     FloatLit* intern = pval ? (void*)*pval : NULL;
