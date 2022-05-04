@@ -561,7 +561,7 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, u32 lreg, u32 size, bool store, 
     return tmp_reg->reg;
 }
 
-static void X64_push_reg(X64_RegGroup* group, X64_Reg reg)
+static void X64_save_reg(X64_RegGroup* group, X64_Reg reg)
 {
     assert(reg != X64_REG_COUNT);
     assert(!u32_is_bit_set(group->used_tmp_reg_mask, reg));
@@ -601,6 +601,26 @@ static void X64_end_reg_group(X64_RegGroup* group)
 
         X64_emit_text(generator, "    pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][it->reg]);
         it = it->next;
+    }
+}
+
+static void X64_print_push_reg(char** line, X64_Reg reg, bool null_term)
+{
+    if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
+        ftprint_char_array(line, null_term, "    push %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
+    }
+    else {
+        ftprint_char_array(line, null_term, "    sub rsp, 0x8\n    movsd qword [rsp], %s\n", x64_fp_reg_names[reg]);
+    }
+}
+
+static void X64_print_pop_reg(char** line, X64_Reg reg, bool null_term)
+{
+    if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
+        ftprint_char_array(line, null_term, "    pop %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
+    }
+    else {
+        ftprint_char_array(line, null_term, "    add rsp, 0x8\n    movsd %s, qword [rsp]\n", x64_fp_reg_names[reg]);
     }
 }
 
@@ -1888,7 +1908,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
 
         while (save_reg_mask) {
             if (save_reg_mask & 0x1) {
-                X64_push_reg(&group, (X64_Reg)r);
+                X64_save_reg(&group, (X64_Reg)r);
             }
 
             save_reg_mask >>= 1;
@@ -2120,13 +2140,10 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            // TODO: Handle floating-point registers (Windows)!
-            assert(x64_reg_classes[reg] != X64_REG_CLASS_FLOAT);
-            ftprint_char_array(&tmp_line, false, "    push %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
+            X64_print_push_reg(&tmp_line, reg, r == X64_REG_COUNT - 1);
         }
     }
 
-    array_push(tmp_line, '\0');
     *save_regs_inst = mem_dup(generator->gen_mem, tmp_line, array_len(tmp_line), DEFAULT_ALIGN);
 
     // Restore callee-saved registers.
@@ -2138,7 +2155,10 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64_emit_text(generator, "    pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
+            char* pop_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
+
+            X64_print_pop_reg(&pop_line, reg, true);
+            X64_emit_text(generator, "%s", pop_line);
         }
     }
 
