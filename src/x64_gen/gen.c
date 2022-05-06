@@ -610,7 +610,7 @@ static void X64_print_push_reg(char** line, X64_Reg reg, bool null_term)
         ftprint_char_array(line, null_term, "    push %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
     }
     else {
-        ftprint_char_array(line, null_term, "    sub rsp, 16\n    movdqu dqword [rsp], %s\n", x64_fp_reg_names[reg]);
+        ftprint_char_array(line, null_term, "    sub rsp, 16\n    movdqu oword [rsp], %s\n", x64_fp_reg_names[reg]);
     }
 }
 
@@ -620,7 +620,7 @@ static void X64_print_pop_reg(char** line, X64_Reg reg, bool null_term)
         ftprint_char_array(line, null_term, "    pop %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
     }
     else {
-        ftprint_char_array(line, null_term, "    movdqu %s, dqword [rsp]\n    add rsp, 16\n", x64_fp_reg_names[reg]);
+        ftprint_char_array(line, null_term, "    movdqu %s, oword [rsp]\n    add rsp, 16\n", x64_fp_reg_names[reg]);
     }
 }
 
@@ -2140,14 +2140,18 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64_print_push_reg(&tmp_line, reg, r == X64_REG_COUNT - 1);
+            X64_print_push_reg(&tmp_line, reg, false);
         }
     }
 
+    array_push(tmp_line, '\0');
     *save_regs_inst = mem_dup(generator->gen_mem, tmp_line, array_len(tmp_line), DEFAULT_ALIGN);
 
     // Restore callee-saved registers.
     // NOTE: Iterating in the reverse order as the corresponding pushes.
+
+    array_clear(tmp_line); // Set length to 0 for reuse
+
     for (uint32_t r = X64_REG_COUNT; r-- > 0;) {
         X64_Reg reg = (X64_Reg)r;
 
@@ -2155,13 +2159,14 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            char* pop_line = array_create(generator->tmp_mem, char, X64_INIT_LINE_LEN);
-
-            X64_print_pop_reg(&pop_line, reg, true);
-            X64_emit_text(generator, "%s", pop_line);
+            X64_print_pop_reg(&tmp_line, reg, false);
         }
     }
 
+    array_push(tmp_line, '\0');
+    X64_emit_text(generator, "%s", tmp_line);
+
+    // Postamble
     X64_emit_text(generator, "    mov rsp, rbp");
     X64_emit_text(generator, "    pop rbp");
     X64_emit_text(generator, "    ret");
