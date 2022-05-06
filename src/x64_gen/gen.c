@@ -610,7 +610,7 @@ static void X64_print_push_reg(char** line, X64_Reg reg, bool null_term)
         ftprint_char_array(line, null_term, "    push %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
     }
     else {
-        ftprint_char_array(line, null_term, "    sub rsp, 0x8\n    movsd qword [rsp], %s\n", x64_fp_reg_names[reg]);
+        ftprint_char_array(line, null_term, "    sub rsp, 16\n    movdqu dqword [rsp], %s\n", x64_fp_reg_names[reg]);
     }
 }
 
@@ -620,7 +620,7 @@ static void X64_print_pop_reg(char** line, X64_Reg reg, bool null_term)
         ftprint_char_array(line, null_term, "    pop %s\n", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
     }
     else {
-        ftprint_char_array(line, null_term, "    add rsp, 0x8\n    movsd %s, qword [rsp]\n", x64_fp_reg_names[reg]);
+        ftprint_char_array(line, null_term, "    movdqu %s, dqword [rsp]\n    add rsp, 16\n", x64_fp_reg_names[reg]);
     }
 }
 
