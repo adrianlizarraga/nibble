@@ -59,7 +59,7 @@ void print_usage(FILE* fd, const char* program_name)
 char* consume_arg(int* argc, char*** argv)
 {
     assert(*argc);
-    char* arg = *argv[0];
+    char* arg = (*argv)[0];
 
     *argc -= 1;
     *argv += 1;
