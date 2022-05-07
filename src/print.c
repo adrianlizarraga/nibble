@@ -36,8 +36,9 @@ static bool put_char_wrapper(PrintState* state, char character)
     // NOTE: Allow dumping to /dev/null
     bool success = state->put_char ? state->put_char(state->arg, character) : true;
 
-    if (success && character)
+    if (success) {
         state->count += 1;
+    }
 
     return success;
 }
@@ -680,15 +681,17 @@ size_t ftprint(PutCharFunc* put_char, void* arg, const char* format, ...)
     return n;
 }
 
-typedef struct FileBuffer {
+typedef struct PrintBuffer {
     char* buf;
     size_t size;
     size_t index;
-    FILE* fd;
-    bool nullterm;
-} FileBuffer;
 
-static bool flush_file_buffer(FileBuffer* fb)
+    // Used only when print to a file.
+    FILE* fd;
+    bool nullterm; // True if the null-terminator should be written out.
+} PrintBuffer;
+
+static bool flush_file_buffer(PrintBuffer* fb)
 {
     size_t n = fwrite(fb->buf, sizeof(char), fb->index, fb->fd);
 
@@ -704,7 +707,7 @@ static bool flush_file_buffer(FileBuffer* fb)
 static bool output_to_file(void* data, char character)
 {
     bool ret = true;
-    FileBuffer* dest = (FileBuffer*)data;
+    PrintBuffer* dest = (PrintBuffer*)data;
     bool write_char = character || dest->nullterm;
 
     if (dest->index < dest->size) {
@@ -729,18 +732,15 @@ static bool output_to_file(void* data, char character)
 
 size_t ftprintv_file(FILE* fd, bool nullterm, const char* format, va_list vargs)
 {
-    size_t n = 0;
     char buffer[PRINT_FILE_BUF_SIZE]; // Buffer is automatically flushed to screen when full.
-    FileBuffer dest = {0};
+    PrintBuffer dest = {0};
 
     dest.buf = buffer;
     dest.size = sizeof(buffer);
     dest.fd = fd;
     dest.nullterm = nullterm;
 
-    n = ftprintv(output_to_file, &dest, format, vargs);
-
-    return n;
+    return ftprintv(output_to_file, &dest, format, vargs);
 }
 
 size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...)
@@ -748,7 +748,7 @@ size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...)
     size_t n = 0;
     va_list vargs;
     char buffer[PRINT_FILE_BUF_SIZE]; // Buffer is automatically flushed to screen when full.
-    FileBuffer dest = {0};
+    PrintBuffer dest = {0};
 
     dest.buf = buffer;
     dest.size = sizeof(buffer);
@@ -761,3 +761,4 @@ size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...)
 
     return n;
 }
+
