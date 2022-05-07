@@ -45,7 +45,7 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_XOR_R_R: {
             X64_touch_lreg(builder, instr->binary_r_r.dst, ino);
             X64_touch_lreg(builder, instr->binary_r_r.src, ino);
-            break; 
+            break;
         }
         case X64_INSTR_ADD_R_I:
         case X64_INSTR_SUB_R_I:
@@ -54,7 +54,7 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_OR_R_I:
         case X64_INSTR_XOR_R_I: {
             X64_touch_lreg(builder, instr->binary_r_i.dst, ino);
-            break; 
+            break;
         }
         case X64_INSTR_ADD_R_M:
         case X64_INSTR_SUB_R_M:
@@ -64,7 +64,17 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_XOR_R_M: {
             X64_touch_lreg(builder, instr->binary_r_m.dst, ino);
             X64_touch_mem_lregs(builder, &instr->binary_r_m.src, ino);
-            break; 
+            break;
+        }
+        case X64_INSTR_ADDSS_R_R: {
+            X64_touch_lreg(builder, instr->binary_fp_r_r.dst, ino);
+            X64_touch_lreg(builder, instr->binary_fp_r_r.src, ino);
+            break;
+        }
+        case X64_INSTR_ADDSS_R_M: {
+            X64_touch_lreg(builder, instr->binary_fp_r_m.dst, ino);
+            X64_touch_mem_lregs(builder, &instr->binary_fp_r_m.src, ino);
+            break;
         }
         case X64_INSTR_DIV_R:
         case X64_INSTR_IDIV_R: {
@@ -145,6 +155,12 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_MOVZX_R_R: {
             X64_touch_lreg(builder, instr->convert_r_r.src, ino);
             X64_touch_lreg(builder, instr->convert_r_r.dst, ino);
+            break;
+        }
+        case X64_INSTR_MOVSS_R_R:
+        case X64_INSTR_MOVSD_R_R: {
+            X64_touch_lreg(builder, instr->movfp_r_r.src, ino);
+            X64_touch_lreg(builder, instr->movfp_r_r.dst, ino);
             break;
         }
         case X64_INSTR_MOVSS_R_M:

@@ -62,6 +62,24 @@ void X64_emit_instr_binary_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
+void X64_emit_instr_addss_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src)
+{
+    X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_ADDSS_R_R);
+    instr->binary_fp_r_r.dst = dst;
+    instr->binary_fp_r_r.src = src;
+
+    X64_add_lir_instr(builder, xbblock, instr);
+}
+
+void X64_emit_instr_addss_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src)
+{
+    X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_ADDSS_R_M);
+    instr->binary_fp_r_m.dst = dst;
+    instr->binary_fp_r_m.src = src;
+
+    X64_add_lir_instr(builder, xbblock, instr);
+}
+
 void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
@@ -169,6 +187,17 @@ void X64_emit_instr_mov_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     instr->mov_m_i.size = size;
     instr->mov_m_i.dst = dst;
     instr->mov_m_i.src = src;
+
+    X64_add_lir_instr(builder, xbblock, instr);
+}
+
+void X64_emit_instr_movfp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind fkind, u32 dst, u32 src)
+{
+    static const X64_InstrKind fkind_to_instr_kind[FLOAT_KIND_COUNT] = {[FLOAT_F64] = X64_INSTR_MOVSD_R_R,
+                                                                        [FLOAT_F32] = X64_INSTR_MOVSS_R_R};
+    X64_Instr* instr = X64_new_instr(builder->arena, fkind_to_instr_kind[fkind]);
+    instr->movfp_r_r.dst = dst;
+    instr->movfp_r_r.src = src;
 
     X64_add_lir_instr(builder, xbblock, instr);
 }

@@ -765,23 +765,39 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         Type* type = ir_instr->binary.type;
 
         if (type->kind == TYPE_FLOAT) {
-            /*
-            assert(type->as_float.kind == FLOAT_32); // TODO: Support f64
-            size_t size = ir_instr->binary.type->size;
-            OpRI ir_a = ir_instr->binary.a;
-            OpRI ir_b = ir_instr->binary.b;
-            
-            assert(!ir_a.is_imm || !ir_b.is_imm); // Only one should be an immediate.
+            assert(type->as_float.kind == FLOAT_F32); // TODO: Support f64
+            FloatKind fkind = type->as_float.kind;
+            OpRIA ir_a = ir_instr->binary.a;
+            OpRIA ir_b = ir_instr->binary.b;
+
+            assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM); // Only one should be an immediate.
+
+            u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_FLOAT);
 
             // movss r, a
-            u32 r = X64_get_lir_fp_reg(builder, ir_instr->binary.r);
-
-            if (ir_a.is_imm) {
-                X64_MemAddr addr = {.kind = X64_ADDR_FLOAT_LIT, .float_lit = float_lit};
-                X64_emit_instr_movss_r_m(builder, xbblock, r, addr);
+            if (ir_a.kind == OP_RIA_REG) {
+                u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_FLOAT);
+                X64_hint_same_reg(builder, r, a);
+                X64_emit_instr_movfp_r_r(builder, xbblock, fkind, r, a);
             }
-            */
+            else {
+                assert(ir_a.kind == OP_RIA_ADDR);
+                X64_MemAddr addr = {0};
+                X64_get_lir_addr(builder, xbblock, &addr, &ir_a.addr, 0);
+                X64_emit_instr_movfp_r_m(builder, xbblock, fkind, r, addr);
+            }
 
+            // addss r, b
+            if (ir_b.kind == OP_RIA_REG) {
+                u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_FLOAT);
+                X64_emit_instr_addss_r_r(builder, xbblock, r, b);
+            }
+            else {
+                assert(ir_b.kind == OP_RIA_ADDR);
+                X64_MemAddr addr = {0};
+                X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);
+                X64_emit_instr_addss_r_m(builder, xbblock, r, addr);
+            }
         }
         else {
             X64_convert_int_binary_instr(builder, xbblock, ir_instr);
@@ -1175,7 +1191,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
                 X64_emit_instr_cmp_m_i(builder, xbblock, size, a, ir_b.imm);
             }
             // cmp m, r
-            else  if (ir_b.kind == OP_RIA_REG) {
+            else if (ir_b.kind == OP_RIA_REG) {
                 u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
                 X64_emit_instr_cmp_m_r(builder, xbblock, size, a, b);
             }
