@@ -475,6 +475,36 @@ static void X64_emit_global_data(X64_Generator* generator, Symbol* sym)
     allocator_restore_state(mem_state);
 }
 
+static ListNode* X64_print_push_reg(X64_Generator* gen, ListNode* prev, X64_Reg reg)
+{
+    ListNode* node;
+
+    if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
+        node = X64_insert_text(gen, prev, "  push %s", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
+    }
+    else {
+        node = X64_insert_text(gen, prev, "  sub rsp, 16");
+        node = X64_insert_text(gen, node, "  movdqu oword [rsp], %s", x64_fp_reg_names[reg]);
+    }
+
+    return node;
+}
+
+static ListNode* X64_print_pop_reg(X64_Generator* gen, ListNode* prev, X64_Reg reg)
+{
+    ListNode* node;
+
+    if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
+        node = X64_insert_text(gen, prev, "  pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
+    }
+    else {
+        node = X64_insert_text(gen, prev, "  movdqu %s, oword [rsp]", x64_fp_reg_names[reg]);
+        node = X64_insert_text(gen, node, "  add rsp, 16");
+    }
+
+    return node;
+}
+
 typedef struct X64_TmpReg {
     X64_Reg reg;
     s32 offset;
@@ -499,7 +529,7 @@ static X64_RegGroup X64_begin_reg_group(X64_Generator* generator)
     return group;
 }
 
-static X64_Reg X64_get_reg(X64_RegGroup* group, u32 lreg, u32 size, bool store, u32 banned_regs)
+static X64_Reg X64_get_reg(X64_RegGroup* group, X64_RegClass reg_class, u32 lreg, u32 size, bool store, u32 banned_regs)
 {
     X64_LRegLoc lreg_loc = X64_lreg_loc(group->generator, lreg);
 
@@ -513,9 +543,9 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, u32 lreg, u32 size, bool store, 
     // to be restored later.
 
     X64_Generator* generator = group->generator;
-    X64_ScratchRegs* int_scratch_regs = &(*generator->curr_proc.scratch_regs)[X64_REG_CLASS_INT];
-    u32 num_scratch_regs = int_scratch_regs->num_regs;
-    X64_Reg* scratch_regs = int_scratch_regs->regs;
+    X64_ScratchRegs* x64_scratch_regs = &(*generator->curr_proc.scratch_regs)[reg_class];
+    u32 num_scratch_regs = x64_scratch_regs->num_regs;
+    X64_Reg* scratch_regs = x64_scratch_regs->regs;
 
     assert(lreg_loc.kind == X64_LREG_LOC_STACK);
     assert(group->num_tmp_regs < num_scratch_regs);
@@ -549,9 +579,19 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, u32 lreg, u32 size, bool store, 
     tmp_reg->size = size;
     tmp_reg->store = store;
 
-    X64_emit_text(group->generator, "  push %s", x64_reg_names[X64_MAX_INT_REG_SIZE][tmp_reg->reg]);
-    X64_emit_text(group->generator, "  mov %s, %s", x64_reg_names[size][tmp_reg->reg],
-                  X64_print_stack_offset(tmp_mem, lreg_loc.offset, size));
+    X64_print_push_reg(group->generator, group->generator->curr_proc.text_lines.prev, tmp_reg->reg);
+
+    if (reg_class == X64_REG_CLASS_INT) {
+        X64_emit_text(group->generator, "  mov %s, %s", x64_reg_names[size][tmp_reg->reg],
+                      X64_print_stack_offset(tmp_mem, lreg_loc.offset, size));
+    }
+    else {
+        assert(reg_class == X64_REG_CLASS_FLOAT);
+        const char* movfp_instr = size == float_kind_sizes[FLOAT_F64] ? "movsd" : "movss";
+
+        X64_emit_text(group->generator, "  %s %s, %s", movfp_instr, x64_fp_reg_names[tmp_reg->reg],
+                      X64_print_stack_offset(tmp_mem, lreg_loc.offset, size));
+    }
 
     // Add scratch register to the list (stack) of regs in group.
     tmp_reg->next = group->first_tmp_reg;
@@ -570,7 +610,7 @@ static void X64_save_reg(X64_RegGroup* group, X64_Reg reg)
     X64_TmpReg* tmp_reg = alloc_type(tmp_mem, X64_TmpReg, true);
     tmp_reg->reg = reg;
 
-    X64_emit_text(group->generator, "  push %s", x64_reg_names[X64_MAX_INT_REG_SIZE][tmp_reg->reg]);
+    X64_print_push_reg(group->generator, group->generator->curr_proc.text_lines.prev, tmp_reg->reg);
 
     // Add scratch register to the list (stack) of regs in group.
     tmp_reg->next = group->first_tmp_reg;
@@ -594,43 +634,24 @@ static void X64_end_reg_group(X64_RegGroup* group)
 
     while (it) {
         if (it->store) {
-            X64_emit_text(generator, "  mov %s, %s", X64_print_stack_offset(generator->tmp_mem, it->offset, it->size),
-                          x64_reg_names[it->size][it->reg]);
+            X64_RegClass reg_class = x64_reg_classes[it->reg];
+
+            if (reg_class == X64_REG_CLASS_INT) {
+                X64_emit_text(generator, "  mov %s, %s", X64_print_stack_offset(generator->tmp_mem, it->offset, it->size),
+                              x64_reg_names[it->size][it->reg]);
+            }
+            else {
+                assert(reg_class == X64_REG_CLASS_FLOAT);
+                const char* movfp_instr = (it->size == float_kind_sizes[FLOAT_F64]) ? "movsd" : "movss";
+
+                X64_emit_text(group->generator, "  %s %s, %s", movfp_instr,
+                              X64_print_stack_offset(generator->tmp_mem, it->offset, it->size), x64_fp_reg_names[it->reg]);
+            }
         }
 
-        X64_emit_text(generator, "  pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][it->reg]);
+        X64_print_pop_reg(generator, generator->curr_proc.text_lines.prev, it->reg);
         it = it->next;
     }
-}
-
-static ListNode* X64_print_push_reg(X64_Generator* gen, ListNode* prev, X64_Reg reg)
-{
-    ListNode* node;
-
-    if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
-        node = X64_insert_text(gen, prev, "  push %s", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
-    }
-    else {
-        node = X64_insert_text(gen, prev, "  sub rsp, 16");
-        node = X64_insert_text(gen, node, "  movdqu oword [rsp], %s", x64_fp_reg_names[reg]);
-    }
-
-    return node;
-}
-
-static ListNode* X64_print_pop_reg(X64_Generator* gen, ListNode* prev, X64_Reg reg)
-{
-    ListNode* node;
-
-    if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
-        node = X64_insert_text(gen, prev, "  pop %s", x64_reg_names[X64_MAX_INT_REG_SIZE][reg]);
-    }
-    else {
-        node = X64_insert_text(gen, prev, "  movdqu %s, oword [rsp]", x64_fp_reg_names[reg]);
-        node = X64_insert_text(gen, node, "  add rsp, 16");
-    }
-
-    return node;
 }
 
 typedef struct X64_StackParamsInfo {
@@ -1229,34 +1250,34 @@ static void X64_emit_ri_instr(X64_Generator* generator, const char* instr, u32 o
     }
 }
 
-static void X64_emit_rm_instr(X64_Generator* generator, const char* instr, bool writes_op1, u32 op1_size, u32 op1_lreg, u32 op2_size,
-                              X64_MemAddr* op2_vaddr)
+static void X64_emit_rm_instr(X64_Generator* generator, const char* instr, bool writes_op1, X64_RegClass reg_class, u32 op1_size,
+                              u32 op1_lreg, u32 op2_size, X64_MemAddr* op2_vaddr)
 {
     X64_SIBDAddr op2_addr = {0};
     u32 used_regs = X64_get_sibd_addr(generator, &op2_addr, op2_vaddr);
 
     X64_RegGroup tmp_group = X64_begin_reg_group(generator);
-    X64_Reg op1_reg = X64_get_reg(&tmp_group, op1_lreg, op1_size, writes_op1, used_regs);
+    X64_Reg op1_reg = X64_get_reg(&tmp_group, reg_class, op1_lreg, op1_size, writes_op1, used_regs);
     assert(op1_size <= 8 && IS_POW2(op1_size));
 
-    X64_emit_text(generator, "  %s %s, %s", instr, x64_reg_names[op1_size][op1_reg],
-                  X64_print_sibd_addr(generator->tmp_mem, &op2_addr, op2_size));
+    const char* reg_name = reg_class == X64_REG_CLASS_INT ? x64_reg_names[op1_size][op1_reg] : x64_fp_reg_names[op1_reg];
+    X64_emit_text(generator, "  %s %s, %s", instr, reg_name, X64_print_sibd_addr(generator->tmp_mem, &op2_addr, op2_size));
 
     X64_end_reg_group(&tmp_group);
 }
 
-static void X64_emit_mr_instr(X64_Generator* generator, const char* instr, u32 op1_size, X64_MemAddr* op1_vaddr, u32 op2_size,
-                              u32 op2_lreg)
+static void X64_emit_mr_instr(X64_Generator* generator, const char* instr, u32 op1_size, X64_MemAddr* op1_vaddr,
+                              X64_RegClass reg_class, u32 op2_size, u32 op2_lreg)
 {
     X64_SIBDAddr op1_addr = {0};
     u32 used_regs = X64_get_sibd_addr(generator, &op1_addr, op1_vaddr);
 
     X64_RegGroup tmp_group = X64_begin_reg_group(generator);
-    X64_Reg op2_reg = X64_get_reg(&tmp_group, op2_lreg, op2_size, false, used_regs);
+    X64_Reg op2_reg = X64_get_reg(&tmp_group, reg_class, op2_lreg, op2_size, false, used_regs);
     assert(op2_size <= 8 && IS_POW2(op2_size));
 
-    X64_emit_text(generator, "  %s %s, %s", instr, X64_print_sibd_addr(generator->tmp_mem, &op1_addr, op1_size),
-                  x64_reg_names[op2_size][op2_reg]);
+    const char* reg_name = reg_class == X64_REG_CLASS_INT ? x64_reg_names[op2_size][op2_reg] : x64_fp_reg_names[op2_reg];
+    X64_emit_text(generator, "  %s %s, %s", instr, X64_print_sibd_addr(generator->tmp_mem, &op1_addr, op1_size), reg_name);
 
     X64_end_reg_group(&tmp_group);
 }
@@ -1576,7 +1597,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
     case X64_INSTR_XOR_R_M: {
         u32 size = (u32)instr->binary_r_m.size;
 
-        X64_emit_rm_instr(generator, binary_r_m_name[instr->kind], true, size, instr->binary_r_m.dst, size, &instr->binary_r_m.src);
+        X64_emit_rm_instr(generator, binary_r_m_name[instr->kind], true, X64_REG_CLASS_INT, size, instr->binary_r_m.dst, size,
+                          &instr->binary_r_m.src);
         break;
     }
     case X64_INSTR_DIV_R:
@@ -1703,13 +1725,13 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
     case X64_INSTR_MOV_R_M: {
         u32 size = (u32)instr->mov_r_m.size;
 
-        X64_emit_rm_instr(generator, "mov", true, size, instr->mov_r_m.dst, size, &instr->mov_r_m.src);
+        X64_emit_rm_instr(generator, "mov", true, X64_REG_CLASS_INT, size, instr->mov_r_m.dst, size, &instr->mov_r_m.src);
         break;
     }
     case X64_INSTR_MOV_M_R: {
         u32 size = (u32)instr->mov_m_r.size;
 
-        X64_emit_mr_instr(generator, "mov", size, &instr->mov_m_r.dst, size, instr->mov_m_r.src);
+        X64_emit_mr_instr(generator, "mov", size, &instr->mov_m_r.dst, X64_REG_CLASS_INT, size, instr->mov_m_r.src);
         break;
     }
     case X64_INSTR_MOV_M_I: {
@@ -1748,67 +1770,31 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         break;
     }
     case X64_INSTR_MOVSS_R_M: {
-        X64_SIBDAddr src = {0};
-        X64_get_sibd_addr(generator, &src, &instr->movfp_r_m.src);
+        u32 size = float_kind_sizes[FLOAT_F32];
 
-        X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->movfp_r_m.dst);
-
-        // TODO: Handle case when dst is not allocated into an xmm register.
-        // Modify X64_get_reg() and X64_emit_rm_instr() to handle floating-point class of registers.
-        assert(dst_loc.kind == X64_LREG_LOC_REG);
-
-        X64_emit_text(generator, "  movss %s, %s", x64_fp_reg_names[dst_loc.reg],
-                      X64_print_sibd_addr(generator->tmp_mem, &src, float_kind_sizes[FLOAT_F32]));
-
+        X64_emit_rm_instr(generator, "movss", true, X64_REG_CLASS_FLOAT, size, instr->movfp_r_m.dst, size, &instr->movfp_r_m.src);
         break;
     }
     case X64_INSTR_MOVSD_R_M: {
-        X64_SIBDAddr src = {0};
-        X64_get_sibd_addr(generator, &src, &instr->movfp_r_m.src);
+        u32 size = float_kind_sizes[FLOAT_F64];
 
-        X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->movfp_r_m.dst);
-
-        // TODO: Handle case when dst is not allocated into an xmm register.
-        // Modify X64_get_reg() and X64_emit_rm_instr() to handle floating-point class of registers.
-        assert(dst_loc.kind == X64_LREG_LOC_REG);
-
-        X64_emit_text(generator, "  movsd %s, %s", x64_fp_reg_names[dst_loc.reg],
-                      X64_print_sibd_addr(generator->tmp_mem, &src, float_kind_sizes[FLOAT_F64]));
-
+        X64_emit_rm_instr(generator, "movsd", true, X64_REG_CLASS_FLOAT, size, instr->movfp_r_m.dst, size, &instr->movfp_r_m.src);
         break;
     }
     case X64_INSTR_MOVSS_M_R: {
-        X64_SIBDAddr dst = {0};
-        X64_get_sibd_addr(generator, &dst, &instr->movfp_m_r.dst);
+        u32 size = float_kind_sizes[FLOAT_F32];
 
-        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->movfp_m_r.src);
-
-        // TODO: Handle case when src is not allocated into an xmm register.
-        // Modify X64_get_reg() and X64_emit_rm_instr() to handle floating-point class of registers.
-        assert(src_loc.kind == X64_LREG_LOC_REG);
-
-        X64_emit_text(generator, "  movss %s, %s", X64_print_sibd_addr(generator->tmp_mem, &dst, float_kind_sizes[FLOAT_F32]),
-                      x64_fp_reg_names[src_loc.reg]);
-
+        X64_emit_mr_instr(generator, "movss", size, &instr->movfp_m_r.dst, X64_REG_CLASS_FLOAT, size, instr->movfp_m_r.src);
         break;
     }
     case X64_INSTR_MOVSD_M_R: {
-        X64_SIBDAddr dst = {0};
-        X64_get_sibd_addr(generator, &dst, &instr->movfp_m_r.dst);
+        u32 size = float_kind_sizes[FLOAT_F64];
 
-        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->movfp_m_r.src);
-
-        // TODO: Handle case when src is not allocated into an xmm register.
-        // Modify X64_get_reg() and X64_emit_rm_instr() to handle floating-point class of registers.
-        assert(src_loc.kind == X64_LREG_LOC_REG);
-
-        X64_emit_text(generator, "  movsd %s, %s", X64_print_sibd_addr(generator->tmp_mem, &dst, float_kind_sizes[FLOAT_F64]),
-                      x64_fp_reg_names[src_loc.reg]);
-
+        X64_emit_mr_instr(generator, "movsd", size, &instr->movfp_m_r.dst, X64_REG_CLASS_FLOAT, size, instr->movfp_m_r.src);
         break;
     }
     case X64_INSTR_LEA: {
-        X64_emit_rm_instr(generator, "lea", true, X64_MAX_INT_REG_SIZE, instr->lea.dst, 0, &instr->lea.mem);
+        X64_emit_rm_instr(generator, "lea", true, X64_REG_CLASS_INT, X64_MAX_INT_REG_SIZE, instr->lea.dst, 0, &instr->lea.mem);
         break;
     }
     case X64_INSTR_CMP_R_R: {
@@ -1826,13 +1812,13 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
     case X64_INSTR_CMP_R_M: {
         u32 size = (u32)instr->cmp_r_m.size;
 
-        X64_emit_rm_instr(generator, "cmp", false, size, instr->cmp_r_m.op1, size, &instr->cmp_r_m.op2);
+        X64_emit_rm_instr(generator, "cmp", false, X64_REG_CLASS_INT, size, instr->cmp_r_m.op1, size, &instr->cmp_r_m.op2);
         break;
     }
     case X64_INSTR_CMP_M_R: {
         u32 size = (u32)instr->cmp_m_r.size;
 
-        X64_emit_mr_instr(generator, "cmp", size, &instr->cmp_m_r.op1, size, instr->cmp_m_r.op2);
+        X64_emit_mr_instr(generator, "cmp", size, &instr->cmp_m_r.op1, X64_REG_CLASS_INT, size, instr->cmp_m_r.op2);
         break;
     }
     case X64_INSTR_CMP_M_I: {
