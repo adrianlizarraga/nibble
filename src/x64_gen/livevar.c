@@ -66,12 +66,14 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_mem_lregs(builder, &instr->binary_r_m.src, ino);
             break;
         }
-        case X64_INSTR_ADDSS_R_R: {
+        case X64_INSTR_ADDSS_R_R:
+        case X64_INSTR_ADDSD_R_R: {
             X64_touch_lreg(builder, instr->binary_fp_r_r.dst, ino);
             X64_touch_lreg(builder, instr->binary_fp_r_r.src, ino);
             break;
         }
-        case X64_INSTR_ADDSS_R_M: {
+        case X64_INSTR_ADDSS_R_M:
+        case X64_INSTR_ADDSD_R_M: {
             X64_touch_lreg(builder, instr->binary_fp_r_m.dst, ino);
             X64_touch_mem_lregs(builder, &instr->binary_fp_r_m.src, ino);
             break;
