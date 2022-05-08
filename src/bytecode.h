@@ -10,11 +10,13 @@
 
 typedef u32 IR_Reg;
 typedef struct OpRI OpRI;
+typedef struct OpRA OpRA;
 typedef struct OpRIA OpRIA;
 typedef struct MemObj MemObj;
 typedef struct MemAddr MemAddr;
 typedef struct Instr Instr;
 
+// Instruction operand that is either a register (R) or an immediate (I).
 struct OpRI {
     bool is_imm;
 
@@ -42,6 +44,9 @@ typedef enum InstrKind {
     INSTR_TRUNC,
     INSTR_ZEXT,
     INSTR_SEXT,
+    INSTR_FP2INT,
+    INSTR_INT2FP,
+    INSTR_FP2FP,
     INSTR_LIMM,
     INSTR_LOAD,
     INSTR_LADDR,
@@ -81,6 +86,16 @@ struct MemAddr {
     u32 disp;
 };
 
+// Instruction operand that is either a register (R) or an address (A).
+struct OpRA {
+    bool is_addr;
+
+    union {
+        IR_Reg reg;
+        MemAddr addr;
+    };
+};
+
 typedef enum OpRIAKind {
     OP_RIA_NONE = 0,
     OP_RIA_REG,
@@ -88,6 +103,7 @@ typedef enum OpRIAKind {
     OP_RIA_ADDR
 } OpRIAKind;
 
+// Instruction operand that is either a register (R), an immediate (I), or an address (A).
 struct OpRIA {
     OpRIAKind kind;
 
@@ -151,6 +167,13 @@ typedef struct InstrConvert {
     IR_Reg r;
     IR_Reg a;
 } InstrConvert;
+
+typedef struct InstrFpCast {
+    u16 dst_size;
+    u16 src_size;
+    IR_Reg r;
+    OpRA a;
+} InstrFpCast;
 
 typedef struct InstrLImm {
     Type* type;
@@ -272,6 +295,7 @@ struct Instr {
         InstrShift shift;
         InstrUnary unary;
         InstrConvert convert;
+        InstrFpCast fp_cast;
         InstrLImm limm;
         InstrLoad load;
         InstrStore store;

@@ -351,6 +351,22 @@ static void IR_emit_instr_convert(IR_ProcBuilder* builder, BBlock* bblock, Instr
     IR_add_instr(builder, bblock, instr);
 }
 
+#define IR_emit_instr_int2fp(b, blk, ds, ss, r, a) IR_emit_instr_fp_cast((b), (blk), INSTR_INT2FP, (ds), (ss), (r), (a))
+#define IR_emit_instr_fp2int(b, blk, ds, ss, r, a) IR_emit_instr_fp_cast((b), (blk), INSTR_FP2INT, (ds), (ss), (r), (a))
+#define IR_emit_instr_fp2fp(b, blk, ds, ss, r, a) IR_emit_instr_fp_cast((b), (blk), INSTR_FP2FP, (ds), (ss), (r), (a))
+
+static void IR_emit_instr_fp_cast(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, size_t dst_size, size_t src_size, IR_Reg r,
+                                  OpRA a)
+{
+    Instr* instr = IR_new_instr(builder->arena, kind);
+    instr->fp_cast.dst_size = (u16)dst_size;
+    instr->fp_cast.src_size = (u16)src_size;
+    instr->fp_cast.r = r;
+    instr->fp_cast.a = a;
+
+    IR_add_instr(builder, bblock, instr);
+}
+
 static void IR_emit_instr_limm(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, Scalar imm)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_LIMM);
@@ -939,6 +955,50 @@ static OpRI IR_expr_result_to_op_ri(IR_ProcBuilder* builder, BBlock** p_bblock, 
     }
 
     return ri;
+}
+
+static OpRA IR_expr_result_to_op_ra(IR_ProcBuilder* builder, BBlock** p_bblock, IR_ExprResult* expr_result)
+{
+    OpRA ra = {0};
+
+    switch (expr_result->kind) {
+    case IR_EXPR_RESULT_REG:
+        ra.is_addr = false;
+        ra.reg = expr_result->reg;
+        break;
+    case IR_EXPR_RESULT_VAR:
+        ra.is_addr = true;
+        ra.addr = IR_sym_as_addr(builder, expr_result->sym);
+        break;
+    case IR_EXPR_RESULT_DEREF_ADDR:
+        ra.is_addr = true;
+        ra.addr = expr_result->addr;
+        break;
+    case IR_EXPR_RESULT_TMP_OBJ:
+        ra.is_addr = true;
+        ra.addr = IR_tmp_obj_as_addr(expr_result->tmp_obj);
+        break;
+    case IR_EXPR_RESULT_STR_LIT:
+        ra.is_addr = true;
+        ra.addr = IR_strlit_as_addr(expr_result->str_lit);
+        break;
+    case IR_EXPR_RESULT_FLOAT_LIT:
+        ra.is_addr = true;
+        ra.addr = IR_floatlit_as_addr(expr_result->float_lit);
+        break;
+    case IR_EXPR_RESULT_MEM_ADDR:
+    case IR_EXPR_RESULT_DEFERRED_CMP:
+    case IR_EXPR_RESULT_PROC:
+    case IR_EXPR_RESULT_IMM:
+        *p_bblock = IR_expr_result_to_reg(builder, *p_bblock, expr_result);
+        ra.is_addr = false;
+        ra.reg = expr_result->reg;
+        break;
+    default:
+        NIBBLE_FATAL_EXIT("IR_expr_result_to_op_ra(): Unexpected IR_ExprResultKind %d", expr_result->kind);
+    }
+
+    return ra;
 }
 
 static OpRIA IR_expr_result_to_op_ria(IR_ProcBuilder* builder, BBlock** p_bblock, IR_ExprResult* expr_result)
@@ -2152,7 +2212,7 @@ static BBlock* IR_emit_int_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_Expr
     // Extend (sign or zero) src to larger type.
     else {
         dst_reg = IR_next_reg(builder);
-        InstrKind instr_kind = (src_type->kind == TYPE_INTEGER) && src_type->as_integer.is_signed ? INSTR_SEXT : INSTR_ZEXT;
+        InstrKind instr_kind = type_is_signed(src_type) ? INSTR_SEXT : INSTR_ZEXT;
         IR_emit_instr_convert(builder, curr_bb, instr_kind, dst_type, src_type, dst_reg, src_reg);
     }
 
@@ -2178,9 +2238,6 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
     BBlock* curr_bb = bblock;
     dst_er->type = dst_type;
 
-    // TODO: Support floats.
-    assert(src_er->type->kind != TYPE_FLOAT);
-    assert(dst_er->type->kind != TYPE_FLOAT);
     assert(src_er->type != dst_er->type); // Should be prevented by resolver.
 
     if ((src_er->type->kind == TYPE_ARRAY) && (dst_er->type->kind == TYPE_PTR)) {
@@ -2230,9 +2287,35 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         dst_er->cmp.first_sc_jmp = NULL;
         dst_er->cmp.last_sc_jmp = NULL;
     }
+    else if (type_is_integer_like(src_er->type) && dst_er->type->kind == TYPE_FLOAT) {
+        OpRA s = IR_expr_result_to_op_ra(builder, &curr_bb, src_er);
+        IR_Reg dst_reg = IR_next_reg(builder);
+
+        IR_emit_instr_int2fp(builder, curr_bb, dst_type->size, src_er->type->size, dst_reg, s);
+
+        dst_er->kind = IR_EXPR_RESULT_REG;
+        dst_er->reg = dst_reg;
+    }
+    else if ((src_er->type->kind == TYPE_FLOAT) && type_is_integer_like(dst_er->type)) {
+        OpRA s = IR_expr_result_to_op_ra(builder, &curr_bb, src_er);
+        IR_Reg dst_reg = IR_next_reg(builder);
+
+        IR_emit_instr_fp2int(builder, curr_bb, dst_er->type->size, src_er->type->size, dst_reg, s);
+
+        dst_er->kind = IR_EXPR_RESULT_REG;
+        dst_er->reg = dst_reg;
+    }
+    else if ((src_er->type->kind == TYPE_FLOAT) && (dst_er->type->kind == TYPE_FLOAT)) {
+        OpRA s = IR_expr_result_to_op_ra(builder, &curr_bb, src_er);
+        IR_Reg dst_reg = IR_next_reg(builder);
+
+        IR_emit_instr_fp2fp(builder, curr_bb, dst_er->type->size, src_er->type->size, dst_reg, s);
+
+        dst_er->kind = IR_EXPR_RESULT_REG;
+        dst_er->reg = dst_reg;
+    }
     else {
-        assert(type_is_scalar(src_er->type) && src_er->type->kind != TYPE_FLOAT && type_is_scalar(dst_er->type) &&
-               dst_er->type->kind != TYPE_FLOAT);
+        assert(type_is_scalar(src_er->type) && type_is_scalar(dst_er->type));
         curr_bb = IR_emit_int_cast(builder, curr_bb, src_er, dst_er);
     }
 
