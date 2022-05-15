@@ -23,10 +23,6 @@ var g_f64 : f64 = 1.2;
 var g_f32 : f32 = 1.2f;
 
 proc main() => int {
-    var l_f64 : f64 = 1.2;
-    var l_f32 : f32 = 1.2f;
-    var l2_f32 : f32 = l_f32 + 1.0f;
-    var l2_f64 : f64 = l_f64 + 1.0;
     var nl : char = '\n';
 
     #writeout(g_b[0], 2);
@@ -50,5 +46,5 @@ proc main() => int {
     g_d[0] = 'k';
     #writeout(g_d, 5);
 
-    return g_a[1][0]; // 2
+    return g_a[1][0] + (); // 2
 }

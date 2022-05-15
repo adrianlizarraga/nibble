@@ -351,18 +351,38 @@ static void IR_emit_instr_convert(IR_ProcBuilder* builder, BBlock* bblock, Instr
     IR_add_instr(builder, bblock, instr);
 }
 
-#define IR_emit_instr_int2fp(b, blk, ds, ss, r, a) IR_emit_instr_fp_cast((b), (blk), INSTR_INT2FP, (ds), (ss), (r), (a))
-#define IR_emit_instr_fp2int(b, blk, ds, ss, r, a) IR_emit_instr_fp_cast((b), (blk), INSTR_FP2INT, (ds), (ss), (r), (a))
-#define IR_emit_instr_fp2fp(b, blk, ds, ss, r, a) IR_emit_instr_fp_cast((b), (blk), INSTR_FP2FP, (ds), (ss), (r), (a))
-
-static void IR_emit_instr_fp_cast(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, size_t dst_size, size_t src_size, IR_Reg r,
-                                  OpRA a)
+static void IR_emit_instr_fp2int(IR_ProcBuilder* builder, BBlock* bblock, size_t dst_size, FloatKind src_kind, IR_Reg dst,
+                                 OpRA src)
 {
-    Instr* instr = IR_new_instr(builder->arena, kind);
-    instr->fp_cast.dst_size = (u16)dst_size;
-    instr->fp_cast.src_size = (u16)src_size;
-    instr->fp_cast.r = r;
-    instr->fp_cast.a = a;
+    Instr* instr = IR_new_instr(builder->arena, INSTR_FP2INT);
+    instr->fp2int.dst_size = (u16)dst_size;
+    instr->fp2int.src_kind = src_kind;
+    instr->fp2int.dst = dst;
+    instr->fp2int.src = src;
+
+    IR_add_instr(builder, bblock, instr);
+}
+
+static void IR_emit_instr_int2fp(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, size_t src_size, IR_Reg dst,
+                                 OpRA src)
+{
+    Instr* instr = IR_new_instr(builder->arena, INSTR_INT2FP);
+    instr->int2fp.dst_kind = dst_kind;
+    instr->int2fp.src_size = (u16)src_size;
+    instr->int2fp.dst = dst;
+    instr->int2fp.src = src;
+
+    IR_add_instr(builder, bblock, instr);
+}
+
+static void IR_emit_instr_fp2fp(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, FloatKind src_kind, IR_Reg dst,
+                                OpRA src)
+{
+    Instr* instr = IR_new_instr(builder->arena, INSTR_FP2FP);
+    instr->fp2fp.dst_kind = dst_kind;
+    instr->fp2fp.src_kind = src_kind;
+    instr->fp2fp.dst = dst;
+    instr->fp2fp.src = src;
 
     IR_add_instr(builder, bblock, instr);
 }
@@ -2291,7 +2311,7 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         OpRA s = IR_expr_result_to_op_ra(builder, &curr_bb, src_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_int2fp(builder, curr_bb, dst_type->size, src_er->type->size, dst_reg, s);
+        IR_emit_instr_int2fp(builder, curr_bb, dst_er->type->as_float.kind, src_er->type->size, dst_reg, s);
 
         dst_er->kind = IR_EXPR_RESULT_REG;
         dst_er->reg = dst_reg;
@@ -2300,7 +2320,7 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         OpRA s = IR_expr_result_to_op_ra(builder, &curr_bb, src_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_fp2int(builder, curr_bb, dst_er->type->size, src_er->type->size, dst_reg, s);
+        IR_emit_instr_fp2int(builder, curr_bb, dst_er->type->size, src_er->type->as_float.kind, dst_reg, s);
 
         dst_er->kind = IR_EXPR_RESULT_REG;
         dst_er->reg = dst_reg;
@@ -2309,7 +2329,7 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         OpRA s = IR_expr_result_to_op_ra(builder, &curr_bb, src_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_fp2fp(builder, curr_bb, dst_er->type->size, src_er->type->size, dst_reg, s);
+        IR_emit_instr_fp2fp(builder, curr_bb, dst_er->type->as_float.kind, src_er->type->as_float.kind, dst_reg, s);
 
         dst_er->kind = IR_EXPR_RESULT_REG;
         dst_er->reg = dst_reg;

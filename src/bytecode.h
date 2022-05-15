@@ -168,12 +168,26 @@ typedef struct InstrConvert {
     IR_Reg a;
 } InstrConvert;
 
-typedef struct InstrFpCast {
+typedef struct InstrFp2Int {
+    FloatKind src_kind;
     u16 dst_size;
+    IR_Reg dst;
+    OpRA src;
+} InstrFp2Int;
+
+typedef struct InstrFp2Fp {
+    FloatKind src_kind;
+    FloatKind dst_kind;
+    IR_Reg dst;
+    OpRA src;
+} InstrFp2Fp;
+
+typedef struct InstrInt2Fp {
     u16 src_size;
-    IR_Reg r;
-    OpRA a;
-} InstrFpCast;
+    FloatKind dst_kind;
+    IR_Reg dst;
+    OpRA src;
+} InstrInt2Fp;
 
 typedef struct InstrLImm {
     Type* type;
@@ -295,7 +309,9 @@ struct Instr {
         InstrShift shift;
         InstrUnary unary;
         InstrConvert convert;
-        InstrFpCast fp_cast;
+        InstrFp2Int fp2int;
+        InstrFp2Fp fp2fp;
+        InstrInt2Fp int2fp;
         InstrLImm limm;
         InstrLoad load;
         InstrStore store;
