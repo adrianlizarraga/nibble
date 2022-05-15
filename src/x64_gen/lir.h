@@ -101,10 +101,10 @@ typedef enum X64_InstrKind
     X64_INSTR_MOVSD_M_R,
 
     // Fp to Int
-    X64_INSTR_CVTSS2SI_R_R,
-    X64_INSTR_CVTSS2SI_R_M,
-    X64_INSTR_CVTSD2SI_R_R,
-    X64_INSTR_CVTSD2SI_R_M,
+    X64_INSTR_CVTTSS2SI_R_R,
+    X64_INSTR_CVTTSS2SI_R_M,
+    X64_INSTR_CVTTSD2SI_R_R,
+    X64_INSTR_CVTTSD2SI_R_M,
 
     // Load an address computation into a register.
     X64_INSTR_LEA,

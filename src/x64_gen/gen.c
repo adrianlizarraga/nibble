@@ -1894,15 +1894,15 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_mr_instr(generator, "movsd", size, &instr->movfp_m_r.dst, X64_REG_CLASS_FLOAT, size, instr->movfp_m_r.src);
         break;
     }
-    case X64_INSTR_CVTSS2SI_R_R: {
+    case X64_INSTR_CVTTSS2SI_R_R: {
         X64_emit_fp2int_rr_instr(generator, "cvttss2si", float_kind_sizes[FLOAT_F32], &instr->fp2int_r_r);
         break;
     }
-    case X64_INSTR_CVTSD2SI_R_R: {
+    case X64_INSTR_CVTTSD2SI_R_R: {
         X64_emit_fp2int_rr_instr(generator, "cvttsd2si", float_kind_sizes[FLOAT_F64], &instr->fp2int_r_r);
         break;
     }
-    case X64_INSTR_CVTSS2SI_R_M: {
+    case X64_INSTR_CVTTSS2SI_R_M: {
         X64_SIBDAddr src_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->fp2int_r_m.src);
 
@@ -1916,7 +1916,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_end_reg_group(&tmp_group);
         break;
     }
-    case X64_INSTR_CVTSD2SI_R_M: {
+    case X64_INSTR_CVTTSD2SI_R_M: {
         X64_SIBDAddr src_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->fp2int_r_m.src);
 
