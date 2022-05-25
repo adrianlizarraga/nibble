@@ -2288,6 +2288,7 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         dst_er->kind = IR_EXPR_RESULT_TMP_OBJ;
         dst_er->tmp_obj = slice_obj;
     }
+    // TODO: Float to bool
     else if (type_is_bool(dst_er->type)) {
         assert(type_is_scalar(src_er->type));
         assert(src_er->kind != IR_EXPR_RESULT_DEFERRED_CMP);

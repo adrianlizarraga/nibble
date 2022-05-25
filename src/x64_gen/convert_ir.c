@@ -1075,7 +1075,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     case INSTR_FP2INT: {
         // EX: r = fp2int(a_fp)
         //
-        // cvtsd2si r, a_fp
+        // cvttsd2si r, a_fp
         size_t dst_size = ir_instr->fp2int.dst_size;
         FloatKind src_kind = ir_instr->fp2int.src_kind;
         OpRA ir_a = ir_instr->fp2int.src;
@@ -1090,6 +1090,50 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         else {
             u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_FLOAT);
             X64_emit_instr_fp2int_r_r(builder, xbblock, dst_size, r, src_kind, a);
+        }
+
+        break;
+    }
+    case INSTR_INT2FP: {
+        // EX: r_fp = int2fp(a)
+        //
+        // cvtsi2sd r_fp, a
+        const size_t smallest_src_size = 4;
+        size_t src_size = ir_instr->int2fp.src_size;
+        FloatKind dst_kind = ir_instr->int2fp.dst_kind;
+        OpRA ir_a = ir_instr->int2fp.src;
+
+        u32 r = X64_get_lir_reg(builder, ir_instr->int2fp.dst, X64_REG_CLASS_FLOAT);
+
+        if (ir_a.is_addr) {
+            X64_MemAddr addr = {0};
+            X64_get_lir_addr(builder, xbblock, &addr, &ir_a.addr, 0);
+
+            // If src is < 4 bytes, sign-extend it to 4 bytes before converting to fp.
+            if (src_size < smallest_src_size) {
+                u32 a_sext = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
+                X64_emit_instr_convert_r_m(builder, xbblock, X64_INSTR_MOVSX_R_M, smallest_src_size, a_sext, src_size, addr);
+                X64_emit_instr_int2fp_r_r(builder, xbblock, dst_kind, r, smallest_src_size, a_sext);
+
+            }
+            // Otherwise, just convert src to a fp.
+            else {
+                X64_emit_instr_int2fp_r_m(builder, xbblock, dst_kind, r, src_size, addr);
+            }
+        }
+        else {
+            u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_INT);
+
+            // If src is < 4 bytes, sign-extend it to 4 bytes first.
+            if (src_size < smallest_src_size) {
+                u32 a_sext = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
+                X64_emit_instr_convert_r_r(builder, xbblock, X64_INSTR_MOVSX_R_R, smallest_src_size, a_sext, src_size, a);
+
+                a = a_sext;
+                src_size = smallest_src_size;
+            }
+
+            X64_emit_instr_int2fp_r_r(builder, xbblock, dst_kind, r, src_size, a);
         }
 
         break;

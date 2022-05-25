@@ -88,6 +88,7 @@ typedef enum X64_InstrKind
 
     // Sign-extend
     X64_INSTR_MOVSX_R_R,
+    X64_INSTR_MOVSX_R_M,
     X64_INSTR_SEXT_AX_TO_DX,
 
     // f32 mov
@@ -105,6 +106,12 @@ typedef enum X64_InstrKind
     X64_INSTR_CVTTSS2SI_R_M,
     X64_INSTR_CVTTSD2SI_R_R,
     X64_INSTR_CVTTSD2SI_R_M,
+
+    // Int to Fp
+    X64_INSTR_CVTSI2SS_R_R,
+    X64_INSTR_CVTSI2SS_R_M,
+    X64_INSTR_CVTSI2SD_R_R,
+    X64_INSTR_CVTSI2SD_R_M,
 
     // Load an address computation into a register.
     X64_INSTR_LEA,
@@ -283,6 +290,18 @@ typedef struct X64_InstrFp2Int_R_M {
     X64_MemAddr src;
 } X64_InstrFp2Int_R_M;
 
+typedef struct X64_InstrInt2Fp_R_R {
+    size_t src_size;
+    u32 dst;
+    u32 src;
+} X64_InstrInt2Fp_R_R;
+
+typedef struct X64_InstrInt2Fp_R_M {
+    size_t src_size;
+    u32 dst;
+    X64_MemAddr src;
+} X64_InstrInt2Fp_R_M;
+
 typedef struct X64_InstrRepMovsb {
     u32 rdi;
     u32 rsi;
@@ -301,6 +320,13 @@ typedef struct X64_InstrConvert_R_R {
     u32 dst;
     u32 src;
 } X64_InstrConvert_R_R;
+
+typedef struct X64_InstrConvert_R_M {
+    size_t dst_size;
+    size_t src_size;
+    u32 dst;
+    X64_MemAddr src;
+} X64_InstrConvert_R_M;
 
 typedef struct X64_InstrSExtAxToDx {
     size_t size;
@@ -457,10 +483,14 @@ struct X64_Instr {
         X64_InstrFp2Int_R_R fp2int_r_r;
         X64_InstrFp2Int_R_M fp2int_r_m;
 
+        X64_InstrInt2Fp_R_R int2fp_r_r;
+        X64_InstrInt2Fp_R_M int2fp_r_m;
+
         X64_InstrRepMovsb rep_movsb;
         X64_InstrRepStosb rep_stosb;
 
         X64_InstrConvert_R_R convert_r_r;
+        X64_InstrConvert_R_M convert_r_m;
 
         X64_InstrSExtAxToDx sext_ax_to_dx;
 
@@ -546,8 +576,13 @@ void X64_emit_instr_movfp_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Floa
 void X64_emit_instr_fp2int_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t dst_size, u32 dst, FloatKind src_kind, u32 src);
 void X64_emit_instr_fp2int_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t dst_size, u32 dst, FloatKind src_kind, X64_MemAddr src);
 
+void X64_emit_instr_int2fp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, size_t src_size, u32 src);
+void X64_emit_instr_int2fp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, size_t src_size, X64_MemAddr src);
+
 void X64_emit_instr_convert_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t dst_size, u32 dst,
                                 size_t src_size, u32 src);
+void X64_emit_instr_convert_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t dst_size, u32 dst,
+                                size_t src_size, X64_MemAddr src);
 void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 rdx, u32 rax);
 void X64_emit_instr_lea(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr mem);
 void X64_emit_instr_cmp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, u32 op2);

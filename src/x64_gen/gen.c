@@ -1212,6 +1212,46 @@ static void X64_emit_fp2int_rr_instr(X64_Generator* generator, const char* instr
     }
 }
 
+static void X64_emit_int2fp_rr_instr(X64_Generator* generator, const char* instr_name, size_t dst_size, X64_InstrInt2Fp_R_R* instr)
+{
+    assert(instr->src_size >= 4);
+
+    X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->dst);
+    X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->src);
+
+    if (dst_loc.kind == X64_LREG_LOC_REG && src_loc.kind == X64_LREG_LOC_REG) {
+        const char* dst_reg_name = x64_fp_reg_names[dst_loc.reg];
+        const char* src_reg_name = x64_reg_names[instr->src_size][src_loc.reg];
+
+        X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_reg_name);
+    }
+    else if (dst_loc.kind == X64_LREG_LOC_REG && src_loc.kind == X64_LREG_LOC_STACK) {
+        const char* dst_reg_name = x64_fp_reg_names[dst_loc.reg];
+        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, instr->src_size);
+
+        X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_addr_name);
+    }
+    else if (dst_loc.kind == X64_LREG_LOC_STACK && src_loc.kind == X64_LREG_LOC_REG) {
+        X64_RegGroup tmp_group = X64_begin_reg_group(generator);
+        X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, instr->dst, dst_size, true, (1 << src_loc.reg));
+        const char* dst_reg_name = x64_fp_reg_names[dst_reg];
+        const char* src_reg_name = x64_reg_names[instr->src_size][src_loc.reg];
+
+        X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_reg_name);
+        X64_end_reg_group(&tmp_group);
+    }
+    else {
+        assert(dst_loc.kind == X64_LREG_LOC_STACK && src_loc.kind == X64_LREG_LOC_STACK);
+        X64_RegGroup tmp_group = X64_begin_reg_group(generator);
+        X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, instr->dst, dst_size, true, 0);
+        const char* dst_reg_name = x64_fp_reg_names[dst_reg];
+        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, instr->src_size);
+
+        X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_addr_name);
+        X64_end_reg_group(&tmp_group);
+    }
+}
+
 static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool writes_op1, X64_RegClass reg_class, u32 op1_size,
                               u32 op1_lreg, u32 op2_size, u32 op2_lreg)
 {
@@ -1858,6 +1898,14 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                           instr->convert_r_r.src);
         break;
     }
+    case X64_INSTR_MOVSX_R_M: {
+        u32 dst_size = (u32)instr->convert_r_m.dst_size;
+        u32 src_size = (u32)instr->convert_r_m.src_size;
+        const char* movsx = src_size >= builtin_types[BUILTIN_TYPE_U32].type->size ? "movsxd" : "movsx";
+
+        X64_emit_rm_instr(generator, movsx, true, X64_REG_CLASS_INT, dst_size, instr->convert_r_m.dst, src_size, &instr->convert_r_m.src);
+        break;
+    }
     case X64_INSTR_MOVSS_R_R: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
@@ -1927,6 +1975,46 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         const char* dst_name = x64_reg_names[dst_size][dst_reg];
 
         X64_emit_text(generator, "  cvttsd2si %s, %s", dst_name, X64_print_sibd_addr(generator->tmp_mem, &src_addr, float_kind_sizes[FLOAT_F64]));
+        X64_end_reg_group(&tmp_group);
+        break;
+    }
+    case X64_INSTR_CVTSI2SS_R_R: { // Int -> Fp
+        X64_emit_int2fp_rr_instr(generator, "cvtsi2ss", float_kind_sizes[FLOAT_F32], &instr->int2fp_r_r);
+        break;
+    }
+    case X64_INSTR_CVTSI2SD_R_R: { // Int -> Fp
+        X64_emit_int2fp_rr_instr(generator, "cvtsi2sd", float_kind_sizes[FLOAT_F64], &instr->int2fp_r_r);
+        break;
+    }
+    case X64_INSTR_CVTSI2SS_R_M: {
+        X64_SIBDAddr src_addr = {0};
+        u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->int2fp_r_m.src);
+        size_t dst_size = float_kind_sizes[FLOAT_F32];
+
+        X64_RegGroup tmp_group = X64_begin_reg_group(generator);
+        X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, instr->int2fp_r_m.dst, dst_size, true, used_regs);
+        const char* dst_name = x64_fp_reg_names[dst_reg];
+
+        u32 src_size = instr->int2fp_r_m.src_size;
+
+        assert(src_size >= 4);
+        X64_emit_text(generator, "  cvtsi2ss %s, %s", dst_name, X64_print_sibd_addr(generator->tmp_mem, &src_addr, src_size));
+        X64_end_reg_group(&tmp_group);
+        break;
+    }
+    case X64_INSTR_CVTSI2SD_R_M: {
+        X64_SIBDAddr src_addr = {0};
+        u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->int2fp_r_m.src);
+        size_t dst_size = float_kind_sizes[FLOAT_F64];
+
+        X64_RegGroup tmp_group = X64_begin_reg_group(generator);
+        X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, instr->int2fp_r_m.dst, dst_size, true, used_regs);
+        const char* dst_name = x64_fp_reg_names[dst_reg];
+
+        u32 src_size = instr->int2fp_r_m.src_size;
+
+        assert(src_size >= 4);
+        X64_emit_text(generator, "  cvtsi2sd %s, %s", dst_name, X64_print_sibd_addr(generator->tmp_mem, &src_addr, src_size));
         X64_end_reg_group(&tmp_group);
         break;
     }

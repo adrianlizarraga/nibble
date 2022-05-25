@@ -159,6 +159,11 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_lreg(builder, instr->convert_r_r.dst, ino);
             break;
         }
+        case X64_INSTR_MOVSX_R_M: {
+            X64_touch_mem_lregs(builder, &instr->convert_r_m.src, ino);
+            X64_touch_lreg(builder, instr->convert_r_m.dst, ino);
+            break;
+        }
         case X64_INSTR_MOVSS_R_R:
         case X64_INSTR_MOVSD_R_R: {
             X64_touch_lreg(builder, instr->movfp_r_r.src, ino);
@@ -187,6 +192,18 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_CVTTSD2SI_R_M: {
             X64_touch_mem_lregs(builder, &instr->fp2int_r_m.src, ino);
             X64_touch_lreg(builder, instr->fp2int_r_m.dst, ino);
+            break;
+        }
+        case X64_INSTR_CVTSI2SS_R_R:
+        case X64_INSTR_CVTSI2SD_R_R: {
+            X64_touch_lreg(builder, instr->int2fp_r_r.src, ino);
+            X64_touch_lreg(builder, instr->int2fp_r_r.dst, ino);
+            break;
+        }
+        case X64_INSTR_CVTSI2SS_R_M:
+        case X64_INSTR_CVTSI2SD_R_M: {
+            X64_touch_mem_lregs(builder, &instr->int2fp_r_m.src, ino);
+            X64_touch_lreg(builder, instr->int2fp_r_m.dst, ino);
             break;
         }
         case X64_INSTR_LEA: {
