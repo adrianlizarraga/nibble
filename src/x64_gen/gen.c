@@ -1889,6 +1889,28 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         }
         break;
     }
+    case X64_INSTR_MOVZX_R_M: {
+        size_t dst_size = instr->convert_r_m.dst_size;
+        size_t src_size = instr->convert_r_m.src_size;
+
+        // There is no encoding for an instruction that zero-extends a 4-byte source to an 8-byte destination! Also, note that
+        // an instruction like mov eax, __ clears the upper 4 bytes of eax.
+        // See: https://stackoverflow.com/a/51394642
+        if (src_size != 4) {
+            X64_emit_rm_instr(generator, "movzx", true, X64_REG_CLASS_INT, dst_size, instr->convert_r_m.dst, src_size,
+                              &instr->convert_r_m.src);
+        }
+        // EX: Instead of movzx rax, edi (invalid), use mov eax, edi to zero-extend edi into rax.
+        else {
+            assert(dst_size == X64_MAX_INT_REG_SIZE);
+
+            // NOTE: Not necessary if a previous instruction already cleared the upper 4-bytes of the dest reg with a mov instruction.
+            // We would need to track the "zxt" state of all registers: if mov rx, _ => rx is "zxt", otherwise if <not_mov> rx, _ =>
+            // rx is NOT "zxt".
+            X64_emit_rm_instr(generator, "mov", true, X64_REG_CLASS_INT, 4, instr->convert_r_m.dst, 4, &instr->convert_r_m.src);
+        }
+        break;
+    }
     case X64_INSTR_MOVSX_R_R: {
         size_t dst_size = instr->convert_r_r.dst_size;
         size_t src_size = instr->convert_r_r.src_size;

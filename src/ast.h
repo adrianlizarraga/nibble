@@ -695,8 +695,6 @@ typedef struct Type Type;
 
 typedef struct TypeInteger {
     IntegerKind kind;
-    bool is_signed;
-    u64 max;
 } TypeInteger;
 
 typedef struct TypeFloat {

@@ -22,14 +22,36 @@ const char* arch_names[NUM_ARCH] = {
 const size_t float_kind_sizes[FLOAT_KIND_COUNT] = {[FLOAT_F64] = 8, [FLOAT_F32] = 4};
 const size_t int_kind_sizes[INTEGER_KIND_COUNT] = {
     [INTEGER_BOOL] = 1,
-    [INTEGER_U8] = 1,
-    [INTEGER_S8] = 1,
-    [INTEGER_U16] = 2,
-    [INTEGER_S16] = 2,
-    [INTEGER_U32] = 4,
-    [INTEGER_S32] = 4,
-    [INTEGER_U64] = 8,
-    [INTEGER_S64] = 8,
+    [INTEGER_U8]   = 1,
+    [INTEGER_S8]   = 1,
+    [INTEGER_U16]  = 2,
+    [INTEGER_S16]  = 2,
+    [INTEGER_U32]  = 4,
+    [INTEGER_S32]  = 4,
+    [INTEGER_U64]  = 8,
+    [INTEGER_S64]  = 8,
+};
+const bool int_kind_signed[INTEGER_KIND_COUNT] = {
+    [INTEGER_BOOL] = false,
+    [INTEGER_U8]   = false,
+    [INTEGER_S8]   = true,
+    [INTEGER_U16]  = false,
+    [INTEGER_S16]  = true,
+    [INTEGER_U32]  = false,
+    [INTEGER_S32]  = true,
+    [INTEGER_U64]  = false,
+    [INTEGER_S64]  = true,
+};
+const u64 int_kind_max[INTEGER_KIND_COUNT] = {
+    [INTEGER_BOOL] = 0x1,
+    [INTEGER_U8]   = 0xFF,
+    [INTEGER_S8]   = 0x7F,
+    [INTEGER_U16]  = 0xFFFF,
+    [INTEGER_S16]  = 0x7FFF,
+    [INTEGER_U32]  = 0xFFFFFFFF,
+    [INTEGER_S32]  = 0x7FFFFFFF,
+    [INTEGER_U64]  = 0xFFFFFFFFFFFFFFFF,
+    [INTEGER_S64]  = 0x7FFFFFFFFFFFFFFF,
 };
 const char* keyword_names[KW_COUNT];
 const char* annotation_names[ANNOTATION_COUNT];

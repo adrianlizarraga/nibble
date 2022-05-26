@@ -363,12 +363,12 @@ static void IR_emit_instr_fp2int(IR_ProcBuilder* builder, BBlock* bblock, size_t
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_int2fp(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, size_t src_size, IR_Reg dst,
+static void IR_emit_instr_int2fp(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, IntegerKind src_kind, IR_Reg dst,
                                  OpRA src)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_INT2FP);
     instr->int2fp.dst_kind = dst_kind;
-    instr->int2fp.src_size = (u16)src_size;
+    instr->int2fp.src_kind = src_kind;
     instr->int2fp.dst = dst;
     instr->int2fp.src = src;
 
@@ -1882,25 +1882,25 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         break;
     }
     case TKN_LT: {
-        ConditionKind cond_kind = left.type->as_integer.is_signed ? COND_S_LT : COND_U_LT;
+        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_LT : COND_U_LT;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_LTEQ: {
-        ConditionKind cond_kind = left.type->as_integer.is_signed ? COND_S_LTEQ : COND_U_LTEQ;
+        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_LTEQ : COND_U_LTEQ;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_GT: {
-        ConditionKind cond_kind = left.type->as_integer.is_signed ? COND_S_GT : COND_U_GT;
+        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_GT : COND_U_GT;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_GTEQ: {
-        ConditionKind cond_kind = left.type->as_integer.is_signed ? COND_S_GTEQ : COND_U_GTEQ;
+        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_GTEQ : COND_U_GTEQ;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
@@ -2312,7 +2312,11 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         OpRA s = IR_expr_result_to_op_ra(builder, &curr_bb, src_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_int2fp(builder, curr_bb, dst_er->type->as_float.kind, src_er->type->size, dst_reg, s);
+        FloatKind dst_kind = dst_er->type->as_float.kind;
+        IntegerKind src_kind = src_er->type->kind == TYPE_ENUM ? src_er->type->as_enum.base->as_integer.kind :
+                                                                 src_er->type->as_integer.kind;
+
+        IR_emit_instr_int2fp(builder, curr_bb, dst_kind, src_kind, dst_reg, s);
 
         dst_er->kind = IR_EXPR_RESULT_REG;
         dst_er->reg = dst_reg;

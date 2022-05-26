@@ -526,8 +526,8 @@ static Type* convert_arith_eops(ExprOperand* left, ExprOperand* right)
             TypeInteger* left_as_int = &left->type->as_integer;
             TypeInteger* right_as_int = &right->type->as_integer;
 
-            bool left_signed = left_as_int->is_signed;
-            bool right_signed = right_as_int->is_signed;
+            bool left_signed = int_kind_signed[left_as_int->kind];
+            bool right_signed = int_kind_signed[right_as_int->kind];
             int left_rank = type_integer_ranks[left_as_int->kind];
             int right_rank = type_integer_ranks[right_as_int->kind];
             size_t left_size = left->type->size;
@@ -913,7 +913,10 @@ static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
     Type* type = types[0];
 
     for (u32 i = 1; i < num_types; i += 1) {
-        if (value > type->as_integer.max) {
+        assert(type->kind == TYPE_INTEGER);
+        u64 max = int_kind_max[type->as_integer.kind];
+
+        if (value > max) {
             type = types[i];
         }
         else {
@@ -921,7 +924,7 @@ static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
         }
     }
 
-    return (value > type->as_integer.max) ? NULL : type;
+    return (value > int_kind_max[type->as_integer.kind]) ? NULL : type;
 }
 
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
@@ -975,7 +978,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         case TKN_INT_SUFFIX_LL: {
             type = builtin_types[BUILTIN_TYPE_LLONG].type;
 
-            if (value > type->as_integer.max) {
+            if (value > int_kind_max[type->as_integer.kind]) {
                 type = NULL;
             }
             break;
@@ -983,7 +986,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         case TKN_INT_SUFFIX_ULL: {
             type = builtin_types[BUILTIN_TYPE_ULLONG].type;
 
-            if (value > type->as_integer.max) {
+            if (value > int_kind_max[type->as_integer.kind]) {
                 type = NULL;
             }
             break;
@@ -1039,7 +1042,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         case TKN_INT_SUFFIX_ULL: {
             type = builtin_types[BUILTIN_TYPE_ULLONG].type;
 
-            if (value > type->as_integer.max) {
+            if (value > int_kind_max[type->as_integer.kind]) {
                 type = NULL;
             }
             break;

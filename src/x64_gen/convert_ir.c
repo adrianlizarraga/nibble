@@ -845,19 +845,19 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // div b
         if (ir_b.kind == OP_RIA_IMM) {
-            X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
+            X64_InstrKind x64_div_kind = type_is_signed(type) ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
             u32 b = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_i(builder, xbblock, size, b, ir_b.imm);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else if (ir_b.kind == OP_RIA_REG) {
-            X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
+            X64_InstrKind x64_div_kind = type_is_signed(type) ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
             u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else {
             assert(ir_b.kind == OP_RIA_ADDR);
-            X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_M : X64_INSTR_DIV_M;
+            X64_InstrKind x64_div_kind = type_is_signed(type) ? X64_INSTR_IDIV_M : X64_INSTR_DIV_M;
             X64_MemAddr addr = {0};
             X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);
             X64_emit_instr_div_m(builder, xbblock, x64_div_kind, size, dx, ax, addr);
@@ -897,19 +897,19 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // div b
         if (ir_b.kind == OP_RIA_IMM) {
-            X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
+            X64_InstrKind x64_div_kind = type_is_signed(type) ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
             u32 b = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_i(builder, xbblock, size, b, ir_b.imm);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else if (ir_b.kind == OP_RIA_REG) {
-            X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
+            X64_InstrKind x64_div_kind = type_is_signed(type) ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
             u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else {
             assert(ir_b.kind == OP_RIA_ADDR);
-            X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_M : X64_INSTR_DIV_M;
+            X64_InstrKind x64_div_kind = type_is_signed(type) ? X64_INSTR_IDIV_M : X64_INSTR_DIV_M;
             X64_MemAddr addr = {0};
             X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);
             X64_emit_instr_div_m(builder, xbblock, x64_div_kind, size, dx, ax, addr);
@@ -958,19 +958,19 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // div b
         if (ir_b.kind == OP_RIA_IMM) {
-            X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
+            X64_InstrKind x64_div_kind = type_is_signed(type) ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
             u32 b = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_i(builder, xbblock, size, b, ir_b.imm);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else if (ir_b.kind == OP_RIA_REG) {
-            X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
+            X64_InstrKind x64_div_kind = type_is_signed(type) ? X64_INSTR_IDIV_R : X64_INSTR_DIV_R;
             u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
             X64_emit_instr_div_r(builder, xbblock, x64_div_kind, size, dx, ax, b);
         }
         else {
             assert(ir_b.kind == OP_RIA_ADDR);
-            X64_InstrKind x64_div_kind = type->as_integer.is_signed ? X64_INSTR_IDIV_M : X64_INSTR_DIV_M;
+            X64_InstrKind x64_div_kind = type_is_signed(type) ? X64_INSTR_IDIV_M : X64_INSTR_DIV_M;
             X64_MemAddr addr = {0};
             X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);
             X64_emit_instr_div_m(builder, xbblock, x64_div_kind, size, dx, ax, addr);
@@ -1099,8 +1099,9 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         //
         // cvtsi2sd r_fp, a
         const size_t smallest_src_size = 4;
-        size_t src_size = ir_instr->int2fp.src_size;
         FloatKind dst_kind = ir_instr->int2fp.dst_kind;
+        IntegerKind src_kind = ir_instr->int2fp.src_kind;
+        size_t src_size = int_kind_sizes[src_kind];
         OpRA ir_a = ir_instr->int2fp.src;
 
         u32 r = X64_get_lir_reg(builder, ir_instr->int2fp.dst, X64_REG_CLASS_FLOAT);
@@ -1109,11 +1110,14 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             X64_MemAddr addr = {0};
             X64_get_lir_addr(builder, xbblock, &addr, &ir_a.addr, 0);
 
-            // If src is < 4 bytes, sign-extend it to 4 bytes before converting to fp.
+            // If src is < 4 bytes, extend it to 4 bytes before converting to fp.
             if (src_size < smallest_src_size) {
-                u32 a_sext = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
-                X64_emit_instr_convert_r_m(builder, xbblock, X64_INSTR_MOVSX_R_M, smallest_src_size, a_sext, src_size, addr);
-                X64_emit_instr_int2fp_r_r(builder, xbblock, dst_kind, r, smallest_src_size, a_sext);
+                u32 a_ext = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
+                bool is_signed = int_kind_signed[src_kind];
+                X64_InstrKind ext_kind = is_signed ? X64_INSTR_MOVSX_R_M : X64_INSTR_MOVZX_R_M;
+
+                X64_emit_instr_convert_r_m(builder, xbblock, ext_kind, smallest_src_size, a_ext, src_size, addr);
+                X64_emit_instr_int2fp_r_r(builder, xbblock, dst_kind, r, smallest_src_size, a_ext);
 
             }
             // Otherwise, just convert src to a fp.
@@ -1124,16 +1128,18 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         else {
             u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_INT);
 
-            // If src is < 4 bytes, sign-extend it to 4 bytes first.
+            // If src is < 4 bytes, extend it to 4 bytes first.
             if (src_size < smallest_src_size) {
-                u32 a_sext = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
-                X64_emit_instr_convert_r_r(builder, xbblock, X64_INSTR_MOVSX_R_R, smallest_src_size, a_sext, src_size, a);
+                u32 a_ext = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
+                bool is_signed = int_kind_signed[src_kind];
+                X64_InstrKind ext_kind = is_signed ? X64_INSTR_MOVSX_R_R : X64_INSTR_MOVZX_R_R;
 
-                a = a_sext;
-                src_size = smallest_src_size;
+                X64_emit_instr_convert_r_r(builder, xbblock, ext_kind, smallest_src_size, a_ext, src_size, a);
+                X64_emit_instr_int2fp_r_r(builder, xbblock, dst_kind, r, smallest_src_size, a_ext);
             }
-
-            X64_emit_instr_int2fp_r_r(builder, xbblock, dst_kind, r, src_size, a);
+            else {
+                X64_emit_instr_int2fp_r_r(builder, xbblock, dst_kind, r, src_size, a);
+            }
         }
 
         break;

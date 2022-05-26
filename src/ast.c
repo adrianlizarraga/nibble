@@ -777,16 +777,17 @@ bool type_is_bool(Type* type)
 
 bool type_is_signed(Type* type)
 {
-    bool is_signed = false;
+    IntegerKind ikind;
 
-    if (type->kind == TYPE_ENUM) {
-        is_signed = type->as_enum.base->as_integer.is_signed;
+    if (type->kind == TYPE_INTEGER) {
+        ikind = type->as_integer.kind;
     }
-    else if (type->kind == TYPE_INTEGER) {
-        is_signed = type->as_integer.is_signed;
+    else {
+        assert(type->kind == TYPE_ENUM);
+        ikind = type->as_enum.base->as_integer.kind;
     }
 
-    return is_signed;
+    return int_kind_signed[ikind];
 }
 
 bool type_is_arithmetic(Type* type)
@@ -1008,15 +1009,14 @@ static Type* type_alloc(Allocator* allocator, TypeKind kind)
     return type;
 }
 
-static Type* type_int_alloc(Allocator* allocator, IntegerKind kind, bool is_signed, u64 max)
+static Type* type_int_alloc(Allocator* allocator, IntegerKind kind)
 {
     const size_t size = int_kind_sizes[kind];
+
     Type* type = type_alloc(allocator, TYPE_INTEGER);
     type->size = size;
     type->align = size;
     type->as_integer.kind = kind;
-    type->as_integer.is_signed = is_signed;
-    type->as_integer.max = max;
 
     return type;
 }
@@ -1371,17 +1371,17 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     bool invalid_os_arch = false;
 
     builtin_types[BUILTIN_TYPE_VOID] = (BuiltinType){.name = "void", .type = type_alloc(ast_mem, TYPE_VOID)};
-    builtin_types[BUILTIN_TYPE_BOOL] = (BuiltinType){.name = "bool", .type = type_int_alloc(ast_mem, INTEGER_BOOL, false, 0x1)};
-    builtin_types[BUILTIN_TYPE_U8] = (BuiltinType){.name = "u8", .type = type_int_alloc(ast_mem, INTEGER_U8, false, 0xFF)};
-    builtin_types[BUILTIN_TYPE_S8] = (BuiltinType){.name = "s8", .type = type_int_alloc(ast_mem, INTEGER_S8, true, 0x7F)};
-    builtin_types[BUILTIN_TYPE_U16] = (BuiltinType){.name = "u16", .type = type_int_alloc(ast_mem, INTEGER_U16, false, 0xFFFF)};
-    builtin_types[BUILTIN_TYPE_S16] = (BuiltinType){.name = "s16", .type = type_int_alloc(ast_mem, INTEGER_S16, true, 0x7FFF)};
-    builtin_types[BUILTIN_TYPE_U32] = (BuiltinType){.name = "u32", .type = type_int_alloc(ast_mem, INTEGER_U32, false, 0xFFFFFFFF)};
-    builtin_types[BUILTIN_TYPE_S32] = (BuiltinType){.name = "s32", .type = type_int_alloc(ast_mem, INTEGER_S32, true, 0x7FFFFFFF)};
+    builtin_types[BUILTIN_TYPE_BOOL] = (BuiltinType){.name = "bool", .type = type_int_alloc(ast_mem, INTEGER_BOOL)};
+    builtin_types[BUILTIN_TYPE_U8] = (BuiltinType){.name = "u8", .type = type_int_alloc(ast_mem, INTEGER_U8)};
+    builtin_types[BUILTIN_TYPE_S8] = (BuiltinType){.name = "s8", .type = type_int_alloc(ast_mem, INTEGER_S8)};
+    builtin_types[BUILTIN_TYPE_U16] = (BuiltinType){.name = "u16", .type = type_int_alloc(ast_mem, INTEGER_U16)};
+    builtin_types[BUILTIN_TYPE_S16] = (BuiltinType){.name = "s16", .type = type_int_alloc(ast_mem, INTEGER_S16)};
+    builtin_types[BUILTIN_TYPE_U32] = (BuiltinType){.name = "u32", .type = type_int_alloc(ast_mem, INTEGER_U32)};
+    builtin_types[BUILTIN_TYPE_S32] = (BuiltinType){.name = "s32", .type = type_int_alloc(ast_mem, INTEGER_S32)};
     builtin_types[BUILTIN_TYPE_U64] =
-        (BuiltinType){.name = "u64", .type = type_int_alloc(ast_mem, INTEGER_U64, false, 0xFFFFFFFFFFFFFFFF)};
+        (BuiltinType){.name = "u64", .type = type_int_alloc(ast_mem, INTEGER_U64)};
     builtin_types[BUILTIN_TYPE_S64] =
-        (BuiltinType){.name = "s64", .type = type_int_alloc(ast_mem, INTEGER_S64, true, 0x7FFFFFFFFFFFFFFF)};
+        (BuiltinType){.name = "s64", .type = type_int_alloc(ast_mem, INTEGER_S64)};
     builtin_types[BUILTIN_TYPE_F32] = (BuiltinType){.name = "f32", .type = type_float_alloc(ast_mem, FLOAT_F32)};
     builtin_types[BUILTIN_TYPE_F64] = (BuiltinType){.name = "f64", .type = type_float_alloc(ast_mem, FLOAT_F64)};
 

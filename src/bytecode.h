@@ -183,7 +183,7 @@ typedef struct InstrFp2Fp {
 } InstrFp2Fp;
 
 typedef struct InstrInt2Fp {
-    u16 src_size;
+    IntegerKind src_kind;
     FloatKind dst_kind;
     IR_Reg dst;
     OpRA src;

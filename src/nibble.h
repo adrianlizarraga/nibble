@@ -111,6 +111,8 @@ typedef enum IntegerKind {
 } IntegerKind;
 
 extern const size_t int_kind_sizes[INTEGER_KIND_COUNT];
+extern const bool int_kind_signed[INTEGER_KIND_COUNT];
+extern const u64 int_kind_max[INTEGER_KIND_COUNT];
 
 typedef struct Integer {
     union {

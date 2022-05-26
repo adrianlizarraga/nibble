@@ -85,6 +85,7 @@ typedef enum X64_InstrKind
 
     // Zero-extend
     X64_INSTR_MOVZX_R_R,
+    X64_INSTR_MOVZX_R_M,
 
     // Sign-extend
     X64_INSTR_MOVSX_R_R,
