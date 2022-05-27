@@ -304,6 +304,22 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         ftprint_char_array(&dstr, false, "movsd %s, r%d", LIR_print_mem(arena, &instr->movfp_m_r.dst), instr->movfp_m_r.src);
         break;
     }
+    case X64_INSTR_CVTSS2SD_R_R: {
+        ftprint_char_array(&dstr, false, "cvtss2sd r%d, r%d", instr->fp2fp_r_r.dst, instr->fp2fp_r_r.src);
+        break;
+    }
+    case X64_INSTR_CVTSD2SS_R_R: {
+        ftprint_char_array(&dstr, false, "cvtsd2ss r%d, r%d", instr->fp2fp_r_r.dst, instr->fp2fp_r_r.src);
+        break;
+    }
+    case X64_INSTR_CVTSS2SD_R_M: {
+        ftprint_char_array(&dstr, false, "cvtss2sd r%d, %s", instr->fp2fp_r_m.dst, LIR_print_mem(arena, &instr->fp2fp_r_m.src));
+        break;
+    }
+    case X64_INSTR_CVTSD2SS_R_M: {
+        ftprint_char_array(&dstr, false, "cvtsd2ss r%d, %s", instr->fp2fp_r_m.dst, LIR_print_mem(arena, &instr->fp2fp_r_m.src));
+        break;
+    }
     case X64_INSTR_CVTTSS2SI_R_R: {
         ftprint_char_array(&dstr, false, "cvttss2si <%lu> r%d, r%d", instr->fp2int_r_r.dst_size, instr->fp2int_r_r.dst,
                            instr->fp2int_r_r.src);

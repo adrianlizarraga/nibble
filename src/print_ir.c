@@ -215,6 +215,12 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
                            IR_print_op_ra(arena, &instr->int2fp.src));
         break;
     }
+    case INSTR_FP2FP: {
+        ftprint_char_array(&dstr, false, "fp2fp <%s> %s, <%s> %s", float_kind_names[instr->fp2fp.dst_kind],
+                           IR_print_reg(arena, instr->fp2fp.dst), float_kind_names[instr->fp2fp.src_kind],
+                           IR_print_op_ra(arena, &instr->fp2fp.src));
+        break;
+    }
     case INSTR_LIMM: {
         ftprint_char_array(&dstr, false, "limm <%s> %s, %s", type_name(instr->limm.type), IR_print_reg(arena, instr->limm.r),
                            IR_print_imm(arena, instr->limm.imm));

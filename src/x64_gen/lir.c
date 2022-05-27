@@ -228,6 +228,30 @@ void X64_emit_instr_movfp_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Floa
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
+void X64_emit_instr_fp2fp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, FloatKind src_kind, u32 src)
+{
+    assert(src_kind != dst_kind);
+    X64_InstrKind kind = src_kind == FLOAT_F64 ? X64_INSTR_CVTSD2SS_R_R : X64_INSTR_CVTSS2SD_R_R;
+
+    X64_Instr* instr = X64_new_instr(builder->arena, kind);
+    instr->fp2fp_r_r.dst = dst;
+    instr->fp2fp_r_r.src = src;
+
+    X64_add_lir_instr(builder, xbblock, instr);
+}
+
+void X64_emit_instr_fp2fp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, FloatKind src_kind, X64_MemAddr src)
+{
+    assert(src_kind != dst_kind);
+    X64_InstrKind kind = src_kind == FLOAT_F64 ? X64_INSTR_CVTSD2SS_R_M : X64_INSTR_CVTSS2SD_R_M;
+
+    X64_Instr* instr = X64_new_instr(builder->arena, kind);
+    instr->fp2fp_r_m.dst = dst;
+    instr->fp2fp_r_m.src = src;
+
+    X64_add_lir_instr(builder, xbblock, instr);
+}
+
 void X64_emit_instr_fp2int_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t dst_size, u32 dst, FloatKind src_kind, u32 src)
 {
     X64_InstrKind kind = src_kind == FLOAT_F64 ? X64_INSTR_CVTTSD2SI_R_R : X64_INSTR_CVTTSS2SI_R_R;

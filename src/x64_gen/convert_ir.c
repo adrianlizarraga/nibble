@@ -1072,6 +1072,29 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_emit_instr_convert_r_r(builder, xbblock, convert_kind[ir_instr->kind], dst_size, r, src_size, a);
         break;
     }
+    case INSTR_FP2FP: {
+        // EX: r = fp2fp(a)
+        //
+        // cvtss2sd r, a
+
+        FloatKind src_kind = ir_instr->fp2fp.src_kind;
+        FloatKind dst_kind = ir_instr->fp2fp.dst_kind;
+        OpRA ir_a = ir_instr->fp2fp.src;
+
+        u32 r = X64_get_lir_reg(builder, ir_instr->fp2fp.dst, X64_REG_CLASS_FLOAT);
+
+        if (ir_a.is_addr) {
+            X64_MemAddr addr = {0};
+            X64_get_lir_addr(builder, xbblock, &addr, &ir_a.addr, 0);
+            X64_emit_instr_fp2fp_r_m(builder, xbblock, dst_kind, r, src_kind, addr);
+        }
+        else {
+            u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_FLOAT);
+            X64_emit_instr_fp2fp_r_r(builder, xbblock, dst_kind, r, src_kind, a);
+        }
+
+        break;
+    }
     case INSTR_FP2INT: {
         // EX: r = fp2int(a_fp)
         //

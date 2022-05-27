@@ -102,6 +102,12 @@ typedef enum X64_InstrKind
     X64_INSTR_MOVSD_R_M,
     X64_INSTR_MOVSD_M_R,
 
+    // Fp to Fp
+    X64_INSTR_CVTSS2SD_R_R,
+    X64_INSTR_CVTSS2SD_R_M,
+    X64_INSTR_CVTSD2SS_R_R,
+    X64_INSTR_CVTSD2SS_R_M,
+
     // Fp to Int
     X64_INSTR_CVTTSS2SI_R_R,
     X64_INSTR_CVTTSS2SI_R_M,
@@ -278,6 +284,16 @@ typedef struct X64_InstrMovfp_M_R {
     X64_MemAddr dst;
     u32 src;
 } X64_InstrMovfp_M_R;
+
+typedef struct X64_InstrFp2Fp_R_R {
+    u32 dst;
+    u32 src;
+} X64_InstrFp2Fp_R_R;
+
+typedef struct X64_InstrFp2Fp_R_M {
+    u32 dst;
+    X64_MemAddr src;
+} X64_InstrFp2Fp_R_M;
 
 typedef struct X64_InstrFp2Int_R_R {
     size_t dst_size;
@@ -481,6 +497,9 @@ struct X64_Instr {
         X64_InstrMovfp_R_M movfp_r_m;
         X64_InstrMovfp_M_R movfp_m_r;
 
+        X64_InstrFp2Fp_R_R fp2fp_r_r;
+        X64_InstrFp2Fp_R_M fp2fp_r_m;
+
         X64_InstrFp2Int_R_R fp2int_r_r;
         X64_InstrFp2Int_R_M fp2int_r_m;
 
@@ -573,6 +592,9 @@ void X64_emit_instr_mov_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
 void X64_emit_instr_movfp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind fkind, u32 dst, u32 src);
 void X64_emit_instr_movfp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind fkind, u32 dst, X64_MemAddr src);
 void X64_emit_instr_movfp_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind fkind, X64_MemAddr dst, u32 src);
+
+void X64_emit_instr_fp2fp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, FloatKind src_kind, u32 src);
+void X64_emit_instr_fp2fp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, FloatKind src_kind, X64_MemAddr src);
 
 void X64_emit_instr_fp2int_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t dst_size, u32 dst, FloatKind src_kind, u32 src);
 void X64_emit_instr_fp2int_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t dst_size, u32 dst, FloatKind src_kind, X64_MemAddr src);

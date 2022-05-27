@@ -183,6 +183,18 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_mem_lregs(builder, &instr->movfp_m_r.dst, ino);
             break;
         }
+        case X64_INSTR_CVTSS2SD_R_R:
+        case X64_INSTR_CVTSD2SS_R_R: {
+            X64_touch_lreg(builder, instr->fp2fp_r_r.src, ino);
+            X64_touch_lreg(builder, instr->fp2fp_r_r.dst, ino);
+            break;
+        }
+        case X64_INSTR_CVTSS2SD_R_M:
+        case X64_INSTR_CVTSD2SS_R_M: {
+            X64_touch_mem_lregs(builder, &instr->fp2fp_r_m.src, ino);
+            X64_touch_lreg(builder, instr->fp2fp_r_m.dst, ino);
+            break;
+        }
         case X64_INSTR_CVTTSS2SI_R_R:
         case X64_INSTR_CVTTSD2SI_R_R: {
             X64_touch_lreg(builder, instr->fp2int_r_r.src, ino);
