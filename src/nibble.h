@@ -76,6 +76,7 @@ typedef enum FloatKind {
 } FloatKind;
 
 extern const size_t float_kind_sizes[FLOAT_KIND_COUNT];
+extern const char* float_kind_names[FLOAT_KIND_COUNT];
 
 typedef struct Float {
     union {
@@ -111,6 +112,7 @@ typedef enum IntegerKind {
 } IntegerKind;
 
 extern const size_t int_kind_sizes[INTEGER_KIND_COUNT];
+extern const char* int_kind_names[INTEGER_KIND_COUNT];
 extern const bool int_kind_signed[INTEGER_KIND_COUNT];
 extern const u64 int_kind_max[INTEGER_KIND_COUNT];
 

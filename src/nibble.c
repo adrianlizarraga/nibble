@@ -20,6 +20,7 @@ const char* arch_names[NUM_ARCH] = {
 };
 
 const size_t float_kind_sizes[FLOAT_KIND_COUNT] = {[FLOAT_F64] = 8, [FLOAT_F32] = 4};
+const char* float_kind_names[FLOAT_KIND_COUNT] = {[FLOAT_F64] = "f64", [FLOAT_F32] = "f32"};
 const size_t int_kind_sizes[INTEGER_KIND_COUNT] = {
     [INTEGER_BOOL] = 1,
     [INTEGER_U8]   = 1,
@@ -30,6 +31,17 @@ const size_t int_kind_sizes[INTEGER_KIND_COUNT] = {
     [INTEGER_S32]  = 4,
     [INTEGER_U64]  = 8,
     [INTEGER_S64]  = 8,
+};
+const char* int_kind_names[INTEGER_KIND_COUNT] = {
+    [INTEGER_BOOL] = "bool",
+    [INTEGER_U8]   = "u8",
+    [INTEGER_S8]   = "s8",
+    [INTEGER_U16]  = "u16",
+    [INTEGER_S16]  = "s16",
+    [INTEGER_U32]  = "u32",
+    [INTEGER_S32]  = "s32",
+    [INTEGER_U64]  = "u64",
+    [INTEGER_S64]  = "s64",
 };
 const bool int_kind_signed[INTEGER_KIND_COUNT] = {
     [INTEGER_BOOL] = false,
