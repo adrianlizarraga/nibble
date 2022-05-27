@@ -351,11 +351,11 @@ static void IR_emit_instr_convert(IR_ProcBuilder* builder, BBlock* bblock, Instr
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_fp2int(IR_ProcBuilder* builder, BBlock* bblock, size_t dst_size, FloatKind src_kind, IR_Reg dst,
+static void IR_emit_instr_fp2int(IR_ProcBuilder* builder, BBlock* bblock, IntegerKind dst_kind, FloatKind src_kind, IR_Reg dst,
                                  OpRA src)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_FP2INT);
-    instr->fp2int.dst_size = (u16)dst_size;
+    instr->fp2int.dst_kind = dst_kind;
     instr->fp2int.src_kind = src_kind;
     instr->fp2int.dst = dst;
     instr->fp2int.src = src;
@@ -375,8 +375,7 @@ static void IR_emit_instr_int2fp(IR_ProcBuilder* builder, BBlock* bblock, FloatK
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_fp2fp(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, FloatKind src_kind, IR_Reg dst,
-                                OpRA src)
+static void IR_emit_instr_fp2fp(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, FloatKind src_kind, IR_Reg dst, OpRA src)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_FP2FP);
     instr->fp2fp.dst_kind = dst_kind;
@@ -1149,7 +1148,9 @@ static BBlock* IR_init_array_slice(IR_ProcBuilder* builder, BBlock* bblock, MemA
     BBlock* curr_bb = bblock;
 
     TypeAggregateField* length_field = get_type_struct_field(slice_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_LENGTH]);
-    IR_ExprResult length_val_er = {.kind = IR_EXPR_RESULT_IMM, .type = length_field->type, .imm.as_int._u64 = array_er->type->as_array.len};
+    IR_ExprResult length_val_er = {.kind = IR_EXPR_RESULT_IMM,
+                                   .type = length_field->type,
+                                   .imm.as_int._u64 = array_er->type->as_array.len};
 
     IR_ExprResult length_field_er = {.kind = IR_EXPR_RESULT_DEREF_ADDR, .type = length_field->type, .addr = *slice_addr};
     length_field_er.addr.disp += length_field->offset;
@@ -1339,8 +1340,8 @@ static void IR_emit_expr_ident(IR_ProcBuilder* builder, ExprIdent* eident, IR_Ex
     IR_expr_result_from_sym(dst, sym);
 }
 
-static BBlock* IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* dst, IR_ExprResult* ptr_er, IR_ExprResult* int_er,
-                                   bool add)
+static BBlock* IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* dst, IR_ExprResult* ptr_er,
+                                   IR_ExprResult* int_er, bool add)
 {
     BBlock* curr_bb = bblock;
     u64 base_size = ptr_er->type->as_ptr.base->size;
@@ -1388,8 +1389,8 @@ static BBlock* IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_E
     return curr_bb;
 }
 
-static BBlock* IR_emit_binary_cmp(IR_ProcBuilder* builder, BBlock* bblock, ConditionKind cond_kind, Type* dst_type, IR_ExprResult* dst_er,
-                                  IR_ExprResult* left_er, IR_ExprResult* right_er)
+static BBlock* IR_emit_binary_cmp(IR_ProcBuilder* builder, BBlock* bblock, ConditionKind cond_kind, Type* dst_type,
+                                  IR_ExprResult* dst_er, IR_ExprResult* left_er, IR_ExprResult* right_er)
 {
     assert(left_er->type == right_er->type);
     BBlock* curr_bb = bblock;
@@ -1542,8 +1543,8 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
 typedef BBlock* IR_EmitBinOpProc(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
                                  IR_ExprResult* dst_er, Type* dst_type);
 
-static BBlock* IR_emit_op_add(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                              Type* dst_type)
+static BBlock* IR_emit_op_add(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                              IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
     bool left_is_ptr = left_er->type->kind == TYPE_PTR;
@@ -1571,8 +1572,8 @@ static BBlock* IR_emit_op_add(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     return curr_bb;
 }
 
-static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                              Type* dst_type)
+static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                              IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
     bool left_is_ptr = left_er->type->kind == TYPE_PTR;
@@ -1621,8 +1622,8 @@ static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     return curr_bb;
 }
 
-static BBlock* IR_emit_op_mul(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                              Type* dst_type)
+static BBlock* IR_emit_op_mul(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                              IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
 
@@ -1640,8 +1641,8 @@ static BBlock* IR_emit_op_mul(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     return curr_bb;
 }
 
-static BBlock* IR_emit_op_div(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                              Type* dst_type)
+static BBlock* IR_emit_op_div(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                              IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
 
@@ -1659,8 +1660,8 @@ static BBlock* IR_emit_op_div(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     return curr_bb;
 }
 
-static BBlock* IR_emit_op_mod(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                              Type* dst_type)
+static BBlock* IR_emit_op_mod(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                              IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
 
@@ -1678,8 +1679,8 @@ static BBlock* IR_emit_op_mod(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     return curr_bb;
 }
 
-static BBlock* IR_emit_op_and(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                              Type* dst_type)
+static BBlock* IR_emit_op_and(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                              IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
 
@@ -1696,8 +1697,8 @@ static BBlock* IR_emit_op_and(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     return curr_bb;
 }
 
-static BBlock* IR_emit_op_or(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                             Type* dst_type)
+static BBlock* IR_emit_op_or(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                             IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
 
@@ -1714,8 +1715,8 @@ static BBlock* IR_emit_op_or(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRes
     return curr_bb;
 }
 
-static BBlock* IR_emit_op_xor(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                              Type* dst_type)
+static BBlock* IR_emit_op_xor(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                              IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
 
@@ -1732,8 +1733,8 @@ static BBlock* IR_emit_op_xor(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     return curr_bb;
 }
 
-static BBlock* IR_emit_op_sar(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                              Type* dst_type)
+static BBlock* IR_emit_op_sar(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                              IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
 
@@ -1750,8 +1751,8 @@ static BBlock* IR_emit_op_sar(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     return curr_bb;
 }
 
-static BBlock* IR_emit_op_shl(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er, IR_ExprResult* dst_er,
-                              Type* dst_type)
+static BBlock* IR_emit_op_shl(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* left_er, IR_ExprResult* right_er,
+                              IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
 
@@ -2108,7 +2109,8 @@ static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprU
     return curr_bb;
 }
 
-static BBlock* IR_emit_obj_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* obj_expr, IR_ExprResult* dst, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_obj_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* obj_expr, IR_ExprResult* dst,
+                                IR_TmpObjList* tmp_obj_list)
 {
     IR_ExprResult obj_er = {0};
     BBlock* curr_bb = IR_emit_expr(builder, bblock, obj_expr, &obj_er, tmp_obj_list);
@@ -2313,8 +2315,8 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         IR_Reg dst_reg = IR_next_reg(builder);
 
         FloatKind dst_kind = dst_er->type->as_float.kind;
-        IntegerKind src_kind = src_er->type->kind == TYPE_ENUM ? src_er->type->as_enum.base->as_integer.kind :
-                                                                 src_er->type->as_integer.kind;
+        IntegerKind src_kind =
+            src_er->type->kind == TYPE_ENUM ? src_er->type->as_enum.base->as_integer.kind : src_er->type->as_integer.kind;
 
         IR_emit_instr_int2fp(builder, curr_bb, dst_kind, src_kind, dst_reg, s);
 
@@ -2325,7 +2327,11 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         OpRA s = IR_expr_result_to_op_ra(builder, &curr_bb, src_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_fp2int(builder, curr_bb, dst_er->type->size, src_er->type->as_float.kind, dst_reg, s);
+        IntegerKind dst_kind =
+            dst_er->type->kind == TYPE_ENUM ? dst_er->type->as_enum.base->as_integer.kind : dst_er->type->as_integer.kind;
+        FloatKind src_kind = src_er->type->as_float.kind;
+
+        IR_emit_instr_fp2int(builder, curr_bb, dst_kind, src_kind, dst_reg, s);
 
         dst_er->kind = IR_EXPR_RESULT_REG;
         dst_er->reg = dst_reg;
@@ -2599,7 +2605,9 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                     // Set the object's type field to the arg's typeid.
                     TypeAggregateField* type_field = get_type_struct_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_TYPE]);
                     IR_ExprResult type_field_er = {.kind = IR_EXPR_RESULT_DEREF_ADDR, .type = type_field->type, .addr = any_obj_addr};
-                    IR_ExprResult type_val_er = {.kind = IR_EXPR_RESULT_IMM, .type = type_field->type, .imm.as_int._u64 = arg_er.type->id};
+                    IR_ExprResult type_val_er = {.kind = IR_EXPR_RESULT_IMM,
+                                                 .type = type_field->type,
+                                                 .imm.as_int._u64 = arg_er.type->id};
 
                     type_field_er.addr.disp += type_field->offset;
                     *p_bblock = IR_emit_assign(builder, *p_bblock, &type_field_er, &type_val_er);
@@ -2608,8 +2616,8 @@ static IR_Value* IR_setup_call_args(IR_ProcBuilder* builder, BBlock** p_bblock, 
                     TypeAggregateField* ptr_field = get_type_struct_field(type_any, builtin_struct_fields[BUILTIN_STRUCT_FIELD_PTR]);
                     IR_ExprResult ptr_field_er = {.kind = IR_EXPR_RESULT_DEREF_ADDR, .type = ptr_field->type, .addr = any_obj_addr};
                     IR_ExprResult ptr_val_er = {.kind = IR_EXPR_RESULT_MEM_ADDR,
-                                             .type = ptr_field->type,
-                                             .addr = IR_tmp_obj_as_addr(cpy_obj)};
+                                                .type = ptr_field->type,
+                                                .addr = IR_tmp_obj_as_addr(cpy_obj)};
 
                     ptr_field_er.addr.disp += ptr_field->offset;
                     *p_bblock = IR_emit_assign(builder, *p_bblock, &ptr_field_er, &ptr_val_er);

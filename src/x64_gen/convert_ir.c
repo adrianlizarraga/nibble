@@ -1076,8 +1076,9 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // EX: r = fp2int(a_fp)
         //
         // cvttsd2si r, a_fp
-        size_t dst_size = ir_instr->fp2int.dst_size;
         FloatKind src_kind = ir_instr->fp2int.src_kind;
+        IntegerKind dst_kind = ir_instr->fp2int.dst_kind;
+        size_t dst_size = int_kind_sizes[dst_kind];
         OpRA ir_a = ir_instr->fp2int.src;
 
         u32 r = X64_get_lir_reg(builder, ir_instr->fp2int.dst, X64_REG_CLASS_INT);

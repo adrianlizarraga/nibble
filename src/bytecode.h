@@ -170,7 +170,7 @@ typedef struct InstrConvert {
 
 typedef struct InstrFp2Int {
     FloatKind src_kind;
-    u16 dst_size;
+    IntegerKind dst_kind;
     IR_Reg dst;
     OpRA src;
 } InstrFp2Int;
