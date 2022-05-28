@@ -673,28 +673,10 @@ static s64 eval_binary_op_s64(TokenKind op, s64 left, s64 right)
         return left | right;
     case TKN_CARET: // xor
         return left ^ right;
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
     default:
         NIBBLE_FATAL_EXIT("Unexpected binary op (s64): %d\n", op);
-        break;
+        return 0;
     }
-
-    return 0;
 }
 
 static bool eval_binary_logical_op_s64(TokenKind op, s64 left, s64 right)
@@ -718,10 +700,8 @@ static bool eval_binary_logical_op_s64(TokenKind op, s64 left, s64 right)
         return left <= right;
     default:
         NIBBLE_FATAL_EXIT("Unexpected binary logical op (s64): %d\n", op);
-        break;
+        return false;
     }
-
-    return false;
 }
 
 static u64 eval_binary_op_u64(TokenKind op, u64 left, u64 right)
@@ -747,28 +727,10 @@ static u64 eval_binary_op_u64(TokenKind op, u64 left, u64 right)
         return left | right;
     case TKN_CARET: // xor
         return left ^ right;
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
     default:
         NIBBLE_FATAL_EXIT("Unexpected binary op (u64): %d\n", op);
-        break;
+        return 0;
     }
-
-    return 0;
 }
 
 static bool eval_binary_logical_op_u64(TokenKind op, u64 left, u64 right)
@@ -792,10 +754,8 @@ static bool eval_binary_logical_op_u64(TokenKind op, u64 left, u64 right)
         return left <= right;
     default:
         NIBBLE_FATAL_EXIT("Unexpected binary logical op (u64): %d\n", op);
-        break;
+        return false;
     }
-
-    return false;
 }
 
 static void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
