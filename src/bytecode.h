@@ -44,9 +44,9 @@ typedef enum InstrKind {
     INSTR_TRUNC,
     INSTR_ZEXT,
     INSTR_SEXT,
-    INSTR_FP2INT,
-    INSTR_INT2FP,
-    INSTR_FP2FP,
+    INSTR_FLT2INT,
+    INSTR_INT2FLT,
+    INSTR_FLT2FLT,
     INSTR_LIMM,
     INSTR_LOAD,
     INSTR_LADDR,
@@ -168,26 +168,26 @@ typedef struct InstrConvert {
     IR_Reg a;
 } InstrConvert;
 
-typedef struct InstrFp2Int {
+typedef struct InstrFlt2Int {
     FloatKind src_kind;
     IntegerKind dst_kind;
     IR_Reg dst;
     OpRA src;
-} InstrFp2Int;
+} InstrFlt2Int;
 
-typedef struct InstrFp2Fp {
+typedef struct InstrFlt2Flt {
     FloatKind src_kind;
     FloatKind dst_kind;
     IR_Reg dst;
     OpRA src;
-} InstrFp2Fp;
+} InstrFlt2Flt;
 
-typedef struct InstrInt2Fp {
+typedef struct InstrInt2Flt {
     IntegerKind src_kind;
     FloatKind dst_kind;
     IR_Reg dst;
     OpRA src;
-} InstrInt2Fp;
+} InstrInt2Flt;
 
 typedef struct InstrLImm {
     Type* type;
@@ -309,9 +309,9 @@ struct Instr {
         InstrShift shift;
         InstrUnary unary;
         InstrConvert convert;
-        InstrFp2Int fp2int;
-        InstrFp2Fp fp2fp;
-        InstrInt2Fp int2fp;
+        InstrFlt2Int flt2int;
+        InstrFlt2Flt flt2flt;
+        InstrInt2Flt int2flt;
         InstrLImm limm;
         InstrLoad load;
         InstrStore store;

@@ -68,14 +68,14 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         }
         case X64_INSTR_ADDSS_R_R:
         case X64_INSTR_ADDSD_R_R: {
-            X64_touch_lreg(builder, instr->binary_fp_r_r.dst, ino);
-            X64_touch_lreg(builder, instr->binary_fp_r_r.src, ino);
+            X64_touch_lreg(builder, instr->binary_flt_r_r.dst, ino);
+            X64_touch_lreg(builder, instr->binary_flt_r_r.src, ino);
             break;
         }
         case X64_INSTR_ADDSS_R_M:
         case X64_INSTR_ADDSD_R_M: {
-            X64_touch_lreg(builder, instr->binary_fp_r_m.dst, ino);
-            X64_touch_mem_lregs(builder, &instr->binary_fp_r_m.src, ino);
+            X64_touch_lreg(builder, instr->binary_flt_r_m.dst, ino);
+            X64_touch_mem_lregs(builder, &instr->binary_flt_r_m.src, ino);
             break;
         }
         case X64_INSTR_DIV_R:
@@ -167,56 +167,56 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         }
         case X64_INSTR_MOVSS_R_R:
         case X64_INSTR_MOVSD_R_R: {
-            X64_touch_lreg(builder, instr->movfp_r_r.src, ino);
-            X64_touch_lreg(builder, instr->movfp_r_r.dst, ino);
+            X64_touch_lreg(builder, instr->mov_flt_r_r.src, ino);
+            X64_touch_lreg(builder, instr->mov_flt_r_r.dst, ino);
             break;
         }
         case X64_INSTR_MOVSS_R_M:
         case X64_INSTR_MOVSD_R_M: {
-            X64_touch_mem_lregs(builder, &instr->movfp_r_m.src, ino);
-            X64_touch_lreg(builder, instr->movfp_r_m.dst, ino);
+            X64_touch_mem_lregs(builder, &instr->mov_flt_r_m.src, ino);
+            X64_touch_lreg(builder, instr->mov_flt_r_m.dst, ino);
             break;
         }
         case X64_INSTR_MOVSS_M_R:
         case X64_INSTR_MOVSD_M_R: {
-            X64_touch_lreg(builder, instr->movfp_m_r.src, ino);
-            X64_touch_mem_lregs(builder, &instr->movfp_m_r.dst, ino);
+            X64_touch_lreg(builder, instr->mov_flt_m_r.src, ino);
+            X64_touch_mem_lregs(builder, &instr->mov_flt_m_r.dst, ino);
             break;
         }
         case X64_INSTR_CVTSS2SD_R_R:
         case X64_INSTR_CVTSD2SS_R_R: {
-            X64_touch_lreg(builder, instr->fp2fp_r_r.src, ino);
-            X64_touch_lreg(builder, instr->fp2fp_r_r.dst, ino);
+            X64_touch_lreg(builder, instr->flt2flt_r_r.src, ino);
+            X64_touch_lreg(builder, instr->flt2flt_r_r.dst, ino);
             break;
         }
         case X64_INSTR_CVTSS2SD_R_M:
         case X64_INSTR_CVTSD2SS_R_M: {
-            X64_touch_mem_lregs(builder, &instr->fp2fp_r_m.src, ino);
-            X64_touch_lreg(builder, instr->fp2fp_r_m.dst, ino);
+            X64_touch_mem_lregs(builder, &instr->flt2flt_r_m.src, ino);
+            X64_touch_lreg(builder, instr->flt2flt_r_m.dst, ino);
             break;
         }
         case X64_INSTR_CVTTSS2SI_R_R:
         case X64_INSTR_CVTTSD2SI_R_R: {
-            X64_touch_lreg(builder, instr->fp2int_r_r.src, ino);
-            X64_touch_lreg(builder, instr->fp2int_r_r.dst, ino);
+            X64_touch_lreg(builder, instr->flt2int_r_r.src, ino);
+            X64_touch_lreg(builder, instr->flt2int_r_r.dst, ino);
             break;
         }
         case X64_INSTR_CVTTSS2SI_R_M:
         case X64_INSTR_CVTTSD2SI_R_M: {
-            X64_touch_mem_lregs(builder, &instr->fp2int_r_m.src, ino);
-            X64_touch_lreg(builder, instr->fp2int_r_m.dst, ino);
+            X64_touch_mem_lregs(builder, &instr->flt2int_r_m.src, ino);
+            X64_touch_lreg(builder, instr->flt2int_r_m.dst, ino);
             break;
         }
         case X64_INSTR_CVTSI2SS_R_R:
         case X64_INSTR_CVTSI2SD_R_R: {
-            X64_touch_lreg(builder, instr->int2fp_r_r.src, ino);
-            X64_touch_lreg(builder, instr->int2fp_r_r.dst, ino);
+            X64_touch_lreg(builder, instr->int2flt_r_r.src, ino);
+            X64_touch_lreg(builder, instr->int2flt_r_r.dst, ino);
             break;
         }
         case X64_INSTR_CVTSI2SS_R_M:
         case X64_INSTR_CVTSI2SD_R_M: {
-            X64_touch_mem_lregs(builder, &instr->int2fp_r_m.src, ino);
-            X64_touch_lreg(builder, instr->int2fp_r_m.dst, ino);
+            X64_touch_mem_lregs(builder, &instr->int2flt_r_m.src, ino);
+            X64_touch_lreg(builder, instr->int2flt_r_m.dst, ino);
             break;
         }
         case X64_INSTR_LEA: {

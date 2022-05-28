@@ -166,21 +166,21 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         break;
     }
     case X64_INSTR_ADDSS_R_R: {
-        ftprint_char_array(&dstr, false, "addss r%d, r%d", instr->binary_fp_r_r.dst, instr->binary_fp_r_r.src);
+        ftprint_char_array(&dstr, false, "addss r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
     case X64_INSTR_ADDSD_R_R: {
-        ftprint_char_array(&dstr, false, "addsd r%d, r%d", instr->binary_fp_r_r.dst, instr->binary_fp_r_r.src);
+        ftprint_char_array(&dstr, false, "addsd r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
     case X64_INSTR_ADDSS_R_M: {
-        ftprint_char_array(&dstr, false, "addss r%d, %s", instr->binary_fp_r_m.dst,
-                           LIR_print_mem(arena, &instr->binary_fp_r_m.src));
+        ftprint_char_array(&dstr, false, "addss r%d, %s", instr->binary_flt_r_m.dst,
+                           LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
     case X64_INSTR_ADDSD_R_M: {
-        ftprint_char_array(&dstr, false, "addsd r%d, %s", instr->binary_fp_r_m.dst,
-                           LIR_print_mem(arena, &instr->binary_fp_r_m.src));
+        ftprint_char_array(&dstr, false, "addsd r%d, %s", instr->binary_flt_r_m.dst,
+                           LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
     case X64_INSTR_SEXT_AX_TO_DX: {
@@ -289,75 +289,75 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         break;
     }
     case X64_INSTR_MOVSS_R_M: {
-        ftprint_char_array(&dstr, false, "movss r%d, %s", instr->movfp_r_m.dst, LIR_print_mem(arena, &instr->movfp_r_m.src));
+        ftprint_char_array(&dstr, false, "movss r%d, %s", instr->mov_flt_r_m.dst, LIR_print_mem(arena, &instr->mov_flt_r_m.src));
         break;
     }
     case X64_INSTR_MOVSD_R_M: {
-        ftprint_char_array(&dstr, false, "movsd r%d, %s", instr->movfp_r_m.dst, LIR_print_mem(arena, &instr->movfp_r_m.src));
+        ftprint_char_array(&dstr, false, "movsd r%d, %s", instr->mov_flt_r_m.dst, LIR_print_mem(arena, &instr->mov_flt_r_m.src));
         break;
     }
     case X64_INSTR_MOVSS_M_R: {
-        ftprint_char_array(&dstr, false, "movss %s, r%d", LIR_print_mem(arena, &instr->movfp_m_r.dst), instr->movfp_m_r.src);
+        ftprint_char_array(&dstr, false, "movss %s, r%d", LIR_print_mem(arena, &instr->mov_flt_m_r.dst), instr->mov_flt_m_r.src);
         break;
     }
     case X64_INSTR_MOVSD_M_R: {
-        ftprint_char_array(&dstr, false, "movsd %s, r%d", LIR_print_mem(arena, &instr->movfp_m_r.dst), instr->movfp_m_r.src);
+        ftprint_char_array(&dstr, false, "movsd %s, r%d", LIR_print_mem(arena, &instr->mov_flt_m_r.dst), instr->mov_flt_m_r.src);
         break;
     }
     case X64_INSTR_CVTSS2SD_R_R: {
-        ftprint_char_array(&dstr, false, "cvtss2sd r%d, r%d", instr->fp2fp_r_r.dst, instr->fp2fp_r_r.src);
+        ftprint_char_array(&dstr, false, "cvtss2sd r%d, r%d", instr->flt2flt_r_r.dst, instr->flt2flt_r_r.src);
         break;
     }
     case X64_INSTR_CVTSD2SS_R_R: {
-        ftprint_char_array(&dstr, false, "cvtsd2ss r%d, r%d", instr->fp2fp_r_r.dst, instr->fp2fp_r_r.src);
+        ftprint_char_array(&dstr, false, "cvtsd2ss r%d, r%d", instr->flt2flt_r_r.dst, instr->flt2flt_r_r.src);
         break;
     }
     case X64_INSTR_CVTSS2SD_R_M: {
-        ftprint_char_array(&dstr, false, "cvtss2sd r%d, %s", instr->fp2fp_r_m.dst, LIR_print_mem(arena, &instr->fp2fp_r_m.src));
+        ftprint_char_array(&dstr, false, "cvtss2sd r%d, %s", instr->flt2flt_r_m.dst, LIR_print_mem(arena, &instr->flt2flt_r_m.src));
         break;
     }
     case X64_INSTR_CVTSD2SS_R_M: {
-        ftprint_char_array(&dstr, false, "cvtsd2ss r%d, %s", instr->fp2fp_r_m.dst, LIR_print_mem(arena, &instr->fp2fp_r_m.src));
+        ftprint_char_array(&dstr, false, "cvtsd2ss r%d, %s", instr->flt2flt_r_m.dst, LIR_print_mem(arena, &instr->flt2flt_r_m.src));
         break;
     }
     case X64_INSTR_CVTTSS2SI_R_R: {
-        ftprint_char_array(&dstr, false, "cvttss2si <%lu> r%d, r%d", instr->fp2int_r_r.dst_size, instr->fp2int_r_r.dst,
-                           instr->fp2int_r_r.src);
+        ftprint_char_array(&dstr, false, "cvttss2si <%lu> r%d, r%d", instr->flt2int_r_r.dst_size, instr->flt2int_r_r.dst,
+                           instr->flt2int_r_r.src);
         break;
     }
     case X64_INSTR_CVTTSD2SI_R_R: {
-        ftprint_char_array(&dstr, false, "cvttsd2si <%lu> r%d, r%d", instr->fp2int_r_r.dst_size, instr->fp2int_r_r.dst,
-                           instr->fp2int_r_r.src);
+        ftprint_char_array(&dstr, false, "cvttsd2si <%lu> r%d, r%d", instr->flt2int_r_r.dst_size, instr->flt2int_r_r.dst,
+                           instr->flt2int_r_r.src);
         break;
     }
     case X64_INSTR_CVTTSS2SI_R_M: {
-        ftprint_char_array(&dstr, false, "cvttss2si <%lu> r%d, %s", instr->fp2int_r_m.dst_size, instr->fp2int_r_m.dst,
-                           LIR_print_mem(arena, &instr->fp2int_r_m.src));
+        ftprint_char_array(&dstr, false, "cvttss2si <%lu> r%d, %s", instr->flt2int_r_m.dst_size, instr->flt2int_r_m.dst,
+                           LIR_print_mem(arena, &instr->flt2int_r_m.src));
         break;
     }
     case X64_INSTR_CVTTSD2SI_R_M: {
-        ftprint_char_array(&dstr, false, "cvttsd2si <%lu> r%d, %s", instr->fp2int_r_m.dst_size, instr->fp2int_r_m.dst,
-                           LIR_print_mem(arena, &instr->fp2int_r_m.src));
+        ftprint_char_array(&dstr, false, "cvttsd2si <%lu> r%d, %s", instr->flt2int_r_m.dst_size, instr->flt2int_r_m.dst,
+                           LIR_print_mem(arena, &instr->flt2int_r_m.src));
         break;
     }
     case X64_INSTR_CVTSI2SS_R_R: {
-        ftprint_char_array(&dstr, false, "cvtsi2ss r%d, <%lu> r%d", instr->int2fp_r_r.dst, instr->int2fp_r_r.src_size,
-                           instr->int2fp_r_r.src);
+        ftprint_char_array(&dstr, false, "cvtsi2ss r%d, <%lu> r%d", instr->int2flt_r_r.dst, instr->int2flt_r_r.src_size,
+                           instr->int2flt_r_r.src);
         break;
     }
     case X64_INSTR_CVTSI2SD_R_R: {
-        ftprint_char_array(&dstr, false, "cvtsi2sd r%d, <%lu> r%d", instr->int2fp_r_r.dst, instr->int2fp_r_r.src_size,
-                           instr->int2fp_r_r.src);
+        ftprint_char_array(&dstr, false, "cvtsi2sd r%d, <%lu> r%d", instr->int2flt_r_r.dst, instr->int2flt_r_r.src_size,
+                           instr->int2flt_r_r.src);
         break;
     }
     case X64_INSTR_CVTSI2SS_R_M: {
-        ftprint_char_array(&dstr, false, "cvtsi2ss r%d, <%lu> %s", instr->int2fp_r_m.dst, instr->int2fp_r_m.src_size,
-                           LIR_print_mem(arena, &instr->int2fp_r_m.src));
+        ftprint_char_array(&dstr, false, "cvtsi2ss r%d, <%lu> %s", instr->int2flt_r_m.dst, instr->int2flt_r_m.src_size,
+                           LIR_print_mem(arena, &instr->int2flt_r_m.src));
         break;
     }
     case X64_INSTR_CVTSI2SD_R_M: {
-        ftprint_char_array(&dstr, false, "cvtsi2sd r%d, <%lu> %s", instr->int2fp_r_m.dst, instr->int2fp_r_m.src_size,
-                           LIR_print_mem(arena, &instr->int2fp_r_m.src));
+        ftprint_char_array(&dstr, false, "cvtsi2sd r%d, <%lu> %s", instr->int2flt_r_m.dst, instr->int2flt_r_m.src_size,
+                           LIR_print_mem(arena, &instr->int2flt_r_m.src));
         break;
     }
     case X64_INSTR_LEA: {

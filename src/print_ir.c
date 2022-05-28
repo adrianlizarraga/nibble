@@ -203,22 +203,22 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
                            IR_print_reg(arena, instr->convert.a));
         break;
     }
-    case INSTR_FP2INT: {
-        ftprint_char_array(&dstr, false, "fp2int <%s> %s, <%s> %s", int_kind_names[instr->fp2int.dst_kind],
-                           IR_print_reg(arena, instr->fp2int.dst), float_kind_names[instr->fp2int.src_kind],
-                           IR_print_op_ra(arena, &instr->fp2int.src));
+    case INSTR_FLT2INT: {
+        ftprint_char_array(&dstr, false, "flt2int <%s> %s, <%s> %s", int_kind_names[instr->flt2int.dst_kind],
+                           IR_print_reg(arena, instr->flt2int.dst), float_kind_names[instr->flt2int.src_kind],
+                           IR_print_op_ra(arena, &instr->flt2int.src));
         break;
     }
-    case INSTR_INT2FP: {
-        ftprint_char_array(&dstr, false, "int2fp <%s> %s, <%s> %s", float_kind_names[instr->int2fp.dst_kind],
-                           IR_print_reg(arena, instr->int2fp.dst), int_kind_names[instr->int2fp.src_kind],
-                           IR_print_op_ra(arena, &instr->int2fp.src));
+    case INSTR_INT2FLT: {
+        ftprint_char_array(&dstr, false, "int2flt <%s> %s, <%s> %s", float_kind_names[instr->int2flt.dst_kind],
+                           IR_print_reg(arena, instr->int2flt.dst), int_kind_names[instr->int2flt.src_kind],
+                           IR_print_op_ra(arena, &instr->int2flt.src));
         break;
     }
-    case INSTR_FP2FP: {
-        ftprint_char_array(&dstr, false, "fp2fp <%s> %s, <%s> %s", float_kind_names[instr->fp2fp.dst_kind],
-                           IR_print_reg(arena, instr->fp2fp.dst), float_kind_names[instr->fp2fp.src_kind],
-                           IR_print_op_ra(arena, &instr->fp2fp.src));
+    case INSTR_FLT2FLT: {
+        ftprint_char_array(&dstr, false, "flt2flt <%s> %s, <%s> %s", float_kind_names[instr->flt2flt.dst_kind],
+                           IR_print_reg(arena, instr->flt2flt.dst), float_kind_names[instr->flt2flt.src_kind],
+                           IR_print_op_ra(arena, &instr->flt2flt.src));
         break;
     }
     case INSTR_LIMM: {
