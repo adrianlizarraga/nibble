@@ -617,267 +617,155 @@ static Type* convert_arith_eops(ExprOperand* left, ExprOperand* right)
     return left->type;
 }
 
-static s64 eval_unary_op_s64(TokenKind op, s64 val)
-{
-    switch (op) {
-    case TKN_PLUS:
-        return +val;
-    case TKN_MINUS:
-        return -val;
-    case TKN_NEG:
-        return ~val;
-    case TKN_NOT:
-        return !val;
-    default:
-        ftprint_err("Unexpected unary op (s64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_UNARY_OP_INT_FUNC(T)                                 \
+    static T eval_unary_op_##T(TokenKind op, T val)                   \
+    {                                                                 \
+        switch (op) {                                                 \
+        case TKN_PLUS:                                                \
+            return +val;                                              \
+        case TKN_MINUS:                                               \
+            return -val;                                              \
+        case TKN_NEG:                                                 \
+            return ~val;                                              \
+        case TKN_NOT:                                                 \
+            return !val;                                              \
+        default:                                                      \
+            NIBBLE_FATAL_EXIT("Unexpected unary op (##T): %d\n", op); \
+            return 0;                                                 \
+        }                                                             \
     }
 
-    return 0;
-}
+DEF_EVAL_UNARY_OP_INT_FUNC(s64)
+DEF_EVAL_UNARY_OP_INT_FUNC(u64)
 
-static u64 eval_unary_op_u64(TokenKind op, u64 val)
-{
-    switch (op) {
-    case TKN_PLUS:
-        return +val;
-    case TKN_MINUS:
-        return -val;
-    case TKN_NEG:
-        return ~val;
-    case TKN_NOT:
-        return !val;
-    default:
-        ftprint_err("Unexpected unary op (s64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_UNARY_OP_FLOAT_FUNC(T)                               \
+    static T eval_unary_op_##T(TokenKind op, T val)                   \
+    {                                                                 \
+        switch (op) {                                                 \
+        case TKN_PLUS:                                                \
+            return +val;                                              \
+        case TKN_MINUS:                                               \
+            return -val;                                              \
+        default:                                                      \
+            NIBBLE_FATAL_EXIT("Unexpected unary op (##T): %d\n", op); \
+            return 0.0;                                               \
+        }                                                             \
     }
 
-    return 0;
-}
+DEF_EVAL_UNARY_OP_FLOAT_FUNC(f64)
+DEF_EVAL_UNARY_OP_FLOAT_FUNC(f32)
 
-static f64 eval_unary_op_f64(TokenKind op, f64 val)
-{
-    switch (op) {
-    case TKN_PLUS:
-        return +val;
-    case TKN_MINUS:
-        return -val;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected unary op (f64): %d\n", op);
-        break;
+#define DEF_EVAL_BINARY_OP_FLOAT_FUNC(T)                               \
+    static T eval_binary_op_##T(TokenKind op, T left, T right)         \
+    {                                                                  \
+        switch (op) {                                                  \
+        case TKN_PLUS:                                                 \
+            return left + right;                                       \
+        case TKN_MINUS:                                                \
+            return left - right;                                       \
+        case TKN_ASTERISK:                                             \
+            return left * right;                                       \
+        case TKN_DIV:                                                  \
+            return left / right;                                       \
+        default:                                                       \
+            NIBBLE_FATAL_EXIT("Unexpected binary op (##T): %d\n", op); \
+            return 0.0;                                                \
+        }                                                              \
     }
 
-    return 0.0;
-}
+DEF_EVAL_BINARY_OP_FLOAT_FUNC(f64)
+DEF_EVAL_BINARY_OP_FLOAT_FUNC(f32)
 
-static f32 eval_unary_op_f32(TokenKind op, f32 val)
-{
-    switch (op) {
-    case TKN_PLUS:
-        return +val;
-    case TKN_MINUS:
-        return -val;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected unary op (f32): %d\n", op);
-        break;
+#define DEF_EVAL_BINARY_LOGICAL_OP_FLOAT_FUNC(T)                               \
+    static bool eval_binary_logical_op_##T(TokenKind op, T left, T right)      \
+    {                                                                          \
+        switch (op) {                                                          \
+        case TKN_LOGIC_AND:                                                    \
+            return left && right;                                              \
+        case TKN_LOGIC_OR:                                                     \
+            return left || right;                                              \
+        case TKN_EQ:                                                           \
+            return left == right;                                              \
+        case TKN_NOTEQ:                                                        \
+            return left != right;                                              \
+        case TKN_GT:                                                           \
+            return left > right;                                               \
+        case TKN_GTEQ:                                                         \
+            return left >= right;                                              \
+        case TKN_LT:                                                           \
+            return left < right;                                               \
+        case TKN_LTEQ:                                                         \
+            return left <= right;                                              \
+        default:                                                               \
+            NIBBLE_FATAL_EXIT("Unexpected binary logical op (##T): %d\n", op); \
+            return false;                                                      \
+        }                                                                      \
     }
 
-    return 0.0f;
-}
+DEF_EVAL_BINARY_LOGICAL_OP_FLOAT_FUNC(f64)
+DEF_EVAL_BINARY_LOGICAL_OP_FLOAT_FUNC(f32)
 
-static f64 eval_binary_op_f64(TokenKind op, f64 left, f64 right)
-{
-    switch (op) {
-    case TKN_PLUS: // Add
-        return left + right;
-    case TKN_MINUS: // Subtract
-        return left - right;
-    case TKN_ASTERISK: // Multiply
-        return left * right;
-    case TKN_DIV: // Divide
-        return left / right;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected binary op (f64): %d\n", op);
-        return 0.0;
+#define DEF_EVAL_BINARY_OP_INT_FUNC(T)                                 \
+    static T eval_binary_op_##T(TokenKind op, T left, T right)         \
+    {                                                                  \
+        switch (op) {                                                  \
+        case TKN_PLUS:                                                 \
+            return left + right;                                       \
+        case TKN_MINUS:                                                \
+            return left - right;                                       \
+        case TKN_ASTERISK:                                             \
+            return left * right;                                       \
+        case TKN_DIV:                                                  \
+            return right != 0 ? left / right : 0;                      \
+        case TKN_MOD:                                                  \
+            return right != 0 ? left % right : 0;                      \
+        case TKN_LSHIFT:                                               \
+            return left << right;                                      \
+        case TKN_RSHIFT:                                               \
+            return left >> right;                                      \
+        case TKN_AND:                                                  \
+            return left & right;                                       \
+        case TKN_OR:                                                   \
+            return left | right;                                       \
+        case TKN_CARET:                                                \
+            return left ^ right;                                       \
+        default:                                                       \
+            NIBBLE_FATAL_EXIT("Unexpected binary op (##T): %d\n", op); \
+            return 0;                                                  \
+        }                                                              \
     }
-}
 
-static f32 eval_binary_op_f32(TokenKind op, f32 left, f32 right)
-{
-    switch (op) {
-    case TKN_PLUS: // Add
-        return left + right;
-    case TKN_MINUS: // Subtract
-        return left - right;
-    case TKN_ASTERISK: // Multiply
-        return left * right;
-    case TKN_DIV: // Divide
-        return left / right;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected binary op (f32): %d\n", op);
-        return 0.0f;
-    }
-}
+DEF_EVAL_BINARY_OP_INT_FUNC(s64)
+DEF_EVAL_BINARY_OP_INT_FUNC(u64)
 
-static bool eval_binary_logical_op_f64(TokenKind op, f64 left, f64 right)
-{
-    switch (op) {
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected binary logical op (f64): %d\n", op);
-        return false;
+#define DEF_EVAL_BINARY_LOGICAL_OP_INT_FUNC(T)                                 \
+    static bool eval_binary_logical_op_##T(TokenKind op, T left, T right)      \
+    {                                                                          \
+        switch (op) {                                                          \
+        case TKN_LOGIC_AND:                                                    \
+            return left && right;                                              \
+        case TKN_LOGIC_OR:                                                     \
+            return left || right;                                              \
+        case TKN_EQ:                                                           \
+            return left == right;                                              \
+        case TKN_NOTEQ:                                                        \
+            return left != right;                                              \
+        case TKN_GT:                                                           \
+            return left > right;                                               \
+        case TKN_GTEQ:                                                         \
+            return left >= right;                                              \
+        case TKN_LT:                                                           \
+            return left < right;                                               \
+        case TKN_LTEQ:                                                         \
+            return left <= right;                                              \
+        default:                                                               \
+            NIBBLE_FATAL_EXIT("Unexpected binary logical op (##T): %d\n", op); \
+            return false;                                                      \
+        }                                                                      \
     }
-}
 
-static bool eval_binary_logical_op_f32(TokenKind op, f32 left, f32 right)
-{
-    switch (op) {
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected binary logical op (f32): %d\n", op);
-        return false;
-    }
-}
-
-static s64 eval_binary_op_s64(TokenKind op, s64 left, s64 right)
-{
-    switch (op) {
-    case TKN_PLUS: // Add
-        return left + right;
-    case TKN_MINUS: // Subtract
-        return left - right;
-    case TKN_ASTERISK: // Multiply
-        return left * right;
-    case TKN_DIV: // Divide
-        return right != 0 ? left / right : 0;
-    case TKN_MOD: // Modulo (remainder)
-        return right != 0 ? left % right : 0;
-    case TKN_LSHIFT:
-        return left << right;
-    case TKN_RSHIFT:
-        return left >> right;
-    case TKN_AND:
-        return left & right;
-    case TKN_OR:
-        return left | right;
-    case TKN_CARET: // xor
-        return left ^ right;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected binary op (s64): %d\n", op);
-        return 0;
-    }
-}
-
-static bool eval_binary_logical_op_s64(TokenKind op, s64 left, s64 right)
-{
-    switch (op) {
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected binary logical op (s64): %d\n", op);
-        return false;
-    }
-}
-
-static u64 eval_binary_op_u64(TokenKind op, u64 left, u64 right)
-{
-    switch (op) {
-    case TKN_PLUS: // Add
-        return left + right;
-    case TKN_MINUS: // Subtract
-        return left - right;
-    case TKN_ASTERISK: // Multiply
-        return left * right;
-    case TKN_DIV: // Divide
-        return right != 0 ? left / right : 0;
-    case TKN_MOD: // Modulo (remainder)
-        return right != 0 ? left % right : 0;
-    case TKN_LSHIFT:
-        return left << right;
-    case TKN_RSHIFT:
-        return left >> right;
-    case TKN_AND:
-        return left & right;
-    case TKN_OR:
-        return left | right;
-    case TKN_CARET: // xor
-        return left ^ right;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected binary op (u64): %d\n", op);
-        return 0;
-    }
-}
-
-static bool eval_binary_logical_op_u64(TokenKind op, u64 left, u64 right)
-{
-    switch (op) {
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
-    default:
-        NIBBLE_FATAL_EXIT("Unexpected binary logical op (u64): %d\n", op);
-        return false;
-    }
-}
+DEF_EVAL_BINARY_LOGICAL_OP_INT_FUNC(s64)
+DEF_EVAL_BINARY_LOGICAL_OP_INT_FUNC(u64)
 
 static void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
 {
