@@ -690,12 +690,38 @@ static s64 eval_binary_op_s64(TokenKind op, s64 left, s64 right)
     case TKN_LTEQ:
         return left <= right;
     default:
-        ftprint_err("Unexpected binary op (s64): %d\n", op);
-        assert(0);
+        NIBBLE_FATAL_EXIT("Unexpected binary op (s64): %d\n", op);
         break;
     }
 
     return 0;
+}
+
+static bool eval_binary_logical_op_s64(TokenKind op, s64 left, s64 right)
+{
+    switch (op) {
+    case TKN_LOGIC_AND:
+        return left && right;
+    case TKN_LOGIC_OR:
+        return left || right;
+    case TKN_EQ:
+        return left == right;
+    case TKN_NOTEQ:
+        return left != right;
+    case TKN_GT:
+        return left > right;
+    case TKN_GTEQ:
+        return left >= right;
+    case TKN_LT:
+        return left < right;
+    case TKN_LTEQ:
+        return left <= right;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected binary logical op (s64): %d\n", op);
+        break;
+    }
+
+    return false;
 }
 
 static u64 eval_binary_op_u64(TokenKind op, u64 left, u64 right)
@@ -738,15 +764,41 @@ static u64 eval_binary_op_u64(TokenKind op, u64 left, u64 right)
     case TKN_LTEQ:
         return left <= right;
     default:
-        ftprint_err("Unexpected binary op (u64): %d\n", op);
-        assert(0);
+        NIBBLE_FATAL_EXIT("Unexpected binary op (u64): %d\n", op);
         break;
     }
 
     return 0;
 }
 
-static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
+static bool eval_binary_logical_op_u64(TokenKind op, u64 left, u64 right)
+{
+    switch (op) {
+    case TKN_LOGIC_AND:
+        return left && right;
+    case TKN_LOGIC_OR:
+        return left || right;
+    case TKN_EQ:
+        return left == right;
+    case TKN_NOTEQ:
+        return left != right;
+    case TKN_GT:
+        return left > right;
+    case TKN_GTEQ:
+        return left >= right;
+    case TKN_LT:
+        return left < right;
+    case TKN_LTEQ:
+        return left <= right;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected binary logical op (u64): %d\n", op);
+        break;
+    }
+
+    return false;
+}
+
+static void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
 {
     if (type_is_integer_like(type)) {
         ExprOperand left_eop = OP_FROM_CONST(type, left);
@@ -786,6 +838,41 @@ static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Sca
         // TODO
         assert(type->kind == TYPE_FLOAT);
     }
+}
+
+static void eval_binary_logical_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
+{
+    bool result = false;
+
+    if (type_is_integer_like(type)) {
+        ExprOperand left_eop = OP_FROM_CONST(type, left);
+        ExprOperand right_eop = OP_FROM_CONST(type, right);
+        bool is_signed = type_is_signed(type);
+
+        // Compute the operation in the largest type available.
+        if (is_signed) {
+            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+
+            result = eval_binary_logical_op_s64(op, left_eop.imm.as_int._s64, right_eop.imm.as_int._s64);
+        }
+        else {
+            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
+            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
+
+            result = eval_binary_logical_op_u64(op, left_eop.imm.as_int._u64, right_eop.imm.as_int._u64);
+        }
+    }
+    else {
+        // TODO
+        assert(type->kind == TYPE_FLOAT);
+    }
+
+    dst->type = builtin_types[BUILTIN_TYPE_BOOL].type;
+    dst->is_constexpr = true;
+    dst->is_imm = true;
+    dst->is_lvalue = false;
+    dst->imm.as_int._bool = result;
 }
 
 static void eval_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar val)
@@ -1373,10 +1460,27 @@ static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left
 
     if (left->is_constexpr && right->is_constexpr) {
         assert(left->is_imm && right->is_imm);
-        eval_const_binary_op(op, dst, type, left->imm, right->imm);
+        eval_binary_op(op, dst, type, left->imm, right->imm);
     }
     else {
         dst->type = type;
+        dst->is_constexpr = false;
+        dst->is_imm = false;
+        dst->is_lvalue = false;
+    }
+}
+
+static void resolve_binary_logical_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
+{
+    Type* common_type = convert_arith_eops(left, right);
+
+    if (left->is_constexpr && right->is_constexpr) {
+        assert(left->is_imm && right->is_imm);
+        eval_binary_logical_op(op, dst, common_type, left->imm, right->imm);
+        assert(dst->type == builtin_types[BUILTIN_TYPE_BOOL].type);
+    }
+    else {
+        dst->type = builtin_types[BUILTIN_TYPE_BOOL].type;
         dst->is_constexpr = false;
         dst->is_imm = false;
         dst->is_lvalue = false;
@@ -1580,7 +1684,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
         if (left_op.is_constexpr && right_op.is_constexpr) {
             assert(left_op.is_imm && right_op.is_imm);
-            eval_const_binary_op(ebinary->op, &dst_op, left_op.type, left_op.imm, right_op.imm);
+            eval_binary_op(ebinary->op, &dst_op, left_op.type, left_op.imm, right_op.imm);
         }
         else {
             dst_op.type = left_op.type;
@@ -1615,10 +1719,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         bool right_is_ptr = (right_op.type->kind == TYPE_PTR);
 
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
-            resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
-
-            // NOTE: resolve_binary_eop will cast to the common type, so cast to bool.
-            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+            resolve_binary_logical_eop(ebinary->op, &dst_op, &left_op, &right_op);
         }
         else if (left_is_ptr && right_is_ptr) {
             Type* common_type = convert_ptr_eops(&left_op, &right_op);
@@ -1632,12 +1733,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 u64 left_u64 = left_op.imm.as_int._u64;
                 u64 right_u64 = right_op.imm.as_int._u64;
 
-                dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
                 dst_op.is_constexpr = true;
                 dst_op.is_imm = true;
-                dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
-
-                cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+                dst_op.imm.as_int._bool = eval_binary_logical_op_u64(ebinary->op, left_u64, right_u64);
             }
             else {
                 // NOTE: The only constexpr ptr that is NOT an immediate, is the addresses of a global variable.
@@ -1663,10 +1762,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         bool right_is_ptr = (right_op.type->kind == TYPE_PTR);
 
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
-            resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
-
-            // NOTE: resolve_binary_eop will cast to the common type, so cast to bool.
-            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+            resolve_binary_logical_eop(ebinary->op, &dst_op, &left_op, &right_op);
         }
         else if (left_is_ptr && right_is_ptr) {
             Type* common_type = convert_ptr_eops(&left_op, &right_op);
@@ -1680,12 +1776,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 u64 left_u64 = left_op.imm.as_int._u64;
                 u64 right_u64 = right_op.imm.as_int._u64;
 
-                dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
                 dst_op.is_constexpr = true;
                 dst_op.is_imm = true;
-                dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
-
-                cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+                dst_op.imm.as_int._bool = eval_binary_logical_op_u64(ebinary->op, left_u64, right_u64);
             }
             else {
                 // NOTE: The only constexpr ptr that is NOT an immediate, is the addresses of a global variable.
@@ -1728,7 +1822,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             dst_op.is_constexpr = true;
             dst_op.is_imm = true;
-            dst_op.imm.as_int._bool = ebinary->op == TKN_LOGIC_AND ? (left_bool && right_bool) : (left_bool || right_bool);
+            dst_op.imm.as_int._bool = eval_binary_logical_op_u64(ebinary->op, (u64)left_bool, (u64)right_bool);
         }
         else if (left_op.is_constexpr && (left_op.type->kind == TYPE_PTR) && right_op.is_constexpr &&
                  (right_op.type->kind == TYPE_PTR)) {
@@ -3185,7 +3279,7 @@ static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
             Scalar one_imm = {.as_int._u64 = 1};
             ExprOperand item_op = {0};
 
-            eval_const_binary_op(TKN_PLUS, &item_op, enum_type, prev_enum_val, one_imm);
+            eval_binary_op(TKN_PLUS, &item_op, enum_type, prev_enum_val, one_imm);
             enum_val = item_op.imm;
         }
 
