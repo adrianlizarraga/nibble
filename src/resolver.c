@@ -676,7 +676,7 @@ DEF_EVAL_UNARY_OP_FLOAT_FUNC(f32)
 DEF_EVAL_BINARY_OP_FLOAT_FUNC(f64)
 DEF_EVAL_BINARY_OP_FLOAT_FUNC(f32)
 
-#define DEF_EVAL_BINARY_LOGICAL_OP_FLOAT_FUNC(T)                               \
+#define DEF_EVAL_BINARY_LOGICAL_OP_FUNC(T)                                     \
     static bool eval_binary_logical_op_##T(TokenKind op, T left, T right)      \
     {                                                                          \
         switch (op) {                                                          \
@@ -702,8 +702,10 @@ DEF_EVAL_BINARY_OP_FLOAT_FUNC(f32)
         }                                                                      \
     }
 
-DEF_EVAL_BINARY_LOGICAL_OP_FLOAT_FUNC(f64)
-DEF_EVAL_BINARY_LOGICAL_OP_FLOAT_FUNC(f32)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(f64)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(f32)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(s64)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(u64)
 
 #define DEF_EVAL_BINARY_OP_INT_FUNC(T)                                 \
     static T eval_binary_op_##T(TokenKind op, T left, T right)         \
@@ -737,35 +739,6 @@ DEF_EVAL_BINARY_LOGICAL_OP_FLOAT_FUNC(f32)
 
 DEF_EVAL_BINARY_OP_INT_FUNC(s64)
 DEF_EVAL_BINARY_OP_INT_FUNC(u64)
-
-#define DEF_EVAL_BINARY_LOGICAL_OP_INT_FUNC(T)                                 \
-    static bool eval_binary_logical_op_##T(TokenKind op, T left, T right)      \
-    {                                                                          \
-        switch (op) {                                                          \
-        case TKN_LOGIC_AND:                                                    \
-            return left && right;                                              \
-        case TKN_LOGIC_OR:                                                     \
-            return left || right;                                              \
-        case TKN_EQ:                                                           \
-            return left == right;                                              \
-        case TKN_NOTEQ:                                                        \
-            return left != right;                                              \
-        case TKN_GT:                                                           \
-            return left > right;                                               \
-        case TKN_GTEQ:                                                         \
-            return left >= right;                                              \
-        case TKN_LT:                                                           \
-            return left < right;                                               \
-        case TKN_LTEQ:                                                         \
-            return left <= right;                                              \
-        default:                                                               \
-            NIBBLE_FATAL_EXIT("Unexpected binary logical op (##T): %d\n", op); \
-            return false;                                                      \
-        }                                                                      \
-    }
-
-DEF_EVAL_BINARY_LOGICAL_OP_INT_FUNC(s64)
-DEF_EVAL_BINARY_LOGICAL_OP_INT_FUNC(u64)
 
 static void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
 {
