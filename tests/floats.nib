@@ -1,6 +1,33 @@
 var g_f64 : f64 = 1.2;
 var g_f32 : f32 = 1.2f;
 
+// Test compile-time evaluation of floating-point values.
+#static_assert(0.05 + 0.05 == 0.1);
+#static_assert(0.05 - 0.05 == 0.0);
+#static_assert(2.0 * 1.1 == 2.2);
+#static_assert(10.0 / 2.0 == 5.0);
+#static_assert(1.0 < 1.1);
+#static_assert(1.1 > 1.0);
+#static_assert(1.1 >= 1.1);
+#static_assert(1.2 >= 1.1);
+#static_assert(1.1 <= 1.1);
+#static_assert(1.0 <= 1.1);
+#static_assert((1.1 * 2) == 2.2);
+#static_assert(2 == 2.0);
+
+#static_assert(0.05f + 0.05f == 0.1f);
+#static_assert(0.05f - 0.05f == 0.0f);
+#static_assert(2.0f * 1.1f == 2.2f);
+#static_assert(10.0f / 2.0f == 5.0f);
+#static_assert(1.0f < 1.1f);
+#static_assert(1.1f > 1.0f);
+#static_assert(1.1f >= 1.1f);
+#static_assert(1.2f >= 1.1f);
+#static_assert(1.1f <= 1.1f);
+#static_assert(1.0f <= 1.1f);
+#static_assert((1.1f * 2) == 2.2f);
+#static_assert(2 == 2.0f);
+
 proc main() => int {
     var l_f32 : f32 = 1.8f;
     var l_f64 : f64 = 1.2;
