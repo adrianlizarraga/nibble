@@ -756,16 +756,9 @@ static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xb
     }
 }
 
-static void X64_convert_fp_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
+static u32 X64_movfp_op_ria_into_reg(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind fkind, IR_Reg ir_r, OpRIA ir_a)
 {
-    Type* type = ir_instr->binary.type;
-    FloatKind fkind = type->as_float.kind;
-    OpRIA ir_a = ir_instr->binary.a;
-    OpRIA ir_b = ir_instr->binary.b;
-
-    assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM); // Only one should be an immediate.
-
-    u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_FLOAT);
+    u32 r = X64_get_lir_reg(builder, ir_r, X64_REG_CLASS_FLOAT);
 
     // Ex: movss r, a
     if (ir_a.kind == OP_RIA_REG) {
@@ -779,6 +772,20 @@ static void X64_convert_fp_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xbb
         X64_get_lir_addr(builder, xbblock, &addr, &ir_a.addr, 0);
         X64_emit_instr_movfp_r_m(builder, xbblock, fkind, r, addr);
     }
+
+    return r;
+}
+
+static void X64_convert_fp_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
+{
+    Type* type = ir_instr->binary.type;
+    FloatKind fkind = type->as_float.kind;
+    OpRIA ir_a = ir_instr->binary.a;
+    OpRIA ir_b = ir_instr->binary.b;
+
+    assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM); // Only one should be an immediate.
+
+    u32 r = X64_movfp_op_ria_into_reg(builder, xbblock, fkind, ir_instr->binary.r, ir_a);
 
     // Ex: addss r, b
     if (ir_b.kind == OP_RIA_REG) {
@@ -798,6 +805,10 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     Instr* next_instr = ir_instr->next;
 
     switch (ir_instr->kind) {
+    // TODO: LEFT OFF HERE.
+    // Use different IR instr kinds for FP binary.
+    //   - OpRA instead of OpRIA
+    //   - FloatKind instead of Type
     case INSTR_ADD: {
         Type* type = ir_instr->binary.type;
 

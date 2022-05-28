@@ -31,6 +31,14 @@ typedef enum X64_InstrKind
     X64_INSTR_SUB_R_I,
     X64_INSTR_SUB_R_M,
 
+    // f32 sub
+    X64_INSTR_SUBSS_R_R,
+    X64_INSTR_SUBSS_R_M,
+
+    // f64 sub
+    X64_INSTR_SUBSD_R_R,
+    X64_INSTR_SUBSD_R_M,
+
     // Multiplication
     X64_INSTR_IMUL_R_R,
     X64_INSTR_IMUL_R_I,
@@ -574,8 +582,10 @@ u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r);
 void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, u32 src);
 void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
 void X64_emit_instr_binary_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, X64_MemAddr src);
+
 void X64_emit_instr_addfp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind fkind, u32 dst, u32 src);
 void X64_emit_instr_addfp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind fkind, u32 dst, X64_MemAddr src);
+
 void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, u32 src);
 void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, Scalar src);
 void X64_emit_instr_div_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 rdx, u32 rax, u32 src);
