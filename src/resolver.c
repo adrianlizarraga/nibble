@@ -620,6 +620,36 @@ static u64 eval_unary_op_u64(TokenKind op, u64 val)
     return 0;
 }
 
+static f64 eval_unary_op_f64(TokenKind op, f64 val)
+{
+    switch (op) {
+    case TKN_PLUS:
+        return +val;
+    case TKN_MINUS:
+        return -val;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected unary op (f64): %d\n", op);
+        break;
+    }
+
+    return 0.0;
+}
+
+static f32 eval_unary_op_f32(TokenKind op, f32 val)
+{
+    switch (op) {
+    case TKN_PLUS:
+        return +val;
+    case TKN_MINUS:
+        return -val;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected unary op (f32): %d\n", op);
+        break;
+    }
+
+    return 0.0f;
+}
+
 static s64 eval_binary_op_s64(TokenKind op, s64 left, s64 right)
 {
     switch (op) {
@@ -758,7 +788,7 @@ static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Sca
     }
 }
 
-static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar val)
+static void eval_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar val)
 {
     if (type_is_integer_like(type)) {
         ExprOperand val_eop = OP_FROM_CONST(type, val);
@@ -789,7 +819,57 @@ static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scal
     }
     else {
         assert(type->kind == TYPE_FLOAT);
+        dst->type = type;
+        dst->is_constexpr = true;
+        dst->is_imm = true;
+        dst->is_lvalue = false;
+
+        if (type->as_float.kind == FLOAT_F64) {
+            dst->imm.as_float._f64 = eval_unary_op_f64(op, val.as_float._f64);
+        }
+        else {
+            assert(type->as_float.kind == FLOAT_F32);
+            dst->imm.as_float._f32 = eval_unary_op_f32(op, val.as_float._f32);
+        }
     }
+}
+
+static void eval_unary_not(ExprOperand* dst, Type* type, Scalar val)
+{
+    bool result = false;
+
+    if (type_is_integer_like(type)) {
+        ExprOperand val_eop = OP_FROM_CONST(type, val);
+        bool is_signed = type_is_signed(type);
+
+        // Compute the operation in the largest type available.
+        if (is_signed) {
+            cast_eop(&val_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+            result = !val_eop.imm.as_int._s64;
+        }
+        else {
+            cast_eop(&val_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
+            result = !val_eop.imm.as_int._u64;
+        }
+    }
+    else {
+        assert(type->kind == TYPE_FLOAT);
+        FloatKind fkind = type->as_float.kind;
+
+        if (fkind == FLOAT_F64) {
+            result = !val.as_float._f64;
+        }
+        else {
+            assert(fkind == FLOAT_F32);
+            result = !val.as_float._f32;
+        }
+    }
+
+    dst->type = builtin_types[BUILTIN_TYPE_BOOL].type;
+    dst->is_constexpr = true;
+    dst->is_imm = true;
+    dst->is_lvalue = false;
+    dst->imm.as_int._bool = result;
 }
 
 static bool try_complete_aggregate_type(Resolver* resolver, Type* type);
@@ -1767,7 +1847,7 @@ static void resolve_unary_eop(TokenKind op, ExprOperand* dst, ExprOperand* src)
     promote_int_eops(src);
 
     if (src->is_constexpr && src->is_imm) {
-        eval_const_unary_op(op, dst, src->type, src->imm);
+        eval_unary_op(op, dst, src->type, src->imm);
     }
     else {
         dst->type = src->type;
@@ -1813,15 +1893,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         }
 
         if (src_op.is_constexpr && src_op.is_imm) {
-            assert(type_is_integer_like(src_op.type));
-            u64 src_u64 = src_op.imm.as_int._u64;
-
-            dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
-            dst_op.is_constexpr = true;
-            dst_op.is_imm = true;
-            dst_op.imm.as_int._u64 = eval_unary_op_u64(eunary->op, src_u64);
-
-            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+            eval_unary_not(&dst_op, src_op.type, src_op.imm);
         }
         else {
             dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
