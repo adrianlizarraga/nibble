@@ -19,6 +19,52 @@ const char* arch_names[NUM_ARCH] = {
     [ARCH_X64] = "x64",
 };
 
+const size_t float_kind_sizes[FLOAT_KIND_COUNT] = {[FLOAT_F64] = 8, [FLOAT_F32] = 4};
+const char* float_kind_names[FLOAT_KIND_COUNT] = {[FLOAT_F64] = "f64", [FLOAT_F32] = "f32"};
+const size_t int_kind_sizes[INTEGER_KIND_COUNT] = {
+    [INTEGER_BOOL] = 1,
+    [INTEGER_U8]   = 1,
+    [INTEGER_S8]   = 1,
+    [INTEGER_U16]  = 2,
+    [INTEGER_S16]  = 2,
+    [INTEGER_U32]  = 4,
+    [INTEGER_S32]  = 4,
+    [INTEGER_U64]  = 8,
+    [INTEGER_S64]  = 8,
+};
+const char* int_kind_names[INTEGER_KIND_COUNT] = {
+    [INTEGER_BOOL] = "bool",
+    [INTEGER_U8]   = "u8",
+    [INTEGER_S8]   = "s8",
+    [INTEGER_U16]  = "u16",
+    [INTEGER_S16]  = "s16",
+    [INTEGER_U32]  = "u32",
+    [INTEGER_S32]  = "s32",
+    [INTEGER_U64]  = "u64",
+    [INTEGER_S64]  = "s64",
+};
+const bool int_kind_signed[INTEGER_KIND_COUNT] = {
+    [INTEGER_BOOL] = false,
+    [INTEGER_U8]   = false,
+    [INTEGER_S8]   = true,
+    [INTEGER_U16]  = false,
+    [INTEGER_S16]  = true,
+    [INTEGER_U32]  = false,
+    [INTEGER_S32]  = true,
+    [INTEGER_U64]  = false,
+    [INTEGER_S64]  = true,
+};
+const u64 int_kind_max[INTEGER_KIND_COUNT] = {
+    [INTEGER_BOOL] = 0x1,
+    [INTEGER_U8]   = 0xFF,
+    [INTEGER_S8]   = 0x7F,
+    [INTEGER_U16]  = 0xFFFF,
+    [INTEGER_S16]  = 0x7FFF,
+    [INTEGER_U32]  = 0xFFFFFFFF,
+    [INTEGER_S32]  = 0x7FFFFFFF,
+    [INTEGER_U64]  = 0xFFFFFFFFFFFFFFFF,
+    [INTEGER_S64]  = 0x7FFFFFFFFFFFFFFF,
+};
 const char* keyword_names[KW_COUNT];
 const char* annotation_names[ANNOTATION_COUNT];
 
@@ -476,6 +522,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     nibble->ast_mem = allocator_create(16384);
     nibble->tmp_mem = allocator_create(4096);
     nibble->str_lit_map = hmap(6, NULL);
+    nibble->float_lit_map = hmap(6, NULL);
     nibble->ident_map = hmap(8, NULL);
     nibble->mod_map = hmap(6, NULL);
     nibble->type_cache.ptrs = hmap(6, NULL);
@@ -506,6 +553,7 @@ bool nibble_init(OS target_os, Arch target_arch)
     bucket_list_init(&nibble->procs, &nibble->ast_mem, 32);
     bucket_list_init(&nibble->aggregate_types, &nibble->ast_mem, 16);
     bucket_list_init(&nibble->str_lits, &nibble->ast_mem, 8);
+    bucket_list_init(&nibble->float_lits, &nibble->ast_mem, 8);
 
     error_stream_init(&nibble->errors, &nibble->gen_mem);
 
@@ -1173,7 +1221,8 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     //          Gen IR bytecode
     //////////////////////////////////////////
     ftprint_out("[INFO]: Generating IR ...\n");
-    IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lits, &nibble->type_cache);
+    IR_gen_bytecode(&nibble->ast_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lits, &nibble->float_lits,
+                    &nibble->type_cache);
 
     //////////////////////////////////////////
     //          Gen NASM output
@@ -1186,7 +1235,8 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     path_append(&nasm_fname, nasm_ext, sizeof(nasm_ext) - 1);
 
     ftprint_out("[INFO]: Generating NASM assembly output: %s ...\n", nasm_fname.str);
-    gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lits, nasm_fname.str);
+    gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lits, &nibble->float_lits,
+               nasm_fname.str);
 
     //////////////////////////////////////////
     //          Run NASM assembler
@@ -1271,6 +1321,8 @@ void nibble_cleanup(void)
                 nibble->ident_map.cap * sizeof(HMapEntry));
     ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->str_lit_map.len, nibble->str_lit_map.cap,
                 nibble->str_lit_map.cap * sizeof(HMapEntry));
+    ftprint_out("FloatLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->float_lit_map.len,
+                nibble->float_lit_map.cap, nibble->float_lit_map.cap * sizeof(HMapEntry));
     ftprint_out("Module map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->mod_map.len, nibble->mod_map.cap,
                 nibble->mod_map.cap * sizeof(HMapEntry));
     ftprint_out("type_ptr cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nibble->type_cache.ptrs.len,
@@ -1288,6 +1340,7 @@ void nibble_cleanup(void)
 #endif
 
     hmap_destroy(&nibble->str_lit_map);
+    hmap_destroy(&nibble->float_lit_map);
     hmap_destroy(&nibble->ident_map);
     hmap_destroy(&nibble->mod_map);
     hmap_destroy(&nibble->type_cache.ptrs);
@@ -1301,6 +1354,41 @@ void nibble_cleanup(void)
 
     Allocator bootstrap = nibble->gen_mem;
     allocator_destroy(&bootstrap);
+}
+
+FloatLit* intern_float_lit(FloatKind kind, Float value)
+{
+    Allocator* allocator = &nibble->gen_mem;
+    HMap* float_lit_map = &nibble->float_lit_map;
+
+    u64 num_bytes = float_kind_sizes[kind];
+    u64 key = hash_bytes(&value, num_bytes, FNV_INIT);
+    u64* pval = hmap_get(float_lit_map, key);
+    FloatLit* intern = pval ? (void*)*pval : NULL;
+
+    // Walk linked list in case of collision.
+    for (FloatLit* it = intern; it; it = it->next) {
+        if ((it->kind == kind) && float_eq(kind, it->value, value)) {
+            return it;
+        }
+    }
+
+    // If we got here, add this float literal to the intern table.
+    FloatLit* new_intern = alloc_type(allocator, FloatLit, true);
+
+    if (!new_intern) {
+        NIBBLE_FATAL_EXIT("Out of memory.\n%s:%d\n", __FILE__, __LINE__);
+        return NULL;
+    }
+
+    new_intern->next = intern; // Chain to colliding literal (if any)
+    new_intern->id = float_lit_map->len;
+    new_intern->kind = kind;
+    new_intern->value = value;
+
+    hmap_put(float_lit_map, key, (uintptr_t)new_intern);
+
+    return new_intern;
 }
 
 StrLit* intern_str_lit(const char* str, size_t len)
@@ -1325,9 +1413,7 @@ StrLit* intern_str_lit(const char* str, size_t len)
     StrLit* new_intern = mem_allocate(allocator, offsetof(StrLit, str) + len + 1, DEFAULT_ALIGN, true);
 
     if (!new_intern) {
-        // TODO: Handle in a better way.
-        ftprint_err("[INTERNAL ERROR]: Out of memory.\n%s:%d\n", __FILE__, __LINE__);
-        exit(1);
+        NIBBLE_FATAL_EXIT("[INTERNAL ERROR]: Out of memory.\n%s:%d\n", __FILE__, __LINE__);
         return NULL;
     }
 

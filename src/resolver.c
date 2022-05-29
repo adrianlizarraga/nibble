@@ -210,6 +210,58 @@ static void exit_proc(Resolver* resolver, ModuleState state)
         }                                               \
         break;
 
+#define CASE_INT_FLOAT_CAST(k, o, t, f)                  \
+    case k:                                              \
+        switch (t) {                                     \
+        case FLOAT_F64:                                  \
+            o->imm.as_float._f64 = (f64)o->imm.as_int.f; \
+            break;                                       \
+        case FLOAT_F32:                                  \
+            o->imm.as_float._f32 = (f32)o->imm.as_int.f; \
+            break;                                       \
+        default:                                         \
+            o->is_constexpr = false;                     \
+            assert(0);                                   \
+            break;                                       \
+        }                                                \
+        break;
+
+#define CASE_FLOAT_INT_CAST(k, o, t, f)                     \
+    case k:                                                 \
+        switch (t) {                                        \
+        case INTEGER_BOOL:                                  \
+            o->imm.as_int._bool = o->imm.as_float.f != 0.0; \
+            break;                                          \
+        case INTEGER_U8:                                    \
+            o->imm.as_int._u8 = (u8)o->imm.as_float.f;      \
+            break;                                          \
+        case INTEGER_S8:                                    \
+            o->imm.as_int._s8 = (s8)o->imm.as_float.f;      \
+            break;                                          \
+        case INTEGER_U16:                                   \
+            o->imm.as_int._u16 = (u16)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_S16:                                   \
+            o->imm.as_int._s16 = (s16)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_U32:                                   \
+            o->imm.as_int._u32 = (u32)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_S32:                                   \
+            o->imm.as_int._s32 = (s32)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_U64:                                   \
+            o->imm.as_int._u64 = (u64)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_S64:                                   \
+            o->imm.as_int._s64 = (s64)o->imm.as_float.f;    \
+            break;                                          \
+        default:                                            \
+            assert(0);                                      \
+            break;                                          \
+        }                                                   \
+        break;
+
 static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay)
 {
     Type* src_type = eop->type;
@@ -224,8 +276,60 @@ static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_
     // 2) types are castable.
 
     if (eop->is_constexpr && eop->is_imm) {
-        if (src_type->kind == TYPE_FLOAT) {
-            eop->is_constexpr = dst_type->kind != TYPE_INTEGER;
+        if (src_type->kind == TYPE_FLOAT && dst_type->kind == TYPE_FLOAT) {
+            FloatKind src_float_kind = src_type->as_float.kind;
+            FloatKind dst_float_kind = dst_type->as_float.kind;
+
+            switch (src_float_kind) {
+            case FLOAT_F32: {
+                if (dst_float_kind == FLOAT_F64) {
+                    eop->imm.as_float._f64 = (f64)eop->imm.as_float._f32;
+                }
+                break;
+            }
+            case FLOAT_F64: {
+                if (dst_float_kind == FLOAT_F32) {
+                    eop->imm.as_float._f32 = (f32)eop->imm.as_float._f64;
+                }
+                break;
+            }
+            default:
+                assert(0);
+                break;
+            }
+        }
+        else if (src_type->kind == TYPE_FLOAT && type_is_integer_like(dst_type)) {
+            FloatKind src_float_kind = src_type->as_float.kind;
+            IntegerKind dst_int_kind =
+                dst_type->kind == TYPE_ENUM ? dst_type->as_enum.base->as_integer.kind : dst_type->as_integer.kind;
+
+            switch (src_float_kind) {
+                CASE_FLOAT_INT_CAST(FLOAT_F32, eop, dst_int_kind, _f32)
+                CASE_FLOAT_INT_CAST(FLOAT_F64, eop, dst_int_kind, _f64)
+            default:
+                assert(0);
+                break;
+            }
+        }
+        else if (type_is_integer_like(src_type) && dst_type->kind == TYPE_FLOAT) {
+            FloatKind dst_float_kind = dst_type->as_float.kind;
+            IntegerKind src_int_kind =
+                src_type->kind == TYPE_ENUM ? src_type->as_enum.base->as_integer.kind : src_type->as_integer.kind;
+
+            switch (src_int_kind) {
+                CASE_INT_FLOAT_CAST(INTEGER_BOOL, eop, dst_float_kind, _bool)
+                CASE_INT_FLOAT_CAST(INTEGER_U8, eop, dst_float_kind, _u8)
+                CASE_INT_FLOAT_CAST(INTEGER_S8, eop, dst_float_kind, _s8)
+                CASE_INT_FLOAT_CAST(INTEGER_U16, eop, dst_float_kind, _u16)
+                CASE_INT_FLOAT_CAST(INTEGER_S16, eop, dst_float_kind, _s16)
+                CASE_INT_FLOAT_CAST(INTEGER_U32, eop, dst_float_kind, _u32)
+                CASE_INT_FLOAT_CAST(INTEGER_S32, eop, dst_float_kind, _s32)
+                CASE_INT_FLOAT_CAST(INTEGER_U64, eop, dst_float_kind, _u64)
+                CASE_INT_FLOAT_CAST(INTEGER_S64, eop, dst_float_kind, _s64)
+            default:
+                assert(0);
+                break;
+            }
         }
         else {
             IntegerKind src_int_kind;
@@ -238,6 +342,7 @@ static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_
                 src_int_kind = INTEGER_U64;
             }
             else {
+                assert(src_type->kind == TYPE_INTEGER);
                 src_int_kind = src_type->as_integer.kind;
             }
 
@@ -248,6 +353,7 @@ static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_
                 dst_int_kind = INTEGER_U64;
             }
             else {
+                assert(dst_type->kind == TYPE_INTEGER);
                 dst_int_kind = dst_type->as_integer.kind;
             }
 
@@ -262,7 +368,6 @@ static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_
                 CASE_INT_CAST(INTEGER_U64, eop, dst_int_kind, _u64)
                 CASE_INT_CAST(INTEGER_S64, eop, dst_int_kind, _s64)
             default:
-                eop->is_constexpr = false;
                 assert(0);
                 break;
             }
@@ -347,7 +452,6 @@ static CastResult can_convert_eop(ExprOperand* operand, Type* dst_type, bool for
         bad_lvalue = !operand->is_lvalue && forbid_rvalue_decay;
     }
     else if ((dst_type->kind == TYPE_PTR) && (src_type->kind == TYPE_PTR)) {
-
         // Can convert a "derived" type to a "base" type.
         // A type is "derived" if its first field is of type "base".
         // Ex: struct Base { ... };  struct Derived { Base base;};
@@ -459,8 +563,8 @@ static Type* convert_arith_eops(ExprOperand* left, ExprOperand* right)
             TypeInteger* left_as_int = &left->type->as_integer;
             TypeInteger* right_as_int = &right->type->as_integer;
 
-            bool left_signed = left_as_int->is_signed;
-            bool right_signed = right_as_int->is_signed;
+            bool left_signed = int_kind_signed[left_as_int->kind];
+            bool right_signed = int_kind_signed[right_as_int->kind];
             int left_rank = type_integer_ranks[left_as_int->kind];
             int right_rank = type_integer_ranks[right_as_int->kind];
             size_t left_size = left->type->size;
@@ -513,143 +617,130 @@ static Type* convert_arith_eops(ExprOperand* left, ExprOperand* right)
     return left->type;
 }
 
-static s64 eval_unary_op_s64(TokenKind op, s64 val)
-{
-    switch (op) {
-    case TKN_PLUS:
-        return +val;
-    case TKN_MINUS:
-        return -val;
-    case TKN_NEG:
-        return ~val;
-    case TKN_NOT:
-        return !val;
-    default:
-        ftprint_err("Unexpected unary op (s64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_UNARY_OP_INT_FUNC(T)                                 \
+    static T eval_unary_op_##T(TokenKind op, T val)                   \
+    {                                                                 \
+        switch (op) {                                                 \
+        case TKN_PLUS:                                                \
+            return +val;                                              \
+        case TKN_MINUS:                                               \
+            return -val;                                              \
+        case TKN_NEG:                                                 \
+            return ~val;                                              \
+        case TKN_NOT:                                                 \
+            return !val;                                              \
+        default:                                                      \
+            NIBBLE_FATAL_EXIT("Unexpected unary op (##T): %d\n", op); \
+            return 0;                                                 \
+        }                                                             \
     }
 
-    return 0;
-}
+DEF_EVAL_UNARY_OP_INT_FUNC(s64)
+DEF_EVAL_UNARY_OP_INT_FUNC(u64)
 
-static u64 eval_unary_op_u64(TokenKind op, u64 val)
-{
-    switch (op) {
-    case TKN_PLUS:
-        return +val;
-    case TKN_MINUS:
-        return -val;
-    case TKN_NEG:
-        return ~val;
-    case TKN_NOT:
-        return !val;
-    default:
-        ftprint_err("Unexpected unary op (s64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_UNARY_OP_FLOAT_FUNC(T)                               \
+    static T eval_unary_op_##T(TokenKind op, T val)                   \
+    {                                                                 \
+        switch (op) {                                                 \
+        case TKN_PLUS:                                                \
+            return +val;                                              \
+        case TKN_MINUS:                                               \
+            return -val;                                              \
+        default:                                                      \
+            NIBBLE_FATAL_EXIT("Unexpected unary op (##T): %d\n", op); \
+            return 0.0;                                               \
+        }                                                             \
     }
 
-    return 0;
-}
+DEF_EVAL_UNARY_OP_FLOAT_FUNC(f64)
+DEF_EVAL_UNARY_OP_FLOAT_FUNC(f32)
 
-static s64 eval_binary_op_s64(TokenKind op, s64 left, s64 right)
-{
-    switch (op) {
-    case TKN_PLUS: // Add
-        return left + right;
-    case TKN_MINUS: // Subtract
-        return left - right;
-    case TKN_ASTERISK: // Multiply
-        return left * right;
-    case TKN_DIV: // Divide
-        return right != 0 ? left / right : 0;
-    case TKN_MOD: // Modulo (remainder)
-        return right != 0 ? left % right : 0;
-    case TKN_LSHIFT:
-        return left << right;
-    case TKN_RSHIFT:
-        return left >> right;
-    case TKN_AND:
-        return left & right;
-    case TKN_OR:
-        return left | right;
-    case TKN_CARET: // xor
-        return left ^ right;
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
-    default:
-        ftprint_err("Unexpected binary op (s64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_BINARY_OP_FLOAT_FUNC(T)                               \
+    static T eval_binary_op_##T(TokenKind op, T left, T right)         \
+    {                                                                  \
+        switch (op) {                                                  \
+        case TKN_PLUS:                                                 \
+            return left + right;                                       \
+        case TKN_MINUS:                                                \
+            return left - right;                                       \
+        case TKN_ASTERISK:                                             \
+            return left * right;                                       \
+        case TKN_DIV:                                                  \
+            return left / right;                                       \
+        default:                                                       \
+            NIBBLE_FATAL_EXIT("Unexpected binary op (##T): %d\n", op); \
+            return 0.0;                                                \
+        }                                                              \
     }
 
-    return 0;
-}
+DEF_EVAL_BINARY_OP_FLOAT_FUNC(f64)
+DEF_EVAL_BINARY_OP_FLOAT_FUNC(f32)
 
-static u64 eval_binary_op_u64(TokenKind op, u64 left, u64 right)
-{
-    switch (op) {
-    case TKN_PLUS: // Add
-        return left + right;
-    case TKN_MINUS: // Subtract
-        return left - right;
-    case TKN_ASTERISK: // Multiply
-        return left * right;
-    case TKN_DIV: // Divide
-        return right != 0 ? left / right : 0;
-    case TKN_MOD: // Modulo (remainder)
-        return right != 0 ? left % right : 0;
-    case TKN_LSHIFT:
-        return left << right;
-    case TKN_RSHIFT:
-        return left >> right;
-    case TKN_AND:
-        return left & right;
-    case TKN_OR:
-        return left | right;
-    case TKN_CARET: // xor
-        return left ^ right;
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
-    default:
-        ftprint_err("Unexpected binary op (u64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_BINARY_LOGICAL_OP_FUNC(T)                                     \
+    static bool eval_binary_logical_op_##T(TokenKind op, T left, T right)      \
+    {                                                                          \
+        switch (op) {                                                          \
+        case TKN_LOGIC_AND:                                                    \
+            return left && right;                                              \
+        case TKN_LOGIC_OR:                                                     \
+            return left || right;                                              \
+        case TKN_EQ:                                                           \
+            return left == right;                                              \
+        case TKN_NOTEQ:                                                        \
+            return left != right;                                              \
+        case TKN_GT:                                                           \
+            return left > right;                                               \
+        case TKN_GTEQ:                                                         \
+            return left >= right;                                              \
+        case TKN_LT:                                                           \
+            return left < right;                                               \
+        case TKN_LTEQ:                                                         \
+            return left <= right;                                              \
+        default:                                                               \
+            NIBBLE_FATAL_EXIT("Unexpected binary logical op (##T): %d\n", op); \
+            return false;                                                      \
+        }                                                                      \
     }
 
-    return 0;
-}
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(f64)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(f32)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(s64)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(u64)
 
-static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
+#define DEF_EVAL_BINARY_OP_INT_FUNC(T)                                 \
+    static T eval_binary_op_##T(TokenKind op, T left, T right)         \
+    {                                                                  \
+        switch (op) {                                                  \
+        case TKN_PLUS:                                                 \
+            return left + right;                                       \
+        case TKN_MINUS:                                                \
+            return left - right;                                       \
+        case TKN_ASTERISK:                                             \
+            return left * right;                                       \
+        case TKN_DIV:                                                  \
+            return right != 0 ? left / right : 0;                      \
+        case TKN_MOD:                                                  \
+            return right != 0 ? left % right : 0;                      \
+        case TKN_LSHIFT:                                               \
+            return left << right;                                      \
+        case TKN_RSHIFT:                                               \
+            return left >> right;                                      \
+        case TKN_AND:                                                  \
+            return left & right;                                       \
+        case TKN_OR:                                                   \
+            return left | right;                                       \
+        case TKN_CARET:                                                \
+            return left ^ right;                                       \
+        default:                                                       \
+            NIBBLE_FATAL_EXIT("Unexpected binary op (##T): %d\n", op); \
+            return 0;                                                  \
+        }                                                              \
+    }
+
+DEF_EVAL_BINARY_OP_INT_FUNC(s64)
+DEF_EVAL_BINARY_OP_INT_FUNC(u64)
+
+static void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
 {
     if (type_is_integer_like(type)) {
         ExprOperand left_eop = OP_FROM_CONST(type, left);
@@ -687,10 +778,67 @@ static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Sca
     }
     else {
         assert(type->kind == TYPE_FLOAT);
+        FloatKind fkind = type->as_float.kind;
+
+        dst->type = type;
+        dst->is_constexpr = true;
+        dst->is_imm = true;
+        dst->is_lvalue = false;
+
+        if (fkind == FLOAT_F64) {
+            dst->imm.as_float._f64 = eval_binary_op_f64(op, left.as_float._f64, right.as_float._f64);
+        }
+        else {
+            assert(fkind == FLOAT_F32);
+            dst->imm.as_float._f32 = eval_binary_op_f32(op, left.as_float._f32, right.as_float._f32);
+        }
     }
 }
 
-static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar val)
+static void eval_binary_logical_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
+{
+    bool result = false;
+
+    if (type_is_integer_like(type)) {
+        ExprOperand left_eop = OP_FROM_CONST(type, left);
+        ExprOperand right_eop = OP_FROM_CONST(type, right);
+        bool is_signed = type_is_signed(type);
+
+        // Compute the operation in the largest type available.
+        if (is_signed) {
+            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+
+            result = eval_binary_logical_op_s64(op, left_eop.imm.as_int._s64, right_eop.imm.as_int._s64);
+        }
+        else {
+            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
+            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
+
+            result = eval_binary_logical_op_u64(op, left_eop.imm.as_int._u64, right_eop.imm.as_int._u64);
+        }
+    }
+    else {
+        assert(type->kind == TYPE_FLOAT);
+        FloatKind fkind = type->as_float.kind;
+
+        if (fkind == FLOAT_F64) {
+            result = eval_binary_logical_op_f64(op, left.as_float._f64, right.as_float._f64);
+        }
+        else {
+            assert(fkind == FLOAT_F32);
+            result = eval_binary_logical_op_f32(op, left.as_float._f32, right.as_float._f32);
+        }
+    }
+
+    dst->type = builtin_types[BUILTIN_TYPE_BOOL].type;
+    dst->is_constexpr = true;
+    dst->is_imm = true;
+    dst->is_lvalue = false;
+    dst->imm.as_int._bool = result;
+}
+
+static void eval_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar val)
 {
     if (type_is_integer_like(type)) {
         ExprOperand val_eop = OP_FROM_CONST(type, val);
@@ -721,7 +869,57 @@ static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scal
     }
     else {
         assert(type->kind == TYPE_FLOAT);
+        dst->type = type;
+        dst->is_constexpr = true;
+        dst->is_imm = true;
+        dst->is_lvalue = false;
+
+        if (type->as_float.kind == FLOAT_F64) {
+            dst->imm.as_float._f64 = eval_unary_op_f64(op, val.as_float._f64);
+        }
+        else {
+            assert(type->as_float.kind == FLOAT_F32);
+            dst->imm.as_float._f32 = eval_unary_op_f32(op, val.as_float._f32);
+        }
     }
+}
+
+static void eval_unary_not(ExprOperand* dst, Type* type, Scalar val)
+{
+    bool result = false;
+
+    if (type_is_integer_like(type)) {
+        ExprOperand val_eop = OP_FROM_CONST(type, val);
+        bool is_signed = type_is_signed(type);
+
+        // Compute the operation in the largest type available.
+        if (is_signed) {
+            cast_eop(&val_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+            result = !val_eop.imm.as_int._s64;
+        }
+        else {
+            cast_eop(&val_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
+            result = !val_eop.imm.as_int._u64;
+        }
+    }
+    else {
+        assert(type->kind == TYPE_FLOAT);
+        FloatKind fkind = type->as_float.kind;
+
+        if (fkind == FLOAT_F64) {
+            result = !val.as_float._f64;
+        }
+        else {
+            assert(fkind == FLOAT_F32);
+            result = !val.as_float._f32;
+        }
+    }
+
+    dst->type = builtin_types[BUILTIN_TYPE_BOOL].type;
+    dst->is_constexpr = true;
+    dst->is_imm = true;
+    dst->is_lvalue = false;
+    dst->imm.as_int._bool = result;
 }
 
 static bool try_complete_aggregate_type(Resolver* resolver, Type* type);
@@ -845,7 +1043,10 @@ static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
     Type* type = types[0];
 
     for (u32 i = 1; i < num_types; i += 1) {
-        if (value > type->as_integer.max) {
+        assert(type->kind == TYPE_INTEGER);
+        u64 max = int_kind_max[type->as_integer.kind];
+
+        if (value > max) {
             type = types[i];
         }
         else {
@@ -853,7 +1054,7 @@ static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
         }
     }
 
-    return (value > type->as_integer.max) ? NULL : type;
+    return (value > int_kind_max[type->as_integer.kind]) ? NULL : type;
 }
 
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
@@ -907,7 +1108,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         case TKN_INT_SUFFIX_LL: {
             type = builtin_types[BUILTIN_TYPE_LLONG].type;
 
-            if (value > type->as_integer.max) {
+            if (value > int_kind_max[type->as_integer.kind]) {
                 type = NULL;
             }
             break;
@@ -915,7 +1116,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         case TKN_INT_SUFFIX_ULL: {
             type = builtin_types[BUILTIN_TYPE_ULLONG].type;
 
-            if (value > type->as_integer.max) {
+            if (value > int_kind_max[type->as_integer.kind]) {
                 type = NULL;
             }
             break;
@@ -971,7 +1172,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         case TKN_INT_SUFFIX_ULL: {
             type = builtin_types[BUILTIN_TYPE_ULLONG].type;
 
-            if (value > type->as_integer.max) {
+            if (value > int_kind_max[type->as_integer.kind]) {
                 type = NULL;
             }
             break;
@@ -993,6 +1194,19 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     expr->is_imm = true;
     expr->is_lvalue = false;
     expr->imm.as_int._u64 = value;
+
+    return true;
+}
+
+static bool resolve_expr_float(Resolver* resolver, ExprFloat* expr)
+{
+    (void)resolver;
+
+    expr->super.type = (expr->fkind == FLOAT_F64) ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_float = expr->value;
 
     return true;
 }
@@ -1208,10 +1422,27 @@ static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left
 
     if (left->is_constexpr && right->is_constexpr) {
         assert(left->is_imm && right->is_imm);
-        eval_const_binary_op(op, dst, type, left->imm, right->imm);
+        eval_binary_op(op, dst, type, left->imm, right->imm);
     }
     else {
         dst->type = type;
+        dst->is_constexpr = false;
+        dst->is_imm = false;
+        dst->is_lvalue = false;
+    }
+}
+
+static void resolve_binary_logical_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
+{
+    Type* common_type = convert_arith_eops(left, right);
+
+    if (left->is_constexpr && right->is_constexpr) {
+        assert(left->is_imm && right->is_imm);
+        eval_binary_logical_op(op, dst, common_type, left->imm, right->imm);
+        assert(dst->type == builtin_types[BUILTIN_TYPE_BOOL].type);
+    }
+    else {
+        dst->type = builtin_types[BUILTIN_TYPE_BOOL].type;
         dst->is_constexpr = false;
         dst->is_imm = false;
         dst->is_lvalue = false;
@@ -1340,7 +1571,6 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         break;
     }
     case TKN_DIV:
-    case TKN_MOD:
     case TKN_ASTERISK:
         if (!type_is_arithmetic(left_op.type)) {
             resolver_on_error(resolver, ebinary->left->range,
@@ -1353,6 +1583,22 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             resolver_on_error(resolver, ebinary->right->range,
                               "Right operand of binary operator `%s` must be an arithmetic type, not type `%s`",
                               token_kind_names[ebinary->op], type_name(right_op.type));
+            return false;
+        }
+
+        resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
+
+        break;
+    case TKN_MOD:
+        if (!type_is_integer_like(left_op.type)) {
+            resolver_on_error(resolver, ebinary->left->range, "Left operand of operator `%%` must be an integer type, not type `%s`.",
+                              type_name(left_op.type));
+            return false;
+        }
+
+        if (!type_is_integer_like(right_op.type)) {
+            resolver_on_error(resolver, ebinary->right->range,
+                              "Right operand of operator `%%` must be an integer type, not type `%s`.", type_name(right_op.type));
             return false;
         }
 
@@ -1400,7 +1646,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
         if (left_op.is_constexpr && right_op.is_constexpr) {
             assert(left_op.is_imm && right_op.is_imm);
-            eval_const_binary_op(ebinary->op, &dst_op, left_op.type, left_op.imm, right_op.imm);
+            eval_binary_op(ebinary->op, &dst_op, left_op.type, left_op.imm, right_op.imm);
         }
         else {
             dst_op.type = left_op.type;
@@ -1435,10 +1681,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         bool right_is_ptr = (right_op.type->kind == TYPE_PTR);
 
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
-            resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
-
-            // NOTE: resolve_binary_eop will cast to the common type, so cast to bool.
-            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+            resolve_binary_logical_eop(ebinary->op, &dst_op, &left_op, &right_op);
         }
         else if (left_is_ptr && right_is_ptr) {
             Type* common_type = convert_ptr_eops(&left_op, &right_op);
@@ -1452,12 +1695,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 u64 left_u64 = left_op.imm.as_int._u64;
                 u64 right_u64 = right_op.imm.as_int._u64;
 
-                dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
                 dst_op.is_constexpr = true;
                 dst_op.is_imm = true;
-                dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
-
-                cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+                dst_op.imm.as_int._bool = eval_binary_logical_op_u64(ebinary->op, left_u64, right_u64);
             }
             else {
                 // NOTE: The only constexpr ptr that is NOT an immediate, is the addresses of a global variable.
@@ -1483,10 +1724,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         bool right_is_ptr = (right_op.type->kind == TYPE_PTR);
 
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
-            resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
-
-            // NOTE: resolve_binary_eop will cast to the common type, so cast to bool.
-            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+            resolve_binary_logical_eop(ebinary->op, &dst_op, &left_op, &right_op);
         }
         else if (left_is_ptr && right_is_ptr) {
             Type* common_type = convert_ptr_eops(&left_op, &right_op);
@@ -1500,12 +1738,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 u64 left_u64 = left_op.imm.as_int._u64;
                 u64 right_u64 = right_op.imm.as_int._u64;
 
-                dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
                 dst_op.is_constexpr = true;
                 dst_op.is_imm = true;
-                dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
-
-                cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+                dst_op.imm.as_int._bool = eval_binary_logical_op_u64(ebinary->op, left_u64, right_u64);
             }
             else {
                 // NOTE: The only constexpr ptr that is NOT an immediate, is the addresses of a global variable.
@@ -1548,7 +1784,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             dst_op.is_constexpr = true;
             dst_op.is_imm = true;
-            dst_op.imm.as_int._bool = ebinary->op == TKN_LOGIC_AND ? (left_bool && right_bool) : (left_bool || right_bool);
+            dst_op.imm.as_int._bool = eval_binary_logical_op_u64(ebinary->op, (u64)left_bool, (u64)right_bool);
         }
         else if (left_op.is_constexpr && (left_op.type->kind == TYPE_PTR) && right_op.is_constexpr &&
                  (right_op.type->kind == TYPE_PTR)) {
@@ -1609,7 +1845,7 @@ static bool resolve_expr_ternary(Resolver* resolver, ExprTernary* expr)
 
     ExprOperand then_op = OP_FROM_EXPR(expr->then_expr);
     ExprOperand else_op = OP_FROM_EXPR(expr->else_expr);
-    ExprOperand dst_op  = {0}; // Not an lvalue.
+    ExprOperand dst_op = {0}; // Not an lvalue.
 
     if (type_is_arithmetic(then_op.type) && type_is_arithmetic(else_op.type)) {
         dst_op.type = convert_arith_eops(&then_op, &else_op);
@@ -1667,7 +1903,7 @@ static void resolve_unary_eop(TokenKind op, ExprOperand* dst, ExprOperand* src)
     promote_int_eops(src);
 
     if (src->is_constexpr && src->is_imm) {
-        eval_const_unary_op(op, dst, src->type, src->imm);
+        eval_unary_op(op, dst, src->type, src->imm);
     }
     else {
         dst->type = src->type;
@@ -1713,15 +1949,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         }
 
         if (src_op.is_constexpr && src_op.is_imm) {
-            assert(type_is_integer_like(src_op.type));
-            u64 src_u64 = src_op.imm.as_int._u64;
-
-            dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
-            dst_op.is_constexpr = true;
-            dst_op.is_imm = true;
-            dst_op.imm.as_int._u64 = eval_unary_op_u64(eunary->op, src_u64);
-
-            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+            eval_unary_not(&dst_op, src_op.type, src_op.imm);
         }
         else {
             dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
@@ -2543,6 +2771,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
     switch (expr->kind) {
     case CST_ExprInt:
         return resolve_expr_int(resolver, expr);
+    case CST_ExprFloat:
+        return resolve_expr_float(resolver, (ExprFloat*)expr);
     case CST_ExprBoolLit:
         return resolve_expr_bool_lit(resolver, (ExprBoolLit*)expr);
     case CST_ExprNullLit:
@@ -3011,7 +3241,7 @@ static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
             Scalar one_imm = {.as_int._u64 = 1};
             ExprOperand item_op = {0};
 
-            eval_const_binary_op(TKN_PLUS, &item_op, enum_type, prev_enum_val, one_imm);
+            eval_binary_op(TKN_PLUS, &item_op, enum_type, prev_enum_val, one_imm);
             enum_val = item_op.imm;
         }
 

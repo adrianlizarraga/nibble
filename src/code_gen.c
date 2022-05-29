@@ -2,7 +2,7 @@
 #include "x64_gen/gen.h"
 
 typedef bool GenModuleProc(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs,
-                           BucketList* str_lits, const char* output_file);
+                           BucketList* str_lits, BucketList* float_lits, const char* output_file);
 
 static GenModuleProc* target_gen_module;
 
@@ -20,7 +20,7 @@ bool init_code_gen(OS target_os, Arch target_arch)
 }
 
 bool gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs, BucketList* str_lits,
-                const char* output_file)
+                BucketList* float_lits, const char* output_file)
 {
-    return target_gen_module(gen_mem, tmp_mem, vars, procs, str_lits, output_file);
+    return target_gen_module(gen_mem, tmp_mem, vars, procs, str_lits, float_lits, output_file);
 }

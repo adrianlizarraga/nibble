@@ -15,6 +15,7 @@ struct NibbleCtx {
 
     HMap ident_map;
     HMap str_lit_map;
+    HMap float_lit_map;
     HMap mod_map;
 
     BucketList src_files;
@@ -37,6 +38,7 @@ struct NibbleCtx {
     BucketList procs;
     BucketList aggregate_types;
     BucketList str_lits;
+    BucketList float_lits;
 };
 
 bool nibble_init(OS target_os, Arch target_arch);

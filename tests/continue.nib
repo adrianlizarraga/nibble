@@ -14,7 +14,7 @@ proc main() => int {
 
         var rem := i - (i / 2)*2;
 
-        if (rem == 0) {
+        if (!rem) {
             i = i + 1;
             continue;
         }
@@ -101,7 +101,7 @@ proc main() => int {
 
         var rem := i - (i / 2)*2;
 
-        if (rem == 0) {
+        if (!rem) {
             i = i + 1;
             continue;
         }

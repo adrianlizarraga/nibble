@@ -96,12 +96,6 @@ void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const
     return bucket_elem;
 }
 
-// NOTE: str should be a null-terminated string.
-char** sstream_add(BucketList* sstream, Allocator* arena, const char* str, size_t len)
-{
-    return (char**)bucket_list_add_elem_dup(sstream, arena, str, len + 1, alignof(char));
-}
-
 BucketList* new_bucket_list(Allocator* arena, size_t bucket_cap)
 {
     BucketList* bucket_list = alloc_type(arena, BucketList, false);
