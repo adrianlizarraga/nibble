@@ -1,7 +1,7 @@
 #include "nibble.h"
 #include "compiler.h"
 #include "parser.h"
-#include "bytecode.h"
+#include "bytecode/module.h"
 #include "code_gen.h"
 #include "path_utils.h"
 #include "os_utils.h"

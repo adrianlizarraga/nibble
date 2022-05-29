@@ -1,5 +1,5 @@
-#ifndef NIBBLE_IR_NEW_H
-#define NIBBLE_IR_NEW_H
+#ifndef NIBBLE_BYTECODE_MODULE_H
+#define NIBBLE_BYTECODE_MODULE_H
 
 #include "ast.h"
 
@@ -362,4 +362,8 @@ struct BBlock {
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, BucketList* str_lits,
                      BucketList* float_lits, TypeCache* type_cache);
+
+char* IR_print_instr(Allocator* arena, Instr* instr);
+void IR_print_out_proc(Allocator* arena, Symbol* sym);
+void IR_dump_proc_dot(Allocator* arena, Symbol* sym);
 #endif

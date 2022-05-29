@@ -1,5 +1,4 @@
-#include "bytecode.h"
-#include "print_ir.h"
+#include "bytecode/module.h"
 
 typedef struct IR_ProcBuilder {
     Allocator* arena;
