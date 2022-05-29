@@ -1,5 +1,3 @@
-#include "ast.h"
-
 typedef struct IR_VarBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
