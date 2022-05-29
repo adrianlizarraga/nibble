@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #include "allocator.h"
-#include "lexer.h"
+#include "lexer/module.h"
 #include "llist.h"
 #include "nibble.h"
 #include "hash_map.h"

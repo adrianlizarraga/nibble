@@ -36,7 +36,7 @@
 #include "array.c"
 #include "hash_map.c"
 #include "stream.c"
-#include "lexer.c"
+#include "lexer/module.c"
 #include "ast.c"
 #include "parser.c"
 #include "resolver.c"

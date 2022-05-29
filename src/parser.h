@@ -2,7 +2,7 @@
 #define NIBBLE_PARSER_H
 #include "nibble.h"
 #include "allocator.h"
-#include "lexer.h"
+#include "lexer/module.h"
 
 typedef struct Parser {
     Allocator* ast_arena;

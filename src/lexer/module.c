@@ -1,4 +1,4 @@
-#include "lexer.h"
+#include "lexer/module.h"
 #include "array.h"
 #include "cstring.h"
 
