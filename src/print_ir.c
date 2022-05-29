@@ -138,27 +138,35 @@ static char* IR_print_op_ra(Allocator* arena, OpRA* ra)
 
 char* IR_print_instr(Allocator* arena, Instr* instr)
 {
-    static const char* binary_kind_name[] = {
-        [INSTR_ADD] = "add", [INSTR_SUB] = "sub", [INSTR_MUL] = "mul", [INSTR_DIV] = "div",
-        [INSTR_MOD] = "mod", [INSTR_AND] = "and", [INSTR_OR] = "or",     [INSTR_XOR] = "xor"};
+    static const char* binary_int_kind_name[] = {
+        [INSTR_INT_ADD] = "iadd", [INSTR_INT_SUB] = "isub", [INSTR_INT_MUL] = "imul", [INSTR_INT_DIV] = "idiv",
+        [INSTR_MOD] = "mod",      [INSTR_AND] = "and",      [INSTR_OR] = "or",        [INSTR_XOR] = "xor"};
+    static const char* binary_flt_kind_name[] = {[INSTR_FLT_ADD] = "fadd"};
     static const char* shift_kind_name[] = {[INSTR_SAR] = "sar", [INSTR_SHL] = "shl"};
     static const char* unary_kind_name[] = {[INSTR_NOT] = "not", [INSTR_NEG] = "neg"};
     static const char* convert_kind_name[] = {[INSTR_TRUNC] = "trunc", [INSTR_ZEXT] = "zext", [INSTR_SEXT] = "sext"};
     char* dstr = array_create(arena, char, 16);
 
     switch (instr->kind) {
-    case INSTR_ADD:
-    case INSTR_SUB:
-    case INSTR_MUL:
-    case INSTR_DIV:
+    case INSTR_INT_ADD:
+    case INSTR_INT_SUB:
+    case INSTR_INT_MUL:
+    case INSTR_INT_DIV:
     case INSTR_MOD:
     case INSTR_AND:
     case INSTR_OR:
     case INSTR_XOR: {
-        const char* op_name = binary_kind_name[instr->kind];
-        ftprint_char_array(&dstr, false, "%s <%s> %s, %s, %s", op_name, type_name(instr->binary.type),
-                           IR_print_reg(arena, instr->binary.r), IR_print_op_ria(arena, &instr->binary.a),
-                           IR_print_op_ria(arena, &instr->binary.b));
+        const char* op_name = binary_int_kind_name[instr->kind];
+        ftprint_char_array(&dstr, false, "%s <%s> %s, %s, %s", op_name, type_name(instr->int_binary.type),
+                           IR_print_reg(arena, instr->int_binary.r), IR_print_op_ria(arena, &instr->int_binary.a),
+                           IR_print_op_ria(arena, &instr->int_binary.b));
+        break;
+    }
+    case INSTR_FLT_ADD: {
+        const char* op_name = binary_flt_kind_name[instr->kind];
+        ftprint_char_array(&dstr, false, "%s <%s> %s, %s, %s", op_name, float_kind_names[instr->flt_binary.fkind],
+                           IR_print_reg(arena, instr->flt_binary.r), IR_print_op_ra(arena, &instr->flt_binary.a),
+                           IR_print_op_ra(arena, &instr->flt_binary.b));
         break;
     }
     case INSTR_SAR:

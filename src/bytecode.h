@@ -28,10 +28,12 @@ struct OpRI {
 
 typedef enum InstrKind {
     INSTR_NONE = 0,
-    INSTR_ADD,
-    INSTR_SUB,
-    INSTR_MUL,
-    INSTR_DIV,
+    INSTR_INT_ADD,
+    INSTR_FLT_ADD,
+    INSTR_INT_SUB,
+    INSTR_FLT_SUB,
+    INSTR_INT_MUL,
+    INSTR_INT_DIV,
     INSTR_MOD,
     INSTR_DIVMOD,
     INSTR_SAR,
@@ -133,12 +135,19 @@ struct MemObj {
     };
 };
 
-typedef struct InstrBinary {
+typedef struct InstrIntBinary {
     Type* type;
     IR_Reg r;
     OpRIA a;
     OpRIA b;
-} InstrBinary;
+} InstrIntBinary;
+
+typedef struct InstrFltBinary {
+    FloatKind fkind;
+    IR_Reg r;
+    OpRA a;
+    OpRA b;
+} InstrFltBinary;
 
 typedef struct InstrDivmod {
     Type* type;
@@ -304,7 +313,8 @@ struct Instr {
     bool is_leader;
 
     union {
-        InstrBinary binary;
+        InstrIntBinary int_binary;
+        InstrFltBinary flt_binary;
         InstrDivmod divmod;
         InstrShift shift;
         InstrUnary unary;

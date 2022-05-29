@@ -2,15 +2,15 @@
 #include "x64_gen/lir.h"
 
 static X64_InstrKind binary_kind[] = {
-    [INSTR_ADD] = X64_INSTR_ADD_R_R, [INSTR_SUB] = X64_INSTR_SUB_R_R, [INSTR_MUL] = X64_INSTR_IMUL_R_R,
+    [INSTR_INT_ADD] = X64_INSTR_ADD_R_R, [INSTR_INT_SUB] = X64_INSTR_SUB_R_R, [INSTR_INT_MUL] = X64_INSTR_IMUL_R_R,
     [INSTR_AND] = X64_INSTR_AND_R_R, [INSTR_OR] = X64_INSTR_OR_R_R,   [INSTR_XOR] = X64_INSTR_XOR_R_R};
 
 static X64_InstrKind binary_r_i_kind[] = {
-    [INSTR_ADD] = X64_INSTR_ADD_R_I, [INSTR_SUB] = X64_INSTR_SUB_R_I, [INSTR_MUL] = X64_INSTR_IMUL_R_I,
+    [INSTR_INT_ADD] = X64_INSTR_ADD_R_I, [INSTR_INT_SUB] = X64_INSTR_SUB_R_I, [INSTR_INT_MUL] = X64_INSTR_IMUL_R_I,
     [INSTR_AND] = X64_INSTR_AND_R_I, [INSTR_OR] = X64_INSTR_OR_R_I,   [INSTR_XOR] = X64_INSTR_XOR_R_I};
 
 static X64_InstrKind binary_r_m_kind[] = {
-    [INSTR_ADD] = X64_INSTR_ADD_R_M, [INSTR_SUB] = X64_INSTR_SUB_R_M, [INSTR_MUL] = X64_INSTR_IMUL_R_M,
+    [INSTR_INT_ADD] = X64_INSTR_ADD_R_M, [INSTR_INT_SUB] = X64_INSTR_SUB_R_M, [INSTR_INT_MUL] = X64_INSTR_IMUL_R_M,
     [INSTR_AND] = X64_INSTR_AND_R_M, [INSTR_OR] = X64_INSTR_OR_R_M,   [INSTR_XOR] = X64_INSTR_XOR_R_M};
 
 static X64_InstrKind shift_kind[] = {[INSTR_SHL] = X64_INSTR_SHL_R_R, [INSTR_SAR] = X64_INSTR_SAR_R_R};
@@ -201,11 +201,11 @@ static u32 X64_lea_sib(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 index_r
 
     // mul index_reg, <scale>
     Scalar scale_imm = {.as_int._u64 = scale};
-    X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[INSTR_MUL], X64_MAX_INT_REG_SIZE, index_reg, scale_imm);
+    X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[INSTR_INT_MUL], X64_MAX_INT_REG_SIZE, index_reg, scale_imm);
 
     // add index_reg, base_reg
     if (base_reg != (u32)-1) {
-        X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_ADD], X64_MAX_INT_REG_SIZE, index_reg, base_reg);
+        X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_INT_ADD], X64_MAX_INT_REG_SIZE, index_reg, base_reg);
     }
 
     return index_reg;
@@ -730,12 +730,12 @@ static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xb
     //
     // mov r, a
     // add r, b
-    size_t size = ir_instr->binary.type->size;
-    OpRIA ir_a = ir_instr->binary.a;
-    OpRIA ir_b = ir_instr->binary.b;
+    size_t size = ir_instr->int_binary.type->size;
+    OpRIA ir_a = ir_instr->int_binary.a;
+    OpRIA ir_b = ir_instr->int_binary.b;
 
     assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM); // Only one should be an immediate.
-    u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_INT);
+    u32 r = X64_get_lir_reg(builder, ir_instr->int_binary.r, X64_REG_CLASS_INT);
 
     // mov r, a
     X64_mov_op_ria_into_reg(builder, xbblock, size, r, ir_a);
@@ -756,48 +756,23 @@ static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xb
     }
 }
 
-static u32 X64_mov_flt_op_ria_into_reg(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind fkind, IR_Reg ir_r, OpRIA ir_a)
+static u32 X64_mov_flt_op_ra_into_reg(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind fkind, IR_Reg ir_r, OpRA ir_a)
 {
     u32 r = X64_get_lir_reg(builder, ir_r, X64_REG_CLASS_FLOAT);
 
     // Ex: movss r, a
-    if (ir_a.kind == OP_RIA_REG) {
-        u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_FLOAT);
-        X64_hint_same_reg(builder, r, a);
-        X64_emit_instr_mov_flt_r_r(builder, xbblock, fkind, r, a);
-    }
-    else {
-        assert(ir_a.kind == OP_RIA_ADDR);
+    if (ir_a.is_addr) {
         X64_MemAddr addr = {0};
         X64_get_lir_addr(builder, xbblock, &addr, &ir_a.addr, 0);
         X64_emit_instr_mov_flt_r_m(builder, xbblock, fkind, r, addr);
     }
+    else {
+        u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_FLOAT);
+        X64_hint_same_reg(builder, r, a);
+        X64_emit_instr_mov_flt_r_r(builder, xbblock, fkind, r, a);
+    }
 
     return r;
-}
-
-static void X64_convert_flt_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
-{
-    Type* type = ir_instr->binary.type;
-    FloatKind fkind = type->as_float.kind;
-    OpRIA ir_a = ir_instr->binary.a;
-    OpRIA ir_b = ir_instr->binary.b;
-
-    assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM); // Only one should be an immediate.
-
-    u32 r = X64_mov_flt_op_ria_into_reg(builder, xbblock, fkind, ir_instr->binary.r, ir_a);
-
-    // Ex: addss r, b
-    if (ir_b.kind == OP_RIA_REG) {
-        u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_FLOAT);
-        X64_emit_instr_addfp_r_r(builder, xbblock, fkind, r, b);
-    }
-    else {
-        assert(ir_b.kind == OP_RIA_ADDR);
-        X64_MemAddr addr = {0};
-        X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);
-        X64_emit_instr_addfp_r_m(builder, xbblock, fkind, r, addr);
-    }
 }
 
 static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
@@ -805,30 +780,56 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     Instr* next_instr = ir_instr->next;
 
     switch (ir_instr->kind) {
-    // TODO: LEFT OFF HERE.
-    // Use different IR instr kinds for FP binary.
-    //   - OpRA instead of OpRIA
-    //   - FloatKind instead of Type
-    case INSTR_ADD: {
-        Type* type = ir_instr->binary.type;
+    case INSTR_FLT_ADD: {
+        FloatKind fkind = ir_instr->flt_binary.fkind;
+        OpRA ir_a = ir_instr->flt_binary.a;
+        OpRA ir_b = ir_instr->flt_binary.b;
 
-        if (type->kind == TYPE_FLOAT) {
-            X64_convert_flt_binary_instr(builder, xbblock, ir_instr);
+        // Ex: movss r, a
+        u32 r = X64_mov_flt_op_ra_into_reg(builder, xbblock, fkind, ir_instr->flt_binary.r, ir_a);
+
+        // Ex: addss r, b
+        if (ir_b.is_addr) {
+            X64_MemAddr addr = {0};
+            X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);
+            X64_emit_instr_flt_add_r_m(builder, xbblock, fkind, r, addr);
         }
         else {
-            X64_convert_int_binary_instr(builder, xbblock, ir_instr);
+            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_FLOAT);
+            X64_emit_instr_flt_add_r_r(builder, xbblock, fkind, r, b);
         }
         break;
     }
-    case INSTR_SUB:
-    case INSTR_MUL:
+    case INSTR_FLT_SUB: {
+        FloatKind fkind = ir_instr->flt_binary.fkind;
+        OpRA ir_a = ir_instr->flt_binary.a;
+        OpRA ir_b = ir_instr->flt_binary.b;
+
+        // Ex: movss r, a
+        u32 r = X64_mov_flt_op_ra_into_reg(builder, xbblock, fkind, ir_instr->flt_binary.r, ir_a);
+
+        // Ex: subss r, b
+        if (ir_b.is_addr) {
+            X64_MemAddr addr = {0};
+            X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);
+            X64_emit_instr_flt_sub_r_m(builder, xbblock, fkind, r, addr);
+        }
+        else {
+            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_FLOAT);
+            X64_emit_instr_flt_sub_r_r(builder, xbblock, fkind, r, b);
+        }
+        break;
+    }
+    case INSTR_INT_ADD:
+    case INSTR_INT_SUB:
+    case INSTR_INT_MUL:
     case INSTR_AND:
     case INSTR_OR:
     case INSTR_XOR: {
         X64_convert_int_binary_instr(builder, xbblock, ir_instr);
         break;
     }
-    case INSTR_DIV: {
+    case INSTR_INT_DIV: {
         // EX: r = a / b
         //
         // mov _ax, a ; Only if `a` is not already in `_ax`
@@ -836,12 +837,12 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // div b      ; `b` must be in a register or memory
         // mov r, _ax
 
-        Type* type = ir_instr->binary.type;
+        Type* type = ir_instr->int_binary.type;
         size_t size = type->size;
         bool uses_dx = size >= 2;
 
-        OpRIA ir_a = ir_instr->binary.a;
-        OpRIA ir_b = ir_instr->binary.b;
+        OpRIA ir_a = ir_instr->int_binary.a;
+        OpRIA ir_b = ir_instr->int_binary.b;
 
         // mov _ax, a
         u32 ax = X64_def_phys_reg(builder, X64_RAX);
@@ -875,7 +876,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
 
         // mov r, _ax
-        u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_INT);
+        u32 r = X64_get_lir_reg(builder, ir_instr->int_binary.r, X64_REG_CLASS_INT);
         X64_emit_instr_mov_r_r(builder, xbblock, size, r, ax);
         X64_hint_same_reg(builder, r, ax);
         break;
@@ -888,12 +889,12 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         // div b      ; `b` must be in a register
         // mov r, _dx ; _ax[h] if size < 2 bytes
 
-        Type* type = ir_instr->binary.type;
+        Type* type = ir_instr->int_binary.type;
         size_t size = type->size;
         bool uses_dx = size >= 2;
 
-        OpRIA ir_a = ir_instr->binary.a;
-        OpRIA ir_b = ir_instr->binary.b;
+        OpRIA ir_a = ir_instr->int_binary.a;
+        OpRIA ir_b = ir_instr->int_binary.b;
 
         // mov _ax, a
         u32 ax = X64_def_phys_reg(builder, X64_RAX);
@@ -928,13 +929,13 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         if (uses_dx) {
             // mov r, _dx
-            u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_INT);
+            u32 r = X64_get_lir_reg(builder, ir_instr->int_binary.r, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_r(builder, xbblock, size, r, dx);
             X64_hint_same_reg(builder, r, dx);
         }
         else {
             // mov r, _ax[h]
-            u32 r = X64_get_lir_reg(builder, ir_instr->binary.r, X64_REG_CLASS_INT);
+            u32 r = X64_get_lir_reg(builder, ir_instr->int_binary.r, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_rh(builder, xbblock, r, ax);
         }
 

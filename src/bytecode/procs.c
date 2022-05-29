@@ -250,26 +250,41 @@ static Instr* IR_new_instr(Allocator* arena, InstrKind kind)
     return instr;
 }
 
-#define IR_emit_instr_add(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_ADD, (t), (r), (a), (b))
-#define IR_emit_instr_sub(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_SUB, (t), (r), (a), (b))
-#define IR_emit_instr_mul(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_MUL, (t), (r), (a), (b))
-#define IR_emit_instr_and(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_AND, (t), (r), (a), (b))
-#define IR_emit_instr_or(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_OR, (t), (r), (a), (b))
-#define IR_emit_instr_xor(bld, blk, t, r, a, b) IR_emit_instr_binary((bld), (blk), INSTR_XOR, (t), (r), (a), (b))
+#define IR_emit_instr_int_add(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_ADD, (t), (r), (a), (b))
+#define IR_emit_instr_int_sub(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_SUB, (t), (r), (a), (b))
+#define IR_emit_instr_int_mul(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_MUL, (t), (r), (a), (b))
+#define IR_emit_instr_and(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_AND, (t), (r), (a), (b))
+#define IR_emit_instr_or(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_OR, (t), (r), (a), (b))
+#define IR_emit_instr_xor(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_XOR, (t), (r), (a), (b))
 
-static void IR_emit_instr_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+static void IR_emit_instr_int_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
-    instr->binary.type = type;
-    instr->binary.r = r;
-    instr->binary.a = a;
-    instr->binary.b = b;
+    instr->int_binary.type = type;
+    instr->int_binary.r = r;
+    instr->int_binary.a = a;
+    instr->int_binary.b = b;
+
+    IR_add_instr(builder, bblock, instr);
+}
+
+#define IR_emit_instr_flt_add(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_ADD, (fk), (r), (a), (b))
+#define IR_emit_instr_flt_sub(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_SUB, (fk), (r), (a), (b))
+
+static void IR_emit_instr_flt_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, FloatKind fkind, IR_Reg r, OpRA a, OpRA b)
+{
+    Instr* instr = IR_new_instr(builder->arena, kind);
+    instr->flt_binary.fkind = fkind;
+    instr->flt_binary.r = r;
+    instr->flt_binary.a = a;
+    instr->flt_binary.b = b;
 
     IR_add_instr(builder, bblock, instr);
 }
 
 #define IR_emit_instr_sar(bld, blk, t, r, a, b) IR_emit_instr_shift((bld), (blk), INSTR_SAR, (t), (r), (a), (b))
 #define IR_emit_instr_shl(bld, blk, t, r, a, b) IR_emit_instr_shift((bld), (blk), INSTR_SHL, (t), (r), (a), (b))
+
 static void IR_emit_instr_shift(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
@@ -281,14 +296,14 @@ static void IR_emit_instr_shift(IR_ProcBuilder* builder, BBlock* bblock, InstrKi
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_div(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+static void IR_emit_instr_int_div(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_DIV);
+    Instr* instr = IR_new_instr(builder->arena, INSTR_INT_DIV);
 
-    instr->binary.type = type;
-    instr->binary.r = r;
-    instr->binary.a = a;
-    instr->binary.b = b;
+    instr->int_binary.type = type;
+    instr->int_binary.r = r;
+    instr->int_binary.a = a;
+    instr->int_binary.b = b;
 
     IR_add_instr(builder, bblock, instr);
 }
@@ -299,10 +314,10 @@ static void IR_emit_instr_mod(IR_ProcBuilder* builder, BBlock* bblock, Type* typ
 
     Instr* instr = IR_new_instr(builder->arena, INSTR_MOD);
 
-    instr->binary.type = type;
-    instr->binary.r = r;
-    instr->binary.a = a;
-    instr->binary.b = b;
+    instr->int_binary.type = type;
+    instr->int_binary.r = r;
+    instr->int_binary.a = a;
+    instr->int_binary.b = b;
 
     IR_add_instr(builder, bblock, instr);
 }
@@ -1363,9 +1378,9 @@ static BBlock* IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_E
             OpRIA b = op_ria_from_reg(int_er->reg);
 
             if (add)
-                IR_emit_instr_add(builder, curr_bb, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
+                IR_emit_instr_int_add(builder, curr_bb, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
             else
-                IR_emit_instr_sub(builder, curr_bb, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
+                IR_emit_instr_int_sub(builder, curr_bb, builtin_types[BUILTIN_TYPE_S64].type, r, a, b);
 
             ptr_er->addr.index_reg = r;
         }
@@ -1556,13 +1571,26 @@ static BBlock* IR_emit_op_add(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     else if (right_kind == TYPE_PTR) {
         curr_bb = IR_emit_ptr_int_add(builder, curr_bb, dst_er, right_er, left_er, true);
     }
+    else if (left_kind == TYPE_FLOAT) {
+        assert(left_er->type == right_er->type);
+        OpRA a = IR_expr_result_to_op_ra(builder, &curr_bb, left_er);
+        OpRA b = IR_expr_result_to_op_ra(builder, &curr_bb, right_er);
+        IR_Reg dst_reg = IR_next_reg(builder);
+
+        IR_emit_instr_flt_add(builder, curr_bb, dst_type->as_float.kind, dst_reg, a, b);
+
+        dst_er->kind = IR_EXPR_RESULT_REG;
+        dst_er->type = dst_type;
+        dst_er->reg = dst_reg;
+    }
     else {
+        assert(type_is_integer_like(left_er->type));
         assert(left_er->type == right_er->type);
         OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
         OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_add(builder, curr_bb, dst_type, dst_reg, a, b);
+        IR_emit_instr_int_add(builder, curr_bb, dst_type, dst_reg, a, b);
 
         dst_er->kind = IR_EXPR_RESULT_REG;
         dst_er->type = dst_type;
@@ -1576,8 +1604,10 @@ static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
                               IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
-    bool left_is_ptr = left_er->type->kind == TYPE_PTR;
-    bool right_is_ptr = right_er->type->kind == TYPE_PTR;
+    TypeKind left_kind = left_er->type->kind;
+    TypeKind right_kind = right_er->type->kind;
+    bool left_is_ptr = left_kind == TYPE_PTR;
+    bool right_is_ptr = right_kind == TYPE_PTR;
 
     // ptr - int => ptr
     if (left_is_ptr && !right_is_ptr) {
@@ -1592,7 +1622,7 @@ static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
         OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_sub(builder, curr_bb, dst_type, dst_reg, a, b);
+        IR_emit_instr_int_sub(builder, curr_bb, dst_type, dst_reg, a, b);
 
         if (base_size_log2 > 0) {
             // Shift result of subtraction by the shift amount.
@@ -1606,13 +1636,28 @@ static BBlock* IR_emit_op_sub(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
         dst_er->type = dst_type;
         dst_er->reg = dst_reg;
     }
+    // float - float = float
+    else if (left_kind == TYPE_FLOAT) {
+        assert(left_er->type == right_er->type);
+        OpRA a = IR_expr_result_to_op_ra(builder, &curr_bb, left_er);
+        OpRA b = IR_expr_result_to_op_ra(builder, &curr_bb, right_er);
+        IR_Reg dst_reg = IR_next_reg(builder);
+
+        IR_emit_instr_flt_sub(builder, curr_bb, dst_type->as_float.kind, dst_reg, a, b);
+
+        dst_er->kind = IR_EXPR_RESULT_REG;
+        dst_er->type = dst_type;
+        dst_er->reg = dst_reg;
+    }
     // int - int => int
     else {
+        assert(type_is_integer_like(left_er->type));
+        assert(left_er->type == right_er->type);
         OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
         OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
         IR_Reg dst_reg = IR_next_reg(builder);
 
-        IR_emit_instr_sub(builder, curr_bb, dst_type, dst_reg, a, b);
+        IR_emit_instr_int_sub(builder, curr_bb, dst_type, dst_reg, a, b);
 
         dst_er->kind = IR_EXPR_RESULT_REG;
         dst_er->type = dst_type;
@@ -1632,7 +1677,7 @@ static BBlock* IR_emit_op_mul(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     IR_Reg dst_reg = IR_next_reg(builder);
 
     // TODO: Emit a shift instruction if one of the expr_results is a power-of-two immediate.
-    IR_emit_instr_mul(builder, curr_bb, dst_type, dst_reg, a, b);
+    IR_emit_instr_int_mul(builder, curr_bb, dst_type, dst_reg, a, b);
 
     dst_er->kind = IR_EXPR_RESULT_REG;
     dst_er->type = dst_type;
@@ -1651,7 +1696,7 @@ static BBlock* IR_emit_op_div(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
     IR_Reg dst_reg = IR_next_reg(builder);
 
     // TODO: Emit a shift instruction if the second expr_result is a power-of-two immediate.
-    IR_emit_instr_div(builder, curr_bb, dst_type, dst_reg, a, b);
+    IR_emit_instr_int_div(builder, curr_bb, dst_type, dst_reg, a, b);
 
     dst_er->kind = IR_EXPR_RESULT_REG;
     dst_er->type = dst_type;

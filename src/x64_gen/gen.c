@@ -1253,7 +1253,7 @@ static void X64_emit_int2flt_rr_instr(X64_Generator* generator, const char* inst
 }
 
 static void X64_emit_flt2flt_rr_instr(X64_Generator* generator, const char* instr_name, size_t src_size, size_t dst_size,
-                                    X64_InstrFlt2Flt_R_R* instr)
+                                      X64_InstrFlt2Flt_R_R* instr)
 {
     X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->dst);
     X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->src);
@@ -1767,6 +1767,34 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                           &instr->binary_flt_r_m.src);
         break;
     }
+    case X64_INSTR_SUBSS_R_R: {
+        u32 size = float_kind_sizes[FLOAT_F32];
+
+        X64_emit_rr_instr(generator, "subss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
+                          instr->binary_flt_r_r.src);
+        break;
+    }
+    case X64_INSTR_SUBSS_R_M: {
+        u32 size = float_kind_sizes[FLOAT_F32];
+
+        X64_emit_rm_instr(generator, "subss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
+                          &instr->binary_flt_r_m.src);
+        break;
+    }
+    case X64_INSTR_SUBSD_R_R: {
+        u32 size = float_kind_sizes[FLOAT_F64];
+
+        X64_emit_rr_instr(generator, "subsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
+                          instr->binary_flt_r_r.src);
+        break;
+    }
+    case X64_INSTR_SUBSD_R_M: {
+        u32 size = float_kind_sizes[FLOAT_F64];
+
+        X64_emit_rm_instr(generator, "subsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
+                          &instr->binary_flt_r_m.src);
+        break;
+    }
     case X64_INSTR_DIV_R:
     case X64_INSTR_IDIV_R: {
         const char* instr_name = instr->kind == X64_INSTR_IDIV_R ? "idiv" : "div";
@@ -1806,8 +1834,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
 
         assert(src_loc.kind == X64_LREG_LOC_REG && src_loc.reg == X64_RCX);
 
-        const char* dst_op_str =
-            dst_in_reg ? x64_int_reg_names[dst_size][dst_loc.reg] : X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+        const char* dst_op_str = dst_in_reg ? x64_int_reg_names[dst_size][dst_loc.reg] :
+                                              X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
 
         X64_emit_text(generator, "  %s %s, %s", shift_r_r_name[instr->kind], dst_op_str, x64_int_reg_names[1][X64_RCX]);
         break;
@@ -1817,8 +1845,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         u32 dst_size = (u32)instr->shift_r_i.size;
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->shift_r_i.dst);
         bool dst_in_reg = (dst_loc.kind == X64_LREG_LOC_REG);
-        const char* dst_op_str =
-            dst_in_reg ? x64_int_reg_names[dst_size][dst_loc.reg] : X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+        const char* dst_op_str = dst_in_reg ? x64_int_reg_names[dst_size][dst_loc.reg] :
+                                              X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
 
         X64_emit_text(generator, "  %s %s, %d", shift_r_i_name[instr->kind], dst_op_str, instr->shift_r_i.src.as_int._u8);
         break;
@@ -1969,15 +1997,32 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         break;
     }
     case X64_INSTR_MOVSS_R_R: {
-        u32 size = float_kind_sizes[FLOAT_F32];
+        X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_flt_r_r.dst);
+        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_flt_r_r.src);
 
-        X64_emit_rr_instr(generator, "movss", true, X64_REG_CLASS_FLOAT, size, instr->mov_flt_r_r.dst, size, instr->mov_flt_r_r.src);
+        bool same_ops =
+            (dst_loc.kind == src_loc.kind) && (((dst_loc.kind == X64_LREG_LOC_REG) && (dst_loc.reg == src_loc.reg)) ||
+                                               ((dst_loc.kind == X64_LREG_LOC_STACK) && (dst_loc.offset == src_loc.offset)));
+
+        if (!same_ops) {
+            u32 size = float_kind_sizes[FLOAT_F32];
+            X64_emit_rr_instr(generator, "movss", true, X64_REG_CLASS_FLOAT, size, instr->mov_flt_r_r.dst, size,
+                              instr->mov_flt_r_r.src);
+        }
         break;
     }
     case X64_INSTR_MOVSD_R_R: {
-        u32 size = float_kind_sizes[FLOAT_F64];
+        X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_flt_r_r.dst);
+        X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_flt_r_r.src);
 
-        X64_emit_rr_instr(generator, "movsd", true, X64_REG_CLASS_FLOAT, size, instr->mov_flt_r_r.dst, size, instr->mov_flt_r_r.src);
+        bool same_ops =
+            (dst_loc.kind == src_loc.kind) && (((dst_loc.kind == X64_LREG_LOC_REG) && (dst_loc.reg == src_loc.reg)) ||
+                                               ((dst_loc.kind == X64_LREG_LOC_STACK) && (dst_loc.offset == src_loc.offset)));
+
+        if (!same_ops) {
+            u32 size = float_kind_sizes[FLOAT_F64];
+            X64_emit_rr_instr(generator, "movsd", true, X64_REG_CLASS_FLOAT, size, instr->mov_flt_r_r.dst, size, instr->mov_flt_r_r.src);
+        }
         break;
     }
     case X64_INSTR_MOVSS_R_M: {
@@ -2005,11 +2050,13 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         break;
     }
     case X64_INSTR_CVTSS2SD_R_R: { // f32 to f64
-        X64_emit_flt2flt_rr_instr(generator, "cvtss2sd", float_kind_sizes[FLOAT_F32], float_kind_sizes[FLOAT_F64], &instr->flt2flt_r_r);
+        X64_emit_flt2flt_rr_instr(generator, "cvtss2sd", float_kind_sizes[FLOAT_F32], float_kind_sizes[FLOAT_F64],
+                                  &instr->flt2flt_r_r);
         break;
     }
     case X64_INSTR_CVTSD2SS_R_R: { // f64 to f32
-        X64_emit_flt2flt_rr_instr(generator, "cvtsd2ss", float_kind_sizes[FLOAT_F64], float_kind_sizes[FLOAT_F32], &instr->flt2flt_r_r);
+        X64_emit_flt2flt_rr_instr(generator, "cvtsd2ss", float_kind_sizes[FLOAT_F64], float_kind_sizes[FLOAT_F32],
+                                  &instr->flt2flt_r_r);
         break;
     }
     case X64_INSTR_CVTSS2SD_R_M: { // f32 (in memory) to f64

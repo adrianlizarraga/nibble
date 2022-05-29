@@ -14,6 +14,7 @@ var g_f32 : f32 = 1.2f;
 #static_assert(1.0 <= 1.1);
 #static_assert((1.1 * 2) == 2.2);
 #static_assert(2 == 2.0);
+#static_assert((-1.4 :> int) == -1);
 
 #static_assert(0.05f + 0.05f == 0.1f);
 #static_assert(0.05f - 0.05f == 0.0f);
@@ -27,6 +28,7 @@ var g_f32 : f32 = 1.2f;
 #static_assert(1.0f <= 1.1f);
 #static_assert((1.1f * 2) == 2.2f);
 #static_assert(2 == 2.0f);
+#static_assert((-1.4f :> int) == -1);
 
 proc main() => int {
     var l_f32 : f32 = 1.8f;
@@ -49,8 +51,13 @@ proc main() => int {
     var l6_f64 : f64 = (l_f32 + 1.1f) :> f64; // 2.9
     var l6_f32 : f32 = (l_f64 + 1.1) :> f32; // 2.3f
 
-    // 1 + 1 + 2 + 2 + 2 + 1 + 2 + 4 + 255 - 101 - 1 - 1 - 2 - 2 = 163
+    var l7_f32 : f32 = l_f32 - 0.7f; // 1.1f
+    var l8_f32 : f32 = (l_f32 + 0.1f) - (l_f32 + 1.5f); // -1.4f
+    var l7_f64 : f64 = l_f64 - 0.1; // 1.1
+    var l8_f64 : f64 = (l_f64 + 0.5) - (l_f64 + 0.2); // 0.3
+
+    // 1 + 1 + 2 + 2 + 2 + 1 + 2 + 4 + 255 - 101 - 1 - 1 - 2 - 2 - 1 - (-1) + 1 + 0 = 164
     return (l_f64 :> u64) + (l_f32 :> u32) + (l2_f32 :> u32) + (l2_f64 :> u32) + ((g_f64 + 1.3) :> u8) + ((g_f32 + 0.3f) :> u16) + 
            (l3_f32 :> int) + (l3_f64 :> int) + (l4_f64 :> int) - (l4_f32 :> int) - (l5_f64 :> int) - (l5_f32 :> int) - (l6_f64 :> int) -
-           (l6_f32 :> int);
+           (l6_f32 :> int) - (l7_f32 :> int) - (l8_f32 :> int) + (l7_f64 :> int) + (l8_f64 :> int);
 }
