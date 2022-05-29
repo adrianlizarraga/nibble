@@ -15,6 +15,11 @@
       having to create a global/static/readonly mapping array. Need some way of communicating this intent to compiler.
 */
 
+/*
+ * BUGS
+    - Printing all IRS for floats.nib crashes.
+ */
+
 //#define NDEBUG 1
 #include <assert.h>
 #include <stdio.h>
