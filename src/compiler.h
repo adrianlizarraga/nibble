@@ -4,7 +4,7 @@
 #include "cstring.h"
 #include "stream.h"
 #include "hash_map.h"
-#include "ast.h"
+#include "ast/module.h"
 
 typedef struct NibbleCtx NibbleCtx;
 

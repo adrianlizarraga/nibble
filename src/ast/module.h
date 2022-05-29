@@ -1,5 +1,5 @@
-#ifndef NIBBLE_CST_H
-#define NIBBLE_CST_H
+#ifndef NIBBLE_AST_H
+#define NIBBLE_AST_H
 #include <stddef.h>
 #include <stdint.h>
 

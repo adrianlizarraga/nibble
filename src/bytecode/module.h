@@ -1,7 +1,7 @@
 #ifndef NIBBLE_BYTECODE_MODULE_H
 #define NIBBLE_BYTECODE_MODULE_H
 
-#include "ast.h"
+#include "ast/module.h"
 
 #define IR_STACK_ALIGN 16
 #define IR_INSTRS_PER_BUCKET 64

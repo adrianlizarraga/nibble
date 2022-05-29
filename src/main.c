@@ -37,7 +37,7 @@
 #include "hash_map.c"
 #include "stream.c"
 #include "lexer/module.c"
-#include "ast.c"
+#include "ast/module.c"
 #include "parser.c"
 #include "resolver.c"
 #include "bytecode/module.c"
