@@ -1,4 +1,6 @@
 #static_assert(#sizeof(#typeof(g_a)) == 8, "Size of s64 is 8");
+#static_assert(#sizeof(f64) == 8, "Size of f64 is 8");
+#static_assert(#sizeof(f32) == 4, "Size of f64 is 4");
 var g_a : s64 = 10;
 const g_b : s64 = 20;
 
