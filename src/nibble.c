@@ -1,6 +1,7 @@
 #include "nibble.h"
 #include "compiler.h"
 #include "parser/module.h"
+#include "resolver/module.h"
 #include "bytecode/module.h"
 #include "x64_gen/gen.h"
 #include "path_utils.h"

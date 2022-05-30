@@ -44,7 +44,7 @@
 #include "lexer/module.c"
 #include "ast/module.c"
 #include "parser/module.c"
-#include "resolver.c"
+#include "resolver/module.c"
 #include "bytecode/module.c"
 #include "x64_gen/gen.c"
 #include "nibble.c"
