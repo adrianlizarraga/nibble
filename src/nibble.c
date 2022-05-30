@@ -3,7 +3,7 @@
 #include "parser/module.h"
 #include "resolver/module.h"
 #include "bytecode/module.h"
-#include "x64_gen/gen.h"
+#include "x64_gen/module.h"
 #include "path_utils.h"
 #include "os_utils.h"
 

@@ -1,5 +1,5 @@
 #include "stream.h"
-#include "x64_gen/gen.h"
+#include "x64_gen/module.h"
 
 #include "x64_gen/regs.c"
 #include "x64_gen/lir.c"

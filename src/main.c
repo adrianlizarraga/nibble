@@ -46,7 +46,7 @@
 #include "parser/module.c"
 #include "resolver/module.c"
 #include "bytecode/module.c"
-#include "x64_gen/gen.c"
+#include "x64_gen/module.c"
 #include "nibble.c"
 
 void print_usage(FILE* fd, const char* program_name)
