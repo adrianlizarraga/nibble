@@ -43,10 +43,9 @@
 #include "stream.c"
 #include "lexer/module.c"
 #include "ast/module.c"
-#include "parser.c"
+#include "parser/module.c"
 #include "resolver.c"
 #include "bytecode/module.c"
-#include "code_gen.c"
 #include "x64_gen/gen.c"
 #include "nibble.c"
 

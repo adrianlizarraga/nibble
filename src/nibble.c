@@ -1,8 +1,8 @@
 #include "nibble.h"
 #include "compiler.h"
-#include "parser.h"
+#include "parser/module.h"
 #include "bytecode/module.h"
-#include "code_gen.h"
+#include "x64_gen/gen.h"
 #include "path_utils.h"
 #include "os_utils.h"
 
@@ -558,9 +558,6 @@ bool nibble_init(OS target_os, Arch target_arch)
     error_stream_init(&nibble->errors, &nibble->gen_mem);
 
     init_builtin_types(target_os, target_arch, &nibble->ast_mem, &nibble->type_cache);
-
-    if (!init_code_gen(target_os, target_arch))
-        return false;
 
     return true;
 }
@@ -1227,6 +1224,8 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     //////////////////////////////////////////
     //          Gen NASM output
     //////////////////////////////////////////
+    assert(nibble->target_arch == ARCH_X64); // TODO: Support other architectures
+
     const char nasm_ext[] = ".s";
 
     Path nasm_fname;
@@ -1235,14 +1234,13 @@ bool nibble_compile(const char* mainf_name, size_t mainf_len, const char* outf_n
     path_append(&nasm_fname, nasm_ext, sizeof(nasm_ext) - 1);
 
     ftprint_out("[INFO]: Generating NASM assembly output: %s ...\n", nasm_fname.str);
-    gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lits, &nibble->float_lits,
+    x64_init_target(nibble->target_os);
+    x64_gen_module(&nibble->gen_mem, &nibble->tmp_mem, &nibble->vars, &nibble->procs, &nibble->str_lits, &nibble->float_lits,
                nasm_fname.str);
 
     //////////////////////////////////////////
     //          Run NASM assembler
     //////////////////////////////////////////
-    assert(nibble->target_arch == ARCH_X64);
-
     char obj_ext_linux[] = ".o";
     char obj_ext_windows[] = ".obj";
     char nasm_fformat_linux[] = "elf64";

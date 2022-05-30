@@ -1,5 +1,5 @@
 #include "resolver.h"
-#include "parser.h"
+#include "parser/module.h"
 
 #define OP_FROM_EXPR(e)                                                                                                           \
     {                                                                                                                             \

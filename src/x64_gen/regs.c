@@ -142,7 +142,7 @@ const char* x64_condition_codes[] = {
 
 const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
 
-bool init_x64_target(OS target_os)
+void x64_init_target(OS target_os)
 {
     x64_target.os = target_os;
 
@@ -161,7 +161,7 @@ bool init_x64_target(OS target_os)
         x64_target.arg_reg_mask = x64_linux_arg_reg_mask;
 
         x64_target.startup_code = x64_linux_startup_code;
-        return true;
+        break;
     case OS_WIN32:
         x64_target.num_arg_regs = ARRAY_LEN(x64_windows_arg_regs);
         x64_target.arg_regs = x64_windows_arg_regs;
@@ -173,9 +173,10 @@ bool init_x64_target(OS target_os)
         x64_target.arg_reg_mask = x64_windows_arg_reg_mask;
 
         x64_target.startup_code = x64_windows_startup_code;
-        return true;
+        break;
     default:
-        return false;
+        NIBBLE_FATAL_EXIT("Unsupported x86_64 OS kind '%d'", target_os);
+        break;
     }
 }
 
