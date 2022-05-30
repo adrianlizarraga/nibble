@@ -15,6 +15,11 @@
       having to create a global/static/readonly mapping array. Need some way of communicating this intent to compiler.
 */
 
+/*
+ * BUGS
+    - Printing all IRS for floats.nib crashes.
+ */
+
 //#define NDEBUG 1
 #include <assert.h>
 #include <stdio.h>
@@ -36,14 +41,12 @@
 #include "array.c"
 #include "hash_map.c"
 #include "stream.c"
-#include "lexer.c"
-#include "ast.c"
-#include "parser.c"
-#include "resolver.c"
-#include "bytecode/gen.c"
-#include "print_ir.c"
-#include "code_gen.c"
-#include "x64_gen/gen.c"
+#include "lexer/module.c"
+#include "ast/module.c"
+#include "parser/module.c"
+#include "resolver/module.c"
+#include "bytecode/module.c"
+#include "x64_gen/module.c"
 #include "nibble.c"
 
 void print_usage(FILE* fd, const char* program_name)

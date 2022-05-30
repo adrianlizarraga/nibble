@@ -1,6 +1,5 @@
 #ifndef NIBBLE_X64_REG_ALLOC_H
 #define NIBBLE_X64_REG_ALLOC_H
-#include "ast.h"
 #include "x64_gen/regs.h"
 #include "x64_gen/lir.h"
 

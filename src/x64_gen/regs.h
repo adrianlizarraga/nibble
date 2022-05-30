@@ -79,7 +79,7 @@ typedef struct X64_Target {
 
 extern X64_Target x64_target;
 
-bool init_x64_target(OS target_os);
+void x64_init_target(OS target_os);
 bool X64_is_caller_saved_reg(X64_Reg reg);
 bool X64_is_callee_saved_reg(X64_Reg reg);
 bool X64_is_arg_reg(X64_Reg reg);

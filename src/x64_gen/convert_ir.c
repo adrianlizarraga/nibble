@@ -1,4 +1,4 @@
-#include "bytecode.h"
+#include "bytecode/module.h"
 #include "x64_gen/lir.h"
 
 static X64_InstrKind binary_kind[] = {
