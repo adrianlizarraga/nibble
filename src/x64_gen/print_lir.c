@@ -306,6 +306,14 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            src_size, LIR_print_mem(arena, &instr->convert_r_m.src));
         break;
     }
+    case X64_INSTR_MOVSS_R_R: {
+        ftprint_char_array(&dstr, false, "movss r%d, r%d", instr->mov_flt_r_r.dst, instr->mov_flt_r_r.src);
+        break;
+    }
+    case X64_INSTR_MOVSD_R_R: {
+        ftprint_char_array(&dstr, false, "movsd r%d, r%d", instr->mov_flt_r_r.dst, instr->mov_flt_r_r.src);
+        break;
+    }
     case X64_INSTR_MOVSS_R_M: {
         ftprint_char_array(&dstr, false, "movss r%d, %s", instr->mov_flt_r_m.dst, LIR_print_mem(arena, &instr->mov_flt_r_m.src));
         break;
