@@ -83,7 +83,7 @@ proc main() => int {
     }
 
     // TODO: Consider making string literals evaluate to slices instead of arrays
-    var r := print_out("Print nums {0}, {}, {2}, {}!\n",
+    var r := print_out("Print nums {0}, {}, {2}, {}! Escape '{{'\n",
                        {value = 321, base = 10, flags = FmtFlag::FORCE_SIGN : FmtInt},
                        {value = 15, base = 16, flags = FmtFlag::HASH | FmtFlag::UPPERCASE : FmtInt}, 4333, "Hello" :> []char);
 
