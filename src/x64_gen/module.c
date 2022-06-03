@@ -1795,6 +1795,62 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                           &instr->binary_flt_r_m.src);
         break;
     }
+    case X64_INSTR_MULSS_R_R: {
+        u32 size = float_kind_sizes[FLOAT_F32];
+
+        X64_emit_rr_instr(generator, "mulss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
+                          instr->binary_flt_r_r.src);
+        break;
+    }
+    case X64_INSTR_MULSS_R_M: {
+        u32 size = float_kind_sizes[FLOAT_F32];
+
+        X64_emit_rm_instr(generator, "mulss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
+                          &instr->binary_flt_r_m.src);
+        break;
+    }
+    case X64_INSTR_MULSD_R_R: {
+        u32 size = float_kind_sizes[FLOAT_F64];
+
+        X64_emit_rr_instr(generator, "mulsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
+                          instr->binary_flt_r_r.src);
+        break;
+    }
+    case X64_INSTR_MULSD_R_M: {
+        u32 size = float_kind_sizes[FLOAT_F64];
+
+        X64_emit_rm_instr(generator, "mulsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
+                          &instr->binary_flt_r_m.src);
+        break;
+    }
+    case X64_INSTR_DIVSS_R_R: {
+        u32 size = float_kind_sizes[FLOAT_F32];
+
+        X64_emit_rr_instr(generator, "divss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
+                          instr->binary_flt_r_r.src);
+        break;
+    }
+    case X64_INSTR_DIVSS_R_M: {
+        u32 size = float_kind_sizes[FLOAT_F32];
+
+        X64_emit_rm_instr(generator, "divss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
+                          &instr->binary_flt_r_m.src);
+        break;
+    }
+    case X64_INSTR_DIVSD_R_R: {
+        u32 size = float_kind_sizes[FLOAT_F64];
+
+        X64_emit_rr_instr(generator, "divsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
+                          instr->binary_flt_r_r.src);
+        break;
+    }
+    case X64_INSTR_DIVSD_R_M: {
+        u32 size = float_kind_sizes[FLOAT_F64];
+
+        X64_emit_rm_instr(generator, "divsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
+                          &instr->binary_flt_r_m.src);
+        break;
+    }
     case X64_INSTR_DIV_R:
     case X64_INSTR_IDIV_R: {
         const char* instr_name = instr->kind == X64_INSTR_IDIV_R ? "idiv" : "div";

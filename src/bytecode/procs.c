@@ -250,6 +250,7 @@ static Instr* IR_new_instr(Allocator* arena, InstrKind kind)
 #define IR_emit_instr_int_add(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_ADD, (t), (r), (a), (b))
 #define IR_emit_instr_int_sub(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_SUB, (t), (r), (a), (b))
 #define IR_emit_instr_int_mul(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_MUL, (t), (r), (a), (b))
+#define IR_emit_instr_int_div(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_DIV, (t), (r), (a), (b))
 #define IR_emit_instr_and(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_AND, (t), (r), (a), (b))
 #define IR_emit_instr_or(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_OR, (t), (r), (a), (b))
 #define IR_emit_instr_xor(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_XOR, (t), (r), (a), (b))
@@ -267,6 +268,8 @@ static void IR_emit_instr_int_binary(IR_ProcBuilder* builder, BBlock* bblock, In
 
 #define IR_emit_instr_flt_add(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_ADD, (fk), (r), (a), (b))
 #define IR_emit_instr_flt_sub(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_SUB, (fk), (r), (a), (b))
+#define IR_emit_instr_flt_mul(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_MUL, (fk), (r), (a), (b))
+#define IR_emit_instr_flt_div(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_DIV, (fk), (r), (a), (b))
 
 static void IR_emit_instr_flt_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, FloatKind fkind, IR_Reg r, OpRA a, OpRA b)
 {
@@ -289,18 +292,6 @@ static void IR_emit_instr_shift(IR_ProcBuilder* builder, BBlock* bblock, InstrKi
     instr->shift.r = r;
     instr->shift.a = a;
     instr->shift.b = b;
-
-    IR_add_instr(builder, bblock, instr);
-}
-
-static void IR_emit_instr_int_div(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
-{
-    Instr* instr = IR_new_instr(builder->arena, INSTR_INT_DIV);
-
-    instr->int_binary.type = type;
-    instr->int_binary.r = r;
-    instr->int_binary.a = a;
-    instr->int_binary.b = b;
 
     IR_add_instr(builder, bblock, instr);
 }
@@ -1668,13 +1659,24 @@ static BBlock* IR_emit_op_mul(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
                               IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
-
-    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
-    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
-    // TODO: Emit a shift instruction if one of the expr_results is a power-of-two immediate.
-    IR_emit_instr_int_mul(builder, curr_bb, dst_type, dst_reg, a, b);
+    if (type_is_integer_like(dst_type)) {
+        OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+        OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
+
+        // TODO: Emit a shift instruction if one of the expr_results is a power-of-two immediate.
+        IR_emit_instr_int_mul(builder, curr_bb, dst_type, dst_reg, a, b);
+    }
+    else if (dst_type->kind == TYPE_FLOAT) {
+        OpRA a = IR_expr_result_to_op_ra(builder, &curr_bb, left_er);
+        OpRA b = IR_expr_result_to_op_ra(builder, &curr_bb, right_er);
+
+        IR_emit_instr_flt_mul(builder, curr_bb, dst_type->as_float.kind, dst_reg, a, b);
+    }
+    else {
+        NIBBLE_FATAL_EXIT("IR_emit_op_mul() unexpected dst type (%s)", type_name(dst_type));
+    }
 
     dst_er->kind = IR_EXPR_RESULT_REG;
     dst_er->type = dst_type;
@@ -1687,13 +1689,24 @@ static BBlock* IR_emit_op_div(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprRe
                               IR_ExprResult* dst_er, Type* dst_type)
 {
     BBlock* curr_bb = bblock;
-
-    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
-    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
     IR_Reg dst_reg = IR_next_reg(builder);
 
-    // TODO: Emit a shift instruction if the second expr_result is a power-of-two immediate.
-    IR_emit_instr_int_div(builder, curr_bb, dst_type, dst_reg, a, b);
+    if (type_is_integer_like(dst_type)) {
+        OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+        OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
+
+        // TODO: Emit a shift instruction if the second expr_result is a power-of-two immediate.
+        IR_emit_instr_int_div(builder, curr_bb, dst_type, dst_reg, a, b);
+    }
+    else if (dst_type->kind == TYPE_FLOAT) {
+        OpRA a = IR_expr_result_to_op_ra(builder, &curr_bb, left_er);
+        OpRA b = IR_expr_result_to_op_ra(builder, &curr_bb, right_er);
+
+        IR_emit_instr_flt_div(builder, curr_bb, dst_type->as_float.kind, dst_reg, a, b);
+    }
+    else {
+        NIBBLE_FATAL_EXIT("IR_emit_op_div() unexpected dst_type (%s)", type_name(dst_type));
+    }
 
     dst_er->kind = IR_EXPR_RESULT_REG;
     dst_er->type = dst_type;
