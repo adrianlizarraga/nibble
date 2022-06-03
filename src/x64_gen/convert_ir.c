@@ -840,6 +840,26 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
+    case INSTR_FLT_DIV: {
+        FloatKind fkind = ir_instr->flt_binary.fkind;
+        OpRA ir_a = ir_instr->flt_binary.a;
+        OpRA ir_b = ir_instr->flt_binary.b;
+
+        // Ex: movss r, a
+        u32 r = X64_mov_flt_op_ra_into_reg(builder, xbblock, fkind, ir_instr->flt_binary.r, ir_a);
+
+        // Ex: divss r, b
+        if (ir_b.is_addr) {
+            X64_MemAddr addr = {0};
+            X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);
+            X64_emit_instr_flt_div_r_m(builder, xbblock, fkind, r, addr);
+        }
+        else {
+            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_FLOAT);
+            X64_emit_instr_flt_div_r_r(builder, xbblock, fkind, r, b);
+        }
+        break;
+    }
     case INSTR_INT_ADD:
     case INSTR_INT_SUB:
     case INSTR_INT_MUL:

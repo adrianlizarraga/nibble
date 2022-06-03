@@ -219,6 +219,24 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
+    case X64_INSTR_DIVSS_R_R: {
+        ftprint_char_array(&dstr, false, "divss r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
+        break;
+    }
+    case X64_INSTR_DIVSD_R_R: {
+        ftprint_char_array(&dstr, false, "divsd r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
+        break;
+    }
+    case X64_INSTR_DIVSS_R_M: {
+        ftprint_char_array(&dstr, false, "divss r%d, %s", instr->binary_flt_r_m.dst,
+                           LIR_print_mem(arena, &instr->binary_flt_r_m.src));
+        break;
+    }
+    case X64_INSTR_DIVSD_R_M: {
+        ftprint_char_array(&dstr, false, "divsd r%d, %s", instr->binary_flt_r_m.dst,
+                           LIR_print_mem(arena, &instr->binary_flt_r_m.src));
+        break;
+    }
     case X64_INSTR_SEXT_AX_TO_DX: {
         u32 size = (u32)instr->sext_ax_to_dx.size;
         ftprint_char_array(&dstr, false, "%s", x64_sext_ax_into_dx[size]);
