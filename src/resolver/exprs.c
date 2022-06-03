@@ -1,6 +1,3 @@
-#include "resolver.h"
-#include "parser.h"
-
 #define OP_FROM_EXPR(e)                                                                                                           \
     {                                                                                                                             \
         .type = (e)->type, .is_constexpr = (e)->is_constexpr, .is_lvalue = (e)->is_lvalue, .is_imm = (e)->is_imm, .imm = (e)->imm \
@@ -19,85 +16,10 @@ typedef struct ExprOperand {
     Scalar imm;
 } ExprOperand;
 
-static Symbol* resolve_name(Resolver* resolver, Identifier* name);
-static Symbol* resolve_export_name(Resolver* resolver, Identifier* name);
-static bool resolve_symbol(Resolver* resolver, Symbol* sym);
-static bool resolve_decl_var(Resolver* resolver, Symbol* sym);
-static bool resolve_decl_const(Resolver* resolver, Symbol* sym);
-static bool resolve_decl_proc(Resolver* resolver, Symbol* sym);
-static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym);
-
 typedef struct CastResult {
     bool success;
     bool bad_lvalue;
 } CastResult;
-
-static void eop_array_decay(Resolver* resolver, ExprOperand* eop);
-static void eop_array_slice_decay(ExprOperand* eop);
-static CastResult cast_eop(ExprOperand* eop, Type* type, bool forbid_rvalue_decay);
-static CastResult convert_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay);
-static CastResult can_convert_eop(ExprOperand* operand, Type* dst_type, bool forbid_rvalue_decay);
-static CastResult can_cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay);
-static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr);
-
-static Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident);
-
-static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
-static bool resolve_expr_int(Resolver* resolver, Expr* expr);
-static bool resolve_expr_bool_lit(Resolver* resolver, ExprBoolLit* expr);
-static bool resolve_expr_null_lit(Resolver* resolver, ExprNullLit* expr);
-static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right);
-static void resolve_unary_eop(TokenKind op, ExprOperand* dst, ExprOperand* src);
-static bool resolve_expr_unary(Resolver* resolver, Expr* expr);
-static bool resolve_expr_binary(Resolver* resolver, Expr* expr);
-static bool resolve_expr_ternary(Resolver* resolver, ExprTernary* expr);
-static bool resolve_expr_call(Resolver* resolver, Expr* expr);
-static bool resolve_expr_ident(Resolver* resolver, Expr* expr);
-static bool resolve_cond_expr(Resolver* resolver, Expr* expr, ExprOperand* expr_eop);
-
-static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec);
-
-enum ResolveStmtRetFlags {
-    RESOLVE_STMT_SUCCESS = 0x1,
-    RESOLVE_STMT_RETURNS = 0x2,
-    RESOLVE_STMT_LOOP_EXITS = 0x4,
-};
-
-enum ResolveStmtInFlags {
-    RESOLVE_STMT_BREAK_CONTINUE_ALLOWED = 0x1,
-};
-
-static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
-static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
-static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* ret_type, unsigned flags);
-static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
-static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
-static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
-static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type* ret_type, unsigned flags);
-static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt);
-
-static ModuleState enter_module(Resolver* resolver, Module* mod);
-static void exit_module(Resolver* resolver, ModuleState state);
-
-static void set_scope(Resolver* resolver, Scope* scope);
-static Scope* push_scope(Resolver* resolver, size_t num_syms);
-static void pop_scope(Resolver* resolver);
-
-static ModuleState enter_proc(Resolver* resolver, Symbol* sym);
-static void exit_proc(Resolver* resolver, ModuleState state);
-
-static void resolver_on_error(Resolver* resolver, ProgRange range, const char* format, ...)
-{
-    char buf[MAX_ERROR_LEN];
-    size_t size = 0;
-    va_list vargs;
-
-    va_start(vargs, format);
-    size = vsnprintf(buf, MAX_ERROR_LEN, format, vargs) + 1;
-    va_end(vargs);
-
-    error_stream_add(&resolver->ctx->errors, range, buf, size > sizeof(buf) ? sizeof(buf) : size);
-}
 
 static void resolver_cast_error(Resolver* resolver, CastResult cast_res, ProgRange range, const char* err_prefix, Type* src_type,
                                 Type* dst_type)
@@ -114,197 +36,28 @@ static void resolver_cast_error(Resolver* resolver, CastResult cast_res, ProgRan
     }
 }
 
-static ModuleState enter_module(Resolver* resolver, Module* mod)
+static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr)
 {
-    ModuleState old_state = resolver->state;
+    Expr* expr = orig_expr;
 
-    resolver->state.mod = mod;
-    resolver->state.proc = NULL;
-    resolver->state.scope = &mod->scope;
-
-    return old_state;
-}
-
-static void exit_module(Resolver* resolver, ModuleState state)
-{
-    resolver->state = state;
-}
-
-static void set_scope(Resolver* resolver, Scope* scope)
-{
-    resolver->state.scope = scope;
-}
-
-static Scope* push_scope(Resolver* resolver, size_t num_syms)
-{
-    Scope* prev_scope = resolver->state.scope;
-    Scope* scope = new_scope(&resolver->ctx->ast_mem, num_syms + num_syms);
-
-    scope->parent = prev_scope;
-
-    list_add_last(&prev_scope->children, &scope->lnode);
-    set_scope(resolver, scope);
-
-    return scope;
-}
-
-static void pop_scope(Resolver* resolver)
-{
-    resolver->state.scope = resolver->state.scope->parent;
-}
-
-static ModuleState enter_proc(Resolver* resolver, Symbol* sym)
-{
-    assert(sym->kind == SYMBOL_PROC);
-    ModuleState mod_state = enter_module(resolver, sym->home);
-
-    DeclProc* dproc = (DeclProc*)(sym->decl);
-    set_scope(resolver, dproc->scope);
-
-    resolver->state.proc = sym;
-
-    return mod_state;
-}
-
-static void exit_proc(Resolver* resolver, ModuleState state)
-{
-    pop_scope(resolver);
-    resolver->state.proc = NULL;
-    exit_module(resolver, state);
-}
-
-#define CASE_INT_CAST(k, o, t, f)                       \
-    case k:                                             \
-        switch (t) {                                    \
-        case INTEGER_BOOL:                              \
-            o->imm.as_int._bool = o->imm.as_int.f != 0; \
-            break;                                      \
-        case INTEGER_U8:                                \
-            o->imm.as_int._u8 = (u8)o->imm.as_int.f;    \
-            break;                                      \
-        case INTEGER_S8:                                \
-            o->imm.as_int._s8 = (s8)o->imm.as_int.f;    \
-            break;                                      \
-        case INTEGER_U16:                               \
-            o->imm.as_int._u16 = (u16)o->imm.as_int.f;  \
-            break;                                      \
-        case INTEGER_S16:                               \
-            o->imm.as_int._s16 = (s16)o->imm.as_int.f;  \
-            break;                                      \
-        case INTEGER_U32:                               \
-            o->imm.as_int._u32 = (u32)o->imm.as_int.f;  \
-            break;                                      \
-        case INTEGER_S32:                               \
-            o->imm.as_int._s32 = (s32)o->imm.as_int.f;  \
-            break;                                      \
-        case INTEGER_U64:                               \
-            o->imm.as_int._u64 = (u64)o->imm.as_int.f;  \
-            break;                                      \
-        case INTEGER_S64:                               \
-            o->imm.as_int._s64 = (s64)o->imm.as_int.f;  \
-            break;                                      \
-        default:                                        \
-            o->is_constexpr = false;                    \
-            assert(0);                                  \
-            break;                                      \
-        }                                               \
-        break;
-
-static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay)
-{
-    Type* src_type = eop->type;
-
-    CastResult r = can_cast_eop(eop, dst_type, forbid_rvalue_decay);
-
-    if (!r.success)
-        return r;
-
-    // From this point, the following is true:
-    // 1) src_type != dst_type
-    // 2) types are castable.
-
-    if (eop->is_constexpr && eop->is_imm) {
-        if (src_type->kind == TYPE_FLOAT) {
-            eop->is_constexpr = dst_type->kind != TYPE_INTEGER;
+    if (orig_expr->type != eop->type) {
+        if (expr->is_constexpr && expr->is_imm) {
+            assert(type_is_scalar(expr->type));
+            assert(eop->is_constexpr);
+            expr->imm = eop->imm;
         }
         else {
-            IntegerKind src_int_kind;
-            IntegerKind dst_int_kind;
-
-            if (src_type->kind == TYPE_ENUM) {
-                src_int_kind = src_type->as_enum.base->as_integer.kind;
-            }
-            else if (src_type->kind == TYPE_PTR) {
-                src_int_kind = INTEGER_U64;
-            }
-            else {
-                src_int_kind = src_type->as_integer.kind;
-            }
-
-            if (dst_type->kind == TYPE_ENUM) {
-                dst_int_kind = dst_type->as_enum.base->as_integer.kind;
-            }
-            else if (dst_type->kind == TYPE_PTR) {
-                dst_int_kind = INTEGER_U64;
-            }
-            else {
-                dst_int_kind = dst_type->as_integer.kind;
-            }
-
-            switch (src_int_kind) {
-                CASE_INT_CAST(INTEGER_BOOL, eop, dst_int_kind, _bool)
-                CASE_INT_CAST(INTEGER_U8, eop, dst_int_kind, _u8)
-                CASE_INT_CAST(INTEGER_S8, eop, dst_int_kind, _s8)
-                CASE_INT_CAST(INTEGER_U16, eop, dst_int_kind, _u16)
-                CASE_INT_CAST(INTEGER_S16, eop, dst_int_kind, _s16)
-                CASE_INT_CAST(INTEGER_U32, eop, dst_int_kind, _u32)
-                CASE_INT_CAST(INTEGER_S32, eop, dst_int_kind, _s32)
-                CASE_INT_CAST(INTEGER_U64, eop, dst_int_kind, _u64)
-                CASE_INT_CAST(INTEGER_S64, eop, dst_int_kind, _s64)
-            default:
-                eop->is_constexpr = false;
-                assert(0);
-                break;
-            }
+            expr = new_expr_cast(&resolver->ctx->ast_mem, NULL, orig_expr, true, orig_expr->range);
         }
+
+        expr->type = eop->type;
     }
 
-    eop->type = dst_type;
-    eop->is_lvalue = false;
+    expr->is_lvalue = eop->is_lvalue;
+    expr->is_constexpr = eop->is_constexpr;
+    expr->is_imm = eop->is_imm;
 
-    return r;
-}
-
-static void eop_array_decay(Resolver* resolver, ExprOperand* eop)
-{
-    assert(eop->type->kind == TYPE_ARRAY);
-
-    eop->type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, eop->type->as_array.base);
-    eop->is_lvalue = false;
-}
-
-static void eop_array_slice_decay(ExprOperand* eop)
-{
-    assert(type_is_slice(eop->type));
-
-    TypeAggregateField* data_field = get_type_struct_field(eop->type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
-
-    eop->type = data_field->type;
-    eop->is_lvalue = false;
-}
-
-static CastResult convert_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay)
-{
-    CastResult r = can_convert_eop(eop, dst_type, forbid_rvalue_decay);
-
-    if (!r.success)
-        return r;
-
-    cast_eop(eop, dst_type, forbid_rvalue_decay);
-
-    eop->is_lvalue = false;
-
-    return r;
+    return expr;
 }
 
 static CastResult can_convert_eop(ExprOperand* operand, Type* dst_type, bool forbid_rvalue_decay)
@@ -347,7 +100,6 @@ static CastResult can_convert_eop(ExprOperand* operand, Type* dst_type, bool for
         bad_lvalue = !operand->is_lvalue && forbid_rvalue_decay;
     }
     else if ((dst_type->kind == TYPE_PTR) && (src_type->kind == TYPE_PTR)) {
-
         // Can convert a "derived" type to a "base" type.
         // A type is "derived" if its first field is of type "base".
         // Ex: struct Base { ... };  struct Derived { Base base;};
@@ -390,6 +142,245 @@ static CastResult can_cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rva
     else if (type_is_ptr_like(dst_type) && type_is_ptr_like(src_type)) {
         r.success = true;
     }
+
+    return r;
+}
+
+#define CASE_INT_CAST(k, o, t, f)                       \
+    case k:                                             \
+        switch (t) {                                    \
+        case INTEGER_BOOL:                              \
+            o->imm.as_int._bool = o->imm.as_int.f != 0; \
+            break;                                      \
+        case INTEGER_U8:                                \
+            o->imm.as_int._u8 = (u8)o->imm.as_int.f;    \
+            break;                                      \
+        case INTEGER_S8:                                \
+            o->imm.as_int._s8 = (s8)o->imm.as_int.f;    \
+            break;                                      \
+        case INTEGER_U16:                               \
+            o->imm.as_int._u16 = (u16)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_S16:                               \
+            o->imm.as_int._s16 = (s16)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_U32:                               \
+            o->imm.as_int._u32 = (u32)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_S32:                               \
+            o->imm.as_int._s32 = (s32)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_U64:                               \
+            o->imm.as_int._u64 = (u64)o->imm.as_int.f;  \
+            break;                                      \
+        case INTEGER_S64:                               \
+            o->imm.as_int._s64 = (s64)o->imm.as_int.f;  \
+            break;                                      \
+        default:                                        \
+            o->is_constexpr = false;                    \
+            assert(0);                                  \
+            break;                                      \
+        }                                               \
+        break;
+
+#define CASE_INT_FLOAT_CAST(k, o, t, f)                  \
+    case k:                                              \
+        switch (t) {                                     \
+        case FLOAT_F64:                                  \
+            o->imm.as_float._f64 = (f64)o->imm.as_int.f; \
+            break;                                       \
+        case FLOAT_F32:                                  \
+            o->imm.as_float._f32 = (f32)o->imm.as_int.f; \
+            break;                                       \
+        default:                                         \
+            o->is_constexpr = false;                     \
+            assert(0);                                   \
+            break;                                       \
+        }                                                \
+        break;
+
+#define CASE_FLOAT_INT_CAST(k, o, t, f)                     \
+    case k:                                                 \
+        switch (t) {                                        \
+        case INTEGER_BOOL:                                  \
+            o->imm.as_int._bool = o->imm.as_float.f != 0.0; \
+            break;                                          \
+        case INTEGER_U8:                                    \
+            o->imm.as_int._u8 = (u8)o->imm.as_float.f;      \
+            break;                                          \
+        case INTEGER_S8:                                    \
+            o->imm.as_int._s8 = (s8)o->imm.as_float.f;      \
+            break;                                          \
+        case INTEGER_U16:                                   \
+            o->imm.as_int._u16 = (u16)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_S16:                                   \
+            o->imm.as_int._s16 = (s16)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_U32:                                   \
+            o->imm.as_int._u32 = (u32)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_S32:                                   \
+            o->imm.as_int._s32 = (s32)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_U64:                                   \
+            o->imm.as_int._u64 = (u64)o->imm.as_float.f;    \
+            break;                                          \
+        case INTEGER_S64:                                   \
+            o->imm.as_int._s64 = (s64)o->imm.as_float.f;    \
+            break;                                          \
+        default:                                            \
+            assert(0);                                      \
+            break;                                          \
+        }                                                   \
+        break;
+
+static CastResult cast_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay)
+{
+    Type* src_type = eop->type;
+
+    CastResult r = can_cast_eop(eop, dst_type, forbid_rvalue_decay);
+
+    if (!r.success)
+        return r;
+
+    // From this point, the following is true:
+    // 1) src_type != dst_type
+    // 2) types are castable.
+
+    if (eop->is_constexpr && eop->is_imm) {
+        if (src_type->kind == TYPE_FLOAT && dst_type->kind == TYPE_FLOAT) {
+            FloatKind src_float_kind = src_type->as_float.kind;
+            FloatKind dst_float_kind = dst_type->as_float.kind;
+
+            switch (src_float_kind) {
+            case FLOAT_F32: {
+                if (dst_float_kind == FLOAT_F64) {
+                    eop->imm.as_float._f64 = (f64)eop->imm.as_float._f32;
+                }
+                break;
+            }
+            case FLOAT_F64: {
+                if (dst_float_kind == FLOAT_F32) {
+                    eop->imm.as_float._f32 = (f32)eop->imm.as_float._f64;
+                }
+                break;
+            }
+            default:
+                assert(0);
+                break;
+            }
+        }
+        else if (src_type->kind == TYPE_FLOAT && type_is_integer_like(dst_type)) {
+            FloatKind src_float_kind = src_type->as_float.kind;
+            IntegerKind dst_int_kind =
+                dst_type->kind == TYPE_ENUM ? dst_type->as_enum.base->as_integer.kind : dst_type->as_integer.kind;
+
+            switch (src_float_kind) {
+                CASE_FLOAT_INT_CAST(FLOAT_F32, eop, dst_int_kind, _f32)
+                CASE_FLOAT_INT_CAST(FLOAT_F64, eop, dst_int_kind, _f64)
+            default:
+                assert(0);
+                break;
+            }
+        }
+        else if (type_is_integer_like(src_type) && dst_type->kind == TYPE_FLOAT) {
+            FloatKind dst_float_kind = dst_type->as_float.kind;
+            IntegerKind src_int_kind =
+                src_type->kind == TYPE_ENUM ? src_type->as_enum.base->as_integer.kind : src_type->as_integer.kind;
+
+            switch (src_int_kind) {
+                CASE_INT_FLOAT_CAST(INTEGER_BOOL, eop, dst_float_kind, _bool)
+                CASE_INT_FLOAT_CAST(INTEGER_U8, eop, dst_float_kind, _u8)
+                CASE_INT_FLOAT_CAST(INTEGER_S8, eop, dst_float_kind, _s8)
+                CASE_INT_FLOAT_CAST(INTEGER_U16, eop, dst_float_kind, _u16)
+                CASE_INT_FLOAT_CAST(INTEGER_S16, eop, dst_float_kind, _s16)
+                CASE_INT_FLOAT_CAST(INTEGER_U32, eop, dst_float_kind, _u32)
+                CASE_INT_FLOAT_CAST(INTEGER_S32, eop, dst_float_kind, _s32)
+                CASE_INT_FLOAT_CAST(INTEGER_U64, eop, dst_float_kind, _u64)
+                CASE_INT_FLOAT_CAST(INTEGER_S64, eop, dst_float_kind, _s64)
+            default:
+                assert(0);
+                break;
+            }
+        }
+        else {
+            IntegerKind src_int_kind;
+            IntegerKind dst_int_kind;
+
+            if (src_type->kind == TYPE_ENUM) {
+                src_int_kind = src_type->as_enum.base->as_integer.kind;
+            }
+            else if (src_type->kind == TYPE_PTR) {
+                src_int_kind = INTEGER_U64;
+            }
+            else {
+                assert(src_type->kind == TYPE_INTEGER);
+                src_int_kind = src_type->as_integer.kind;
+            }
+
+            if (dst_type->kind == TYPE_ENUM) {
+                dst_int_kind = dst_type->as_enum.base->as_integer.kind;
+            }
+            else if (dst_type->kind == TYPE_PTR) {
+                dst_int_kind = INTEGER_U64;
+            }
+            else {
+                assert(dst_type->kind == TYPE_INTEGER);
+                dst_int_kind = dst_type->as_integer.kind;
+            }
+
+            switch (src_int_kind) {
+                CASE_INT_CAST(INTEGER_BOOL, eop, dst_int_kind, _bool)
+                CASE_INT_CAST(INTEGER_U8, eop, dst_int_kind, _u8)
+                CASE_INT_CAST(INTEGER_S8, eop, dst_int_kind, _s8)
+                CASE_INT_CAST(INTEGER_U16, eop, dst_int_kind, _u16)
+                CASE_INT_CAST(INTEGER_S16, eop, dst_int_kind, _s16)
+                CASE_INT_CAST(INTEGER_U32, eop, dst_int_kind, _u32)
+                CASE_INT_CAST(INTEGER_S32, eop, dst_int_kind, _s32)
+                CASE_INT_CAST(INTEGER_U64, eop, dst_int_kind, _u64)
+                CASE_INT_CAST(INTEGER_S64, eop, dst_int_kind, _s64)
+            default:
+                assert(0);
+                break;
+            }
+        }
+    }
+
+    eop->type = dst_type;
+    eop->is_lvalue = false;
+
+    return r;
+}
+
+static void eop_array_decay(Resolver* resolver, ExprOperand* eop)
+{
+    assert(eop->type->kind == TYPE_ARRAY);
+
+    eop->type = type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, eop->type->as_array.base);
+    eop->is_lvalue = false;
+}
+
+static void eop_array_slice_decay(ExprOperand* eop)
+{
+    assert(type_is_slice(eop->type));
+
+    TypeAggregateField* data_field = get_type_struct_field(eop->type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
+
+    eop->type = data_field->type;
+    eop->is_lvalue = false;
+}
+
+static CastResult convert_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay)
+{
+    CastResult r = can_convert_eop(eop, dst_type, forbid_rvalue_decay);
+
+    if (!r.success)
+        return r;
+
+    cast_eop(eop, dst_type, forbid_rvalue_decay);
+
+    eop->is_lvalue = false;
 
     return r;
 }
@@ -459,8 +450,8 @@ static Type* convert_arith_eops(ExprOperand* left, ExprOperand* right)
             TypeInteger* left_as_int = &left->type->as_integer;
             TypeInteger* right_as_int = &right->type->as_integer;
 
-            bool left_signed = left_as_int->is_signed;
-            bool right_signed = right_as_int->is_signed;
+            bool left_signed = int_kind_signed[left_as_int->kind];
+            bool right_signed = int_kind_signed[right_as_int->kind];
             int left_rank = type_integer_ranks[left_as_int->kind];
             int right_rank = type_integer_ranks[right_as_int->kind];
             size_t left_size = left->type->size;
@@ -513,143 +504,130 @@ static Type* convert_arith_eops(ExprOperand* left, ExprOperand* right)
     return left->type;
 }
 
-static s64 eval_unary_op_s64(TokenKind op, s64 val)
-{
-    switch (op) {
-    case TKN_PLUS:
-        return +val;
-    case TKN_MINUS:
-        return -val;
-    case TKN_NEG:
-        return ~val;
-    case TKN_NOT:
-        return !val;
-    default:
-        ftprint_err("Unexpected unary op (s64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_UNARY_OP_INT_FUNC(T)                                 \
+    static T eval_unary_op_##T(TokenKind op, T val)                   \
+    {                                                                 \
+        switch (op) {                                                 \
+        case TKN_PLUS:                                                \
+            return +val;                                              \
+        case TKN_MINUS:                                               \
+            return -val;                                              \
+        case TKN_NEG:                                                 \
+            return ~val;                                              \
+        case TKN_NOT:                                                 \
+            return !val;                                              \
+        default:                                                      \
+            NIBBLE_FATAL_EXIT("Unexpected unary op (##T): %d\n", op); \
+            return 0;                                                 \
+        }                                                             \
     }
 
-    return 0;
-}
+DEF_EVAL_UNARY_OP_INT_FUNC(s64)
+DEF_EVAL_UNARY_OP_INT_FUNC(u64)
 
-static u64 eval_unary_op_u64(TokenKind op, u64 val)
-{
-    switch (op) {
-    case TKN_PLUS:
-        return +val;
-    case TKN_MINUS:
-        return -val;
-    case TKN_NEG:
-        return ~val;
-    case TKN_NOT:
-        return !val;
-    default:
-        ftprint_err("Unexpected unary op (s64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_UNARY_OP_FLOAT_FUNC(T)                               \
+    static T eval_unary_op_##T(TokenKind op, T val)                   \
+    {                                                                 \
+        switch (op) {                                                 \
+        case TKN_PLUS:                                                \
+            return +val;                                              \
+        case TKN_MINUS:                                               \
+            return -val;                                              \
+        default:                                                      \
+            NIBBLE_FATAL_EXIT("Unexpected unary op (##T): %d\n", op); \
+            return 0.0;                                               \
+        }                                                             \
     }
 
-    return 0;
-}
+DEF_EVAL_UNARY_OP_FLOAT_FUNC(f64)
+DEF_EVAL_UNARY_OP_FLOAT_FUNC(f32)
 
-static s64 eval_binary_op_s64(TokenKind op, s64 left, s64 right)
-{
-    switch (op) {
-    case TKN_PLUS: // Add
-        return left + right;
-    case TKN_MINUS: // Subtract
-        return left - right;
-    case TKN_ASTERISK: // Multiply
-        return left * right;
-    case TKN_DIV: // Divide
-        return right != 0 ? left / right : 0;
-    case TKN_MOD: // Modulo (remainder)
-        return right != 0 ? left % right : 0;
-    case TKN_LSHIFT:
-        return left << right;
-    case TKN_RSHIFT:
-        return left >> right;
-    case TKN_AND:
-        return left & right;
-    case TKN_OR:
-        return left | right;
-    case TKN_CARET: // xor
-        return left ^ right;
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
-    default:
-        ftprint_err("Unexpected binary op (s64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_BINARY_OP_FLOAT_FUNC(T)                               \
+    static T eval_binary_op_##T(TokenKind op, T left, T right)         \
+    {                                                                  \
+        switch (op) {                                                  \
+        case TKN_PLUS:                                                 \
+            return left + right;                                       \
+        case TKN_MINUS:                                                \
+            return left - right;                                       \
+        case TKN_ASTERISK:                                             \
+            return left * right;                                       \
+        case TKN_DIV:                                                  \
+            return left / right;                                       \
+        default:                                                       \
+            NIBBLE_FATAL_EXIT("Unexpected binary op (##T): %d\n", op); \
+            return 0.0;                                                \
+        }                                                              \
     }
 
-    return 0;
-}
+DEF_EVAL_BINARY_OP_FLOAT_FUNC(f64)
+DEF_EVAL_BINARY_OP_FLOAT_FUNC(f32)
 
-static u64 eval_binary_op_u64(TokenKind op, u64 left, u64 right)
-{
-    switch (op) {
-    case TKN_PLUS: // Add
-        return left + right;
-    case TKN_MINUS: // Subtract
-        return left - right;
-    case TKN_ASTERISK: // Multiply
-        return left * right;
-    case TKN_DIV: // Divide
-        return right != 0 ? left / right : 0;
-    case TKN_MOD: // Modulo (remainder)
-        return right != 0 ? left % right : 0;
-    case TKN_LSHIFT:
-        return left << right;
-    case TKN_RSHIFT:
-        return left >> right;
-    case TKN_AND:
-        return left & right;
-    case TKN_OR:
-        return left | right;
-    case TKN_CARET: // xor
-        return left ^ right;
-    case TKN_LOGIC_AND:
-        return left && right;
-    case TKN_LOGIC_OR:
-        return left || right;
-    case TKN_EQ:
-        return left == right;
-    case TKN_NOTEQ:
-        return left != right;
-    case TKN_GT:
-        return left > right;
-    case TKN_GTEQ:
-        return left >= right;
-    case TKN_LT:
-        return left < right;
-    case TKN_LTEQ:
-        return left <= right;
-    default:
-        ftprint_err("Unexpected binary op (u64): %d\n", op);
-        assert(0);
-        break;
+#define DEF_EVAL_BINARY_LOGICAL_OP_FUNC(T)                                     \
+    static bool eval_binary_logical_op_##T(TokenKind op, T left, T right)      \
+    {                                                                          \
+        switch (op) {                                                          \
+        case TKN_LOGIC_AND:                                                    \
+            return left && right;                                              \
+        case TKN_LOGIC_OR:                                                     \
+            return left || right;                                              \
+        case TKN_EQ:                                                           \
+            return left == right;                                              \
+        case TKN_NOTEQ:                                                        \
+            return left != right;                                              \
+        case TKN_GT:                                                           \
+            return left > right;                                               \
+        case TKN_GTEQ:                                                         \
+            return left >= right;                                              \
+        case TKN_LT:                                                           \
+            return left < right;                                               \
+        case TKN_LTEQ:                                                         \
+            return left <= right;                                              \
+        default:                                                               \
+            NIBBLE_FATAL_EXIT("Unexpected binary logical op (##T): %d\n", op); \
+            return false;                                                      \
+        }                                                                      \
     }
 
-    return 0;
-}
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(f64)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(f32)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(s64)
+DEF_EVAL_BINARY_LOGICAL_OP_FUNC(u64)
 
-static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
+#define DEF_EVAL_BINARY_OP_INT_FUNC(T)                                 \
+    static T eval_binary_op_##T(TokenKind op, T left, T right)         \
+    {                                                                  \
+        switch (op) {                                                  \
+        case TKN_PLUS:                                                 \
+            return left + right;                                       \
+        case TKN_MINUS:                                                \
+            return left - right;                                       \
+        case TKN_ASTERISK:                                             \
+            return left * right;                                       \
+        case TKN_DIV:                                                  \
+            return right != 0 ? left / right : 0;                      \
+        case TKN_MOD:                                                  \
+            return right != 0 ? left % right : 0;                      \
+        case TKN_LSHIFT:                                               \
+            return left << right;                                      \
+        case TKN_RSHIFT:                                               \
+            return left >> right;                                      \
+        case TKN_AND:                                                  \
+            return left & right;                                       \
+        case TKN_OR:                                                   \
+            return left | right;                                       \
+        case TKN_CARET:                                                \
+            return left ^ right;                                       \
+        default:                                                       \
+            NIBBLE_FATAL_EXIT("Unexpected binary op (##T): %d\n", op); \
+            return 0;                                                  \
+        }                                                              \
+    }
+
+DEF_EVAL_BINARY_OP_INT_FUNC(s64)
+DEF_EVAL_BINARY_OP_INT_FUNC(u64)
+
+static void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
 {
     if (type_is_integer_like(type)) {
         ExprOperand left_eop = OP_FROM_CONST(type, left);
@@ -687,10 +665,67 @@ static void eval_const_binary_op(TokenKind op, ExprOperand* dst, Type* type, Sca
     }
     else {
         assert(type->kind == TYPE_FLOAT);
+        FloatKind fkind = type->as_float.kind;
+
+        dst->type = type;
+        dst->is_constexpr = true;
+        dst->is_imm = true;
+        dst->is_lvalue = false;
+
+        if (fkind == FLOAT_F64) {
+            dst->imm.as_float._f64 = eval_binary_op_f64(op, left.as_float._f64, right.as_float._f64);
+        }
+        else {
+            assert(fkind == FLOAT_F32);
+            dst->imm.as_float._f32 = eval_binary_op_f32(op, left.as_float._f32, right.as_float._f32);
+        }
     }
 }
 
-static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar val)
+static void eval_binary_logical_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
+{
+    bool result = false;
+
+    if (type_is_integer_like(type)) {
+        ExprOperand left_eop = OP_FROM_CONST(type, left);
+        ExprOperand right_eop = OP_FROM_CONST(type, right);
+        bool is_signed = type_is_signed(type);
+
+        // Compute the operation in the largest type available.
+        if (is_signed) {
+            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+
+            result = eval_binary_logical_op_s64(op, left_eop.imm.as_int._s64, right_eop.imm.as_int._s64);
+        }
+        else {
+            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
+            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
+
+            result = eval_binary_logical_op_u64(op, left_eop.imm.as_int._u64, right_eop.imm.as_int._u64);
+        }
+    }
+    else {
+        assert(type->kind == TYPE_FLOAT);
+        FloatKind fkind = type->as_float.kind;
+
+        if (fkind == FLOAT_F64) {
+            result = eval_binary_logical_op_f64(op, left.as_float._f64, right.as_float._f64);
+        }
+        else {
+            assert(fkind == FLOAT_F32);
+            result = eval_binary_logical_op_f32(op, left.as_float._f32, right.as_float._f32);
+        }
+    }
+
+    dst->type = builtin_types[BUILTIN_TYPE_BOOL].type;
+    dst->is_constexpr = true;
+    dst->is_imm = true;
+    dst->is_lvalue = false;
+    dst->imm.as_int._bool = result;
+}
+
+static void eval_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar val)
 {
     if (type_is_integer_like(type)) {
         ExprOperand val_eop = OP_FROM_CONST(type, val);
@@ -721,122 +756,57 @@ static void eval_const_unary_op(TokenKind op, ExprOperand* dst, Type* type, Scal
     }
     else {
         assert(type->kind == TYPE_FLOAT);
+        dst->type = type;
+        dst->is_constexpr = true;
+        dst->is_imm = true;
+        dst->is_lvalue = false;
+
+        if (type->as_float.kind == FLOAT_F64) {
+            dst->imm.as_float._f64 = eval_unary_op_f64(op, val.as_float._f64);
+        }
+        else {
+            assert(type->as_float.kind == FLOAT_F32);
+            dst->imm.as_float._f32 = eval_unary_op_f32(op, val.as_float._f32);
+        }
     }
 }
 
-static bool try_complete_aggregate_type(Resolver* resolver, Type* type);
-
-typedef struct SeenField {
-    Identifier* name;
-    ProgRange range;
-} SeenField;
-
-// NOTE: Returned object is a stretchy buffer allocated with temporary memory.
-// On error, NULL is returned.
-static TypeAggregateField* resolve_aggregate_fields(Resolver* resolver, List* in_fields)
+static void eval_unary_not(ExprOperand* dst, Type* type, Scalar val)
 {
-    TypeAggregateField* out_fields = array_create(&resolver->ctx->tmp_mem, TypeAggregateField, 16);
-    HMap seen_fields = hmap(3, &resolver->ctx->tmp_mem); // Used to check for duplicate field names
+    bool result = false;
 
-    List* head = in_fields;
+    if (type_is_integer_like(type)) {
+        ExprOperand val_eop = OP_FROM_CONST(type, val);
+        bool is_signed = type_is_signed(type);
 
-    for (List* it = head->next; it != head; it = it->next) {
-        AggregateField* field = list_entry(it, AggregateField, lnode);
-
-        // Check for duplicate field names.
-        if (field->name) {
-            SeenField* seen_field = hmap_get_obj(&seen_fields, PTR_UINT(field->name));
-
-            if (seen_field) {
-                assert(seen_field->name == field->name);
-                resolver_on_error(resolver, seen_field->range, "Duplicate member field name `%s`.", field->name->str);
-                return NULL;
-            }
-
-            seen_field = alloc_type(&resolver->ctx->tmp_mem, SeenField, false);
-            seen_field->name = field->name;
-            seen_field->range = field->range;
-
-            hmap_put(&seen_fields, PTR_UINT(field->name), PTR_UINT(seen_field));
+        // Compute the operation in the largest type available.
+        if (is_signed) {
+            cast_eop(&val_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+            result = !val_eop.imm.as_int._s64;
         }
-
-        // Resolve field's type.
-        Type* field_type = resolve_typespec(resolver, field->typespec);
-
-        if (!try_complete_aggregate_type(resolver, field_type)) {
-            return NULL;
+        else {
+            cast_eop(&val_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
+            result = !val_eop.imm.as_int._u64;
         }
+    }
+    else {
+        assert(type->kind == TYPE_FLOAT);
+        FloatKind fkind = type->as_float.kind;
 
-        if (type_has_incomplete_array(field_type)) {
-            resolver_on_error(resolver, field->range, "Member field has an array type of unknown size");
-            return NULL;
+        if (fkind == FLOAT_F64) {
+            result = !val.as_float._f64;
         }
-
-        if (field_type->size == 0) {
-            resolver_on_error(resolver, field->range, "Member field has zero size");
-            return NULL;
+        else {
+            assert(fkind == FLOAT_F32);
+            result = !val.as_float._f32;
         }
-
-        TypeAggregateField field_type_info = {.type = field_type, .name = field->name};
-
-        array_push(out_fields, field_type_info);
     }
 
-    return out_fields;
-}
-
-static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregate* decl_aggregate)
-{
-    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
-
-    // Resolve each parsed aggregate field into a field type.
-    TypeAggregateField* field_types = resolve_aggregate_fields(resolver, &decl_aggregate->fields);
-
-    if (!field_types) {
-        return false;
-    }
-
-    // Call the appropriate procedure to fill in the aggregate type's size and alignment.
-    if (decl_aggregate->super.kind == CST_DeclStruct) {
-        complete_struct_type(&resolver->ctx->ast_mem, type, array_len(field_types), field_types);
-    }
-    else if (decl_aggregate->super.kind == CST_DeclUnion) {
-        complete_union_type(&resolver->ctx->ast_mem, type, array_len(field_types), field_types);
-    }
-
-    assert(type->kind != TYPE_INCOMPLETE_AGGREGATE);
-
-    allocator_restore_state(mem_state);
-
-    return true;
-}
-
-static bool try_complete_aggregate_type(Resolver* resolver, Type* type)
-{
-    if (type->kind != TYPE_INCOMPLETE_AGGREGATE) {
-        return true;
-    }
-
-    Symbol* sym = type->as_incomplete.sym;
-
-    if (type->as_incomplete.is_completing) {
-        resolver_on_error(resolver, sym->decl->range, "Cannot resolve type `%s` due to cyclic dependency", sym->name->str);
-        return false;
-    }
-
-    assert(sym->decl->kind == CST_DeclStruct || sym->decl->kind == CST_DeclUnion);
-
-    bool success;
-    DeclAggregate* decl_aggregate = (DeclAggregate*)sym->decl;
-
-    ModuleState mod_state = enter_module(resolver, sym->home);
-    {
-        type->as_incomplete.is_completing = true; // Mark as `completing` to detect dependency cycles.
-        success = complete_aggregate_type(resolver, type, decl_aggregate);
-    }
-    exit_module(resolver, mod_state);
-
-    return success;
+    dst->type = builtin_types[BUILTIN_TYPE_BOOL].type;
+    dst->is_constexpr = true;
+    dst->is_imm = true;
+    dst->is_lvalue = false;
+    dst->imm.as_int._bool = result;
 }
 
 static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
@@ -845,7 +815,10 @@ static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
     Type* type = types[0];
 
     for (u32 i = 1; i < num_types; i += 1) {
-        if (value > type->as_integer.max) {
+        assert(type->kind == TYPE_INTEGER);
+        u64 max = int_kind_max[type->as_integer.kind];
+
+        if (value > max) {
             type = types[i];
         }
         else {
@@ -853,7 +826,7 @@ static Type* get_int_lit_type(u64 value, Type** types, u32 num_types)
         }
     }
 
-    return (value > type->as_integer.max) ? NULL : type;
+    return (value > int_kind_max[type->as_integer.kind]) ? NULL : type;
 }
 
 static bool resolve_expr_int(Resolver* resolver, Expr* expr)
@@ -907,7 +880,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         case TKN_INT_SUFFIX_LL: {
             type = builtin_types[BUILTIN_TYPE_LLONG].type;
 
-            if (value > type->as_integer.max) {
+            if (value > int_kind_max[type->as_integer.kind]) {
                 type = NULL;
             }
             break;
@@ -915,7 +888,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         case TKN_INT_SUFFIX_ULL: {
             type = builtin_types[BUILTIN_TYPE_ULLONG].type;
 
-            if (value > type->as_integer.max) {
+            if (value > int_kind_max[type->as_integer.kind]) {
                 type = NULL;
             }
             break;
@@ -971,7 +944,7 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         case TKN_INT_SUFFIX_ULL: {
             type = builtin_types[BUILTIN_TYPE_ULLONG].type;
 
-            if (value > type->as_integer.max) {
+            if (value > int_kind_max[type->as_integer.kind]) {
                 type = NULL;
             }
             break;
@@ -993,6 +966,19 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     expr->is_imm = true;
     expr->is_lvalue = false;
     expr->imm.as_int._u64 = value;
+
+    return true;
+}
+
+static bool resolve_expr_float(Resolver* resolver, ExprFloat* expr)
+{
+    (void)resolver;
+
+    expr->super.type = (expr->fkind == FLOAT_F64) ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
+    expr->super.is_constexpr = true;
+    expr->super.is_imm = true;
+    expr->super.is_lvalue = false;
+    expr->super.imm.as_float = expr->value;
 
     return true;
 }
@@ -1208,10 +1194,27 @@ static void resolve_binary_eop(TokenKind op, ExprOperand* dst, ExprOperand* left
 
     if (left->is_constexpr && right->is_constexpr) {
         assert(left->is_imm && right->is_imm);
-        eval_const_binary_op(op, dst, type, left->imm, right->imm);
+        eval_binary_op(op, dst, type, left->imm, right->imm);
     }
     else {
         dst->type = type;
+        dst->is_constexpr = false;
+        dst->is_imm = false;
+        dst->is_lvalue = false;
+    }
+}
+
+static void resolve_binary_logical_eop(TokenKind op, ExprOperand* dst, ExprOperand* left, ExprOperand* right)
+{
+    Type* common_type = convert_arith_eops(left, right);
+
+    if (left->is_constexpr && right->is_constexpr) {
+        assert(left->is_imm && right->is_imm);
+        eval_binary_logical_op(op, dst, common_type, left->imm, right->imm);
+        assert(dst->type == builtin_types[BUILTIN_TYPE_BOOL].type);
+    }
+    else {
+        dst->type = builtin_types[BUILTIN_TYPE_BOOL].type;
         dst->is_constexpr = false;
         dst->is_imm = false;
         dst->is_lvalue = false;
@@ -1340,7 +1343,6 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         break;
     }
     case TKN_DIV:
-    case TKN_MOD:
     case TKN_ASTERISK:
         if (!type_is_arithmetic(left_op.type)) {
             resolver_on_error(resolver, ebinary->left->range,
@@ -1353,6 +1355,22 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             resolver_on_error(resolver, ebinary->right->range,
                               "Right operand of binary operator `%s` must be an arithmetic type, not type `%s`",
                               token_kind_names[ebinary->op], type_name(right_op.type));
+            return false;
+        }
+
+        resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
+
+        break;
+    case TKN_MOD:
+        if (!type_is_integer_like(left_op.type)) {
+            resolver_on_error(resolver, ebinary->left->range, "Left operand of operator `%%` must be an integer type, not type `%s`.",
+                              type_name(left_op.type));
+            return false;
+        }
+
+        if (!type_is_integer_like(right_op.type)) {
+            resolver_on_error(resolver, ebinary->right->range,
+                              "Right operand of operator `%%` must be an integer type, not type `%s`.", type_name(right_op.type));
             return false;
         }
 
@@ -1400,7 +1418,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
 
         if (left_op.is_constexpr && right_op.is_constexpr) {
             assert(left_op.is_imm && right_op.is_imm);
-            eval_const_binary_op(ebinary->op, &dst_op, left_op.type, left_op.imm, right_op.imm);
+            eval_binary_op(ebinary->op, &dst_op, left_op.type, left_op.imm, right_op.imm);
         }
         else {
             dst_op.type = left_op.type;
@@ -1435,10 +1453,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         bool right_is_ptr = (right_op.type->kind == TYPE_PTR);
 
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
-            resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
-
-            // NOTE: resolve_binary_eop will cast to the common type, so cast to bool.
-            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+            resolve_binary_logical_eop(ebinary->op, &dst_op, &left_op, &right_op);
         }
         else if (left_is_ptr && right_is_ptr) {
             Type* common_type = convert_ptr_eops(&left_op, &right_op);
@@ -1452,12 +1467,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 u64 left_u64 = left_op.imm.as_int._u64;
                 u64 right_u64 = right_op.imm.as_int._u64;
 
-                dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
                 dst_op.is_constexpr = true;
                 dst_op.is_imm = true;
-                dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
-
-                cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+                dst_op.imm.as_int._bool = eval_binary_logical_op_u64(ebinary->op, left_u64, right_u64);
             }
             else {
                 // NOTE: The only constexpr ptr that is NOT an immediate, is the addresses of a global variable.
@@ -1483,10 +1496,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
         bool right_is_ptr = (right_op.type->kind == TYPE_PTR);
 
         if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
-            resolve_binary_eop(ebinary->op, &dst_op, &left_op, &right_op);
-
-            // NOTE: resolve_binary_eop will cast to the common type, so cast to bool.
-            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+            resolve_binary_logical_eop(ebinary->op, &dst_op, &left_op, &right_op);
         }
         else if (left_is_ptr && right_is_ptr) {
             Type* common_type = convert_ptr_eops(&left_op, &right_op);
@@ -1500,12 +1510,10 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
                 u64 left_u64 = left_op.imm.as_int._u64;
                 u64 right_u64 = right_op.imm.as_int._u64;
 
-                dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
+                dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
                 dst_op.is_constexpr = true;
                 dst_op.is_imm = true;
-                dst_op.imm.as_int._u64 = eval_binary_op_u64(ebinary->op, left_u64, right_u64);
-
-                cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+                dst_op.imm.as_int._bool = eval_binary_logical_op_u64(ebinary->op, left_u64, right_u64);
             }
             else {
                 // NOTE: The only constexpr ptr that is NOT an immediate, is the addresses of a global variable.
@@ -1548,7 +1556,7 @@ static bool resolve_expr_binary(Resolver* resolver, Expr* expr)
             dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
             dst_op.is_constexpr = true;
             dst_op.is_imm = true;
-            dst_op.imm.as_int._bool = ebinary->op == TKN_LOGIC_AND ? (left_bool && right_bool) : (left_bool || right_bool);
+            dst_op.imm.as_int._bool = eval_binary_logical_op_u64(ebinary->op, (u64)left_bool, (u64)right_bool);
         }
         else if (left_op.is_constexpr && (left_op.type->kind == TYPE_PTR) && right_op.is_constexpr &&
                  (right_op.type->kind == TYPE_PTR)) {
@@ -1609,7 +1617,7 @@ static bool resolve_expr_ternary(Resolver* resolver, ExprTernary* expr)
 
     ExprOperand then_op = OP_FROM_EXPR(expr->then_expr);
     ExprOperand else_op = OP_FROM_EXPR(expr->else_expr);
-    ExprOperand dst_op  = {0}; // Not an lvalue.
+    ExprOperand dst_op = {0}; // Not an lvalue.
 
     if (type_is_arithmetic(then_op.type) && type_is_arithmetic(else_op.type)) {
         dst_op.type = convert_arith_eops(&then_op, &else_op);
@@ -1667,7 +1675,7 @@ static void resolve_unary_eop(TokenKind op, ExprOperand* dst, ExprOperand* src)
     promote_int_eops(src);
 
     if (src->is_constexpr && src->is_imm) {
-        eval_const_unary_op(op, dst, src->type, src->imm);
+        eval_unary_op(op, dst, src->type, src->imm);
     }
     else {
         dst->type = src->type;
@@ -1713,15 +1721,7 @@ static bool resolve_expr_unary(Resolver* resolver, Expr* expr)
         }
 
         if (src_op.is_constexpr && src_op.is_imm) {
-            assert(type_is_integer_like(src_op.type));
-            u64 src_u64 = src_op.imm.as_int._u64;
-
-            dst_op.type = builtin_types[BUILTIN_TYPE_U64].type;
-            dst_op.is_constexpr = true;
-            dst_op.is_imm = true;
-            dst_op.imm.as_int._u64 = eval_unary_op_u64(eunary->op, src_u64);
-
-            cast_eop(&dst_op, builtin_types[BUILTIN_TYPE_BOOL].type, false);
+            eval_unary_not(&dst_op, src_op.type, src_op.imm);
         }
         else {
             dst_op.type = builtin_types[BUILTIN_TYPE_BOOL].type;
@@ -1968,76 +1968,6 @@ static bool resolve_expr_index(Resolver* resolver, Expr* expr)
     expr->is_imm = false;
 
     return true;
-}
-
-static Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident)
-{
-    //
-    // Tries to lookup a symbol for an identifier in the form <module_namespace>::...::<identifier_name>
-    //
-
-    List* head = &ns_ident->idents;
-    List* it = head->next;
-
-    IdentNode* inode = list_entry(it, IdentNode, lnode);
-    Symbol* sym = resolve_name(resolver, inode->ident);
-
-    it = it->next;
-
-    while (it != head) {
-        if (!sym) {
-            resolver_on_error(resolver, ns_ident->range, "Unknown namespace `%s`.", inode->ident->str);
-            return NULL;
-        }
-
-        inode = list_entry(it, IdentNode, lnode);
-
-        if (sym->kind == SYMBOL_MODULE) {
-            StmtImport* stmt = (StmtImport*)sym->as_mod.stmt;
-            Identifier* sym_name = get_import_sym_name(stmt, inode->ident);
-
-            if (!sym_name) {
-                resolver_on_error(resolver, ns_ident->range,
-                                  "Identifier `%s` is not among the imported symbols in module namespace `%s`", inode->ident->str,
-                                  sym->name->str);
-                return NULL;
-            }
-
-            // Enter the namespace's module, and then try to lookup the identifier with its native name.
-            ModuleState mod_state = enter_module(resolver, sym->as_mod.mod);
-            sym = resolve_export_name(resolver, sym_name);
-            exit_module(resolver, mod_state);
-        }
-        else if ((sym->kind == SYMBOL_TYPE) && (sym->decl->kind == CST_DeclEnum)) {
-            Symbol** enum_items = sym->as_enum.items;
-            size_t num_enum_items = sym->as_enum.num_items;
-            Symbol* enum_item_sym = NULL;
-
-            // Find enum item symbol.
-            for (size_t ii = 0; ii < num_enum_items; ii++) {
-                if (enum_items[ii]->name == inode->ident) {
-                    enum_item_sym = enum_items[ii];
-                    break;
-                }
-            }
-
-            if (!enum_item_sym) {
-                resolver_on_error(resolver, ns_ident->range, "Identifier `%s` is not a valid enum item of `%s`.", inode->ident->str,
-                                  type_name(sym->type));
-                return NULL;
-            }
-
-            sym = enum_item_sym;
-        }
-        else {
-            resolver_on_error(resolver, ns_ident->range, "Symbol `%s` is not a valid namespace.", inode->ident->str);
-            return NULL;
-        }
-
-        it = it->next;
-    }
-
-    return sym;
 }
 
 static bool resolve_expr_ident(Resolver* resolver, Expr* expr)
@@ -2543,6 +2473,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
     switch (expr->kind) {
     case CST_ExprInt:
         return resolve_expr_int(resolver, expr);
+    case CST_ExprFloat:
+        return resolve_expr_float(resolver, (ExprFloat*)expr);
     case CST_ExprBoolLit:
         return resolve_expr_bool_lit(resolver, (ExprBoolLit*)expr);
     case CST_ExprNullLit:
@@ -2580,1416 +2512,10 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
     case CST_ExprLength:
         return resolve_expr_length(resolver, (ExprLength*)expr);
     default:
-        ftprint_err("Unsupported expr kind `%d` while resolving\n", expr->kind);
-        assert(0);
+        NIBBLE_FATAL_EXIT("Unsupported expr kind `%d` while resolving\n", expr->kind);
         break;
     }
 
     return false;
 }
 
-static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
-{
-    if (!typespec)
-        return builtin_types[BUILTIN_TYPE_VOID].type;
-
-    switch (typespec->kind) {
-    case CST_TypeSpecIdent: {
-        TypeSpecIdent* ts = (TypeSpecIdent*)typespec;
-        Symbol* ident_sym = lookup_ident(resolver, &ts->ns_ident);
-
-        if (!ident_sym) {
-            resolver_on_error(resolver, typespec->range, "Undefined type `%s`",
-                              ftprint_ns_ident(&resolver->ctx->tmp_mem, &ts->ns_ident));
-            return NULL;
-        }
-
-        if (ident_sym->kind != SYMBOL_TYPE) {
-            resolver_on_error(resolver, typespec->range, "Identifier `%s` is not a type",
-                              ftprint_ns_ident(&resolver->ctx->tmp_mem, &ts->ns_ident));
-            return NULL;
-        }
-
-        return ident_sym->type;
-    }
-    case CST_TypeSpecTypeof: {
-        TypeSpecTypeof* ts = (TypeSpecTypeof*)typespec;
-
-        if (!resolve_expr(resolver, ts->expr, NULL))
-            return NULL;
-
-        return ts->expr->type;
-    }
-    case CST_TypeSpecRetType: {
-        TypeSpecRetType* ts = (TypeSpecRetType*)typespec;
-
-        Type* proc_type = NULL;
-
-        // Get proc type from expression.
-        if (ts->proc_expr) {
-            if (!resolve_expr(resolver, ts->proc_expr, NULL)) {
-                return NULL;
-            }
-
-            proc_type = ts->proc_expr->type;
-
-            if (proc_type->kind != TYPE_PROC) {
-                resolver_on_error(resolver, ts->proc_expr->range, "Expected expression of procedure type, but found type `%s`.",
-                                  type_name(proc_type));
-                return NULL;
-            }
-        }
-        // Get proc type from current procedure
-        else {
-            Symbol* curr_proc = resolver->state.proc;
-
-            if (!curr_proc) {
-                resolver_on_error(resolver, typespec->range, "Cannot use #ret_type (without an argument) outside of a procedure.");
-                return NULL;
-            }
-
-            assert(curr_proc->kind == SYMBOL_PROC);
-
-            proc_type = curr_proc->type;
-        }
-
-        return proc_type->as_proc.ret;
-    }
-    case CST_TypeSpecPtr: {
-        TypeSpecPtr* ts = (TypeSpecPtr*)typespec;
-        TypeSpec* base_ts = ts->base;
-        Type* base_type = resolve_typespec(resolver, base_ts);
-
-        if (!base_type)
-            return NULL;
-
-        return type_ptr(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.ptrs, base_type);
-    }
-    case CST_TypeSpecArray: {
-        TypeSpecArray* ts = (TypeSpecArray*)typespec;
-        Type* base_type = resolve_typespec(resolver, ts->base);
-
-        if (!base_type)
-            return NULL;
-
-        if (base_type->size == 0) {
-            resolver_on_error(resolver, ts->base->range, "Array element type must have non-zero size");
-            return NULL;
-        }
-
-        // Array slice type.
-        if (!ts->len && !ts->infer_len) {
-            return type_slice(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.slices, &resolver->ctx->type_cache.ptrs, base_type);
-        }
-
-        // Actual array type.
-        size_t len = 0;
-
-        if (ts->len) {
-            assert(!ts->infer_len);
-
-            if (!resolve_expr(resolver, ts->len, NULL))
-                return NULL;
-
-            if (!(ts->len->is_constexpr && ts->len->is_imm)) {
-                resolver_on_error(resolver, ts->len->range, "Array length must be a compile-time constant");
-                return NULL;
-            }
-
-            if (ts->len->type->kind != TYPE_INTEGER) {
-                resolver_on_error(resolver, ts->len->range, "Array length must be an integer");
-                return NULL;
-            }
-
-            len = (size_t)(ts->len->imm.as_int._u64);
-
-            if (len == 0) {
-                resolver_on_error(resolver, ts->len->range, "Array length must be a positive, non-zero integer");
-                return NULL;
-            }
-        }
-
-        return type_array(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.arrays, base_type, len);
-    }
-    case CST_TypeSpecProc: {
-        TypeSpecProc* ts = (TypeSpecProc*)typespec;
-
-        AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
-        Type** params = array_create(&resolver->ctx->tmp_mem, Type*, ts->num_params);
-        List* head = &ts->params;
-
-        for (List* it = head->next; it != head; it = it->next) {
-            ProcParam* proc_param = list_entry(it, ProcParam, lnode);
-            Type* param = resolve_typespec(resolver, proc_param->typespec);
-
-            if (!param) {
-                allocator_restore_state(mem_state);
-                return NULL;
-            }
-
-            if (type_is_incomplete_array(param)) {
-                resolver_on_error(resolver, proc_param->range, "Procedure parameter cannot be an array with an inferred length.");
-                return false;
-            }
-
-            if (!try_complete_aggregate_type(resolver, param)) {
-                allocator_restore_state(mem_state);
-                return NULL;
-            }
-
-            if (param->size == 0) {
-                resolver_on_error(resolver, proc_param->range, "Invalid procedure paramater type `%s` of zero size.",
-                                  type_name(param));
-                allocator_restore_state(mem_state);
-                return NULL;
-            }
-
-            if (proc_param->is_variadic) {
-                param = type_slice(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.slices, &resolver->ctx->type_cache.ptrs, param);
-            }
-
-            array_push(params, param);
-        }
-        assert(array_len(params) == ts->num_params);
-
-        Type* ret = builtin_types[BUILTIN_TYPE_VOID].type;
-
-        if (ts->ret) {
-            ret = resolve_typespec(resolver, ts->ret);
-
-            if (!ret) {
-                allocator_restore_state(mem_state);
-                return NULL;
-            }
-
-            if (type_is_incomplete_array(ret)) {
-                assert(ts->ret);
-                resolver_on_error(resolver, ts->ret->range, "Procedure return type cannot be an array with an inferred length.");
-                allocator_restore_state(mem_state);
-                return NULL;
-            }
-
-            if (ret->size == 0) {
-                resolver_on_error(resolver, ts->ret->range, "Invalid procedure return type `%s` of zero size.", type_name(ret));
-                return NULL;
-            }
-        }
-
-        Type* type =
-            type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret, ts->is_variadic);
-        allocator_restore_state(mem_state);
-
-        return type;
-    }
-    case CST_TypeSpecStruct: { // Anonymous struct (aka tuples)
-        TypeSpecStruct* ts = (TypeSpecStruct*)typespec;
-
-        AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
-        TypeAggregateField* fields = resolve_aggregate_fields(resolver, &ts->fields);
-
-        if (!fields) {
-            return NULL;
-        }
-
-        Type* type =
-            type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.structs, TYPE_STRUCT, array_len(fields), fields);
-
-        assert(type->kind == TYPE_STRUCT);
-        allocator_restore_state(mem_state);
-
-        return type;
-    }
-    case CST_TypeSpecUnion: { // Anonymous union
-        TypeSpecUnion* ts = (TypeSpecUnion*)typespec;
-
-        AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
-        TypeAggregateField* fields = resolve_aggregate_fields(resolver, &ts->fields);
-
-        if (!fields) {
-            return NULL;
-        }
-
-        Type* type =
-            type_anon_aggregate(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.unions, TYPE_UNION, array_len(fields), fields);
-
-        assert(type->kind == TYPE_UNION);
-        allocator_restore_state(mem_state);
-
-        return type;
-    }
-    default:
-        ftprint_err("Unsupported typespec kind `%d` in resolution\n", typespec->kind);
-        assert(0);
-        break;
-    }
-
-    return NULL;
-}
-
-static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
-{
-    assert(sym->kind == SYMBOL_VAR);
-
-    DeclVar* decl = (DeclVar*)sym->decl;
-    bool global = !sym->is_local;
-    TypeSpec* typespec = decl->typespec;
-    Expr* expr = decl->init;
-    Type* type = NULL;
-
-    if (typespec) {
-        Type* declared_type = resolve_typespec(resolver, typespec);
-
-        if (!declared_type)
-            return false;
-
-        if (declared_type == builtin_types[BUILTIN_TYPE_VOID].type) {
-            resolver_on_error(resolver, typespec->range, "Cannot declare a variable of type `%s`.", type_name(declared_type));
-            return false;
-        }
-
-        if (expr) {
-            if (!resolve_expr(resolver, expr, declared_type))
-                return false;
-
-            assert(!type_has_incomplete_array(expr->type));
-
-            ExprOperand right_eop = OP_FROM_EXPR(expr);
-
-            // If the declared type contains an incomplete array type, try to use the
-            // rhs type if the types are compatible.
-            if (type_has_incomplete_array(declared_type)) {
-                if (!types_are_compatible(declared_type, right_eop.type)) {
-                    resolver_on_error(resolver, expr->range,
-                                      "Incomplete variable type `%s` is not compatible with expression of type `%s`.",
-                                      type_name(declared_type), type_name(right_eop.type));
-                    return false;
-                }
-
-                declared_type = right_eop.type;
-            }
-            else {
-                CastResult r = convert_eop(&right_eop, declared_type, true);
-
-                if (!r.success) {
-                    resolver_cast_error(resolver, r, sym->decl->range, "Invalid variable declaration", right_eop.type, declared_type);
-                    return false;
-                }
-            }
-
-            if (global && !right_eop.is_constexpr) {
-                resolver_on_error(resolver, expr->range, "Global variables must be initialized with a constant expression");
-                return false;
-            }
-
-            decl->init = try_wrap_cast_expr(resolver, &right_eop, decl->init);
-            type = declared_type;
-        }
-        else {
-            if (type_has_incomplete_array(declared_type)) {
-                resolver_on_error(resolver, typespec->range, "Cannot infer the number of elements in array type specification");
-                return false;
-            }
-
-            type = declared_type;
-        }
-    }
-    else {
-        assert(expr);
-
-        if (!resolve_expr(resolver, expr, NULL))
-            return false;
-
-        if (global && !expr->is_constexpr) {
-            resolver_on_error(resolver, expr->range, "Global variables must be initialized with a constant expression");
-            return false;
-        }
-
-        if (type_has_incomplete_array(expr->type)) {
-            resolver_on_error(resolver, expr->range, "Expression type `%s` contains array of unknown size.", type_name(expr->type));
-            return false;
-        }
-
-        type = expr->type;
-    }
-
-    if (!try_complete_aggregate_type(resolver, type)) {
-        return false;
-    }
-
-    if (type->size == 0) {
-        resolver_on_error(resolver, expr->range, "Cannot declare a variable of zero size.");
-        return false;
-    }
-
-    sym->type = type;
-    sym->status = SYMBOL_STATUS_RESOLVED;
-
-    return true;
-}
-
-static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
-{
-    DeclTypedef* decl = (DeclTypedef*)sym->decl;
-    Type* type = resolve_typespec(resolver, decl->typespec);
-
-    if (!type) {
-        return false;
-    }
-
-    sym->type = type;
-    sym->status = SYMBOL_STATUS_RESOLVED;
-
-    return true;
-}
-
-static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
-{
-    assert(sym->kind == SYMBOL_TYPE);
-    DeclEnum* decl_enum = (DeclEnum*)sym->decl;
-    Type* base_type;
-
-    if (decl_enum->typespec) {
-        base_type = resolve_typespec(resolver, decl_enum->typespec);
-
-        if (!base_type) {
-            return false;
-        }
-    }
-    else {
-        base_type = builtin_types[BUILTIN_TYPE_INT].type;
-    }
-
-    if (base_type->kind != TYPE_INTEGER) {
-        assert(decl_enum->typespec);
-        resolver_on_error(resolver, decl_enum->typespec->range, "Enum must be an integer type, but found `%s`.", type_name(base_type));
-        return false;
-    }
-
-    Type* enum_type = type_enum(&resolver->ctx->ast_mem, base_type, decl_enum);
-
-    // Resolve enum items.
-    Symbol** item_syms = alloc_array(&resolver->ctx->ast_mem, Symbol*, decl_enum->num_items, false);
-    Scalar prev_enum_val = {0};
-
-    List* head = &decl_enum->items;
-    List* it = head->next;
-    size_t i = 0;
-
-    while (it != head) {
-        DeclEnumItem* enum_item = list_entry(it, DeclEnumItem, lnode);
-        Scalar enum_val = {0};
-
-        if (enum_item->value) {
-            if (!resolve_expr(resolver, enum_item->value, enum_type)) {
-                return false;
-            }
-
-            ExprOperand value_eop = OP_FROM_EXPR(enum_item->value);
-
-            if (!value_eop.is_constexpr) {
-                resolver_on_error(resolver, enum_item->value->range, "Value for enum item `%s` must be a constant expression",
-                                  enum_item->super.name->str);
-                return false;
-            }
-
-            if (!type_is_integer_like(value_eop.type)) {
-                resolver_on_error(resolver, enum_item->value->range, "Enum item's value must be of an integer type");
-                return false;
-            }
-
-            CastResult r = convert_eop(&value_eop, enum_type, true);
-
-            if (!r.success) {
-                resolver_cast_error(resolver, r, enum_item->super.range, "Invalid enum item declaration", value_eop.type, enum_type);
-                return false;
-            }
-
-            enum_item->value = try_wrap_cast_expr(resolver, &value_eop, enum_item->value);
-            enum_val = value_eop.imm;
-        }
-        else if (i > 0) { // Has a previous value
-            Scalar one_imm = {.as_int._u64 = 1};
-            ExprOperand item_op = {0};
-
-            eval_const_binary_op(TKN_PLUS, &item_op, enum_type, prev_enum_val, one_imm);
-            enum_val = item_op.imm;
-        }
-
-        Symbol* enum_sym = new_symbol_decl(&resolver->ctx->ast_mem, (Decl*)enum_item, sym->home);
-        enum_sym->type = enum_type;
-        enum_sym->status = SYMBOL_STATUS_RESOLVED;
-        enum_sym->as_const.imm = enum_val;
-        item_syms[i] = enum_sym;
-
-        prev_enum_val = enum_val;
-        it = it->next;
-        i += 1;
-    }
-
-    sym->type = enum_type;
-    sym->status = SYMBOL_STATUS_RESOLVED;
-    sym->as_enum.items = item_syms;
-    sym->as_enum.num_items = decl_enum->num_items;
-
-    return true;
-}
-
-static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
-{
-    assert(sym->kind == SYMBOL_CONST);
-
-    DeclConst* decl = (DeclConst*)sym->decl;
-    TypeSpec* typespec = decl->typespec;
-    Expr* init = decl->init;
-
-    if (!resolve_expr(resolver, init, NULL))
-        return false;
-
-    if (!init->is_constexpr) {
-        resolver_on_error(resolver, init->range, "Value for const decl `%s` must be a constant expression", decl->super.name->str);
-        return false;
-    }
-
-    if (!type_is_scalar(init->type)) {
-        resolver_on_error(resolver, init->range, "Constant expression must be of a scalar type");
-        return false;
-    }
-
-    Type* type = NULL;
-
-    if (typespec) {
-        Type* declared_type = resolve_typespec(resolver, typespec);
-
-        if (!declared_type)
-            return false;
-
-        ExprOperand init_eop = OP_FROM_EXPR(init);
-
-        CastResult r = convert_eop(&init_eop, declared_type, true);
-
-        if (!r.success) {
-            resolver_cast_error(resolver, r, typespec->range, "Invalid const declaration", init_eop.type, declared_type);
-            return false;
-        }
-
-        decl->init = try_wrap_cast_expr(resolver, &init_eop, decl->init);
-
-        type = declared_type;
-    }
-    else {
-        type = init->type;
-    }
-
-    assert(type);
-
-    sym->type = type;
-    sym->status = SYMBOL_STATUS_RESOLVED;
-    sym->as_const.imm = decl->init->imm;
-
-    return true;
-}
-
-static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
-{
-    DeclVar* decl = (DeclVar*)sym->decl;
-    TypeSpec* typespec = decl->typespec;
-
-    assert(typespec);
-
-    Type* type = resolve_typespec(resolver, typespec);
-
-    if (!type) {
-        return false;
-    }
-
-    if (type_is_incomplete_array(type)) {
-        resolver_on_error(resolver, decl->super.range, "Procedure parameter cannot be an array with an inferred length.");
-        return false;
-    }
-
-    if (!try_complete_aggregate_type(resolver, type)) {
-        return false;
-    }
-
-    if (type->size == 0) {
-        resolver_on_error(resolver, decl->super.range, "Cannot declare a parameter of zero size.");
-        return false;
-    }
-
-    if (decl->flags & DECL_VAR_IS_VARIADIC) {
-        type = type_slice(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.slices, &resolver->ctx->type_cache.ptrs, type);
-    }
-
-    sym->type = type;
-    sym->status = SYMBOL_STATUS_RESOLVED;
-
-    return true;
-}
-
-static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
-{
-    DeclProc* decl = (DeclProc*)sym->decl;
-
-    bool is_variadic = decl->is_variadic;
-    bool is_incomplete = decl->is_incomplete;
-    bool is_foreign = decl->super.flags & DECL_IS_FOREIGN;
-    bool is_intrinsic = decl->super.name->kind == IDENTIFIER_INTRINSIC;
-
-    if (is_foreign && !is_incomplete) {
-        // TODO: Need a ProgRange for just the procedure header.
-        resolver_on_error(resolver, decl->super.range, "Foreign declaration cannot have a body");
-        return false;
-    }
-
-    if (is_incomplete && !(is_foreign || is_intrinsic)) {
-        resolver_on_error(resolver, decl->super.range, "Procedure `%s` must have a body", decl->super.name->str);
-        return false;
-    }
-
-    decl->scope = push_scope(resolver, decl->num_params + decl->num_decls);
-
-    AllocatorState mem_state = allocator_get_state(&resolver->ctx->tmp_mem);
-    Type** params = array_create(&resolver->ctx->tmp_mem, Type*, 16);
-    List* head = &decl->params;
-
-    for (List* it = head->next; it != head; it = it->next) {
-        Decl* proc_param = list_entry(it, Decl, lnode);
-        Symbol* param_sym = add_unresolved_symbol(&resolver->ctx->ast_mem, decl->scope, sym->home, proc_param);
-
-        assert(param_sym);
-
-        if (!resolve_proc_param(resolver, param_sym)) {
-            allocator_restore_state(mem_state);
-            return false;
-        }
-
-        array_push(params, param_sym->type);
-    }
-
-    pop_scope(resolver);
-    assert(array_len(params) == decl->num_params);
-
-    Type* ret_type = builtin_types[BUILTIN_TYPE_VOID].type;
-
-    if (decl->ret) {
-        ret_type = resolve_typespec(resolver, decl->ret);
-
-        if (!ret_type) {
-            return false;
-        }
-
-        if (!try_complete_aggregate_type(resolver, ret_type)) {
-            return false;
-        }
-
-        if (type_is_incomplete_array(ret_type)) {
-            resolver_on_error(resolver, decl->ret->range, "Procedure return type cannot be an array with an inferred length.");
-            return false;
-        }
-
-        if (ret_type->size == 0) {
-            resolver_on_error(resolver, decl->super.range, "Invalid procedure return type `%s` of zero size.", type_name(ret_type));
-            return false;
-        }
-    }
-
-    sym->type = type_proc(&resolver->ctx->ast_mem, &resolver->ctx->type_cache.procs, array_len(params), params, ret_type, is_variadic);
-    sym->status = SYMBOL_STATUS_RESOLVED;
-
-    allocator_restore_state(mem_state);
-    return true;
-}
-
-static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
-{
-    assert(sym->kind == SYMBOL_PROC);
-    DeclProc* dproc = (DeclProc*)(sym->decl);
-
-    if (dproc->is_incomplete) {
-        return true;
-    }
-
-    ModuleState mod_state = enter_proc(resolver, sym);
-
-    Type* ret_type = sym->type->as_proc.ret;
-    unsigned r = resolve_stmt_block_body(resolver, &dproc->stmts, ret_type, 0);
-    bool returns = r & RESOLVE_STMT_RETURNS;
-    bool success = r & RESOLVE_STMT_SUCCESS;
-
-    assert(!success || !(r & RESOLVE_STMT_LOOP_EXITS));
-
-    dproc->returns = returns;
-
-    if ((ret_type != builtin_types[BUILTIN_TYPE_VOID].type) && !returns && success) {
-        resolver_on_error(resolver, dproc->super.range, "Not all code paths in procedure `%s` return a value", dproc->super.name->str);
-        return false;
-    }
-
-    exit_proc(resolver, mod_state);
-
-    return success;
-}
-
-static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* ret_type, unsigned flags)
-{
-    unsigned ret_success = RESOLVE_STMT_SUCCESS;
-    List* head = stmts;
-
-    for (List* it = head->next; it != head; it = it->next) {
-        Stmt* child_stmt = list_entry(it, Stmt, lnode);
-
-        // Check for statement after return.
-        if (ret_success & RESOLVE_STMT_RETURNS) {
-            resolver_on_error(resolver, child_stmt->range, "Statement will never execute because all previous control paths return");
-
-            ret_success &= ~RESOLVE_STMT_SUCCESS;
-            break;
-        }
-
-        // Check for statement after break/continue
-        if (ret_success & RESOLVE_STMT_LOOP_EXITS) {
-            resolver_on_error(resolver, child_stmt->range,
-                              "Statement will never execute because all previous control paths break or continue the loop");
-
-            ret_success &= ~RESOLVE_STMT_SUCCESS;
-            break;
-        }
-
-        unsigned r = resolve_stmt(resolver, child_stmt, ret_type, flags);
-
-        // NOTE: Track whether any statement in the block returns from the parent procedure.
-        ret_success = (r & RESOLVE_STMT_RETURNS) | (r & RESOLVE_STMT_LOOP_EXITS) | ret_success;
-
-        if (!(r & RESOLVE_STMT_SUCCESS)) {
-            ret_success &= ~RESOLVE_STMT_SUCCESS;
-            break;
-        }
-    }
-
-    return ret_success;
-}
-
-static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
-{
-    StmtBlock* sblock = (StmtBlock*)stmt;
-    sblock->scope = push_scope(resolver, sblock->num_decls);
-
-    unsigned ret_success = resolve_stmt_block_body(resolver, &sblock->stmts, ret_type, flags);
-
-    pop_scope(resolver);
-
-    return ret_success;
-}
-
-static bool resolve_cond_expr(Resolver* resolver, Expr* expr, ExprOperand* expr_eop)
-{
-    if (!resolve_expr(resolver, expr, NULL))
-        return false;
-
-    // TODO: THIS IS ERROR-PRONE. Will be buggy when add new fields.
-    expr_eop->type = expr->type;
-    expr_eop->is_constexpr = expr->is_constexpr;
-    expr_eop->is_imm = expr->is_imm;
-    expr_eop->is_lvalue = expr->is_lvalue;
-    expr_eop->imm = expr->imm;
-
-    CastResult r = convert_eop(expr_eop, builtin_types[BUILTIN_TYPE_BOOL].type, false);
-
-    if (!r.success) {
-        resolver_cast_error(resolver, r, expr->range, "Invalid condition type", expr_eop->type, builtin_types[BUILTIN_TYPE_BOOL].type);
-        return false;
-    }
-
-    return true;
-}
-
-static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type* ret_type, unsigned flags)
-{
-    ExprOperand cond_eop = {0};
-
-    if (!resolve_cond_expr(resolver, cblock->cond, &cond_eop))
-        return 0;
-
-    cblock->cond = try_wrap_cast_expr(resolver, &cond_eop, cblock->cond);
-
-    return resolve_stmt(resolver, cblock->body, ret_type, flags);
-}
-
-static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
-{
-    StmtIf* sif = (StmtIf*)stmt;
-
-    // Resolve if block.
-    unsigned ret = resolve_cond_block(resolver, &sif->if_blk, ret_type, flags);
-
-    if (!(ret & RESOLVE_STMT_SUCCESS))
-        return 0;
-
-    // Resolve else block.
-    if (sif->else_blk.body) {
-        ret &= resolve_stmt(resolver, sif->else_blk.body, ret_type, flags);
-    }
-    else {
-        ret &= ~RESOLVE_STMT_RETURNS;
-        ret &= ~RESOLVE_STMT_LOOP_EXITS;
-    }
-
-    return ret;
-}
-
-static unsigned resolve_stmt_for(Resolver* resolver, StmtFor* stmt_for, Type* ret_type, unsigned flags)
-{
-    stmt_for->scope = push_scope(resolver, 2); // At most 1 variable declaration in for-loop's init statement.
-
-    unsigned flags_no_break = flags;
-    flags_no_break &= ~RESOLVE_STMT_BREAK_CONTINUE_ALLOWED;
-
-    unsigned ret = RESOLVE_STMT_SUCCESS;
-
-    // Init statement.
-    if (stmt_for->init) {
-        ret &= resolve_stmt(resolver, stmt_for->init, ret_type, flags_no_break);
-
-        if (!(ret & RESOLVE_STMT_SUCCESS)) {
-            return 0;
-        }
-
-        // Throw an error if the init statement returns.
-        if (ret & RESOLVE_STMT_RETURNS) {
-            resolver_on_error(resolver, stmt_for->init->range, "For-loop body will never execute");
-            return 0;
-        }
-    }
-
-    // Condition expression.
-    if (stmt_for->cond) {
-        ExprOperand cond_eop = {0};
-
-        if (!resolve_cond_expr(resolver, stmt_for->cond, &cond_eop)) {
-            return 0;
-        }
-
-        stmt_for->cond = try_wrap_cast_expr(resolver, &cond_eop, stmt_for->cond);
-    }
-
-    // Loop body.
-    ret &= resolve_stmt(resolver, stmt_for->body, ret_type, flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
-
-    if (!(ret & RESOLVE_STMT_SUCCESS)) {
-        return 0;
-    }
-
-    // Next iteration statement.
-    if (stmt_for->next) {
-        ret &= resolve_stmt(resolver, stmt_for->next, ret_type, flags_no_break);
-    }
-
-    // NOTE: Because for loops don't have an "else" path, we can't say that all control paths return.
-    // TODO: Add else to for-loop!!
-    ret &= ~RESOLVE_STMT_RETURNS;
-    ret &= ~RESOLVE_STMT_LOOP_EXITS; // Break/continue do not propagate out from loops.
-
-    pop_scope(resolver);
-
-    return ret;
-}
-
-static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
-{
-    StmtWhile* swhile = (StmtWhile*)stmt;
-    ExprOperand cond_eop = {0};
-
-    // Resolve condition expression.
-    if (!resolve_cond_expr(resolver, swhile->cond, &cond_eop))
-        return 0;
-
-    swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
-
-    // Resolve loop body.
-    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
-
-    // NOTE: Because while loops don't have an "else" path, we can't say that all control paths return.
-    // TODO: Add else to while loop!!
-    ret &= ~RESOLVE_STMT_RETURNS;
-    ret &= ~RESOLVE_STMT_LOOP_EXITS; // Break/continue do not propagate out from loops.
-
-    return ret;
-}
-
-static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
-{
-    StmtDoWhile* swhile = (StmtDoWhile*)stmt;
-    ExprOperand cond_eop = {0};
-
-    // Resolve condition expression.
-    if (!resolve_cond_expr(resolver, swhile->cond, &cond_eop))
-        return 0;
-
-    swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
-
-    // Resolve loop body.
-    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
-
-    // Report an error if the do-while loop always returns before the condition check.
-    if (ret & RESOLVE_STMT_RETURNS) {
-        resolver_on_error(resolver, swhile->cond->range, "All paths in do-while loop's body return before condition check.");
-        ret &= ~RESOLVE_STMT_SUCCESS;
-    }
-
-    // Report an error if the do-while loop always breaks out before condition check.
-    // TODO: Continue should be ok?
-    if (ret & RESOLVE_STMT_LOOP_EXITS) {
-        resolver_on_error(resolver, swhile->cond->range,
-                          "All paths in do-while loop's body break or continue before condition check.");
-        ret &= ~RESOLVE_STMT_SUCCESS;
-    }
-
-    return ret;
-}
-
-static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr)
-{
-    Expr* expr = orig_expr;
-
-    if (orig_expr->type != eop->type) {
-        if (expr->is_constexpr && expr->is_imm) {
-            assert(type_is_scalar(expr->type));
-            assert(eop->is_constexpr);
-            expr->imm = eop->imm;
-        }
-        else {
-            expr = new_expr_cast(&resolver->ctx->ast_mem, NULL, orig_expr, true, orig_expr->range);
-        }
-
-        expr->type = eop->type;
-    }
-
-    expr->is_lvalue = eop->is_lvalue;
-    expr->is_constexpr = eop->is_constexpr;
-    expr->is_imm = eop->is_imm;
-
-    return expr;
-}
-
-static unsigned resolve_stmt_expr_assign(Resolver* resolver, Stmt* stmt)
-{
-    StmtExprAssign* sassign = (StmtExprAssign*)stmt;
-    Expr* lhs_expr = sassign->left;
-    Expr* rhs_expr = sassign->right;
-
-    if (!resolve_expr(resolver, lhs_expr, NULL))
-        return 0;
-
-    if (!resolve_expr(resolver, rhs_expr, NULL))
-        return 0;
-
-    if (!lhs_expr->is_lvalue) {
-        resolver_on_error(resolver, lhs_expr->range, "Left side of assignment statement must be an l-value");
-        return 0;
-    }
-
-    TokenKind op_assign = sassign->op_assign;
-
-    switch (op_assign) {
-    case TKN_ASSIGN: {
-        ExprOperand rhs_eop = OP_FROM_EXPR(rhs_expr);
-        CastResult r = convert_eop(&rhs_eop, lhs_expr->type, true);
-
-        if (!r.success) {
-            resolver_cast_error(resolver, r, rhs_expr->range, "Invalid assignment statement", rhs_eop.type, lhs_expr->type);
-            return 0;
-        }
-
-        sassign->right = try_wrap_cast_expr(resolver, &rhs_eop, sassign->right);
-        break;
-    }
-    case TKN_ADD_ASSIGN:
-    case TKN_SUB_ASSIGN: {
-        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
-        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
-        ExprOperand binary_op = {0};
-
-        // Initialize strings used for error messages.
-        const char* op_name;
-        const char* prep_str;
-        if (op_assign == TKN_ADD_ASSIGN) {
-            op_name = "add";
-            prep_str = "to";
-        }
-        else {
-            op_name = "subtract";
-            prep_str = "from";
-        }
-
-        // Resolve left and right operands of a "+" or "-" expression.
-        if (type_is_arithmetic(left_op.type) && type_is_arithmetic(right_op.type)) {
-            resolve_non_const_binary_eop(&binary_op, &left_op, &right_op);
-        }
-        else if ((left_op.type->kind == TYPE_PTR) && type_is_integer_like(right_op.type)) {
-            if (!try_complete_aggregate_type(resolver, left_op.type->as_ptr.base)) {
-                return 0;
-            }
-
-            if (!resolve_ptr_int_arith(resolver, &binary_op, &left_op, &right_op)) {
-                resolver_on_error(resolver, lhs_expr->range, "Cannot %s %s a pointer with a base type (%s) of zero size", op_name,
-                                  prep_str, type_name(left_op.type->as_ptr.base));
-
-                return 0;
-            }
-        }
-        else {
-            resolver_on_error(resolver, stmt->range, "Cannot %s a value of type `%s` %s a `%s` in a compound assignment statement.",
-                              op_name, type_name(right_op.type), prep_str, type_name(left_op.type));
-            return 0;
-        }
-
-        // Ensure that binary operation's result can be implicitly converted to lhs's type.
-        CastResult r = convert_eop(&binary_op, lhs_expr->type, true);
-
-        if (!r.success) {
-            resolver_cast_error(resolver, r, stmt->range, "Invalid compound assignment statement", binary_op.type, lhs_expr->type);
-            return 0;
-        }
-
-        // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
-        sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
-        break;
-    }
-    case TKN_MUL_ASSIGN:
-    case TKN_DIV_ASSIGN:
-    case TKN_MOD_ASSIGN: {
-        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
-        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
-        ExprOperand binary_op = {0};
-
-        // Resolve left and right operands of a binary "*", "/", or "%" expression.
-        if (!type_is_arithmetic(left_op.type)) {
-            resolver_on_error(resolver, lhs_expr->range, "Left-hand side of operator `%s` must be an arithmetic type, not type `%s`",
-                              token_kind_names[op_assign], type_name(left_op.type));
-            return 0;
-        }
-
-        if (!type_is_arithmetic(right_op.type)) {
-            resolver_on_error(resolver, rhs_expr->range, "Right-hand side of operator `%s` must be an arithmetic type, not type `%s`",
-                              token_kind_names[op_assign], type_name(right_op.type));
-            return 0;
-        }
-
-        resolve_non_const_binary_eop(&binary_op, &left_op, &right_op);
-
-        // Ensure that binary operation's result can be implicitly converted to lhs's type.
-        CastResult r = convert_eop(&binary_op, lhs_expr->type, true);
-
-        if (!r.success) {
-            resolver_cast_error(resolver, r, stmt->range, "Invalid compound assignment statement", binary_op.type, lhs_expr->type);
-            return 0;
-        }
-
-        // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
-        sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
-        break;
-    }
-    case TKN_AND_ASSIGN:
-    case TKN_OR_ASSIGN:
-    case TKN_XOR_ASSIGN: {
-        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
-        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
-        ExprOperand binary_op = {0};
-
-        // Resolve left and right operands of a binary "*", "/", or "%" expression.
-        if (!type_is_integer_like(left_op.type)) {
-            resolver_on_error(resolver, lhs_expr->range, "Left-hand side of operator `%s` must be an integer type, not type `%s`",
-                              token_kind_names[op_assign], type_name(left_op.type));
-            return 0;
-        }
-
-        if (!type_is_integer_like(right_op.type)) {
-            resolver_on_error(resolver, rhs_expr->range, "Right-hand side of operator `%s` must be an integer type, not type `%s`",
-                              token_kind_names[op_assign], type_name(right_op.type));
-            return 0;
-        }
-
-        resolve_non_const_binary_eop(&binary_op, &left_op, &right_op);
-
-        // Ensure that binary operation's result can be implicitly converted to lhs's type.
-        CastResult r = convert_eop(&binary_op, lhs_expr->type, true);
-
-        if (!r.success) {
-            resolver_cast_error(resolver, r, stmt->range, "Invalid compound assignment statement", binary_op.type, lhs_expr->type);
-            return 0;
-        }
-
-        // Only cast right subexpression. Bytecode generator will manually cast a copy of lhs to the same type (if necessary).
-        sassign->right = try_wrap_cast_expr(resolver, &right_op, rhs_expr);
-        break;
-    }
-    case TKN_RSHIFT_ASSIGN:
-    case TKN_LSHIFT_ASSIGN: {
-        ExprOperand left_op = OP_FROM_EXPR(lhs_expr);
-        ExprOperand right_op = OP_FROM_EXPR(rhs_expr);
-
-        if (left_op.type->kind != TYPE_INTEGER) {
-            resolver_on_error(resolver, lhs_expr->range, "Left-hand side of operator `%s` must be an integer type, not type `%s`",
-                              token_kind_names[op_assign], type_name(left_op.type));
-            return 0;
-        }
-
-        if (right_op.type->kind != TYPE_INTEGER) {
-            resolver_on_error(resolver, rhs_expr->range, "Right-hand side of operator `%s` must be an integer type, not type `%s`",
-                              token_kind_names[op_assign], type_name(right_op.type));
-            return 0;
-        }
-
-        break;
-    }
-    default:
-        resolver_on_error(resolver, stmt->range, "Sorry! Only the `=` assignment operator is currently supported. Soon!");
-        return 0;
-    }
-
-    return RESOLVE_STMT_SUCCESS;
-}
-
-static bool resolve_static_assert(Resolver* resolver, StmtStaticAssert* sassert)
-{
-    if (!resolve_expr(resolver, sassert->cond, NULL)) {
-        return false;
-    }
-
-    if (!(sassert->cond->is_constexpr && sassert->cond->is_imm)) {
-        resolver_on_error(resolver, sassert->cond->range, "#static_assert condition must be a compile-time constant expression");
-        return false;
-    }
-
-    if (sassert->cond->imm.as_int._u32 == 0) {
-        const char* msg_pre = "static assertion failed";
-
-        if (sassert->msg)
-            resolver_on_error(resolver, sassert->super.range, "%s: %s", msg_pre, sassert->msg->str);
-        else
-            resolver_on_error(resolver, sassert->super.range, "%s", msg_pre);
-
-        return false;
-    }
-
-    return true;
-}
-
-static bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
-{
-    switch (stmt->kind) {
-    case CST_StmtStaticAssert: {
-        StmtStaticAssert* sassert = (StmtStaticAssert*)stmt;
-
-        return resolve_static_assert(resolver, sassert);
-    }
-    default:
-        assert(0);
-        break;
-    }
-
-    return false;
-}
-
-static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
-{
-    unsigned ret = 0;
-    bool break_continue_allowed = flags & RESOLVE_STMT_BREAK_CONTINUE_ALLOWED;
-
-    switch (stmt->kind) {
-    case CST_StmtNoOp: {
-        ret = RESOLVE_STMT_SUCCESS;
-        break;
-    }
-    case CST_StmtStaticAssert: {
-        StmtStaticAssert* sassert = (StmtStaticAssert*)stmt;
-
-        ret = resolve_static_assert(resolver, sassert) ? RESOLVE_STMT_SUCCESS : 0;
-        break;
-    }
-    case CST_StmtReturn: {
-        ret = RESOLVE_STMT_RETURNS;
-        StmtReturn* sret = (StmtReturn*)stmt;
-        Type* type_void = builtin_types[BUILTIN_TYPE_VOID].type;
-
-        if (!sret->expr && (ret_type != type_void)) {
-            resolver_on_error(resolver, stmt->range, "Return statement is missing a return value of type `%s`", type_name(ret_type));
-            break;
-        }
-
-        if (sret->expr && (ret_type == type_void)) {
-            resolver_on_error(resolver, stmt->range, "Procedure with a `void` return type cannot return a value");
-            break;
-        }
-
-        if (sret->expr) {
-            if (!resolve_expr(resolver, sret->expr, ret_type))
-                break;
-
-            ExprOperand ret_eop = OP_FROM_EXPR(sret->expr);
-
-            CastResult r = convert_eop(&ret_eop, ret_type, true);
-
-            if (!r.success) {
-                resolver_cast_error(resolver, r, sret->expr->range, "Invalid return type", ret_eop.type, ret_type);
-                break;
-            }
-
-            sret->expr = try_wrap_cast_expr(resolver, &ret_eop, sret->expr);
-        }
-
-        ret |= RESOLVE_STMT_SUCCESS;
-        break;
-    }
-    case CST_StmtBreak: {
-        if (break_continue_allowed)
-            ret = RESOLVE_STMT_SUCCESS | RESOLVE_STMT_LOOP_EXITS;
-        else
-            resolver_on_error(resolver, stmt->range, "Illegal break statement");
-
-        break;
-    }
-    case CST_StmtContinue: {
-        if (break_continue_allowed)
-            ret = RESOLVE_STMT_SUCCESS | RESOLVE_STMT_LOOP_EXITS;
-        else
-            resolver_on_error(resolver, stmt->range, "Illegal continue statement");
-
-        break;
-    }
-    case CST_StmtIf: {
-        ret = resolve_stmt_if(resolver, stmt, ret_type, flags);
-        break;
-    }
-    case CST_StmtFor: {
-        ret = resolve_stmt_for(resolver, (StmtFor*)stmt, ret_type, flags);
-        break;
-    }
-    case CST_StmtWhile: {
-        ret = resolve_stmt_while(resolver, stmt, ret_type, flags);
-        break;
-    }
-    case CST_StmtDoWhile: {
-        ret = resolve_stmt_do_while(resolver, stmt, ret_type, flags);
-        break;
-    }
-    case CST_StmtExpr: {
-        StmtExpr* sexpr = (StmtExpr*)stmt;
-
-        if (resolve_expr(resolver, sexpr->expr, NULL))
-            ret = RESOLVE_STMT_SUCCESS;
-
-        break;
-    }
-    case CST_StmtExprAssign: {
-        ret = resolve_stmt_expr_assign(resolver, stmt);
-        break;
-    }
-    case CST_StmtDecl: {
-        StmtDecl* sdecl = (StmtDecl*)stmt;
-        Decl* decl = sdecl->decl;
-        Scope* scope = resolver->state.scope;
-
-        if (decl->kind == CST_DeclVar || decl->kind == CST_DeclConst) {
-            Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, decl);
-
-            if (!sym) {
-                resolver_on_error(resolver, stmt->range, "Identifier `%s` shadows a previous local declaration", decl->name->str);
-            }
-            else if ((decl->kind == CST_DeclVar) && resolve_decl_var(resolver, sym)) {
-                ret = RESOLVE_STMT_SUCCESS;
-            }
-            else if ((decl->kind == CST_DeclConst) && resolve_decl_const(resolver, sym)) {
-                ret = RESOLVE_STMT_SUCCESS;
-            }
-        }
-        else {
-            // TODO: Support other declaration kinds.
-            resolver_on_error(resolver, stmt->range, "Only variable and type declarations are supported inside procedures");
-        }
-
-        break;
-    }
-    case CST_StmtBlock: {
-        ret = resolve_stmt_block(resolver, stmt, ret_type, flags);
-        break;
-    }
-    default:
-        assert(0);
-        break;
-    }
-
-    return ret;
-}
-
-static bool resolve_symbol(Resolver* resolver, Symbol* sym)
-{
-    if (sym->status == SYMBOL_STATUS_RESOLVED)
-        return true;
-
-    if (sym->status == SYMBOL_STATUS_RESOLVING) {
-        assert(sym->decl);
-        resolver_on_error(resolver, sym->decl->range, "Cannot resolve symbol `%s` due to cyclic dependency", sym->name->str);
-        return false;
-    }
-
-    assert(sym->status == SYMBOL_STATUS_UNRESOLVED);
-
-    bool success = false;
-    bool is_global = !sym->is_local;
-
-    ModuleState mod_state = enter_module(resolver, sym->home);
-
-    sym->status = SYMBOL_STATUS_RESOLVING;
-
-    switch (sym->kind) {
-    case SYMBOL_VAR:
-        success = resolve_decl_var(resolver, sym);
-
-        if (is_global) {
-            bucket_list_add_elem(&resolver->ctx->vars, sym);
-        }
-        break;
-    case SYMBOL_CONST:
-        assert(sym->decl->kind == CST_DeclConst);
-        success = resolve_decl_const(resolver, sym);
-        break;
-    case SYMBOL_PROC:
-        success = resolve_decl_proc(resolver, sym);
-
-        if (is_global) {
-            bucket_list_add_elem(&resolver->ctx->procs, sym);
-        }
-        break;
-    case SYMBOL_TYPE: {
-        assert(sym->decl);
-        Decl* decl = sym->decl;
-
-        if (decl->kind == CST_DeclTypedef) {
-            success = resolve_decl_typedef(resolver, sym);
-        }
-        else if (decl->kind == CST_DeclEnum) {
-            success = resolve_decl_enum(resolver, sym);
-        }
-        else {
-            assert(decl->kind == CST_DeclStruct || decl->kind == CST_DeclUnion);
-
-            sym->type = type_incomplete_aggregate(&resolver->ctx->ast_mem, sym);
-            sym->status = SYMBOL_STATUS_RESOLVED;
-
-            if (is_global) {
-                bucket_list_add_elem(&resolver->ctx->aggregate_types, sym);
-            }
-
-            success = true;
-        }
-
-        break;
-    }
-    default:
-        ftprint_err("Unhandled symbol kind `%d`\n", sym->kind);
-        assert(0);
-        break;
-    }
-
-    exit_module(resolver, mod_state);
-
-    return success;
-}
-
-static Symbol* resolve_name(Resolver* resolver, Identifier* name)
-{
-    Symbol* sym = lookup_symbol(resolver->state.scope, name);
-
-    if (!sym) {
-        return NULL;
-    }
-
-    if (!resolve_symbol(resolver, sym)) {
-        return NULL;
-    }
-
-    return sym;
-}
-
-static Symbol* resolve_export_name(Resolver* resolver, Identifier* name)
-{
-    Symbol* sym = module_get_export_sym(resolver->state.mod, name);
-
-    if (!sym) {
-        return NULL;
-    }
-
-    if (!resolve_symbol(resolver, sym)) {
-        return NULL;
-    }
-
-    return sym;
-}
-
-bool resolve_module(Resolver* resolver, Module* mod)
-{
-    ModuleState mod_state = enter_module(resolver, mod);
-
-    // Resolve declaration "headers". Will not resolve procedure bodies or complete aggregate types.
-    List* sym_head = &mod->scope.sym_list;
-
-    for (List* it = sym_head->next; it != sym_head; it = it->next) {
-        Symbol* sym = list_entry(it, Symbol, lnode);
-
-        assert(sym->home == mod);
-
-        if (!resolve_symbol(resolver, sym))
-            return false;
-    }
-
-    // Resolve global statements (e.g., #static_assert)
-    List* head = &mod->stmts;
-
-    for (List* it = head->next; it != head; it = it->next) {
-        Stmt* stmt = list_entry(it, Stmt, lnode);
-
-        if (stmt->kind != CST_StmtDecl) {
-            if (!resolve_global_stmt(resolver, stmt))
-                return false;
-        }
-    }
-
-    exit_module(resolver, mod_state);
-
-    return true;
-}
-
-bool resolve_reachable_sym_defs(Resolver* resolver)
-{
-    BucketList* procs = &resolver->ctx->procs;
-    BucketList* aggregate_types = &resolver->ctx->aggregate_types;
-
-    // NOTE: The procs bucket-list may grow during iteration if new proc symbols are encountered
-    // while resolving proc/struct/union bodies.
-    //
-    // Therefore, _DO NOT CACHE_ procs->num_elems into a local variable.
-    for (size_t i = 0; i < procs->num_elems; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
-        assert(sym_ptr);
-        Symbol* sym = (Symbol*)(*sym_ptr);
-        assert(sym->kind == SYMBOL_PROC);
-
-        if (!resolve_global_proc_body(resolver, sym)) {
-            return false;
-        }
-    }
-
-    for (size_t i = 0; i < aggregate_types->num_elems; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(aggregate_types, i);
-        assert(sym_ptr);
-        Symbol* sym = (Symbol*)(*sym_ptr);
-        assert(sym->kind == SYMBOL_TYPE);
-
-        if (!try_complete_aggregate_type(resolver, sym->type)) {
-            return false;
-        }
-    }
-
-    return true;
-}

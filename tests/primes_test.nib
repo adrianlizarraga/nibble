@@ -1,4 +1,24 @@
-import "./print.nib";
+proc print_int(val : int) {
+    var t_buf : [32]char;
+    var j : int = 0;
+
+    do {
+        var d := val / 10;
+        var digit := val - (d * 10); // TODO: Need %
+
+        t_buf[j] = '0' + digit;
+
+        val = d;
+        j = j + 1;
+    } while (val);
+
+    while (j) {
+        #writeout(^t_buf[j-1], 1);
+        j = j - 1;
+    }
+
+    #writeout("\n", 1);
+}
 
 proc find_prime_iterative(initial : int) => int {
     var prime : int = 1;
@@ -22,7 +42,7 @@ proc find_prime_iterative(initial : int) => int {
 
 proc main() => int {
     var out : int = find_prime_iterative(20000);
-    print_out("result: %0\n", out);
+    print_int(out);
     return 0;
 }
 

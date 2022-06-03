@@ -1,7 +1,7 @@
-#ifndef NIBBLE_IR_NEW_H
-#define NIBBLE_IR_NEW_H
+#ifndef NIBBLE_BYTECODE_MODULE_H
+#define NIBBLE_BYTECODE_MODULE_H
 
-#include "ast.h"
+#include "ast/module.h"
 
 #define IR_STACK_ALIGN 16
 #define IR_INSTRS_PER_BUCKET 64
@@ -9,12 +9,15 @@
 #define IR_REG_COUNT 0xFFFFFFFF
 
 typedef u32 IR_Reg;
-typedef struct RegImm RegImm;
+typedef struct OpRI OpRI;
+typedef struct OpRA OpRA;
+typedef struct OpRIA OpRIA;
 typedef struct MemObj MemObj;
 typedef struct MemAddr MemAddr;
 typedef struct Instr Instr;
 
-struct RegImm {
+// Instruction operand that is either a register (R) or an immediate (I).
+struct OpRI {
     bool is_imm;
 
     union {
@@ -25,15 +28,14 @@ struct RegImm {
 
 typedef enum InstrKind {
     INSTR_NONE = 0,
-    INSTR_ADD,
-    INSTR_SUB,
-    INSTR_MUL,
-    INSTR_UDIV,
-    INSTR_SDIV,
-    INSTR_UMOD,
-    INSTR_SMOD,
-    INSTR_UDIVMOD,
-    INSTR_SDIVMOD,
+    INSTR_INT_ADD,
+    INSTR_FLT_ADD,
+    INSTR_INT_SUB,
+    INSTR_FLT_SUB,
+    INSTR_INT_MUL,
+    INSTR_INT_DIV,
+    INSTR_MOD,
+    INSTR_DIVMOD,
     INSTR_SAR,
     INSTR_SHL,
     INSTR_AND,
@@ -44,6 +46,9 @@ typedef enum InstrKind {
     INSTR_TRUNC,
     INSTR_ZEXT,
     INSTR_SEXT,
+    INSTR_FLT2INT,
+    INSTR_INT2FLT,
+    INSTR_FLT2FLT,
     INSTR_LIMM,
     INSTR_LOAD,
     INSTR_LADDR,
@@ -65,6 +70,7 @@ typedef enum MemBaseKind {
     MEM_BASE_REG,
     MEM_BASE_MEM_OBJ,
     MEM_BASE_STR_LIT,
+    MEM_BASE_FLOAT_LIT,
 } MemBaseKind;
 
 struct MemAddr {
@@ -74,11 +80,40 @@ struct MemAddr {
         IR_Reg reg;
         MemObj* obj;
         StrLit* str_lit;
+        FloatLit* float_lit;
     } base;
 
     IR_Reg index_reg;
     u8 scale;
     u32 disp;
+};
+
+// Instruction operand that is either a register (R) or an address (A).
+struct OpRA {
+    bool is_addr;
+
+    union {
+        IR_Reg reg;
+        MemAddr addr;
+    };
+};
+
+typedef enum OpRIAKind {
+    OP_RIA_NONE = 0,
+    OP_RIA_REG,
+    OP_RIA_IMM,
+    OP_RIA_ADDR
+} OpRIAKind;
+
+// Instruction operand that is either a register (R), an immediate (I), or an address (A).
+struct OpRIA {
+    OpRIAKind kind;
+
+    union {
+        IR_Reg reg;
+        Scalar imm;
+        MemAddr addr;
+    };
 };
 
 typedef enum MemObjKind {
@@ -100,26 +135,33 @@ struct MemObj {
     };
 };
 
-typedef struct InstrBinary {
+typedef struct InstrIntBinary {
     Type* type;
     IR_Reg r;
-    IR_Reg a;
-    IR_Reg b;
-} InstrBinary;
+    OpRIA a;
+    OpRIA b;
+} InstrIntBinary;
+
+typedef struct InstrFltBinary {
+    FloatKind fkind;
+    IR_Reg r;
+    OpRA a;
+    OpRA b;
+} InstrFltBinary;
 
 typedef struct InstrDivmod {
     Type* type;
     IR_Reg q; // quotient
     IR_Reg r; // remainder
-    IR_Reg a; // dividend
-    IR_Reg b; // divisor
+    OpRIA a; // dividend
+    OpRIA b; // divisor
 } InstrDivmod;
 
 typedef struct InstrShift {
     Type* type;
     IR_Reg r;
-    IR_Reg a;
-    IR_Reg b;
+    OpRIA a;
+    OpRIA b;
 } InstrShift;
 
 typedef struct InstrUnary {
@@ -134,6 +176,27 @@ typedef struct InstrConvert {
     IR_Reg r;
     IR_Reg a;
 } InstrConvert;
+
+typedef struct InstrFlt2Int {
+    FloatKind src_kind;
+    IntegerKind dst_kind;
+    IR_Reg dst;
+    OpRA src;
+} InstrFlt2Int;
+
+typedef struct InstrFlt2Flt {
+    FloatKind src_kind;
+    FloatKind dst_kind;
+    IR_Reg dst;
+    OpRA src;
+} InstrFlt2Flt;
+
+typedef struct InstrInt2Flt {
+    IntegerKind src_kind;
+    FloatKind dst_kind;
+    IR_Reg dst;
+    OpRA src;
+} InstrInt2Flt;
 
 typedef struct InstrLImm {
     Type* type;
@@ -156,7 +219,7 @@ typedef struct InstrLAddr {
 typedef struct InstrStore {
     Type* type;
     MemAddr addr;
-    IR_Reg a;
+    OpRI a;
 } InstrStore;
 
 typedef enum ConditionKind {
@@ -176,8 +239,8 @@ typedef struct InstrCmp {
     Type* type;
     ConditionKind cond;
     IR_Reg r;
-    IR_Reg a;
-    IR_Reg b;
+    OpRIA a;
+    OpRIA b;
 } InstrCmp;
 
 typedef struct InstrJmp {
@@ -223,13 +286,13 @@ typedef struct InstrRet {
 typedef struct InstrMemcpy {
     MemAddr dst;
     MemAddr src;
-    RegImm size;
+    OpRI size;
 } InstrMemcpy;
 
 typedef struct InstrMemset {
     MemAddr dst;
-    RegImm value;
-    RegImm size;
+    OpRI value;
+    OpRI size;
 } InstrMemset;
 
 typedef struct PhiArg {
@@ -250,11 +313,15 @@ struct Instr {
     bool is_leader;
 
     union {
-        InstrBinary binary;
+        InstrIntBinary int_binary;
+        InstrFltBinary flt_binary;
         InstrDivmod divmod;
         InstrShift shift;
         InstrUnary unary;
         InstrConvert convert;
+        InstrFlt2Int flt2int;
+        InstrFlt2Flt flt2flt;
+        InstrInt2Flt int2flt;
         InstrLImm limm;
         InstrLoad load;
         InstrStore store;
@@ -294,5 +361,9 @@ struct BBlock {
 };
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, BucketList* str_lits,
-                     TypeCache* type_cache);
+                     BucketList* float_lits, TypeCache* type_cache);
+
+char* IR_print_instr(Allocator* arena, Instr* instr);
+void IR_print_out_proc(Allocator* arena, Symbol* sym);
+void IR_dump_proc_dot(Allocator* arena, Symbol* sym);
 #endif

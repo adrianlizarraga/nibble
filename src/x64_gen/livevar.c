@@ -45,7 +45,7 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_XOR_R_R: {
             X64_touch_lreg(builder, instr->binary_r_r.dst, ino);
             X64_touch_lreg(builder, instr->binary_r_r.src, ino);
-            break; 
+            break;
         }
         case X64_INSTR_ADD_R_I:
         case X64_INSTR_SUB_R_I:
@@ -54,13 +54,46 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_OR_R_I:
         case X64_INSTR_XOR_R_I: {
             X64_touch_lreg(builder, instr->binary_r_i.dst, ino);
-            break; 
+            break;
         }
-        case X64_INSTR_DIV:
-        case X64_INSTR_IDIV: {
-            X64_touch_lreg(builder, instr->div.rdx, ino);
-            X64_touch_lreg(builder, instr->div.rax, ino);
-            X64_touch_lreg(builder, instr->div.src, ino);
+        case X64_INSTR_ADD_R_M:
+        case X64_INSTR_SUB_R_M:
+        case X64_INSTR_IMUL_R_M:
+        case X64_INSTR_AND_R_M:
+        case X64_INSTR_OR_R_M:
+        case X64_INSTR_XOR_R_M: {
+            X64_touch_lreg(builder, instr->binary_r_m.dst, ino);
+            X64_touch_mem_lregs(builder, &instr->binary_r_m.src, ino);
+            break;
+        }
+        case X64_INSTR_ADDSS_R_R:
+        case X64_INSTR_ADDSD_R_R:
+        case X64_INSTR_SUBSS_R_R:
+        case X64_INSTR_SUBSD_R_R: {
+            X64_touch_lreg(builder, instr->binary_flt_r_r.dst, ino);
+            X64_touch_lreg(builder, instr->binary_flt_r_r.src, ino);
+            break;
+        }
+        case X64_INSTR_ADDSS_R_M:
+        case X64_INSTR_ADDSD_R_M:
+        case X64_INSTR_SUBSS_R_M:
+        case X64_INSTR_SUBSD_R_M: {
+            X64_touch_lreg(builder, instr->binary_flt_r_m.dst, ino);
+            X64_touch_mem_lregs(builder, &instr->binary_flt_r_m.src, ino);
+            break;
+        }
+        case X64_INSTR_DIV_R:
+        case X64_INSTR_IDIV_R: {
+            X64_touch_lreg(builder, instr->div_r.rdx, ino);
+            X64_touch_lreg(builder, instr->div_r.rax, ino);
+            X64_touch_lreg(builder, instr->div_r.src, ino);
+            break;
+        }
+        case X64_INSTR_DIV_M:
+        case X64_INSTR_IDIV_M: {
+            X64_touch_lreg(builder, instr->div_m.rdx, ino);
+            X64_touch_lreg(builder, instr->div_m.rax, ino);
+            X64_touch_mem_lregs(builder, &instr->div_m.src, ino);
             break;
         }
         case X64_INSTR_SEXT_AX_TO_DX: {
@@ -130,6 +163,66 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_lreg(builder, instr->convert_r_r.dst, ino);
             break;
         }
+        case X64_INSTR_MOVZX_R_M:
+        case X64_INSTR_MOVSX_R_M: {
+            X64_touch_mem_lregs(builder, &instr->convert_r_m.src, ino);
+            X64_touch_lreg(builder, instr->convert_r_m.dst, ino);
+            break;
+        }
+        case X64_INSTR_MOVSS_R_R:
+        case X64_INSTR_MOVSD_R_R: {
+            X64_touch_lreg(builder, instr->mov_flt_r_r.src, ino);
+            X64_touch_lreg(builder, instr->mov_flt_r_r.dst, ino);
+            break;
+        }
+        case X64_INSTR_MOVSS_R_M:
+        case X64_INSTR_MOVSD_R_M: {
+            X64_touch_mem_lregs(builder, &instr->mov_flt_r_m.src, ino);
+            X64_touch_lreg(builder, instr->mov_flt_r_m.dst, ino);
+            break;
+        }
+        case X64_INSTR_MOVSS_M_R:
+        case X64_INSTR_MOVSD_M_R: {
+            X64_touch_lreg(builder, instr->mov_flt_m_r.src, ino);
+            X64_touch_mem_lregs(builder, &instr->mov_flt_m_r.dst, ino);
+            break;
+        }
+        case X64_INSTR_CVTSS2SD_R_R:
+        case X64_INSTR_CVTSD2SS_R_R: {
+            X64_touch_lreg(builder, instr->flt2flt_r_r.src, ino);
+            X64_touch_lreg(builder, instr->flt2flt_r_r.dst, ino);
+            break;
+        }
+        case X64_INSTR_CVTSS2SD_R_M:
+        case X64_INSTR_CVTSD2SS_R_M: {
+            X64_touch_mem_lregs(builder, &instr->flt2flt_r_m.src, ino);
+            X64_touch_lreg(builder, instr->flt2flt_r_m.dst, ino);
+            break;
+        }
+        case X64_INSTR_CVTTSS2SI_R_R:
+        case X64_INSTR_CVTTSD2SI_R_R: {
+            X64_touch_lreg(builder, instr->flt2int_r_r.src, ino);
+            X64_touch_lreg(builder, instr->flt2int_r_r.dst, ino);
+            break;
+        }
+        case X64_INSTR_CVTTSS2SI_R_M:
+        case X64_INSTR_CVTTSD2SI_R_M: {
+            X64_touch_mem_lregs(builder, &instr->flt2int_r_m.src, ino);
+            X64_touch_lreg(builder, instr->flt2int_r_m.dst, ino);
+            break;
+        }
+        case X64_INSTR_CVTSI2SS_R_R:
+        case X64_INSTR_CVTSI2SD_R_R: {
+            X64_touch_lreg(builder, instr->int2flt_r_r.src, ino);
+            X64_touch_lreg(builder, instr->int2flt_r_r.dst, ino);
+            break;
+        }
+        case X64_INSTR_CVTSI2SS_R_M:
+        case X64_INSTR_CVTSI2SD_R_M: {
+            X64_touch_mem_lregs(builder, &instr->int2flt_r_m.src, ino);
+            X64_touch_lreg(builder, instr->int2flt_r_m.dst, ino);
+            break;
+        }
         case X64_INSTR_LEA: {
             X64_touch_mem_lregs(builder, &instr->lea.mem, ino);
             X64_touch_lreg(builder, instr->lea.dst, ino);
@@ -142,6 +235,20 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         }
         case X64_INSTR_CMP_R_I: {
             X64_touch_lreg(builder, instr->cmp_r_i.op1, ino);
+            break;
+        }
+        case X64_INSTR_CMP_R_M: {
+            X64_touch_lreg(builder, instr->cmp_r_m.op1, ino);
+            X64_touch_mem_lregs(builder, &instr->cmp_r_m.op2, ino);
+            break;
+        }
+        case X64_INSTR_CMP_M_R: {
+            X64_touch_mem_lregs(builder, &instr->cmp_m_r.op1, ino);
+            X64_touch_lreg(builder, instr->cmp_m_r.op2, ino);
+            break;
+        }
+        case X64_INSTR_CMP_M_I: {
+            X64_touch_mem_lregs(builder, &instr->cmp_m_i.op1, ino);
             break;
         }
         case X64_INSTR_JMP:

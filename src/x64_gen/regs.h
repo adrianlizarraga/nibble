@@ -27,18 +27,45 @@ typedef enum X64_Reg {
     X64_R13,
     X64_R14,
     X64_R15,
+    X64_XMM0,
+    X64_XMM1,
+    X64_XMM2,
+    X64_XMM3,
+    X64_XMM4,
+    X64_XMM5,
+    X64_XMM6,
+    X64_XMM7,
+    X64_XMM8,
+    X64_XMM9,
+    X64_XMM10,
+    X64_XMM11,
+    X64_XMM12,
+    X64_XMM13,
+    X64_XMM14,
+    X64_XMM15,
     X64_REG_COUNT,
 } X64_Reg;
+
+typedef enum X64_RegClass {
+    X64_REG_CLASS_INT = 0,
+    X64_REG_CLASS_FLOAT,
+    X64_REG_CLASS_COUNT,
+} X64_RegClass;
+
+extern const X64_RegClass x64_reg_classes[X64_REG_COUNT];
+extern const char* x64_flt_reg_names[X64_REG_COUNT];
+
+typedef struct X64_ScratchRegs {
+    unsigned num_regs;
+    X64_Reg* regs;
+} X64_ScratchRegs;
 
 typedef struct X64_Target {
     u32 num_arg_regs;
     X64_Reg* arg_regs;
 
-    u32 num_leaf_scratch_regs;
-    X64_Reg* leaf_scratch_regs;
-
-    u32 num_nonleaf_scratch_regs;
-    X64_Reg* nonleaf_scratch_regs;
+    X64_ScratchRegs (*leaf_scratch_regs)[X64_REG_CLASS_COUNT];
+    X64_ScratchRegs (*nonleaf_scratch_regs)[X64_REG_CLASS_COUNT];
 
     u32 caller_saved_reg_mask;
     u32 arg_reg_mask;
@@ -52,7 +79,7 @@ typedef struct X64_Target {
 
 extern X64_Target x64_target;
 
-bool init_x64_target(OS target_os);
+void x64_init_target(OS target_os);
 bool X64_is_caller_saved_reg(X64_Reg reg);
 bool X64_is_callee_saved_reg(X64_Reg reg);
 bool X64_is_arg_reg(X64_Reg reg);
@@ -86,11 +113,11 @@ typedef struct X64_LRegRangeList {
 
 typedef enum X64_RegAllocControlKind {
     X64_REG_ALLOC_CTRL_NONE = 0,
-    X64_REG_ALLOC_CTRL_FORCE_REG,          // Used for required operand registers (e.g., rcx for shift) and SIBD addr registers
+    X64_REG_ALLOC_CTRL_FORCE_REG, // Used for required operand registers (e.g., rcx for shift) and SIBD addr registers
     X64_REG_ALLOC_CTRL_FORCE_ANY_REG,
     X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL, // Used for procedure arguments
-    X64_REG_ALLOC_CTRL_HINT_LIR_REG,       // Used for register to register moves
-    X64_REG_ALLOC_CTRL_HINT_PHYS_REG,      // Used for register to register moves
+    X64_REG_ALLOC_CTRL_HINT_LIR_REG, // Used for register to register moves
+    X64_REG_ALLOC_CTRL_HINT_PHYS_REG, // Used for register to register moves
 } X64_RegAllocControlKind;
 
 typedef struct X64_LRegRange {
@@ -98,7 +125,8 @@ typedef struct X64_LRegRange {
     long start;
     long end;
 
-    enum X64_RegAllocControlKind ra_ctrl_kind;
+    X64_RegClass reg_class;
+    X64_RegAllocControlKind ra_ctrl_kind;
     union {
         X64_Reg preg;
         u32 lreg;

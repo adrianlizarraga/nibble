@@ -1,9 +1,8 @@
-#include "ast.h"
-
 typedef struct IR_VarBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
     BucketList* str_lits;
+    BucketList* float_lits;
     TypeCache* type_cache;
     Module* curr_mod;
 } IR_VarBuilder;
@@ -323,10 +322,27 @@ static void IR_emit_global_expr_compound_lit(IR_VarBuilder* builder, ExprCompoun
 static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* dst)
 {
     if (expr->is_constexpr && expr->is_imm) {
-        assert(type_is_scalar(expr->type));
-        dst->kind = CONST_EXPR_IMM;
-        dst->type = expr->type;
-        dst->imm = expr->imm;
+        Type* type = expr->type;
+        Scalar imm = expr->imm;
+
+        if (type->kind == TYPE_FLOAT) {
+            FloatLit* float_lit = intern_float_lit(type->as_float.kind, imm.as_float);
+
+            dst->kind = CONST_EXPR_FLOAT_LIT;
+            dst->type = type;
+            dst->float_lit = float_lit;
+
+            if (!float_lit->used) {
+                float_lit->used = true;
+                bucket_list_add_elem(builder->float_lits, float_lit);
+            }
+        }
+        else {
+            assert(type_is_scalar(expr->type));
+            dst->kind = CONST_EXPR_IMM;
+            dst->type = type;
+            dst->imm = imm;
+        }
 
         return;
     }
@@ -385,9 +401,15 @@ static void IR_build_var(IR_VarBuilder* builder, Symbol* sym)
     sym->as_var.const_expr = const_expr;
 }
 
-static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* str_lits, TypeCache* type_cache)
+static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* str_lits, BucketList* float_lits,
+                          TypeCache* type_cache)
 {
-    IR_VarBuilder builder = {.arena = arena, .tmp_arena = tmp_arena, .str_lits = str_lits, .type_cache = type_cache, .curr_mod = NULL};
+    IR_VarBuilder builder = {.arena = arena,
+                             .tmp_arena = tmp_arena,
+                             .str_lits = str_lits, 
+                             .float_lits = float_lits,
+                             .type_cache = type_cache,
+                             .curr_mod = NULL};
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 

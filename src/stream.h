@@ -25,7 +25,6 @@ void bucket_list_init(BucketList* bucket_list, Allocator* arena, size_t bucket_c
 
 void** bucket_list_add_elem(BucketList* bucket_list, void* elem);
 void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const void* elem, size_t size, size_t align);
-char** sstream_add(BucketList* sstream, Allocator* arena, const char* str, size_t len);
 
 void** bucket_list_get_elem(BucketList* bucket_list, size_t index);
 void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index);

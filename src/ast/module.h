@@ -1,10 +1,10 @@
-#ifndef NIBBLE_CST_H
-#define NIBBLE_CST_H
+#ifndef NIBBLE_AST_H
+#define NIBBLE_AST_H
 #include <stddef.h>
 #include <stdint.h>
 
 #include "allocator.h"
-#include "lexer.h"
+#include "lexer/module.h"
 #include "llist.h"
 #include "nibble.h"
 #include "hash_map.h"
@@ -695,8 +695,6 @@ typedef struct Type Type;
 
 typedef struct TypeInteger {
     IntegerKind kind;
-    bool is_signed;
-    u64 max;
 } TypeInteger;
 
 typedef struct TypeFloat {
@@ -895,12 +893,13 @@ typedef enum ConstExprKind {
     CONST_EXPR_UNION_INIT,
     CONST_EXPR_VAR,
     CONST_EXPR_PROC,
-    CONST_EXPR_STR_LIT
+    CONST_EXPR_STR_LIT,
+    CONST_EXPR_FLOAT_LIT
 } ConstExprKind;
 
 typedef enum ConstAddrKind {
     CONST_ADDR_SYM,
-    CONST_ADDR_STR_LIT
+    CONST_ADDR_STR_LIT,
 } ConstAddrKind;
 
 struct ConstAddr {
@@ -938,6 +937,7 @@ struct ConstExpr {
         ConstAddr addr;
         Symbol* sym;
         StrLit* str_lit;
+        FloatLit* float_lit;
         ConstArrayInitzer array_initzer;
         ConstStructInitzer struct_initzer;
         ConstUnionInitzer union_initzer;

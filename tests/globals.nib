@@ -19,6 +19,9 @@ var g_str : ^char = "global\n";
 var g_p_var : ^^char = ^g_str;
 var g_p_imm : ^char = 0xdeadbeef :> ^char;
 
+var g_f64 : f64 = 1.2;
+var g_f32 : f32 = 2.8f;
+
 proc main() => int {
     var nl : char = '\n';
 
@@ -43,5 +46,6 @@ proc main() => int {
     g_d[0] = 'k';
     #writeout(g_d, 5);
 
-    return g_a[1][0]; // 2
+    // 2 + 1 + 2 = 5
+    return g_a[1][0] + (g_f64 :> u32) + (g_f32 :> u32);
 }

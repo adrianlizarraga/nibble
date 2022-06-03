@@ -4,7 +4,7 @@
 #include "cstring.h"
 #include "stream.h"
 #include "hash_map.h"
-#include "ast.h"
+#include "ast/module.h"
 
 typedef struct NibbleCtx NibbleCtx;
 
@@ -15,6 +15,7 @@ struct NibbleCtx {
 
     HMap ident_map;
     HMap str_lit_map;
+    HMap float_lit_map;
     HMap mod_map;
 
     BucketList src_files;
@@ -37,6 +38,7 @@ struct NibbleCtx {
     BucketList procs;
     BucketList aggregate_types;
     BucketList str_lits;
+    BucketList float_lits;
 };
 
 bool nibble_init(OS target_os, Arch target_arch);

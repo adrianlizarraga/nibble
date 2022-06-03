@@ -70,9 +70,13 @@ typedef float f32;
 typedef double f64;
 
 typedef enum FloatKind {
-    FLOAT_F64,
+    FLOAT_F64 = 0,
     FLOAT_F32,
+    FLOAT_KIND_COUNT
 } FloatKind;
+
+extern const size_t float_kind_sizes[FLOAT_KIND_COUNT];
+extern const char* float_kind_names[FLOAT_KIND_COUNT];
 
 typedef struct Float {
     union {
@@ -80,6 +84,19 @@ typedef struct Float {
         f32 _f32;
     };
 } Float;
+
+static inline bool float_eq(FloatKind kind, Float a, Float b)
+{
+    return kind == FLOAT_F64 ? a._f64 == b._f64 : a._f32 == b._f32;
+}
+
+typedef struct FloatLit {
+    struct FloatLit* next;
+    bool used;
+    size_t id;
+    FloatKind kind;
+    Float value;
+} FloatLit;
 
 typedef enum IntegerKind {
     INTEGER_BOOL,
@@ -91,7 +108,13 @@ typedef enum IntegerKind {
     INTEGER_S32,
     INTEGER_U64,
     INTEGER_S64,
+    INTEGER_KIND_COUNT
 } IntegerKind;
+
+extern const size_t int_kind_sizes[INTEGER_KIND_COUNT];
+extern const char* int_kind_names[INTEGER_KIND_COUNT];
+extern const bool int_kind_signed[INTEGER_KIND_COUNT];
+extern const u64 int_kind_max[INTEGER_KIND_COUNT];
 
 typedef struct Integer {
     union {
@@ -229,6 +252,7 @@ extern Identifier* builtin_struct_fields[BUILTIN_STRUCT_FIELD_COUNT];
 extern Identifier* main_proc_ident;
 
 StrLit* intern_str_lit(const char* str, size_t len);
+FloatLit* intern_float_lit(FloatKind kind, Float value);
 Identifier* intern_ident(const char* str, size_t len);
 
 bool slurp_file(StringView* contents, Allocator* allocator, const char* filename);
