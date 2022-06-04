@@ -1290,10 +1290,10 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
-    case INSTR_CMP: {
-        size_t size = ir_instr->cmp.type->size;
-        OpRIA ir_a = ir_instr->cmp.a;
-        OpRIA ir_b = ir_instr->cmp.b;
+    case INSTR_INT_CMP: {
+        size_t size = ir_instr->int_cmp.type->size;
+        OpRIA ir_a = ir_instr->int_cmp.a;
+        OpRIA ir_b = ir_instr->int_cmp.b;
 
         assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM); // Only one should be an immediate.
 
@@ -1359,7 +1359,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             }
         }
 
-        bool combine_next = next_instr && (next_instr->kind == INSTR_COND_JMP) && (next_instr->cond_jmp.a == ir_instr->cmp.r);
+        bool combine_next = next_instr && (next_instr->kind == INSTR_COND_JMP) && (next_instr->cond_jmp.a == ir_instr->int_cmp.r);
 
         if (combine_next) {
             // Combine this comparison instruction with the next conditional jump.
@@ -1372,7 +1372,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             //     cmp a, b
             //     jmp_<cond> <target>
 
-            X64_emit_instr_jmpcc(builder, xbblock, ir_instr->cmp.cond, NULL, NULL);
+            X64_emit_instr_jmpcc(builder, xbblock, ir_instr->int_cmp.cond, NULL, NULL);
             ir_instr = next_instr;
         }
         else {
@@ -1381,8 +1381,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             // cmp a, b
             // set_<cond> r
 
-            u32 r = X64_get_lir_reg(builder, ir_instr->cmp.r, X64_REG_CLASS_INT);
-            X64_emit_instr_setcc(builder, xbblock, ir_instr->cmp.cond, r);
+            u32 r = X64_get_lir_reg(builder, ir_instr->int_cmp.r, X64_REG_CLASS_INT);
+            X64_emit_instr_setcc(builder, xbblock, ir_instr->int_cmp.cond, r);
         }
 
         break;
