@@ -264,9 +264,15 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         break;
     }
     case INSTR_INT_CMP: {
-        ftprint_char_array(&dstr, false, "cmp <%s> %s, %s %s %s", type_name(instr->int_cmp.type), IR_print_reg(arena, instr->int_cmp.r),
+        ftprint_char_array(&dstr, false, "icmp <%s> %s, %s %s %s", type_name(instr->int_cmp.type), IR_print_reg(arena, instr->int_cmp.r),
                            IR_print_op_ria(arena, &instr->int_cmp.a), ir_cond_names[instr->int_cmp.cond],
                            IR_print_op_ria(arena, &instr->int_cmp.b));
+        break;
+    }
+    case INSTR_FLT_CMP: {
+        ftprint_char_array(&dstr, false, "fcmp <%s> %s, %s %s %s", float_kind_names[instr->flt_cmp.fkind], IR_print_reg(arena, instr->flt_cmp.r),
+                           IR_print_reg(arena, instr->flt_cmp.a), ir_cond_names[instr->flt_cmp.cond],
+                           IR_print_op_ra(arena, &instr->flt_cmp.b));
         break;
     }
     case INSTR_JMP: {
