@@ -22,6 +22,20 @@ static X64_InstrKind unary_kind[] = {[INSTR_NEG] = X64_INSTR_NEG, [INSTR_NOT] = 
 static X64_InstrKind convert_kind[] =
     {[INSTR_TRUNC] = X64_INSTR_MOV_R_R, [INSTR_SEXT] = X64_INSTR_MOVSX_R_R, [INSTR_ZEXT] = X64_INSTR_MOVZX_R_R};
 
+// The floating-point comparison instructions in X86_64 use the unsigned condition variants.
+static const ConditionKind flt_cond_map[] = {
+    [COND_U_LT] = COND_U_LT,
+    [COND_S_LT] = COND_U_LT,
+    [COND_U_LTEQ] = COND_U_LTEQ,
+    [COND_S_LTEQ] = COND_U_LTEQ,
+    [COND_U_GT] = COND_U_GT,
+    [COND_S_GT] = COND_U_GT,
+    [COND_U_GTEQ] = COND_U_GTEQ,
+    [COND_S_GTEQ] = COND_U_GTEQ,
+    [COND_EQ] = COND_EQ,
+    [COND_NEQ] = COND_NEQ,
+};
+
 static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
 {
     if (src_range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_NONE) {
@@ -1308,6 +1322,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
 
         bool combine_next = next_instr && (next_instr->kind == INSTR_COND_JMP) && (next_instr->cond_jmp.a == ir_instr->flt_cmp.r);
+        ConditionKind float_cond = flt_cond_map[ir_instr->flt_cmp.cond];
 
         if (combine_next) {
             // Combine this comparison instruction with the next conditional jump.
@@ -1320,7 +1335,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             //     cmp a, b
             //     jmp_<cond> <target>
 
-            X64_emit_instr_jmpcc(builder, xbblock, ir_instr->flt_cmp.cond, NULL, NULL);
+            X64_emit_instr_jmpcc(builder, xbblock, float_cond, NULL, NULL);
             ir_instr = next_instr;
         }
         else {
@@ -1330,7 +1345,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             // set_<cond> r
 
             u32 r = X64_get_lir_reg(builder, ir_instr->flt_cmp.r, X64_REG_CLASS_INT);
-            X64_emit_instr_setcc(builder, xbblock, ir_instr->flt_cmp.cond, r);
+            X64_emit_instr_setcc(builder, xbblock, float_cond, r);
         }
 
         break;

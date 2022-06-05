@@ -146,6 +146,9 @@ static const char* X64_reg_name(X64_Reg reg, u32 size, X64_RegClass reg_class)
     return x64_flt_reg_names[reg];
 }
 
+#define IS_LREG_IN_REG(k) ((k) == X64_LREG_LOC_REG)
+#define IS_LREG_IN_STACK(k) ((k) == X64_LREG_LOC_STACK)
+
 static X64_LRegLoc X64_lreg_loc(X64_Generator* generator, u32 lreg)
 {
     u32 rng_idx = X64_find_alias_reg(generator->curr_proc.builder, lreg);
@@ -1171,6 +1174,33 @@ static size_t X64_cpy_reg_to_mem(X64_Generator* generator, X64_SIBDAddr* dst, X6
     }
 
     return rem_amnt;
+}
+
+static void X64_emit_flt_cmp_rr_instr(X64_Generator* generator, const char* instr_name, FloatKind fkind, X64_InstrCmpFlt_R_R* instr)
+{
+    X64_LRegLoc op2_loc = X64_lreg_loc(generator, instr->op2);
+    const size_t op_size = float_kind_sizes[fkind];
+
+    u32 banned_op1_regs = 0;
+    const char* op2_name = NULL;
+
+    if (IS_LREG_IN_REG(op2_loc.kind)) {
+        banned_op1_regs = (1 << op2_loc.reg);
+        op2_name = x64_flt_reg_names[op2_loc.reg];
+    }
+    else if (IS_LREG_IN_STACK(op2_loc.kind)) {
+        op2_name = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op_size);
+    }
+    else {
+        NIBBLE_FATAL_EXIT("X64_emit_flt_cmp_rr_instr(): Unexpected op2 X64_LRegLoc kind '%d'.", op2_loc.kind);
+    }
+
+    X64_RegGroup tmp_group = X64_begin_reg_group(generator);
+    X64_Reg op1_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, instr->op1, op_size, false, banned_op1_regs);
+    const char* op1_reg_name = x64_flt_reg_names[op1_reg];
+
+    X64_emit_text(generator, "  %s %s, %s", instr_name, op1_reg_name, op2_name);
+    X64_end_reg_group(&tmp_group);
 }
 
 static void X64_emit_flt2int_rr_instr(X64_Generator* generator, const char* instr_name, size_t src_size, X64_InstrFlt2Int_R_R* instr)
@@ -2258,7 +2288,39 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         break;
     }
     case X64_INSTR_UCOMISS_R_R: {
-        // TODO: Left off here!
+        X64_emit_flt_cmp_rr_instr(generator, "ucomiss", FLOAT_F32, &instr->cmp_flt_r_r);
+        break;
+    }
+    case X64_INSTR_UCOMISD_R_R: {
+        X64_emit_flt_cmp_rr_instr(generator, "ucomisd", FLOAT_F64, &instr->cmp_flt_r_r);
+        break;
+    }
+    case X64_INSTR_UCOMISS_R_M: {
+        X64_SIBDAddr op2_addr = {0};
+        u32 used_regs = X64_get_sibd_addr(generator, &op2_addr, &instr->cmp_flt_r_m.op2);
+
+        X64_RegGroup tmp_group = X64_begin_reg_group(generator);
+        X64_Reg op1_reg =
+            X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, instr->cmp_flt_r_m.op1, float_kind_sizes[FLOAT_F32], false, used_regs);
+        const char* op1_name = x64_flt_reg_names[op1_reg];
+
+        X64_emit_text(generator, "  ucomiss %s, %s", op1_name,
+                      X64_print_sibd_addr(generator->tmp_mem, &op2_addr, float_kind_sizes[FLOAT_F32]));
+        X64_end_reg_group(&tmp_group);
+        break;
+    }
+    case X64_INSTR_UCOMISD_R_M: {
+        X64_SIBDAddr op2_addr = {0};
+        u32 used_regs = X64_get_sibd_addr(generator, &op2_addr, &instr->cmp_flt_r_m.op2);
+
+        X64_RegGroup tmp_group = X64_begin_reg_group(generator);
+        X64_Reg op1_reg =
+            X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, instr->cmp_flt_r_m.op1, float_kind_sizes[FLOAT_F64], false, used_regs);
+        const char* op1_name = x64_flt_reg_names[op1_reg];
+
+        X64_emit_text(generator, "  ucomisd %s, %s", op1_name,
+                      X64_print_sibd_addr(generator->tmp_mem, &op2_addr, float_kind_sizes[FLOAT_F64]));
+        X64_end_reg_group(&tmp_group);
         break;
     }
     case X64_INSTR_JMP: {

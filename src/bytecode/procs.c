@@ -2020,25 +2020,25 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         break;
     }
     case TKN_LT: {
-        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_LT : COND_U_LT;
+        ConditionKind cond_kind = left.type->kind == TYPE_FLOAT || type_is_signed(left.type) ? COND_S_LT : COND_U_LT;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_LTEQ: {
-        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_LTEQ : COND_U_LTEQ;
+        ConditionKind cond_kind = left.type->kind == TYPE_FLOAT || type_is_signed(left.type) ? COND_S_LTEQ : COND_U_LTEQ;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_GT: {
-        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_GT : COND_U_GT;
+        ConditionKind cond_kind = left.type->kind == TYPE_FLOAT || type_is_signed(left.type) ? COND_S_GT : COND_U_GT;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_GTEQ: {
-        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_GTEQ : COND_U_GTEQ;
+        ConditionKind cond_kind = left.type->kind == TYPE_FLOAT || type_is_signed(left.type) ? COND_S_GTEQ : COND_U_GTEQ;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
