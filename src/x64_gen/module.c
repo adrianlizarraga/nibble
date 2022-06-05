@@ -2257,6 +2257,10 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_mi_instr(generator, "cmp", size, &instr->cmp_m_i.op1, size, instr->cmp_m_i.op2);
         break;
     }
+    case X64_INSTR_UCOMISS_R_R: {
+        // TODO: Left off here!
+        break;
+    }
     case X64_INSTR_JMP: {
         long target_id = instr->jmp.target->id;
 
