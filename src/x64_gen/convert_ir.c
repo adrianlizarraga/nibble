@@ -22,6 +22,20 @@ static X64_InstrKind unary_kind[] = {[INSTR_NEG] = X64_INSTR_NEG, [INSTR_NOT] = 
 static X64_InstrKind convert_kind[] =
     {[INSTR_TRUNC] = X64_INSTR_MOV_R_R, [INSTR_SEXT] = X64_INSTR_MOVSX_R_R, [INSTR_ZEXT] = X64_INSTR_MOVZX_R_R};
 
+// The floating-point comparison instructions in X86_64 use the unsigned condition variants.
+static const ConditionKind flt_cond_map[] = {
+    [COND_U_LT] = COND_U_LT,
+    [COND_S_LT] = COND_U_LT,
+    [COND_U_LTEQ] = COND_U_LTEQ,
+    [COND_S_LTEQ] = COND_U_LTEQ,
+    [COND_U_GT] = COND_U_GT,
+    [COND_S_GT] = COND_U_GT,
+    [COND_U_GTEQ] = COND_U_GTEQ,
+    [COND_S_GTEQ] = COND_U_GTEQ,
+    [COND_EQ] = COND_EQ,
+    [COND_NEQ] = COND_NEQ,
+};
+
 static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
 {
     if (src_range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_NONE) {
@@ -1290,10 +1304,56 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
-    case INSTR_CMP: {
-        size_t size = ir_instr->cmp.type->size;
-        OpRIA ir_a = ir_instr->cmp.a;
-        OpRIA ir_b = ir_instr->cmp.b;
+    case INSTR_FLT_CMP: {
+        FloatKind fkind = ir_instr->flt_cmp.fkind;
+        IR_Reg ir_a = ir_instr->flt_cmp.a;
+        OpRA ir_b = ir_instr->flt_cmp.b;
+
+        u32 a = X64_get_lir_reg(builder, ir_a, X64_REG_CLASS_FLOAT);
+
+        if (ir_b.is_addr) {
+            X64_MemAddr b = {0};
+            X64_get_lir_addr(builder, xbblock, &b, &ir_b.addr, 0);
+            X64_emit_instr_flt_cmp_r_m(builder, xbblock, fkind, a, b);
+        }
+        else {
+            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_FLOAT);
+            X64_emit_instr_flt_cmp_r_r(builder, xbblock, fkind, a, b);
+        }
+
+        bool combine_next = next_instr && (next_instr->kind == INSTR_COND_JMP) && (next_instr->cond_jmp.a == ir_instr->flt_cmp.r);
+        ConditionKind float_cond = flt_cond_map[ir_instr->flt_cmp.cond];
+
+        if (combine_next) {
+            // Combine this comparison instruction with the next conditional jump.
+            //
+            // EX: r = a <cond> b
+            //     cond_jmp r, <target>
+            //
+            //     BECOMES:
+            //
+            //     cmp a, b
+            //     jmp_<cond> <target>
+
+            X64_emit_instr_jmpcc(builder, xbblock, float_cond, NULL, NULL);
+            ir_instr = next_instr;
+        }
+        else {
+            // EX: r = a <cond> b
+            //
+            // cmp a, b
+            // set_<cond> r
+
+            u32 r = X64_get_lir_reg(builder, ir_instr->flt_cmp.r, X64_REG_CLASS_INT);
+            X64_emit_instr_setcc(builder, xbblock, float_cond, r);
+        }
+
+        break;
+    }
+    case INSTR_INT_CMP: {
+        size_t size = ir_instr->int_cmp.type->size;
+        OpRIA ir_a = ir_instr->int_cmp.a;
+        OpRIA ir_b = ir_instr->int_cmp.b;
 
         assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM); // Only one should be an immediate.
 
@@ -1359,7 +1419,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             }
         }
 
-        bool combine_next = next_instr && (next_instr->kind == INSTR_COND_JMP) && (next_instr->cond_jmp.a == ir_instr->cmp.r);
+        bool combine_next = next_instr && (next_instr->kind == INSTR_COND_JMP) && (next_instr->cond_jmp.a == ir_instr->int_cmp.r);
 
         if (combine_next) {
             // Combine this comparison instruction with the next conditional jump.
@@ -1372,7 +1432,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             //     cmp a, b
             //     jmp_<cond> <target>
 
-            X64_emit_instr_jmpcc(builder, xbblock, ir_instr->cmp.cond, NULL, NULL);
+            X64_emit_instr_jmpcc(builder, xbblock, ir_instr->int_cmp.cond, NULL, NULL);
             ir_instr = next_instr;
         }
         else {
@@ -1381,8 +1441,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             // cmp a, b
             // set_<cond> r
 
-            u32 r = X64_get_lir_reg(builder, ir_instr->cmp.r, X64_REG_CLASS_INT);
-            X64_emit_instr_setcc(builder, xbblock, ir_instr->cmp.cond, r);
+            u32 r = X64_get_lir_reg(builder, ir_instr->int_cmp.r, X64_REG_CLASS_INT);
+            X64_emit_instr_setcc(builder, xbblock, ir_instr->int_cmp.cond, r);
         }
 
         break;

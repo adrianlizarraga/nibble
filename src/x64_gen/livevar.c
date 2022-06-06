@@ -259,6 +259,18 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_mem_lregs(builder, &instr->cmp_m_i.op1, ino);
             break;
         }
+        case X64_INSTR_UCOMISS_R_R:
+        case X64_INSTR_UCOMISD_R_R: {
+            X64_touch_lreg(builder, instr->cmp_flt_r_r.op1, ino);
+            X64_touch_lreg(builder, instr->cmp_flt_r_r.op2, ino);
+            break;
+        }
+        case X64_INSTR_UCOMISS_R_M:
+        case X64_INSTR_UCOMISD_R_M: {
+            X64_touch_lreg(builder, instr->cmp_flt_r_m.op1, ino);
+            X64_touch_mem_lregs(builder, &instr->cmp_flt_r_m.op2, ino);
+            break;
+        }
         case X64_INSTR_JMP:
         case X64_INSTR_JMPCC: {
             // Do nothing.

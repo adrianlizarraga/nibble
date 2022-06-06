@@ -8,6 +8,8 @@ typedef struct IR_ProcBuilder {
     Scope* curr_scope;
     List* curr_tmp_obj;
 
+    FloatLit* zero_flts[FLOAT_KIND_COUNT];
+
     struct IR_TmpObj* tmp_obj_freelist;
     struct IR_DeferredJmpcc* sc_jmp_freelist;
     struct IR_UJmpNode* ujmp_freelist;
@@ -77,6 +79,34 @@ static const ConditionKind ir_opposite_cond[] = {
     [COND_EQ] = COND_NEQ,      [COND_NEQ] = COND_EQ,
 };
 
+static MemAddr IR_sym_as_addr(IR_ProcBuilder* builder, Symbol* sym)
+{
+    MemObj* mem_obj = alloc_type(builder->arena, MemObj, false);
+    mem_obj->kind = MEM_OBJ_SYM;
+    mem_obj->sym = sym;
+
+    MemAddr addr = {.base_kind = MEM_BASE_MEM_OBJ, .base.obj = mem_obj, .index_reg = IR_REG_COUNT};
+    return addr;
+}
+
+static MemAddr IR_tmp_obj_as_addr(IR_TmpObj* obj)
+{
+    MemAddr addr = {.base_kind = MEM_BASE_MEM_OBJ, .base.obj = obj->mem_obj, .index_reg = IR_REG_COUNT};
+    return addr;
+}
+
+static MemAddr IR_strlit_as_addr(StrLit* str_lit)
+{
+    MemAddr addr = {.base_kind = MEM_BASE_STR_LIT, .base.str_lit = str_lit, .index_reg = IR_REG_COUNT};
+    return addr;
+}
+
+static MemAddr IR_floatlit_as_addr(FloatLit* float_lit)
+{
+    MemAddr addr = {.base_kind = MEM_BASE_FLOAT_LIT, .base.float_lit = float_lit, .index_reg = IR_REG_COUNT};
+    return addr;
+}
+
 static inline OpRI op_ri_from_imm(Scalar imm)
 {
     return (OpRI){.is_imm = true, .imm = imm};
@@ -90,6 +120,20 @@ static inline OpRIA op_ria_from_reg(IR_Reg reg)
 static inline OpRIA op_ria_from_imm(Scalar imm)
 {
     return (OpRIA){.kind = OP_RIA_IMM, .imm = imm};
+}
+
+static MemAddr IR_get_zero_flt_addr(IR_ProcBuilder* builder, FloatKind fkind)
+{
+    FloatLit* float_lit = builder->zero_flts[fkind];
+
+    if (!float_lit) {
+        Float flt = {0};
+        float_lit = intern_float_lit(fkind, flt);
+
+        builder->zero_flts[fkind] = float_lit;
+    }
+
+    return IR_floatlit_as_addr(float_lit);
 }
 
 //////////////////////////////////////////////////////
@@ -271,7 +315,8 @@ static void IR_emit_instr_int_binary(IR_ProcBuilder* builder, BBlock* bblock, In
 #define IR_emit_instr_flt_mul(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_MUL, (fk), (r), (a), (b))
 #define IR_emit_instr_flt_div(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_DIV, (fk), (r), (a), (b))
 
-static void IR_emit_instr_flt_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, FloatKind fkind, IR_Reg r, OpRA a, OpRA b)
+static void IR_emit_instr_flt_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, FloatKind fkind, IR_Reg r, OpRA a,
+                                     OpRA b)
 {
     Instr* instr = IR_new_instr(builder->arena, kind);
     instr->flt_binary.fkind = fkind;
@@ -355,7 +400,7 @@ static void IR_emit_instr_convert(IR_ProcBuilder* builder, BBlock* bblock, Instr
 }
 
 static void IR_emit_instr_flt2int(IR_ProcBuilder* builder, BBlock* bblock, IntegerKind dst_kind, FloatKind src_kind, IR_Reg dst,
-                                 OpRA src)
+                                  OpRA src)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_FLT2INT);
     instr->flt2int.dst_kind = dst_kind;
@@ -367,7 +412,7 @@ static void IR_emit_instr_flt2int(IR_ProcBuilder* builder, BBlock* bblock, Integ
 }
 
 static void IR_emit_instr_int2flt(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, IntegerKind src_kind, IR_Reg dst,
-                                 OpRA src)
+                                  OpRA src)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_INT2FLT);
     instr->int2flt.dst_kind = dst_kind;
@@ -378,7 +423,8 @@ static void IR_emit_instr_int2flt(IR_ProcBuilder* builder, BBlock* bblock, Float
     IR_add_instr(builder, bblock, instr);
 }
 
-static void IR_emit_instr_flt2flt(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, FloatKind src_kind, IR_Reg dst, OpRA src)
+static void IR_emit_instr_flt2flt(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, FloatKind src_kind, IR_Reg dst,
+                                  OpRA src)
 {
     Instr* instr = IR_new_instr(builder->arena, INSTR_FLT2FLT);
     instr->flt2flt.dst_kind = dst_kind;
@@ -429,14 +475,30 @@ static void IR_emit_instr_store(IR_ProcBuilder* builder, BBlock* bblock, Type* t
     IR_add_instr(builder, bblock, instr);
 }
 
-static Instr* IR_emit_instr_cmp(IR_ProcBuilder* builder, BBlock* bblock, Type* type, ConditionKind cond, IR_Reg r, OpRIA a, OpRIA b)
+static Instr* IR_emit_instr_int_cmp(IR_ProcBuilder* builder, BBlock* bblock, Type* type, ConditionKind cond, IR_Reg r, OpRIA a,
+                                    OpRIA b)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_CMP);
-    instr->cmp.type = type;
-    instr->cmp.cond = cond;
-    instr->cmp.r = r;
-    instr->cmp.a = a;
-    instr->cmp.b = b;
+    Instr* instr = IR_new_instr(builder->arena, INSTR_INT_CMP);
+    instr->int_cmp.type = type;
+    instr->int_cmp.cond = cond;
+    instr->int_cmp.r = r;
+    instr->int_cmp.a = a;
+    instr->int_cmp.b = b;
+
+    IR_add_instr(builder, bblock, instr);
+
+    return instr;
+}
+
+static Instr* IR_emit_instr_flt_cmp(IR_ProcBuilder* builder, BBlock* bblock, FloatKind fkind, ConditionKind cond, IR_Reg r, IR_Reg a,
+                                    OpRA b)
+{
+    Instr* instr = IR_new_instr(builder->arena, INSTR_FLT_CMP);
+    instr->flt_cmp.fkind = fkind;
+    instr->flt_cmp.cond = cond;
+    instr->flt_cmp.r = r;
+    instr->flt_cmp.a = a;
+    instr->flt_cmp.b = b;
 
     IR_add_instr(builder, bblock, instr);
 
@@ -553,34 +615,6 @@ static IR_Reg IR_next_reg(IR_ProcBuilder* builder)
     IR_Reg next_reg = sym->as_proc.num_regs++;
 
     return next_reg;
-}
-
-static MemAddr IR_sym_as_addr(IR_ProcBuilder* builder, Symbol* sym)
-{
-    MemObj* mem_obj = alloc_type(builder->arena, MemObj, false);
-    mem_obj->kind = MEM_OBJ_SYM;
-    mem_obj->sym = sym;
-
-    MemAddr addr = {.base_kind = MEM_BASE_MEM_OBJ, .base.obj = mem_obj, .index_reg = IR_REG_COUNT};
-    return addr;
-}
-
-static MemAddr IR_tmp_obj_as_addr(IR_TmpObj* obj)
-{
-    MemAddr addr = {.base_kind = MEM_BASE_MEM_OBJ, .base.obj = obj->mem_obj, .index_reg = IR_REG_COUNT};
-    return addr;
-}
-
-static MemAddr IR_strlit_as_addr(StrLit* str_lit)
-{
-    MemAddr addr = {.base_kind = MEM_BASE_STR_LIT, .base.str_lit = str_lit, .index_reg = IR_REG_COUNT};
-    return addr;
-}
-
-static MemAddr IR_floatlit_as_addr(FloatLit* float_lit)
-{
-    MemAddr addr = {.base_kind = MEM_BASE_FLOAT_LIT, .base.float_lit = float_lit, .index_reg = IR_REG_COUNT};
-    return addr;
 }
 
 static void IR_get_object_addr(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* dst, IR_ExprResult* src)
@@ -701,8 +735,11 @@ static void IR_mov_deferred_sc_jmp_list(IR_DeferredCmp* dst_cmp, IR_DeferredCmp*
 
 static void IR_fix_sc_jmp_path(IR_DeferredJmpcc* def_jmp, bool desired_result)
 {
+    Instr* instr = def_jmp->cmp;
+    ConditionKind* p_cond = instr->kind == INSTR_INT_CMP ? &instr->int_cmp.cond : &instr->flt_cmp.cond;
+
     if (def_jmp->result != desired_result) {
-        def_jmp->cmp->cmp.cond = ir_opposite_cond[def_jmp->cmp->cmp.cond];
+        *p_cond = ir_opposite_cond[*p_cond];
         def_jmp->result = desired_result;
     }
 }
@@ -719,8 +756,10 @@ static BBlock* IR_copy_sc_jmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Deferr
     }
 
     BBlock* last_bb = IR_alloc_bblock(builder);
+    Instr* cmp_instr = dst_jmp->cmp;
+    IR_Reg cmp_result = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
 
-    dst_jmp->jmp = IR_emit_instr_cond_jmp(builder, bblock, NULL, last_bb, dst_jmp->cmp->cmp.r);
+    dst_jmp->jmp = IR_emit_instr_cond_jmp(builder, bblock, NULL, last_bb, cmp_result);
 
     return last_bb;
 }
@@ -739,7 +778,9 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
 
     if (!has_sc_jmps && !has_final_jmp) {
         e_bblock = bblock;
-        dst_reg = def_cmp->final_jmp.cmp->cmp.r;
+
+        Instr* cmp_instr = def_cmp->final_jmp.cmp;
+        dst_reg = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
     }
     else {
         // Fix final jmp condition so that it jumps to "false" control path.
@@ -1070,6 +1111,35 @@ static OpRIA IR_expr_result_to_op_ria(IR_ProcBuilder* builder, BBlock** p_bblock
     return ria;
 }
 
+static Instr* IR_cmp_to_zero(IR_ProcBuilder* builder, BBlock** p_bblock, IR_ExprResult* src_er, ConditionKind cond)
+{
+    Instr* cmp_instr = NULL;
+    Type* type = src_er->type;
+
+    if (type_is_int_scalar(type)) {
+        OpRIA a = IR_expr_result_to_op_ria(builder, p_bblock, src_er);
+        OpRIA b = op_ria_from_imm(ir_zero_imm);
+
+        IR_Reg cmp_reg = IR_next_reg(builder);
+        cmp_instr = IR_emit_instr_int_cmp(builder, *p_bblock, type, cond, cmp_reg, a, b);
+    }
+    else if (type->kind == TYPE_FLOAT) {
+        *p_bblock = IR_expr_result_to_reg(builder, *p_bblock, src_er);
+
+        FloatKind fkind = type->as_float.kind;
+        IR_Reg a = src_er->reg;
+        OpRA b = {.is_addr = true, .addr = IR_get_zero_flt_addr(builder, fkind)};
+
+        IR_Reg cmp_reg = IR_next_reg(builder);
+        cmp_instr = IR_emit_instr_flt_cmp(builder, *p_bblock, fkind, cond, cmp_reg, a, b);
+    }
+    else {
+        NIBBLE_FATAL_EXIT("IR_cmp_to_zero(): Unexpected expression type '%s'", type_name(type));
+    }
+
+    return cmp_instr;
+}
+
 static void IR_zero_memory(IR_ProcBuilder* builder, BBlock* bblock, MemAddr* addr, size_t size)
 {
     if (size > (PTR_SIZE << 2)) {
@@ -1398,11 +1468,29 @@ static BBlock* IR_emit_binary_cmp(IR_ProcBuilder* builder, BBlock* bblock, Condi
     assert(left_er->type == right_er->type);
     BBlock* curr_bb = bblock;
 
-    OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
-    OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
+    IR_Reg cmp_reg = IR_REG_COUNT;
+    Instr* cmp_instr = NULL;
 
-    IR_Reg cmp_reg = IR_next_reg(builder);
-    Instr* cmp_instr = IR_emit_instr_cmp(builder, curr_bb, left_er->type, cond_kind, cmp_reg, a, b);
+    if (type_is_int_scalar(left_er->type)) {
+        OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
+        OpRIA b = IR_expr_result_to_op_ria(builder, &curr_bb, right_er);
+
+        cmp_reg = IR_next_reg(builder);
+        cmp_instr = IR_emit_instr_int_cmp(builder, curr_bb, left_er->type, cond_kind, cmp_reg, a, b);
+    }
+    else if (left_er->type->kind == TYPE_FLOAT) {
+        curr_bb = IR_expr_result_to_reg(builder, curr_bb, left_er);
+
+        IR_Reg a = left_er->reg;
+        OpRA b = IR_expr_result_to_op_ra(builder, &curr_bb, right_er);
+        FloatKind fkind = left_er->type->as_float.kind;
+
+        cmp_reg = IR_next_reg(builder);
+        cmp_instr = IR_emit_instr_flt_cmp(builder, curr_bb, fkind, cond_kind, cmp_reg, a, b);
+    }
+    else {
+        NIBBLE_FATAL_EXIT("IR_emit_binary_cmp(): Unexpected operand types '%s'", type_name(left_er->type));
+    }
 
     dst_er->type = dst_type;
     dst_er->kind = IR_EXPR_RESULT_DEFERRED_CMP;
@@ -1493,11 +1581,8 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     else {
         left_end_bb = IR_expr_result_to_reg(builder, left_end_bb, &left_er);
 
-        OpRIA a = op_ria_from_reg(left_er.reg);
-        OpRIA b = op_ria_from_imm(ir_zero_imm);
-
-        IR_Reg cmp_reg = IR_next_reg(builder);
-        Instr* cmp_instr = IR_emit_instr_cmp(builder, left_end_bb, left_er.type, short_circuit_cond, cmp_reg, a, b);
+        Instr* cmp_instr = IR_cmp_to_zero(builder, &left_end_bb, &left_er, short_circuit_cond);
+        IR_Reg cmp_reg = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
 
         right_bb = IR_alloc_bblock(builder);
         Instr* jmp_instr = IR_emit_instr_cond_jmp(builder, left_end_bb, NULL, right_bb, cmp_reg);
@@ -1526,11 +1611,8 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     else {
         right_end_bb = IR_expr_result_to_reg(builder, right_end_bb, &right_er);
 
-        OpRIA a = op_ria_from_reg(right_er.reg);
-        OpRIA b = op_ria_from_imm(ir_zero_imm);
-
-        IR_Reg cmp_reg = IR_next_reg(builder);
-        Instr* cmp_instr = IR_emit_instr_cmp(builder, right_end_bb, right_er.type, COND_EQ, cmp_reg, a, b);
+        Instr* cmp_instr = IR_cmp_to_zero(builder, &right_end_bb, &right_er, COND_EQ);
+        IR_Reg cmp_reg = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
 
         last_bb = IR_alloc_bblock(builder);
         Instr* jmp_instr = IR_emit_instr_cond_jmp(builder, right_end_bb, NULL, last_bb, cmp_reg);
@@ -1938,25 +2020,25 @@ static BBlock* IR_emit_expr_binary(IR_ProcBuilder* builder, BBlock* bblock, Expr
         break;
     }
     case TKN_LT: {
-        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_LT : COND_U_LT;
+        ConditionKind cond_kind = left.type->kind == TYPE_FLOAT || type_is_signed(left.type) ? COND_S_LT : COND_U_LT;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_LTEQ: {
-        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_LTEQ : COND_U_LTEQ;
+        ConditionKind cond_kind = left.type->kind == TYPE_FLOAT || type_is_signed(left.type) ? COND_S_LTEQ : COND_U_LTEQ;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_GT: {
-        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_GT : COND_U_GT;
+        ConditionKind cond_kind = left.type->kind == TYPE_FLOAT || type_is_signed(left.type) ? COND_S_GT : COND_U_GT;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
     }
     case TKN_GTEQ: {
-        ConditionKind cond_kind = type_is_signed(left.type) ? COND_S_GTEQ : COND_U_GTEQ;
+        ConditionKind cond_kind = left.type->kind == TYPE_FLOAT || type_is_signed(left.type) ? COND_S_GTEQ : COND_U_GTEQ;
 
         curr_bb = IR_emit_binary_cmp(builder, curr_bb, cond_kind, result_type, dst, &left, &right);
         break;
@@ -2116,11 +2198,7 @@ static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprU
             dst->cmp.final_jmp.result = !inner_er.cmp.final_jmp.result;
         }
         else {
-            OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, &inner_er);
-            OpRIA b = op_ria_from_imm(ir_zero_imm);
-
-            IR_Reg dst_reg = IR_next_reg(builder);
-            Instr* cmp_instr = IR_emit_instr_cmp(builder, curr_bb, inner_er.type, COND_EQ, dst_reg, a, b);
+            Instr* cmp_instr = IR_cmp_to_zero(builder, &curr_bb, &inner_er, COND_EQ);
 
             dst->cmp.final_jmp.cmp = cmp_instr;
             dst->cmp.final_jmp.result = true;
@@ -2345,17 +2423,10 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         dst_er->kind = IR_EXPR_RESULT_TMP_OBJ;
         dst_er->tmp_obj = slice_obj;
     }
-    // TODO: Float to bool
-    else if (type_is_bool(dst_er->type)) {
-        assert(type_is_scalar(src_er->type));
+    else if (type_is_bool(dst_er->type) && type_is_scalar(src_er->type)) {
         assert(src_er->kind != IR_EXPR_RESULT_DEFERRED_CMP);
 
-        OpRIA s = IR_expr_result_to_op_ria(builder, &curr_bb, src_er);
-        OpRIA z = op_ria_from_imm(ir_zero_imm);
-
-        // Check if src != 0.
-        IR_Reg cmp_reg = IR_next_reg(builder);
-        Instr* cmp_instr = IR_emit_instr_cmp(builder, curr_bb, src_er->type, COND_NEQ, cmp_reg, s, z);
+        Instr* cmp_instr = IR_cmp_to_zero(builder, &curr_bb, src_er, COND_NEQ);
 
         // Create a "deferred" comparison that will either be resolved into a boolean value or used in a conditional jump.
         dst_er->kind = IR_EXPR_RESULT_DEFERRED_CMP;
@@ -2400,9 +2471,11 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
         dst_er->kind = IR_EXPR_RESULT_REG;
         dst_er->reg = dst_reg;
     }
-    else {
-        assert(type_is_scalar(src_er->type) && type_is_scalar(dst_er->type));
+    else if (type_is_scalar(src_er->type) && type_is_scalar(dst_er->type)) {
         curr_bb = IR_emit_int_cast(builder, curr_bb, src_er, dst_er);
+    }
+    else {
+        NIBBLE_FATAL_EXIT("IR_emit_op_cast(): Unexpected arg types '%s' and '%s'.", type_name(src_er->type), type_name(dst_er->type));
     }
 
     return curr_bb;
@@ -3366,7 +3439,10 @@ static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* 
         }
         else {
             BBlock* last_bb = IR_alloc_bblock(builder);
-            final_jmp->jmp = IR_emit_instr_cond_jmp(builder, curr_bb, jmp_bb, last_bb, final_jmp->cmp->cmp.r);
+            Instr* cmp_instr = final_jmp->cmp;
+            IR_Reg cmp_result = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
+
+            final_jmp->jmp = IR_emit_instr_cond_jmp(builder, curr_bb, jmp_bb, last_bb, cmp_result);
 
             curr_bb = last_bb;
         }
@@ -3377,14 +3453,9 @@ static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* 
         }
     }
     else {
-        OpRIA c = IR_expr_result_to_op_ria(builder, &curr_bb, &cond_er);
-        OpRIA z = op_ria_from_imm(ir_zero_imm);
-
         ConditionKind cond_kind = jmp_result ? COND_NEQ : COND_EQ;
-
-        // Check if cond == $imm, if so jump to jmp_bb, else fall to last_bb
-        IR_Reg cmp_reg = IR_next_reg(builder);
-        IR_emit_instr_cmp(builder, curr_bb, cond_er.type, cond_kind, cmp_reg, c, z);
+        Instr* cmp_instr = IR_cmp_to_zero(builder, &curr_bb, &cond_er, cond_kind);
+        IR_Reg cmp_reg = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
 
         BBlock* last_bb = IR_alloc_bblock(builder);
         IR_emit_instr_cond_jmp(builder, curr_bb, jmp_bb, last_bb, cmp_reg);

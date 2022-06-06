@@ -457,6 +457,22 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            instr->cmp_m_i.op2.as_int._u64);
         break;
     }
+    case X64_INSTR_UCOMISS_R_R: {
+        ftprint_char_array(&dstr, false, "ucomiss r%d, r%d", instr->cmp_flt_r_r.op1, instr->cmp_flt_r_r.op2);
+        break;
+    }
+    case X64_INSTR_UCOMISD_R_R: {
+        ftprint_char_array(&dstr, false, "ucomisd r%d, r%d", instr->cmp_flt_r_r.op1, instr->cmp_flt_r_r.op2);
+        break;
+    }
+    case X64_INSTR_UCOMISS_R_M: {
+        ftprint_char_array(&dstr, false, "ucomiss r%d, %s", instr->cmp_flt_r_m.op1, LIR_print_mem(arena, &instr->cmp_flt_r_m.op2));
+        break;
+    }
+    case X64_INSTR_UCOMISD_R_M: {
+        ftprint_char_array(&dstr, false, "ucomisd r%d, %s", instr->cmp_flt_r_m.op1, LIR_print_mem(arena, &instr->cmp_flt_r_m.op2));
+        break;
+    }
     case X64_INSTR_JMP: {
         ftprint_char_array(&dstr, false, "jmp B.%ld", instr->jmp.target->id);
         break;
