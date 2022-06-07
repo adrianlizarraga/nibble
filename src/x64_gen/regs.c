@@ -42,13 +42,24 @@ static X64_ScratchRegs x64_linux_nonleaf_scratch_regs[X64_REG_CLASS_COUNT] = {
     }
 };
 
-static X64_Reg x64_linux_arg_regs[] = {X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9};
+static X64_Reg x64_linux_arg_int_regs[] = {X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9};
+static X64_Reg x64_linux_arg_flt_regs[] = {X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3, X64_XMM4, X64_XMM5, X64_XMM6, X64_XMM7};
+static X64_ScratchRegs x64_linux_arg_regs[X64_REG_CLASS_COUNT] = {
+    [X64_REG_CLASS_INT] = {
+        .num_regs = ARRAY_LEN(x64_linux_arg_int_regs),
+        .regs = x64_linux_arg_int_regs
+    },
+    [X64_REG_CLASS_FLOAT] = {
+        .num_regs = ARRAY_LEN(x64_linux_arg_flt_regs),
+        .regs = x64_linux_arg_flt_regs
+    }
+};
 
 // Bit is 1 for caller saved registers: RAX, RCX, RDX, _, _, _, RSI, RDI, R8, R9, R10, R11, _, _, _, _, XMM0, ..., XMM15
 static const u32 x64_linux_caller_saved_reg_mask = 0xFFFF0FC7;
 
-// Bit is 1 for arg registers: _, RCX, RDX, _, _, _, RSI, RDI, R8, R9, _, _, _, _, _, _
-static const u32 x64_linux_arg_reg_mask = 0x03C6;
+// Bit is 1 for arg registers: _, RCX, RDX, _, _, _, RSI, RDI, R8, R9, _, _, _, _, _, _, XMM0, ... , XMM7
+static const u32 x64_linux_arg_reg_mask = 0x00FF03C6;
 
 // Windows ABI
 static X64_Reg x64_windows_leaf_scratch_int_regs[] = {
@@ -89,14 +100,25 @@ static X64_ScratchRegs x64_windows_nonleaf_scratch_regs[X64_REG_CLASS_COUNT] = {
     }
 };
 
-static X64_Reg x64_windows_arg_regs[] = {X64_RCX, X64_RDX, X64_R8, X64_R9};
+static X64_Reg x64_windows_arg_int_regs[] = {X64_RCX, X64_RDX, X64_R8, X64_R9};
+static X64_Reg x64_windows_arg_flt_regs[] = {X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3};
+static X64_ScratchRegs x64_windows_arg_regs[X64_REG_CLASS_COUNT] = {
+    [X64_REG_CLASS_INT] = {
+        .num_regs = ARRAY_LEN(x64_windows_arg_int_regs),
+        .regs = x64_windows_arg_int_regs
+    },
+    [X64_REG_CLASS_FLOAT] = {
+        .num_regs = ARRAY_LEN(x64_windows_arg_flt_regs),
+        .regs = x64_windows_arg_flt_regs
+    }
+};
 
 // RAX, RCX, RDX, _, _, _, _, _, R8, R9, R10, R11, _, _, _, _,
 // XMM0 XMM1 XMM2 XMM3, XMM4 XMM5
 static const u32 x64_windows_caller_saved_reg_mask = 0x003F0F07;
 
-// _, RCX, RDX, _, _, _, _, _, R8, R9, _, _, _, _, _, _
-static const u32 x64_windows_arg_reg_mask = 0x0306;
+// _, RCX, RDX, _, _, _, _, _, R8, R9, _, _, _, _, _, _, XMM0, XMM1, XMM2, XMM3
+static const u32 x64_windows_arg_reg_mask = 0x000F0306;
 
 X64_Target x64_target;
 
@@ -151,9 +173,7 @@ void x64_init_target(OS target_os)
 
     switch (target_os) {
     case OS_LINUX:
-        x64_target.num_arg_regs = ARRAY_LEN(x64_linux_arg_regs);
-        x64_target.arg_regs = x64_linux_arg_regs;
-
+        x64_target.arg_regs = &x64_linux_arg_regs;
         x64_target.leaf_scratch_regs = &x64_linux_leaf_scratch_regs;
         x64_target.nonleaf_scratch_regs = &x64_linux_nonleaf_scratch_regs;
 
@@ -163,9 +183,7 @@ void x64_init_target(OS target_os)
         x64_target.startup_code = x64_linux_startup_code;
         break;
     case OS_WIN32:
-        x64_target.num_arg_regs = ARRAY_LEN(x64_windows_arg_regs);
-        x64_target.arg_regs = x64_windows_arg_regs;
-
+        x64_target.arg_regs = &x64_windows_arg_regs;
         x64_target.leaf_scratch_regs = &x64_windows_leaf_scratch_regs;
         x64_target.nonleaf_scratch_regs = &x64_windows_nonleaf_scratch_regs;
 
@@ -205,3 +223,9 @@ bool X64_is_obj_retarg_large(size_t size)
 
     return X64_windows_is_obj_retarg_large(size);
 }
+
+X64_RegClass X64_linux_obj_reg_class(Type* type)
+{
+    return type_agg_has_non_float(type) ? X64_REG_CLASS_INT : X64_REG_CLASS_FLOAT;
+}
+
