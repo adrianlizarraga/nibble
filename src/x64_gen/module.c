@@ -1715,9 +1715,19 @@ static void X64_place_args_in_stack(X64_Generator* generator, u32 num_args, X64_
 
             // Move directly into stack slot.
             if (IS_LREG_IN_REG(loc.kind)) {
-                // TODO: Left off here! Handle floats
-                X64_emit_text(generator, "  mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], slot->sp_offset,
-                              x64_int_reg_names[arg_size][loc.reg]);
+                X64_RegClass reg_class = x64_reg_classes[loc.reg];
+
+                if (reg_class == X64_REG_CLASS_INT) {
+                    X64_emit_text(generator, "  mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], slot->sp_offset,
+                                  x64_int_reg_names[arg_size][loc.reg]);
+                }
+                else {
+                    assert(reg_class == X64_REG_CLASS_FLOAT);
+                    const char* mov_name = arg_size == float_kind_sizes[FLOAT_F64] ? "movsd" : "movss";
+
+                    X64_emit_text(generator, "  %s %s [rsp + %d], %s", mov_name, x64_mem_size_label[arg_size], slot->sp_offset,
+                                  x64_flt_reg_names[loc.reg]);
+                }
             }
         }
     }
@@ -1740,7 +1750,6 @@ static void X64_place_args_in_stack(X64_Generator* generator, u32 num_args, X64_
         X64_LRegLoc loc = X64_lreg_loc(generator, arg->val.reg);
 
         if (IS_LREG_IN_STACK(loc.kind)) {
-            // TODO: Left off here! Handle floats
             // Move into RAX.
             X64_emit_text(generator, "  mov %s, %s", x64_int_reg_names[arg_size][X64_RAX],
                           X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
@@ -2534,10 +2543,13 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                 X64_LRegLoc dst_loc = X64_lreg_loc(generator, dst_val.reg);
 
                 if (IS_LREG_IN_STACK(dst_loc.kind)) {
-                    // Move result (in RAX) to stack offset.
-                    X64_emit_text(generator, "  mov %s, %s",
-                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size),
-                                  x64_int_reg_names[ret_type->size][X64_RAX]);
+                    // TODO: I LOVE ALLIE AND I LEFT OFF HERE.
+                    // Move result (in RAX/XMM0) to stack offset.
+                    const char* mov_name = ret_type->kind == TYPE_FLOAT ? (ret_type->size == float_kind_sizes[FLOAT_F64] ? "movsd" : "movss") : "mov";
+                    const char* reg_name = ret_type->kind == TYPE_FLOAT ? x64_flt_reg_names[X64_XMM0] : x64_int_reg_names[ret_type->size][X64_RAX];
+
+                    X64_emit_text(generator, "  %s %s, %s", mov_name,
+                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size), reg_name);
                 }
                 else {
                     assert(IS_LREG_IN_REG(dst_loc.kind));
