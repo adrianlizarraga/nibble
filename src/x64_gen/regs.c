@@ -47,6 +47,9 @@ static const u32 x64_linux_caller_saved_reg_mask = 0xFFFF0FC7;
 // Bit is 1 for arg registers: _, RCX, RDX, _, _, _, RSI, RDI, R8, R9, _, _, _, _, _, _, XMM0, ... , XMM7
 static const u32 x64_linux_arg_reg_mask = 0x00FF03C6;
 
+// Bit is 1 for ret registers: RAX, _, RDX, _, _, _, _, _, _, _, _, _, _, _, _, _, XMM0, XMM1, _, _, ...
+static const u32 x64_linux_ret_reg_mask = 0x00030005;
+
 // Windows ABI
 static X64_Reg x64_windows_leaf_scratch_int_regs[] = {
     X64_R10, X64_R11, X64_RAX, X64_RCX, X64_RDX, X64_R8,  X64_R9, // NOTE: Caller saved
@@ -92,6 +95,9 @@ static const u32 x64_windows_caller_saved_reg_mask = 0x003F0F07;
 
 // _, RCX, RDX, _, _, _, _, _, R8, R9, _, _, _, _, _, _, XMM0, XMM1, XMM2, XMM3
 static const u32 x64_windows_arg_reg_mask = 0x000F0306;
+
+// Bit is 1 for ret registers: RAX, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, XMM0, _, _, _, ...
+static const u32 x64_windows_ret_reg_mask = 0x00010001;
 
 X64_Target x64_target;
 
@@ -140,6 +146,7 @@ void x64_init_target(OS target_os)
 
         x64_target.caller_saved_reg_mask = x64_linux_caller_saved_reg_mask;
         x64_target.arg_reg_mask = x64_linux_arg_reg_mask;
+        x64_target.ret_reg_mask = x64_linux_ret_reg_mask;
 
         x64_target.startup_code = x64_linux_startup_code;
         break;
@@ -151,6 +158,7 @@ void x64_init_target(OS target_os)
 
         x64_target.caller_saved_reg_mask = x64_windows_caller_saved_reg_mask;
         x64_target.arg_reg_mask = x64_windows_arg_reg_mask;
+        x64_target.ret_reg_mask = x64_windows_ret_reg_mask;
 
         x64_target.startup_code = x64_windows_startup_code;
         break;

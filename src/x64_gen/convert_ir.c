@@ -1601,15 +1601,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             if (type_is_obj_like(ret_type)) {
                 // The address for the obj assigned to the proc's return value should not use any
                 // integer return registers (i.e., rax & rdx).
-                X64_ScratchRegs ret_regs = (*x64_target.ret_regs)[X64_REG_CLASS_INT];
-                size_t banned_regs = 0;
-
-                for (size_t i = 0; i < ret_regs.num_regs; i++) {
-                    X64_Reg ret_regi = ret_regs.regs[i];
-                    banned_regs |= (1UL << ret_regi);
-                }
-
-                X64_get_lir_addr(builder, xbblock, &r.addr, &ir_r.addr, (1UL << X64_RAX) | (1UL << X64_RDX));
+                X64_get_lir_addr(builder, xbblock, &r.addr, &ir_r.addr, x64_target.ret_reg_mask);
             }
             else {
                 X64_RegClass reg_class = ret_type->kind == TYPE_FLOAT ? X64_REG_CLASS_FLOAT : X64_REG_CLASS_INT;
