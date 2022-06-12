@@ -127,7 +127,7 @@ static X64_ScratchRegs x64_windows_arg_regs[X64_REG_CLASS_COUNT] = {
 };
 
 static X64_Reg x64_windows_ret_int_regs[] = {X64_RAX};
-static X64_Reg x64_windows_ret_flt_regs[] = {0};
+static X64_Reg x64_windows_ret_flt_regs[] = {X64_XMM0};
 static X64_ScratchRegs x64_windows_ret_regs[X64_REG_CLASS_COUNT] = {
     [X64_REG_CLASS_INT] = {
         .num_regs = ARRAY_LEN(x64_windows_ret_int_regs),
