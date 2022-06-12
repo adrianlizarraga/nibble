@@ -731,7 +731,8 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
     if (type_is_obj_like(ret_type) && X64_linux_is_obj_retarg_large(ret_type->size)) {
         X64_ScratchRegs arg_int_regs = (*x64_target.arg_regs)[X64_REG_CLASS_INT];
 
-        X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE, arg_int_regs.regs[arg_reg_indices[X64_REG_CLASS_INT]]);
+        X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE,
+                            arg_int_regs.regs[arg_reg_indices[X64_REG_CLASS_INT]]);
         arg_reg_indices[X64_REG_CLASS_INT] += 1;
     }
 
@@ -1234,15 +1235,13 @@ static size_t X64_cpy_reg_to_mem(X64_Generator* generator, X64_SIBDAddr* dst, X6
         assert(src_reg_class == X64_REG_CLASS_FLOAT);
 
         if (rem_amnt == float_kind_sizes[FLOAT_F32]) {
-            X64_emit_text(generator, "  movss %s, %s", X64_print_sibd_addr(generator->tmp_mem, dst, rem_amnt),
-                          x64_flt_reg_names[src]);
+            X64_emit_text(generator, "  movss %s, %s", X64_print_sibd_addr(generator->tmp_mem, dst, rem_amnt), x64_flt_reg_names[src]);
 
             rem_amnt = 0;
         }
         else {
             NIBBLE_FATAL_EXIT("X64_cpy_reg_to_mem(): Cannot copy %d bytes from XMM register.", rem_amnt);
         }
-
     }
 
     return rem_amnt;
@@ -1787,7 +1786,7 @@ static void X64_linux_cpy_ret_small_obj(X64_Generator* generator, Type* ret_type
 {
     X64_RegClass reg_class = X64_linux_obj_reg_class(ret_type);
     X64_ScratchRegs ret_regs = (*x64_target.ret_regs)[reg_class];
-    
+
     // Procedure returned a small struct/union/array object in registers.
     // Copy into appropriate memory location.
     if (!X64_linux_is_obj_retarg_large(ret_type->size)) {

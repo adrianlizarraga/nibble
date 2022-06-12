@@ -3,15 +3,15 @@
 
 static X64_InstrKind binary_kind[] = {
     [INSTR_INT_ADD] = X64_INSTR_ADD_R_R, [INSTR_INT_SUB] = X64_INSTR_SUB_R_R, [INSTR_INT_MUL] = X64_INSTR_IMUL_R_R,
-    [INSTR_AND] = X64_INSTR_AND_R_R, [INSTR_OR] = X64_INSTR_OR_R_R,   [INSTR_XOR] = X64_INSTR_XOR_R_R};
+    [INSTR_AND] = X64_INSTR_AND_R_R,     [INSTR_OR] = X64_INSTR_OR_R_R,       [INSTR_XOR] = X64_INSTR_XOR_R_R};
 
 static X64_InstrKind binary_r_i_kind[] = {
     [INSTR_INT_ADD] = X64_INSTR_ADD_R_I, [INSTR_INT_SUB] = X64_INSTR_SUB_R_I, [INSTR_INT_MUL] = X64_INSTR_IMUL_R_I,
-    [INSTR_AND] = X64_INSTR_AND_R_I, [INSTR_OR] = X64_INSTR_OR_R_I,   [INSTR_XOR] = X64_INSTR_XOR_R_I};
+    [INSTR_AND] = X64_INSTR_AND_R_I,     [INSTR_OR] = X64_INSTR_OR_R_I,       [INSTR_XOR] = X64_INSTR_XOR_R_I};
 
 static X64_InstrKind binary_r_m_kind[] = {
     [INSTR_INT_ADD] = X64_INSTR_ADD_R_M, [INSTR_INT_SUB] = X64_INSTR_SUB_R_M, [INSTR_INT_MUL] = X64_INSTR_IMUL_R_M,
-    [INSTR_AND] = X64_INSTR_AND_R_M, [INSTR_OR] = X64_INSTR_OR_R_M,   [INSTR_XOR] = X64_INSTR_XOR_R_M};
+    [INSTR_AND] = X64_INSTR_AND_R_M,     [INSTR_OR] = X64_INSTR_OR_R_M,       [INSTR_XOR] = X64_INSTR_XOR_R_M};
 
 static X64_InstrKind shift_kind[] = {[INSTR_SHL] = X64_INSTR_SHL_R_R, [INSTR_SAR] = X64_INSTR_SAR_R_R};
 
@@ -24,16 +24,9 @@ static X64_InstrKind convert_kind[] =
 
 // The floating-point comparison instructions in X86_64 use the unsigned condition variants.
 static const ConditionKind flt_cond_map[] = {
-    [COND_U_LT] = COND_U_LT,
-    [COND_S_LT] = COND_U_LT,
-    [COND_U_LTEQ] = COND_U_LTEQ,
-    [COND_S_LTEQ] = COND_U_LTEQ,
-    [COND_U_GT] = COND_U_GT,
-    [COND_S_GT] = COND_U_GT,
-    [COND_U_GTEQ] = COND_U_GTEQ,
-    [COND_S_GTEQ] = COND_U_GTEQ,
-    [COND_EQ] = COND_EQ,
-    [COND_NEQ] = COND_NEQ,
+    [COND_U_LT] = COND_U_LT, [COND_S_LT] = COND_U_LT, [COND_U_LTEQ] = COND_U_LTEQ, [COND_S_LTEQ] = COND_U_LTEQ,
+    [COND_U_GT] = COND_U_GT, [COND_S_GT] = COND_U_GT, [COND_U_GTEQ] = COND_U_GTEQ, [COND_S_GTEQ] = COND_U_GTEQ,
+    [COND_EQ] = COND_EQ,     [COND_NEQ] = COND_NEQ,
 };
 
 static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
@@ -396,8 +389,8 @@ static void X64_emit_memset(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Me
     X64_emit_instr_rep_stosb(builder, xbblock, rdi, al, rcx);
 }
 
-static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src, u32 (*arg_reg_indices)[X64_REG_CLASS_COUNT],
-                                     X64_StackArgsInfo* stack_info)
+static void X64_linux_place_prim_arg(X64_LIRBuilder* builder, X64_InstrCallArg* dst, IR_Value* src,
+                                     u32 (*arg_reg_indices)[X64_REG_CLASS_COUNT], X64_StackArgsInfo* stack_info)
 {
     Type* type = src->type;
     size_t size = type->size;
@@ -613,7 +606,6 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
 
     if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
         if (type_is_obj_like(ret_type)) {
-            // TODO: Left off here. HANDLE FLOATS.
             X64_MemAddr obj_addr;
             X64_get_lir_addr(builder, xbblock, &obj_addr, &ir_instr->ret.val.addr, (1 << X64_RDI));
 
@@ -638,22 +630,40 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
                 X64_emit_instr_rep_movsb(builder, xbblock, rdi, rsi, rcx);
 
                 // Move provided addr into rax.
-                ax = X64_def_phys_reg(builder, X64_RAX);
+                X64_Reg ret_reg = (*x64_target.ret_regs)[X64_REG_CLASS_INT].regs[0];
+                ax = X64_def_phys_reg(builder, ret_reg);
                 X64_emit_instr_mov_r_r(builder, xbblock, PTR_SIZE, ax, rdi);
             }
             else { // Small obj
-                // Copy first 8 bytes of obj to rax.
-                ax = X64_def_phys_reg(builder, X64_RAX);
-                X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, ax, obj_addr);
+                X64_RegClass reg_class = X64_linux_obj_reg_class(ret_type);
+                X64_ScratchRegs ret_regs = (*x64_target.ret_regs)[reg_class];
+
+                // Copy first 8 bytes of obj to rax/xmm0.
+                ax = X64_def_phys_reg(builder, ret_regs.regs[0]);
+
+                if (reg_class == X64_REG_CLASS_INT) {
+                    X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, ax, obj_addr);
+                }
+                else {
+                    assert(reg_class == X64_REG_CLASS_FLOAT);
+                    X64_emit_instr_mov_flt_r_m(builder, xbblock, FLOAT_F64, ax, obj_addr);
+                }
 
                 if (ret_type->size > X64_MAX_INT_REG_SIZE) {
-                    // Copy second 8 bytes of obj to rdx.
+                    // Copy second 8 bytes of obj to rdx/xmm1.
                     // TODO: Mask off extra copy amount (if obj size < 16 bytes)
                     X64_MemAddr obj_high_addr = obj_addr;
                     obj_high_addr.sibd.disp += X64_MAX_INT_REG_SIZE;
 
-                    dx = X64_def_phys_reg(builder, X64_RDX);
-                    X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, dx, obj_high_addr);
+                    dx = X64_def_phys_reg(builder, ret_regs.regs[1]);
+
+                    if (reg_class == X64_REG_CLASS_INT) {
+                        X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, dx, obj_high_addr);
+                    }
+                    else {
+                        assert(reg_class == X64_REG_CLASS_FLOAT);
+                        X64_emit_instr_mov_flt_r_m(builder, xbblock, FLOAT_F64, dx, obj_high_addr);
+                    }
                 }
             }
         }
@@ -690,6 +700,9 @@ static void X64_windows_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock
             X64_MemAddr obj_addr;
             X64_get_lir_addr(builder, xbblock, &obj_addr, &ir_instr->ret.val.addr, (1 << X64_RDI));
 
+            // NOTE: Windows does not return objects in floating-point XMM registers.
+            X64_Reg ret_reg = (*x64_target.ret_regs)[X64_REG_CLASS_INT].regs[0];
+
             if (X64_windows_is_obj_retarg_large(ret_type->size)) { // Large obj
                 // Copy object to the address provided to the procedure.
 
@@ -711,12 +724,12 @@ static void X64_windows_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock
                 X64_emit_instr_rep_movsb(builder, xbblock, rdi, rsi, rcx);
 
                 // Move provided addr into rax.
-                ax = X64_def_phys_reg(builder, X64_RAX);
+                ax = X64_def_phys_reg(builder, ret_reg);
                 X64_emit_instr_mov_r_r(builder, xbblock, PTR_SIZE, ax, rdi);
             }
             else { // Small obj
                 // Copy first 8 bytes of obj to rax.
-                ax = X64_def_phys_reg(builder, X64_RAX);
+                ax = X64_def_phys_reg(builder, ret_reg);
                 X64_emit_instr_mov_r_m(builder, xbblock, X64_MAX_INT_REG_SIZE, ax, obj_addr);
             }
         }
@@ -1241,7 +1254,6 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
                 X64_emit_instr_convert_r_m(builder, xbblock, ext_kind, smallest_src_size, a_ext, src_size, addr);
                 X64_emit_instr_int2flt_r_r(builder, xbblock, dst_kind, r, smallest_src_size, a_ext);
-
             }
             // Otherwise, just convert src to a fp.
             else {
@@ -1587,7 +1599,16 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
             if (type_is_obj_like(ret_type)) {
-                // TODO: Handle floats.
+                // The address for the obj assigned to the proc's return value should not use any
+                // integer return registers (i.e., rax & rdx).
+                X64_ScratchRegs ret_regs = (*x64_target.ret_regs)[X64_REG_CLASS_INT];
+                size_t banned_regs = 0;
+
+                for (size_t i = 0; i < ret_regs.num_regs; i++) {
+                    X64_Reg ret_regi = ret_regs.regs[i];
+                    banned_regs |= (1UL << ret_regi);
+                }
+
                 X64_get_lir_addr(builder, xbblock, &r.addr, &ir_r.addr, (1UL << X64_RAX) | (1UL << X64_RDX));
             }
             else {

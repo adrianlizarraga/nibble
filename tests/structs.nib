@@ -27,6 +27,12 @@ struct Vec3 {
     z : int;
 }
 
+struct Vec3f {
+    x : f32;
+    y : f32;
+    z : f32;
+}
+
 #static_assert(#offsetof(Vec3, x) == 0);
 #static_assert(#offsetof(Vec3, y) == 4);
 #static_assert(#offsetof(Vec3, z) == 8);
@@ -78,6 +84,16 @@ proc smol_vec2_add(a : SmolVec2, b : SmolVec2) => SmolVec2 {
 
     c.x = a.x + b.x;
     c.y = a.y + b.y;
+
+    return c;
+}
+
+proc vec3f_add(a : Vec3f, b : Vec3f) => Vec3f {
+    var c : Vec3f;
+
+    c.x = a.x + b.x;
+    c.y = a.y + b.y;
+    c.z = a.z + b.z;
 
     return c;
 }
@@ -147,7 +163,13 @@ proc main() => int {
 
     var sw : SliceWrapper = {s = buf.buf}; // Convert array to slice
 
-    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) - (0 + 9 + 0) + (1 + 0 + 0) + 20 - 1 = 90
+    var a_f : Vec3f = {1.0f, 2.0f, 3.0f};
+    var b_f : Vec3f = a_f;
+    var c_f := vec3f_add(a_f, b_f);
+    var d_f := c_f.x + c_f.y + c_f.z;
+
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) - (0 + 9 + 0) + (1 + 0 + 0) + 20 - 1  + 12 = 102
     return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) +
-           (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b) - (d.x + d.y + d.z) + (n.b + n.a.x + n.c[0]) + sw.s[0] - struct_lit_test();
+           (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b) - (d.x + d.y + d.z) + (n.b + n.a.x + n.c[0]) + sw.s[0] - struct_lit_test() + 
+           (d_f :> int);
 }

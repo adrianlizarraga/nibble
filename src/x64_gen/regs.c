@@ -9,19 +9,12 @@ static X64_Reg x64_linux_leaf_scratch_int_regs[] = {
     X64_R12, X64_R13, X64_R14, X64_R15, X64_RBX, // NOTE: Callee saved
 };
 static X64_Reg x64_linux_leaf_scratch_flt_regs[] = {
-    X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3, X64_XMM4, X64_XMM5, X64_XMM6, X64_XMM7, X64_XMM8, X64_XMM9, // NOTE: FP Caller-saved
+    X64_XMM0,  X64_XMM1,  X64_XMM2,  X64_XMM3,  X64_XMM4,  X64_XMM5,  X64_XMM6, X64_XMM7, X64_XMM8, X64_XMM9, // NOTE: FP Caller-saved
     X64_XMM10, X64_XMM11, X64_XMM12, X64_XMM13, X64_XMM14, X64_XMM15, // NOTE: FP Caller-saved
 };
 static X64_ScratchRegs x64_linux_leaf_scratch_regs[X64_REG_CLASS_COUNT] = {
-    [X64_REG_CLASS_INT] = {
-        .num_regs = ARRAY_LEN(x64_linux_leaf_scratch_int_regs),
-        .regs = x64_linux_leaf_scratch_int_regs
-    },
-    [X64_REG_CLASS_FLOAT] = {
-        .num_regs = ARRAY_LEN(x64_linux_leaf_scratch_flt_regs),
-        .regs = x64_linux_leaf_scratch_flt_regs
-    }
-};
+    [X64_REG_CLASS_INT] = {.num_regs = ARRAY_LEN(x64_linux_leaf_scratch_int_regs), .regs = x64_linux_leaf_scratch_int_regs},
+    [X64_REG_CLASS_FLOAT] = {.num_regs = ARRAY_LEN(x64_linux_leaf_scratch_flt_regs), .regs = x64_linux_leaf_scratch_flt_regs}};
 
 static X64_Reg x64_linux_nonleaf_scratch_int_regs[] = {
     X64_R12, X64_R13, X64_R14, X64_R15, X64_RBX, // NOTE: Callee saved
@@ -29,43 +22,23 @@ static X64_Reg x64_linux_nonleaf_scratch_int_regs[] = {
 };
 static X64_Reg x64_linux_nonleaf_scratch_flt_regs[] = {
     X64_XMM10, X64_XMM11, X64_XMM12, X64_XMM13, X64_XMM14, X64_XMM15, // NOTE: FP Caller-saved
-    X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3, X64_XMM4, X64_XMM5, X64_XMM6, X64_XMM7, X64_XMM8, X64_XMM9, // NOTE: FP Caller-saved
+    X64_XMM0,  X64_XMM1,  X64_XMM2,  X64_XMM3,  X64_XMM4,  X64_XMM5,  X64_XMM6, X64_XMM7, X64_XMM8, X64_XMM9, // NOTE: FP Caller-saved
 };
 static X64_ScratchRegs x64_linux_nonleaf_scratch_regs[X64_REG_CLASS_COUNT] = {
-    [X64_REG_CLASS_INT] = {
-        .num_regs = ARRAY_LEN(x64_linux_nonleaf_scratch_int_regs),
-        .regs = x64_linux_nonleaf_scratch_int_regs
-    },
-    [X64_REG_CLASS_FLOAT] = {
-        .num_regs = ARRAY_LEN(x64_linux_nonleaf_scratch_flt_regs),
-        .regs = x64_linux_nonleaf_scratch_flt_regs
-    }
-};
+    [X64_REG_CLASS_INT] = {.num_regs = ARRAY_LEN(x64_linux_nonleaf_scratch_int_regs), .regs = x64_linux_nonleaf_scratch_int_regs},
+    [X64_REG_CLASS_FLOAT] = {.num_regs = ARRAY_LEN(x64_linux_nonleaf_scratch_flt_regs), .regs = x64_linux_nonleaf_scratch_flt_regs}};
 
 static X64_Reg x64_linux_arg_int_regs[] = {X64_RDI, X64_RSI, X64_RDX, X64_RCX, X64_R8, X64_R9};
 static X64_Reg x64_linux_arg_flt_regs[] = {X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3, X64_XMM4, X64_XMM5, X64_XMM6, X64_XMM7};
 static X64_ScratchRegs x64_linux_arg_regs[X64_REG_CLASS_COUNT] = {
-    [X64_REG_CLASS_INT] = {
-        .num_regs = ARRAY_LEN(x64_linux_arg_int_regs),
-        .regs = x64_linux_arg_int_regs
-    },
-    [X64_REG_CLASS_FLOAT] = {
-        .num_regs = ARRAY_LEN(x64_linux_arg_flt_regs),
-        .regs = x64_linux_arg_flt_regs
-    }
-};
+    [X64_REG_CLASS_INT] = {.num_regs = ARRAY_LEN(x64_linux_arg_int_regs), .regs = x64_linux_arg_int_regs},
+    [X64_REG_CLASS_FLOAT] = {.num_regs = ARRAY_LEN(x64_linux_arg_flt_regs), .regs = x64_linux_arg_flt_regs}};
 
 static X64_Reg x64_linux_ret_int_regs[] = {X64_RAX, X64_RDX};
 static X64_Reg x64_linux_ret_flt_regs[] = {X64_XMM0, X64_XMM1};
 static X64_ScratchRegs x64_linux_ret_regs[X64_REG_CLASS_COUNT] = {
-    [X64_REG_CLASS_INT] = {
-        .num_regs = ARRAY_LEN(x64_linux_ret_int_regs),
-        .regs = x64_linux_ret_int_regs
-    },
-    [X64_REG_CLASS_FLOAT] = {
-        .num_regs = ARRAY_LEN(x64_linux_ret_flt_regs),
-        .regs = x64_linux_ret_flt_regs
-    },
+    [X64_REG_CLASS_INT] = {.num_regs = ARRAY_LEN(x64_linux_ret_int_regs), .regs = x64_linux_ret_int_regs},
+    [X64_REG_CLASS_FLOAT] = {.num_regs = ARRAY_LEN(x64_linux_ret_flt_regs), .regs = x64_linux_ret_flt_regs},
 };
 
 // Bit is 1 for caller saved registers: RAX, RCX, RDX, _, _, _, RSI, RDI, R8, R9, R10, R11, _, _, _, _, XMM0, ..., XMM15
@@ -84,15 +57,8 @@ static X64_Reg x64_windows_leaf_scratch_flt_regs[] = {
     X64_XMM6, X64_XMM7, X64_XMM8, X64_XMM9, // NOTE: FP Callee-saved
 };
 static X64_ScratchRegs x64_windows_leaf_scratch_regs[X64_REG_CLASS_COUNT] = {
-    [X64_REG_CLASS_INT] = {
-        .num_regs = ARRAY_LEN(x64_windows_leaf_scratch_int_regs),
-        .regs = x64_windows_leaf_scratch_int_regs
-    },
-    [X64_REG_CLASS_FLOAT] = {
-        .num_regs = ARRAY_LEN(x64_windows_leaf_scratch_flt_regs),
-        .regs = x64_windows_leaf_scratch_flt_regs
-    }
-};
+    [X64_REG_CLASS_INT] = {.num_regs = ARRAY_LEN(x64_windows_leaf_scratch_int_regs), .regs = x64_windows_leaf_scratch_int_regs},
+    [X64_REG_CLASS_FLOAT] = {.num_regs = ARRAY_LEN(x64_windows_leaf_scratch_flt_regs), .regs = x64_windows_leaf_scratch_flt_regs}};
 
 static X64_Reg x64_windows_nonleaf_scratch_int_regs[] = {
     X64_R12, X64_R13, X64_R14, X64_R15, X64_RBX, X64_RSI, X64_RDI, // NOTE: Callee saved
@@ -103,40 +69,21 @@ static X64_Reg x64_windows_nonleaf_scratch_flt_regs[] = {
     X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3, X64_XMM4, X64_XMM5, // NOTE: FP Caller-saved
 };
 static X64_ScratchRegs x64_windows_nonleaf_scratch_regs[X64_REG_CLASS_COUNT] = {
-    [X64_REG_CLASS_INT] = {
-        .num_regs = ARRAY_LEN(x64_windows_nonleaf_scratch_int_regs),
-        .regs = x64_windows_nonleaf_scratch_int_regs
-    },
-    [X64_REG_CLASS_FLOAT] = {
-        .num_regs = ARRAY_LEN(x64_windows_nonleaf_scratch_flt_regs),
-        .regs = x64_windows_nonleaf_scratch_flt_regs
-    }
-};
+    [X64_REG_CLASS_INT] = {.num_regs = ARRAY_LEN(x64_windows_nonleaf_scratch_int_regs), .regs = x64_windows_nonleaf_scratch_int_regs},
+    [X64_REG_CLASS_FLOAT] = {.num_regs = ARRAY_LEN(x64_windows_nonleaf_scratch_flt_regs),
+                             .regs = x64_windows_nonleaf_scratch_flt_regs}};
 
 static X64_Reg x64_windows_arg_int_regs[] = {X64_RCX, X64_RDX, X64_R8, X64_R9};
 static X64_Reg x64_windows_arg_flt_regs[] = {X64_XMM0, X64_XMM1, X64_XMM2, X64_XMM3};
 static X64_ScratchRegs x64_windows_arg_regs[X64_REG_CLASS_COUNT] = {
-    [X64_REG_CLASS_INT] = {
-        .num_regs = ARRAY_LEN(x64_windows_arg_int_regs),
-        .regs = x64_windows_arg_int_regs
-    },
-    [X64_REG_CLASS_FLOAT] = {
-        .num_regs = ARRAY_LEN(x64_windows_arg_flt_regs),
-        .regs = x64_windows_arg_flt_regs
-    }
-};
+    [X64_REG_CLASS_INT] = {.num_regs = ARRAY_LEN(x64_windows_arg_int_regs), .regs = x64_windows_arg_int_regs},
+    [X64_REG_CLASS_FLOAT] = {.num_regs = ARRAY_LEN(x64_windows_arg_flt_regs), .regs = x64_windows_arg_flt_regs}};
 
 static X64_Reg x64_windows_ret_int_regs[] = {X64_RAX};
 static X64_Reg x64_windows_ret_flt_regs[] = {X64_XMM0};
 static X64_ScratchRegs x64_windows_ret_regs[X64_REG_CLASS_COUNT] = {
-    [X64_REG_CLASS_INT] = {
-        .num_regs = ARRAY_LEN(x64_windows_ret_int_regs),
-        .regs = x64_windows_ret_int_regs
-    },
-    [X64_REG_CLASS_FLOAT] = {
-        .num_regs = ARRAY_LEN(x64_windows_ret_flt_regs),
-        .regs = x64_windows_ret_flt_regs
-    },
+    [X64_REG_CLASS_INT] = {.num_regs = ARRAY_LEN(x64_windows_ret_int_regs), .regs = x64_windows_ret_int_regs},
+    [X64_REG_CLASS_FLOAT] = {.num_regs = ARRAY_LEN(x64_windows_ret_flt_regs), .regs = x64_windows_ret_flt_regs},
 };
 
 // RAX, RCX, RDX, _, _, _, _, _, R8, R9, R10, R11, _, _, _, _,
@@ -163,23 +110,10 @@ const X64_RegClass x64_reg_classes[X64_REG_COUNT] = {
 };
 
 const char* x64_flt_reg_names[X64_REG_COUNT] = {
-    [X64_XMM0] = "xmm0",
-    [X64_XMM1] = "xmm1",
-    [X64_XMM2] = "xmm2",
-    [X64_XMM3] = "xmm3",
-    [X64_XMM4] = "xmm4",
-    [X64_XMM5] = "xmm5",
-    [X64_XMM6] = "xmm6",
-    [X64_XMM7] = "xmm7",
-    [X64_XMM8] = "xmm8",
-    [X64_XMM9] = "xmm9",
-    [X64_XMM10] = "xmm10",
-    [X64_XMM11] = "xmm11",
-    [X64_XMM12] = "xmm12",
-    [X64_XMM13] = "xmm13",
-    [X64_XMM14] = "xmm14",
-    [X64_XMM15] = "xmm15"
-};
+    [X64_XMM0] = "xmm0",   [X64_XMM1] = "xmm1",   [X64_XMM2] = "xmm2",   [X64_XMM3] = "xmm3",
+    [X64_XMM4] = "xmm4",   [X64_XMM5] = "xmm5",   [X64_XMM6] = "xmm6",   [X64_XMM7] = "xmm7",
+    [X64_XMM8] = "xmm8",   [X64_XMM9] = "xmm9",   [X64_XMM10] = "xmm10", [X64_XMM11] = "xmm11",
+    [X64_XMM12] = "xmm12", [X64_XMM13] = "xmm13", [X64_XMM14] = "xmm14", [X64_XMM15] = "xmm15"};
 const char* x64_mem_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword"};
 const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "db", [2] = "dw", [4] = "dd", [8] = "dq"};
 
@@ -256,4 +190,3 @@ X64_RegClass X64_linux_obj_reg_class(Type* type)
 {
     return type_agg_has_non_float(type) ? X64_REG_CLASS_INT : X64_REG_CLASS_FLOAT;
 }
-
