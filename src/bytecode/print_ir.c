@@ -140,7 +140,8 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
     static const char* binary_int_kind_name[] = {
         [INSTR_INT_ADD] = "iadd", [INSTR_INT_SUB] = "isub", [INSTR_INT_MUL] = "imul", [INSTR_INT_DIV] = "idiv",
         [INSTR_MOD] = "mod",      [INSTR_AND] = "and",      [INSTR_OR] = "or",        [INSTR_XOR] = "xor"};
-    static const char* binary_flt_kind_name[] = {[INSTR_FLT_ADD] = "fadd", [INSTR_FLT_SUB] = "fsub"};
+    static const char* binary_flt_kind_name[] = {[INSTR_FLT_ADD] = "fadd", [INSTR_FLT_SUB] = "fsub",
+                                                 [INSTR_FLT_MUL] = "fmul", [INSTR_FLT_DIV] = "fdiv"};
     static const char* shift_kind_name[] = {[INSTR_SAR] = "sar", [INSTR_SHL] = "shl"};
     static const char* unary_kind_name[] = {[INSTR_NOT] = "not", [INSTR_NEG] = "neg"};
     static const char* convert_kind_name[] = {[INSTR_TRUNC] = "trunc", [INSTR_ZEXT] = "zext", [INSTR_SEXT] = "sext"};
@@ -162,7 +163,9 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
         break;
     }
     case INSTR_FLT_ADD:
-    case INSTR_FLT_SUB: {
+    case INSTR_FLT_SUB:
+    case INSTR_FLT_MUL:
+    case INSTR_FLT_DIV: {
         const char* op_name = binary_flt_kind_name[instr->kind];
         ftprint_char_array(&dstr, false, "%s <%s> %s, %s, %s", op_name, float_kind_names[instr->flt_binary.fkind],
                            IR_print_reg(arena, instr->flt_binary.r), IR_print_op_ra(arena, &instr->flt_binary.a),
@@ -260,10 +263,16 @@ char* IR_print_instr(Allocator* arena, Instr* instr)
                            IR_print_regimm(arena, instr->store.a));
         break;
     }
-    case INSTR_CMP: {
-        ftprint_char_array(&dstr, false, "cmp <%s> %s, %s %s %s", type_name(instr->cmp.type), IR_print_reg(arena, instr->cmp.r),
-                           IR_print_op_ria(arena, &instr->cmp.a), ir_cond_names[instr->cmp.cond],
-                           IR_print_op_ria(arena, &instr->cmp.b));
+    case INSTR_INT_CMP: {
+        ftprint_char_array(&dstr, false, "icmp <%s> %s, %s %s %s", type_name(instr->int_cmp.type), IR_print_reg(arena, instr->int_cmp.r),
+                           IR_print_op_ria(arena, &instr->int_cmp.a), ir_cond_names[instr->int_cmp.cond],
+                           IR_print_op_ria(arena, &instr->int_cmp.b));
+        break;
+    }
+    case INSTR_FLT_CMP: {
+        ftprint_char_array(&dstr, false, "fcmp <%s> %s, %s %s %s", float_kind_names[instr->flt_cmp.fkind], IR_print_reg(arena, instr->flt_cmp.r),
+                           IR_print_reg(arena, instr->flt_cmp.a), ir_cond_names[instr->flt_cmp.cond],
+                           IR_print_op_ra(arena, &instr->flt_cmp.b));
         break;
     }
     case INSTR_JMP: {

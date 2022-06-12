@@ -69,7 +69,11 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_ADDSS_R_R:
         case X64_INSTR_ADDSD_R_R:
         case X64_INSTR_SUBSS_R_R:
-        case X64_INSTR_SUBSD_R_R: {
+        case X64_INSTR_SUBSD_R_R:
+        case X64_INSTR_MULSS_R_R:
+        case X64_INSTR_MULSD_R_R:
+        case X64_INSTR_DIVSS_R_R:
+        case X64_INSTR_DIVSD_R_R: {
             X64_touch_lreg(builder, instr->binary_flt_r_r.dst, ino);
             X64_touch_lreg(builder, instr->binary_flt_r_r.src, ino);
             break;
@@ -77,7 +81,11 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         case X64_INSTR_ADDSS_R_M:
         case X64_INSTR_ADDSD_R_M:
         case X64_INSTR_SUBSS_R_M:
-        case X64_INSTR_SUBSD_R_M: {
+        case X64_INSTR_SUBSD_R_M:
+        case X64_INSTR_MULSS_R_M:
+        case X64_INSTR_MULSD_R_M:
+        case X64_INSTR_DIVSS_R_M:
+        case X64_INSTR_DIVSD_R_M: {
             X64_touch_lreg(builder, instr->binary_flt_r_m.dst, ino);
             X64_touch_mem_lregs(builder, &instr->binary_flt_r_m.src, ino);
             break;
@@ -251,6 +259,18 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_mem_lregs(builder, &instr->cmp_m_i.op1, ino);
             break;
         }
+        case X64_INSTR_UCOMISS_R_R:
+        case X64_INSTR_UCOMISD_R_R: {
+            X64_touch_lreg(builder, instr->cmp_flt_r_r.op1, ino);
+            X64_touch_lreg(builder, instr->cmp_flt_r_r.op2, ino);
+            break;
+        }
+        case X64_INSTR_UCOMISS_R_M:
+        case X64_INSTR_UCOMISD_R_M: {
+            X64_touch_lreg(builder, instr->cmp_flt_r_m.op1, ino);
+            X64_touch_mem_lregs(builder, &instr->cmp_flt_r_m.op2, ino);
+            break;
+        }
         case X64_INSTR_JMP:
         case X64_INSTR_JMPCC: {
             // Do nothing.
@@ -318,7 +338,7 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             break;
         }
         default:
-            assert(0);
+            NIBBLE_FATAL_EXIT("livevar.c: Unhandled X64 instr kind '%d'", instr->kind);
             break;
         }
     }

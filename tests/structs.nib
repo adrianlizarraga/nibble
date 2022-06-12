@@ -27,6 +27,17 @@ struct Vec3 {
     z : int;
 }
 
+struct Vec3f {
+    x : f32;
+    y : f32;
+    z : f32;
+}
+
+struct Vec2d {
+    x : f64;
+    y : f64;
+}
+
 #static_assert(#offsetof(Vec3, x) == 0);
 #static_assert(#offsetof(Vec3, y) == 4);
 #static_assert(#offsetof(Vec3, z) == 8);
@@ -43,6 +54,7 @@ proc vec3_add_comps(a: Vec3, b:  Vec3) => int {
 
 struct Buf {
     buf : [1024] char;
+    _f64 : f64;
 }
 
 struct BarResult {
@@ -54,7 +66,7 @@ proc bar(a : int, b : Buf, c : Buf, d : int) => BarResult {
     var r : BarResult;
 
     r.r = a + b.buf[0] + c.buf[256] + d;
-    r.buf[31] = 2;
+    r.buf[31] = 2 + (b._f64 :> char);
 
     return r;
 }
@@ -78,6 +90,39 @@ proc smol_vec2_add(a : SmolVec2, b : SmolVec2) => SmolVec2 {
 
     c.x = a.x + b.x;
     c.y = a.y + b.y;
+
+    return c;
+}
+
+proc vec3f_add(a : Vec3f, b : Vec3f) => Vec3f {
+    var c : Vec3f;
+
+    c.x = a.x + b.x;
+    c.y = a.y + b.y;
+    c.z = a.z + b.z;
+
+    return c;
+}
+
+proc vec2d_add(a : Vec2d, b : Vec2d) => Vec2d {
+    var c : Vec2d;
+
+    c.x = a.x + b.x;
+    c.y = a.y + b.y;
+
+    return c;
+}
+
+struct IntFloat {
+    i : int;
+    f : f32;
+}
+
+proc intf_add(a : IntFloat, b : IntFloat) => IntFloat {
+    var c : IntFloat;
+
+    c.i = a.i + b.i;
+    c.f = a.f + b.f;
 
     return c;
 }
@@ -147,7 +192,24 @@ proc main() => int {
 
     var sw : SliceWrapper = {s = buf.buf}; // Convert array to slice
 
-    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) - (0 + 9 + 0) + (1 + 0 + 0) + 20 - 1 = 90
+    var a_f : Vec3f = {1.0f, 2.0f, 3.0f};
+    var b_f : Vec3f = a_f;
+    var c_f := vec3f_add(a_f, b_f);
+    var d_f := c_f.x + c_f.y + c_f.z;
+
+    var a3_f : Vec2d = {1.0, 2.0};
+    var b3_f : Vec2d = a3_f;
+    var c3_f := vec2d_add(a3_f, b3_f);
+    var d3_f := c3_f.x + c3_f.y;
+
+
+    var a2_f : IntFloat = {1, 2.0f};
+    var b2_f : IntFloat = a2_f;
+    var c2_f := intf_add(a2_f, b2_f);
+    var d2_f := c2_f.i + (c2_f.f :> int);
+
+    // 11 + 12 + 37 + 2 + (2 + 4 + 6) + (2 + 4 + 6) + (-4 + 2) + 3 - (8) - (0 + 9 + 0) + (1 + 0 + 0) + 20 - 1  + 12 - 6 + 6 = 102
     return r + r2 + r3.r + r3.buf[31] + (r4.x + r4.y + r4.[2]) + (r5.[#indexof(#typeof(r5), x)] + r5_ptr.[INDEX_1] + r5.z) +
-           (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b) - (d.x + d.y + d.z) + (n.b + n.a.x + n.c[0]) + sw.s[0] - struct_lit_test();
+           (r6.x + r6_ptr.y) + c.z - (g_s.a + g_s.b) - (d.x + d.y + d.z) + (n.b + n.a.x + n.c[0]) + sw.s[0] - struct_lit_test() + 
+           (d_f :> int) - d2_f + (d3_f :> int);
 }

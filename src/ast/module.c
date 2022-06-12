@@ -968,6 +968,40 @@ bool types_are_compatible(Type* t, Type* u)
     return false;
 }
 
+bool type_agg_has_non_float(Type* type)
+{
+    if (type->kind == TYPE_FLOAT) {
+        return false;
+    }
+
+    if (type->kind == TYPE_ARRAY) {
+        return type_agg_has_non_float(type->as_array.base);
+    }
+
+    TypeAggregateBody* agg_body = NULL;
+
+    if (type->kind == TYPE_STRUCT) {
+        agg_body = &type->as_struct.body;
+    }
+    else if (type->kind == TYPE_UNION) {
+        agg_body = &type->as_union.body;
+    }
+
+    if (agg_body) {
+        for (size_t i = 0; i < agg_body->num_fields; i++) {
+            TypeAggregateField* field = agg_body->fields + i;
+
+            if (type_agg_has_non_float(field->type)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    return true;
+}
+
 Type* type_unsigned_int(Type* type_int)
 {
     assert(type_int->kind == TYPE_INTEGER);

@@ -33,7 +33,9 @@ typedef enum InstrKind {
     INSTR_INT_SUB,
     INSTR_FLT_SUB,
     INSTR_INT_MUL,
+    INSTR_FLT_MUL,
     INSTR_INT_DIV,
+    INSTR_FLT_DIV,
     INSTR_MOD,
     INSTR_DIVMOD,
     INSTR_SAR,
@@ -53,7 +55,8 @@ typedef enum InstrKind {
     INSTR_LOAD,
     INSTR_LADDR,
     INSTR_STORE,
-    INSTR_CMP,
+    INSTR_INT_CMP,
+    INSTR_FLT_CMP,
     INSTR_JMP,
     INSTR_COND_JMP,
     INSTR_RET,
@@ -235,13 +238,21 @@ typedef enum ConditionKind {
     COND_NEQ,
 } ConditionKind;
 
-typedef struct InstrCmp {
+typedef struct InstrIntCmp {
     Type* type;
     ConditionKind cond;
     IR_Reg r;
     OpRIA a;
     OpRIA b;
-} InstrCmp;
+} InstrIntCmp;
+
+typedef struct InstrFltCmp {
+    FloatKind fkind;
+    ConditionKind cond;
+    IR_Reg r;
+    IR_Reg a;
+    OpRA b;
+} InstrFltCmp;
 
 typedef struct InstrJmp {
     BBlock* from;
@@ -326,7 +337,8 @@ struct Instr {
         InstrLoad load;
         InstrStore store;
         InstrLAddr laddr;
-        InstrCmp cmp;
+        InstrIntCmp int_cmp;
+        InstrFltCmp flt_cmp;
         InstrJmp jmp;
         InstrCondJmp cond_jmp;
         InstrCall call;

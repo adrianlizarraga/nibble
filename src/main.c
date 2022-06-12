@@ -14,6 +14,8 @@
     - Enum sub types. EX: A proc only expects a subset of possible enum values.
     - Programmer should be able to map constants (enums) to other constants (enums) at compile-time, without
       having to create a global/static/readonly mapping array. Need some way of communicating this intent to compiler.
+    - Allow constructing/initializing via a procedure using only a single statement.
+      Ex: Instead of `var a : MyType; InitMyType(^a);` allow `var a : MyType #init InitMyType();` or `InitMyType(var a : MyType);`
 */
 
 /*
