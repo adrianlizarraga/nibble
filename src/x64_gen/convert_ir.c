@@ -610,10 +610,10 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
 
     u32 ax = X64_LIR_REG_COUNT;
     u32 dx = X64_LIR_REG_COUNT;
-    // TODO: Left off here. HANDLE FLOATS.
 
     if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
         if (type_is_obj_like(ret_type)) {
+            // TODO: Left off here. HANDLE FLOATS.
             X64_MemAddr obj_addr;
             X64_get_lir_addr(builder, xbblock, &obj_addr, &ir_instr->ret.val.addr, (1 << X64_RDI));
 
@@ -658,11 +658,21 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
             }
         }
         else {
-            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg, X64_REG_CLASS_INT);
-            ax = X64_def_phys_reg(builder, X64_RAX);
+            X64_RegClass reg_class = ret_type->kind == TYPE_FLOAT ? X64_REG_CLASS_FLOAT : X64_REG_CLASS_INT;
+            X64_Reg ret_reg = (*x64_target.ret_regs)[reg_class].regs[0];
 
-            X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
-            X64_hint_phys_reg(builder, a, X64_RAX);
+            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg, reg_class);
+            ax = X64_def_phys_reg(builder, ret_reg);
+
+            if (reg_class == X64_REG_CLASS_INT) {
+                X64_emit_instr_mov_r_r(builder, xbblock, ret_type->size, ax, a);
+            }
+            else {
+                assert(reg_class == X64_REG_CLASS_FLOAT);
+                X64_emit_instr_mov_flt_r_r(builder, xbblock, ret_type->as_float.kind, ax, a);
+            }
+
+            X64_hint_phys_reg(builder, a, ret_reg);
         }
     }
 
@@ -711,6 +721,7 @@ static void X64_windows_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock
             }
         }
         else {
+            // TODO: Left off here. HANDLE FLOATS.
             u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg, X64_REG_CLASS_INT);
             ax = X64_def_phys_reg(builder, X64_RAX);
 
@@ -1567,10 +1578,13 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
             if (type_is_obj_like(ret_type)) {
+                // TODO: Handle floats.
                 X64_get_lir_addr(builder, xbblock, &r.addr, &ir_r.addr, (1UL << X64_RAX) | (1UL << X64_RDX));
             }
             else {
-                r.reg = X64_get_lir_reg(builder, ir_r.reg, X64_REG_CLASS_INT);
+                X64_RegClass reg_class = ret_type->kind == TYPE_FLOAT ? X64_REG_CLASS_FLOAT : X64_REG_CLASS_INT;
+
+                r.reg = X64_get_lir_reg(builder, ir_r.reg, reg_class);
             }
         }
 
