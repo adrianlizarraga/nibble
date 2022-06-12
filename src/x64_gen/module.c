@@ -137,8 +137,10 @@ typedef struct X64_Generator {
     Allocator* tmp_mem;
 } X64_Generator;
 
-static const char* X64_reg_name(X64_Reg reg, u32 size, X64_RegClass reg_class)
+static const char* X64_reg_name(X64_Reg reg, u32 size)
 {
+    X64_RegClass reg_class = x64_reg_classes[reg];
+
     if (reg_class == X64_REG_CLASS_INT) {
         return x64_int_reg_names[size][reg];
     }
@@ -1188,11 +1190,15 @@ static size_t X64_cpy_reg_to_mem(X64_Generator* generator, X64_SIBDAddr* dst, X6
     };
 
     size_t rem_amnt = size;
+    const X64_RegClass src_reg_class = x64_reg_classes[src];
 
-    // If need to copy more than 8 bytes, just copy entire register into memory, and then return.
+    // If need to copy 8 or more bytes, just copy entire register into memory, and then return.
     if (rem_amnt >= X64_MAX_INT_REG_SIZE) {
-        X64_emit_text(generator, "  mov %s, %s", X64_print_sibd_addr(generator->tmp_mem, dst, X64_MAX_INT_REG_SIZE),
-                      x64_int_reg_names[X64_MAX_INT_REG_SIZE][src]);
+        const char* src_reg_name = X64_reg_name(src, X64_MAX_INT_REG_SIZE);
+        const char* mov_instr_name = src_reg_class == X64_REG_CLASS_FLOAT ? "movsd" : "mov";
+
+        X64_emit_text(generator, "  %s %s, %s", mov_instr_name, X64_print_sibd_addr(generator->tmp_mem, dst, X64_MAX_INT_REG_SIZE),
+                      src_reg_name);
 
         // Move dst addr forward.
         dst->local.disp += X64_MAX_INT_REG_SIZE;
@@ -1203,24 +1209,40 @@ static size_t X64_cpy_reg_to_mem(X64_Generator* generator, X64_SIBDAddr* dst, X6
     // Have to copy less than 8 bytes. Copy in chunks of powers-of-two.
     assert(rem_amnt < X64_MAX_INT_REG_SIZE);
 
-    while (rem_amnt) {
-        // Calc the largest power of 2 that is less than or equal to min(8, rem_amnt).
-        size_t n = pow2_sizes[rem_amnt];
+    if (src_reg_class == X64_REG_CLASS_INT) {
+        while (rem_amnt) {
+            // Calc the largest power of 2 that is less than or equal to min(8, rem_amnt).
+            size_t n = pow2_sizes[rem_amnt];
 
-        // Copy that amount into memory.
-        X64_emit_text(generator, "  mov %s, %s", X64_print_sibd_addr(generator->tmp_mem, dst, n), x64_int_reg_names[n][src]);
+            // Copy that amount into memory.
+            X64_emit_text(generator, "  mov %s, %s", X64_print_sibd_addr(generator->tmp_mem, dst, n), x64_int_reg_names[n][src]);
 
-        // Move dst addr forward.
-        dst->local.disp += n;
+            // Move dst addr forward.
+            dst->local.disp += n;
 
-        size_t new_rem_amnt = rem_amnt - n;
+            size_t new_rem_amnt = rem_amnt - n;
 
-        // Shift src register right to discard copied bits.
-        if (new_rem_amnt) {
-            X64_emit_text(generator, "  sar %s, %d", x64_int_reg_names[X64_MAX_INT_REG_SIZE][src], n << 3);
+            // Shift src register right to discard copied bits.
+            if (new_rem_amnt) {
+                X64_emit_text(generator, "  sar %s, %d", x64_int_reg_names[X64_MAX_INT_REG_SIZE][src], n << 3);
+            }
+
+            rem_amnt = new_rem_amnt;
+        }
+    }
+    else {
+        assert(src_reg_class == X64_REG_CLASS_FLOAT);
+
+        if (rem_amnt == float_kind_sizes[FLOAT_F32]) {
+            X64_emit_text(generator, "  movss %s, %s", X64_print_sibd_addr(generator->tmp_mem, dst, rem_amnt),
+                          x64_flt_reg_names[src]);
+
+            rem_amnt = 0;
+        }
+        else {
+            NIBBLE_FATAL_EXIT("X64_cpy_reg_to_mem(): Cannot copy %d bytes from XMM register.", rem_amnt);
         }
 
-        rem_amnt = new_rem_amnt;
     }
 
     return rem_amnt;
@@ -1381,13 +1403,13 @@ static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool 
     case X64_LREG_LOC_REG: {
         switch (op2_loc.kind) {
         case X64_LREG_LOC_REG: {
-            const char* r1 = X64_reg_name(op1_loc.reg, op1_size, reg_class);
-            const char* r2 = X64_reg_name(op2_loc.reg, op2_size, reg_class);
+            const char* r1 = X64_reg_name(op1_loc.reg, op1_size);
+            const char* r2 = X64_reg_name(op2_loc.reg, op2_size);
             X64_emit_text(generator, "  %s %s, %s", instr, r1, r2);
             break;
         }
         case X64_LREG_LOC_STACK: {
-            const char* r1 = X64_reg_name(op1_loc.reg, op1_size, reg_class);
+            const char* r1 = X64_reg_name(op1_loc.reg, op1_size);
             const char* addr2 = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op2_size);
             X64_emit_text(generator, "  %s %s, %s", instr, r1, addr2);
             break;
@@ -1402,7 +1424,7 @@ static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool 
         switch (op2_loc.kind) {
         case X64_LREG_LOC_REG: {
             const char* addr1 = X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size);
-            const char* r2 = X64_reg_name(op2_loc.reg, op2_size, reg_class);
+            const char* r2 = X64_reg_name(op2_loc.reg, op2_size);
             X64_emit_text(generator, "  %s %s, %s", instr, addr1, r2);
             break;
         }
@@ -1411,7 +1433,7 @@ static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool 
             const char* op2_op_str = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op2_size);
 
             X64_Reg tmp_reg = (reg_class == X64_REG_CLASS_INT) ? X64_RAX : X64_XMM0;
-            const char* tmp_reg_str = X64_reg_name(tmp_reg, op1_size, reg_class);
+            const char* tmp_reg_str = X64_reg_name(tmp_reg, op1_size);
 
             // Save the contents of a temporary register into the stack.
             X64_print_push_reg(generator, generator->curr_proc.text_lines.prev, tmp_reg);
@@ -1763,6 +1785,9 @@ static void X64_place_args_in_stack(X64_Generator* generator, u32 num_args, X64_
 
 static void X64_linux_cpy_ret_small_obj(X64_Generator* generator, Type* ret_type, X64_CallValue* dst_val)
 {
+    X64_RegClass reg_class = X64_linux_obj_reg_class(ret_type);
+    X64_ScratchRegs ret_regs = (*x64_target.ret_regs)[reg_class];
+    
     // Procedure returned a small struct/union/array object in registers.
     // Copy into appropriate memory location.
     if (!X64_linux_is_obj_retarg_large(ret_type->size)) {
@@ -1770,11 +1795,11 @@ static void X64_linux_cpy_ret_small_obj(X64_Generator* generator, Type* ret_type
         X64_get_sibd_addr(generator, &obj_addr, &dst_val->addr);
 
         // Copy RAX into the first 8 bytes of struct memory.
-        size_t rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RAX, ret_type->size);
+        size_t rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, ret_regs.regs[0], ret_type->size);
 
         // Copy RDX into the second 8 bytes of struct memory.
         if (rem_amnt) {
-            rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RDX, rem_amnt);
+            rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, ret_regs.regs[1], rem_amnt);
             assert(!rem_amnt);
         }
     }
@@ -2488,7 +2513,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         Type* ret_type = proc_type->as_proc.ret;
 
         if (type_is_obj_like(ret_type) && X64_is_obj_retarg_large(ret_type->size)) {
-            X64_Reg dst_reg = (*x64_target.arg_regs)[X64_REG_CLASS_INT][0];
+            X64_Reg dst_reg = (*x64_target.arg_regs)[X64_REG_CLASS_INT].regs[0];
             X64_SIBDAddr obj_addr = {0};
             X64_get_sibd_addr(generator, &obj_addr, &dst_val.addr);
 
@@ -2542,22 +2567,38 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
 
                 X64_LRegLoc dst_loc = X64_lreg_loc(generator, dst_val.reg);
 
-                if (IS_LREG_IN_STACK(dst_loc.kind)) {
-                    // TODO: I LOVE ALLIE AND I LEFT OFF HERE.
-                    // Move result (in RAX/XMM0) to stack offset.
-                    const char* mov_name = ret_type->kind == TYPE_FLOAT ? (ret_type->size == float_kind_sizes[FLOAT_F64] ? "movsd" : "movss") : "mov";
-                    const char* reg_name = ret_type->kind == TYPE_FLOAT ? x64_flt_reg_names[X64_XMM0] : x64_int_reg_names[ret_type->size][X64_RAX];
+                X64_RegClass ret_class;
+                X64_Reg ret_reg;
+                const char* ret_reg_name;
+                const char* mov_instr_name;
 
-                    X64_emit_text(generator, "  %s %s, %s", mov_name,
-                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size), reg_name);
+                if (ret_type->kind == TYPE_FLOAT) {
+                    ret_class = X64_REG_CLASS_FLOAT;
+                    ret_reg = (*x64_target.ret_regs)[ret_class].regs[0];
+                    ret_reg_name = x64_flt_reg_names[ret_reg];
+                    mov_instr_name = ret_type->as_float.kind == FLOAT_F64 ? "movsd" : "movss";
+                }
+                else {
+                    ret_class = X64_REG_CLASS_INT;
+                    ret_reg = (*x64_target.ret_regs)[ret_class].regs[0];
+                    ret_reg_name = x64_int_reg_names[ret_type->size][ret_reg];
+                    mov_instr_name = "mov";
+                }
+
+                if (IS_LREG_IN_STACK(dst_loc.kind)) {
+                    // Move result (in RAX/XMM0) to stack offset.
+                    // Ex: mov qword [rbp + x], rax
+                    X64_emit_text(generator, "  %s %s, %s", mov_instr_name,
+                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size), ret_reg_name);
                 }
                 else {
                     assert(IS_LREG_IN_REG(dst_loc.kind));
 
-                    if (dst_loc.reg != X64_RAX) {
-                        // Move result (in RAX) to allocated result register.
-                        X64_emit_text(generator, "  mov %s, %s", x64_int_reg_names[ret_type->size][dst_loc.reg],
-                                      x64_int_reg_names[ret_type->size][X64_RAX]);
+                    if (dst_loc.reg != ret_reg) {
+                        const char* dst_reg_name = X64_reg_name(dst_loc.reg, ret_type->size);
+
+                        // Move result (in RAX/XMMO) to allocated result register.
+                        X64_emit_text(generator, "  %s %s, %s", mov_instr_name, dst_reg_name, ret_reg_name);
                     }
                 }
             }

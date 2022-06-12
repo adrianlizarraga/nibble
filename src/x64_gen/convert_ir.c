@@ -610,6 +610,7 @@ static void X64_linux_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* 
 
     u32 ax = X64_LIR_REG_COUNT;
     u32 dx = X64_LIR_REG_COUNT;
+    // TODO: Left off here. HANDLE FLOATS.
 
     if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
         if (type_is_obj_like(ret_type)) {

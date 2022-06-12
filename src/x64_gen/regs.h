@@ -62,6 +62,7 @@ typedef struct X64_ScratchRegs {
 
 typedef struct X64_Target {
     X64_ScratchRegs (*arg_regs)[X64_REG_CLASS_COUNT];
+    X64_ScratchRegs (*ret_regs)[X64_REG_CLASS_COUNT];
     X64_ScratchRegs (*leaf_scratch_regs)[X64_REG_CLASS_COUNT];
     X64_ScratchRegs (*nonleaf_scratch_regs)[X64_REG_CLASS_COUNT];
 

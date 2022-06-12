@@ -55,6 +55,19 @@ static X64_ScratchRegs x64_linux_arg_regs[X64_REG_CLASS_COUNT] = {
     }
 };
 
+static X64_Reg x64_linux_ret_int_regs[] = {X64_RAX, X64_RDX};
+static X64_Reg x64_linux_ret_flt_regs[] = {X64_XMM0, X64_XMM1};
+static X64_ScratchRegs x64_linux_ret_regs[X64_REG_CLASS_COUNT] = {
+    [X64_REG_CLASS_INT] = {
+        .num_regs = ARRAY_LEN(x64_linux_ret_int_regs),
+        .regs = x64_linux_ret_int_regs
+    },
+    [X64_REG_CLASS_FLOAT] = {
+        .num_regs = ARRAY_LEN(x64_linux_ret_flt_regs),
+        .regs = x64_linux_ret_flt_regs
+    },
+};
+
 // Bit is 1 for caller saved registers: RAX, RCX, RDX, _, _, _, RSI, RDI, R8, R9, R10, R11, _, _, _, _, XMM0, ..., XMM15
 static const u32 x64_linux_caller_saved_reg_mask = 0xFFFF0FC7;
 
@@ -111,6 +124,19 @@ static X64_ScratchRegs x64_windows_arg_regs[X64_REG_CLASS_COUNT] = {
         .num_regs = ARRAY_LEN(x64_windows_arg_flt_regs),
         .regs = x64_windows_arg_flt_regs
     }
+};
+
+static X64_Reg x64_windows_ret_int_regs[] = {X64_RAX};
+static X64_Reg x64_windows_ret_flt_regs[] = {0};
+static X64_ScratchRegs x64_windows_ret_regs[X64_REG_CLASS_COUNT] = {
+    [X64_REG_CLASS_INT] = {
+        .num_regs = ARRAY_LEN(x64_windows_ret_int_regs),
+        .regs = x64_windows_ret_int_regs
+    },
+    [X64_REG_CLASS_FLOAT] = {
+        .num_regs = ARRAY_LEN(x64_windows_ret_flt_regs),
+        .regs = x64_windows_ret_flt_regs
+    },
 };
 
 // RAX, RCX, RDX, _, _, _, _, _, R8, R9, R10, R11, _, _, _, _,
@@ -174,6 +200,7 @@ void x64_init_target(OS target_os)
     switch (target_os) {
     case OS_LINUX:
         x64_target.arg_regs = &x64_linux_arg_regs;
+        x64_target.ret_regs = &x64_linux_ret_regs;
         x64_target.leaf_scratch_regs = &x64_linux_leaf_scratch_regs;
         x64_target.nonleaf_scratch_regs = &x64_linux_nonleaf_scratch_regs;
 
@@ -184,6 +211,7 @@ void x64_init_target(OS target_os)
         break;
     case OS_WIN32:
         x64_target.arg_regs = &x64_windows_arg_regs;
+        x64_target.ret_regs = &x64_windows_ret_regs;
         x64_target.leaf_scratch_regs = &x64_windows_leaf_scratch_regs;
         x64_target.nonleaf_scratch_regs = &x64_windows_nonleaf_scratch_regs;
 
