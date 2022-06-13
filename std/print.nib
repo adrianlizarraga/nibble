@@ -86,8 +86,59 @@ proc print_uint(wstate : ^WriteState, value : usize, base : u32, flags : u32, pr
     print_int_internal(wstate, value, base, false, flags, precision, width);
 }
 
-proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: bool, flags : u32, precision : u32, width : u32) {
+proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, flags : u32) {
+    // TODO: Make these constants widely available.
+    // TODO: bit_cast: #bit_cast(0x7FEFFFFFFFFFFFFF, f64)
+    // TODO: print.c can't print large doubles.
+    //var F64_MAX : f64 = 1.7976931348623157e308;
+    //const F64_MAX : f64 = 1.7976931348623157e3;
+
     var tmp_buf : [PRINT_MAX_NUM_DIGITS]char = ---;
+    var powers10 : [_]f64 = {1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0};
+    const num_powers : uint = #length(powers10);
+    const max_powers_index : uint = num_powers - 1;
+
+    var len : usize;
+
+    /////////////////////////////////////
+    // Handle NaN, Inf, -Inf
+    ////////////////////////////////////
+    if (value != value) {
+        var nan : []char = "nan";
+
+        for (var i : usize = 0; i < nan.length - 1; ++i) {
+            put_char_wrapper(wstate, nan[i]);
+        }
+
+        return;
+    }
+
+    /*
+     if (value > F64_MAX) {
+        var plus : bool = (flags & FmtFlag::FORCE_SIGN);
+        var inf : []char = (plus) ? ("+inf" :> []char) : ("inf" :> []char);
+
+        for (var i : usize = 0; i < inf.length - 1; ++i) {
+            put_char_wrapper(wstate, inf[i]);
+        }
+
+        return;
+    }
+
+    if (value < -F64_MAX) {
+        var inf : []char = "-inf";
+
+        for (var i : usize = 0; i < inf.length - 1; ++i) {
+            put_char_wrapper(wstate, inf[i]);
+        }
+
+        return;
+    }
+    */
+
+}
+
+proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: bool, flags : u32, precision : u32, width : u32) {
 
     var has_prec : bool = flags & FmtFlag::HAS_PRECISION;
     var has_width : bool = flags & FmtFlag::HAS_WIDTH;
@@ -101,9 +152,10 @@ proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: 
         return;
     }
 
-    var base_10_digit : char = uppercased ? 'A' : 'a';
-
     // Write the value into the temporary buffer in reverse order.
+
+    var tmp_buf : [PRINT_MAX_NUM_DIGITS]char = ---;
+    var base_10_digit : char = uppercased ? 'A' : 'a';
     var len : usize;
 
     do {
@@ -199,6 +251,8 @@ proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: 
 }
 
 proc print_arg(wstate : ^WriteState, arg : ^any) => PrintErr {
+    // TODO: Switch-statement
+
     if (arg.type == #typeid(FmtInt)) {
         var fmt_int : FmtInt = *(arg.ptr :> ^FmtInt);
 
@@ -248,6 +302,16 @@ proc print_arg(wstate : ^WriteState, arg : ^any) => PrintErr {
         var val : ssize = *(arg.ptr :> ^s64);
 
         print_int(wstate, val, 10, 0, 0, 0);
+    }
+    else if (arg.type == #typeid(f32)) {
+        var val : f64 = *(arg.ptr :> ^f32);
+
+        print_flt(wstate, val, 0, 0, 0);
+    }
+    else if (arg.type == #typeid(f64)) {
+        var val : f64 = *(arg.ptr :> ^f64);
+
+        print_flt(wstate, val, 0, 0, 0);
     }
     else if (arg.type == #typeid([]char)) {
         var str : []char = *(arg.ptr :> ^[]char);

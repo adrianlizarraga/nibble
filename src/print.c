@@ -252,7 +252,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     /////////////////////////////
     // Print fractional part
     ////////////////////////////
-    int64_t integral = (int64_t)value;
+    int64_t integral = (int64_t)value; // TODO: Printing floats is hard. Will fail for doubles larger than s^32.
 
     if (precision > 0) {
         double frac_dbl = (value - integral) * powers10[prec_index];
@@ -296,8 +296,10 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
 
         // Add remaining fractional digits (0s) between decimal and
         // the first non-zero fractional digit.
-        while (remaining--)
+        while (remaining--) {
+            assert(len < PRINT_MAX_NUM_DIGITS);
             temp_buf[len++] = '0';
+        }
 
         // Now add the decimal point.
         temp_buf[len++] = '.';
