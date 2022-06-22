@@ -949,7 +949,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_mov_op_ria_into_reg(builder, xbblock, size, ax, ir_a);
 
         // cqo
-        u32 dx;
+        u32 dx = X64_LIR_REG_COUNT;
         if (uses_dx) { // Reserve rdx
             dx = X64_def_phys_reg(builder, X64_RDX);
             X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
@@ -1001,7 +1001,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_mov_op_ria_into_reg(builder, xbblock, size, ax, ir_a);
 
         // cqo
-        u32 dx;
+        u32 dx = X64_LIR_REG_COUNT;
         if (uses_dx) { // Reserve rdx
             dx = X64_def_phys_reg(builder, X64_RDX);
             X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
@@ -1062,7 +1062,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_mov_op_ria_into_reg(builder, xbblock, size, ax, ir_a);
 
         // cqo
-        u32 dx;
+        u32 dx = X64_LIR_REG_COUNT;
         if (uses_dx) { // Reserve rdx
             dx = X64_def_phys_reg(builder, X64_RDX);
             X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
