@@ -148,6 +148,14 @@ static const char* X64_reg_name(X64_Reg reg, u32 size)
     return x64_flt_reg_names[reg];
 }
 
+static const char* X64_float_lit_mangled_name(Allocator* alloc, FloatLit* float_lit)
+{
+    char* dstr = array_create(alloc, char, 16);
+    ftprint_char_array(&dstr, true, "%s_%llu", X64_FLOAT_LIT_PRE, float_lit->id);
+
+    return dstr;
+}
+
 #define IS_LREG_IN_REG(k) ((k) == X64_LREG_LOC_REG)
 #define IS_LREG_IN_STACK(k) ((k) == X64_LREG_LOC_STACK)
 
@@ -469,20 +477,18 @@ static void X64_print_global_val(Allocator* allocator, ConstExpr* const_expr, ch
     }
 }
 
-static void X64_emit_global_data(X64_Generator* generator, Symbol* sym)
+static void X64_emit_global_data(X64_Generator* generator, const char* name, ConstExpr* const_expr)
 {
-    assert(sym->kind == SYMBOL_VAR);
-
     Allocator* tmp_mem = generator->tmp_mem;
-    Type* type = sym->type;
+    Type* type = const_expr->type;
 
     X64_emit_data(generator, "ALIGN %d", type->align);
-    X64_emit_data(generator, "%s: ", symbol_mangled_name(tmp_mem, sym));
+    X64_emit_data(generator, "%s: ", name);
 
     AllocatorState mem_state = allocator_get_state(tmp_mem);
     char* line = array_create(tmp_mem, char, type->size << 3);
 
-    X64_print_global_val(tmp_mem, &sym->as_var.const_expr, &line);
+    X64_print_global_val(tmp_mem, const_expr, &line);
 
     array_push(line, '\0');
     X64_emit_data(generator, "%s\n", line);
@@ -2784,7 +2790,8 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
 static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, BucketList* str_lits, BucketList* float_lits)
 {
-    AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
+    Allocator* tmp_mem = generator->tmp_mem;
+    AllocatorState mem_state = allocator_get_state(tmp_mem);
 
     X64_emit_data(generator, "SECTION .rodata\n");
 
@@ -2816,15 +2823,10 @@ static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, Buck
 
         assert(float_lit->used);
 
-        X64_emit_data(generator, "%s_%llu: ", X64_FLOAT_LIT_PRE, float_lit->id);
+        Type* ftype = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
+        ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = ftype, .float_lit = float_lit};
 
-        if (float_lit->kind == FLOAT_F64) {
-            X64_emit_data(generator, "%s %f", x64_data_size_label[8], float_lit->value._f64);
-        }
-        else {
-            assert(float_lit->kind == FLOAT_F32);
-            X64_emit_data(generator, "%s %f", x64_data_size_label[4], float_lit->value._f32);
-        }
+        X64_emit_global_data(generator, X64_float_lit_mangled_name(tmp_mem, float_lit), &const_expr);
     }
 
     X64_emit_data(generator, "\nSECTION .data\n");
@@ -2836,7 +2838,7 @@ static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, Buck
         assert(sym_ptr);
         Symbol* sym = (Symbol*)(*sym_ptr);
 
-        X64_emit_global_data(generator, sym);
+        X64_emit_global_data(generator, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
     }
     allocator_restore_state(mem_state);
 }
