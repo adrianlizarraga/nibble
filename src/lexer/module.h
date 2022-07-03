@@ -24,6 +24,7 @@ typedef enum TokenKind {
     TKN_UNINIT,
     TKN_ARROW,
     TKN_CAST,
+    TKN_BIT_CAST,
     TKN_AT,
 
     TKN_STR,

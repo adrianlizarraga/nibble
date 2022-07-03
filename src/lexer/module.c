@@ -497,6 +497,7 @@ const char* token_kind_names[] = {
     [TKN_UNINIT] = "---",
     [TKN_ARROW] = "=>",
     [TKN_CAST] = ":>",
+    [TKN_BIT_CAST] = ":>>",
     [TKN_AT] = "@",
 
     [TKN_STR] = "string literal",
@@ -649,6 +650,11 @@ top:
         if (lexer->at[0] == '>') {
             lexer->at++;
             token.kind = TKN_CAST;
+
+            if (lexer->at[0] == '>') {
+                lexer->at++;
+                token.kind = TKN_BIT_CAST;
+            }
         }
         else if (lexer->at[0] == ':') {
             lexer->at++;
