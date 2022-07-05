@@ -2181,7 +2181,9 @@ static bool resolve_expr_bit_cast(Resolver* resolver, ExprBitCast* expr)
     ExprOperand src_eop = OP_FROM_EXPR(expr->expr);
 
     // Size and alignment of expr's type must be equal to the size of the destination bit_cast type.
-    if ((src_eop.type->size != cast_type->size) || (src_eop.type->align != cast_type->align)) {
+    // If the source is not an lvalue, then the alignment can differ.
+    if ((src_eop.type->size != cast_type->size) ||
+        (src_eop.is_lvalue && (src_eop.type->align != cast_type->align))) {
         resolver_on_error(resolver, expr->super.range,
                           "Cannot bit_cast an expression (of type `%s`) to a type (`%s`) of a different size "
                           "or alignment requirement.", type_name(src_eop.type), type_name(cast_type));

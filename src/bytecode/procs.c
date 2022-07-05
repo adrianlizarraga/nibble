@@ -2492,6 +2492,16 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return IR_emit_op_cast(builder, curr_bb, tmp_obj_list, &src_er, dst_er, dst_type);
 }
 
+static BBlock* IR_emit_expr_bit_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprBitCast* expr_cast,
+                                     IR_ExprResult* dst_er, IR_TmpObjList* tmp_obj_list)
+{
+    BBlock* curr_bb = IR_emit_expr(builder, bblock, expr_cast->expr, dst_er, tmp_obj_list);
+
+    dst_er->type = expr_cast->super.type;
+
+    return curr_bb;
+}
+
 static BBlock* IR_emit_memcpy_call(IR_ProcBuilder* builder, BBlock* bblock, size_t num_args, List* args, IR_TmpObjList* tmp_obj_list)
 {
     BBlock* curr_bb = bblock;
@@ -3136,6 +3146,8 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
         return IR_emit_expr_call(builder, bblock, (ExprCall*)expr, dst, tmp_obj_list);
     case CST_ExprCast:
         return IR_emit_expr_cast(builder, bblock, (ExprCast*)expr, dst, tmp_obj_list);
+    case CST_ExprBitCast:
+        return IR_emit_expr_bit_cast(builder, bblock, (ExprBitCast*)expr, dst, tmp_obj_list);
     case CST_ExprUnary:
         return IR_emit_expr_unary(builder, bblock, (ExprUnary*)expr, dst, tmp_obj_list);
     case CST_ExprBinary:
