@@ -839,114 +839,60 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     TokenIntRep rep = eint->token.rep;
     TokenIntSuffix suffix = eint->token.suffix;
 
+    Type* u_types[] = {builtin_types[BUILTIN_TYPE_UINT].type, builtin_types[BUILTIN_TYPE_ULONG].type,
+                       builtin_types[BUILTIN_TYPE_ULLONG].type};
+    Type* s_types[] = {builtin_types[BUILTIN_TYPE_INT].type, builtin_types[BUILTIN_TYPE_LONG].type,
+                       builtin_types[BUILTIN_TYPE_LLONG].type};
+
     if (rep == TKN_INT_CHAR) {
         type = builtin_types[BUILTIN_TYPE_CHAR].type; // Differs from C spec, where a char literal is an int.
     }
-    else if (rep == TKN_INT_DEC) {
-        switch (suffix) {
-        case TKN_INT_SUFFIX_NONE: {
-            Type* types[] = {
-                builtin_types[BUILTIN_TYPE_INT].type,
-                builtin_types[BUILTIN_TYPE_LONG].type,
-                builtin_types[BUILTIN_TYPE_LLONG].type,
-            };
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
-            break;
-        }
-        case TKN_INT_SUFFIX_U: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_UINT].type, builtin_types[BUILTIN_TYPE_ULONG].type,
-                             builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-            break;
-        }
-        case TKN_INT_SUFFIX_L: {
-            Type* types[] = {
-                builtin_types[BUILTIN_TYPE_LONG].type,
-                builtin_types[BUILTIN_TYPE_LLONG].type,
-            };
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-            break;
-        }
-        case TKN_INT_SUFFIX_UL: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_ULONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-            break;
-        }
-        case TKN_INT_SUFFIX_LL: {
-            type = builtin_types[BUILTIN_TYPE_LLONG].type;
-
-            if (value > int_kind_max[type->as_integer.kind]) {
-                type = NULL;
-            }
-            break;
-        }
-        case TKN_INT_SUFFIX_ULL: {
-            type = builtin_types[BUILTIN_TYPE_ULLONG].type;
-
-            if (value > int_kind_max[type->as_integer.kind]) {
-                type = NULL;
-            }
-            break;
-        }
-        default:
-            assert(0);
-            break;
-        }
-    }
     else {
-        // NOTE: An integer literal specified in a different base (e.g., hex).
-
         switch (suffix) {
         case TKN_INT_SUFFIX_NONE: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_INT].type,   builtin_types[BUILTIN_TYPE_UINT].type,
-                             builtin_types[BUILTIN_TYPE_LONG].type,  builtin_types[BUILTIN_TYPE_ULONG].type,
-                             builtin_types[BUILTIN_TYPE_LLONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
+            Type** types = (rep == TKN_INT_DEC) ? s_types : u_types;
+            size_t num_types = (rep == TKN_INT_DEC) ? ARRAY_LEN(s_types) : ARRAY_LEN(u_types);
+            type = get_int_lit_type(value, types, num_types);
+            break;
+        }
+        case TKN_INT_SUFFIX_S: {
+            type = get_int_lit_type(value, s_types, ARRAY_LEN(s_types));
             break;
         }
         case TKN_INT_SUFFIX_U: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_UINT].type, builtin_types[BUILTIN_TYPE_ULONG].type,
-                             builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
+            type = get_int_lit_type(value, u_types, ARRAY_LEN(u_types));
             break;
         }
-        case TKN_INT_SUFFIX_L: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_LONG].type, builtin_types[BUILTIN_TYPE_ULONG].type,
-                             builtin_types[BUILTIN_TYPE_LLONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
+        case TKN_INT_SUFFIX_U8: {
+            type = builtin_types[BUILTIN_TYPE_U8].type;
             break;
         }
-        case TKN_INT_SUFFIX_UL: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_ULONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
+        case TKN_INT_SUFFIX_S8: {
+            type = builtin_types[BUILTIN_TYPE_S8].type;
             break;
         }
-        case TKN_INT_SUFFIX_LL: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_LLONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
+        case TKN_INT_SUFFIX_U16: {
+            type = builtin_types[BUILTIN_TYPE_U16].type;
             break;
         }
-        case TKN_INT_SUFFIX_ULL: {
-            type = builtin_types[BUILTIN_TYPE_ULLONG].type;
-
-            if (value > int_kind_max[type->as_integer.kind]) {
-                type = NULL;
-            }
+        case TKN_INT_SUFFIX_S16: {
+            type = builtin_types[BUILTIN_TYPE_S16].type;
+            break;
+        }
+        case TKN_INT_SUFFIX_U32: {
+            type = builtin_types[BUILTIN_TYPE_U32].type;
+            break;
+        }
+        case TKN_INT_SUFFIX_S32: {
+            type = builtin_types[BUILTIN_TYPE_S32].type;
+            break;
+        }
+        case TKN_INT_SUFFIX_U64: {
+            type = builtin_types[BUILTIN_TYPE_U64].type;
+            break;
+        }
+        case TKN_INT_SUFFIX_S64: {
+            type = builtin_types[BUILTIN_TYPE_S64].type;
             break;
         }
         default:
@@ -954,10 +900,12 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
             break;
         }
     }
+
+    // TODO: Check that value fits in type!!!
 
     // TODO: Can this ever happen with this jacked-up mixing of host and target types???
     if (!type) {
-        resolver_on_error(resolver, expr->range, "Integer literal `%llu` is too large", value);
+        resolver_on_error(resolver, expr->range, "Integer literal `%llu` is too large for its type", value);
         return false;
     }
 

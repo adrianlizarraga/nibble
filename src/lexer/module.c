@@ -92,6 +92,49 @@ static void skip_c_comment(Lexer* lexer)
     return;
 }
 
+enum ScanDigitsErr {
+    SCAN_DIGITS_ERR_NONE = 0,
+    SCAN_DIGITS_ERR_EXCEED_BASE,
+    SCAN_DIGITS_ERR_OVERFLOW,
+};
+
+typedef struct ScanDigitsResult {
+    enum ScanDigitsErr err;
+    u64 value;
+} ScanDigitsResult;
+
+static ScanDigitsResult scan_digits(Lexer* lexer, u32 base, u64 max)
+{
+    ScanDigitsResult result = {.err = SCAN_DIGITS_ERR_NONE};
+    u32 biased = biased_digit(lexer->at[0]);
+
+    // Scan digits.
+    while (biased != 0) {
+        unsigned int digit = biased - 1;
+
+        if (digit >= base) {
+            result.value = 0;
+            result.err = SCAN_DIGITS_ERR_EXCEED_BASE;
+            break;
+        }
+
+        // Detect overflow if 10*val + digt > MAX
+        if (result.value > (max - digit) / base) {
+            result.value = 0;
+            result.err = SCAN_DIGITS_ERR_OVERFLOW;
+            break;
+        }
+
+        result.value *= base;
+        result.value += digit;
+
+        lexer->at++;
+        biased = biased_digit(lexer->at[0]);
+    }
+
+    return result;
+}
+
 static TokenInt scan_int(Lexer* lexer)
 {
     assert((lexer->at[0] >= '0') && (lexer->at[0] <= '9'));
@@ -128,74 +171,115 @@ static TokenInt scan_int(Lexer* lexer)
         return tint;
     }
 
-    // Scan digit.
-    while (biased != 0) {
-        unsigned int digit = biased - 1;
+    // Scan digits.
+    ScanDigitsResult scan_result = scan_digits(lexer, base, UINT64_MAX);
 
-        if (digit >= base) {
-            ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
-            lexer_on_error(lexer, range, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0],
-                           base);
-            tint.value = 0;
-            skip_word_end(lexer);
-            return tint;
-        }
-
-        // Detect overflow if 10*val + digt > MAX
-        if (tint.value > (UINT64_MAX - digit) / base) {
-            ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
-            lexer_on_error(lexer, range, "Integer literal %.*s is too large for its type", (size_t)(lexer->at - start),
-                           start);
-            tint.value = 0;
-            skip_word_end(lexer);
-            return tint;
-        }
-
-        tint.value *= base;
-        tint.value += digit;
-
-        lexer->at++;
-        biased = biased_digit(lexer->at[0]);
+    // Detect if any digit exceeded the integer's base.
+    if (scan_result.err == SCAN_DIGITS_ERR_EXCEED_BASE) {
+        ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
+        lexer_on_error(lexer, range, "Integer literal digit (%c) is outside of base (%u) range", lexer->at[0],
+                       base);
+        tint.value = 0;
+        skip_word_end(lexer);
+        return tint;
     }
 
+    // Detect overflow if 10*val + digt > MAX
+    if (scan_result.err == SCAN_DIGITS_ERR_OVERFLOW) {
+        ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
+        lexer_on_error(lexer, range, "Integer literal %.*s is too large for its type", (size_t)(lexer->at - start),
+                       start);
+        tint.value = 0;
+        skip_word_end(lexer);
+        return tint;
+    }
+
+    tint.value = scan_result.value;
+
     TokenIntSuffix suffix = TKN_INT_SUFFIX_NONE;
+    const char* sfx_start = lexer->at;
 
     // Scan suffix.
     switch (lexer->at[0]) {
     case 'u':
-    case 'U':
         suffix = TKN_INT_SUFFIX_U;
         lexer->at += 1;
 
-        if (lexer->at[0] == 'l' || lexer->at[0] == 'L') {
-            suffix = TKN_INT_SUFFIX_UL;
-            lexer->at += 1;
+        if (is_dec_digit(lexer->at[0])) {
+            ScanDigitsResult sfx_bits = scan_digits(lexer, 10, 64);
 
-            if (lexer->at[0] == 'l' || lexer->at[0] == 'L') {
-                suffix = TKN_INT_SUFFIX_ULL;
-                lexer->at += 1;
+            if (sfx_bits.err != SCAN_DIGITS_ERR_NONE) {
+                ProgRange range = {.start = lexer_calc_pos(lexer, sfx_start), .end = LEXER_POS(lexer) + 1};
+                lexer_on_error(lexer, range, "Invalid integer literal suffix %.*s", (size_t)(lexer->at - sfx_start),
+                               sfx_start);
+                tint.value = 0;
+                skip_word_end(lexer);
+                return tint;
+            }
+
+            if (sfx_bits.value == 8) {
+                suffix = TKN_INT_SUFFIX_U8;
+            }
+            else if (sfx_bits.value == 16) {
+                suffix = TKN_INT_SUFFIX_U16;
+            }
+            else if (sfx_bits.value == 32) {
+                suffix = TKN_INT_SUFFIX_U32;
+            }
+            else if (sfx_bits.value == 64) {
+                suffix = TKN_INT_SUFFIX_U64;
+            }
+            else {
+                ProgRange range = {.start = lexer_calc_pos(lexer, sfx_start), .end = LEXER_POS(lexer) + 1};
+                lexer_on_error(lexer, range, "Invalid integer literal suffix %.*s", (size_t)(lexer->at - sfx_start),
+                               sfx_start);
+                tint.value = 0;
+                skip_word_end(lexer);
+                return tint;
             }
         }
+
         break;
-    case 'l':
-    case 'L':
-        suffix = TKN_INT_SUFFIX_L;
+    case 's': {
+        suffix = TKN_INT_SUFFIX_S;
         lexer->at += 1;
 
-        if (lexer->at[0] == 'l' || lexer->at[0] == 'L') {
-            suffix = TKN_INT_SUFFIX_LL;
-            lexer->at += 1;
+        if (is_dec_digit(lexer->at[0])) {
+            ScanDigitsResult sfx_bits = scan_digits(lexer, 10, 64);
 
-            if (lexer->at[0] == 'u' || lexer->at[0] == 'U') {
-                suffix = TKN_INT_SUFFIX_ULL;
-                lexer->at += 1;
+            if (sfx_bits.err != SCAN_DIGITS_ERR_NONE) {
+                ProgRange range = {.start = lexer_calc_pos(lexer, sfx_start), .end = LEXER_POS(lexer) + 1};
+                lexer_on_error(lexer, range, "Invalid integer literal suffix %.*s", (size_t)(lexer->at - sfx_start),
+                               sfx_start);
+                tint.value = 0;
+                skip_word_end(lexer);
+                return tint;
+            }
+
+            if (sfx_bits.value == 8) {
+                suffix = TKN_INT_SUFFIX_S8;
+            }
+            else if (sfx_bits.value == 16) {
+                suffix = TKN_INT_SUFFIX_S16;
+            }
+            else if (sfx_bits.value == 32) {
+                suffix = TKN_INT_SUFFIX_S32;
+            }
+            else if (sfx_bits.value == 64) {
+                suffix = TKN_INT_SUFFIX_S64;
+            }
+            else {
+                ProgRange range = {.start = lexer_calc_pos(lexer, sfx_start), .end = LEXER_POS(lexer) + 1};
+                lexer_on_error(lexer, range, "Invalid integer literal suffix %.*s", (size_t)(lexer->at - sfx_start),
+                               sfx_start);
+                tint.value = 0;
+                skip_word_end(lexer);
+                return tint;
             }
         }
-        else if (lexer->at[0] == 'u' || lexer->at[0] == 'U') {
-            suffix = TKN_INT_SUFFIX_UL;
-            lexer->at += 1;
-        }
+
         break;
+    }
     default:
         break;
     }
