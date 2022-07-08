@@ -863,49 +863,14 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
             type = get_int_lit_type(value, u_types, ARRAY_LEN(u_types));
             break;
         }
-        case TKN_INT_SUFFIX_U8: {
-            type = builtin_types[BUILTIN_TYPE_U8].type;
-            break;
-        }
-        case TKN_INT_SUFFIX_S8: {
-            type = builtin_types[BUILTIN_TYPE_S8].type;
-            break;
-        }
-        case TKN_INT_SUFFIX_U16: {
-            type = builtin_types[BUILTIN_TYPE_U16].type;
-            break;
-        }
-        case TKN_INT_SUFFIX_S16: {
-            type = builtin_types[BUILTIN_TYPE_S16].type;
-            break;
-        }
-        case TKN_INT_SUFFIX_U32: {
-            type = builtin_types[BUILTIN_TYPE_U32].type;
-            break;
-        }
-        case TKN_INT_SUFFIX_S32: {
-            type = builtin_types[BUILTIN_TYPE_S32].type;
-            break;
-        }
-        case TKN_INT_SUFFIX_U64: {
-            type = builtin_types[BUILTIN_TYPE_U64].type;
-            break;
-        }
-        case TKN_INT_SUFFIX_S64: {
-            type = builtin_types[BUILTIN_TYPE_S64].type;
-            break;
-        }
         default:
             assert(0);
             break;
         }
     }
 
-    // TODO: Check that value fits in type!!!
-
-    // TODO: Can this ever happen with this jacked-up mixing of host and target types???
     if (!type) {
-        resolver_on_error(resolver, expr->range, "Integer literal `%llu` is too large for its type", value);
+        resolver_on_error(resolver, expr->range, "Integer literal `%llu` is too large for 64-bit type", value);
         return false;
     }
 

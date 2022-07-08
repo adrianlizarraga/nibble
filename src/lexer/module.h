@@ -86,15 +86,6 @@ typedef enum TokenIntSuffix {
     TKN_INT_SUFFIX_NONE,
     TKN_INT_SUFFIX_U,
     TKN_INT_SUFFIX_S,
-
-    TKN_INT_SUFFIX_U8,
-    TKN_INT_SUFFIX_S8,
-    TKN_INT_SUFFIX_U16,
-    TKN_INT_SUFFIX_S16,
-    TKN_INT_SUFFIX_U32,
-    TKN_INT_SUFFIX_S32,
-    TKN_INT_SUFFIX_U64,
-    TKN_INT_SUFFIX_S64,
 } TokenIntSuffix;
 
 typedef struct TokenInt {

@@ -129,6 +129,12 @@ static ScanDigitsResult scan_digits(Lexer* lexer, u32 base, u64 max)
         result.value += digit;
 
         lexer->at++;
+
+        // Allow a '_' separator between digits.
+        if (lexer->at[0] == '_') {
+            lexer->at++;
+        }
+
         biased = biased_digit(lexer->at[0]);
     }
 
@@ -197,87 +203,16 @@ static TokenInt scan_int(Lexer* lexer)
     tint.value = scan_result.value;
 
     TokenIntSuffix suffix = TKN_INT_SUFFIX_NONE;
-    const char* sfx_start = lexer->at;
 
     // Scan suffix.
     switch (lexer->at[0]) {
     case 'u':
         suffix = TKN_INT_SUFFIX_U;
         lexer->at += 1;
-
-        if (is_dec_digit(lexer->at[0])) {
-            ScanDigitsResult sfx_bits = scan_digits(lexer, 10, 64);
-
-            if (sfx_bits.err != SCAN_DIGITS_ERR_NONE) {
-                ProgRange range = {.start = lexer_calc_pos(lexer, sfx_start), .end = LEXER_POS(lexer) + 1};
-                lexer_on_error(lexer, range, "Invalid integer literal suffix %.*s", (size_t)(lexer->at - sfx_start),
-                               sfx_start);
-                tint.value = 0;
-                skip_word_end(lexer);
-                return tint;
-            }
-
-            if (sfx_bits.value == 8) {
-                suffix = TKN_INT_SUFFIX_U8;
-            }
-            else if (sfx_bits.value == 16) {
-                suffix = TKN_INT_SUFFIX_U16;
-            }
-            else if (sfx_bits.value == 32) {
-                suffix = TKN_INT_SUFFIX_U32;
-            }
-            else if (sfx_bits.value == 64) {
-                suffix = TKN_INT_SUFFIX_U64;
-            }
-            else {
-                ProgRange range = {.start = lexer_calc_pos(lexer, sfx_start), .end = LEXER_POS(lexer) + 1};
-                lexer_on_error(lexer, range, "Invalid integer literal suffix %.*s", (size_t)(lexer->at - sfx_start),
-                               sfx_start);
-                tint.value = 0;
-                skip_word_end(lexer);
-                return tint;
-            }
-        }
-
         break;
     case 's': {
         suffix = TKN_INT_SUFFIX_S;
         lexer->at += 1;
-
-        if (is_dec_digit(lexer->at[0])) {
-            ScanDigitsResult sfx_bits = scan_digits(lexer, 10, 64);
-
-            if (sfx_bits.err != SCAN_DIGITS_ERR_NONE) {
-                ProgRange range = {.start = lexer_calc_pos(lexer, sfx_start), .end = LEXER_POS(lexer) + 1};
-                lexer_on_error(lexer, range, "Invalid integer literal suffix %.*s", (size_t)(lexer->at - sfx_start),
-                               sfx_start);
-                tint.value = 0;
-                skip_word_end(lexer);
-                return tint;
-            }
-
-            if (sfx_bits.value == 8) {
-                suffix = TKN_INT_SUFFIX_S8;
-            }
-            else if (sfx_bits.value == 16) {
-                suffix = TKN_INT_SUFFIX_S16;
-            }
-            else if (sfx_bits.value == 32) {
-                suffix = TKN_INT_SUFFIX_S32;
-            }
-            else if (sfx_bits.value == 64) {
-                suffix = TKN_INT_SUFFIX_S64;
-            }
-            else {
-                ProgRange range = {.start = lexer_calc_pos(lexer, sfx_start), .end = LEXER_POS(lexer) + 1};
-                lexer_on_error(lexer, range, "Invalid integer literal suffix %.*s", (size_t)(lexer->at - sfx_start),
-                               sfx_start);
-                tint.value = 0;
-                skip_word_end(lexer);
-                return tint;
-            }
-        }
-
         break;
     }
     default:
