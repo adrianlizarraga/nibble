@@ -208,7 +208,7 @@ $ ./out
 
 Nibble does not yet support all basic C features:
 - [x] Integer types
-- [ ] Floating-point types
+- [x] Floating-point types
 - [x] Structure types
 - [x] Union types
 - [x] Enum types
@@ -225,11 +225,10 @@ Nibble does not yet support all basic C features:
     - [ ] switch
     - [x] break
     - [x] continue
-    - [ ] goto! (yes, I will)
     - [x] return 
     - [x] Expressions
     - [x] Assignments
-- [ ] Ternary operator
+- [x] Ternary operator
 - [x] Binary operators
 - [x] Unary operators
 

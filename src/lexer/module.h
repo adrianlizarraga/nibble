@@ -24,6 +24,7 @@ typedef enum TokenKind {
     TKN_UNINIT,
     TKN_ARROW,
     TKN_CAST,
+    TKN_BIT_CAST,
     TKN_AT,
 
     TKN_STR,
@@ -84,10 +85,7 @@ typedef enum TokenIntRep {
 typedef enum TokenIntSuffix {
     TKN_INT_SUFFIX_NONE,
     TKN_INT_SUFFIX_U,
-    TKN_INT_SUFFIX_L,
-    TKN_INT_SUFFIX_UL,
-    TKN_INT_SUFFIX_LL,
-    TKN_INT_SUFFIX_ULL,
+    TKN_INT_SUFFIX_S,
 } TokenIntSuffix;
 
 typedef struct TokenInt {

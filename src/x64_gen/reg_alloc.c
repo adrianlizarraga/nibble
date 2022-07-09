@@ -108,36 +108,36 @@ static void X64_lreg_interval_list_rm(X64_IntervalList* list, X64_LRegRange* int
     list->class_counts[interval->reg_class] -= 1;
 }
 
-typedef enum X64_IntervalSortKind {
-    X64_INTERVAL_SORT_START = 0,
-    X64_INTERVAL_SORT_END,
-} X64_IntervalSortKind;
-
-static void X64_lreg_interval_list_add(X64_IntervalList* list, X64_LRegRange* interval, X64_IntervalSortKind sort)
-{
-    // Insert sorted by increasing start or end location.
-    List* head = &list->list;
-    List* it = head->next;
-
-    while (it != head) {
-        X64_LRegRange* it_entry = list_entry(it, X64_LRegRange, lnode);
-
-        if ((sort == X64_INTERVAL_SORT_END) && (interval->end < it_entry->end)) {
-            break;
-        }
-        else if ((sort == X64_INTERVAL_SORT_START) && (interval->start < it_entry->start)) {
-            break;
-        }
-
-        it = it->next;
+#define DEF_X64_LREG_INTERVAL_ADD_FUNC(L)                                                                         \
+    static void X64_lreg_interval_list_add_by_##L(X64_IntervalList* list, X64_LRegRange* interval)                \
+    {                                                                                                             \
+        List* head = &list->list;                                                                                 \
+                                                                                                                  \
+        bool add_to_end = (head != head->prev) && interval->L >= list_entry(head->prev, X64_LRegRange, lnode)->L; \
+                                                                                                                  \
+        List* it_after = add_to_end ? head : head->next;                                                          \
+                                                                                                                  \
+        while (it_after != head) {                                                                                \
+            X64_LRegRange* it_entry = list_entry(it_after, X64_LRegRange, lnode);                                 \
+                                                                                                                  \
+            if (interval->L < it_entry->L) {                                                                      \
+                break;                                                                                            \
+            }                                                                                                     \
+                                                                                                                  \
+            it_after = it_after->next;                                                                            \
+        }                                                                                                         \
+                                                                                                                  \
+        list_add(it_after->prev, &interval->lnode);                                                               \
+                                                                                                                  \
+        list->count += 1;                                                                                         \
+        list->class_counts[interval->reg_class] += 1;                                                             \
     }
 
-    // Insert before `it`
-    list_add(it->prev, &interval->lnode);
+// Add interval sorted by increasing start location.
+DEF_X64_LREG_INTERVAL_ADD_FUNC(start)
 
-    list->count += 1;
-    list->class_counts[interval->reg_class] += 1;
-}
+// Add interval sorted by increasing end location.
+DEF_X64_LREG_INTERVAL_ADD_FUNC(end)
 
 static void X64_spill_reg_loc(X64_RegAllocState* state, X64_LRegRange* interval)
 {
@@ -147,7 +147,7 @@ static void X64_spill_reg_loc(X64_RegAllocState* state, X64_LRegRange* interval)
     interval->loc.offset = -state->result.stack_offset;
 
     // Add to `handled` set
-    X64_lreg_interval_list_add(&state->handled, interval, X64_INTERVAL_SORT_START);
+    X64_lreg_interval_list_add_by_start(&state->handled, interval);
 }
 
 static void X64_steal_reg(X64_RegAllocState* state, X64_LRegRange* from, X64_LRegRange* to)
@@ -165,7 +165,7 @@ static void X64_steal_reg(X64_RegAllocState* state, X64_LRegRange* from, X64_LRe
 
     // Update active list
     X64_lreg_interval_list_rm(&state->active, from);
-    X64_lreg_interval_list_add(&state->active, to, X64_INTERVAL_SORT_END);
+    X64_lreg_interval_list_add_by_end(&state->active, to);
 
     // Spill from's interval to the stack.
     X64_spill_reg_loc(state, from);
@@ -181,8 +181,7 @@ static void X64_steal_reg(X64_RegAllocState* state, X64_LRegRange* from, X64_LRe
 X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT],
                                              u32 init_stack_offset)
 {
-    X64_RegAllocState state = {.scratch_regs = scratch_regs,
-                               .result = {.stack_offset = init_stack_offset}};
+    X64_RegAllocState state = {.scratch_regs = scratch_regs, .result = {.stack_offset = init_stack_offset}};
 
     X64_init_free_regs(&state);
     list_head_init(&state.active.list);
@@ -193,12 +192,12 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
     size_t num_lreg_ranges = array_len(builder->lreg_ranges);
     size_t num_intervals = 0;
 
-    for (size_t i = 0; i < num_lreg_ranges; i += 1) {
+    for (size_t i = num_lreg_ranges; i-- > 0;) {
         if (X64_find_alias_reg(builder, i) != i) {
             continue;
         }
 
-        X64_lreg_interval_list_add(&state.unhandled, builder->lreg_ranges + i, X64_INTERVAL_SORT_START);
+        X64_lreg_interval_list_add_by_start(&state.unhandled, builder->lreg_ranges + i);
         num_intervals += 1;
     }
 
@@ -236,7 +235,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
                 X64_free_reg(&state, loc->reg);
 
                 // Add to `handled` list
-                X64_lreg_interval_list_add(&state.handled, it_entry, X64_INTERVAL_SORT_START);
+                X64_lreg_interval_list_add_by_start(&state.handled, it_entry);
 
                 it = next;
             }
@@ -254,7 +253,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
             interval->loc.reg = forced_reg;
 
             X64_alloc_reg(&state, forced_reg, interval->lreg);
-            X64_lreg_interval_list_add(&state.active, interval, X64_INTERVAL_SORT_END);
+            X64_lreg_interval_list_add_by_end(&state.active, interval);
         }
         else if (interval->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_ANY_REG) {
             //
@@ -268,17 +267,17 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
             assert(reg != X64_REG_COUNT);
             interval->loc.kind = X64_LREG_LOC_REG;
             interval->loc.reg = reg;
-            X64_lreg_interval_list_add(&state.active, interval, X64_INTERVAL_SORT_END);
+            X64_lreg_interval_list_add_by_end(&state.active, interval);
         }
         else if (interval->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL) {
             assert(interval->ra_ctrl.preg_mask);
-            
+
             X64_Reg reg = X64_next_reg(&state, interval->lreg, interval->reg_class, ~interval->ra_ctrl.preg_mask, X64_REG_COUNT);
 
             if (reg != X64_REG_COUNT) {
                 interval->loc.kind = X64_LREG_LOC_REG;
                 interval->loc.reg = reg;
-                X64_lreg_interval_list_add(&state.active, interval, X64_INTERVAL_SORT_END);
+                X64_lreg_interval_list_add_by_end(&state.active, interval);
             }
             else {
                 X64_spill_reg_loc(&state, interval);
@@ -326,8 +325,8 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
                 for (; it != head; it = it->prev) {
                     X64_LRegRange* it_e = list_entry(it, X64_LRegRange, lnode);
 
-                    if (it_e->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG ||
-                        it_e->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_ANY_REG) continue;
+                    if (it_e->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_REG || it_e->ra_ctrl_kind == X64_REG_ALLOC_CTRL_FORCE_ANY_REG)
+                        continue;
 
                     // Skip if not the same class of register.
                     if (it_e->reg_class != reg_class) {
@@ -335,7 +334,8 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
                     }
 
                     bool using_banned_reg = (it_e->loc.kind == X64_LREG_LOC_REG) && u32_is_bit_set(banned_regs, it_e->loc.reg);
-                    if (!using_banned_reg) break;
+                    if (!using_banned_reg)
+                        break;
                 }
 
                 if ((it == head) && force_reg) {
@@ -392,14 +392,12 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
 
                 interval->loc.kind = X64_LREG_LOC_REG;
                 interval->loc.reg = reg;
-                X64_lreg_interval_list_add(&state.active, interval, X64_INTERVAL_SORT_END);
+                X64_lreg_interval_list_add_by_end(&state.active, interval);
             }
         }
 
         uit = unext;
     }
-
-
 
     // Process call sites to generate push/pop regs
     List* head = &state.active.list;
@@ -410,7 +408,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
         X64_LRegRange* interval = list_entry(it, X64_LRegRange, lnode);
 
         X64_lreg_interval_list_rm(&state.active, interval);
-        X64_lreg_interval_list_add(&state.handled, interval, X64_INTERVAL_SORT_START);
+        X64_lreg_interval_list_add_by_start(&state.handled, interval);
 
         it = next;
     }
@@ -421,7 +419,7 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
     X64_Instr** call_sites = builder->call_sites;
     head = &state.handled.list;
     it = head->next;
-    
+
     for (size_t i = 0; i < num_sites; i++) {
         X64_Instr* instr = call_sites[i];
         long ino = instr->ino;

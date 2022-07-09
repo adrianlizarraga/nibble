@@ -2,6 +2,10 @@
 
 static void X64_touch_lreg(X64_LIRBuilder* builder, u32 lreg, long ino)
 {
+    if (lreg == X64_LIR_REG_COUNT) {
+        return;
+    }
+
     assert(lreg < builder->num_regs);
 
     X64_LRegRange* range = &builder->lreg_ranges[X64_find_alias_reg(builder, lreg)];
