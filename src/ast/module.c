@@ -242,6 +242,15 @@ Expr* new_expr_cast(Allocator* allocator, TypeSpec* typespec, Expr* arg, bool im
     return (Expr*)expr;
 }
 
+Expr* new_expr_bit_cast(Allocator* allocator, TypeSpec* typespec, Expr* arg, ProgRange range)
+{
+    ExprBitCast* expr = new_expr(allocator, ExprBitCast, range);
+    expr->typespec = typespec;
+    expr->expr = arg;
+
+    return (Expr*)expr;
+}
+
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* typespec, ProgRange range)
 {
     ExprSizeof* expr = new_expr(allocator, ExprSizeof, range);

@@ -425,14 +425,15 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
     return new_proc_call_arg(parser->ast_arena, expr, name);
 }
 
-// expr_base_mod = expr_base ('.' ('[' expr ']' | TKN_IDENT) | '[' expr ']' | '(' proc_call_arg_list* ')' | ':>' typespec)*
+// expr_base_mod = expr_base ('.' ('[' expr ']' | TKN_IDENT) | '[' expr ']' | '(' proc_call_arg_list* ')' | ':>' typespec | ':>>' typespec)*
 // proc_call_arg_list = proc_call_arg (',' proc_call_arg)*
 static Expr* parse_expr_base_mod(Parser* parser)
 {
     Expr* expr = parse_expr_base(parser);
 
     while (expr && (is_token_kind(parser, TKN_DOT) || is_token_kind(parser, TKN_LBRACKET) ||
-                    is_token_kind(parser, TKN_LPAREN) || is_token_kind(parser, TKN_CAST))) {
+                    is_token_kind(parser, TKN_LPAREN) || is_token_kind(parser, TKN_CAST) ||
+                    is_token_kind(parser, TKN_BIT_CAST))) {
         if (match_token(parser, TKN_DOT)) {
             //
             // Struct object field access.
@@ -508,13 +509,10 @@ static Expr* parse_expr_base_mod(Parser* parser)
                 expr = NULL;
             }
         }
-        else {
+        else if (match_token(parser, TKN_CAST)) {
             //
             // Cast expression.
             //
-
-            assert(is_token_kind(parser, TKN_CAST));
-            next_token(parser);
 
             TypeSpec* typespec = parse_typespec(parser);
 
@@ -525,6 +523,25 @@ static Expr* parse_expr_base_mod(Parser* parser)
             else {
                 expr = NULL;
             }
+        }
+        else if (match_token(parser, TKN_BIT_CAST)) {
+            //
+            // Bit-cast expression.
+            //
+
+            TypeSpec* typespec = parse_typespec(parser);
+
+            if (typespec) {
+                ProgRange range = {.start = expr->range.start, .end = typespec->range.end};
+                expr = new_expr_bit_cast(parser->ast_arena, typespec, expr, range);
+            }
+            else {
+                expr = NULL;
+            }
+        }
+        else {
+            char tmp[32]; print_token(&parser->token, tmp, sizeof(tmp));
+            NIBBLE_FATAL_EXIT("Unexpected token kind (%s) in parse_expr_base_mod()", tmp);
         }
     }
 

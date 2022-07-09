@@ -839,114 +839,28 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
     TokenIntRep rep = eint->token.rep;
     TokenIntSuffix suffix = eint->token.suffix;
 
+    Type* u_types[] = {builtin_types[BUILTIN_TYPE_UINT].type, builtin_types[BUILTIN_TYPE_ULONG].type,
+                       builtin_types[BUILTIN_TYPE_ULLONG].type};
+    Type* s_types[] = {builtin_types[BUILTIN_TYPE_INT].type, builtin_types[BUILTIN_TYPE_LONG].type,
+                       builtin_types[BUILTIN_TYPE_LLONG].type};
+
     if (rep == TKN_INT_CHAR) {
         type = builtin_types[BUILTIN_TYPE_CHAR].type; // Differs from C spec, where a char literal is an int.
     }
-    else if (rep == TKN_INT_DEC) {
-        switch (suffix) {
-        case TKN_INT_SUFFIX_NONE: {
-            Type* types[] = {
-                builtin_types[BUILTIN_TYPE_INT].type,
-                builtin_types[BUILTIN_TYPE_LONG].type,
-                builtin_types[BUILTIN_TYPE_LLONG].type,
-            };
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
-            break;
-        }
-        case TKN_INT_SUFFIX_U: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_UINT].type, builtin_types[BUILTIN_TYPE_ULONG].type,
-                             builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-            break;
-        }
-        case TKN_INT_SUFFIX_L: {
-            Type* types[] = {
-                builtin_types[BUILTIN_TYPE_LONG].type,
-                builtin_types[BUILTIN_TYPE_LLONG].type,
-            };
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-            break;
-        }
-        case TKN_INT_SUFFIX_UL: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_ULONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-            break;
-        }
-        case TKN_INT_SUFFIX_LL: {
-            type = builtin_types[BUILTIN_TYPE_LLONG].type;
-
-            if (value > int_kind_max[type->as_integer.kind]) {
-                type = NULL;
-            }
-            break;
-        }
-        case TKN_INT_SUFFIX_ULL: {
-            type = builtin_types[BUILTIN_TYPE_ULLONG].type;
-
-            if (value > int_kind_max[type->as_integer.kind]) {
-                type = NULL;
-            }
-            break;
-        }
-        default:
-            assert(0);
-            break;
-        }
-    }
     else {
-        // NOTE: An integer literal specified in a different base (e.g., hex).
-
         switch (suffix) {
         case TKN_INT_SUFFIX_NONE: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_INT].type,   builtin_types[BUILTIN_TYPE_UINT].type,
-                             builtin_types[BUILTIN_TYPE_LONG].type,  builtin_types[BUILTIN_TYPE_ULONG].type,
-                             builtin_types[BUILTIN_TYPE_LLONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
+            Type** types = (rep == TKN_INT_DEC) ? s_types : u_types;
+            size_t num_types = (rep == TKN_INT_DEC) ? ARRAY_LEN(s_types) : ARRAY_LEN(u_types);
+            type = get_int_lit_type(value, types, num_types);
+            break;
+        }
+        case TKN_INT_SUFFIX_S: {
+            type = get_int_lit_type(value, s_types, ARRAY_LEN(s_types));
             break;
         }
         case TKN_INT_SUFFIX_U: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_UINT].type, builtin_types[BUILTIN_TYPE_ULONG].type,
-                             builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
-            break;
-        }
-        case TKN_INT_SUFFIX_L: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_LONG].type, builtin_types[BUILTIN_TYPE_ULONG].type,
-                             builtin_types[BUILTIN_TYPE_LLONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
-            break;
-        }
-        case TKN_INT_SUFFIX_UL: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_ULONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
-            break;
-        }
-        case TKN_INT_SUFFIX_LL: {
-            Type* types[] = {builtin_types[BUILTIN_TYPE_LLONG].type, builtin_types[BUILTIN_TYPE_ULLONG].type};
-
-            type = get_int_lit_type(value, types, ARRAY_LEN(types));
-
-            break;
-        }
-        case TKN_INT_SUFFIX_ULL: {
-            type = builtin_types[BUILTIN_TYPE_ULLONG].type;
-
-            if (value > int_kind_max[type->as_integer.kind]) {
-                type = NULL;
-            }
+            type = get_int_lit_type(value, u_types, ARRAY_LEN(u_types));
             break;
         }
         default:
@@ -955,9 +869,8 @@ static bool resolve_expr_int(Resolver* resolver, Expr* expr)
         }
     }
 
-    // TODO: Can this ever happen with this jacked-up mixing of host and target types???
     if (!type) {
-        resolver_on_error(resolver, expr->range, "Integer literal `%llu` is too large", value);
+        resolver_on_error(resolver, expr->range, "Integer literal `%llu` is too large for 64-bit type", value);
         return false;
     }
 
@@ -2168,6 +2081,45 @@ static bool resolve_expr_cast(Resolver* resolver, Expr* expr)
     return true;
 }
 
+static bool resolve_expr_bit_cast(Resolver* resolver, ExprBitCast* expr)
+{
+    Type* cast_type = resolve_typespec(resolver, expr->typespec);
+
+    if (!cast_type)
+        return false;
+
+    if (!resolve_expr(resolver, expr->expr, NULL))
+        return false;
+
+    ExprOperand src_eop = OP_FROM_EXPR(expr->expr);
+
+    // Size and alignment of expr's type must be equal to the size of the destination bit_cast type.
+    // If the source is not an lvalue, then the alignment can differ.
+    if ((src_eop.type->size != cast_type->size) ||
+        (src_eop.is_lvalue && (src_eop.type->align != cast_type->align))) {
+        resolver_on_error(resolver, expr->super.range,
+                          "Cannot bit_cast an expression (of type `%s`) to a type (`%s`) of a different size "
+                          "or alignment requirement.", type_name(src_eop.type), type_name(cast_type));
+        return false;
+    }
+
+    // TODO: Handle bit casting an immediate (e.g., 0xF3AA) to a non-immediate object (e.g., struct{char; char;}).
+    // Can convert this expression to a compound literal.
+    if (src_eop.is_imm && type_is_obj_like(cast_type)) {
+        resolver_on_error(resolver, expr->super.range, "Cannot cast a compile-time constant expression "
+                          "to a struct/union/array type. This will be allowed in the future!");
+        return false;
+    }
+
+    expr->super.type = cast_type;
+    expr->super.is_lvalue = src_eop.is_lvalue;
+    expr->super.is_constexpr = src_eop.is_constexpr;
+    expr->super.is_imm = src_eop.is_imm;
+    expr->super.imm = src_eop.imm;
+
+    return true;
+}
+
 static bool resolve_expr_array_lit(Resolver* resolver, ExprCompoundLit* expr, Type* type)
 {
     assert(type->kind == TYPE_ARRAY);
@@ -2497,6 +2449,8 @@ static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
         return resolve_expr_call(resolver, expr);
     case CST_ExprCast:
         return resolve_expr_cast(resolver, expr);
+    case CST_ExprBitCast:
+        return resolve_expr_bit_cast(resolver, (ExprBitCast*)expr);
     case CST_ExprCompoundLit:
         return resolve_expr_compound_lit(resolver, (ExprCompoundLit*)expr, expected_type);
     case CST_ExprStr:

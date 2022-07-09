@@ -163,6 +163,7 @@ typedef enum ExprKind {
     CST_ExprStr,
     CST_ExprIdent,
     CST_ExprCast,
+    CST_ExprBitCast,
     CST_ExprSizeof,
     CST_ExprTypeid,
     CST_ExprOffsetof,
@@ -265,6 +266,12 @@ typedef struct ExprCast {
     bool implicit;
 } ExprCast;
 
+typedef struct ExprBitCast {
+    Expr super;
+    TypeSpec* typespec;
+    Expr* expr;
+} ExprBitCast;
+
 typedef struct ExprSizeof {
     Expr super;
     TypeSpec* typespec;
@@ -343,6 +350,7 @@ Expr* new_expr_float(Allocator* allocator, FloatKind fkind, Float value, ProgRan
 Expr* new_expr_str(Allocator* allocator, StrLit* str_lit, ProgRange range);
 Expr* new_expr_ident(Allocator* allocator, NSIdent* ns_ident);
 Expr* new_expr_cast(Allocator* allocator, TypeSpec* type, Expr* arg, bool implicit, ProgRange range);
+Expr* new_expr_bit_cast(Allocator* allocator, TypeSpec* type, Expr* arg, ProgRange range);
 Expr* new_expr_sizeof(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_typeid(Allocator* allocator, TypeSpec* type, ProgRange range);
 Expr* new_expr_offsetof(Allocator* allocator, TypeSpec* obj_ts, Identifier* field_ident, ProgRange range);
