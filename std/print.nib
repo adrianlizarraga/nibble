@@ -140,7 +140,9 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
         return;
     }
 
-    // TODO: Print in scientific notation (Errol3 algo) if larger than s64 maximum.
+    // TODO: Print in scientific notation (Grisu algo) if larger than s64 maximum.
+    // See: Printing Floating-Point Numbers Quickly and Accurately with Integers by Florian Loitsch
+    // https://www.cs.tufts.edu/~nr/cs257/archive/florian-loitsch/printf.pdf
     if (value > PRINT_EXP_THRESHOLD || value < -PRINT_EXP_THRESHOLD) {
         print_uint(wstate, value :>> usize, 16, flags | FmtFlag::HASH, 0, width); // Just print nibbles for now.
         return;
