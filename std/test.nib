@@ -83,9 +83,10 @@ proc main() => int {
     }
 
     // TODO: Consider making string literals evaluate to slices instead of arrays
-    var r := print_out("Print nums {0}, {}, {2}, {}! Escape '{{'\n",
+    var r := print_out("Print nums {0}, {}, {2}, {}! Escape '{{' f64 {}, large f64 {}\n",
                        {value = 321, base = 10, flags = FmtFlag::FORCE_SIGN : FmtInt},
-                       {value = 15, base = 16, flags = FmtFlag::HASH | FmtFlag::UPPERCASE : FmtInt}, 4333, "Hello" :> []char);
+                       {value = 15, base = 16, flags = FmtFlag::HASH | FmtFlag::UPPERCASE : FmtInt}, 4333, "Hello" :> []char,
+                       {value = 1.33 : FmtFloat}, 1.7976931348623157e308);
 
     if (r.[1] != PrintErr::NONE) {
         #writeout("Error!\n", 7);

@@ -41,6 +41,14 @@ struct FmtUInt {
 }
 
 @exported
+struct FmtFloat {
+    value : f64;
+    flags : u32;
+    precision : u32;
+    width : u32;
+}
+
+@exported
 proc print_out(format : ^char, vargs : ..any) => {usize; PrintErr} {
     var buf : [128] char;
     var dst : FileBuffer = {buf = buf};
@@ -87,11 +95,9 @@ proc print_uint(wstate : ^WriteState, value : usize, base : u32, flags : u32, pr
 }
 
 proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, flags : u32) {
-    // TODO: Make these constants widely available.
-    // TODO: bit_cast: #bit_cast(0x7FEFFFFFFFFFFFFF, f64)
-    // TODO: print.c can't print large doubles.
-    //var F64_MAX : f64 = 1.7976931348623157e308;
-    //const F64_MAX : f64 = 1.7976931348623157e3;
+    const F64_MAX : f64 = 1.7976931348623157e308; // 0x7FEFFFFFFFFFFFFF
+    const PRINT_DEFAULT_FLOAT_PRECISION : u32 = 6;
+    const PRINT_EXP_THRESHOLD : f64 = 1e9;
 
     var tmp_buf : [PRINT_MAX_NUM_DIGITS]char = ---;
     var powers10 : [_]f64 = {1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0};
@@ -113,7 +119,6 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
         return;
     }
 
-    /*
      if (value > F64_MAX) {
         var plus : bool = (flags & FmtFlag::FORCE_SIGN);
         var inf : []char = (plus) ? ("+inf" :> []char) : ("inf" :> []char);
@@ -134,8 +139,150 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
 
         return;
     }
-    */
 
+    // TODO: Print in scientific notation (Errol3 algo) if larger than s64 maximum.
+    if (value > PRINT_EXP_THRESHOLD || value < -PRINT_EXP_THRESHOLD) {
+        print_uint(wstate, value :>> usize, 16, flags | FmtFlag::HASH, 0, width); // Just print nibbles for now.
+        return;
+    }
+
+    // Make positive.
+    var negative : bool = false;
+    if (value < 0.0) {
+        negative = true;
+        value = 0.0 - value;
+    }
+
+    var has_prec : bool = flags & FmtFlag::HAS_PRECISION;
+    var has_width : bool = flags & FmtFlag::HAS_WIDTH;
+    var print_sign : bool = negative || (flags & FmtFlag::FORCE_SIGN);
+    var left_justified : bool = flags & FmtFlag::LEFT_JUSTIFIED;
+    var zero_padded : bool = flags & FmtFlag::ZERO_PAD;
+
+    if (!has_prec) precision = PRINT_DEFAULT_FLOAT_PRECISION;
+    var prec_index : u64 = (precision > max_powers_index) ? max_powers_index : precision;
+
+    /////////////////////////////
+    // Print fractional part
+    ////////////////////////////
+    var integral : s64 = value :> s64;
+
+    if (precision > 0) {
+        var frac_dbl : f64 = (value - integral) * powers10[prec_index];
+        var fractional : s64 = frac_dbl :> s64;
+        var leftover : f64 = frac_dbl - fractional;
+
+        // Round up leftover decimal places (past the precision amount).
+        if (leftover > 0.5) {
+            fractional += 1;
+
+            // Rollover (EX: if value is 0.99 and precision is 1 -> result should be 1.0)
+            if (fractional >= powers10[prec_index]) {
+                fractional = 0;
+                integral += 1;
+            }
+        }
+        // Exactly 0.5 ... round up to even
+        else if ((leftover == 0.5) && ((fractional == 0) || (fractional & 1))) {
+            fractional += 1;
+
+            // Rollover (EX: if value is 0.95 and precision is 1 -> result should be 1.0)
+            if (fractional >= powers10[prec_index]) {
+                fractional = 0;
+                integral += 1;
+            }
+        }
+
+        var remaining : s64 = prec_index;
+
+        // Add fractional part to the char buffer in reverse order.
+        do {
+            remaining -= 1;
+
+            var digit : char = (fractional % 10) :> char;
+
+            tmp_buf[len] = '0' + digit; len += 1;
+            fractional = fractional / 10;
+        } while (fractional);
+
+        // Add remaining fractional digits (0s) between decimal and the first non-zero fractional
+        // digit.
+        while (remaining) {
+            tmp_buf[len] = '0'; len += 1;
+            remaining -= 1;
+        }
+
+        // Now add the decimal point.
+        tmp_buf[len] = '.'; len += 1;
+    }
+    // If precision is zero, don't show fractional part.
+    // Just check if we need to round up the integral part.
+    else // precision == 0
+    {
+        var leftover : f64 = value - (integral :> f64);
+        if ((leftover > 0.5) || ((leftover == 0.5) && (integral & 1))) integral += 1;
+    }
+
+    /////////////////////////////
+    // Print integral part
+    ////////////////////////////
+
+    do {
+        var digit : char = (integral % 10) :> char;
+
+        tmp_buf[len] = '0' + digit; len += 1;
+        integral = integral / 10;
+    } while (integral);
+
+    ///////////////////////////
+    // Compute paddings
+    ///////////////////////////
+    var prec_pad : u64 = precision - prec_index;
+    var tot_len : u64 = len + prec_pad;
+    var width_pad : u64 = 0;
+
+    if (print_sign) {
+        tot_len += 1;
+    }
+
+    if (has_width && (width > tot_len)) {
+        width_pad = width - tot_len;
+    }
+
+    // Print width padding for right-justified numbers.
+    if (!left_justified) {
+        var c : char = zero_padded ? '0' : ' ';
+
+        while (width_pad) {
+            put_char_wrapper(wstate, c);
+            width_pad -= 1;
+        }
+    }
+
+    // Print sign.
+    if (print_sign) {
+        put_char_wrapper(wstate, (negative) ? '-' : '+');
+    }
+
+    // Print digits (reversed in buffer).
+    while (len) {
+        len -= 1;
+        put_char_wrapper(wstate, tmp_buf[len]);
+    }
+
+    // Print precision zero-padding.
+    while (prec_pad) {
+        put_char_wrapper(wstate, '0');
+        prec_pad -= 1;
+    }
+
+    // Print width padding for left-justified numbers.
+    if (left_justified) {
+        while (width_pad) {
+            put_char_wrapper(wstate, ' ');
+            width_pad -= 1;
+        }
+    }
 }
 
 proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: bool, flags : u32, precision : u32, width : u32) {
@@ -303,15 +450,20 @@ proc print_arg(wstate : ^WriteState, arg : ^any) => PrintErr {
 
         print_int(wstate, val, 10, 0, 0, 0);
     }
+    else if (arg.type == #typeid(FmtFloat)) {
+        var fmt_flt : FmtFloat = *(arg.ptr :> ^FmtFloat);
+
+        print_flt(wstate, fmt_flt.value, fmt_flt.precision, fmt_flt.width, fmt_flt.flags);
+    }
     else if (arg.type == #typeid(f32)) {
         var val : f64 = *(arg.ptr :> ^f32);
 
-        print_flt(wstate, val, 0, 0, 0);
+        print_flt(wstate, val, 0, 0, FmtFlag::HAS_PRECISION);
     }
     else if (arg.type == #typeid(f64)) {
         var val : f64 = *(arg.ptr :> ^f64);
 
-        print_flt(wstate, val, 0, 0, 0);
+        print_flt(wstate, val, 0, 0, FmtFlag::HAS_PRECISION);
     }
     else if (arg.type == #typeid([]char)) {
         var str : []char = *(arg.ptr :> ^[]char);
