@@ -230,11 +230,12 @@ static char* X64_get_label(X64_Generator* generator, u32 bblock_id)
     return dstr;
 }
 
-static char* X64_print_stack_offset(Allocator* arena, s32 offset, u32 size)
+static char* X64_print_stack_offset(Allocator* arena, s32 offset, u32 size, bool print_size_label)
 {
     char* dstr = array_create(arena, char, 8);
+    const char* mem_label = print_size_label ? x64_mem_size_label[size] : "";
 
-    ftprint_char_array(&dstr, true, "%s [rbp + %d]", x64_mem_size_label[size], offset);
+    ftprint_char_array(&dstr, true, "%s [rbp + %d]", mem_label, offset);
 
     return dstr;
 }
@@ -603,14 +604,14 @@ static X64_Reg X64_get_reg(X64_RegGroup* group, X64_RegClass reg_class, u32 lreg
 
     if (reg_class == X64_REG_CLASS_INT) {
         X64_emit_text(group->generator, "  mov %s, %s", x64_int_reg_names[size][tmp_reg->reg],
-                      X64_print_stack_offset(tmp_mem, lreg_loc.offset, size));
+                      X64_print_stack_offset(tmp_mem, lreg_loc.offset, size, true));
     }
     else {
         assert(reg_class == X64_REG_CLASS_FLOAT);
         const char* mov_flt_instr = size == float_kind_sizes[FLOAT_F64] ? "movsd" : "movss";
 
         X64_emit_text(group->generator, "  %s %s, %s", mov_flt_instr, x64_flt_reg_names[tmp_reg->reg],
-                      X64_print_stack_offset(tmp_mem, lreg_loc.offset, size));
+                      X64_print_stack_offset(tmp_mem, lreg_loc.offset, size, true));
     }
 
     // Add scratch register to the list (stack) of regs in group.
@@ -657,7 +658,7 @@ static void X64_end_reg_group(X64_RegGroup* group)
             X64_RegClass reg_class = x64_reg_classes[it->reg];
 
             if (reg_class == X64_REG_CLASS_INT) {
-                X64_emit_text(generator, "  mov %s, %s", X64_print_stack_offset(generator->tmp_mem, it->offset, it->size),
+                X64_emit_text(generator, "  mov %s, %s", X64_print_stack_offset(generator->tmp_mem, it->offset, it->size, true),
                               x64_int_reg_names[it->size][it->reg]);
             }
             else {
@@ -665,7 +666,7 @@ static void X64_end_reg_group(X64_RegGroup* group)
                 const char* mov_flt_instr = (it->size == float_kind_sizes[FLOAT_F64]) ? "movsd" : "movss";
 
                 X64_emit_text(group->generator, "  %s %s, %s", mov_flt_instr,
-                              X64_print_stack_offset(generator->tmp_mem, it->offset, it->size), x64_flt_reg_names[it->reg]);
+                              X64_print_stack_offset(generator->tmp_mem, it->offset, it->size, true), x64_flt_reg_names[it->reg]);
             }
         }
 
@@ -1266,7 +1267,7 @@ static void X64_emit_flt_cmp_rr_instr(X64_Generator* generator, const char* inst
         op2_name = x64_flt_reg_names[op2_loc.reg];
     }
     else if (IS_LREG_IN_STACK(op2_loc.kind)) {
-        op2_name = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op_size);
+        op2_name = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op_size, false);
     }
     else {
         NIBBLE_FATAL_EXIT("X64_emit_flt_cmp_rr_instr(): Unexpected op2 X64_LRegLoc kind '%d'.", op2_loc.kind);
@@ -1294,7 +1295,7 @@ static void X64_emit_flt2int_rr_instr(X64_Generator* generator, const char* inst
     }
     else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
         const char* dst_reg_name = x64_int_reg_names[dst_si_size][dst_loc.reg];
-        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size);
+        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size, true);
 
         X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_addr_name);
     }
@@ -1312,7 +1313,7 @@ static void X64_emit_flt2int_rr_instr(X64_Generator* generator, const char* inst
         X64_RegGroup tmp_group = X64_begin_reg_group(generator);
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_INT, instr->dst, instr->dst_size, true, 0);
         const char* dst_reg_name = x64_int_reg_names[dst_si_size][dst_reg];
-        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size);
+        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size, true);
 
         X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_addr_name);
         X64_end_reg_group(&tmp_group);
@@ -1334,7 +1335,7 @@ static void X64_emit_int2flt_rr_instr(X64_Generator* generator, const char* inst
     }
     else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
         const char* dst_reg_name = x64_flt_reg_names[dst_loc.reg];
-        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, instr->src_size);
+        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, instr->src_size, true);
 
         X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_addr_name);
     }
@@ -1352,7 +1353,7 @@ static void X64_emit_int2flt_rr_instr(X64_Generator* generator, const char* inst
         X64_RegGroup tmp_group = X64_begin_reg_group(generator);
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, instr->dst, dst_size, true, 0);
         const char* dst_reg_name = x64_flt_reg_names[dst_reg];
-        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, instr->src_size);
+        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, instr->src_size, true);
 
         X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_addr_name);
         X64_end_reg_group(&tmp_group);
@@ -1373,7 +1374,7 @@ static void X64_emit_flt2flt_rr_instr(X64_Generator* generator, const char* inst
     }
     else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
         const char* dst_reg_name = x64_flt_reg_names[dst_loc.reg];
-        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size);
+        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size, true);
 
         X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_addr_name);
     }
@@ -1391,7 +1392,7 @@ static void X64_emit_flt2flt_rr_instr(X64_Generator* generator, const char* inst
         X64_RegGroup tmp_group = X64_begin_reg_group(generator);
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, instr->dst, dst_size, true, 0);
         const char* dst_reg_name = x64_flt_reg_names[dst_reg];
-        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size);
+        const char* src_addr_name = X64_print_stack_offset(generator->tmp_mem, src_loc.offset, src_size, true);
 
         X64_emit_text(generator, "  %s %s, %s", instr_name, dst_reg_name, src_addr_name);
         X64_end_reg_group(&tmp_group);
@@ -1415,7 +1416,7 @@ static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool 
         }
         case X64_LREG_LOC_STACK: {
             const char* r1 = X64_reg_name(op1_loc.reg, op1_size);
-            const char* addr2 = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op2_size);
+            const char* addr2 = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op2_size, true);
             X64_emit_text(generator, "  %s %s, %s", instr, r1, addr2);
             break;
         }
@@ -1428,14 +1429,14 @@ static void X64_emit_rr_instr(X64_Generator* generator, const char* instr, bool 
     case X64_LREG_LOC_STACK: {
         switch (op2_loc.kind) {
         case X64_LREG_LOC_REG: {
-            const char* addr1 = X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size);
+            const char* addr1 = X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size, true);
             const char* r2 = X64_reg_name(op2_loc.reg, op2_size);
             X64_emit_text(generator, "  %s %s, %s", instr, addr1, r2);
             break;
         }
         case X64_LREG_LOC_STACK: {
-            const char* op1_op_str = X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size);
-            const char* op2_op_str = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op2_size);
+            const char* op1_op_str = X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size, true);
+            const char* op2_op_str = X64_print_stack_offset(generator->tmp_mem, op2_loc.offset, op2_size, true);
 
             X64_Reg tmp_reg = (reg_class == X64_REG_CLASS_INT) ? X64_RAX : X64_XMM0;
             const char* tmp_reg_str = X64_reg_name(tmp_reg, op1_size);
@@ -1484,7 +1485,7 @@ static void X64_emit_ri_instr(X64_Generator* generator, const char* instr, u32 o
         break;
     }
     case X64_LREG_LOC_STACK: {
-        X64_emit_text(generator, "  %s %s, %s", instr, X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size),
+        X64_emit_text(generator, "  %s %s, %s", instr, X64_print_stack_offset(generator->tmp_mem, op1_loc.offset, op1_size, true),
                       X64_print_imm(generator->tmp_mem, op2_imm, op2_size));
         break;
     }
@@ -1595,14 +1596,14 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
 
                 if (reg_class == X64_REG_CLASS_INT) {
                     X64_emit_text(generator, "  mov %s, %s", x64_int_reg_names[arg_size][slot->preg],
-                                  X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
+                                  X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size, true));
                 }
                 else {
                     assert(reg_class == X64_REG_CLASS_FLOAT);
                     const char* mov_name = arg_size == float_kind_sizes[FLOAT_F64] ? "movsd" : "movss";
 
                     X64_emit_text(generator, "  %s %s, %s", mov_name, x64_flt_reg_names[slot->preg],
-                                  X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
+                                  X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size, true));
                 }
             }
             else {
@@ -1779,7 +1780,7 @@ static void X64_place_args_in_stack(X64_Generator* generator, u32 num_args, X64_
         if (IS_LREG_IN_STACK(loc.kind)) {
             // Move into RAX.
             X64_emit_text(generator, "  mov %s, %s", x64_int_reg_names[arg_size][X64_RAX],
-                          X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size));
+                          X64_print_stack_offset(generator->tmp_mem, loc.offset, arg_size, true));
 
             // Move RAX into stack slot.
             X64_emit_text(generator, "  mov %s [rsp + %d], %s", x64_mem_size_label[arg_size], slot->sp_offset,
@@ -1999,7 +2000,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->div_r.src);
         bool src_is_reg = IS_LREG_IN_REG(src_loc.kind);
         const char* src_op_str =
-            src_is_reg ? x64_int_reg_names[size][src_loc.reg] : X64_print_stack_offset(generator->tmp_mem, src_loc.offset, size);
+            src_is_reg ? x64_int_reg_names[size][src_loc.reg] : X64_print_stack_offset(generator->tmp_mem, src_loc.offset, size, true);
 
         X64_emit_text(generator, "  %s %s", instr_name, src_op_str);
 
@@ -2031,7 +2032,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         assert(IS_LREG_IN_REG(src_loc.kind) && src_loc.reg == X64_RCX);
 
         const char* dst_op_str = dst_in_reg ? x64_int_reg_names[dst_size][dst_loc.reg] :
-                                              X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+                                              X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size, true);
 
         X64_emit_text(generator, "  %s %s, %s", shift_r_r_name[instr->kind], dst_op_str, x64_int_reg_names[1][X64_RCX]);
         break;
@@ -2042,7 +2043,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->shift_r_i.dst);
         bool dst_in_reg = IS_LREG_IN_REG(dst_loc.kind);
         const char* dst_op_str = dst_in_reg ? x64_int_reg_names[dst_size][dst_loc.reg] :
-                                              X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size);
+                                              X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, dst_size, true);
 
         X64_emit_text(generator, "  %s %s, %d", shift_r_i_name[instr->kind], dst_op_str, instr->shift_r_i.src.as_int._u8);
         break;
@@ -2053,7 +2054,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->unary.dst);
         bool dst_in_reg = IS_LREG_IN_REG(dst_loc.kind);
         const char* dst_op_str =
-            dst_in_reg ? x64_int_reg_names[size][dst_loc.reg] : X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, size);
+            dst_in_reg ? x64_int_reg_names[size][dst_loc.reg] : X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, size, true);
 
         X64_emit_text(generator, "  %s %s", unary_name[instr->kind], dst_op_str);
         break;
@@ -2082,7 +2083,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
             break;
         }
         case X64_LREG_LOC_STACK: {
-            X64_emit_text(generator, "  mov %s, %s", X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, 1), src_h_name);
+            X64_emit_text(generator, "  mov %s, %s", X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, 1, true), src_h_name);
             break;
         }
         default:
@@ -2413,7 +2414,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         const char* op1_name = x64_flt_reg_names[op1_reg];
 
         X64_emit_text(generator, "  ucomiss %s, %s", op1_name,
-                      X64_print_sibd_addr(generator->tmp_mem, &op2_addr, float_kind_sizes[FLOAT_F32]));
+                      X64_print_sibd_addr(generator->tmp_mem, &op2_addr, 0));
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -2427,7 +2428,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         const char* op1_name = x64_flt_reg_names[op1_reg];
 
         X64_emit_text(generator, "  ucomisd %s, %s", op1_name,
-                      X64_print_sibd_addr(generator->tmp_mem, &op2_addr, float_kind_sizes[FLOAT_F64]));
+                      X64_print_sibd_addr(generator->tmp_mem, &op2_addr, 0));
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -2453,7 +2454,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         else {
             assert(IS_LREG_IN_STACK(dst_loc.kind));
             X64_emit_text(generator, "  set%s %s", x64_condition_codes[instr->setcc.cond],
-                          X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, 1));
+                          X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, 1, true));
         }
         break;
     }
@@ -2560,7 +2561,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
             X64_LRegLoc proc_reg_loc = X64_lreg_loc(generator, instr->call_r.proc_loc);
             const char* call_op_str = IS_LREG_IN_REG(proc_reg_loc.kind) ?
                                           x64_int_reg_names[PTR_SIZE][proc_reg_loc.reg] :
-                                          X64_print_stack_offset(generator->tmp_mem, proc_reg_loc.offset, PTR_SIZE);
+                                          X64_print_stack_offset(generator->tmp_mem, proc_reg_loc.offset, PTR_SIZE, true);
 
             X64_emit_text(generator, "  call %s", call_op_str);
         }
@@ -2594,7 +2595,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                     // Move result (in RAX/XMM0) to stack offset.
                     // Ex: mov qword [rbp + x], rax
                     X64_emit_text(generator, "  %s %s, %s", mov_instr_name,
-                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size), ret_reg_name);
+                                  X64_print_stack_offset(generator->tmp_mem, dst_loc.offset, ret_type->size, true), ret_reg_name);
                 }
                 else {
                     assert(IS_LREG_IN_REG(dst_loc.kind));

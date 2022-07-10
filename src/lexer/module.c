@@ -223,7 +223,7 @@ static TokenInt scan_int(Lexer* lexer)
 
     if (is_alphanum(lexer->at[0])) {
         ProgRange range = {.start = lexer_calc_pos(lexer, start), .end = LEXER_POS(lexer) + 1};
-        lexer_on_error(lexer, range, "Invalid integer literal character '%c'", lexer->at[0]);
+        lexer_on_error(lexer, range, "Invalid integer literal character '%c' after suffix", lexer->at[0]);
         skip_word_end(lexer);
     }
 
