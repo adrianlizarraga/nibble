@@ -7,7 +7,9 @@
 #include <stdbool.h>
 
 typedef uint64_t u64;
+typedef uint32_t u32;
 
+#define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 #define D_1_LOG2_10 0.30102999566398114 // 1/lg(10)
 
 // x = f * (2^e)
@@ -15,6 +17,11 @@ typedef struct GrisuFP {
     u64 f; // 64-bit significand
     int e; // exponent (unbiased).
 } GrisuFP;
+
+typedef union F64Bits {
+    double f;
+    u64 i;
+} F64Bits;
 
 typedef struct CachedPow10 {
     GrisuFP fp;
@@ -112,46 +119,6 @@ static const CachedPow10 pow10_cache[] = {
     {{0xAF87023B9BF0EE6BULL, 1066}, 340},
 };
 
-// Only valid for GrisuFP values with equal exponents.
-GrisuFP grisu_fp_sub(GrisuFP x, GrisuFP y)
-{
-    assert(x.e == y.e && x.f >= y.f);
-    GrisuFP result = {.f = x.f - y.f, .e = x.e};
-    return result;
-}
-
-// x mult y = round_up( (fx * fy) / (2^64) ) * 2^(ex + ey + 64)
-GrisuFP grisu_fp_mult(GrisuFP x, GrisuFP y)
-{
-    GrisuFP result;
-    const u64 mask32 = 0xFFFFFFFF;
-    u64 a, b, c, d, ac, bc, ad, bd, tmp;
-
-    a = x.f >> 32;
-    b = x.f & mask32;
-
-    c = y.f >> 32;
-    d = y.f & mask32;
-
-    ac = a * c;
-    bc = b * c;
-    ad = a * d;
-    bd = b * d;
-
-    tmp = (bd >> 32) + (ad & mask32) + (bc & mask32);
-    tmp += 1U << 31; // round
-    
-    result.f = ac + (ad >> 32) + (bc >> 32) + (tmp >> 32);
-    result.e = x.e + y.e + 64;
-
-    return result;
-}
-
-typedef union F64Bits {
-    double f;
-    u64 i;
-} F64Bits;
-
 // Modified from musl libc implementation (MIT license)
 // http://git.etalabs.net/cgit/musl/tree/src/math/ceil.c
 double ceil(double x)
@@ -198,10 +165,149 @@ int grisu_k_comp(int e, int alpha, int gamma)
     return ceil((alpha - e + 63) * D_1_LOG2_10);
 }
 
+GrisuFP grisu_cached_power(int k)
+{
+    const int min_pow_exp = pow10_cache[0].pow10_exp;
+    const int pow_exp_step = 8;
+
+    int index = (k - min_pow_exp + (pow_exp_step - 1)) / pow_exp_step;
+    assert(index >= 0 && index < (int)ARRAY_LEN(pow10_cache));
+
+    return pow10_cache[index].fp;
+}
+
+GrisuFP grisu_fp_norm(GrisuFP x)
+{
+    const u64 last_bit_mask = 0x8000000000000000ULL;
+    const u64 last_byte_mask = 0xFF00000000000000ULL;
+
+    // Shift left until the most-significant byte has a 1.
+    while (!(x.f & last_byte_mask)) {
+        x.f = x.f << 8;
+        x.e -= 8;
+    }
+
+    // Shift left until the most-significant bit is a 1 (i.e., normalized).
+    while (!(x.f & last_bit_mask)) {
+        x.f = x.f << 1;
+        x.e -= 1;
+    }
+
+    return x;
+}
+
+GrisuFP grisu_fp_from_dbl(double x)
+{
+    GrisuFP fp;
+    F64Bits bits = {.f = x};
+
+    // Note that the exponent bias is traditionally 1023, but we want to treat the "fraction" as a non-fraction.
+    // So, we add 52 (length of fraction bits).
+    const int exp_bias = 1075;
+    const int exp_pos = 52;
+    const u64 exp_mask = 0x7FF0000000000000ULL;
+    const u64 fraction_mask = 0x000FFFFFFFFFFFFFULL;
+    const u64 implicit_one = 0x0010000000000000ULL;
+
+    // Handle 0 (exp == 0, f == 0) and subnormals (exp == 0, f != 0)
+    //
+    // For subnormals, the double is (-1)^sign * 2^(1 - 1023) * 0.fraction
+    // OR, (-1)^sign * 2^(1 - 1075) * fraction
+    //
+    // For zero, the same computation just works.
+    if (!(bits.i & exp_mask)) {
+        fp.f = bits.i & fraction_mask;
+        fp.e = 1 - exp_bias;
+    }
+    // Normal doubles.
+    // (-1)^sign * 2^(exp - 1023) * 1.fraction
+    // OR,
+    // (-1)^sign * 2^(exp - 1075) * (2^52 + fraction)
+    else {
+        int unbiased_exp = ((bits.i & exp_mask) >> exp_pos);
+        fp.f = implicit_one + (bits.i & fraction_mask);
+        fp.e = unbiased_exp - exp_bias;
+    }
+
+    return fp;
+}
+
+// Only valid for GrisuFP values with equal exponents.
+GrisuFP grisu_fp_sub(GrisuFP x, GrisuFP y)
+{
+    assert(x.e == y.e && x.f >= y.f);
+    GrisuFP result = {.f = x.f - y.f, .e = x.e};
+    return result;
+}
+
+// x mult y = round_up( (fx * fy) / (2^64) ) * 2^(ex + ey + 64)
+GrisuFP grisu_fp_mult(GrisuFP x, GrisuFP y)
+{
+    GrisuFP result;
+    const u64 mask32 = 0xFFFFFFFF;
+    u64 a, b, c, d, ac, bc, ad, bd, tmp;
+
+    a = x.f >> 32;
+    b = x.f & mask32;
+
+    c = y.f >> 32;
+    d = y.f & mask32;
+
+    ac = a * c;
+    bc = b * c;
+    ad = a * d;
+    bd = b * d;
+
+    tmp = (bd >> 32) + (ad & mask32) + (bc & mask32);
+    tmp += 1U << 31; // round
+    
+    result.f = ac + (ad >> 32) + (bc >> 32) + (tmp >> 32);
+    result.e = x.e + y.e + 64;
+
+    return result;
+}
+
+#define TEN7 10000000
+void grisu1_cut(GrisuFP fp, u32 parts[3])
+{
+    parts[2] = (fp.f % (TEN7 >> fp.e)) << fp.e;
+
+    u64 tmp = fp.f / (TEN7 >> fp.e);
+
+    parts[1] = tmp % TEN7;
+    parts[2] = tmp / TEN7;
+}
+
+void grisu1(double v, char* buffer)
+{
+    u32 ps[3];
+
+    int q = 64;
+    int alpha = 0;
+    int gamma = 3;
+
+    GrisuFP w = grisu_fp_norm(grisu_fp_from_dbl(v));
+    int mk = grisu_k_comp(w.e + q, alpha, gamma);
+
+    GrisuFP c_mk = grisu_cached_power(mk);
+    GrisuFP d = grisu_fp_mult(w, c_mk);
+
+    grisu1_cut(d, ps);
+
+    sprintf(buffer, "%u%07u%07ue%d", ps[0], ps[1], ps[2], -mk);
+}
+
 int main(void) {
     double x = 0.801;
 
     printf("ceil(%f) = %f\n", x, ceil(x));
+
+    char buffer[128] = {0};
+    double grisu1_x = 1.12345;
+    grisu1(grisu1_x, buffer);
+
+    printf("grisu1(%f) = %s\n", grisu1_x, buffer);
+
     return 0;
 }
 
