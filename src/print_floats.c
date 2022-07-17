@@ -18,6 +18,11 @@ typedef struct GrisuFP {
     int e; // exponent (unbiased).
 } GrisuFP;
 
+void grisu_fp_debug_print(const char* label, GrisuFP x)
+{
+    printf("%s: 0x%016lX * 2^(%d)\n", label, x.f, x.e);
+}
+
 typedef union F64Bits {
     double f;
     u64 i;
@@ -165,7 +170,7 @@ int grisu_k_comp(int e, int alpha, int gamma)
     return ceil((alpha - e + 63) * D_1_LOG2_10);
 }
 
-GrisuFP grisu_cached_power(int k)
+CachedPow10 grisu_cached_power(int k)
 {
     const int min_pow_exp = pow10_cache[0].pow10_exp;
     const int pow_exp_step = 8;
@@ -173,7 +178,7 @@ GrisuFP grisu_cached_power(int k)
     int index = (k - min_pow_exp + (pow_exp_step - 1)) / pow_exp_step;
     assert(index >= 0 && index < (int)ARRAY_LEN(pow10_cache));
 
-    return pow10_cache[index].fp;
+    return pow10_cache[index];
 }
 
 GrisuFP grisu_fp_norm(GrisuFP x)
@@ -286,15 +291,23 @@ void grisu1(double v, char* buffer)
     int alpha = 0;
     int gamma = 3;
 
-    GrisuFP w = grisu_fp_norm(grisu_fp_from_dbl(v));
-    int mk = grisu_k_comp(w.e + q, alpha, gamma);
+    GrisuFP v_fp = grisu_fp_from_dbl(v);
+    grisu_fp_debug_print("v_fp", v_fp);
+    GrisuFP w = grisu_fp_norm(v_fp);
+    grisu_fp_debug_print("w", w);
+    int e = w.e + q;
+    printf("w.e + q = %d\n", e);
+    int mk = grisu_k_comp(e, alpha, gamma);
+    printf("mk = %d\n", mk);
 
-    GrisuFP c_mk = grisu_cached_power(mk);
-    GrisuFP d = grisu_fp_mult(w, c_mk);
+    CachedPow10 c_mk = grisu_cached_power(mk);
+    grisu_fp_debug_print("c_mk", c_mk.fp);
+    GrisuFP d = grisu_fp_mult(w, c_mk.fp);
+    grisu_fp_debug_print("d", d);
 
     grisu1_cut(d, ps);
 
-    sprintf(buffer, "%u%07u%07ue%d", ps[0], ps[1], ps[2], -mk);
+    sprintf(buffer, "%07u%07u%07ue%d", ps[2], ps[1], ps[0], -c_mk.pow10_exp);
 }
 
 int main(void) {
@@ -303,10 +316,10 @@ int main(void) {
     printf("ceil(%f) = %f\n", x, ceil(x));
 
     char buffer[128] = {0};
-    double grisu1_x = 1.12345;
+    double grisu1_x = 1.616229e-35;
     grisu1(grisu1_x, buffer);
 
-    printf("grisu1(%f) = %s\n", grisu1_x, buffer);
+    printf("grisu1(%e) = %s\n", grisu1_x, buffer);
 
     return 0;
 }
