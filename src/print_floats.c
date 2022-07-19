@@ -11,6 +11,7 @@ typedef uint32_t u32;
 
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 #define D_1_LOG2_10 0.30102999566398114 // 1/lg(10)
+#define PRINTF_MAX_NUM_DIGITS 32
 
 // x = f * (2^e)
 typedef struct GrisuFP {
@@ -310,16 +311,82 @@ void grisu1(double v, char* buffer)
     sprintf(buffer, "%07u%07u%07ue%d", ps[2], ps[1], ps[0], -c_mk.pow10_exp);
 }
 
+typedef struct F64String {
+    char digits[1024];
+    int num_digits;
+    int dp;
+} F64String;
+
+// Adapted from https://research.swtch.com/ftoa
+void f64_to_str(F64String* dst, double f)
+{
+    // TODO: Handle negative floats, NaN, and Inf.
+
+    GrisuFP fp = grisu_fp_from_dbl(f);
+    grisu_fp_debug_print("fp", fp);
+    dst->num_digits = 0;
+
+    // Convert significand to a string (itoa)
+    {
+        char tmp_buf[PRINTF_MAX_NUM_DIGITS];
+        int len = 0;
+        u64 value = fp.f;
+
+        // Write digits into tmp_buf in reverse order.
+        do {
+            assert(len < PRINTF_MAX_NUM_DIGITS);
+            tmp_buf[len++] = '0' + (char)(value % 10);
+            value = value / 10;
+        } while (value > 0);
+
+        // Copy into dst buffer in the correct order.
+        for (int i = len - 1; i >= 0; i--) {
+            dst->digits[dst->num_digits++] = tmp_buf[i];
+        }
+    }
+    dst->digits[dst->num_digits] = 0;
+    printf("num_digits %d, %s\n", dst->num_digits, dst->digits);
+
+    // Multiply significand by 2 "e" times.
+    int e = fp.e;
+
+    for (; e > 0; e--) {
+        bool add_digit = dst->digits[0] >= '5';
+        char carry = 0;
+
+        for (int i = dst->num_digits - 1; i >= 0; i--) {
+            int x = carry + 2 * (dst->digits[i] - '0');
+
+            carry = x / 10; // TODO: x >= 10
+            dst->digits[i + add_digit] = (x % 10) + '0';
+        }
+
+        if (add_digit) {
+            dst->digits[0] = '1';
+            dst->num_digits += 1;
+        }
+    }
+
+    dst->dp = dst->num_digits;
+    dst->digits[dst->num_digits] = '\0';
+    printf("num_digits %d, %s\n", dst->num_digits, dst->digits);
+}
+
 int main(void) {
     double x = 0.801;
 
     printf("ceil(%f) = %f\n", x, ceil(x));
 
     char buffer[128] = {0};
-    double grisu1_x = 1.616229e-35;
+    double grisu1_x = 1.616229e35;
     grisu1(grisu1_x, buffer);
 
     printf("grisu1(%e) = %s\n", grisu1_x, buffer);
+
+    F64String fstr = {0};
+
+    f64_to_str(&fstr, grisu1_x);
+    printf("f64_to_str(%e) = %c.%se%+d\n", grisu1_x, fstr.digits[0], fstr.digits + 1, fstr.dp - 1);
 
     return 0;
 }
