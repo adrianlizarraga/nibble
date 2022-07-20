@@ -230,13 +230,13 @@ void f64_to_str(F64String* dst, double f)
             dst->num_digits += 1;
         }
 
-        int delta = 0;
+        int read_delta = 0;
         char prev_rem = 0;
 
         // Just like when dividing by hand, if the first (left-most) digit is less than 2,
         // then we have to consider the first two digits together.
         if (dst->digits[0] < '2') {
-            delta = 1;
+            read_delta = 1;
             prev_rem = dst->digits[0] - '0';
             dst->num_digits -= 1;
             dst->decimal_point -= 1;
@@ -245,7 +245,7 @@ void f64_to_str(F64String* dst, double f)
         // Divide by 2 (left to right).
         // 'prev_rem' is the remainder of the previous step.
         for (int i = 0; i < dst->num_digits; i++) {
-            int x = (prev_rem * 10) + (dst->digits[i + delta] - '0');
+            int x = (prev_rem * 10) + (dst->digits[i + read_delta] - '0');
 
             dst->digits[i] = (x / 2) + '0';
             prev_rem = x % 2;
@@ -256,14 +256,25 @@ void f64_to_str(F64String* dst, double f)
 }
 
 int main(void) {
-    // 4.9406564584124654 × 10−324 (Min. subnormal positive double) ==> 0x1 as an int
-    F64Bits f = {.i = 0x1};
+    //F64Bits f = {.i = 0x1}; // 4.9406564584124654 × 10−324 (Min. subnormal positive double) ==> 0x1 as an int
+    //F64Bits f = {.i = 0x7FF0000000000001ULL}; // +inf => 0x7FF0000000000000ULL
+    //F64Bits f = {.i = 0xFFF0000000000001ULL}; // -inf => 0xFFF0000000000000ULL
+    F64Bits f = {.i = 0x7FF0000000000001ULL}; // NaN => 0x7FFxxxxxxxxxxxxxULL where xx.. is >= 1
     F64String fstr = {0};
 
     f64_to_str(&fstr, f.f);
     char sign = (fstr.flags & F64_STRING_IS_NEG) ? '-' : '+';
-    printf("f64_to_str(%e) = %c%c.%se%+d\n", f.f, sign, fstr.digits[0], fstr.digits + 1, fstr.decimal_point - 1);
-    printf("decimal_point = %d, num_digits = %d\n", fstr.decimal_point, fstr.num_digits);
+
+    if (fstr.flags & F64_STRING_IS_INF) {
+        printf("f64_to_str(%e) = %cinf\n", f.f, sign);
+    }
+    else if (fstr.flags & F64_STRING_IS_NAN) {
+        printf("f64_to_str(%e) = nan\n", f.f);
+    }
+    else {
+        printf("f64_to_str(%e) = %c%c.%se%+d\n", f.f, sign, fstr.digits[0], fstr.digits + 1, fstr.decimal_point - 1);
+        printf("decimal_point = %d, num_digits = %d\n", fstr.decimal_point, fstr.num_digits);
+    }
 
     return 0;
 }
