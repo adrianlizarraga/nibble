@@ -131,6 +131,14 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
 
 int main(int argc, char* argv[])
 {
+    //ftprint_out("%f\n", DBL_MAX);
+    //ftprint_out("%f\n", -1.33);
+    //ftprint_out("%f\n", -1.0/0.0);
+    //ftprint_out("%.2f\n", 9.99678);
+    //ftprint_out("%.3f\n", 19.9995);
+    //ftprint_out("%07.3f\n", 19.9995);
+    F64Bits f = {.i = 0x1}; // 4.9406564584124654 × 10−324 (Min. subnormal positive double) ==> 0x1 as an int
+    ftprint_out("%f\n", f.f);
     const char* program_name = consume_arg(&argc, &argv);
     const char* mainf_name = NULL;
     const char* outf_name = "out";

@@ -1,32 +1,13 @@
-// Implementation of the grisu double to string algorithm in the paper
-// Printing Floating-Point Numbers Quickly and Accurately with Integers by Florian Loitsch
-// https://www.cs.tufts.edu/~nr/cs257/archive/florian-loitsch/printf.pdf
-#include <stdio.h>
-#include <stdint.h>
-#include <assert.h>
-#include <stdbool.h>
-
-typedef uint64_t u64;
-typedef uint32_t u32;
-
-#define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
-#define PRINTF_MAX_NUM_DIGITS 32
 #define F64_SIGN_MASK 0x8000000000000000ULL
 #define F64_EXP_MASK 0x7FF0000000000000ULL
 #define F64_EXP_POS 52
 #define F64_FRAC_MASK 0x000FFFFFFFFFFFFFULL
-
 
 // x = f * (2^e)
 typedef struct CustomFP {
     u64 f; // 64-bit significand
     int e; // exponent (unbiased).
 } CustomFP;
-
-void custom_fp_debug_print(const char* label, CustomFP x)
-{
-    printf("%s: 0x%016lX * 2^(%d)\n", label, x.f, x.e);
-}
 
 typedef union F64Bits {
     double f;
@@ -74,7 +55,7 @@ double ceil(double x)
     return x + neighbor_diff;
 }
 
-CustomFP custom_fp_norm(CustomFP x)
+static CustomFP custom_fp_norm(CustomFP x)
 {
     const u64 last_bit_mask = 0x8000000000000000ULL;
     const u64 last_byte_mask = 0xFF00000000000000ULL;
@@ -94,7 +75,7 @@ CustomFP custom_fp_norm(CustomFP x)
     return x;
 }
 
-CustomFP custom_fp_from_f64(double x)
+static CustomFP custom_fp_from_f64(double x)
 {
     CustomFP fp;
     F64Bits bits = {.f = x};
@@ -102,9 +83,6 @@ CustomFP custom_fp_from_f64(double x)
     // Note that the exponent bias is traditionally 1023, but we want to treat the "fraction" as a non-fraction.
     // So, we add 52 (length of fraction bits).
     const int exp_bias = 1075;
-    const int exp_pos = 52;
-    const u64 exp_mask = 0x7FF0000000000000ULL;
-    const u64 fraction_mask = 0x000FFFFFFFFFFFFFULL;
     const u64 implicit_one = 0x0010000000000000ULL;
 
     // Handle 0 (exp == 0, f == 0) and subnormals (exp == 0, f != 0)
@@ -113,8 +91,8 @@ CustomFP custom_fp_from_f64(double x)
     // OR, (-1)^sign * 2^(1 - 1075) * fraction
     //
     // For zero, the same computation just works.
-    if (!(bits.i & exp_mask)) {
-        fp.f = bits.i & fraction_mask;
+    if (!(bits.i & F64_EXP_MASK)) {
+        fp.f = bits.i & F64_FRAC_MASK;
         fp.e = 1 - exp_bias;
     }
     // Normal doubles.
@@ -122,8 +100,8 @@ CustomFP custom_fp_from_f64(double x)
     // OR,
     // (-1)^sign * 2^(exp - 1075) * (2^52 + fraction)
     else {
-        int unbiased_exp = ((bits.i & exp_mask) >> exp_pos);
-        fp.f = implicit_one + (bits.i & fraction_mask);
+        int unbiased_exp = ((bits.i & F64_EXP_MASK) >> F64_EXP_POS);
+        fp.f = implicit_one + (bits.i & F64_FRAC_MASK);
         fp.e = unbiased_exp - exp_bias;
     }
 
@@ -144,7 +122,7 @@ typedef struct F64String {
 } F64String;
 
 // Adapted from https://research.swtch.com/ftoa
-void f64_to_str(F64String* dst, double f)
+static void f64_to_str(F64String* dst, double f)
 {
     dst->num_digits = 0;
     dst->decimal_point = 0;
@@ -179,17 +157,15 @@ void f64_to_str(F64String* dst, double f)
 
     CustomFP fp = custom_fp_norm(custom_fp_from_f64(fbits.f));
 
-    custom_fp_debug_print("fp", fp);
-
     // Convert significand to a string (itoa)
     {
-        char tmp_buf[PRINTF_MAX_NUM_DIGITS];
+        char tmp_buf[PRINT_MAX_NUM_DIGITS];
         int len = 0;
         u64 value = fp.f;
 
         // Write digits into tmp_buf in reverse order.
         do {
-            assert(len < PRINTF_MAX_NUM_DIGITS);
+            assert(len < PRINT_MAX_NUM_DIGITS);
             tmp_buf[len++] = '0' + (char)(value % 10);
             value = value / 10;
         } while (value > 0);
@@ -255,11 +231,14 @@ void f64_to_str(F64String* dst, double f)
     dst->digits[dst->num_digits] = '\0';
 }
 
+/*
 int main(void) {
-    //F64Bits f = {.i = 0x1}; // 4.9406564584124654 × 10−324 (Min. subnormal positive double) ==> 0x1 as an int
+    F64Bits f = {.i = 0x1}; // 4.9406564584124654 × 10−324 (Min. subnormal positive double) ==> 0x1 as an int
     //F64Bits f = {.i = 0x7FF0000000000001ULL}; // +inf => 0x7FF0000000000000ULL
     //F64Bits f = {.i = 0xFFF0000000000001ULL}; // -inf => 0xFFF0000000000000ULL
-    F64Bits f = {.i = 0x7FF0000000000001ULL}; // NaN => 0x7FFxxxxxxxxxxxxxULL where xx.. is >= 1
+    //F64Bits f = {.i = 0x7FF0000000000001ULL}; // NaN => 0x7FFxxxxxxxxxxxxxULL where xx.. is >= 1
+    //F64Bits f = {.i = 0x7FF8000000000001ULL}; // NaN => 0x7FFxxxxxxxxxxxxxULL where xx.. is >= 1
+    //F64Bits f = {.f = -1.0};
     F64String fstr = {0};
 
     f64_to_str(&fstr, f.f);
@@ -278,4 +257,5 @@ int main(void) {
 
     return 0;
 }
+*/
 
