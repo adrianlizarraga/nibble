@@ -244,17 +244,18 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     // Compute paddings
     ///////////////////////////
 
-    u64 num_frac_digits = MIN(fstr.num_digits - fstr.decimal_point, fstr.num_digits);
-    u64 num_int_digits = fstr.num_digits - num_frac_digits;
+    int digit_after = fstr.decimal_point + precision;
+    u64 tot_frac_digits = MAX(fstr.num_digits - fstr.decimal_point, 0);
+    u64 tot_int_digits = MAX(fstr.decimal_point, 0);
 
-    printf("num_digits = %d, dp = %d, num_int_digits = %lu, num_frac_digits = %lu, precision = %lu\n",
-           fstr.num_digits, fstr.decimal_point, num_int_digits, num_frac_digits,
+    printf("num_digits = %d, dp = %d, tot_int_digits = %lu, tot_frac_digits = %lu, precision = %lu\n",
+           fstr.num_digits, fstr.decimal_point, tot_int_digits, tot_frac_digits,
            precision);
-    // TODO: Doesn't work if dp is negative.
+
     // Round to specified precision.
-    if (precision > 0) {
-        if (num_frac_digits > precision) {
-            int digit_after = num_int_digits + precision;
+    if (precision > 0 && tot_frac_digits > 0 && digit_after >= 0 && digit_after < fstr.num_digits) {
+
+        if (tot_frac_digits > precision) {
             printf("%s\n", fstr.digits);
             printf("digit_after (index %d) = %c\n", digit_after, fstr.digits[digit_after]);
 
@@ -274,27 +275,36 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
                     fstr.digits[i] += 1; // Round up
                 }
                 else {
-                    // Ex: 999.996 (prec of 2) => 1000.0
+                    // Ex: 999.996 (prec of 2) => 1000.00
                     fstr.digits[0] = '1';
+                    fstr.digits[digit_after] = '0';
                     fstr.decimal_point += 1;
+                    fstr.num_digits += 1;
                 }
             }
 
-            num_frac_digits = precision;
-            fstr.num_digits = num_int_digits + num_frac_digits;
+            int num_discarded = tot_frac_digits - precision;
+
+            fstr.num_digits -= num_discarded;
         }
+        else if (tot_frac_digits < precision) {
 
-        // Pad with '0' until the number of fractional digits equals the precision.
-        const int max_digits = ARRAY_LEN(fstr.digits);
+            // Pad with '0' until the number of fractional digits equals the precision.
+            const int max_digits = ARRAY_LEN(fstr.digits);
 
-        while (num_frac_digits < precision && (fstr.num_digits < max_digits)) {
-            fstr.digits[num_int_digits + num_frac_digits] = '0';
-            num_frac_digits += 1;
-            fstr.num_digits += 1;
+            while (tot_frac_digits < precision && (fstr.num_digits < max_digits)) {
+                fstr.digits[fstr.num_digits] = '0';
+                fstr.num_digits += 1;
+                tot_frac_digits += 1;
+            }
         }
     }
 
-    u64 tot_len = fstr.num_digits + 1; // The decimal point is the "+ 1".
+    // Update counts for fractional and integral digits after rounding.
+    tot_frac_digits = MAX(fstr.num_digits - fstr.decimal_point, 0);
+    tot_int_digits = MAX(fstr.decimal_point, 0);
+
+    u64 tot_len = MAX(tot_int_digits, 1) + 1 + MAX(tot_frac_digits, 1); // The decimal point is the "+ 1".
     u64 width_pad = 0;
 
     if (print_sign)
@@ -316,16 +326,28 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
         put_char_wrapper(dest, (negative) ? '-' : '+');
 
     // Print integral digits.
-    for (int i = 0; i < fstr.decimal_point; i++) {
-        put_char_wrapper(dest, fstr.digits[i]);
+    if (tot_int_digits > 0 ) {
+        for (int i = 0; i < (int)tot_int_digits; i++) {
+            put_char_wrapper(dest, i < fstr.num_digits ? fstr.digits[i] : '0');
+        }
+    }
+    else {
+        put_char_wrapper(dest, '0');
     }
 
     put_char_wrapper(dest, '.'); // Decimal point
 
 
     // Print fractional digits.
-    for (int i = fstr.decimal_point; i < fstr.num_digits; i++) {
-        put_char_wrapper(dest, fstr.digits[i]);
+    if (tot_frac_digits > 0) {
+        int end_frac = fstr.decimal_point + tot_frac_digits;
+
+        for (int i = fstr.decimal_point; i < end_frac; i++) {
+            put_char_wrapper(dest, i >= 0 ? fstr.digits[i] : '0');
+        }
+    }
+    else {
+        put_char_wrapper(dest, '0');
     }
 
     // Print width padding for left-justified numbers.
