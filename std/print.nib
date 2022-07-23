@@ -110,7 +110,7 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
     if (fstr.flags & F64StringFlags::IS_NAN) {
         var nan : []char = "nan";
 
-        for (var i : usize = 0; i < nan.length - 1; ++i) {
+        for (var i : usize = 0; i < nan.length - 1; i += 1) {
             put_char_wrapper(wstate, nan[i]);
         }
 
@@ -121,7 +121,7 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
         var plus : bool = (flags & FmtFlag::FORCE_SIGN);
         var inf : []char = (plus) ? ("+inf" :> []char) : ("inf" :> []char);
 
-        for (var i : usize = 0; i < inf.length - 1; ++i) {
+        for (var i : usize = 0; i < inf.length - 1; i += 1) {
             put_char_wrapper(wstate, inf[i]);
         }
 
@@ -131,7 +131,7 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
     if (fstr.flags & F64StringFlags::IS_INF) {
         var inf : []char = "-inf";
 
-        for (var i : usize = 0; i < inf.length - 1; ++i) {
+        for (var i : usize = 0; i < inf.length - 1; i += 1) {
             put_char_wrapper(wstate, inf[i]);
         }
 
@@ -388,12 +388,12 @@ proc print_arg(wstate : ^WriteState, arg : ^any) => PrintErr {
     else if (arg.type == #typeid(f32)) {
         var val : f64 = *(arg.ptr :> ^f32);
 
-        print_flt(wstate, val, 0, 0, FmtFlag::HAS_PRECISION);
+        print_flt(wstate, val, 0, 0, 0);
     }
     else if (arg.type == #typeid(f64)) {
         var val : f64 = *(arg.ptr :> ^f64);
 
-        print_flt(wstate, val, 0, 0, FmtFlag::HAS_PRECISION);
+        print_flt(wstate, val, 0, 0, 0);
     }
     else if (arg.type == #typeid([]char)) {
         var str : []char = *(arg.ptr :> ^[]char);
