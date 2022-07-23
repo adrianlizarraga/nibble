@@ -253,8 +253,6 @@ static void f64_to_str(F64String* dst, double f)
     }
 
     dst->digits[dst->num_digits] = '\0';
-
-
 }
 
 static void f64str_round(F64String* fstr, u32 precision)
@@ -304,9 +302,8 @@ static void f64str_round(F64String* fstr, u32 precision)
                 }
             }
 
-            int num_discarded = tot_frac_digits - precision;
-
-            fstr->num_digits -= num_discarded;
+            // Decrease the number of digits by the number of discarded digits due to rounding.
+            fstr->num_digits -= (tot_frac_digits - precision);
         }
         else if (tot_frac_digits < precision) {
 
