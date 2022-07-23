@@ -802,7 +802,14 @@ static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xb
 
     // <bin_instr> r, b
     if (ir_b.kind == OP_RIA_IMM) {
-        X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
+        if (size == X64_MAX_INT_REG_SIZE) {
+            u32 imm_reg = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
+            X64_emit_instr_mov_r_i(builder, xbblock, size, imm_reg, ir_b.imm);
+            X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[ir_instr->kind], size, r, imm_reg);
+        }
+        else {
+            X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
+        }
     }
     else if (ir_b.kind == OP_RIA_REG) {
         u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
@@ -952,7 +959,14 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         u32 dx = X64_LIR_REG_COUNT;
         if (uses_dx) { // Reserve rdx
             dx = X64_def_phys_reg(builder, X64_RDX);
-            X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
+
+            if (type_is_signed(type)) {
+                X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
+            }
+            else {
+                // Clear rdx by xor
+                X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_XOR], X64_MAX_INT_REG_SIZE, dx, dx);
+            }
         }
 
         // div b
@@ -1004,7 +1018,14 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         u32 dx = X64_LIR_REG_COUNT;
         if (uses_dx) { // Reserve rdx
             dx = X64_def_phys_reg(builder, X64_RDX);
-            X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
+
+            if (type_is_signed(type)) {
+                X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
+            }
+            else {
+                // Clear rdx by xor
+                X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_XOR], X64_MAX_INT_REG_SIZE, dx, dx);
+            }
         }
 
         // div b
@@ -1065,7 +1086,14 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         u32 dx = X64_LIR_REG_COUNT;
         if (uses_dx) { // Reserve rdx
             dx = X64_def_phys_reg(builder, X64_RDX);
-            X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
+
+            if (type_is_signed(type)) {
+                X64_emit_instr_sext_ax_to_dx(builder, xbblock, size, dx, ax);
+            }
+            else {
+                // Clear rdx by xor
+                X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_XOR], X64_MAX_INT_REG_SIZE, dx, dx);
+            }
         }
 
         // div b

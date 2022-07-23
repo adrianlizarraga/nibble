@@ -793,9 +793,12 @@ bool type_is_signed(Type* type)
     if (type->kind == TYPE_INTEGER) {
         ikind = type->as_integer.kind;
     }
-    else {
-        assert(type->kind == TYPE_ENUM);
+    else if (type->kind == TYPE_ENUM) {
         ikind = type->as_enum.base->as_integer.kind;
+    }
+    else {
+        assert(type->kind == TYPE_PTR);
+        ikind = INTEGER_U64;
     }
 
     return int_kind_signed[ikind];
