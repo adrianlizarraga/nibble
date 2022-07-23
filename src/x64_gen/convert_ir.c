@@ -32,7 +32,9 @@ static const ConditionKind flt_cond_map[] = {
 static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
 {
     if (src_range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_NONE) {
-        assert(dst_range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_NONE);
+        assert((dst_range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_NONE) ||
+               (dst_range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_HINT_LIR_REG) ||
+               (dst_range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_HINT_PHYS_REG));
         dst_range->ra_ctrl_kind = src_range->ra_ctrl_kind;
         dst_range->ra_ctrl = src_range->ra_ctrl;
     }
@@ -1543,13 +1545,14 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     }
     case INSTR_PHI: {
         // For now, just force all registers in PHI instruction into the same physical register.
+        X64_RegClass reg_class = ir_instr->phi.type->kind == TYPE_FLOAT ? X64_REG_CLASS_FLOAT : X64_REG_CLASS_INT;
 
-        u32 r = X64_get_lir_reg(builder, ir_instr->phi.r, X64_REG_CLASS_INT);
+        u32 r = X64_get_lir_reg(builder, ir_instr->phi.r, reg_class);
         size_t num_args = ir_instr->phi.num_args;
         PhiArg* args = ir_instr->phi.args;
 
         for (size_t i = 0; i < num_args; i++) {
-            u32 x = X64_get_lir_reg(builder, args[i].ireg, X64_REG_CLASS_INT);
+            u32 x = X64_get_lir_reg(builder, args[i].ireg, reg_class);
             X64_alias_lir_regs(builder, x, r);
         }
         break;
