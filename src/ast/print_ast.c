@@ -235,6 +235,12 @@ char* ftprint_expr(Allocator* allocator, Expr* expr)
             ftprint_char_array(&dstr, false, "(cast %s %s)", ftprint_typespec(allocator, e->typespec),
                                ftprint_expr(allocator, e->expr));
         } break;
+        case CST_ExprBitCast: {
+            ExprBitCast* e = (ExprBitCast*)expr;
+            dstr = array_create(allocator, char, 16);
+            ftprint_char_array(&dstr, false, "(bit_cast %s %s)", ftprint_typespec(allocator, e->typespec),
+                               ftprint_expr(allocator, e->expr));
+        } break;
         case CST_ExprSizeof: {
             ExprSizeof* e = (ExprSizeof*)expr;
             dstr = array_create(allocator, char, 16);
