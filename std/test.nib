@@ -86,7 +86,7 @@ proc main() => int {
     var r := print_out("Print nums {0}, {}, {2}, {}! Escape '{{' f64 {}, large f64 {}\n",
                        {value = 321, base = 10, flags = FmtFlag::FORCE_SIGN : FmtInt},
                        {value = 15, base = 16, flags = FmtFlag::HASH | FmtFlag::UPPERCASE : FmtInt}, 4333, "Hello" :> []char,
-                       {value = 1.33, precision = 3, flags = FmtFlag::HAS_PRECISION : FmtFloat},
+                       {value = 1.33, precision = 3 : FmtFloat},
                        1.7976931348623157e308);
 
     if (r.[1] != PrintErr::NONE) {

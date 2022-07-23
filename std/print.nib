@@ -19,8 +19,6 @@ enum FmtFlag {
     SPACE_SIGN     = 1 << 2,
     HASH           = 1 << 3,
     ZERO_PAD       = 1 << 4,
-    HAS_WIDTH      = 1 << 5,
-    HAS_PRECISION  = 1 << 6,
     UPPERCASE      = 1 << 7
 }
 
@@ -138,13 +136,11 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
         return;
     }
 
-    var has_prec : bool = flags & FmtFlag::HAS_PRECISION;
-    var has_width : bool = flags & FmtFlag::HAS_WIDTH;
     var print_sign : bool = negative || (flags & FmtFlag::FORCE_SIGN);
     var left_justified : bool = flags & FmtFlag::LEFT_JUSTIFIED;
     var zero_padded : bool = flags & FmtFlag::ZERO_PAD;
 
-    if (!has_prec) precision = PRINT_DEFAULT_FLOAT_PRECISION;
+    if (!precision) precision = PRINT_DEFAULT_FLOAT_PRECISION;
 
     f64str_round(^fstr, precision);
 
@@ -161,7 +157,7 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
         tot_len += 1;
     }
 
-    if (has_width && (width > tot_len)) {
+    if (width > tot_len) {
         width_pad = width - tot_len;
     }
 
@@ -217,15 +213,13 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
 
 proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: bool, flags : u32, precision : u32, width : u32) {
 
-    var has_prec : bool = flags & FmtFlag::HAS_PRECISION;
-    var has_width : bool = flags & FmtFlag::HAS_WIDTH;
     var print_sign : bool = is_neg || (flags & FmtFlag::FORCE_SIGN);
     var print_base : bool = (flags & FmtFlag::HASH) && ((base == 2) || (base == 8) || (base == 16));
     var left_justified : bool = flags & FmtFlag::LEFT_JUSTIFIED;
     var zero_padded : bool = flags & FmtFlag::ZERO_PAD;
     var uppercased : bool = flags & FmtFlag::UPPERCASE;
 
-    if (has_prec && (precision == 0) && (value == 0)) {
+    if ((precision == 0) && (value == 0)) {
         return;
     }
 
@@ -252,7 +246,7 @@ proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: 
     var zero_pad : usize;
     var space_pad : usize;
 
-    if (has_prec && (precision > len)) {
+    if (precision > len) {
         zero_pad = precision - len;
     }
 
@@ -269,7 +263,7 @@ proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: 
         tot_len += 1;
     }
 
-    if (has_width && (width > tot_len)) {
+    if (width > tot_len) {
         var pad : usize = width - tot_len;
 
         if (left_justified) {
