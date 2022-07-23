@@ -116,10 +116,33 @@ enum F64StringFlags {
 
 typedef struct F64String {
     char digits[1024];
-    int num_digits;
+    u32 num_digits;
     int decimal_point; // location of the decimal point (left of corresponding digit index).
-    int flags;
+    u32 flags;
 } F64String;
+
+static inline u32 f64str_num_frac_digits(F64String* fstr)
+{
+    return MAX(fstr->num_digits - fstr->decimal_point, 0);
+}
+
+static inline u32 f64str_num_int_digits(F64String* fstr)
+{
+    return MAX(fstr->decimal_point, 0);
+}
+
+static bool f64str_has_nonzero_digit(F64String* fstr, u32 round_digit)
+{
+    u32 start = round_digit + 1;
+
+    for (u32 i = start; i < fstr->num_digits; i++) {
+        if (fstr->digits[i] > '0' && fstr->digits[i] <= '9') {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 // Adapted from https://research.swtch.com/ftoa
 static void f64_to_str(F64String* dst, double f)
@@ -183,7 +206,7 @@ static void f64_to_str(F64String* dst, double f)
         bool add_digit = dst->digits[0] >= '5';
         char carry = 0;
 
-        for (int i = dst->num_digits - 1; i >= 0; i--) {
+        for (u32 i = dst->num_digits; i-- > 0;) {
             int x = carry + 2 * (dst->digits[i] - '0');
 
             carry = x / 10; // TODO: x >= 10
@@ -198,6 +221,7 @@ static void f64_to_str(F64String* dst, double f)
 
     dst->decimal_point = dst->num_digits;
 
+    // Divide significand by 2 "e" times.
     for (; e < 0; e++) {
 
         // If the last digit is odd, add a new digit for the .5
@@ -220,7 +244,7 @@ static void f64_to_str(F64String* dst, double f)
 
         // Divide by 2 (left to right).
         // 'prev_rem' is the remainder of the previous step.
-        for (int i = 0; i < dst->num_digits; i++) {
+        for (u32 i = 0; i < dst->num_digits; i++) {
             int x = (prev_rem * 10) + (dst->digits[i + read_delta] - '0');
 
             dst->digits[i] = (x / 2) + '0';
@@ -229,33 +253,72 @@ static void f64_to_str(F64String* dst, double f)
     }
 
     dst->digits[dst->num_digits] = '\0';
+
+
 }
 
-/*
-int main(void) {
-    F64Bits f = {.i = 0x1}; // 4.9406564584124654 × 10−324 (Min. subnormal positive double) ==> 0x1 as an int
-    //F64Bits f = {.i = 0x7FF0000000000001ULL}; // +inf => 0x7FF0000000000000ULL
-    //F64Bits f = {.i = 0xFFF0000000000001ULL}; // -inf => 0xFFF0000000000000ULL
-    //F64Bits f = {.i = 0x7FF0000000000001ULL}; // NaN => 0x7FFxxxxxxxxxxxxxULL where xx.. is >= 1
-    //F64Bits f = {.i = 0x7FF8000000000001ULL}; // NaN => 0x7FFxxxxxxxxxxxxxULL where xx.. is >= 1
-    //F64Bits f = {.f = -1.0};
-    F64String fstr = {0};
+static void f64str_round(F64String* fstr, u32 precision)
+{
+    const u32 digits_cap = ARRAY_LEN(fstr->digits);
+    u32 tot_frac_digits = f64str_num_frac_digits(fstr);
 
-    f64_to_str(&fstr, f.f);
-    char sign = (fstr.flags & F64_STRING_IS_NEG) ? '-' : '+';
+    // Location of the first fractional digit to be discarded and used for rounding.
+    int round_digit = fstr->decimal_point + precision;
 
-    if (fstr.flags & F64_STRING_IS_INF) {
-        printf("f64_to_str(%e) = %cinf\n", f.f, sign);
+    // Precision is too low, and thus, this procedure discards all non-zero digits after the decimal point.
+    // Sets digits array to 0.00...0 (precision determines the number of digits after decimal point)
+    if (round_digit < 0) {
+        fstr->num_digits = MIN(precision + 1, digits_cap - 1);
+        fstr->decimal_point = 1;
+
+        memset(fstr->digits, '0', fstr->num_digits);
     }
-    else if (fstr.flags & F64_STRING_IS_NAN) {
-        printf("f64_to_str(%e) = nan\n", f.f);
-    }
-    else {
-        printf("f64_to_str(%e) = %c%c.%se%+d\n", f.f, sign, fstr.digits[0], fstr.digits + 1, fstr.decimal_point - 1);
-        printf("decimal_point = %d, num_digits = %d\n", fstr.decimal_point, fstr.num_digits);
+    else if (tot_frac_digits > 0 && (u32)round_digit < fstr->num_digits) {
+
+        if (tot_frac_digits > precision) {
+
+            // Round if the "round_digit" is greater than '5', OR
+            // The "round_digit" is '5' and either the previous digit is odd or have any non-zero digit after
+            // the round_digit.
+            if ((fstr->digits[round_digit] > '5') ||
+                ((fstr->digits[round_digit] == '5') && ((fstr->digits[round_digit - 1] % 2 == 1) ||
+                                                        f64str_has_nonzero_digit(fstr, (u32)round_digit)))) {
+
+                int i = round_digit - 1;
+
+                // Convert nines to zero
+                while (i >= 0 && fstr->digits[i] == '9') {
+                    fstr->digits[i] = '0';
+                    i -= 1;
+                }
+
+                if (i >= 0) {
+                    fstr->digits[i] += 1; // Round up
+                }
+                else {
+                    // Ex: 999.996 (prec of 2) => 1000.00
+                    fstr->digits[0] = '1';
+                    fstr->digits[round_digit] = '0';
+                    fstr->decimal_point += 1;
+                    fstr->num_digits += 1;
+                }
+            }
+
+            int num_discarded = tot_frac_digits - precision;
+
+            fstr->num_digits -= num_discarded;
+        }
+        else if (tot_frac_digits < precision) {
+
+            // Pad with '0' until the number of fractional digits equals the precision.
+            while (tot_frac_digits < precision && (fstr->num_digits < digits_cap)) {
+                fstr->digits[fstr->num_digits] = '0';
+                fstr->num_digits += 1;
+                tot_frac_digits += 1;
+            }
+        }
     }
 
-    return 0;
+    fstr->digits[fstr->num_digits] = '\0'; // Null terminate
 }
-*/
 

@@ -240,69 +240,14 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     if (!prec_flag)
         precision = PRINT_DEFAULT_FLOAT_PRECISION;
 
+    f64str_round(&fstr, (u32)precision);
+
     ///////////////////////////
     // Compute paddings
     ///////////////////////////
 
-    int digit_after = fstr.decimal_point + precision;
-    u64 tot_frac_digits = MAX(fstr.num_digits - fstr.decimal_point, 0);
-    u64 tot_int_digits = MAX(fstr.decimal_point, 0);
-
-    printf("num_digits = %d, dp = %d, tot_int_digits = %lu, tot_frac_digits = %lu, precision = %lu\n",
-           fstr.num_digits, fstr.decimal_point, tot_int_digits, tot_frac_digits,
-           precision);
-
-    // Round to specified precision.
-    if (precision > 0 && tot_frac_digits > 0 && digit_after >= 0 && digit_after < fstr.num_digits) {
-
-        if (tot_frac_digits > precision) {
-            printf("%s\n", fstr.digits);
-            printf("digit_after (index %d) = %c\n", digit_after, fstr.digits[digit_after]);
-
-            // TODO: Also round if have any non-zero digit after 'digit_after'.
-            if ((fstr.digits[digit_after] > '5') ||
-                ((fstr.digits[digit_after] == '5') && (fstr.digits[digit_after - 1] % 2 == 1))) {
-
-                int i = digit_after - 1;
-
-                // Convert nines to zero
-                while (i >= 0 && fstr.digits[i] == '9') {
-                    fstr.digits[i] = '0';
-                    i -= 1;
-                }
-
-                if (i >= 0) {
-                    fstr.digits[i] += 1; // Round up
-                }
-                else {
-                    // Ex: 999.996 (prec of 2) => 1000.00
-                    fstr.digits[0] = '1';
-                    fstr.digits[digit_after] = '0';
-                    fstr.decimal_point += 1;
-                    fstr.num_digits += 1;
-                }
-            }
-
-            int num_discarded = tot_frac_digits - precision;
-
-            fstr.num_digits -= num_discarded;
-        }
-        else if (tot_frac_digits < precision) {
-
-            // Pad with '0' until the number of fractional digits equals the precision.
-            const int max_digits = ARRAY_LEN(fstr.digits);
-
-            while (tot_frac_digits < precision && (fstr.num_digits < max_digits)) {
-                fstr.digits[fstr.num_digits] = '0';
-                fstr.num_digits += 1;
-                tot_frac_digits += 1;
-            }
-        }
-    }
-
-    // Update counts for fractional and integral digits after rounding.
-    tot_frac_digits = MAX(fstr.num_digits - fstr.decimal_point, 0);
-    tot_int_digits = MAX(fstr.decimal_point, 0);
+    u32 tot_frac_digits = f64str_num_frac_digits(&fstr);
+    u32 tot_int_digits = f64str_num_int_digits(&fstr);
 
     u64 tot_len = MAX(tot_int_digits, 1) + 1 + MAX(tot_frac_digits, 1); // The decimal point is the "+ 1".
     u64 width_pad = 0;
@@ -327,7 +272,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
 
     // Print integral digits.
     if (tot_int_digits > 0 ) {
-        for (int i = 0; i < (int)tot_int_digits; i++) {
+        for (u32 i = 0; i < tot_int_digits; i++) {
             put_char_wrapper(dest, i < fstr.num_digits ? fstr.digits[i] : '0');
         }
     }
@@ -342,6 +287,8 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     if (tot_frac_digits > 0) {
         int end_frac = fstr.decimal_point + tot_frac_digits;
 
+        // TODO: Doesn't print all "precision's" worth of zeros if 
+        // decimal_point is large (ex: DBL_MAX).
         for (int i = fstr.decimal_point; i < end_frac; i++) {
             put_char_wrapper(dest, i >= 0 ? fstr.digits[i] : '0');
         }
