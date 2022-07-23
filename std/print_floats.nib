@@ -27,6 +27,15 @@ struct F64String {
     flags : u32;
 }
 
+proc max_u32(a : u32, b : u32) => u32 {
+    return a > b ? a : b;
+}
+
+proc min_u32(a : u32, b : u32) => u32 {
+    return a < b ? a : b;
+}
+
+
 proc custom_fp_norm(x : CustomFP) => CustomFP {
     const last_bit_mask : u64 = 0x8000000000000000u;
     const last_byte_mask : u64 = 0xFF00000000000000u;
@@ -218,4 +227,62 @@ proc f64_to_str(dst : ^F64String, f : f64) {
     dst.digits[dst.num_digits] = '\0';
 }
 
+proc f64str_round(fstr : ^F64String, precision : u32) {
+    const digits_cap : u32 = #length(fstr.digits);
+    var tot_frac_digits : u32 = f64str_num_frac_digits(fstr);
+
+    // Location of the first fractional digit to be discarded and used for rounding.
+    var round_digit : s32 = fstr.decimal_point + precision;
+
+    // Precision is too low, and thus, this procedure discards all non-zero digits after the decimal point.
+    // Sets digits array to 0.00...0 (precision determines the number of digits after decimal point)
+    if (round_digit < 0) {
+        fstr.num_digits = min_u32(precision + 1, digits_cap - 1);
+        fstr.decimal_point = 1;
+
+        #memset(fstr.digits, '0', fstr.num_digits);
+    }
+    else if (tot_frac_digits > 0 && (round_digit :> u32) < fstr.num_digits) {
+        if (tot_frac_digits > precision) {
+            // Round if the "round_digit" is greater than '5', OR
+            // The "round_digit" is '5' and either the previous digit is odd or have any non-zero digit after
+            // the round_digit.
+            if ((fstr.digits[round_digit] > '5') ||
+                ((fstr.digits[round_digit] == '5') &&
+                 ((fstr.digits[round_digit - 1] % 2 == 1) || f64str_has_nonzero_digit(fstr, round_digit :> u32)))) {
+                var i : s32 = round_digit - 1;
+
+                // Convert nines to zero
+                while (i >= 0 && fstr.digits[i] == '9') {
+                    fstr.digits[i] = '0';
+                    i -= 1;
+                }
+
+                if (i >= 0) {
+                    fstr.digits[i] += 1; // Round up
+                }
+                else {
+                    // Ex: 999.996 (prec of 2) => 1000.00
+                    fstr.digits[0] = '1';
+                    fstr.digits[round_digit] = '0';
+                    fstr.decimal_point += 1;
+                    fstr.num_digits += 1;
+                }
+            }
+
+            // Decrease the number of digits by the number of discarded digits due to rounding.
+            fstr.num_digits -= (tot_frac_digits - precision);
+        }
+        else if (tot_frac_digits < precision) {
+            // Pad with '0' until the number of fractional digits equals the precision.
+            while (tot_frac_digits < precision && (fstr.num_digits < digits_cap)) {
+                fstr.digits[fstr.num_digits] = '0';
+                fstr.num_digits += 1;
+                tot_frac_digits += 1;
+            }
+        }
+    }
+
+    fstr.digits[fstr.num_digits] = '\0'; // Null terminate
+}
 

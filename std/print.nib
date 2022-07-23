@@ -97,21 +97,17 @@ proc print_uint(wstate : ^WriteState, value : usize, base : u32, flags : u32, pr
 }
 
 proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, flags : u32) {
-    const F64_MAX : f64 = 1.7976931348623157e308; // 0x7FEFFFFFFFFFFFFF
     const PRINT_DEFAULT_FLOAT_PRECISION : u32 = 6;
-    const PRINT_EXP_THRESHOLD : f64 = 1e9;
+    var fstr : F64String;
 
-    var tmp_buf : [PRINT_MAX_NUM_DIGITS]char = ---;
-    var powers10 : [_]f64 = {1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0};
-    const num_powers : uint = #length(powers10);
-    const max_powers_index : uint = num_powers - 1;
+    f64_to_str(^fstr, value);
 
-    var len : usize;
+    var negative : bool = fstr.flags & F64StringFlags::IS_NEG;
 
     /////////////////////////////////////
     // Handle NaN, Inf, -Inf
     ////////////////////////////////////
-    if (value != value) {
+    if (fstr.flags & F64StringFlags::IS_NAN) {
         var nan : []char = "nan";
 
         for (var i : usize = 0; i < nan.length - 1; ++i) {
@@ -121,7 +117,7 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
         return;
     }
 
-     if (value > F64_MAX) {
+    if ((fstr.flags & F64StringFlags::IS_INF) && !negative) {
         var plus : bool = (flags & FmtFlag::FORCE_SIGN);
         var inf : []char = (plus) ? ("+inf" :> []char) : ("inf" :> []char);
 
@@ -132,7 +128,7 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
         return;
     }
 
-    if (value < -F64_MAX) {
+    if (fstr.flags & F64StringFlags::IS_INF) {
         var inf : []char = "-inf";
 
         for (var i : usize = 0; i < inf.length - 1; ++i) {
@@ -142,21 +138,6 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
         return;
     }
 
-    // TODO: Print in scientific notation (Grisu algo) if larger than s64 maximum.
-    // See: Printing Floating-Point Numbers Quickly and Accurately with Integers by Florian Loitsch
-    // https://www.cs.tufts.edu/~nr/cs257/archive/florian-loitsch/printf.pdf
-    if (value > PRINT_EXP_THRESHOLD || value < -PRINT_EXP_THRESHOLD) {
-        print_uint(wstate, value :>> usize, 16, flags | FmtFlag::HASH, 0, width); // Just print nibbles for now.
-        return;
-    }
-
-    // Make positive.
-    var negative : bool = false;
-    if (value < 0.0) {
-        negative = true;
-        value = 0.0 - value;
-    }
-
     var has_prec : bool = flags & FmtFlag::HAS_PRECISION;
     var has_width : bool = flags & FmtFlag::HAS_WIDTH;
     var print_sign : bool = negative || (flags & FmtFlag::FORCE_SIGN);
@@ -164,85 +145,16 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
     var zero_padded : bool = flags & FmtFlag::ZERO_PAD;
 
     if (!has_prec) precision = PRINT_DEFAULT_FLOAT_PRECISION;
-    var prec_index : u64 = (precision > max_powers_index) ? max_powers_index : precision;
 
-    /////////////////////////////
-    // Print fractional part
-    ////////////////////////////
-    var integral : s64 = value :> s64;
-
-    if (precision > 0) {
-        var frac_dbl : f64 = (value - integral) * powers10[prec_index];
-        var fractional : s64 = frac_dbl :> s64;
-        var leftover : f64 = frac_dbl - fractional;
-
-        // Round up leftover decimal places (past the precision amount).
-        if (leftover > 0.5) {
-            fractional += 1;
-
-            // Rollover (EX: if value is 0.99 and precision is 1 -> result should be 1.0)
-            if (fractional >= powers10[prec_index]) {
-                fractional = 0;
-                integral += 1;
-            }
-        }
-        // Exactly 0.5 ... round up to even
-        else if ((leftover == 0.5) && ((fractional == 0) || (fractional & 1))) {
-            fractional += 1;
-
-            // Rollover (EX: if value is 0.95 and precision is 1 -> result should be 1.0)
-            if (fractional >= powers10[prec_index]) {
-                fractional = 0;
-                integral += 1;
-            }
-        }
-
-        var remaining : s64 = prec_index;
-
-        // Add fractional part to the char buffer in reverse order.
-        do {
-            remaining -= 1;
-
-            var digit : char = (fractional % 10) :> char;
-
-            tmp_buf[len] = '0' + digit; len += 1;
-            fractional = fractional / 10;
-        } while (fractional);
-
-        // Add remaining fractional digits (0s) between decimal and the first non-zero fractional
-        // digit.
-        while (remaining) {
-            tmp_buf[len] = '0'; len += 1;
-            remaining -= 1;
-        }
-
-        // Now add the decimal point.
-        tmp_buf[len] = '.'; len += 1;
-    }
-    // If precision is zero, don't show fractional part.
-    // Just check if we need to round up the integral part.
-    else // precision == 0
-    {
-        var leftover : f64 = value - (integral :> f64);
-        if ((leftover > 0.5) || ((leftover == 0.5) && (integral & 1))) integral += 1;
-    }
-
-    /////////////////////////////
-    // Print integral part
-    ////////////////////////////
-
-    do {
-        var digit : char = (integral % 10) :> char;
-
-        tmp_buf[len] = '0' + digit; len += 1;
-        integral = integral / 10;
-    } while (integral);
+    f64str_round(^fstr, precision);
 
     ///////////////////////////
     // Compute paddings
     ///////////////////////////
-    var prec_pad : u64 = precision - prec_index;
-    var tot_len : u64 = len + prec_pad;
+    var tot_frac_digits : u32 = f64str_num_frac_digits(^fstr);
+    var tot_int_digits : u32 = f64str_num_int_digits(^fstr);
+
+    var tot_len : u64 = max_u32(tot_int_digits, 1) + 1 + max_u32(tot_frac_digits, 1); // The decimal point is the "+ 1".
     var width_pad : u64 = 0;
 
     if (print_sign) {
@@ -268,16 +180,30 @@ proc print_flt(wstate: ^WriteState, value : f64, precision : u32, width : u32, f
         put_char_wrapper(wstate, (negative) ? '-' : '+');
     }
 
-    // Print digits (reversed in buffer).
-    while (len) {
-        len -= 1;
-        put_char_wrapper(wstate, tmp_buf[len]);
+    // Print integral digits.
+    if (tot_int_digits > 0) {
+        for (var i : u32 = 0; i < tot_int_digits; i += 1) {
+            put_char_wrapper(wstate, (i < fstr.num_digits) ? fstr.digits[i] : '0');
+        }
+    }
+    else {
+        put_char_wrapper(wstate, '0');
     }
 
-    // Print precision zero-padding.
-    while (prec_pad) {
-        put_char_wrapper(wstate, '0');
-        prec_pad -= 1;
+    put_char_wrapper(wstate, '.'); // Decimal point
+
+    // Print fractional digits.
+    if (tot_frac_digits > 0) {
+        var end_frac : s32 = fstr.decimal_point + tot_frac_digits;
+
+        for (var i := fstr.decimal_point; i < end_frac; i += 1) {
+            put_char_wrapper(wstate, i >= 0 ? fstr.digits[i] : '0');
+        }
+    }
+    else {
+        for (var i : u32 = 0; i < precision; i += 1) {
+            put_char_wrapper(wstate, '0');
+        }
     }
 
     // Print width padding for left-justified numbers.
