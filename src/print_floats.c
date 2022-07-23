@@ -223,7 +223,6 @@ static void f64_to_str(F64String* dst, double f)
 
     // Divide significand by 2 "e" times.
     for (; e < 0; e++) {
-
         // If the last digit is odd, add a new digit for the .5
         if (dst->digits[dst->num_digits - 1] % 2 != 0) {
             dst->digits[dst->num_digits] = '0';
@@ -272,16 +271,13 @@ static void f64str_round(F64String* fstr, u32 precision)
         memset(fstr->digits, '0', fstr->num_digits);
     }
     else if (tot_frac_digits > 0 && (u32)round_digit < fstr->num_digits) {
-
         if (tot_frac_digits > precision) {
-
             // Round if the "round_digit" is greater than '5', OR
             // The "round_digit" is '5' and either the previous digit is odd or have any non-zero digit after
             // the round_digit.
             if ((fstr->digits[round_digit] > '5') ||
-                ((fstr->digits[round_digit] == '5') && ((fstr->digits[round_digit - 1] % 2 == 1) ||
-                                                        f64str_has_nonzero_digit(fstr, (u32)round_digit)))) {
-
+                ((fstr->digits[round_digit] == '5') &&
+                 ((fstr->digits[round_digit - 1] % 2 == 1) || f64str_has_nonzero_digit(fstr, (u32)round_digit)))) {
                 int i = round_digit - 1;
 
                 // Convert nines to zero
@@ -306,7 +302,6 @@ static void f64str_round(F64String* fstr, u32 precision)
             fstr->num_digits -= (tot_frac_digits - precision);
         }
         else if (tot_frac_digits < precision) {
-
             // Pad with '0' until the number of fractional digits equals the precision.
             while (tot_frac_digits < precision && (fstr->num_digits < digits_cap)) {
                 fstr->digits[fstr->num_digits] = '0';
@@ -318,4 +313,3 @@ static void f64str_round(F64String* fstr, u32 precision)
 
     fstr->digits[fstr->num_digits] = '\0'; // Null terminate
 }
-

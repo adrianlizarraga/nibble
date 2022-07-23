@@ -7,7 +7,6 @@
 
 #include "print_floats.c"
 
-
 enum format_flags {
     FORMAT_FLAG_LEFT_JUSTIFIED = 1U << 0,
     FORMAT_FLAG_FORCE_SIGN = 1U << 1,
@@ -71,8 +70,8 @@ static size_t ascii_to_i64(const char* str, int64_t* out_value)
     return i;
 }
 
-static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned long long base, bool negative,
-                         uint64_t precision, uint32_t width, uint64_t flags)
+static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned long long base, bool negative, uint64_t precision,
+                         uint32_t width, uint64_t flags)
 {
     char temp_buf[PRINT_MAX_NUM_DIGITS];
     size_t len = 0;
@@ -178,8 +177,7 @@ static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned lo
     return;
 }
 
-static void ftprint_int(PrintState* dest, long long value, long long base, uint64_t precision, uint32_t width,
-                        int64_t flags)
+static void ftprint_int(PrintState* dest, long long value, long long base, uint64_t precision, uint32_t width, int64_t flags)
 {
     bool negative = value < 0;
     unsigned long long uvalue = (unsigned long long)(negative ? 0 - value : value);
@@ -187,8 +185,7 @@ static void ftprint_int(PrintState* dest, long long value, long long base, uint6
     ftprint_int_(dest, uvalue, base, negative, precision, width, flags);
 }
 
-static void print_uint(PrintState* dest, unsigned long long value, long long base, uint64_t precision, uint32_t width,
-                       int64_t flags)
+static void print_uint(PrintState* dest, unsigned long long value, long long base, uint64_t precision, uint32_t width, int64_t flags)
 {
     ftprint_int_(dest, value, base, false, precision, width, flags);
 }
@@ -271,7 +268,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
         put_char_wrapper(dest, (negative) ? '-' : '+');
 
     // Print integral digits.
-    if (tot_int_digits > 0 ) {
+    if (tot_int_digits > 0) {
         for (u32 i = 0; i < tot_int_digits; i++) {
             put_char_wrapper(dest, i < fstr.num_digits ? fstr.digits[i] : '0');
         }
@@ -281,7 +278,6 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     }
 
     put_char_wrapper(dest, '.'); // Decimal point
-
 
     // Print fractional digits.
     if (tot_frac_digits > 0) {
@@ -700,4 +696,3 @@ size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...)
 
     return n;
 }
-
