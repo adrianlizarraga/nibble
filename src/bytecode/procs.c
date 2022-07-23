@@ -2393,7 +2393,10 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
     BBlock* curr_bb = bblock;
     dst_er->type = dst_type;
 
-    assert(src_er->type != dst_er->type); // Should be prevented by resolver.
+    if (src_er->type == dst_er->type) {
+        *dst_er = *src_er; // The source expression is already the correct type. This is a no-op.
+        return curr_bb;
+    }
 
     if ((src_er->type->kind == TYPE_ARRAY) && (dst_er->type->kind == TYPE_PTR)) {
         dst_er->kind = IR_EXPR_RESULT_MEM_ADDR;
