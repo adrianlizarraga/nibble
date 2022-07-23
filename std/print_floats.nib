@@ -1,18 +1,5 @@
+#include "./float_utils.nib";
 
-const F64_SIGN_MASK : u64 = 0x8000000000000000u;
-const F64_EXP_MASK : u64 = 0x7FF0000000000000u;
-const F64_EXP_POS : u32 = 52;
-const F64_FRAC_MASK : u64 = 0x000FFFFFFFFFFFFFu;
-
-struct CustomFP {
-    f : u64;
-    e : s32;
-}
-
-union F64Bits {
-    f : f64;
-    i : u64;
-}
 
 enum F64StringFlags {
     IS_NEG = 1 << 0,
@@ -33,59 +20,6 @@ proc max_u32(a : u32, b : u32) => u32 {
 
 proc min_u32(a : u32, b : u32) => u32 {
     return a < b ? a : b;
-}
-
-
-proc custom_fp_norm(x : CustomFP) => CustomFP {
-    const last_bit_mask : u64 = 0x8000000000000000u;
-    const last_byte_mask : u64 = 0xFF00000000000000u;
-
-    // Shift left until the most-significant byte has a 1.
-    while (!(x.f & last_byte_mask)) {
-        x.f = x.f << 8;
-        x.e -= 8;
-    }
-
-    // Shift left until the most-significant bit is a 1 (i.e., normalized).
-    while (!(x.f & last_bit_mask)) {
-        x.f = x.f << 1;
-        x.e -= 1;
-    }
-
-    return x;
-}
-
-proc custom_fp_from_f64(x : f64) => CustomFP {
-    var fp : CustomFP;
-    var bits : F64Bits = {f = x};
-
-    // Note that the exponent bias is traditionally 1023, but we want to treat the "fraction" as a non-fraction.
-    // So, we add 52 (length of fraction bits).
-    const exp_bias : s32 = 1075;
-    const implicit_one : u64 = 0x0010000000000000u;
-
-    // Handle 0 (exp == 0, f == 0) and subnormals (exp == 0, f != 0)
-    //
-    // For subnormals, the double is (-1)^sign * 2^(1 - 1023) * 0.fraction
-    // OR, (-1)^sign * 2^(1 - 1075) * fraction
-    //
-    // For zero, the same computation just works.
-    if (!(bits.i & F64_EXP_MASK)) {
-        fp.f = bits.i & F64_FRAC_MASK;
-        fp.e = 1 - exp_bias;
-    }
-    // Normal doubles.
-    // (-1)^sign * 2^(exp - 1023) * 1.fraction
-    // OR,
-    // (-1)^sign * 2^(exp - 1075) * (2^52 + fraction)
-    else {
-        var unbiased_exp : s32 = ((bits.i & F64_EXP_MASK) >> F64_EXP_POS);
-
-        fp.f = implicit_one + (bits.i & F64_FRAC_MASK);
-        fp.e = unbiased_exp - exp_bias;
-    }
-
-    return fp;
 }
 
 proc f64str_num_frac_digits(fstr : ^F64String) => u32

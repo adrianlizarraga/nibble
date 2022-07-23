@@ -1,5 +1,6 @@
 import "./cstring.nib" as CStr;
 import "./print.nib";
+import "./math.nib" as Math;
 
 /*
     TODO:
@@ -82,11 +83,15 @@ proc main() => int {
         #writeout("Pass\n", 5);
     }
 
+    var x : f64 = 1.33;
+    var tflt : f64 = Math::ceil(x);
+
     // TODO: Consider making string literals evaluate to slices instead of arrays
     var r := print_out("Print nums {0}, {}, {2}, {}! Escape '{{' f64 {}, large f64 {}\n",
                        {value = 321, base = 10, flags = FmtFlag::FORCE_SIGN : FmtInt},
                        {value = 15, base = 16, flags = FmtFlag::HASH | FmtFlag::UPPERCASE : FmtInt}, 4333, "Hello" :> []char,
-                       {value = 1.33, precision = 3 : FmtFloat},
+                       //{value = Math::ceil(1.33), precision = 3 : FmtFloat},
+                       {value = tflt, precision = 3 : FmtFloat},
                        1.7976931348623157e308);
 
     if (r.[1] != PrintErr::NONE) {

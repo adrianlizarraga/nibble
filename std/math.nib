@@ -1,0 +1,43 @@
+#include "./float_utils.nib";
+
+// Modified from musl libc implementation (MIT license)
+// http://git.etalabs.net/cgit/musl/tree/src/math/ceil.c
+@exported
+proc ceil(x : f64) => f64
+{
+    var xbits : F64Bits = {f = x};
+    var exp : s32 = (xbits.i & F64_EXP_MASK) >> F64_EXP_POS;
+    const exp_52 : s32 = 0x3FF + 52;
+
+    // All floating-point numbers larger than 2^52 are exact integers, so return x.
+    // This also handles 0, "NaN", and "inf".
+    if (exp >= exp_52 || x == 0.0) {
+        return x;
+    }
+
+    const exp_neg_1 : s32 = 0x3FF - 1;
+    var is_neg : bool = xbits.i >> 63;
+
+    // If |x| < 1, then negative numbers round to -0, and positive numbers round to 1.
+    if (exp <= exp_neg_1) {
+        return is_neg ? -0.0 : 1.0;
+    }
+
+    // The exponent is guaranteed to be in the range [0, 51] from this point forward.
+    // Use addition with 2^52 to get the nearest integer neighbor.
+    //
+    // Examples:
+    //     10.7 + 2^52 - 2^52 => 11.0
+    //     10.2 + 2^52 - 2^52 => 10.0
+    //     -10.1 - 2^52 + 2^52 => -10.0
+
+    const thresh_2p52 : f64 = 0x4330000000000000u :>> f64; // 0x1.0p52;
+    var int_neighbor : f64  = is_neg ? (x - thresh_2p52 + thresh_2p52) : (x + thresh_2p52 - thresh_2p52);
+    var neighbor_diff : f64 = int_neighbor - x;
+
+    if (neighbor_diff < 0.0) {
+        return x + neighbor_diff + 1.0;
+    }
+
+    return x + neighbor_diff;
+}
