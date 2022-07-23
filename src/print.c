@@ -287,14 +287,14 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     if (tot_frac_digits > 0) {
         int end_frac = fstr.decimal_point + tot_frac_digits;
 
-        // TODO: Doesn't print all "precision's" worth of zeros if 
-        // decimal_point is large (ex: DBL_MAX).
         for (int i = fstr.decimal_point; i < end_frac; i++) {
             put_char_wrapper(dest, i >= 0 ? fstr.digits[i] : '0');
         }
     }
     else {
-        put_char_wrapper(dest, '0');
+        for (u32 i = 0; i < precision; i++) {
+            put_char_wrapper(dest, '0');
+        }
     }
 
     // Print width padding for left-justified numbers.
