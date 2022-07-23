@@ -13,6 +13,8 @@
 #define ALIGN_UP(p, a) (((p) + (a)-1) & ~((a)-1))
 #define BITS(x) (sizeof(x) * 8)
 #define IS_POW2(x) (((x) & ((x) - 1)) == 0)
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
 
 #if defined(_WIN32) || defined(_WIN64)
 #define NIBBLE_HOST_WINDOWS
