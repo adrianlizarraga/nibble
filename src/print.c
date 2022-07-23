@@ -5,6 +5,8 @@
 #define PRINT_DEFAULT_FLOAT_PRECISION 6
 #define PRINT_FILE_BUF_SIZE 128
 
+#include "print_floats.c"
+
 enum format_flags {
     FORMAT_FLAG_LEFT_JUSTIFIED = 1U << 0,
     FORMAT_FLAG_FORCE_SIGN = 1U << 1,
@@ -68,8 +70,8 @@ static size_t ascii_to_i64(const char* str, int64_t* out_value)
     return i;
 }
 
-static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned long long base, bool negative,
-                         uint64_t precision, uint32_t width, uint64_t flags)
+static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned long long base, bool negative, uint64_t precision,
+                         uint32_t width, uint64_t flags)
 {
     char temp_buf[PRINT_MAX_NUM_DIGITS];
     size_t len = 0;
@@ -175,8 +177,7 @@ static void ftprint_int_(PrintState* dest, unsigned long long value, unsigned lo
     return;
 }
 
-static void ftprint_int(PrintState* dest, long long value, long long base, uint64_t precision, uint32_t width,
-                        int64_t flags)
+static void ftprint_int(PrintState* dest, long long value, long long base, uint64_t precision, uint32_t width, int64_t flags)
 {
     bool negative = value < 0;
     unsigned long long uvalue = (unsigned long long)(negative ? 0 - value : value);
@@ -184,24 +185,23 @@ static void ftprint_int(PrintState* dest, long long value, long long base, uint6
     ftprint_int_(dest, uvalue, base, negative, precision, width, flags);
 }
 
-static void print_uint(PrintState* dest, unsigned long long value, long long base, uint64_t precision, uint32_t width,
-                       int64_t flags)
+static void print_uint(PrintState* dest, unsigned long long value, long long base, uint64_t precision, uint32_t width, int64_t flags)
 {
     ftprint_int_(dest, value, base, false, precision, width, flags);
 }
 
 static void ftprint_float(PrintState* dest, double value, uint64_t precision, uint32_t width, uint64_t flags)
 {
-    char temp_buf[PRINT_MAX_NUM_DIGITS];
-    double powers10[] = {1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0, 1000000.0, 10000000.0, 100000000.0};
-    uint8_t num_powers = ARRAY_LEN(powers10);
-    uint8_t max_powers_index = num_powers - 1;
-    size_t len = 0;
+    F64String fstr = {0};
+
+    f64_to_str(&fstr, value);
+
+    bool negative = fstr.flags & F64_STRING_IS_NEG;
 
     /////////////////////////////////////
     // Handle NaN, Inf, -Inf
     ////////////////////////////////////
-    if (value != value) {
+    if (fstr.flags & F64_STRING_IS_NAN) {
         const char* nan = "nan";
 
         for (size_t i = 0; i < cstr_len(nan); ++i)
@@ -209,7 +209,7 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
 
         return;
     }
-    else if (value > DBL_MAX) {
+    else if ((fstr.flags & F64_STRING_IS_INF) && !negative) {
         bool plus = (flags & FORMAT_FLAG_FORCE_SIGN);
         const char* inf = (plus) ? "+inf" : "inf";
 
@@ -218,7 +218,8 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
 
         return;
     }
-    else if (value < -DBL_MAX) {
+    else if (fstr.flags & F64_STRING_IS_INF) {
+        assert(negative);
         const char* inf = "-inf";
 
         for (size_t i = 0; i < cstr_len(inf); ++i)
@@ -227,110 +228,26 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
         return;
     }
 
-    // Make positive
-    bool negative = false;
-
-    if (value < 0) {
-        negative = true;
-        value = 0.0 - value;
-    }
-
     bool prec_flag = (flags & FORMAT_FLAG_PRECISION);
     bool width_flag = (flags & FORMAT_FLAG_WIDTH);
     bool print_sign = negative || (flags & FORMAT_FLAG_FORCE_SIGN);
     bool left_just_flag = (flags & FORMAT_FLAG_LEFT_JUSTIFIED);
     bool zero_pad_flag = (flags & FORMAT_FLAG_ZERO_PAD);
 
-    ////////////////////////
-    // Process precision
-    ////////////////////////
     if (!prec_flag)
         precision = PRINT_DEFAULT_FLOAT_PRECISION;
 
-    uint64_t prec_index = (precision > max_powers_index) ? max_powers_index : precision;
-
-    /////////////////////////////
-    // Print fractional part
-    ////////////////////////////
-    int64_t integral = (int64_t)value;
-
-    if (precision > 0) {
-        double frac_dbl = (value - integral) * powers10[prec_index];
-        int64_t fractional = (int64_t)frac_dbl;
-        double leftover = frac_dbl - fractional;
-
-        // Round up leftover decimal places (past the precision amount).
-        if (leftover > 0.5) {
-            ++fractional;
-
-            // Rollover (EX: If value is 0.99 and precision is 1 -> result should
-            // be 1.0)
-            if (fractional >= powers10[prec_index]) {
-                fractional = 0;
-                ++integral;
-            }
-        }
-        // Exactly 0.5... round up to even
-        else if ((leftover == 0.5) && ((fractional == 0) || (fractional & 1))) {
-            ++fractional;
-
-            // Rollover (EX: If value is 0.95 and precision is 1 -> result should
-            // be 1.0)
-            if (fractional >= powers10[prec_index]) {
-                fractional = 0;
-                ++integral;
-            }
-        }
-
-        uint64_t remaining = prec_index;
-
-        // Add fractional part to the char buffer in reverse order.
-        do {
-            --remaining;
-
-            char digit = (char)(fractional % 10);
-
-            temp_buf[len++] = '0' + digit;
-            fractional = fractional / 10;
-        } while (fractional);
-
-        // Add remaining fractional digits (0s) between decimal and
-        // the first non-zero fractional digit.
-        while (remaining--)
-            temp_buf[len++] = '0';
-
-        // Now add the decimal point.
-        temp_buf[len++] = '.';
-    }
-    // If precision is zero, don't show fractional part.
-    // Just check if we need to round up the integral part.
-    else // precision == 0
-    {
-        double leftover = value - (double)integral;
-
-        if (leftover > 0.5)
-            ++integral;
-        else if ((leftover == 0.5) && (integral & 1))
-            ++integral;
-    }
-
-    /////////////////////////////
-    // Print integral part
-    ////////////////////////////
-
-    do {
-        char digit = (char)(integral % 10);
-
-        temp_buf[len++] = '0' + digit;
-        integral = integral / 10;
-    } while (integral);
+    f64str_round(&fstr, (u32)precision);
 
     ///////////////////////////
     // Compute paddings
     ///////////////////////////
-    uint64_t prec_pad = precision - prec_index;
-    uint64_t tot_len = len + prec_pad;
-    uint64_t width_pad = 0;
+
+    u32 tot_frac_digits = f64str_num_frac_digits(&fstr);
+    u32 tot_int_digits = f64str_num_int_digits(&fstr);
+
+    u64 tot_len = MAX(tot_int_digits, 1) + 1 + MAX(tot_frac_digits, 1); // The decimal point is the "+ 1".
+    u64 width_pad = 0;
 
     if (print_sign)
         tot_len += 1;
@@ -350,13 +267,31 @@ static void ftprint_float(PrintState* dest, double value, uint64_t precision, ui
     if (print_sign)
         put_char_wrapper(dest, (negative) ? '-' : '+');
 
-    // Print digits (reversed in buffer).
-    while (len--)
-        put_char_wrapper(dest, temp_buf[len]);
-
-    // Print precision zero-padding.
-    while (prec_pad--)
+    // Print integral digits.
+    if (tot_int_digits > 0) {
+        for (u32 i = 0; i < tot_int_digits; i++) {
+            put_char_wrapper(dest, i < fstr.num_digits ? fstr.digits[i] : '0');
+        }
+    }
+    else {
         put_char_wrapper(dest, '0');
+    }
+
+    put_char_wrapper(dest, '.'); // Decimal point
+
+    // Print fractional digits.
+    if (tot_frac_digits > 0) {
+        int end_frac = fstr.decimal_point + tot_frac_digits;
+
+        for (int i = fstr.decimal_point; i < end_frac; i++) {
+            put_char_wrapper(dest, i >= 0 ? fstr.digits[i] : '0');
+        }
+    }
+    else {
+        for (u32 i = 0; i < precision; i++) {
+            put_char_wrapper(dest, '0');
+        }
+    }
 
     // Print width padding for left-justified numbers.
     if (left_just_flag) {
@@ -761,4 +696,3 @@ size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...)
 
     return n;
 }
-
