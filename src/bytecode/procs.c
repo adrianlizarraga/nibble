@@ -3712,6 +3712,11 @@ static bool IR_rm_dead_bblocks(Symbol* sym)
             BBlock** preds = bb->preds;
             size_t npreds = array_len(preds);
 
+            // Cannot remove if does not have predecessors (e.g., the starting basic block).
+            if (!npreds) {
+                continue;
+            }
+
             // First, check to make sure we're not removing a basic block that is needed by a fall-through conditional jump.
             bool can_remove = true;
 
