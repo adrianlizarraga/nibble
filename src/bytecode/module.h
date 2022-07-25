@@ -64,6 +64,7 @@ typedef enum InstrKind {
     INSTR_CALL_INDIRECT,
     INSTR_MEMCPY,
     INSTR_MEMSET,
+    INSTR_LINUX_SYSCALL,
     INSTR_PHI,
     INSTR_KIND_COUNT
 } InstrKind;
@@ -306,6 +307,13 @@ typedef struct InstrMemset {
     OpRI size;
 } InstrMemset;
 
+typedef struct InstrLinuxSyscall {
+    OpRI nr;
+    u8 count; // [1 - 6]
+    OpRI args[6];
+    IR_Reg r;
+} InstrLinuxSyscall;
+
 typedef struct PhiArg {
     BBlock* bblock;
     IR_Reg ireg;
@@ -346,6 +354,7 @@ struct Instr {
         InstrRet ret;
         InstrMemcpy memcpy;
         InstrMemset memset;
+        InstrLinuxSyscall linux_syscall;
         InstrPhi phi;
     };
 

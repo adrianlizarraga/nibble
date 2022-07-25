@@ -1591,6 +1591,47 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_emit_memset(builder, xbblock, dst_addr, ir_instr->memset.value, ir_instr->memset.size);
         break;
     }
+    case INSTR_LINUX_SYSCALL: {
+        // res = syscall6(nr, arg1, arg2, arg3, arg4, arg5, arg6);
+        //
+        // BECOMES
+        //
+        // mov rax, {nr}
+        // mov rdi, {arg1}
+        // mov rsi, {arg2}
+        // mov rdx, {arg3}
+        // mov r10, {arg4}
+        // mov r8, {arg5}
+        // mov r9, {arg6}
+        //
+        // syscall
+        // mov {res}, rax
+        //
+        // CLOBBERS rcx and r11
+        //
+
+        u32 rax = X64_def_phys_reg(builder, X64_RAX);
+        X64_load_op_ri(builder, xbblock, rax, X64_MAX_INT_REG_SIZE, ir_instr->linux_syscall.nr);
+
+        X64_Reg syscall_arg_regs[6] = {X64_RDI, X64_RSI, X64_RDX, X64_R10, X64_R8, X64_R9};
+        u32 lir_args[6] = {0};
+        u8 num_args = ir_instr->linux_syscall.count;
+        
+        for (u8 i = 0; i < num_args; i += 1) {
+            lir_args[i] = X64_def_phys_reg(builder, syscall_arg_regs[i]);
+            X64_load_op_ri(builder, xbblock, lir_args[i], X64_MAX_INT_REG_SIZE, ir_instr->linux_syscall.args[i]);
+        }
+
+        u32 rcx = X64_def_phys_reg(builder, X64_RCX);
+        u32 r11 = X64_def_phys_reg(builder, X64_R11);
+        X64_emit_instr_syscall(builder, xbblock, rax, num_args, lir_args, rcx, r11);
+
+        u32 r = X64_get_lir_reg(builder, ir_instr->linux_syscall.r, X64_REG_CLASS_INT);
+        X64_hint_same_reg(builder, r, rax);
+        X64_emit_instr_mov_r_r(builder, xbblock, X64_MAX_INT_REG_SIZE, r, rax);
+
+        break;
+    }
     case INSTR_RET: {
         // EX: ret a
         //
