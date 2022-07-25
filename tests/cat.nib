@@ -1,0 +1,74 @@
+const SYS_read  : ssize = 0;
+const SYS_write : ssize = 1;
+const SYS_open  : ssize = 2;
+const SYS_close : ssize = 3;
+
+const O_RDONLY : u32 = 0;
+
+const STDOUT : ssize = 1;
+
+proc open(pathname : ^char, flags : u32, mode : u32) => s32 {
+    return #syscall3(SYS_open, (pathname :> ssize), flags, mode);
+}
+
+proc close(fd : s32) => s32 {
+    return #syscall1(SYS_close, fd);
+}
+
+proc read(fd : s32, buf : ^void, count : usize) => ssize {
+    return #syscall3(SYS_read, fd, (buf :> ssize), (count :> ssize));
+}
+
+proc write(fd : s32, buf : ^void, count : usize) => ssize {
+    return #syscall3(SYS_write, fd, (buf :> ssize), (count :> ssize));
+}
+
+proc cat_fd(fd : s32) => int {
+    var buf : [128]char = ---;
+    var num_read : ssize;
+
+    do {
+        num_read = read(fd, buf, #length(buf));
+
+        if (num_read < 0) {
+            return num_read;
+        }
+
+        var tot_num_written : ssize;
+
+        while (tot_num_written < num_read) {
+            var num_written := write(STDOUT, buf, num_read);
+
+            if (num_written < 0) {
+                return num_written;
+            }
+
+            tot_num_written += num_written;
+        }
+
+    } while(num_read > 0);
+
+    return 0;
+}
+
+proc main(argc : s32, argv : ^^char) => int {
+    for (var i : s32 = 1; i < argc; i += 1) {
+        var fd := open(argv[i], O_RDONLY, 0);
+
+        if (fd < 0) {
+            return -1;
+        }
+
+        var ret := cat_fd(fd); 
+
+        if (ret < 0) {
+            close(fd);
+            return -1;
+        }
+
+        close(fd);
+    }
+
+    return 0;
+}
+
