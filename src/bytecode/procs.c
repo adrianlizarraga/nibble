@@ -2648,7 +2648,7 @@ static BBlock* IR_emit_linux_syscall_call(IR_ProcBuilder* builder, BBlock* bbloc
 
     OpRI syscall_nr = nr_and_args[0];
     u8 num_syscall_args = (u8)(num_args - 1);
-    OpRI* syscall_args = &nr_and_args[1];
+    OpRI* syscall_args = num_syscall_args > 0 ? &nr_and_args[1] : NULL;
 
     dst_er->type = builtin_types[BUILTIN_TYPE_SSIZE].type;
     dst_er->kind = IR_EXPR_RESULT_REG;

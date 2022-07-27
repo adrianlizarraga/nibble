@@ -1,9 +1,14 @@
 const SYS_write : ssize = 1;
+const SYS_getpid : ssize = 39;
+
 const STDOUT : ssize = 1;
 
 proc main() => int {
     var msg : []char = "Hello\n";
 
     // write(2) syscall: https://man7.org/linux/man-pages/man2/write.2.html
-    return #syscall3(SYS_write, STDOUT, (msg.data :> ssize), msg.length - 1);
+    #syscall3(SYS_write, STDOUT, (msg.data :> ssize), msg.length - 1);
+
+    // getpid(2) syscall: https://man7.org/linux/man-pages/man2/getpid.2.html
+    return #syscall0(SYS_getpid);
 }
