@@ -804,13 +804,15 @@ static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xb
 
     // <bin_instr> r, b
     if (ir_b.kind == OP_RIA_IMM) {
-        if (size == X64_MAX_INT_REG_SIZE) {
+        bool fits_in_4bytes = (size < X64_MAX_INT_REG_SIZE) || (ir_b.imm.as_int._u64 < (u64)int_kind_max[INTEGER_U32]);
+
+        if (fits_in_4bytes) {
+            X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
+        }
+        else {
             u32 imm_reg = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_i(builder, xbblock, size, imm_reg, ir_b.imm);
             X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[ir_instr->kind], size, r, imm_reg);
-        }
-        else {
-            X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
         }
     }
     else if (ir_b.kind == OP_RIA_REG) {
