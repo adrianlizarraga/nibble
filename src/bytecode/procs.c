@@ -600,7 +600,7 @@ static void IR_emit_instr_linux_syscall(IR_ProcBuilder* builder, BBlock* bblock,
     instr->linux_syscall.r = r;
     instr->linux_syscall.nr = syscall_nr;
     instr->linux_syscall.count = num_args;
-    
+
     memcpy(instr->linux_syscall.args, args, num_args * sizeof(args[0]));
     IR_add_instr(builder, bblock, instr);
 }
@@ -2507,8 +2507,8 @@ static BBlock* IR_emit_expr_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     return IR_emit_op_cast(builder, curr_bb, tmp_obj_list, &src_er, dst_er, dst_type);
 }
 
-static BBlock* IR_emit_expr_bit_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprBitCast* expr_cast,
-                                     IR_ExprResult* dst_er, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_expr_bit_cast(IR_ProcBuilder* builder, BBlock* bblock, ExprBitCast* expr_cast, IR_ExprResult* dst_er,
+                                     IR_TmpObjList* tmp_obj_list)
 {
     BBlock* curr_bb = IR_emit_expr(builder, bblock, expr_cast->expr, dst_er, tmp_obj_list);
 
@@ -2620,8 +2620,8 @@ static BBlock* IR_emit_memset_call(IR_ProcBuilder* builder, BBlock* bblock, size
     return curr_bb;
 }
 
-static BBlock* IR_emit_linux_syscall_call(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* dst_er, size_t num_args,
-                                          List* args, IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_linux_syscall_call(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* dst_er, size_t num_args, List* args,
+                                          IR_TmpObjList* tmp_obj_list)
 {
     BBlock* curr_bb = bblock;
     OpRI nr_and_args[7];
@@ -2648,7 +2648,7 @@ static BBlock* IR_emit_linux_syscall_call(IR_ProcBuilder* builder, BBlock* bbloc
 
     OpRI syscall_nr = nr_and_args[0];
     u8 num_syscall_args = (u8)(num_args - 1);
-    OpRI* syscall_args = num_syscall_args > 0 ? &nr_and_args[1] : NULL;
+    OpRI* syscall_args = &nr_and_args[1];
 
     dst_er->type = builtin_types[BUILTIN_TYPE_SSIZE].type;
     dst_er->kind = IR_EXPR_RESULT_REG;
@@ -2857,13 +2857,10 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     else if ((proc_er.kind == IR_EXPR_RESULT_PROC) && (proc_er.sym->name == intrinsic_idents[INTRINSIC_MEMSET])) {
         curr_bb = IR_emit_memset_call(builder, curr_bb, expr_call->num_args, &expr_call->args, tmp_obj_list);
     }
-    else if ((proc_er.kind == IR_EXPR_RESULT_PROC) && 
-             (proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL0] ||
-              proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL1] ||
-              proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL2] ||
-              proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL3] ||
-              proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL4] ||
-              proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL5] ||
+    else if ((proc_er.kind == IR_EXPR_RESULT_PROC) &&
+             (proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL0] || proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL1] ||
+              proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL2] || proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL3] ||
+              proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL4] || proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL5] ||
               proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL6])) {
         curr_bb = IR_emit_linux_syscall_call(builder, curr_bb, dst_er, expr_call->num_args, &expr_call->args, tmp_obj_list);
     }
