@@ -269,6 +269,10 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         ftprint_char_array(&dstr, false, "rep movsb");
         break;
     }
+    case X64_INSTR_SYSCALL: {
+        ftprint_char_array(&dstr, false, "syscall");
+        break;
+    }
     case X64_INSTR_REP_STOSB: {
         ftprint_char_array(&dstr, false, "rep stosb");
         break;

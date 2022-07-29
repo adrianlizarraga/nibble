@@ -32,8 +32,7 @@ static const ConditionKind flt_cond_map[] = {
 static void X64_merge_ranges(X64_LRegRange* dst_range, X64_LRegRange* src_range)
 {
     if (src_range->ra_ctrl_kind != X64_REG_ALLOC_CTRL_NONE) {
-        assert((dst_range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_NONE) ||
-               (dst_range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_HINT_LIR_REG) ||
+        assert((dst_range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_NONE) || (dst_range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_HINT_LIR_REG) ||
                (dst_range->ra_ctrl_kind == X64_REG_ALLOC_CTRL_HINT_PHYS_REG));
         dst_range->ra_ctrl_kind = src_range->ra_ctrl_kind;
         dst_range->ra_ctrl = src_range->ra_ctrl;
@@ -350,6 +349,25 @@ static void X64_load_op_ri(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 lre
         u32 s = X64_get_lir_reg(builder, op_ri.reg, X64_REG_CLASS_INT);
         X64_hint_same_reg(builder, s, lreg);
         X64_emit_instr_mov_r_r(builder, xbblock, size, lreg, s);
+    }
+}
+
+static void X64_load_op_ria(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, OpRIA src)
+{
+    // mov dst, src
+    if (src.kind == OP_RIA_IMM) {
+        X64_emit_instr_mov_r_i(builder, xbblock, size, dst, src.imm);
+    }
+    else if (src.kind == OP_RIA_REG) {
+        u32 a = X64_get_lir_reg(builder, src.reg, X64_REG_CLASS_INT);
+        X64_hint_same_reg(builder, dst, a);
+        X64_emit_instr_mov_r_r(builder, xbblock, size, dst, a);
+    }
+    else {
+        assert(src.kind == OP_RIA_ADDR);
+        X64_MemAddr addr = {0};
+        X64_get_lir_addr(builder, xbblock, &addr, &src.addr, 0);
+        X64_emit_instr_mov_r_m(builder, xbblock, size, dst, addr);
     }
 }
 
@@ -767,25 +785,6 @@ static void X64_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbbloc
     }
 }
 
-static void X64_mov_op_ria_into_reg(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, OpRIA src)
-{
-    // mov dst, src
-    if (src.kind == OP_RIA_IMM) {
-        X64_emit_instr_mov_r_i(builder, xbblock, size, dst, src.imm);
-    }
-    else if (src.kind == OP_RIA_REG) {
-        u32 a = X64_get_lir_reg(builder, src.reg, X64_REG_CLASS_INT);
-        X64_hint_same_reg(builder, dst, a);
-        X64_emit_instr_mov_r_r(builder, xbblock, size, dst, a);
-    }
-    else {
-        assert(src.kind == OP_RIA_ADDR);
-        X64_MemAddr addr = {0};
-        X64_get_lir_addr(builder, xbblock, &addr, &src.addr, 0);
-        X64_emit_instr_mov_r_m(builder, xbblock, size, dst, addr);
-    }
-}
-
 static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
 {
     // EX: r = a + b
@@ -800,17 +799,19 @@ static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xb
     u32 r = X64_get_lir_reg(builder, ir_instr->int_binary.r, X64_REG_CLASS_INT);
 
     // mov r, a
-    X64_mov_op_ria_into_reg(builder, xbblock, size, r, ir_a);
+    X64_load_op_ria(builder, xbblock, size, r, ir_a);
 
     // <bin_instr> r, b
     if (ir_b.kind == OP_RIA_IMM) {
-        if (size == X64_MAX_INT_REG_SIZE) {
+        bool fits_in_4bytes = (size < X64_MAX_INT_REG_SIZE) || (ir_b.imm.as_int._u64 < (u64)int_kind_max[INTEGER_U32]);
+
+        if (fits_in_4bytes) {
+            X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
+        }
+        else {
             u32 imm_reg = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
             X64_emit_instr_mov_r_i(builder, xbblock, size, imm_reg, ir_b.imm);
             X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[ir_instr->kind], size, r, imm_reg);
-        }
-        else {
-            X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
         }
     }
     else if (ir_b.kind == OP_RIA_REG) {
@@ -955,7 +956,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // mov _ax, a
         u32 ax = X64_def_phys_reg(builder, X64_RAX);
-        X64_mov_op_ria_into_reg(builder, xbblock, size, ax, ir_a);
+        X64_load_op_ria(builder, xbblock, size, ax, ir_a);
 
         // cqo
         u32 dx = X64_LIR_REG_COUNT;
@@ -1014,7 +1015,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // mov _ax, a
         u32 ax = X64_def_phys_reg(builder, X64_RAX);
-        X64_mov_op_ria_into_reg(builder, xbblock, size, ax, ir_a);
+        X64_load_op_ria(builder, xbblock, size, ax, ir_a);
 
         // cqo
         u32 dx = X64_LIR_REG_COUNT;
@@ -1082,7 +1083,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // mov _ax, a
         u32 ax = X64_def_phys_reg(builder, X64_RAX);
-        X64_mov_op_ria_into_reg(builder, xbblock, size, ax, ir_a);
+        X64_load_op_ria(builder, xbblock, size, ax, ir_a);
 
         // cqo
         u32 dx = X64_LIR_REG_COUNT;
@@ -1145,7 +1146,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         // mov r, a
         u32 r = X64_get_lir_reg(builder, ir_instr->shift.r, X64_REG_CLASS_INT);
-        X64_mov_op_ria_into_reg(builder, xbblock, size, r, ir_a);
+        X64_load_op_ria(builder, xbblock, size, r, ir_a);
 
         if (ir_b.kind == OP_RIA_IMM) {
             X64_emit_instr_shift_r_i(builder, xbblock, shift_r_i_kind[ir_instr->kind], size, r, ir_b.imm);
@@ -1589,6 +1590,47 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_get_lir_addr(builder, xbblock, &dst_addr, &ir_instr->memset.dst, 0);
 
         X64_emit_memset(builder, xbblock, dst_addr, ir_instr->memset.value, ir_instr->memset.size);
+        break;
+    }
+    case INSTR_LINUX_SYSCALL: {
+        // res = syscall6(nr, arg1, arg2, arg3, arg4, arg5, arg6);
+        //
+        // BECOMES
+        //
+        // mov rax, {nr}
+        // mov rdi, {arg1}
+        // mov rsi, {arg2}
+        // mov rdx, {arg3}
+        // mov r10, {arg4}
+        // mov r8, {arg5}
+        // mov r9, {arg6}
+        //
+        // syscall
+        // mov {res}, rax
+        //
+        // CLOBBERS rcx and r11
+        //
+
+        u32 rax = X64_def_phys_reg(builder, X64_RAX);
+        X64_load_op_ria(builder, xbblock, X64_MAX_INT_REG_SIZE, rax, ir_instr->linux_syscall.nr);
+
+        X64_Reg syscall_arg_regs[6] = {X64_RDI, X64_RSI, X64_RDX, X64_R10, X64_R8, X64_R9};
+        u32 lir_args[6] = {0};
+        u8 num_args = ir_instr->linux_syscall.count;
+
+        for (u8 i = 0; i < num_args; i += 1) {
+            lir_args[i] = X64_def_phys_reg(builder, syscall_arg_regs[i]);
+            X64_load_op_ria(builder, xbblock, X64_MAX_INT_REG_SIZE, lir_args[i], ir_instr->linux_syscall.args[i]);
+        }
+
+        u32 rcx = X64_def_phys_reg(builder, X64_RCX);
+        u32 r11 = X64_def_phys_reg(builder, X64_R11);
+        X64_emit_instr_syscall(builder, xbblock, rax, num_args, lir_args, rcx, r11);
+
+        u32 r = X64_get_lir_reg(builder, ir_instr->linux_syscall.r, X64_REG_CLASS_INT);
+        X64_hint_same_reg(builder, r, rax);
+        X64_emit_instr_mov_r_r(builder, xbblock, X64_MAX_INT_REG_SIZE, r, rax);
+
         break;
     }
     case INSTR_RET: {

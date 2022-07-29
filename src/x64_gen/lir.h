@@ -180,6 +180,7 @@ typedef enum X64_InstrKind
 
     X64_INSTR_REP_MOVSB,
     X64_INSTR_REP_STOSB,
+    X64_INSTR_SYSCALL,
 } X64_InstrKind;
 
 typedef enum X64_MemAddrKind
@@ -505,6 +506,14 @@ typedef struct X64_InstrCall_R {
     unsigned save_reg_mask;
 } X64_InstrCall_R;
 
+typedef struct X64_InstrSyscall {
+    u32 rax; // return
+    u32 rcx; // clobbered
+    u32 r11; // clobbered
+    u8 num_args;
+    u32 args[6];
+} X64_InstrSyscall;
+
 struct X64_Instr {
     X64_InstrKind kind;
     long ino;
@@ -548,6 +557,8 @@ struct X64_Instr {
 
         X64_InstrRepMovsb rep_movsb;
         X64_InstrRepStosb rep_stosb;
+
+        X64_InstrSyscall syscall;
 
         X64_InstrConvert_R_R convert_r_r;
         X64_InstrConvert_R_M convert_r_m;
@@ -676,6 +687,7 @@ void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, Conditio
                           X64_BBlock* false_bb);
 void X64_emit_instr_setcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, u32 dst);
 void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rdi, u32 rsi, u32 rcx);
+void X64_emit_instr_syscall(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u8 num_args, u32* args, u32 rcx, u32 r11);
 void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u32 rdx);
 X64_Instr* X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, X64_CallValue dst, u32 num_args, X64_InstrCallArg* args,
                                X64_StackArgsInfo stack_info);
