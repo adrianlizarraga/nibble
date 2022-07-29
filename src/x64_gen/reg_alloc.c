@@ -72,10 +72,10 @@ static X64_Reg X64_next_reg(X64_RegAllocState* state, u32 lreg, X64_RegClass reg
     }
 
     if (reg != X64_REG_COUNT) {
+        assert(reg_class == x64_reg_classes[reg]);
         X64_alloc_reg(state, reg, lreg);
     }
 
-    assert(reg_class == x64_reg_classes[reg]);
     assert(reg != X64_RBP);
     assert(reg != X64_RSP);
 

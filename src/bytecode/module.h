@@ -308,9 +308,9 @@ typedef struct InstrMemset {
 } InstrMemset;
 
 typedef struct InstrLinuxSyscall {
-    OpRI nr;
+    OpRIA nr;
     u8 count; // [1 - 6]
-    OpRI args[6];
+    OpRIA args[6];
     IR_Reg r;
 } InstrLinuxSyscall;
 
