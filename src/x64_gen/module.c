@@ -2066,6 +2066,10 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_text(generator, "  rep stosb");
         break;
     }
+    case X64_INSTR_SYSCALL: {
+        X64_emit_text(generator, "  syscall");
+        break;
+    }
     case X64_INSTR_MOV_R_RH: {
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_r_rh.dst);
         X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_r_rh.src);

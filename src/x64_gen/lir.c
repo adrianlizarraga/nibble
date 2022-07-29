@@ -530,6 +530,19 @@ void X64_emit_instr_rep_stosb(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
+void X64_emit_instr_syscall(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u8 num_args, u32* args, u32 rcx, u32 r11)
+{
+    X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_SYSCALL);
+    instr->syscall.rax = rax;
+    instr->syscall.rcx = rcx;
+    instr->syscall.r11 = r11;
+    instr->syscall.num_args = num_args;
+
+    memcpy(instr->syscall.args, args, num_args * sizeof(args[0]));
+
+    X64_add_lir_instr(builder, xbblock, instr);
+}
+
 void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u32 rdx)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_RET);

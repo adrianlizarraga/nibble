@@ -141,6 +141,16 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_lreg(builder, instr->rep_stosb.rcx, ino);
             break;
         }
+        case X64_INSTR_SYSCALL: {
+            X64_touch_lreg(builder, instr->syscall.rax, ino); // Return reg
+            X64_touch_lreg(builder, instr->syscall.rcx, ino); // Clobbered reg
+            X64_touch_lreg(builder, instr->syscall.r11, ino); // Clobbered reg
+
+            for (u8 i = 0; i < instr->syscall.num_args; i += 1) {
+                X64_touch_lreg(builder, instr->syscall.args[i], ino);
+            }
+            break;
+        }
         case X64_INSTR_MOV_R_RH: {
             X64_touch_lreg(builder, instr->mov_r_rh.src, ino);
             X64_touch_lreg(builder, instr->mov_r_rh.dst, ino);
