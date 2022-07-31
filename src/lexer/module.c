@@ -410,7 +410,7 @@ static TokenStr scan_string(Lexer* lexer)
     }
 
     array_push(tmp, '\0');
-    tstr.str_lit = intern_str_lit(tmp, array_len(tmp) - 1);
+    tstr.str_lit = intern_str_lit(lexer->str_lit_map, tmp, array_len(tmp) - 1);
 
     allocator_restore_state(state);
 
@@ -483,19 +483,6 @@ static TokenInt scan_char(Lexer* lexer)
     }
 
     return tint;
-}
-
-Lexer lexer_create(const char* str, ProgPos start, Allocator* arena, ErrorStream* errors, ProgPos** line_pos)
-{
-    Lexer lexer = {0};
-    lexer.str = str;
-    lexer.at = str;
-    lexer.start = start;
-    lexer.errors = errors;
-    lexer.line_pos = line_pos;
-    lexer.arena = arena;
-
-    return lexer;
 }
 
 const char* token_kind_names[] = {
@@ -951,7 +938,7 @@ top:
             lexer->at++;
         } while (is_alphanum(lexer->at[0]));
 
-        Identifier* ident = intern_ident(start, lexer->at - start);
+        Identifier* ident = intern_ident(lexer->ident_map, start, lexer->at - start);
 
         if (ident->kind == IDENTIFIER_KEYWORD) {
             token.kind = TKN_KW;

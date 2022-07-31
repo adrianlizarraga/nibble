@@ -141,15 +141,6 @@ typedef struct Scalar {
     };
 } Scalar;
 
-typedef struct TypeCache {
-    HMap ptrs;
-    HMap arrays;
-    HMap procs;
-    HMap slices; // Struct types that represent array slices
-    HMap structs; // Anonymous
-    HMap unions; // Anonymous
-} TypeCache;
-
 typedef enum Keyword {
     KW_VAR = 0,
     KW_CONST,
