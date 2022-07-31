@@ -24,6 +24,7 @@
 #error "This operating system is not yet supported!"
 #endif
 
+
 typedef enum OS {
     OS_INVALID,
     OS_LINUX,
@@ -260,10 +261,6 @@ extern Identifier* intrinsic_idents[INTRINSIC_COUNT];
 extern Identifier* builtin_struct_fields[BUILTIN_STRUCT_FIELD_COUNT];
 extern Identifier* main_proc_ident;
 
-StrLit* intern_str_lit(const char* str, size_t len);
-FloatLit* intern_float_lit(FloatKind kind, Float value);
-Identifier* intern_ident(const char* str, size_t len);
-
 bool slurp_file(StringView* contents, Allocator* allocator, const char* filename);
 
 typedef struct Error Error;
@@ -286,8 +283,9 @@ struct ErrorStream {
 void error_stream_init(ErrorStream* stream, Allocator* allocator);
 void error_stream_free(ErrorStream* stream);
 void error_stream_add(ErrorStream* stream, ProgRange range, const char* buf, size_t size);
-void report_error(ProgRange range, const char* format, ...);
 
 #define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit((f), ##__VA_ARGS__)
 void nibble_fatal_exit(const char* format, ...);
 #endif
+
+

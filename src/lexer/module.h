@@ -5,6 +5,7 @@
 #include "nibble.h"
 #include "allocator.h"
 #include "stream.h"
+#include "compiler.h"
 
 typedef enum TokenKind {
     TKN_INVALID = 0,
