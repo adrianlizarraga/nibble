@@ -567,14 +567,14 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent)
     nib_ctx->tmp_mem = allocator_create(4096);
     nib_ctx->str_lit_map = hmap(8, &nib_ctx->gen_mem);
     nib_ctx->float_lit_map = hmap(8, &nib_ctx->gen_mem);
-    nib_ctx->ident_map = hmap(6, &nib_ctx->gen_mem);
-    nib_ctx->mod_map = hmap(6, &nib_ctx->ast_mem);
-    nib_ctx->type_cache.ptrs = hmap(6, &nib_ctx->ast_mem);
-    nib_ctx->type_cache.arrays = hmap(6, &nib_ctx->ast_mem);
-    nib_ctx->type_cache.procs = hmap(6, &nib_ctx->ast_mem);
-    nib_ctx->type_cache.slices = hmap(6, &nib_ctx->ast_mem);
-    nib_ctx->type_cache.structs = hmap(6, &nib_ctx->ast_mem);
-    nib_ctx->type_cache.unions = hmap(6, &nib_ctx->ast_mem);
+    nib_ctx->ident_map = hmap(8, &nib_ctx->gen_mem);
+    nib_ctx->mod_map = hmap(8, &nib_ctx->ast_mem);
+    nib_ctx->type_cache.ptrs = hmap(8, &nib_ctx->ast_mem);
+    nib_ctx->type_cache.arrays = hmap(8, &nib_ctx->ast_mem);
+    nib_ctx->type_cache.procs = hmap(8, &nib_ctx->ast_mem);
+    nib_ctx->type_cache.slices = hmap(8, &nib_ctx->ast_mem);
+    nib_ctx->type_cache.structs = hmap(8, &nib_ctx->ast_mem);
+    nib_ctx->type_cache.unions = hmap(8, &nib_ctx->ast_mem);
 
     if (!init_keywords(&nib_ctx->ident_map))
         return NULL;
@@ -1511,7 +1511,6 @@ Identifier* intern_ident(HMap* strmap, const char* str, size_t len)
     return new_intern;
 }
 
-// TODO: Accept __FILE__ and __LINE__ args
 void nibble_fatal_exit(const char* file, u32 line, const char* format, ...)
 {
     va_list vargs;
