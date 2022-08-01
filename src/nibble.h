@@ -275,8 +275,8 @@ void error_stream_init(ErrorStream* stream, Allocator* allocator);
 void error_stream_free(ErrorStream* stream);
 void error_stream_add(ErrorStream* stream, ProgRange range, const char* buf, size_t size);
 
-#define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit((f), ##__VA_ARGS__)
-void nibble_fatal_exit(const char* format, ...);
+#define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit(__FILE__, __LINE__, (f), ##__VA_ARGS__)
+void nibble_fatal_exit(const char* file, u32 line, const char* format, ...);
 #endif
 
 

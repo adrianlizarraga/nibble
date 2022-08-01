@@ -1457,7 +1457,7 @@ StrLit* intern_str_lit(HMap* strmap, const char* str, size_t len)
     StrLit* new_intern = mem_allocate(allocator, offsetof(StrLit, str) + len + 1, DEFAULT_ALIGN, true);
 
     if (!new_intern) {
-        NIBBLE_FATAL_EXIT("[INTERNAL ERROR]: Out of memory.\n%s:%d\n", __FILE__, __LINE__);
+        NIBBLE_FATAL_EXIT("Out of memory.\n%s:%d\n", __FILE__, __LINE__);
         return NULL;
     }
 
@@ -1512,11 +1512,11 @@ Identifier* intern_ident(HMap* strmap, const char* str, size_t len)
 }
 
 // TODO: Accept __FILE__ and __LINE__ args
-void nibble_fatal_exit(const char* format, ...)
+void nibble_fatal_exit(const char* file, u32 line, const char* format, ...)
 {
     va_list vargs;
 
-    ftprint_err("[FATAL ERROR]: ");
+    ftprint_err("%s:%u:%u: [FATAL ERROR]: ", file, line, 0);
 
     va_start(vargs, format);
     ftprintv_err(format, vargs);
