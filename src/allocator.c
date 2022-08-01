@@ -6,6 +6,39 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef NIBBLE_PRINT_MEM_USAGE
+u32 nib_alloc_count = 0;
+u32 nib_free_count = 0;
+size_t nib_alloc_size = 0;
+
+static inline void* nib_malloc(size_t size)
+{
+    // NOTE: Not thread-safe!
+    nib_alloc_count += 1;
+    nib_alloc_size += size;
+    return malloc(size);
+}
+
+static inline void* nib_calloc(size_t num_elems, size_t elem_size)
+{
+    // NOTE: Not thread-safe!
+    nib_alloc_count += 1;
+    nib_alloc_size += num_elems * elem_size;
+    return calloc(num_elems, elem_size);
+}
+
+static inline void nib_free(void* ptr)
+{
+    // NOTE: Not thread-safe!
+    nib_free_count += 1;
+    free(ptr);
+}
+#else
+#define nib_malloc(s) malloc(s)
+#define nib_calloc(e, s) calloc((e), (s))
+#define nib_free(p) free(p)
+#endif
+
 typedef struct MemBlockFooter {
     char* pbuffer;
     char* pat;
@@ -17,7 +50,7 @@ static bool alloc_mem_block(Allocator* allocator, size_t block_size)
     // Adds a new block of memory to the allocator.
     // The new block will contain a pointer to the old block in its footer (for cleanup).
 
-    char* block = malloc(block_size + sizeof(MemBlockFooter));
+    char* block = nib_malloc(block_size + sizeof(MemBlockFooter));
 
     if (!block)
         return false;
@@ -45,7 +78,7 @@ void* mem_allocate(Allocator* allocator, size_t size, size_t align, bool clear)
     assert((align & (align - 1)) == 0);
 
     if (!allocator)
-        return clear ? calloc(1, size) : malloc(size);
+        return clear ? nib_calloc(1, size) : nib_malloc(size);
 
     void* memory = NULL;
 
@@ -106,7 +139,7 @@ void* mem_reallocate(Allocator* allocator, void* ptr, size_t old_size, size_t si
 void mem_free(Allocator* allocator, void* ptr)
 {
     if (!allocator) {
-        free(ptr);
+        nib_free(ptr);
     }
     else {
         // If ptr is the previous allocation, undo it.
@@ -143,7 +176,7 @@ void allocator_reset(Allocator* allocator)
         char* pbuffer = footer->pbuffer;
         char* pend = footer->pend;
 
-        free(allocator->buffer);
+        nib_free(allocator->buffer);
 
         allocator->buffer = pbuffer;
         allocator->end = pend;
@@ -165,7 +198,7 @@ void allocator_destroy(Allocator* allocator)
     while (buffer) {
         MemBlockFooter footer = *(MemBlockFooter*)(end);
 
-        free(buffer);
+        nib_free(buffer);
 
         buffer = footer.pbuffer;
         end = footer.pend;
@@ -198,7 +231,7 @@ void allocator_restore_state(AllocatorState state)
     while (buffer != dest_buffer) {
         MemBlockFooter footer = *(MemBlockFooter*)(end);
 
-        free(buffer);
+        nib_free(buffer);
 
         buffer = footer.pbuffer;
         end = footer.pend;

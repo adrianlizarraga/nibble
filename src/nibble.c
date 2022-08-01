@@ -1363,25 +1363,25 @@ void nibble_cleanup(NibbleCtx* nib_ctx)
     print_allocator_stats(&nib_ctx->gen_mem, "GEN mem stats");
     print_allocator_stats(&nib_ctx->ast_mem, "AST mem stats");
     print_allocator_stats(&nib_ctx->tmp_mem, "TMP mem stats");
-    ftprint_out("Ident map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->ident_map.len, nib_ctx->ident_map.cap,
+    ftprint_out("Ident map: len = %lu, cap = %lu, total_size (gen arean) = %lu\n", nib_ctx->ident_map.len, nib_ctx->ident_map.cap,
                 nib_ctx->ident_map.cap * sizeof(HMapEntry));
-    ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->str_lit_map.len, nib_ctx->str_lit_map.cap,
+    ftprint_out("StrLit map: len = %lu, cap = %lu, total_size (gen arean) = %lu\n", nib_ctx->str_lit_map.len, nib_ctx->str_lit_map.cap,
                 nib_ctx->str_lit_map.cap * sizeof(HMapEntry));
-    ftprint_out("FloatLit map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->float_lit_map.len,
+    ftprint_out("FloatLit map: len = %lu, cap = %lu, total_size (gen arean) = %lu\n", nib_ctx->float_lit_map.len,
                 nib_ctx->float_lit_map.cap, nib_ctx->float_lit_map.cap * sizeof(HMapEntry));
-    ftprint_out("Module map: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->mod_map.len, nib_ctx->mod_map.cap,
+    ftprint_out("Module map: len = %lu, cap = %lu, total_size (ast arena) = %lu\n", nib_ctx->mod_map.len, nib_ctx->mod_map.cap,
                 nib_ctx->mod_map.cap * sizeof(HMapEntry));
-    ftprint_out("type_ptr cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->type_cache.ptrs.len,
+    ftprint_out("type_ptr cache: len = %lu, cap = %lu, total_size (ast arena) = %lu\n", nib_ctx->type_cache.ptrs.len,
                 nib_ctx->type_cache.ptrs.cap, nib_ctx->type_cache.ptrs.cap * sizeof(HMapEntry));
-    ftprint_out("type_array cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->type_cache.arrays.len,
+    ftprint_out("type_array cache: len = %lu, cap = %lu, total_size (ast arena) = %lu\n", nib_ctx->type_cache.arrays.len,
                 nib_ctx->type_cache.arrays.cap, nib_ctx->type_cache.arrays.cap * sizeof(HMapEntry));
-    ftprint_out("type_proc cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->type_cache.procs.len,
+    ftprint_out("type_proc cache: len = %lu, cap = %lu, total_size (ast arena) = %lu\n", nib_ctx->type_cache.procs.len,
                 nib_ctx->type_cache.procs.cap, nib_ctx->type_cache.procs.cap * sizeof(HMapEntry));
-    ftprint_out("type_slices cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->type_cache.slices.len,
+    ftprint_out("type_slices cache: len = %lu, cap = %lu, total_size (ast arena) = %lu\n", nib_ctx->type_cache.slices.len,
                 nib_ctx->type_cache.slices.cap, nib_ctx->type_cache.slices.cap * sizeof(HMapEntry));
-    ftprint_out("type_structs cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->type_cache.structs.len,
+    ftprint_out("type_structs cache: len = %lu, cap = %lu, total_size (ast arena) = %lu\n", nib_ctx->type_cache.structs.len,
                 nib_ctx->type_cache.structs.cap, nib_ctx->type_cache.structs.cap * sizeof(HMapEntry));
-    ftprint_out("type_unions cache: len = %lu, cap = %lu, total_size (malloc) = %lu\n", nib_ctx->type_cache.unions.len,
+    ftprint_out("type_unions cache: len = %lu, cap = %lu, total_size (ast arena) = %lu\n", nib_ctx->type_cache.unions.len,
                 nib_ctx->type_cache.unions.cap, nib_ctx->type_cache.unions.cap * sizeof(HMapEntry));
 #endif
 
@@ -1400,6 +1400,14 @@ void nibble_cleanup(NibbleCtx* nib_ctx)
 
     Allocator bootstrap = nib_ctx->gen_mem;
     allocator_destroy(&bootstrap);
+
+#ifdef NIBBLE_PRINT_MEM_USAGE
+    ftprint_out("heap usage: %u allocs, %u frees, %lu bytes allocated\n", nib_alloc_count, nib_free_count, nib_alloc_size);
+
+    if (nib_free_count != nib_alloc_count) {
+        ftprint_out("[ERROR]: MEMORY LEAK DETECTED\n");
+    }
+#endif
 }
 
 FloatLit* intern_float_lit(HMap* float_lit_map, FloatKind kind, Float value)
