@@ -37,6 +37,7 @@ size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list ar
 size_t ftprint_file(FILE* fd, bool nullterm, const char* format, ...);
 size_t ftprintv_file(FILE* fd, bool nullterm, const char* format, va_list vargs);
 #define ftprint_out(format, ...) ftprint_file(stdout, false, (format), ##__VA_ARGS__)
+#define ftprintv_out(format, vargs) ftprintv_file(stdout, false, (format), (vargs))
 #define ftprint_err(format, ...) ftprint_file(stderr, false, (format), ##__VA_ARGS__)
 #define ftprintv_err(format, vargs) ftprintv_file(stderr, false, (format), (vargs))
 

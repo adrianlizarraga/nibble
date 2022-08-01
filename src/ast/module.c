@@ -1426,10 +1426,8 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     builtin_types[BUILTIN_TYPE_S16] = (BuiltinType){.name = "s16", .type = type_int_alloc(ast_mem, INTEGER_S16)};
     builtin_types[BUILTIN_TYPE_U32] = (BuiltinType){.name = "u32", .type = type_int_alloc(ast_mem, INTEGER_U32)};
     builtin_types[BUILTIN_TYPE_S32] = (BuiltinType){.name = "s32", .type = type_int_alloc(ast_mem, INTEGER_S32)};
-    builtin_types[BUILTIN_TYPE_U64] =
-        (BuiltinType){.name = "u64", .type = type_int_alloc(ast_mem, INTEGER_U64)};
-    builtin_types[BUILTIN_TYPE_S64] =
-        (BuiltinType){.name = "s64", .type = type_int_alloc(ast_mem, INTEGER_S64)};
+    builtin_types[BUILTIN_TYPE_U64] = (BuiltinType){.name = "u64", .type = type_int_alloc(ast_mem, INTEGER_U64)};
+    builtin_types[BUILTIN_TYPE_S64] = (BuiltinType){.name = "s64", .type = type_int_alloc(ast_mem, INTEGER_S64)};
     builtin_types[BUILTIN_TYPE_F32] = (BuiltinType){.name = "f32", .type = type_float_alloc(ast_mem, FLOAT_F32)};
     builtin_types[BUILTIN_TYPE_F64] = (BuiltinType){.name = "f64", .type = type_float_alloc(ast_mem, FLOAT_F64)};
 
@@ -1726,19 +1724,19 @@ AnonObj* add_anon_obj(Allocator* allocator, List* objs, s32 id, size_t size, siz
     return obj;
 }
 
-static bool install_module_decl(NibbleCtx* nib_ctx, Module* mod, Decl* decl)
+static bool install_module_decl(Allocator* ast_mem, Module* mod, Decl* decl, ErrorStream* errors)
 {
-    Symbol* sym = add_unresolved_symbol(&nib_ctx->ast_mem, &mod->scope, mod, decl);
+    Symbol* sym = add_unresolved_symbol(ast_mem, &mod->scope, mod, decl);
 
     if (!sym) {
-        report_error(nib_ctx, decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
+        report_error(errors, decl->range, "Duplicate definition of symbol `%s`", decl->name->str);
         return false;
     }
 
     // Add to export table if decl is exported.
     if (decl->flags & DECL_IS_EXPORTED) {
         if (!module_add_export_sym(mod, sym->name, sym)) {
-            report_error(nib_ctx, decl->range, "Conflicting export symbol name `%s`", sym->name->str);
+            report_error(errors, decl->range, "Conflicting export symbol name `%s`", sym->name->str);
             return false;
         }
     }
@@ -1746,7 +1744,7 @@ static bool install_module_decl(NibbleCtx* nib_ctx, Module* mod, Decl* decl)
     return true;
 }
 
-bool install_module_decls(NibbleCtx* nib_ctx, Module* mod)
+bool install_module_decls(Allocator* ast_mem, Module* mod, ErrorStream* errors)
 {
     List* head = &mod->stmts;
 
@@ -1757,7 +1755,7 @@ bool install_module_decls(NibbleCtx* nib_ctx, Module* mod)
         if (stmt->kind == CST_StmtDecl) {
             Decl* decl = ((StmtDecl*)stmt)->decl;
 
-            if (!install_module_decl(nib_ctx, mod, decl)) {
+            if (!install_module_decl(ast_mem, mod, decl, errors)) {
                 return false;
             }
         }
@@ -1766,7 +1764,7 @@ bool install_module_decls(NibbleCtx* nib_ctx, Module* mod)
     return true;
 }
 
-bool module_add_global_sym(NibbleCtx* nib_ctx, Module* mod, Identifier* name, Symbol* sym)
+bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym, ErrorStream* errors)
 {
     Symbol* old_sym = lookup_scope_symbol(&mod->scope, name);
 
@@ -1784,10 +1782,10 @@ bool module_add_global_sym(NibbleCtx* nib_ctx, Module* mod, Identifier* name, Sy
         ProgRange range = sym->decl ? sym->decl->range : mod->range;
 
         if (sym->home == mod) {
-            report_error(nib_ctx, range, "Duplicate definition of symbol `%s`", name->str);
+            report_error(errors, range, "Duplicate definition of symbol `%s`", name->str);
         }
         else {
-            report_error(nib_ctx, range, "Conflicting import name `%s`", name->str);
+            report_error(errors, range, "Conflicting import name `%s`", name->str);
         }
 
         return false;
@@ -1800,7 +1798,7 @@ bool module_add_global_sym(NibbleCtx* nib_ctx, Module* mod, Identifier* name, Sy
     return true;
 }
 
-bool import_all_mod_syms(NibbleCtx* nib_ctx, Module* dst_mod, Module* src_mod)
+bool import_all_mod_syms(Module* dst_mod, Module* src_mod, ErrorStream* errors)
 {
     HMap* export_table = &src_mod->export_table;
     size_t cap = export_table->cap;
@@ -1812,7 +1810,7 @@ bool import_all_mod_syms(NibbleCtx* nib_ctx, Module* dst_mod, Module* src_mod)
         if (entry->key != HASH_MAP_NULL_KEY) {
             Symbol* sym = UINT_PTR(entry->value, Symbol);
 
-            if (!module_add_global_sym(nib_ctx, dst_mod, sym->name, sym)) {
+            if (!module_add_global_sym(dst_mod, sym->name, sym, errors)) {
                 return false;
             }
         }
@@ -1821,7 +1819,7 @@ bool import_all_mod_syms(NibbleCtx* nib_ctx, Module* dst_mod, Module* src_mod)
     return true;
 }
 
-bool import_mod_syms(NibbleCtx* nib_ctx, Module* dst_mod, Module* src_mod, StmtImport* stmt)
+bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt, ErrorStream* errors)
 {
     List* head = &stmt->import_syms;
     List* it = head->next;
@@ -1831,14 +1829,14 @@ bool import_mod_syms(NibbleCtx* nib_ctx, Module* dst_mod, Module* src_mod, StmtI
         Symbol* sym = module_get_export_sym(src_mod, isym->name);
 
         if (!sym) {
-            report_error(nib_ctx, stmt->super.range, "Importing unknown or private symbol `%s` from module `%s`", isym->name->str,
+            report_error(errors, stmt->super.range, "Importing unknown or private symbol `%s` from module `%s`", isym->name->str,
                          src_mod->cpath_lit->str); // TODO: mod_path is not an OS path
             return false;
         }
 
         Identifier* name = isym->rename ? isym->rename : isym->name;
 
-        if (!module_add_global_sym(nib_ctx, dst_mod, name, sym)) {
+        if (!module_add_global_sym(dst_mod, name, sym, errors)) {
             return false;
         }
 
@@ -1896,4 +1894,3 @@ bool module_add_export_sym(Module* mod, Identifier* name, Symbol* sym)
 
     return true;
 }
-

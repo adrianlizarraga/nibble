@@ -4,7 +4,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-int run_cmd(Allocator* allocator, char* argv[], int argc)
+int run_cmd(Allocator* allocator, char* argv[], int argc, bool silent)
 {
     (void)allocator;
     (void)argc;
@@ -12,11 +12,13 @@ int run_cmd(Allocator* allocator, char* argv[], int argc)
     pid_t child_pid;
     int child_status;
 
-    ftprint_out("[CMD]:");
-    for (char** p = argv; *p; p += 1) {
-        ftprint_out(" %s", *p);
+    if (!silent) {
+        ftprint_out("[CMD]:");
+        for (char** p = argv; *p; p += 1) {
+            ftprint_out(" %s", *p);
+        }
+        ftprint_out("\n");
     }
-    ftprint_out("\n");
 
     child_pid = fork();
 
@@ -50,19 +52,19 @@ bool is_stderr_atty()
 #elif defined(NIBBLE_HOST_WINDOWS)
 #include "array.h"
 
-int run_cmd(Allocator* allocator, char* argv[], int argc)
+int run_cmd(Allocator* allocator, char* argv[], int argc, bool silent)
 {
     (void)argc;
 
     char* cmd_line_cstr = array_create(allocator, char, 64);
 
-    ftprint_out("[CMD]:");
+    if (!silent) {ftprint_out("[CMD]:");}
     for (char** p = argv; *p; p += 1) {
-        ftprint_out(" %s", *p);
+        if (!silent) {ftprint_out(" %s", *p);}
         ftprint_char_array(&cmd_line_cstr, false, "%s ", *p);
     }
 
-    ftprint_out("\n");
+    if (!silent) {ftprint_out("\n");}
     array_push(cmd_line_cstr, '\0');
 
     // Adapted from: https://docs.microsoft.com/en-us/windows/win32/procthread/creating-processes

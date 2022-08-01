@@ -54,8 +54,8 @@ void nibble_cleanup(NibbleCtx* nibble);
 
 void report_error(ErrorStream* error_stream, ProgRange range, const char* format, ...);
 
-StrLit* intern_str_lit(InternMap* map, const char* str, size_t len);
-FloatLit* intern_float_lit(InternMap* map, FloatKind kind, Float value);
-Identifier* intern_ident(InternMap* map, const char* str, size_t len);
+StrLit* intern_str_lit(HMap* map, const char* str, size_t len);
+FloatLit* intern_float_lit(HMap* map, FloatKind kind, Float value);
+Identifier* intern_ident(HMap* map, const char* str, size_t len);
 
 #endif
