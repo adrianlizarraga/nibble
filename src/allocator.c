@@ -7,30 +7,29 @@
 #include <string.h>
 
 #ifdef NIBBLE_PRINT_MEM_USAGE
-u32 nib_alloc_count = 0;
-u32 nib_free_count = 0;
-size_t nib_alloc_size = 0;
+#include <stdatomic.h>
+
+volatile u32 nib_alloc_count = 0;
+volatile u32 nib_free_count = 0;
+volatile size_t nib_alloc_size = 0;
 
 static inline void* nib_malloc(size_t size)
 {
-    // NOTE: Not thread-safe!
-    nib_alloc_count += 1;
-    nib_alloc_size += size;
+    atomic_fetch_add(&nib_alloc_count, 1);
+    atomic_fetch_add(&nib_alloc_size, size);
     return malloc(size);
 }
 
 static inline void* nib_calloc(size_t num_elems, size_t elem_size)
 {
-    // NOTE: Not thread-safe!
-    nib_alloc_count += 1;
-    nib_alloc_size += num_elems * elem_size;
+    atomic_fetch_add(&nib_alloc_count, 1);
+    atomic_fetch_add(&nib_alloc_size, num_elems * elem_size);
     return calloc(num_elems, elem_size);
 }
 
 static inline void nib_free(void* ptr)
 {
-    // NOTE: Not thread-safe!
-    nib_free_count += 1;
+    atomic_fetch_add(&nib_free_count, 1);
     free(ptr);
 }
 #else
