@@ -1252,7 +1252,6 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
             return false;
         }
 
-        // TODO: Allow argv : []^char
         if ((main_num_params == 2) && (param_types[1] != type_ptr_ptr_char)) {
             DeclVar* param = (DeclVar*)list_entry(main_decl->params.next->next, Decl, lnode);
 
@@ -1261,8 +1260,6 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
             print_errors(nib_ctx);
             return false;
         }
-
-        // TODO: Allow/check for envp param
     }
 
     //////////////////////////////////////////
