@@ -1191,7 +1191,9 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     Symbol* main_sym = lookup_symbol(&main_mod->scope, main_proc_ident);
 
     if (!main_sym) {
-        report_error(&nib_ctx->errors, main_mod->range, "Program entry file must define a main() procedure.");
+        ProgPos main_start = main_mod->range.start;
+        ProgRange err_range = {.start = main_start, .end = main_start};
+        report_error(&nib_ctx->errors, err_range, "Program entry file must define a main() procedure.");
         print_errors(nib_ctx);
         return false;
     }

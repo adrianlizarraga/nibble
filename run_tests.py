@@ -100,34 +100,44 @@ class RunStats:
     test_failed: List[tuple[str, str]] = field(default_factory=list)
     only_compiled: List[str] = field(default_factory=list)
 
-def run_cmd(cmd, **kwargs):
+def run_cmd(cmd, **kwargs) -> subprocess.CompletedProcess:
     print("[CMD] %s" % " ".join(map(shlex.quote, cmd)))
     return subprocess.run(cmd, **kwargs)
+
+def check_test_case(cmd_ret: subprocess.CompletedProcess, test_case: TestCase) -> Optional[str]:
+    err = None
+
+    if cmd_ret.returncode != test_case.returncode:
+        err = f"Invalid return code. expected '{test_case.returncode}', but got '{cmd_ret.returncode}'."
+    elif cmd_ret.stdout != test_case.stdout:
+        err = f"Invalid stdout. expected:\n{test_case.stdout.decode('utf-8')}\ngot:\n{cmd_ret.stdout.decode('utf-8')}"
+    elif cmd_ret.stderr != test_case.stderr:
+        err = f"Invalid stderr. expected:\n{test_case.stderr.decode('utf-8')}\ngot\n{cmd_ret.stderr.decode('utf-8')}"
+
+    return err
 
 def run_file_test(file_path: str, stats: RunStats = RunStats()):
     test_case_path = file_path[:-len(NIBBLE_EXT)] + TEST_CASE_EXT
     test_case, err = load_test_case(test_case_path)
 
     if test_case is not None:
-        compile_ret = run_cmd(["./nibble", file_path], capture_output=True)
+        # Compile nibble program first.
+        cmd_ret = run_cmd(["./nibble", "-s", file_path], capture_output=True)
 
-        if compile_ret.returncode != 0:
-            stats.compile_failed.append((file_path, compile_ret.stdout.decode("utf-8")))
-        else:
-            run_ret = run_cmd(["./out", *test_case.argv], input=test_case.stdin, capture_output=True)
+        # Run nibble program if it compiled.
+        if cmd_ret.returncode == 0:
+            cmd_ret = run_cmd(["./out", *test_case.argv], input=test_case.stdin, capture_output=True)
 
-            if run_ret.returncode != test_case.returncode:
-                stats.test_failed.append((file_path, f"Invalid return code. expected '{test_case.returncode}', but got '{run_ret.returncode}'."))
-            elif run_ret.stdout != test_case.stdout:
-                stats.test_failed.append((file_path, f"Invalid stdout. expected:\n{test_case.stdout.decode('utf-8')}\ngot:\n{run_ret.stdout.decode('utf-8')}"))
-            elif run_ret.stderr != test_case.stderr:
-                stats.test_failed.append((file_path, f"Invalid stderr. expected:\n{test_case.stderr.decode('utf-8')}\ngot\n{run_ret.stderr.decode('utf-8')}"))
+        err = check_test_case(cmd_ret, test_case)
+
+        if err:
+            stats.test_failed.append((file_path, err))
     else:
         print(f"[WARNING]: Failed to load test case file for {file_path}: {err}")
         compile_ret = run_cmd(["./nibble", file_path], capture_output=True)
 
         if compile_ret.returncode != 0:
-            stats.compile_failed.append((file_path, compile_ret.stdout.decode("utf-8")))
+            stats.compile_failed.append((file_path, compile_ret.stderr.decode("utf-8")))
         else:
             stats.only_compiled.append(file_path)
 
@@ -135,6 +145,28 @@ def run_dir_tests(folder: str, stats: RunStats):
     for e in os.scandir(folder):
         if e.is_file() and e.path.endswith(NIBBLE_EXT):
             run_file_test(e.path, stats)
+
+def update_file_output(file_path: str):
+    test_case_path = file_path[:-len(NIBBLE_EXT)] + TEST_CASE_EXT
+    test_case, err = load_test_case(test_case_path)
+
+    if err is not None:
+        test_case = DEFAULT_TEST_CASE
+
+    compile_ret = run_cmd(["./nibble", "-s", file_path], capture_output=True)
+
+    print(f"[INFO] Saving output to {test_case_path}")
+
+    if compile_ret.returncode != 0: # Save compiler error
+        save_test_case(test_case_path, test_case.argv, test_case.stdin, compile_ret.stdout, compile_ret.stderr, compile_ret.returncode)
+    else:
+        run_ret = run_cmd(["./out", *test_case.argv], input=test_case.stdin, capture_output=True)
+        save_test_case(test_case_path, test_case.argv, test_case.stdin, run_ret.stdout, run_ret.stderr, run_ret.returncode)
+
+def update_dir_outputs(folder: str):
+    for e in os.scandir(folder):
+        if e.is_file() and e.path.endswith(NIBBLE_EXT):
+            update_file_output(e.path)
 
 def main():
     exe_name, *argv = sys.argv
@@ -186,8 +218,20 @@ def main():
             exit(1)
         else:
             print("\nAll tests passed!!")
-    elif cmd == "update_stdout":
-        pass
+    elif cmd == "update_out":
+        test_target = "./tests/"
+
+        if len(argv) > 0:
+            test_target, *argv = argv
+
+        if path.isdir(test_target):
+            update_dir_outputs(test_target)
+        elif path.isfile(test_target):
+            update_file_output(test_target)
+        else:
+            print_usage(exe_name)
+            print(f"[ERROR]: Invalid test target '{test_target}'")
+            exit(1)
     else:
         print_usage(exe_name)
         print(f"[ERROR]: Unknown command '{cmd}'", file=sys.stderr) 

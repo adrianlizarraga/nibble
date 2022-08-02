@@ -1,0 +1,15 @@
+:argc 0
+:stdin 0
+
+:stdout 0
+
+:stderr 179
+
+1 errors:
+
+/home/adrianlm/projects/nibble/tests/builtin.nib:1:1: [Error]: Duplicate definition of symbol `#writeout`
+
+     1 | proc #writeout(buf: ^char, size: usize) => ssize;
+
+
+:returncode 1

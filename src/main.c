@@ -202,8 +202,8 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    nibble_compile(nib_ctx, mainf_name, mainf_len, outf_name, outf_len);
+    bool success = nibble_compile(nib_ctx, mainf_name, mainf_len, outf_name, outf_len);
     nibble_cleanup(nib_ctx);
 
-    return 0;
+    return !success;
 }

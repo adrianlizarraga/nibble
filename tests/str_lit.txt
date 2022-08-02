@@ -1,0 +1,11 @@
+:argc 0
+:stdin 0
+
+:stdout 14
+Hello
+12345
+i
+
+:stderr 0
+
+:returncode 148
