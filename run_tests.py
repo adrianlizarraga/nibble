@@ -99,6 +99,7 @@ class RunStats:
     compile_failed: List[tuple[str, str]] = field(default_factory=list)
     test_failed: List[tuple[str, str]] = field(default_factory=list)
     only_compiled: List[str] = field(default_factory=list)
+    num_tests: int = 0
 
 def run_cmd(cmd, **kwargs) -> subprocess.CompletedProcess:
     print("[CMD] %s" % " ".join(map(shlex.quote, cmd)))
@@ -133,13 +134,15 @@ def run_file_test(file_path: str, stats: RunStats = RunStats()):
         if err:
             stats.test_failed.append((file_path, err))
     else:
-        print(f"[WARNING]: Failed to load test case file for {file_path}: {err}")
+        print(f"[WARNING] Failed to load test case file for {file_path}: {err}", file=sys.stderr)
         compile_ret = run_cmd(["./nibble", file_path], capture_output=True)
 
         if compile_ret.returncode != 0:
             stats.compile_failed.append((file_path, compile_ret.stderr.decode("utf-8")))
         else:
             stats.only_compiled.append(file_path)
+
+    stats.num_tests += 1
 
 def run_dir_tests(folder: str, stats: RunStats):
     for e in os.scandir(folder):
@@ -190,34 +193,34 @@ def main():
             run_file_test(test_target, stats)
         else:
             print_usage(exe_name)
-            print(f"[ERROR]: Invalid test target '{test_target}'")
+            print(f"[ERROR] Invalid test target '{test_target}'", file=sys.stderr)
             exit(1)
 
         num_failed = len(stats.test_failed) + len(stats.compile_failed)
         num_ignored = len(stats.only_compiled)
 
         if (num_failed > 0):
-            print(f"Total failed: {num_failed}, Ignored: {num_ignored}\n")
+            print(f"Total failed: {num_failed}, Ignored: {num_ignored}\n", file=sys.stderr)
 
             if len(stats.compile_failed):
                 i = 0
-                print("Compiler failures:")
+                print("Compiler failures:", file=sys.stderr)
                 for f in stats.compile_failed:
-                    print(f"[{i+1}/{num_failed}]: {f[0]}:")
-                    print(f"{f[1]}\n")
+                    print(f"[{i+1}/{num_failed}]: {f[0]}:", file=sys.stderr)
+                    print(f"{f[1]}\n", file=sys.stderr)
                     i += 1
 
             if len(stats.test_failed):
                 i = 0
-                print("Test failures:")
+                print("Test failures:", file=sys.stderr)
                 for f in stats.test_failed:
-                    print(f"[{i+1}/{num_failed}]: {f[0]}:")
-                    print(f"{f[1]}\n")
+                    print(f"[{i+1}/{num_failed}]: {f[0]}:", file=sys.stderr)
+                    print(f"{f[1]}\n", file=sys.stderr)
                     i += 1
 
             exit(1)
         else:
-            print("\nAll tests passed!!")
+            print(f"\n[INFO] All {stats.num_tests} tests passed")
     elif cmd == "update_out":
         test_target = "./tests/"
 
@@ -230,11 +233,11 @@ def main():
             update_file_output(test_target)
         else:
             print_usage(exe_name)
-            print(f"[ERROR]: Invalid test target '{test_target}'")
+            print(f"[ERROR] Invalid test target '{test_target}'", file=sys.stderr)
             exit(1)
     else:
         print_usage(exe_name)
-        print(f"[ERROR]: Unknown command '{cmd}'", file=sys.stderr) 
+        print(f"[ERROR] Unknown command '{cmd}'", file=sys.stderr)
         exit(1)
 
 
