@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 
+"""
+Heavily inspired by Alexey Kutepov's 'test.py' script (MIT License) in his Porth repo:
+https://gitlab.com/tsoding/porth/-/blob/master/test.py
+"""
+
 import sys
 import os
 from os import path
 import subprocess
 import shlex
 from typing import List, BinaryIO, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+NIBBLE_EXT = ".nib"
+TEST_CASE_EXT = ".txt"
 
 @dataclass
 class TestCase:
@@ -16,11 +24,117 @@ class TestCase:
     stderr: bytes
     returncode: int
 
-def print_usage(exe_name):
+DEFAULT_TEST_CASE=TestCase(argv=[], stdin=bytes(), stdout=bytes(), stderr=bytes(), returncode=0)
+
+def print_usage(exe_name: str):
     print(f"Usage: {exe_name} [CMD]")
     print("CMD:")
-    print("    run <test_target_dir>         Run tests in target directory (or nibble file)")
+    print("    run [test_target]         Run tests in a directory (default ./tests/) or for a single nibble file.")
     print("")
+
+def read_int(fhandle: BinaryIO, name: bytes) -> bytes:
+    line = fhandle.readline()
+    prefix = b":" + name + b" "
+
+    if not line.startswith(prefix):
+        raise Exception(f"Failed to parse field '{name}': invalid prefix '{prefix}'.")
+    
+    return int(line[len(prefix) : -1])
+
+def write_int(fhandle: BinaryIO, name: bytes, value: int):
+    fhandle.write(b":%s %d\n" % (name, value))
+
+def write_bytes(fhandle: BinaryIO, name: bytes, blob: bytes):
+    fhandle.write(b":%s %d\n" % (name, len(blob)))
+    fhandle.write(blob)
+    fhandle.write(b"\n")
+
+def read_bytes(fhandle: BinaryIO, name: bytes) -> bytes:
+    line = fhandle.readline()
+    prefix = b":" + name + b" "
+
+    if not line.startswith(prefix):
+        raise Exception(f"Failed to parse field '{name}': invalid prefix '{prefix}'.")
+
+    num_bytes = int(line[len(prefix) : -1])
+    blob = fhandle.read(num_bytes)
+
+    if fhandle.read(1) != b"\n":
+        raise Exception(f"Failed to parse field '{name}': missing ending newline.")
+
+    return blob
+
+def load_test_case(test_case_path: str) -> tuple[Optional[TestCase], Optional[str]]:
+    try:
+        with open(test_case_path, "rb") as fhandle:
+            argv = []
+            argc = read_int(fhandle, b"argc")
+
+            for i in range(argc):
+                argv.append(read_bytes(fhandle, b"arg%d" % i).decode("utf-8"))
+
+            stdin = read_bytes(fhandle, b"stdin")
+            stdout = read_bytes(fhandle, b"stdout")
+            stderr = read_bytes(fhandle, b"stderr")
+            returncode = read_int(fhandle, b"returncode")
+
+            return (TestCase(argv, stdin, stdout, stderr, returncode), None)
+    except Exception as e:
+        return (None, str(e))
+
+def save_test_case(test_case_path: str, argv: List[str], stdin: bytes, stdout: bytes, stderr: bytes, returncode: int):
+    with open(test_case_path, "wb") as fhandle:
+        write_int(fhandle, b"argc", len(argv))
+
+        for i, arg in enumerate(argv):
+            write_bytes(fhandle, b"arg%d" % i, arg.encode("utf-8"))
+
+        write_bytes(fhandle, b"stdin", stdin)
+        write_bytes(fhandle, b"stdout", stdout)
+        write_bytes(fhandle, b"stderr", stderr)
+        write_int(fhandle, b"returncode", returncode)
+
+@dataclass
+class RunStats:
+    compile_failed: List[tuple[str, str]] = field(default_factory=list)
+    test_failed: List[tuple[str, str]] = field(default_factory=list)
+    only_compiled: List[str] = field(default_factory=list)
+
+def run_cmd(cmd, **kwargs):
+    print("[CMD] %s" % " ".join(map(shlex.quote, cmd)))
+    return subprocess.run(cmd, **kwargs)
+
+def run_file_test(file_path: str, stats: RunStats = RunStats()):
+    test_case_path = file_path[:-len(NIBBLE_EXT)] + TEST_CASE_EXT
+    test_case, err = load_test_case(test_case_path)
+
+    if test_case is not None:
+        compile_ret = run_cmd(["./nibble", file_path], capture_output=True)
+
+        if compile_ret.returncode != 0:
+            stats.compile_failed.append((file_path, compile_ret.stdout.decode("utf-8")))
+        else:
+            run_ret = run_cmd(["./out", *test_case.argv], input=test_case.stdin, capture_output=True)
+
+            if run_ret.returncode != test_case.returncode:
+                stats.test_failed.append((file_path, f"Invalid return code. expected '{test_case.returncode}', but got '{run_ret.returncode}'."))
+            elif run_ret.stdout != test_case.stdout:
+                stats.test_failed.append((file_path, f"Invalid stdout. expected:\n{test_case.stdout.decode('utf-8')}\ngot:\n{run_ret.stdout.decode('utf-8')}"))
+            elif run_ret.stderr != test_case.stderr:
+                stats.test_failed.append((file_path, f"Invalid stderr. expected:\n{test_case.stderr.decode('utf-8')}\ngot\n{run_ret.stderr.decode('utf-8')}"))
+    else:
+        print(f"[WARNING]: Failed to load test case file for {file_path}: {err}")
+        compile_ret = run_cmd(["./nibble", file_path], capture_output=True)
+
+        if compile_ret.returncode != 0:
+            stats.compile_failed.append((file_path, compile_ret.stdout.decode("utf-8")))
+        else:
+            stats.only_compiled.append(file_path)
+
+def run_dir_tests(folder: str, stats: RunStats):
+    for e in os.scandir(folder):
+        if e.is_file() and e.path.endswith(NIBBLE_EXT):
+            run_file_test(e.path, stats)
 
 def main():
     exe_name, *argv = sys.argv
@@ -31,7 +145,49 @@ def main():
         cmd, *argv = argv
 
     if cmd == "run":
+        test_target = "./tests/"
 
+        if len(argv) > 0:
+            test_target, *argv = argv
+
+        stats = RunStats()
+
+        if path.isdir(test_target):
+            run_dir_tests(test_target, stats)
+        elif path.isfile(test_target):
+            run_file_test(test_target, stats)
+        else:
+            print_usage(exe_name)
+            print(f"[ERROR]: Invalid test target '{test_target}'")
+            exit(1)
+
+        num_failed = len(stats.test_failed) + len(stats.compile_failed)
+        num_ignored = len(stats.only_compiled)
+
+        if (num_failed > 0):
+            print(f"Total failed: {num_failed}, Ignored: {num_ignored}\n")
+
+            if len(stats.compile_failed):
+                i = 0
+                print("Compiler failures:")
+                for f in stats.compile_failed:
+                    print(f"[{i+1}/{num_failed}]: {f[0]}:")
+                    print(f"{f[1]}\n")
+                    i += 1
+
+            if len(stats.test_failed):
+                i = 0
+                print("Test failures:")
+                for f in stats.test_failed:
+                    print(f"[{i+1}/{num_failed}]: {f[0]}:")
+                    print(f"{f[1]}\n")
+                    i += 1
+
+            exit(1)
+        else:
+            print("\nAll tests passed!!")
+    elif cmd == "update_stdout":
+        pass
     else:
         print_usage(exe_name)
         print(f"[ERROR]: Unknown command '{cmd}'", file=sys.stderr) 

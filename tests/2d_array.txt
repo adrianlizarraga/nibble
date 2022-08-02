@@ -2,7 +2,7 @@
 :stdin 0
 
 :stdout 31
-bb
+ba
 cc
 dd
 ee
