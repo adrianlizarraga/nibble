@@ -50,3 +50,5 @@ CppProperties.json
 x64/
 
 nibble
+out
+out.s
