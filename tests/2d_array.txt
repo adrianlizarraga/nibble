@@ -1,0 +1,16 @@
+:argc 0
+:stdin 0
+
+:stdout 31
+bb
+cc
+dd
+ee
+ff
+g
+global
+global
+
+:stderr 0
+
+:returncode 5

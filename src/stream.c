@@ -60,6 +60,17 @@ void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index)
     return bucket->elems + index;
 }
 
+void** bucket_list_get_last_packed(BucketList* bucket_list)
+{
+    if (!bucket_list->num_elems) {
+        return NULL;
+    }
+
+
+    Bucket* bucket = bucket_list->last;
+    return bucket->elems + (bucket->count - 1);
+}
+
 void** bucket_list_add_elem(BucketList* bucket_list, void* elem)
 {
     Bucket* bucket = bucket_list->last;

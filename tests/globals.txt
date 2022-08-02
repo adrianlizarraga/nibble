@@ -1,0 +1,17 @@
+:argc 0
+:stdin 0
+
+:stdout 38
+cc
+dd
+ee
+ff
+g
+global
+global
+copy
+kopy
+
+:stderr 0
+
+:returncode 5

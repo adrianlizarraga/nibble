@@ -1,0 +1,9 @@
+:argc 0
+:stdin 0
+
+:stdout 6
+Hello
+
+:stderr 0
+
+:returncode 126

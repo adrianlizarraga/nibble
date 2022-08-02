@@ -1,0 +1,9 @@
+:argc 0
+:stdin 0
+
+:stdout 8
+typedef
+
+:stderr 0
+
+:returncode 8

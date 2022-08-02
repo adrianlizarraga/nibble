@@ -1,0 +1,9 @@
+:argc 0
+:stdin 0
+
+:stdout 7
+112429
+
+:stderr 0
+
+:returncode 0

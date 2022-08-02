@@ -1,0 +1,10 @@
+:argc 0
+:stdin 0
+
+:stdout 6
+Hello
+
+:stderr 6
+Hello
+
+:returncode 1

@@ -49,4 +49,9 @@ typedef struct AllocatorStats {
 AllocatorStats allocator_stats(Allocator* allocator);
 void print_allocator_stats(Allocator* allocator, const char* label);
 
+#ifdef NIBBLE_PRINT_MEM_USAGE
+extern volatile uint32_t nib_alloc_count;
+extern volatile uint32_t nib_free_count;
+extern volatile size_t nib_alloc_size;
+#endif
 #endif

@@ -4,6 +4,7 @@ typedef struct IR_VarBuilder {
     BucketList* str_lits;
     BucketList* float_lits;
     TypeCache* type_cache;
+    HMap* float_lit_map;
     Module* curr_mod;
 } IR_VarBuilder;
 
@@ -326,7 +327,7 @@ static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* d
         Scalar imm = expr->imm;
 
         if (type->kind == TYPE_FLOAT) {
-            FloatLit* float_lit = intern_float_lit(type->as_float.kind, imm.as_float);
+            FloatLit* float_lit = intern_float_lit(builder->float_lit_map, type->as_float.kind, imm.as_float);
 
             dst->kind = CONST_EXPR_FLOAT_LIT;
             dst->type = type;
@@ -402,13 +403,14 @@ static void IR_build_var(IR_VarBuilder* builder, Symbol* sym)
 }
 
 static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* str_lits, BucketList* float_lits,
-                          TypeCache* type_cache)
+                          TypeCache* type_cache, HMap* float_lit_map)
 {
     IR_VarBuilder builder = {.arena = arena,
                              .tmp_arena = tmp_arena,
                              .str_lits = str_lits, 
                              .float_lits = float_lits,
                              .type_cache = type_cache,
+                             .float_lit_map = float_lit_map,
                              .curr_mod = NULL};
 
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);

@@ -1,0 +1,15 @@
+:argc 0
+:stdin 0
+
+:stdout 0
+
+:stderr 174
+
+1 errors:
+
+/home/adrianlm/projects/nibble/tests/cstring_export.nib:1:1: [Error]: Program entry file must define a main() procedure.
+
+     1 | import "./nested_module.nib";
+
+
+:returncode 1

@@ -56,6 +56,7 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "Usage: %s [OPTIONS] <input.nib>\n", program_name);
     ftprint_file(fd, true, "OPTIONS:\n");
     ftprint_file(fd, true, "    -h                              Print this help message\n");
+    ftprint_file(fd, true, "    -s                              Silent mode (no output to stdout)\n");
     ftprint_file(fd, true, "    -os   [linux | win32 | osx]     Target OS\n");
     ftprint_file(fd, true, "    -arch [x64 | x86]               Target architecture\n");
     ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `out`\n");
@@ -135,6 +136,8 @@ int main(int argc, char* argv[])
     const char* mainf_name = NULL;
     const char* outf_name = "out";
 
+    bool silent = false;
+
     // Set default target os/arch.
 #if defined(NIBBLE_HOST_WINDOWS)
     OS target_os = OS_WIN32;
@@ -153,6 +156,9 @@ int main(int argc, char* argv[])
         if (cstr_cmp(arg, "-h") == 0) {
             print_usage(stdout, program_name);
             exit(0);
+        }
+        else if (cstr_cmp(arg, "-s") == 0) {
+            silent = true;
         }
         else if (cstr_cmp(arg, "-os") == 0) {
             target_os = get_target_os(&argc, &argv, program_name);
@@ -189,13 +195,15 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    if (!nibble_init(target_os, target_arch)) {
+    NibbleCtx* nib_ctx = nibble_init(target_os, target_arch, silent);
+
+    if (!nib_ctx) {
         ftprint_err("[ERROR]: Failed to initialize compiler.\n");
         exit(1);
     }
 
-    nibble_compile(mainf_name, mainf_len, outf_name, outf_len);
-    nibble_cleanup();
+    bool success = nibble_compile(nib_ctx, mainf_name, mainf_len, outf_name, outf_len);
+    nibble_cleanup(nib_ctx);
 
-    return 0;
+    return !success;
 }
