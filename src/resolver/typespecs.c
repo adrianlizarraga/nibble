@@ -10,7 +10,7 @@ typedef struct SeenField {
 static TypeAggregateField* resolve_aggregate_fields(Resolver* resolver, List* in_fields)
 {
     TypeAggregateField* out_fields = array_create(&resolver->ctx->tmp_mem, TypeAggregateField, 16);
-    HMap seen_fields = hmap(3, &resolver->ctx->tmp_mem); // Used to check for duplicate field names
+    HMap seen_fields = hmap(4, &resolver->ctx->tmp_mem); // Used to check for duplicate field names
 
     List* head = in_fields;
 

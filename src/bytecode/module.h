@@ -382,7 +382,7 @@ struct BBlock {
 };
 
 void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, BucketList* str_lits,
-                     BucketList* float_lits, TypeCache* type_cache);
+                     BucketList* float_lits, TypeCache* type_cache, HMap* float_lit_map);
 
 char* IR_print_instr(Allocator* arena, Instr* instr);
 void IR_print_out_proc(Allocator* arena, Symbol* sym);

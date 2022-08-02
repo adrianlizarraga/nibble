@@ -48,3 +48,7 @@ CppProperties.json
 *.vcxproj
 *.vcxproj.*
 x64/
+
+nibble
+out
+out.s

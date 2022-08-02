@@ -3,6 +3,6 @@
 #include "nibble.h"
 #include "allocator.h"
 
-int run_cmd(Allocator* allocator, char* argv[], int argc);
+int run_cmd(Allocator* allocator, char* argv[], int argc, bool silent);
 bool is_stderr_atty();
 #endif

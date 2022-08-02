@@ -4,6 +4,7 @@ typedef struct IR_ProcBuilder {
     BucketList* str_lits;
     BucketList* float_lits;
     TypeCache* type_cache;
+    HMap* float_lit_map;
     Symbol* curr_proc;
     Scope* curr_scope;
     List* curr_tmp_obj;
@@ -128,7 +129,7 @@ static MemAddr IR_get_zero_flt_addr(IR_ProcBuilder* builder, FloatKind fkind)
 
     if (!float_lit) {
         Float flt = {0};
-        float_lit = intern_float_lit(fkind, flt);
+        float_lit = intern_float_lit(builder->float_lit_map, fkind, flt);
 
         builder->zero_flts[fkind] = float_lit;
     }
@@ -3180,7 +3181,7 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
         Scalar imm = expr->imm;
 
         if (type->kind == TYPE_FLOAT) {
-            FloatLit* float_lit = intern_float_lit(type->as_float.kind, imm.as_float);
+            FloatLit* float_lit = intern_float_lit(builder->float_lit_map, type->as_float.kind, imm.as_float);
 
             dst->kind = IR_EXPR_RESULT_FLOAT_LIT;
             dst->type = type;
@@ -4004,13 +4005,14 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
 }
 
 static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, BucketList* str_lits, BucketList* float_lits,
-                           TypeCache* type_cache)
+                           TypeCache* type_cache, HMap* float_lit_map)
 {
     IR_ProcBuilder builder = {.arena = arena,
                               .tmp_arena = tmp_arena,
                               .str_lits = str_lits,
                               .float_lits = float_lits,
                               .type_cache = type_cache,
+                              .float_lit_map = float_lit_map,
                               .curr_proc = NULL,
                               .curr_scope = NULL};
 
