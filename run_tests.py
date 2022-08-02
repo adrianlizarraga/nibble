@@ -196,27 +196,27 @@ def main():
             print(f"[ERROR] Invalid test target '{test_target}'", file=sys.stderr)
             exit(1)
 
-        num_failed = len(stats.test_failed) + len(stats.compile_failed)
+        num_compile_failed = len(stats.compile_failed)
+        num_tests_failed = len(stats.test_failed)
+        total_failed = num_compile_failed + num_tests_failed
         num_ignored = len(stats.only_compiled)
 
-        if (num_failed > 0):
-            print(f"Total failed: {num_failed}, Ignored: {num_ignored}\n", file=sys.stderr)
+        if (total_failed > 0):
+            print(f"Total failed: {total_failed}, Ignored: {num_ignored}\n", file=sys.stderr)
 
-            if len(stats.compile_failed):
-                i = 0
-                print("Compiler failures:", file=sys.stderr)
-                for f in stats.compile_failed:
-                    print(f"[{i+1}/{num_failed}]: {f[0]}:", file=sys.stderr)
-                    print(f"{f[1]}\n", file=sys.stderr)
-                    i += 1
+            if num_compile_failed:
+                print(f"Compiler failures ({num_compile_failed}):", file=sys.stderr)
 
-            if len(stats.test_failed):
-                i = 0
-                print("Test failures:", file=sys.stderr)
-                for f in stats.test_failed:
-                    print(f"[{i+1}/{num_failed}]: {f[0]}:", file=sys.stderr)
+                for i, f in enumerate(stats.compile_failed):
+                    print(f"[{i+1}/{num_compile_failed}]: {f[0]}:", file=sys.stderr)
                     print(f"{f[1]}\n", file=sys.stderr)
-                    i += 1
+
+            if num_tests_failed:
+                print(f"Test failures ({num_tests_failed}):", file=sys.stderr)
+
+                for i, f in enumerate(stats.test_failed):
+                    print(f"[{i+1}/{num_tests_failed}]: {f[0]}:", file=sys.stderr)
+                    print(f"{f[1]}\n", file=sys.stderr)
 
             exit(1)
         else:
