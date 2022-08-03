@@ -1432,15 +1432,23 @@ static BBlock* IR_emit_ptr_int_add(IR_ProcBuilder* builder, BBlock* bblock, IR_E
     BBlock* curr_bb = bblock;
     u64 base_size = ptr_er->type->as_ptr.base->size;
 
-    IR_ptr_to_mem_expr_result(builder, curr_bb, ptr_er);
-
     if (int_er->kind == IR_EXPR_RESULT_IMM) {
+        IR_ptr_to_mem_expr_result(builder, curr_bb, ptr_er);
+
         if (add)
             ptr_er->addr.disp += base_size * int_er->imm.as_int._u64;
         else
             ptr_er->addr.disp -= base_size * int_er->imm.as_int._u64;
     }
     else {
+        // If ptr is already using a scale that differs from the pointer's base size, then load the entire address into a register
+        // first.
+        if ((ptr_er->kind == IR_EXPR_RESULT_MEM_ADDR) && ptr_er->addr.scale && (ptr_er->addr.scale != base_size)) {
+            IR_execute_lea(builder, curr_bb, ptr_er);
+        }
+
+        IR_ptr_to_mem_expr_result(builder, curr_bb, ptr_er);
+
         if (ptr_er->addr.scale) {
             curr_bb = IR_expr_result_to_reg(builder, curr_bb, int_er);
 
