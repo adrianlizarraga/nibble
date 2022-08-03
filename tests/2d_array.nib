@@ -18,9 +18,9 @@ var g_p_var : ^^char = ^g_str;
 var g_p_imm : ^char = 0xdeadbeef :> ^char;
 
 proc main() => int {
-    var a : [2][2]int = {
-        {0, 1},
-        {2, 3}
+    var a : [2][3]int = {
+        {0, 1, 6},
+        {2, 3, 8}
     };
 
     var b : [2][3]char = {
@@ -46,5 +46,8 @@ proc main() => int {
     #writeout(g_str, 7);
     #writeout(*g_p_var, 7);
 
-    return a[1][1] + g_a[1][0]; // 3 + 2 = 5
+    var r : u32 = 1;
+    var c : u32 = 2;
+
+    return a[1][1] + a[r][c] + a[r][1] + a[1][c] + g_a[1][0]; // 3 + 8 + 3 + 8 + 2 = 24
 }

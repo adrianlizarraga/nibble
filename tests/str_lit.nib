@@ -15,6 +15,8 @@ proc main() => int
     //"Hello"[1] = 'Z'; // Segfaults because literals are stored in readonly memory.
 
     var s : [6]char = "12345";
+    #writeout(s, #length(s) - 1);
+    #writeout("\n", 1);
 
     // Unlike C, we can initialize array after declaration.
     var t : [7]char;

@@ -13,4 +13,4 @@ global
 
 :stderr 0
 
-:returncode 5
+:returncode 24
