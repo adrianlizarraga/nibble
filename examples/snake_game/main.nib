@@ -1,5 +1,5 @@
-const ROWS : u32 = 30;
-const COLS : u32 = 40;
+const ROWS : u32 = 20;
+const COLS : u32 = 30;
 const BUF_LEN : u32 = ROWS * (COLS + 1);
 
 const SYS_read  : ssize = 0;
@@ -73,6 +73,12 @@ proc print_int(val : s32, t_buf : ^[32]char) => []char {
     return {data = *t_buf, length = j : []char};
 }
 
+// Euclidean modulo. 'b' must be positive. 'a' can be positive or negative.
+proc emod(a : s32, b : s32) => s32 {
+    var m := a % b;
+    return (a < 0) ? (m + b) % b : m;
+}
+
 enum Entity : char {
     EMPTY = '.',
     NEWLINE = '\n',
@@ -94,16 +100,16 @@ struct Position {
 
 proc snake_move(pos : ^Position, dir : Dir) {
     if (dir == Dir::UP) {
-        pos.y -= 1;
+        pos.y = emod(pos.y - 1, ROWS);
     }
     else if (dir == Dir::DOWN) {
-        pos.y += 1;
+        pos.y = emod(pos.y + 1, ROWS);
     }
     else if (dir == Dir::LEFT) {
-        pos.x -= 1;
+        pos.x = emod(pos.x - 1, COLS);
     }
     else if (dir == Dir::RIGHT) {
-        pos.x += 1;
+        pos.x = emod(pos.x + 1, COLS);
     }
 }
 
@@ -144,7 +150,7 @@ proc main() => int {
     var cols_tmp : [32]char = ---;
     var cols_str : []char = print_int(COLS, ^cols_tmp);
 
-    #writeout("\n", 1);
+    #writeout("\n\n", 2);
 
     // Make STDIN non-blocking.
     fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK);
