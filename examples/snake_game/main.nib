@@ -1,5 +1,35 @@
 const ROWS : u32 = 10;
 const COLS : u32 = 15;
+const BUF_LEN : u32 = ROWS * (COLS + 1);
+
+const SYS_read  : ssize = 0;
+const SYS_fcntl : ssize = 72;
+const SYS_clock_nanosleep : ssize = 230;
+
+const STDIN : s32 = 0;
+
+const F_SETFL : s32 = 4;
+const F_GETFL : s32 = 3;
+const O_NONBLOCK : s32 = 2048;
+const EAGAIN : ssize = 11;
+const CLOCK_MONOTONIC : ssize = 1;
+
+proc read(fd : s32, buf : ^void, count : usize) => ssize {
+    return #syscall3(SYS_read, fd, (buf :> ssize), (count :> ssize));
+}
+
+proc fcntl(fd : s32, cmd : s32, arg: s32) => s32 {
+    return #syscall3(SYS_fcntl, fd, cmd, arg);
+}
+
+struct timespec {
+    tv_sec : s64;
+    tv_nsec : s64;
+}
+
+proc clock_nanosleep(clockid: ssize, flags : s32, request : ^timespec, remain: ^timespec) => s32 {
+    return #syscall4(SYS_clock_nanosleep, clockid, flags, (request :> ssize), (remain :> ssize));
+}
 
 enum Entity : char {
     EMPTY = '.',
@@ -8,19 +38,130 @@ enum Entity : char {
     PLAYER_HEAD = '@',
 }
 
-proc main() => int {
-    var screen_buf : [ROWS * (COLS + 1)]Entity = ---;
+struct Position {
+    x: u32;
+    y: u32;
+}
 
-    // Initialize
+var position : Position = {COLS/2, ROWS/2};
+
+proc player_down() {
+    position.y += 1;
+}
+
+proc player_up() {
+    position.y -= 1;
+}
+
+proc player_left() {
+    position.x -= 1;
+}
+
+proc player_right() {
+    position.x += 1;
+}
+
+proc print_int(val : s32) {
+    var t_buf : [32]char;
+    var j : s32 = 0;
+
+    do {
+        var digit := val % 10;
+
+        t_buf[j] = '0' + digit;
+
+        val = val / 10;
+        j = j + 1;
+    } while (val);
+
+    // Reverse in-place.
+    for (var i : s32 = 0; i < (j / 2); i += 1) {
+        var k := j - i - 1;
+        var tmp := t_buf[k];
+        t_buf[k] = t_buf[i];
+        t_buf[i] = tmp;
+    }
+    
+    #writeout(t_buf, j);
+}
+
+proc display(screen_buf : ^[BUF_LEN]Entity) {
     for (var r : u32 = 0; r < ROWS; r += 1) {
-        for (var c : u32 = 0; c < COLS + 1; c += 1) {
-            var i := r * (COLS + 1) + c;
+        var row_start := r * (COLS + 1);
 
-            screen_buf[i] = c < COLS ? Entity::EMPTY : Entity::NEWLINE;
+        for (var c : u32 = 0; c < COLS; c += 1) {
+            var i := row_start + c;
+
+            if ((r == position.y) && (c == position.x)) {
+                (*screen_buf)[i] = Entity::PLAYER_HEAD;
+            }
+            else {
+                (*screen_buf)[i] = Entity::EMPTY;
+            }
         }
+
+        (*screen_buf)[row_start + COLS] = Entity::NEWLINE;
     }
 
-    #writeout(screen_buf, #sizeof(#typeof(screen_buf)));
+    #writeout(*screen_buf, BUF_LEN * #sizeof(Entity));
+}
+
+// Must disable terminal canonical mode (dont' wait for <ENTER> on input read) and echo:
+// stty -icanon -echo
+proc main() => int {
+    var screen_buf : [BUF_LEN]Entity = ---;
+    var quit : bool;
+
+    #writeout("\n", 1);
+
+    // Make STDIN non-blocking.
+    fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK);
+
+    while (!quit) {
+        display(^screen_buf);
+
+        var cmd : char;
+        var num_read := read(STDIN, ^cmd, 1);
+
+        if (num_read == 1) {
+            if (cmd == 'w') {
+                player_up();
+            }
+            else if (cmd == 'a') {
+                player_left();
+            }
+            else if (cmd == 's') {
+                player_down();
+            }
+            else if (cmd == 'd') {
+                player_right();
+            }
+            else if (cmd == 'q') {
+                quit = true;
+            }
+        }
+        else if (num_read != -EAGAIN) {
+            return 1;
+        }
+
+
+        // Reset cursor using terminal control escape sequences.
+        // Cursor up: <ESC>[{COUNT}A
+        #writeout("\x1B", 1);
+        #writeout("[", 1);
+        print_int(ROWS);
+        #writeout("A", 1);
+
+        // Cursor backwards: <ESC>[{COUNT}D
+        #writeout("\x1B", 1);
+        #writeout("[", 1);
+        print_int(COLS);
+        #writeout("D", 1);
+
+        // Sleep for 16.6 ms
+        var delta_time : timespec = {0, 16600000};
+        clock_nanosleep(CLOCK_MONOTONIC, 0, ^delta_time, null);
+    }
 
     return 0;
 }
