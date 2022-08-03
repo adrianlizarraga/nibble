@@ -190,7 +190,7 @@ proc main() => int {
         }
 
         // Move the snake one unit every 'few' frames.
-        if (frame_count == frames_per_unit_move) {
+        if (frame_count == frames_per_unit_move - 1) {
             snake_move(^head_pos, head_dir);
             frame_count = 0;
         }
