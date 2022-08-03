@@ -1,9 +1,10 @@
-const ROWS : u32 = 10;
-const COLS : u32 = 15;
+const ROWS : u32 = 30;
+const COLS : u32 = 40;
 const BUF_LEN : u32 = ROWS * (COLS + 1);
 
 const SYS_read  : ssize = 0;
 const SYS_fcntl : ssize = 72;
+const SYS_clock_gettime : ssize = 228;
 const SYS_clock_nanosleep : ssize = 230;
 
 const STDIN : s32 = 0;
@@ -27,38 +28,25 @@ struct timespec {
     tv_nsec : s64;
 }
 
+proc time_diff(result: ^timespec, start : ^timespec, end : ^timespec) {
+    // NOTE: Requires end >= start!
+
+    if (end.tv_nsec < start.tv_nsec) {
+        result.tv_nsec = (1000000000 + end.tv_nsec) - start.tv_nsec; // Borrow a second (1e9 ns) from end.tv_sec
+        result.tv_sec = (end.tv_sec - 1) - start.tv_sec;
+    }
+    else {
+        result.tv_nsec = end.tv_nsec - start.tv_nsec;
+        result.tv_sec = end.tv_sec - start.tv_sec;
+    }
+}
+
 proc clock_nanosleep(clockid: ssize, flags : s32, request : ^timespec, remain: ^timespec) => s32 {
     return #syscall4(SYS_clock_nanosleep, clockid, flags, (request :> ssize), (remain :> ssize));
 }
 
-enum Entity : char {
-    EMPTY = '.',
-    NEWLINE = '\n',
-    PLAYER_BODY = '#',
-    PLAYER_HEAD = '@',
-}
-
-struct Position {
-    x: u32;
-    y: u32;
-}
-
-var position : Position = {COLS/2, ROWS/2};
-
-proc player_down() {
-    position.y += 1;
-}
-
-proc player_up() {
-    position.y -= 1;
-}
-
-proc player_left() {
-    position.x -= 1;
-}
-
-proc player_right() {
-    position.x += 1;
+proc clock_gettime(clockid: ssize, tp : ^timespec) => s32 {
+    return #syscall2(SYS_clock_gettime, clockid, (tp :> ssize));
 }
 
 // Print integer into the provided t_buf and return a slice into t_buf.
@@ -82,19 +70,51 @@ proc print_int(val : s32, t_buf : ^[32]char) => []char {
         (*t_buf)[i] = tmp;
     }
     
-    var slice : []char = {data = *t_buf, length = j};
-    //#writeout(t_buf, j);
-    return slice;
+    return {data = *t_buf, length = j : []char};
 }
 
-proc display(screen_buf : ^[BUF_LEN]Entity) {
+enum Entity : char {
+    EMPTY = '.',
+    NEWLINE = '\n',
+    PLAYER_BODY = '#',
+    PLAYER_HEAD = '@',
+}
+
+enum Dir : u8 {
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT
+}
+
+struct Position {
+    x: u32;
+    y: u32;
+}
+
+proc snake_move(pos : ^Position, dir : Dir) {
+    if (dir == Dir::UP) {
+        pos.y -= 1;
+    }
+    else if (dir == Dir::DOWN) {
+        pos.y += 1;
+    }
+    else if (dir == Dir::LEFT) {
+        pos.x -= 1;
+    }
+    else if (dir == Dir::RIGHT) {
+        pos.x += 1;
+    }
+}
+
+proc display(screen_buf : ^[BUF_LEN]Entity, head_pos : ^Position) {
     for (var r : u32 = 0; r < ROWS; r += 1) {
         var row_start := r * (COLS + 1);
 
         for (var c : u32 = 0; c < COLS; c += 1) {
             var i := row_start + c;
 
-            if ((r == position.y) && (c == position.x)) {
+            if ((r == head_pos.y) && (c == head_pos.x)) {
                 (*screen_buf)[i] = Entity::PLAYER_HEAD;
             }
             else {
@@ -114,6 +134,9 @@ proc main() => int {
     var screen_buf : [BUF_LEN]Entity = ---;
     var quit : bool;
 
+    var head_pos : Position = {COLS/2, ROWS/2};
+    var head_dir : Dir = Dir::UP;
+
     // Convert the ROWS and COLS values into strings
     var rows_tmp : [32]char = ---;
     var rows_str : []char = print_int(ROWS, ^rows_tmp);
@@ -126,33 +149,54 @@ proc main() => int {
     // Make STDIN non-blocking.
     fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK);
 
-    while (!quit) {
-        display(^screen_buf);
+    var start_time : timespec;
+    var end_time : timespec;
+    var target_frame_time : timespec = {0, 33300000}; // 33.3 ms
+    var frame_count : u32;
+    const frames_per_unit_move : u32 = 5;
 
+    while (!quit) {
+        // Get frame start time.
+        if (clock_gettime(CLOCK_MONOTONIC, ^start_time) < 0) {
+            return 1;
+        }
+
+        // Display the level.
+        display(^screen_buf, ^head_pos);
+
+        // Read user command from stdin.
         var cmd : char;
         var num_read := read(STDIN, ^cmd, 1);
 
         if (num_read == 1) {
-            if (cmd == 'w') {
-                player_up();
+            if (cmd == 'q') {
+                quit = true;
+            }
+            else if (cmd == 'w') {
+                head_dir = Dir::UP;
             }
             else if (cmd == 'a') {
-                player_left();
+                head_dir = Dir::LEFT;
             }
             else if (cmd == 's') {
-                player_down();
+                head_dir = Dir::DOWN;
             }
             else if (cmd == 'd') {
-                player_right();
-            }
-            else if (cmd == 'q') {
-                quit = true;
+                head_dir = Dir::RIGHT;
             }
         }
         else if (num_read != -EAGAIN) {
             return 1;
         }
 
+        // Move the snake one unit every 'few' frames.
+        if (frame_count == frames_per_unit_move) {
+            snake_move(^head_pos, head_dir);
+            frame_count = 0;
+        }
+        else {
+            frame_count += 1;
+        }
 
         // Reset cursor using terminal control escape sequences.
         // Cursor up: <ESC>[{COUNT}A
@@ -167,9 +211,29 @@ proc main() => int {
         #writeout(cols_str.data, cols_str.length);
         #writeout("D", 1);
 
-        // Sleep for 16.6 ms
-        var delta_time : timespec = {0, 16600000};
-        clock_nanosleep(CLOCK_MONOTONIC, 0, ^delta_time, null);
+        // Get frame end time
+        if (clock_gettime(CLOCK_MONOTONIC, ^end_time) < 0) {
+            return 1;
+        }
+
+        var elapsed_time : timespec = ---;
+        time_diff(^elapsed_time, ^start_time, ^end_time);
+
+        // Sleep until we've hit the target frame time.
+        while ((elapsed_time.tv_sec == 0) && (elapsed_time.tv_nsec < target_frame_time.tv_nsec)) {
+            // Try to sleep for the amount of time remaining.
+            var sleep_time : timespec = ---;
+            time_diff(^sleep_time, ^elapsed_time, ^target_frame_time); // sleep_time = target_frame_time - elapsed_time
+            clock_nanosleep(CLOCK_MONOTONIC, 0, ^sleep_time, null);
+
+            // Check how much time has elapsed since the start of the frame once more.
+            // This sleep loop will continue until we've hit our frame time.
+            if (clock_gettime(CLOCK_MONOTONIC, ^end_time) < 0) {
+                return 1;
+            }
+
+            time_diff(^elapsed_time, ^start_time, ^end_time);
+        }
     }
 
     return 0;
