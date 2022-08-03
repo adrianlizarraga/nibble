@@ -1,14 +1,26 @@
 const ROWS : u32 = 10;
 const COLS : u32 = 15;
 
-proc main() => int {
-    for (var r : u32 = 0; r < ROWS; r += 1) {
-        for (var c : u32 = 0; c < COLS; c += 1) {
-            #writeout(".", 1);
-        }
+enum Entity : char {
+    EMPTY = '.',
+    NEWLINE = '\n',
+    PLAYER_BODY = '#',
+    PLAYER_HEAD = '@',
+}
 
-        #writeout("\n", 1);
+proc main() => int {
+    var screen_buf : [ROWS][COLS + 1]Entity = ---;
+    #static_assert(#sizeof(#typeof(screen_buf)) == ROWS * (COLS + 1));
+    #static_assert(#sizeof(#typeof(screen_buf)) == 160);
+
+    // Initialize
+    for (var r : u32 = 0; r < ROWS; r += 1) {
+        for (var c : u32 = 0; c < COLS + 1; c += 1) {
+            screen_buf[r][c] = c < COLS ? Entity::EMPTY : Entity::NEWLINE;
+        }
     }
+
+    #writeout(screen_buf :> ^[COLS + 1]Entity :> ^char, #sizeof(#typeof(screen_buf)));
 
     return 0;
 }
