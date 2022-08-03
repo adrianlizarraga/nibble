@@ -61,14 +61,14 @@ proc player_right() {
     position.x += 1;
 }
 
-proc print_int(val : s32) {
-    var t_buf : [32]char;
+// Print integer into the provided t_buf and return a slice into t_buf.
+proc print_int(val : s32, t_buf : ^[32]char) => []char {
     var j : s32 = 0;
 
     do {
         var digit := val % 10;
 
-        t_buf[j] = '0' + digit;
+        (*t_buf)[j] = '0' + digit;
 
         val = val / 10;
         j = j + 1;
@@ -77,12 +77,14 @@ proc print_int(val : s32) {
     // Reverse in-place.
     for (var i : s32 = 0; i < (j / 2); i += 1) {
         var k := j - i - 1;
-        var tmp := t_buf[k];
-        t_buf[k] = t_buf[i];
-        t_buf[i] = tmp;
+        var tmp := (*t_buf)[k];
+        (*t_buf)[k] = (*t_buf)[i];
+        (*t_buf)[i] = tmp;
     }
     
-    #writeout(t_buf, j);
+    var slice : []char = {data = *t_buf, length = j};
+    //#writeout(t_buf, j);
+    return slice;
 }
 
 proc display(screen_buf : ^[BUF_LEN]Entity) {
@@ -111,6 +113,13 @@ proc display(screen_buf : ^[BUF_LEN]Entity) {
 proc main() => int {
     var screen_buf : [BUF_LEN]Entity = ---;
     var quit : bool;
+
+    // Convert the ROWS and COLS values into strings
+    var rows_tmp : [32]char = ---;
+    var rows_str : []char = print_int(ROWS, ^rows_tmp);
+
+    var cols_tmp : [32]char = ---;
+    var cols_str : []char = print_int(COLS, ^cols_tmp);
 
     #writeout("\n", 1);
 
@@ -149,13 +158,13 @@ proc main() => int {
         // Cursor up: <ESC>[{COUNT}A
         #writeout("\x1B", 1);
         #writeout("[", 1);
-        print_int(ROWS);
+        #writeout(rows_str.data, rows_str.length);
         #writeout("A", 1);
 
         // Cursor backwards: <ESC>[{COUNT}D
         #writeout("\x1B", 1);
         #writeout("[", 1);
-        print_int(COLS);
+        #writeout(cols_str.data, cols_str.length);
         #writeout("D", 1);
 
         // Sleep for 16.6 ms
