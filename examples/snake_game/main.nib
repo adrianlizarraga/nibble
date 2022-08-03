@@ -9,18 +9,18 @@ enum Entity : char {
 }
 
 proc main() => int {
-    var screen_buf : [ROWS][COLS + 1]Entity = ---;
-    #static_assert(#sizeof(#typeof(screen_buf)) == ROWS * (COLS + 1));
-    #static_assert(#sizeof(#typeof(screen_buf)) == 160);
+    var screen_buf : [ROWS * (COLS + 1)]Entity = ---;
 
     // Initialize
     for (var r : u32 = 0; r < ROWS; r += 1) {
         for (var c : u32 = 0; c < COLS + 1; c += 1) {
-            screen_buf[r][c] = c < COLS ? Entity::EMPTY : Entity::NEWLINE;
+            var i := r * (COLS + 1) + c;
+
+            screen_buf[i] = c < COLS ? Entity::EMPTY : Entity::NEWLINE;
         }
     }
 
-    #writeout(screen_buf :> ^[COLS + 1]Entity :> ^char, #sizeof(#typeof(screen_buf)));
+    #writeout(screen_buf, #sizeof(#typeof(screen_buf)));
 
     return 0;
 }

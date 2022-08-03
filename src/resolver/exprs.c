@@ -83,7 +83,7 @@ static CastResult can_convert_eop(ExprOperand* operand, Type* dst_type, bool for
         Type* ptr_base = dst_type->as_ptr.base;
         Type* arr_base = src_type->as_array.base;
 
-        convertible = (ptr_base == builtin_types[BUILTIN_TYPE_VOID].type) || (ptr_base == arr_base);
+        convertible = (ptr_base == builtin_types[BUILTIN_TYPE_VOID].type) || types_are_compatible(ptr_base, arr_base);
         bad_lvalue = !operand->is_lvalue && forbid_rvalue_decay;
     }
     // Can decay an array slice to a pointer.
@@ -91,7 +91,7 @@ static CastResult can_convert_eop(ExprOperand* operand, Type* dst_type, bool for
         Type* ptr_base = dst_type->as_ptr.base;
         TypeAggregateField* data_field = get_type_struct_field(src_type, builtin_struct_fields[BUILTIN_STRUCT_FIELD_DATA]);
 
-        convertible = (ptr_base == builtin_types[BUILTIN_TYPE_VOID].type) || (data_field->type == dst_type);
+        convertible = (ptr_base == builtin_types[BUILTIN_TYPE_VOID].type) || types_are_compatible(data_field->type, dst_type);
         bad_lvalue = !operand->is_lvalue && forbid_rvalue_decay;
     }
     // Can convert an array into an array slice.
