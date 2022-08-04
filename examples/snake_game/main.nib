@@ -49,28 +49,36 @@ proc clock_gettime(clockid: ssize, tp : ^timespec) => s32 {
     return #syscall2(SYS_clock_gettime, clockid, (tp :> ssize));
 }
 
-// Print integer into the provided t_buf and return a slice into t_buf.
-proc print_int(val : s32, t_buf : ^[32]char) => []char {
+// Print integer into the provided dst buffer and return the number of digits.
+proc print_int(val : s32, dst : []char) => s32 {
+    if (dst.length == 0) {
+        return 0;
+    }
+
     var j : s32 = 0;
 
     do {
         var digit := val % 10;
 
-        (*t_buf)[j] = '0' + digit;
+        dst[j] = '0' + digit;
 
         val = val / 10;
         j = j + 1;
-    } while (val);
+    } while (val && j < dst.length);
+
+    if (j >= dst.length && val != 0) {
+        return -1;
+    }
 
     // Reverse in-place.
     for (var i : s32 = 0; i < (j / 2); i += 1) {
         var k := j - i - 1;
-        var tmp := (*t_buf)[k];
-        (*t_buf)[k] = (*t_buf)[i];
-        (*t_buf)[i] = tmp;
+        var tmp := dst[k];
+        dst[k] = dst[i];
+        dst[i] = tmp;
     }
     
-    return {data = *t_buf, length = j : []char};
+    return j;
 }
 
 // Euclidean modulo. 'b' must be positive. 'a' can be positive or negative.
@@ -134,6 +142,58 @@ proc display(screen_buf : ^[BUF_LEN]Entity, head_pos : ^Position) {
     #writeout(*screen_buf, BUF_LEN * #sizeof(Entity));
 }
 
+proc get_term_reset_cmd(dst: []char, rows : u32, cols : u32) => s32 {
+    // Write command to move cursor up 'ROWS' number of units and then left 'COLS' number of units.
+    // Cursor up: "<ESC>[{ROWS}A"
+    // Cursor backwards: "<ESC>[{COLS}D"
+
+    var len : s32;
+
+    if (dst.length <= 8) {
+        return -1;
+    }
+
+    dst.data[0] = '\x1B'; // This is the ESC character.
+    dst.data[1] = '[';
+    len += 2;
+
+    var rows_dst : []char = {data = dst.data + len, length = dst.length - len};
+    var rows_len := print_int(rows, rows_dst);
+
+    if (rows_len < 0) {
+        return -1;
+    }
+
+    len += rows_len;
+
+    if (len >= dst.length - 3) {
+        return -1;
+    }
+
+    dst.data[len] = 'A';
+    dst.data[len + 1] = '\x1B';
+    dst.data[len + 2] = '[';
+    len += 3;
+
+    var cols_dst : []char = {data = dst.data + len, length = dst.length - len};
+    var cols_len := print_int(cols, cols_dst);
+
+    if (cols_len < 0) {
+        return -1;
+    }
+
+    len += cols_len;
+
+    if (len >= dst.length) {
+        return -1;
+    }
+
+    dst.data[len] = 'D';
+    len += 1;
+
+    return len;
+}
+
 // Must disable terminal canonical mode (dont' wait for <ENTER> on input read) and echo:
 // stty -icanon -echo
 proc main() => int {
@@ -143,12 +203,15 @@ proc main() => int {
     var head_pos : Position = {COLS/2, ROWS/2};
     var head_dir : Dir = Dir::UP;
 
-    // Convert the ROWS and COLS values into strings
-    var rows_tmp : [32]char = ---;
-    var rows_str : []char = print_int(ROWS, ^rows_tmp);
+    // Command to reset cursor position using terminal control escape sequences.
+    // Cursor up: <ESC>[{ROWS}A
+    // Cursor backwards: <ESC>[{COLS}D
+    var term_reset_cmd : [6*2 + 32*2]char = ---;
+    var term_reset_cmd_len : s32 = get_term_reset_cmd(term_reset_cmd, ROWS, COLS);
 
-    var cols_tmp : [32]char = ---;
-    var cols_str : []char = print_int(COLS, ^cols_tmp);
+    if (term_reset_cmd_len < 0) {
+        return 1;
+    }
 
     #writeout("\n\n", 2);
 
@@ -205,17 +268,7 @@ proc main() => int {
         }
 
         // Reset cursor using terminal control escape sequences.
-        // Cursor up: <ESC>[{COUNT}A
-        #writeout("\x1B", 1);
-        #writeout("[", 1);
-        #writeout(rows_str.data, rows_str.length);
-        #writeout("A", 1);
-
-        // Cursor backwards: <ESC>[{COUNT}D
-        #writeout("\x1B", 1);
-        #writeout("[", 1);
-        #writeout(cols_str.data, cols_str.length);
-        #writeout("D", 1);
+        #writeout(term_reset_cmd, term_reset_cmd_len);
 
         // Get frame end time
         if (clock_gettime(CLOCK_MONOTONIC, ^end_time) < 0) {
