@@ -1,0 +1,47 @@
+
+const SYS_read  : ssize = 0;
+const SYS_fcntl : ssize = 72;
+const SYS_clock_gettime : ssize = 228;
+const SYS_clock_nanosleep : ssize = 230;
+
+const STDIN : s32 = 0;
+
+const F_SETFL : s32 = 4;
+const F_GETFL : s32 = 3;
+const O_NONBLOCK : s32 = 2048;
+const EAGAIN : ssize = 11;
+const CLOCK_MONOTONIC : ssize = 1;
+
+proc read(fd : s32, buf : ^void, count : usize) => ssize {
+    return #syscall3(SYS_read, fd, (buf :> ssize), (count :> ssize));
+}
+
+proc fcntl(fd : s32, cmd : s32, arg: s32) => s32 {
+    return #syscall3(SYS_fcntl, fd, cmd, arg);
+}
+
+struct timespec {
+    tv_sec : s64;
+    tv_nsec : s64;
+}
+
+proc time_diff(result: ^timespec, start : ^timespec, end : ^timespec) {
+    // NOTE: Requires end >= start!
+    if (end.tv_nsec < start.tv_nsec) {
+        result.tv_nsec = (1000000000 + end.tv_nsec) - start.tv_nsec; // Borrow a second (1e9 ns) from end.tv_sec
+        result.tv_sec = (end.tv_sec - 1) - start.tv_sec;
+    }
+    else {
+        result.tv_nsec = end.tv_nsec - start.tv_nsec;
+        result.tv_sec = end.tv_sec - start.tv_sec;
+    }
+}
+
+proc clock_nanosleep(clockid: ssize, flags : s32, request : ^timespec, remain: ^timespec) => s32 {
+    return #syscall4(SYS_clock_nanosleep, clockid, flags, (request :> ssize), (remain :> ssize));
+}
+
+proc clock_gettime(clockid: ssize, tp : ^timespec) => s32 {
+    return #syscall2(SYS_clock_gettime, clockid, (tp :> ssize));
+}
+

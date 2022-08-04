@@ -1,0 +1,51 @@
+
+// MMIX values by Donald Knuth.
+const RAND_A : u64 = 6364136223846793005;
+const RAND_B : u64 = 1442695040888963407;
+var _rand_state : u64;
+
+// This is a really bad random func.
+// See https://en.wikipedia.org/wiki/Linear_congruential_generator
+proc rand() => u64 {
+    _rand_state = _rand_state * RAND_A + RAND_B;
+    return _rand_state;
+}
+
+// Print integer into the provided dst buffer and return the number of digits.
+proc print_int(val : s32, dst : []char) => s32 {
+    if (dst.length == 0) {
+        return 0;
+    }
+
+    var j : s32 = 0;
+
+    do {
+        var digit := val % 10;
+
+        dst[j] = '0' + digit;
+
+        val = val / 10;
+        j = j + 1;
+    } while (val && j < dst.length);
+
+    if (j >= dst.length && val != 0) {
+        return -1;
+    }
+
+    // Reverse in-place.
+    for (var i : s32 = 0; i < (j / 2); i += 1) {
+        var k := j - i - 1;
+        var tmp := dst[k];
+        dst[k] = dst[i];
+        dst[i] = tmp;
+    }
+    
+    return j;
+}
+
+// Euclidean modulo. 'b' must be positive. 'a' can be positive or negative.
+proc emod(a : s32, b : s32) => s32 {
+    var m := a % b;
+    return (a < 0) ? (m + b) % b : m;
+}
+

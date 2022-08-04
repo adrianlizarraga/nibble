@@ -1,103 +1,10 @@
+#include "./syscalls.nib";
+#include "./utils.nib";
+
 const ROWS : u32 = 20;
 const COLS : u32 = 30;
 const BUF_LEN : u32 = ROWS * (COLS + 1);
-
-const SYS_read  : ssize = 0;
-const SYS_fcntl : ssize = 72;
-const SYS_clock_gettime : ssize = 228;
-const SYS_clock_nanosleep : ssize = 230;
-
-const STDIN : s32 = 0;
-
-const F_SETFL : s32 = 4;
-const F_GETFL : s32 = 3;
-const O_NONBLOCK : s32 = 2048;
-const EAGAIN : ssize = 11;
-const CLOCK_MONOTONIC : ssize = 1;
-
-proc read(fd : s32, buf : ^void, count : usize) => ssize {
-    return #syscall3(SYS_read, fd, (buf :> ssize), (count :> ssize));
-}
-
-proc fcntl(fd : s32, cmd : s32, arg: s32) => s32 {
-    return #syscall3(SYS_fcntl, fd, cmd, arg);
-}
-
-struct timespec {
-    tv_sec : s64;
-    tv_nsec : s64;
-}
-
-proc time_diff(result: ^timespec, start : ^timespec, end : ^timespec) {
-    // NOTE: Requires end >= start!
-
-    if (end.tv_nsec < start.tv_nsec) {
-        result.tv_nsec = (1000000000 + end.tv_nsec) - start.tv_nsec; // Borrow a second (1e9 ns) from end.tv_sec
-        result.tv_sec = (end.tv_sec - 1) - start.tv_sec;
-    }
-    else {
-        result.tv_nsec = end.tv_nsec - start.tv_nsec;
-        result.tv_sec = end.tv_sec - start.tv_sec;
-    }
-}
-
-proc clock_nanosleep(clockid: ssize, flags : s32, request : ^timespec, remain: ^timespec) => s32 {
-    return #syscall4(SYS_clock_nanosleep, clockid, flags, (request :> ssize), (remain :> ssize));
-}
-
-proc clock_gettime(clockid: ssize, tp : ^timespec) => s32 {
-    return #syscall2(SYS_clock_gettime, clockid, (tp :> ssize));
-}
-
-// MMIX values by Donald Knuth.
-const RAND_A : u64 = 6364136223846793005;
-const RAND_B : u64 = 1442695040888963407;
-var _rand_state : u64;
-
-// This is a really bad random func.
-// See https://en.wikipedia.org/wiki/Linear_congruential_generator
-proc rand() => u64 {
-    _rand_state = _rand_state * RAND_A + RAND_B;
-    return _rand_state;
-}
-
-// Print integer into the provided dst buffer and return the number of digits.
-proc print_int(val : s32, dst : []char) => s32 {
-    if (dst.length == 0) {
-        return 0;
-    }
-
-    var j : s32 = 0;
-
-    do {
-        var digit := val % 10;
-
-        dst[j] = '0' + digit;
-
-        val = val / 10;
-        j = j + 1;
-    } while (val && j < dst.length);
-
-    if (j >= dst.length && val != 0) {
-        return -1;
-    }
-
-    // Reverse in-place.
-    for (var i : s32 = 0; i < (j / 2); i += 1) {
-        var k := j - i - 1;
-        var tmp := dst[k];
-        dst[k] = dst[i];
-        dst[i] = tmp;
-    }
-    
-    return j;
-}
-
-// Euclidean modulo. 'b' must be positive. 'a' can be positive or negative.
-proc emod(a : s32, b : s32) => s32 {
-    var m := a % b;
-    return (a < 0) ? (m + b) % b : m;
-}
+const MAX_SNAKE_LEN : u32 = COLS * ROWS;
 
 enum Entity : char {
     EMPTY = '.',
@@ -114,6 +21,17 @@ enum Dir : u8 {
     RIGHT
 }
 
+struct Position {
+    x: u32;
+    y: u32;
+}
+
+struct Snake {
+    parts : [MAX_SNAKE_LEN] Position; // Circular buffer of body parts.
+    begin : u32; // index to location in `parts` where the snake's tail begins.
+    size : u32;  // The number of snake body parts.
+}
+
 var opposite_dir : [_]Dir = {
     [Dir::UP] = Dir::DOWN,
     [Dir::DOWN] = Dir::UP,
@@ -125,27 +43,15 @@ proc is_dir_valid(old_dir : Dir, new_dir : Dir) => bool {
     return new_dir != opposite_dir[old_dir];    
 }
 
-struct Position {
-    x: u32;
-    y: u32;
-}
-
 proc pos_to_screen_idx(pos : Position) => u32 {
     return pos.y * (COLS + 1) + pos.x;
-}
-
-const MAX_SNAKE_LEN : u32 = COLS * ROWS;
-
-struct Snake {
-    parts : [MAX_SNAKE_LEN] Position; // Circular buffer of body parts.
-    begin : u32; // index to location in `parts` where the snake's tail begins.
-    size : u32;  // The number of snake body parts.
 }
 
 proc snake_get_head(snake : ^Snake) => Position {
     var head_idx := (snake.begin + snake.size - 1) % MAX_SNAKE_LEN;
     return snake.parts[head_idx];
 }
+
 proc snake_add_head(screen: ^[BUF_LEN]Entity, snake : ^Snake, pos : Position) {
     // Update the screen.
 
