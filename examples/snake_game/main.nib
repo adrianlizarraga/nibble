@@ -49,6 +49,18 @@ proc clock_gettime(clockid: ssize, tp : ^timespec) => s32 {
     return #syscall2(SYS_clock_gettime, clockid, (tp :> ssize));
 }
 
+// MMIX values by Donald Knuth.
+const RAND_A : u64 = 6364136223846793005;
+const RAND_B : u64 = 1442695040888963407;
+var _rand_state : u64;
+
+// This is a really bad random func.
+// See https://en.wikipedia.org/wiki/Linear_congruential_generator
+proc rand() => u64 {
+    _rand_state = _rand_state * RAND_A + RAND_B;
+    return _rand_state;
+}
+
 // Print integer into the provided dst buffer and return the number of digits.
 proc print_int(val : s32, dst : []char) => s32 {
     if (dst.length == 0) {
@@ -90,8 +102,9 @@ proc emod(a : s32, b : s32) => s32 {
 enum Entity : char {
     EMPTY = '.',
     NEWLINE = '\n',
-    PLAYER_BODY = '#',
-    PLAYER_HEAD = '@',
+    SNAKE_BODY = '#',
+    SNAKE_HEAD = '@',
+    FOOD = '*'
 }
 
 enum Dir : u8 {
@@ -101,12 +114,88 @@ enum Dir : u8 {
     RIGHT
 }
 
+var opposite_dir : [_]Dir = {
+    [Dir::UP] = Dir::DOWN,
+    [Dir::DOWN] = Dir::UP,
+    [Dir::LEFT] = Dir::RIGHT,
+    [Dir::RIGHT] = Dir::LEFT
+};
+
+proc is_dir_valid(old_dir : Dir, new_dir : Dir) => bool {
+    return new_dir != opposite_dir[old_dir];    
+}
+
 struct Position {
     x: u32;
     y: u32;
 }
 
-proc snake_move(pos : ^Position, dir : Dir) {
+proc pos_to_screen_idx(pos : Position) => u32 {
+    return pos.y * (COLS + 1) + pos.x;
+}
+
+const MAX_SNAKE_LEN : u32 = COLS * ROWS;
+
+struct Snake {
+    parts : [MAX_SNAKE_LEN] Position; // Circular buffer of body parts.
+    begin : u32; // index to location in `parts` where the snake's tail begins.
+    size : u32;  // The number of snake body parts.
+}
+
+proc snake_get_head(snake : ^Snake) => Position {
+    var head_idx := (snake.begin + snake.size - 1) % MAX_SNAKE_LEN;
+    return snake.parts[head_idx];
+}
+proc snake_add_head(screen: ^[BUF_LEN]Entity, snake : ^Snake, pos : Position) {
+    // Update the screen.
+
+    // Make old head a body.
+    if (snake.size) {
+        var old_head_idx := (snake.begin + snake.size - 1) % MAX_SNAKE_LEN;
+        var old_head : Position = snake.parts[old_head_idx];
+        var screen_old_head_idx := pos_to_screen_idx(old_head);
+
+        (*screen)[screen_old_head_idx] = Entity::SNAKE_BODY;
+    }
+
+    // Set new head
+    var screen_new_head_idx := pos_to_screen_idx(pos);
+    (*screen)[screen_new_head_idx] = Entity::SNAKE_HEAD;
+
+    // Update snake.
+    var new_head_idx := (snake.begin + snake.size) % MAX_SNAKE_LEN;
+    snake.parts[new_head_idx] = pos;
+    snake.size += 1;
+}
+
+proc snake_del_tail(screen: ^[BUF_LEN]Entity, snake : ^Snake) {
+    // Update the screen.
+    var tail_pos := snake.parts[snake.begin];
+    var screen_tail_idx := pos_to_screen_idx(tail_pos);
+    (*screen)[screen_tail_idx] = Entity::EMPTY;
+
+    // Update snake.
+    snake.begin = (snake.begin + 1) % MAX_SNAKE_LEN;
+    snake.size -= 1;
+}
+
+proc spawn_food(screen: ^[BUF_LEN]Entity) {
+    var entity_idx : u32;
+
+    // Find an empty tile.
+    do {
+        var pos : Position = ---;
+
+        pos.x = (rand() << 32) % COLS;
+        pos.y = (rand() << 32) % ROWS;
+        entity_idx = pos_to_screen_idx(pos);
+    } while((*screen)[entity_idx] != Entity::EMPTY);
+
+    // Place food.
+    (*screen)[entity_idx] = Entity::FOOD;
+}
+
+proc step_pos(pos : Position, dir : Dir) => Position {
     if (dir == Dir::UP) {
         pos.y = emod(pos.y - 1, ROWS);
     }
@@ -119,27 +208,13 @@ proc snake_move(pos : ^Position, dir : Dir) {
     else if (dir == Dir::RIGHT) {
         pos.x = emod(pos.x + 1, COLS);
     }
+
+    return pos;
 }
 
-proc display(screen_buf : ^[BUF_LEN]Entity, head_pos : ^Position) {
-    for (var r : u32 = 0; r < ROWS; r += 1) {
-        var row_start := r * (COLS + 1);
-
-        for (var c : u32 = 0; c < COLS; c += 1) {
-            var i := row_start + c;
-
-            if ((r == head_pos.y) && (c == head_pos.x)) {
-                (*screen_buf)[i] = Entity::PLAYER_HEAD;
-            }
-            else {
-                (*screen_buf)[i] = Entity::EMPTY;
-            }
-        }
-
-        (*screen_buf)[row_start + COLS] = Entity::NEWLINE;
-    }
-
-    #writeout(*screen_buf, BUF_LEN * #sizeof(Entity));
+proc display(screen : ^[BUF_LEN]Entity) {
+    #static_assert(BUF_LEN == ROWS * (COLS + 1));
+    #writeout(*screen, BUF_LEN * #sizeof(Entity));
 }
 
 proc get_term_reset_cmd(dst: []char, rows : u32, cols : u32) => s32 {
@@ -197,17 +272,35 @@ proc get_term_reset_cmd(dst: []char, rows : u32, cols : u32) => s32 {
 // Must disable terminal canonical mode (dont' wait for <ENTER> on input read) and echo:
 // stty -icanon -echo
 proc main() => int {
-    var screen_buf : [BUF_LEN]Entity = ---;
-    var quit : bool;
+    const snake_size_goal : u32 = COLS - 2;
 
-    var head_pos : Position = {COLS/2, ROWS/2};
-    var head_dir : Dir = Dir::UP;
+    // Initialize screen buffer to all empty tiles.
+    var screen : [BUF_LEN]Entity = ---;
+    #memset(screen, Entity::EMPTY, BUF_LEN * #sizeof(Entity));
+
+    // Intialize last columns to '\n' characters.
+    for (var r : u32 = 0; r < ROWS; r += 1) {
+        var idx := pos_to_screen_idx({x = COLS, y = r : Position});
+
+        screen[idx] = Entity::NEWLINE;
+    }
+
+    // Intialize a snake that travels downwards with two body parts.
+    var snake : Snake;
+    var snake_dir : Dir = Dir::DOWN;
+    var new_snake_dir : Dir = snake_dir;
+
+    snake_add_head(^screen, ^snake, {x = COLS/2, y = ROWS/2 - 1 : Position});
+    snake_add_head(^screen, ^snake, {x = COLS/2, y = ROWS/2 : Position});
+
+    // Spawn random food.
+    spawn_food(^screen);
 
     // Command to reset cursor position using terminal control escape sequences.
     // Cursor up: <ESC>[{ROWS}A
     // Cursor backwards: <ESC>[{COLS}D
     var term_reset_cmd : [6*2 + 32*2]char = ---;
-    var term_reset_cmd_len : s32 = get_term_reset_cmd(term_reset_cmd, ROWS, COLS);
+    var term_reset_cmd_len : s32 = get_term_reset_cmd(term_reset_cmd, ROWS + 2, COLS); // Accounts for score text
 
     if (term_reset_cmd_len < 0) {
         return 1;
@@ -224,14 +317,28 @@ proc main() => int {
     var frame_count : u32;
     const frames_per_unit_move : u32 = 5;
 
-    while (!quit) {
+    var score_txt : [34]char = ---;
+
+    while (true) {
         // Get frame start time.
         if (clock_gettime(CLOCK_MONOTONIC, ^start_time) < 0) {
             return 1;
         }
 
+        // Display score.
+        // TODO: Show target score (Score: 2/10)
+        var score_len := print_int(snake.size - 2, score_txt);
+        score_txt[score_len] = '\n';
+        score_txt[score_len + 1] = '\n';
+        #writeout(score_txt, score_len + 2);
+
         // Display the level.
-        display(^screen_buf, ^head_pos);
+        display(^screen);
+
+        if (snake.size == snake_size_goal) {
+            #writeout("You win!\n", 9);
+            return 0;
+        }
 
         // Read user command from stdin.
         var cmd : char;
@@ -239,19 +346,23 @@ proc main() => int {
 
         if (num_read == 1) {
             if (cmd == 'q') {
-                quit = true;
+                break; // Quit!
             }
             else if (cmd == 'w') {
-                head_dir = Dir::UP;
+                new_snake_dir = Dir::UP;
             }
             else if (cmd == 'a') {
-                head_dir = Dir::LEFT;
+                new_snake_dir = Dir::LEFT;
             }
             else if (cmd == 's') {
-                head_dir = Dir::DOWN;
+                new_snake_dir = Dir::DOWN;
             }
             else if (cmd == 'd') {
-                head_dir = Dir::RIGHT;
+                new_snake_dir = Dir::RIGHT;
+            }
+            else if (cmd == 'c') { // Cheat (add body part)
+                var new_pos := step_pos(snake_get_head(^snake), snake_dir);
+                snake_add_head(^screen, ^snake, new_pos);
             }
         }
         else if (num_read != -EAGAIN) {
@@ -259,8 +370,34 @@ proc main() => int {
         }
 
         // Move the snake one unit every 'few' frames.
+        // Tying animation to frame rate is not the best idea, but this is just an example game.
         if (frame_count == frames_per_unit_move - 1) {
-            snake_move(^head_pos, head_dir);
+            // Only commit to the new snake direction if it is valid (i.e., not moving directly back into itself)
+            if (is_dir_valid(snake_dir, new_snake_dir)) {
+                snake_dir = new_snake_dir;
+            }
+
+            var new_pos := step_pos(snake_get_head(^snake), snake_dir);
+            var new_pos_idx := pos_to_screen_idx(new_pos);
+            var entity_at_new_pos := screen[new_pos_idx];
+
+            // Exit game if snake turns into itself.
+            if (entity_at_new_pos == Entity::SNAKE_BODY || entity_at_new_pos == Entity::SNAKE_HEAD) {
+                #writeout("\nGame Over!\n", 12);
+                return 0;
+            }
+
+            if (entity_at_new_pos == Entity::FOOD) {
+                // Grow snake at head and spawn new food.
+                snake_add_head(^screen, ^snake, new_pos);
+                spawn_food(^screen);
+            }
+            else {
+                // Just move snake one unit.
+                snake_add_head(^screen, ^snake, new_pos);
+                snake_del_tail(^screen, ^snake);
+            }
+
             frame_count = 0;
         }
         else {
