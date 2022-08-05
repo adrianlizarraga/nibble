@@ -176,7 +176,9 @@ proc get_term_reset_cmd(dst: []char, rows : u32, cols : u32) => s32 {
 }
 
 proc main() => int {
-    const snake_size_goal : u32 = ROWS - 2;
+    const snake_size_goal : u32 = ROWS - 4; // Note that score = size - 2
+    var goal_txt : [36]char = {[0] = ' ', [1] = '/', [2] = ' '}; // 3 for ` / `, 32 for digits, and 1 for \n.
+    var goal_len := print_int(snake_size_goal - 2, {data = ^goal_txt[3], length = #length(goal_txt) - 4 : []char}) + 3;
 
     // Exit if not running within a terminal.
     if (!isatty(STDIN).isatty) {
@@ -234,8 +236,6 @@ proc main() => int {
         return 1;
     }
 
-    #writeout("\n\n", 2);
-
     var start_time : timespec;
     var end_time : timespec;
     var target_frame_time : timespec = {0, 33300000}; // 33.3 ms
@@ -251,11 +251,11 @@ proc main() => int {
         }
 
         // Display score.
-        // TODO: Show target score (Score: 2/10)
         var score_len := print_int(snake.size - 2, score_txt);
-        score_txt[score_len] = '\n';
-        score_txt[score_len + 1] = '\n';
-        #writeout(score_txt, score_len + 2);
+        #writeout("\nScore: ", 8);
+        #writeout(score_txt, score_len);
+        goal_txt[goal_len] = '\n'; // Guaranteed to have room in the static array for newline.
+        #writeout(goal_txt, goal_len + 1);
 
         // Display the level.
         display(^screen);

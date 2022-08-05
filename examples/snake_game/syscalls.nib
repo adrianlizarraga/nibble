@@ -6,13 +6,16 @@ const SYS_fcntl : ssize = 72;
 const SYS_clock_gettime : ssize = 228;
 const SYS_clock_nanosleep : ssize = 230;
 
+// Builtin file descriptors.
 const STDIN : s32 = 0;
+const STDOUT : s32 = 1;
 
 const F_SETFL : s32 = 4;
 const F_GETFL : s32 = 3;
 const O_NONBLOCK : s32 = 2048;
-const CLOCK_MONOTONIC : ssize = 1;
+const CLOCK_MONOTONIC : s32 = 1;
 
+// Error values for 'errno'.
 const EAGAIN : s32 = 11;
 const EINVAL : s32 = 22;
 
