@@ -175,10 +175,32 @@ proc get_term_reset_cmd(dst: []char, rows : u32, cols : u32) => s32 {
     return len;
 }
 
-// Must disable terminal canonical mode (dont' wait for <ENTER> on input read) and echo:
-// stty -icanon -echo
 proc main() => int {
-    const snake_size_goal : u32 = COLS - 2;
+    const snake_size_goal : u32 = ROWS - 2;
+
+    // Exit if not running within a terminal.
+    if (!isatty(STDIN).isatty) {
+        var err_msg : []char = "This game can only be played in a terminal\n";
+        #writeout(err_msg, err_msg.length - 1);
+        return 1;
+    }
+
+    // Must disable terminal canonical mode (dont' wait for <ENTER> on input read) and echo:
+    // Equivalent to running `stty -icanon -echo` in the terminal.
+    var saved_term_attr : termios;
+    var term_attr : termios;
+
+    tcgetattr(STDIN, ^saved_term_attr); // Save terminal attributes to restore at program exit.
+    tcgetattr(STDIN, ^term_attr);
+
+    term_attr.c_lflag &= ~(ICANON | ECHO); // Turn off canonical mode and echo.
+    term_attr.c_cc[VMIN] = 1; // read() returns when min(VMIN, requested) chars are available.
+    term_attr.c_cc[VTIME] = 0; // Do not use an expiration timer for read().
+
+    tcsetattr(STDIN, TCSAFLUSH, ^term_attr);
+
+    // Make STDIN non-blocking.
+    fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK);
 
     // Initialize screen buffer to all empty tiles.
     var screen : [BUF_LEN]Entity = ---;
@@ -214,9 +236,6 @@ proc main() => int {
 
     #writeout("\n\n", 2);
 
-    // Make STDIN non-blocking.
-    fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK);
-
     var start_time : timespec;
     var end_time : timespec;
     var target_frame_time : timespec = {0, 33300000}; // 33.3 ms
@@ -243,7 +262,7 @@ proc main() => int {
 
         if (snake.size == snake_size_goal) {
             #writeout("You win!\n", 9);
-            return 0;
+            break;
         }
 
         // Read user command from stdin.
@@ -290,7 +309,7 @@ proc main() => int {
             // Exit game if snake turns into itself.
             if (entity_at_new_pos == Entity::SNAKE_BODY || entity_at_new_pos == Entity::SNAKE_HEAD) {
                 #writeout("\nGame Over!\n", 12);
-                return 0;
+                break;
             }
 
             if (entity_at_new_pos == Entity::FOOD) {
@@ -337,6 +356,10 @@ proc main() => int {
             time_diff(^elapsed_time, ^start_time, ^end_time);
         }
     }
+
+    // Restore initial terminal attributes.
+    // TODO: Handle even on exit() call. Maybe use defer
+    tcsetattr(STDIN, TCSANOW, ^saved_term_attr);
 
     return 0;
 }
