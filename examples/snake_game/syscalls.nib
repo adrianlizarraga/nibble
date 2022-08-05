@@ -1,5 +1,6 @@
 
 const SYS_read  : ssize = 0;
+const SYS_ioctl : ssize = 16;
 const SYS_fcntl : ssize = 72;
 const SYS_clock_gettime : ssize = 228;
 const SYS_clock_nanosleep : ssize = 230;
@@ -18,6 +19,10 @@ proc read(fd : s32, buf : ^void, count : usize) => ssize {
 
 proc fcntl(fd : s32, cmd : s32, arg: s32) => s32 {
     return #syscall3(SYS_fcntl, fd, cmd, arg);
+}
+
+proc ioctl(fd : s32, request : u64, argp : ^void) => s32 {
+    return #syscall3(SYS_ioctl, fd, request, argp :> ssize);
 }
 
 struct timespec {
