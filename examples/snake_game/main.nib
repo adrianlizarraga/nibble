@@ -1,0 +1,365 @@
+#include "./syscalls.nib";
+#include "./utils.nib";
+
+const ROWS : u32 = 20;
+const COLS : u32 = 30;
+const BUF_LEN : u32 = ROWS * (COLS + 1);
+const MAX_SNAKE_LEN : u32 = COLS * ROWS;
+
+enum Entity : char {
+    EMPTY = '.',
+    NEWLINE = '\n',
+    SNAKE_BODY = '#',
+    SNAKE_HEAD = '@',
+    FOOD = '*'
+}
+
+enum Dir : u8 {
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT
+}
+
+struct Position {
+    x: u32;
+    y: u32;
+}
+
+struct Snake {
+    parts : [MAX_SNAKE_LEN] Position; // Circular buffer of body parts.
+    begin : u32; // index to location in `parts` where the snake's tail begins.
+    size : u32;  // The number of snake body parts.
+}
+
+var opposite_dir : [_]Dir = {
+    [Dir::UP] = Dir::DOWN,
+    [Dir::DOWN] = Dir::UP,
+    [Dir::LEFT] = Dir::RIGHT,
+    [Dir::RIGHT] = Dir::LEFT
+};
+
+proc is_dir_valid(old_dir : Dir, new_dir : Dir) => bool {
+    return new_dir != opposite_dir[old_dir];    
+}
+
+proc pos_to_screen_idx(pos : Position) => u32 {
+    return pos.y * (COLS + 1) + pos.x;
+}
+
+proc snake_get_head(snake : ^Snake) => Position {
+    var head_idx := (snake.begin + snake.size - 1) % MAX_SNAKE_LEN;
+    return snake.parts[head_idx];
+}
+
+proc snake_add_head(screen: ^[BUF_LEN]Entity, snake : ^Snake, pos : Position) {
+    // Update the screen.
+
+    // Make old head a body.
+    if (snake.size) {
+        var old_head_idx := (snake.begin + snake.size - 1) % MAX_SNAKE_LEN;
+        var old_head : Position = snake.parts[old_head_idx];
+        var screen_old_head_idx := pos_to_screen_idx(old_head);
+
+        (*screen)[screen_old_head_idx] = Entity::SNAKE_BODY;
+    }
+
+    // Set new head
+    var screen_new_head_idx := pos_to_screen_idx(pos);
+    (*screen)[screen_new_head_idx] = Entity::SNAKE_HEAD;
+
+    // Update snake.
+    var new_head_idx := (snake.begin + snake.size) % MAX_SNAKE_LEN;
+    snake.parts[new_head_idx] = pos;
+    snake.size += 1;
+}
+
+proc snake_del_tail(screen: ^[BUF_LEN]Entity, snake : ^Snake) {
+    // Update the screen.
+    var tail_pos := snake.parts[snake.begin];
+    var screen_tail_idx := pos_to_screen_idx(tail_pos);
+    (*screen)[screen_tail_idx] = Entity::EMPTY;
+
+    // Update snake.
+    snake.begin = (snake.begin + 1) % MAX_SNAKE_LEN;
+    snake.size -= 1;
+}
+
+proc spawn_food(screen: ^[BUF_LEN]Entity) {
+    var entity_idx : u32;
+
+    // Find an empty tile.
+    do {
+        var pos : Position = ---;
+
+        pos.x = (rand() << 32) % COLS;
+        pos.y = (rand() << 32) % ROWS;
+        entity_idx = pos_to_screen_idx(pos);
+    } while((*screen)[entity_idx] != Entity::EMPTY);
+
+    // Place food.
+    (*screen)[entity_idx] = Entity::FOOD;
+}
+
+proc step_pos(pos : Position, dir : Dir) => Position {
+    if (dir == Dir::UP) {
+        pos.y = emod(pos.y - 1, ROWS);
+    }
+    else if (dir == Dir::DOWN) {
+        pos.y = emod(pos.y + 1, ROWS);
+    }
+    else if (dir == Dir::LEFT) {
+        pos.x = emod(pos.x - 1, COLS);
+    }
+    else if (dir == Dir::RIGHT) {
+        pos.x = emod(pos.x + 1, COLS);
+    }
+
+    return pos;
+}
+
+proc display(screen : ^[BUF_LEN]Entity) {
+    #static_assert(BUF_LEN == ROWS * (COLS + 1));
+    #writeout(*screen, BUF_LEN * #sizeof(Entity));
+}
+
+proc get_term_reset_cmd(dst: []char, rows : u32, cols : u32) => s32 {
+    // Write command to move cursor up 'ROWS' number of units and then left 'COLS' number of units.
+    // Cursor up: "<ESC>[{ROWS}A"
+    // Cursor backwards: "<ESC>[{COLS}D"
+
+    var len : s32;
+
+    if (dst.length <= 8) {
+        return -1;
+    }
+
+    dst.data[0] = '\x1B'; // This is the ESC character.
+    dst.data[1] = '[';
+    len += 2;
+
+    var rows_dst : []char = {data = dst.data + len, length = dst.length - len};
+    var rows_len := print_int(rows, rows_dst);
+
+    if (rows_len < 0) {
+        return -1;
+    }
+
+    len += rows_len;
+
+    if (len >= dst.length - 3) {
+        return -1;
+    }
+
+    dst.data[len] = 'A';
+    dst.data[len + 1] = '\x1B';
+    dst.data[len + 2] = '[';
+    len += 3;
+
+    var cols_dst : []char = {data = dst.data + len, length = dst.length - len};
+    var cols_len := print_int(cols, cols_dst);
+
+    if (cols_len < 0) {
+        return -1;
+    }
+
+    len += cols_len;
+
+    if (len >= dst.length) {
+        return -1;
+    }
+
+    dst.data[len] = 'D';
+    len += 1;
+
+    return len;
+}
+
+proc main() => int {
+    const snake_size_goal : u32 = ROWS - 4; // Note that score = size - 2
+    var goal_txt : [36]char = {[0] = ' ', [1] = '/', [2] = ' '}; // 3 for ` / `, 32 for digits, and 1 for \n.
+    var goal_len := print_int(snake_size_goal - 2, {data = ^goal_txt[3], length = #length(goal_txt) - 4 : []char}) + 3;
+
+    // Exit if not running within a terminal.
+    if (!isatty(STDIN).isatty) {
+        var err_msg : []char = "This game can only be played in a terminal\n";
+        #writeout(err_msg, err_msg.length - 1);
+        return 1;
+    }
+
+    // Must disable terminal canonical mode (dont' wait for <ENTER> on input read) and echo:
+    // Equivalent to running `stty -icanon -echo` in the terminal.
+    var saved_term_attr : termios;
+    var term_attr : termios;
+
+    tcgetattr(STDIN, ^saved_term_attr); // Save terminal attributes to restore at program exit.
+    tcgetattr(STDIN, ^term_attr);
+
+    term_attr.c_lflag &= ~(ICANON | ECHO); // Turn off canonical mode and echo.
+    term_attr.c_cc[VMIN] = 1; // read() returns when min(VMIN, requested) chars are available.
+    term_attr.c_cc[VTIME] = 0; // Do not use an expiration timer for read().
+
+    tcsetattr(STDIN, TCSAFLUSH, ^term_attr);
+
+    // Make STDIN non-blocking.
+    fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK);
+
+    // Initialize screen buffer to all empty tiles.
+    var screen : [BUF_LEN]Entity = ---;
+    #memset(screen, Entity::EMPTY, BUF_LEN * #sizeof(Entity));
+
+    // Intialize last columns to '\n' characters.
+    for (var r : u32 = 0; r < ROWS; r += 1) {
+        var idx := pos_to_screen_idx({x = COLS, y = r : Position});
+
+        screen[idx] = Entity::NEWLINE;
+    }
+
+    // Intialize a snake that travels downwards with two body parts.
+    var snake : Snake;
+    var snake_dir : Dir = Dir::DOWN;
+    var new_snake_dir : Dir = snake_dir;
+
+    snake_add_head(^screen, ^snake, {x = COLS/2, y = ROWS/2 - 1 : Position});
+    snake_add_head(^screen, ^snake, {x = COLS/2, y = ROWS/2 : Position});
+
+    // Spawn random food.
+    spawn_food(^screen);
+
+    // Command to reset cursor position using terminal control escape sequences.
+    // Cursor up: <ESC>[{ROWS}A
+    // Cursor backwards: <ESC>[{COLS}D
+    var term_reset_cmd : [6*2 + 32*2]char = ---;
+    var term_reset_cmd_len : s32 = get_term_reset_cmd(term_reset_cmd, ROWS + 2, COLS); // Accounts for score text
+
+    if (term_reset_cmd_len < 0) {
+        return 1;
+    }
+
+    var start_time : timespec;
+    var end_time : timespec;
+    var target_frame_time : timespec = {0, 33300000}; // 33.3 ms
+    var frame_count : u32;
+    const frames_per_unit_move : u32 = 5;
+
+    var score_txt : [34]char = ---;
+
+    while (true) {
+        // Get frame start time.
+        if (clock_gettime(CLOCK_MONOTONIC, ^start_time) < 0) {
+            return 1;
+        }
+
+        // Display score.
+        var score_len := print_int(snake.size - 2, score_txt);
+        #writeout("\nScore: ", 8);
+        #writeout(score_txt, score_len);
+        goal_txt[goal_len] = '\n'; // Guaranteed to have room in the static array for newline.
+        #writeout(goal_txt, goal_len + 1);
+
+        // Display the level.
+        display(^screen);
+
+        if (snake.size == snake_size_goal) {
+            #writeout("You win!\n", 9);
+            break;
+        }
+
+        // Read user command from stdin.
+        var cmd : char;
+        var num_read := read(STDIN, ^cmd, 1);
+
+        if (num_read == 1) {
+            if (cmd == 'q') {
+                break; // Quit!
+            }
+            else if (cmd == 'w') {
+                new_snake_dir = Dir::UP;
+            }
+            else if (cmd == 'a') {
+                new_snake_dir = Dir::LEFT;
+            }
+            else if (cmd == 's') {
+                new_snake_dir = Dir::DOWN;
+            }
+            else if (cmd == 'd') {
+                new_snake_dir = Dir::RIGHT;
+            }
+            else if (cmd == 'c') { // Cheat (add body part)
+                var new_pos := step_pos(snake_get_head(^snake), snake_dir);
+                snake_add_head(^screen, ^snake, new_pos);
+            }
+        }
+        else if (num_read != -EAGAIN) {
+            return 1;
+        }
+
+        // Move the snake one unit every 'few' frames.
+        // Tying animation to frame rate is not the best idea, but this is just an example game.
+        if (frame_count == frames_per_unit_move - 1) {
+            // Only commit to the new snake direction if it is valid (i.e., not moving directly back into itself)
+            if (is_dir_valid(snake_dir, new_snake_dir)) {
+                snake_dir = new_snake_dir;
+            }
+
+            var new_pos := step_pos(snake_get_head(^snake), snake_dir);
+            var new_pos_idx := pos_to_screen_idx(new_pos);
+            var entity_at_new_pos := screen[new_pos_idx];
+
+            // Exit game if snake turns into itself.
+            if (entity_at_new_pos == Entity::SNAKE_BODY || entity_at_new_pos == Entity::SNAKE_HEAD) {
+                #writeout("\nGame Over!\n", 12);
+                break;
+            }
+
+            if (entity_at_new_pos == Entity::FOOD) {
+                // Grow snake at head and spawn new food.
+                snake_add_head(^screen, ^snake, new_pos);
+                spawn_food(^screen);
+            }
+            else {
+                // Just move snake one unit.
+                snake_add_head(^screen, ^snake, new_pos);
+                snake_del_tail(^screen, ^snake);
+            }
+
+            frame_count = 0;
+        }
+        else {
+            frame_count += 1;
+        }
+
+        // Reset cursor using terminal control escape sequences.
+        #writeout(term_reset_cmd, term_reset_cmd_len);
+
+        // Get frame end time
+        if (clock_gettime(CLOCK_MONOTONIC, ^end_time) < 0) {
+            return 1;
+        }
+
+        var elapsed_time : timespec = ---;
+        time_diff(^elapsed_time, ^start_time, ^end_time);
+
+        // Sleep until we've hit the target frame time.
+        while ((elapsed_time.tv_sec == 0) && (elapsed_time.tv_nsec < target_frame_time.tv_nsec)) {
+            // Try to sleep for the amount of time remaining.
+            var sleep_time : timespec = ---;
+            time_diff(^sleep_time, ^elapsed_time, ^target_frame_time); // sleep_time = target_frame_time - elapsed_time
+            clock_nanosleep(CLOCK_MONOTONIC, 0, ^sleep_time, null);
+
+            // Check how much time has elapsed since the start of the frame once more.
+            // This sleep loop will continue until we've hit our frame time.
+            if (clock_gettime(CLOCK_MONOTONIC, ^end_time) < 0) {
+                return 1;
+            }
+
+            time_diff(^elapsed_time, ^start_time, ^end_time);
+        }
+    }
+
+    // Restore initial terminal attributes.
+    // TODO: Handle even on exit() call. Maybe use defer
+    tcsetattr(STDIN, TCSANOW, ^saved_term_attr);
+
+    return 0;
+}

@@ -1,0 +1,108 @@
+
+// Syscall numbers: https://chromium.googlesource.com/chromiumos/docs/+/HEAD/constants/syscalls.md#x86_64-64_bit
+const SYS_read  : ssize = 0;
+const SYS_ioctl : ssize = 16;
+const SYS_fcntl : ssize = 72;
+const SYS_clock_gettime : ssize = 228;
+const SYS_clock_nanosleep : ssize = 230;
+
+// Builtin file descriptors.
+const STDIN : s32 = 0;
+const STDOUT : s32 = 1;
+
+const F_SETFL : s32 = 4;
+const F_GETFL : s32 = 3;
+const O_NONBLOCK : s32 = 2048;
+const CLOCK_MONOTONIC : s32 = 1;
+
+// Error values for 'errno'.
+const EAGAIN : s32 = 11;
+const EINVAL : s32 = 22;
+
+proc read(fd : s32, buf : ^void, count : usize) => ssize {
+    return #syscall3(SYS_read, fd, (buf :> ssize), (count :> ssize));
+}
+
+proc fcntl(fd : s32, cmd : s32, arg: s32) => s32 {
+    return #syscall3(SYS_fcntl, fd, cmd, arg);
+}
+
+proc ioctl(fd : s32, request : u64, argp : ^void) => s32 {
+    return #syscall3(SYS_ioctl, fd, request, argp :> ssize);
+}
+
+const NCCS : s32 = 32;
+const TIOCGWINSZ : s32 = 0x5413;
+const TCGETS : s32 = 0x5401;
+const TCSETS : s32 = 0x5402;
+const ICANON : s32 = 2;
+const ECHO : s32 = 8;
+const VTIME : s32 = 5;
+const VMIN : s32 = 6;
+const TCSAFLUSH : s32 = 2;
+const TCSANOW : s32 = 0;
+
+struct termios {
+    c_iflag : u32; // input modes
+    c_oflag : u32; // output modes
+    c_cflag : u32; // control modes
+    c_lflag : u32; // local modes
+    c_line  : char; // line discipline
+    c_cc    : [NCCS]char; // control characters
+    c_ispeed : u32; // input speed
+    c_ospeed : u32; // output speed
+}
+
+struct winsize {
+    ws_row : u16;
+    ws_col : u16;
+    ws_xpixel: u16;
+    ws_ypixel: u16;
+}
+
+proc tcgetattr(fd : s32, termios_p : ^termios) => s32 {
+    return ioctl(fd, TCGETS, termios_p);
+}
+
+proc tcsetattr(fd : s32, action : s32, termios_p : ^termios) => s32 {
+    if ((action < 0) || (action > 2)) {
+        return -EINVAL;
+    }
+
+    return ioctl(fd, TCSETS + action, termios_p);
+}
+
+proc isatty(fd : s32) => {err: s32; isatty: bool} {
+        // Query the terminal window size. If we don't get an error, then
+        // fd is connected to a terminal.
+        var size : winsize = ---;
+        var r := ioctl(fd, TIOCGWINSZ, ^size);
+
+        return {-r, r == 0};
+}
+
+struct timespec {
+    tv_sec : s64;
+    tv_nsec : s64;
+}
+
+proc time_diff(result: ^timespec, start : ^timespec, end : ^timespec) {
+    // NOTE: Requires end >= start!
+    if (end.tv_nsec < start.tv_nsec) {
+        result.tv_nsec = (1000000000 + end.tv_nsec) - start.tv_nsec; // Borrow a second (1e9 ns) from end.tv_sec
+        result.tv_sec = (end.tv_sec - 1) - start.tv_sec;
+    }
+    else {
+        result.tv_nsec = end.tv_nsec - start.tv_nsec;
+        result.tv_sec = end.tv_sec - start.tv_sec;
+    }
+}
+
+proc clock_nanosleep(clockid: ssize, flags : s32, request : ^timespec, remain: ^timespec) => s32 {
+    return #syscall4(SYS_clock_nanosleep, clockid, flags, (request :> ssize), (remain :> ssize));
+}
+
+proc clock_gettime(clockid: ssize, tp : ^timespec) => s32 {
+    return #syscall2(SYS_clock_gettime, clockid, (tp :> ssize));
+}
+
