@@ -1,4 +1,5 @@
 
+// Syscall numbers: https://chromium.googlesource.com/chromiumos/docs/+/HEAD/constants/syscalls.md#x86_64-64_bit
 const SYS_read  : ssize = 0;
 const SYS_ioctl : ssize = 16;
 const SYS_fcntl : ssize = 72;
