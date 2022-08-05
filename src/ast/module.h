@@ -968,10 +968,6 @@ struct SymbolVar {
         // Used to describe initial value (constexpr) for global variable
         ConstExpr const_expr;
     };
-
-    // NOTE: Only used for windows
-    // True if the value stored in the stack offset is actually a pointer to the variable.
-    bool is_ptr; // TODO: Remove offset and is_ptr from this struct. Store in separate hash table that maps a sym -> stack location
 };
 
 struct SymbolConst {

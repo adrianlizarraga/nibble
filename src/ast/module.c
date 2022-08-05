@@ -1448,48 +1448,6 @@ void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, Type
     switch (target_os) {
     case OS_LINUX:
         switch (target_arch) {
-        case ARCH_X86:
-            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S32].type;
-            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U32].type;
-
-            PTR_SIZE = 4;
-            PTR_ALIGN = 4;
-            break;
-        case ARCH_X64:
-            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S64].type;
-            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U64].type;
-
-            PTR_SIZE = 8;
-            PTR_ALIGN = 8;
-            break;
-        default:
-            invalid_os_arch = true;
-            break;
-        }
-        break;
-    case OS_WIN32:
-        switch (target_arch) {
-        case ARCH_X86:
-            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S32].type;
-            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U32].type;
-
-            PTR_SIZE = 4;
-            PTR_ALIGN = 4;
-            break;
-        case ARCH_X64:
-            builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S32].type;
-            builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U32].type;
-
-            PTR_SIZE = 8;
-            PTR_ALIGN = 8;
-            break;
-        default:
-            invalid_os_arch = true;
-            break;
-        }
-        break;
-    case OS_OSX:
-        switch (target_arch) {
         case ARCH_X64:
             builtin_types[BUILTIN_TYPE_LONG].type = builtin_types[BUILTIN_TYPE_S64].type;
             builtin_types[BUILTIN_TYPE_ULONG].type = builtin_types[BUILTIN_TYPE_U64].type;

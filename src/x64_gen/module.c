@@ -695,7 +695,7 @@ static s32 X64_consume_stack_arg(u64* stack_arg_offset, u64 arg_size, u64 arg_al
     return offset;
 }
 
-static s32 X64_linux_spill_reg(X64_Generator* generator, X64_LinuxAssignParamState* state, u64 size, u64 align, X64_Reg preg)
+static s32 X64_spill_reg(X64_Generator* generator, X64_LinuxAssignParamState* state, u64 size, u64 align, X64_Reg preg)
 {
     state->stack_spill_size += size;
     state->stack_spill_size = ALIGN_UP(state->stack_spill_size, align);
@@ -714,7 +714,7 @@ static s32 X64_linux_spill_reg(X64_Generator* generator, X64_LinuxAssignParamSta
         reg_name = x64_flt_reg_names[preg];
     }
     else {
-        NIBBLE_FATAL_EXIT("X64_linux_spill_reg(): Unexpected register class for register '%d'.", preg);
+        NIBBLE_FATAL_EXIT("X64_spill_reg(): Unexpected register class for register '%d'.", preg);
     }
 
     X64_emit_text(generator, "  %s %s [rbp + %d], %s", mov_name, x64_mem_size_label[size], offset, reg_name);
@@ -722,7 +722,7 @@ static s32 X64_linux_spill_reg(X64_Generator* generator, X64_LinuxAssignParamSta
     return offset;
 }
 
-static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol* sproc, X64_StackParamsInfo* stack_params_info)
+static void X64_assign_proc_param_offsets(X64_Generator* generator, Symbol* sproc, X64_StackParamsInfo* stack_params_info)
 {
     DeclProc* dproc = (DeclProc*)sproc->decl;
     Type* ret_type = sproc->type->as_proc.ret;
@@ -734,10 +734,10 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
     // For procs that return a large struct by value:
     // Spill the first argument, which contains a pointer to the return value's memory address, into the stack.
     // We need to spill (remember) this address so that the procedure can return it, as per the X64 calling conventions.
-    if (type_is_obj_like(ret_type) && X64_linux_is_obj_retarg_large(ret_type->size)) {
+    if (type_is_obj_like(ret_type) && X64_is_obj_retarg_large(ret_type->size)) {
         X64_ScratchRegs arg_int_regs = (*x64_target.arg_regs)[X64_REG_CLASS_INT];
 
-        X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE,
+        X64_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE,
                             arg_int_regs.regs[arg_reg_indices[X64_REG_CLASS_INT]]);
         arg_reg_indices[X64_REG_CLASS_INT] += 1;
     }
@@ -761,7 +761,7 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
         u64 arg_align = arg_type->align;
 
         if (type_is_obj_like(arg_type)) {
-            X64_RegClass reg_class = X64_linux_obj_reg_class(arg_type);
+            X64_RegClass reg_class = X64_obj_reg_class(arg_type);
             X64_ScratchRegs arg_regs = (*x64_target.arg_regs)[reg_class];
             u32* arg_reg_index = &arg_reg_indices[reg_class];
 
@@ -771,7 +771,7 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
                 X64_Reg arg_reg = arg_regs.regs[*arg_reg_index];
                 *arg_reg_index += 1;
 
-                sym->as_var.offset = X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, arg_reg);
+                sym->as_var.offset = X64_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, arg_reg);
             }
             else if ((arg_size <= (X64_MAX_INT_REG_SIZE << 1)) && (rem_regs >= 2)) {
                 X64_Reg low_reg = arg_regs.regs[*arg_reg_index];
@@ -779,8 +779,8 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
                 X64_Reg high_reg = arg_regs.regs[*arg_reg_index];
                 *arg_reg_index += 1;
 
-                X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, high_reg);
-                sym->as_var.offset = X64_linux_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
+                X64_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, high_reg);
+                sym->as_var.offset = X64_spill_reg(generator, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
             }
             else {
                 sym->as_var.offset = X64_consume_stack_arg(&state.stack_arg_offset, arg_size, arg_align);
@@ -796,7 +796,7 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
                 X64_Reg arg_reg = arg_regs.regs[*arg_reg_index];
                 *arg_reg_index += 1;
 
-                sym->as_var.offset = X64_linux_spill_reg(generator, &state, arg_size, arg_align, arg_reg);
+                sym->as_var.offset = X64_spill_reg(generator, &state, arg_size, arg_align, arg_reg);
             }
             else {
                 sym->as_var.offset = X64_consume_stack_arg(&state.stack_arg_offset, arg_size, arg_align);
@@ -809,113 +809,6 @@ static void X64_linux_assign_proc_param_offsets(X64_Generator* generator, Symbol
 
     stack_params_info->stack_spill_size = state.stack_spill_size;
     stack_params_info->local_var_iter = it;
-}
-
-static void X64_windows_assign_proc_param_offsets(X64_Generator* generator, Symbol* sproc, X64_StackParamsInfo* stack_params_info)
-{
-    DeclProc* dproc = (DeclProc*)sproc->decl;
-    Type* ret_type = sproc->type->as_proc.ret;
-
-    u32 index = 0;
-    u64 stack_arg_offset = X64_STACK_ARG_RBP_OFFSET;
-
-    bool has_dst_arg = type_is_obj_like(ret_type) && X64_windows_is_obj_retarg_large(ret_type->size);
-
-    // For procs that return a large struct by value:
-    // Spill the first argument, which contains a pointer to the return value's memory address, into the stack.
-    // We need to spill (remember) this address so that the procedure can return it, as per the X64 calling conventions.
-    if (has_dst_arg) {
-        X64_ScratchRegs arg_regs = (*x64_target.arg_regs)[X64_REG_CLASS_INT];
-        X64_Reg arg_reg = arg_regs.regs[index++];
-
-        X64_emit_text(generator, "  mov %s [rbp + %d], %s", x64_mem_size_label[X64_MAX_INT_REG_SIZE],
-                      X64_consume_stack_arg(&stack_arg_offset, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE),
-                      x64_int_reg_names[X64_MAX_INT_REG_SIZE][arg_reg]);
-    }
-
-    Scope* scope = dproc->scope;
-    List* head = &scope->sym_list;
-    List* it = head->next;
-
-    while (it != head) {
-        // Only process params. Local variables are not processed here.
-        if (index >= (dproc->num_params + has_dst_arg))
-            break;
-
-        Symbol* sym = list_entry(it, Symbol, lnode);
-
-        // Assign stack offsets to procedure params.
-        assert(sym->kind == SYMBOL_VAR);
-
-        Type* arg_type = sym->type;
-        u64 slot_size = arg_type->size;
-        u64 slot_align = arg_type->align;
-        X64_RegClass reg_class = X64_REG_CLASS_INT;
-
-        if (type_is_obj_like(arg_type)) {
-            if (X64_windows_is_obj_retarg_large(slot_size)) {
-                // NOTE: Passing the object's address!
-                slot_size = X64_MAX_INT_REG_SIZE;
-                slot_align = X64_MAX_INT_REG_SIZE;
-
-                sym->as_var.is_ptr = true;
-                sym->as_var.offset = X64_consume_stack_arg(&stack_arg_offset, slot_size, slot_align);
-            }
-            else {
-                sym->as_var.is_ptr = false;
-                sym->as_var.offset = X64_consume_stack_arg(&stack_arg_offset, slot_size, slot_align);
-            }
-        }
-        else {
-            reg_class = arg_type->kind == TYPE_FLOAT ? X64_REG_CLASS_FLOAT : X64_REG_CLASS_INT;
-            sym->as_var.is_ptr = false;
-            sym->as_var.offset = X64_consume_stack_arg(&stack_arg_offset, slot_size, slot_align);
-        }
-
-        assert(slot_size <= X64_MAX_INT_REG_SIZE);
-
-        X64_ScratchRegs arg_regs = (*x64_target.arg_regs)[reg_class];
-
-        // Spill argument register to the shadow space (32 bytes above return address)
-        // Only the first four arguments can be in a register.
-        // NOTE: num_regs should be the same for both register classes (i.e., 4).
-        if (index < arg_regs.num_regs) {
-            X64_Reg arg_reg = arg_regs.regs[index];
-            const char* mov_name = NULL;
-            const char* reg_name = NULL;
-
-            if (reg_class == X64_REG_CLASS_INT) {
-                mov_name = "mov";
-                reg_name = x64_int_reg_names[slot_size][arg_reg];
-            }
-            else if (reg_class == X64_REG_CLASS_FLOAT) {
-                mov_name = slot_size == float_kind_sizes[FLOAT_F64] ? "movsd" : "movss";
-                reg_name = x64_flt_reg_names[arg_reg];
-            }
-            else {
-                NIBBLE_FATAL_EXIT("X64_windows_assign_proc_param_offsets(): Unexpected register class for register '%d'.", arg_reg);
-            }
-
-            X64_emit_text(generator, "  %s %s [rbp + %d], %s", mov_name, x64_mem_size_label[slot_size], sym->as_var.offset, reg_name);
-        }
-
-        index += 1;
-        it = it->next;
-    }
-
-    stack_params_info->stack_spill_size = 0; // Did not spill below rsp; all args are above return address
-    stack_params_info->local_var_iter = it;
-}
-
-static void X64_assign_proc_param_offsets(X64_Generator* generator, Symbol* sproc, X64_StackParamsInfo* stack_params_info)
-{
-    if (x64_target.os == OS_LINUX) {
-        X64_linux_assign_proc_param_offsets(generator, sproc, stack_params_info);
-    }
-    else {
-        assert(x64_target.os == OS_WIN32);
-        X64_windows_assign_proc_param_offsets(generator, sproc, stack_params_info);
-    }
 }
 
 static u64 X64_assign_scope_stack_offsets(X64_Generator* generator, Scope* scope, u64 offset)
@@ -1613,7 +1506,7 @@ static void X64_place_args_in_regs(X64_Generator* generator, u32 num_args, X64_I
     }
 }
 
-static void X64_linux_place_struct_args_in_stack(X64_Generator* generator, u32 num_args, X64_InstrCallArg* args)
+static void X64_place_struct_args_in_stack(X64_Generator* generator, u32 num_args, X64_InstrCallArg* args)
 {
     bool pushed_cpy_state = false;
 
@@ -1660,70 +1553,10 @@ static void X64_linux_place_struct_args_in_stack(X64_Generator* generator, u32 n
     }
 }
 
-static void X64_windows_place_struct_args_in_stack(X64_Generator* generator, u32 num_args, X64_InstrCallArg* args)
-{
-    bool pushed_cpy_state = false;
-
-    for (u32 i = 0; i < num_args; i += 1) {
-        X64_InstrCallArg* arg = args + i;
-        u64 arg_size = arg->type->size;
-
-        if (type_is_obj_like(arg->type)) {
-            // Argument is a struct/union/array object.
-            X64_ObjArgSlot* slot = &arg->slot.obj;
-
-            if (!slot->as_ptr) {
-                continue;
-            }
-
-            assert(X64_windows_is_obj_retarg_large(arg_size));
-
-            // TODO: There's no need to push all (rdi, rsi, rcx) if not used.
-            if (!pushed_cpy_state) {
-                X64_emit_text(generator, "  push rdi");
-                X64_emit_text(generator, "  push rsi");
-                X64_emit_text(generator, "  push rcx");
-                pushed_cpy_state = true;
-            }
-
-            const u32 sp_begin = X64_MAX_INT_REG_SIZE * 3;
-
-            // Copy obj into its location in the stack.
-            X64_SIBDAddr src_addr = {0};
-            X64_get_sibd_addr(generator, &src_addr, &arg->val.addr);
-            assert(src_addr.kind == X64_SIBD_ADDR_LOCAL);
-
-            X64_emit_text(generator, "  lea rdi, [rsp + %d]", slot->ptr_sp_offset + sp_begin);
-
-            // Move object pointer into stack slot.
-            if (!slot->num_regs) {
-                X64_emit_text(generator, "  mov %s [rsp + %d], rdi", x64_mem_size_label[X64_MAX_INT_REG_SIZE],
-                              slot->sp_offset + sp_begin);
-            }
-
-            X64_emit_text(generator, "  lea rsi, %s", X64_print_sibd_addr(generator->tmp_mem, &src_addr, 0));
-            X64_emit_text(generator, "  mov rcx, 0x%lx", arg_size);
-            X64_emit_text(generator, "  rep movsb");
-        }
-    }
-
-    if (pushed_cpy_state) {
-        X64_emit_text(generator, "  pop rcx");
-        X64_emit_text(generator, "  pop rsi");
-        X64_emit_text(generator, "  pop rdi");
-    }
-}
-
 static void X64_place_args_in_stack(X64_Generator* generator, u32 num_args, X64_InstrCallArg* args)
 {
     // 1st pass: Copy struct arguments into the stack.
-    if (x64_target.os == OS_LINUX) {
-        X64_linux_place_struct_args_in_stack(generator, num_args, args);
-    }
-    else {
-        assert(x64_target.os == OS_WIN32);
-        X64_windows_place_struct_args_in_stack(generator, num_args, args);
-    }
+    X64_place_struct_args_in_stack(generator, num_args, args);
 
     // 2nd pass: Copy primitive args that are currently in registers into their stack slots.
     // This ensures that we can freely use RAX as a temporary register in the next pass.
@@ -1788,14 +1621,14 @@ static void X64_place_args_in_stack(X64_Generator* generator, u32 num_args, X64_
     }
 }
 
-static void X64_linux_cpy_ret_small_obj(X64_Generator* generator, Type* ret_type, X64_CallValue* dst_val)
+static void X64_cpy_ret_small_obj(X64_Generator* generator, Type* ret_type, X64_CallValue* dst_val)
 {
-    X64_RegClass reg_class = X64_linux_obj_reg_class(ret_type);
+    X64_RegClass reg_class = X64_obj_reg_class(ret_type);
     X64_ScratchRegs ret_regs = (*x64_target.ret_regs)[reg_class];
 
     // Procedure returned a small struct/union/array object in registers.
     // Copy into appropriate memory location.
-    if (!X64_linux_is_obj_retarg_large(ret_type->size)) {
+    if (!X64_is_obj_retarg_large(ret_type->size)) {
         X64_SIBDAddr obj_addr = {0};
         X64_get_sibd_addr(generator, &obj_addr, &dst_val->addr);
 
@@ -1807,20 +1640,6 @@ static void X64_linux_cpy_ret_small_obj(X64_Generator* generator, Type* ret_type
             rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, ret_regs.regs[1], rem_amnt);
             assert(!rem_amnt);
         }
-    }
-}
-
-static void X64_windows_cpy_ret_small_obj(X64_Generator* generator, Type* ret_type, X64_CallValue* dst_val)
-{
-    // Procedure returned a small struct/union/array object in RAX.
-    // Copy into appropriate memory location.
-    if (!X64_windows_is_obj_retarg_large(ret_type->size)) {
-        X64_SIBDAddr obj_addr = {0};
-        X64_get_sibd_addr(generator, &obj_addr, &dst_val->addr);
-
-        // Copy RAX into the first 8 bytes of struct memory.
-        size_t rem_amnt = X64_cpy_reg_to_mem(generator, &obj_addr, X64_RAX, ret_type->size);
-        assert(!rem_amnt);
     }
 }
 
@@ -2611,12 +2430,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                     }
                 }
             }
-            else if (x64_target.os == OS_LINUX) {
-                X64_linux_cpy_ret_small_obj(generator, ret_type, &dst_val);
-            }
             else {
-                assert(x64_target.os == OS_WIN32);
-                X64_windows_cpy_ret_small_obj(generator, ret_type, &dst_val);
+                X64_cpy_ret_small_obj(generator, ret_type, &dst_val);
             }
         }
 

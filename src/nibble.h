@@ -16,9 +16,7 @@
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 
-#if defined(_WIN32) || defined(_WIN64)
-#define NIBBLE_HOST_WINDOWS
-#elif defined(__linux__)
+#if defined(__linux__)
 #define NIBBLE_HOST_LINUX
 #else
 #error "This operating system is not yet supported!"
@@ -28,15 +26,12 @@
 typedef enum OS {
     OS_INVALID,
     OS_LINUX,
-    OS_WIN32,
-    OS_OSX,
     NUM_OS,
 } OS;
 
 typedef enum Arch {
     ARCH_INVALID,
     ARCH_X64,
-    ARCH_X86,
     NUM_ARCH,
 } Arch;
 
