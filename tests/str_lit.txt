@@ -1,8 +1,9 @@
 :argc 0
 :stdin 0
 
-:stdout 14
+:stdout 20
 Hello
+12345
 12345
 i
 
