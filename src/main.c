@@ -140,10 +140,7 @@ int main(int argc, char* argv[])
     bool silent = false;
 
     // Set default target os/arch.
-#if defined(NIBBLE_HOST_WINDOWS)
-    OS target_os = OS_WIN32;
-    Arch target_arch = ARCH_X64;
-#elif defined(NIBBLE_HOST_LINUX)
+#if defined(NIBBLE_HOST_LINUX)
     OS target_os = OS_LINUX;
     Arch target_arch = ARCH_X64;
 #else
