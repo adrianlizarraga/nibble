@@ -17,7 +17,7 @@ A programming language based on C. The goal is to create a compiled, statically-
 
 Nibble supports the followng operating systems:
 - [x] x64 linux
-- [x] x64 windows
+- [ ] x64 windows
 - [ ] x86 linux
 - [ ] x86 windows
 - [ ] arm64 macOS

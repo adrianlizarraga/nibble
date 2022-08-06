@@ -9,12 +9,9 @@
 
 const char* os_names[NUM_OS] = {
     [OS_LINUX] = "linux",
-    [OS_WIN32] = "win32",
-    [OS_OSX] = "osx",
 };
 
 const char* arch_names[NUM_ARCH] = {
-    [ARCH_X86] = "x86",
     [ARCH_X64] = "x64",
 };
 
@@ -544,11 +541,6 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent)
 #ifdef NIBBLE_HOST_LINUX
     if (target_arch != ARCH_X64 || target_os != OS_LINUX) {
         ftprint_err("[ERROR]: Target OS (%s %s) not yet supported on Linux.\n", os_names[target_os], arch_names[target_arch]);
-        return false;
-    }
-#elif defined(NIBBLE_HOST_WINDOWS)
-    if (target_arch != ARCH_X64 || target_os != OS_WIN32) {
-        ftprint_err("[ERROR]: Target OS (%s %s) not yet supported on Windows.\n", os_names[target_os], arch_names[target_arch]);
         return false;
     }
 #else
@@ -1103,12 +1095,6 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     path_init(&outf_ospath, &nib_ctx->tmp_mem);
     path_set(&outf_ospath, outf_name, outf_len);
 
-    const char* outf_ext = path_ext(&outf_ospath);
-
-    if ((nib_ctx->target_os == OS_WIN32) && (cstr_cmp(outf_ext, exe_ext) != 0 || outf_ext == outf_ospath.str)) {
-        path_append(&outf_ospath, dot_exe_ext, sizeof(dot_exe_ext) - 1);
-    }
-
     // TODO: Validate output file name more extensively.
 
     //////////////////////////////////////////
@@ -1291,26 +1277,9 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     //////////////////////////////////////////
     //          Run NASM assembler
     //////////////////////////////////////////
-    char obj_ext_linux[] = ".o";
-    char obj_ext_windows[] = ".obj";
-    char nasm_fformat_linux[] = "elf64";
-    char nasm_fformat_windows[] = "win64";
-
-    char* obj_ext;
-    char* nasm_fformat;
-    size_t obj_ext_len;
-
-    if (nib_ctx->target_os == OS_LINUX) {
-        obj_ext = obj_ext_linux;
-        obj_ext_len = sizeof(obj_ext_linux) - 1;
-        nasm_fformat = nasm_fformat_linux;
-    }
-    else {
-        assert(nib_ctx->target_os == OS_WIN32);
-        obj_ext = obj_ext_windows;
-        obj_ext_len = sizeof(obj_ext_windows) - 1;
-        nasm_fformat = nasm_fformat_windows;
-    }
+    char obj_ext[] = ".o";
+    char nasm_fformat[] = "elf64";
+    size_t obj_ext_len = sizeof(obj_ext) - 1;
 
     Path obj_fname;
     path_init(&obj_fname, &nib_ctx->tmp_mem);
@@ -1328,27 +1297,8 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     //          Run linker
     //////////////////////////////////////////
     char* outf_name_dup = cstr_dup(&nib_ctx->tmp_mem, outf_ospath.str);
-    char* win_linker_out = array_create(&nib_ctx->tmp_mem, char, 16);
-
-    ftprint_char_array(&win_linker_out, true, "/out:%s", outf_name_dup);
-
-    char* ld_cmd_linux[] = {"ld", "-o", outf_name_dup, obj_fname.str, NULL};
-    // link /entry:_start /nodefaultlib /subsystem:console .\out.obj kernel32.lib user32.lib Shell32.lib
-    char* ld_cmd_windows[] = {"link.exe",     obj_fname.str,  "/entry:_start", "/nodefaultlib", "/subsystem:console",
-                              win_linker_out, "kernel32.lib", "user32.lib",    "Shell32.lib",   NULL};
-
-    char** ld_cmd;
-    int ld_cmd_argc;
-
-    if (nib_ctx->target_os == OS_LINUX) {
-        ld_cmd = ld_cmd_linux;
-        ld_cmd_argc = ARRAY_LEN(ld_cmd_linux) - 1;
-    }
-    else {
-        assert(nib_ctx->target_os == OS_WIN32);
-        ld_cmd = ld_cmd_windows;
-        ld_cmd_argc = ARRAY_LEN(ld_cmd_windows) - 1;
-    }
+    char* ld_cmd[] = {"ld", "-o", outf_name_dup, obj_fname.str, NULL};
+    int ld_cmd_argc = ARRAY_LEN(ld_cmd) - 1;
 
     if (run_cmd(&nib_ctx->tmp_mem, ld_cmd, ld_cmd_argc, nib_ctx->silent) < 0) {
         ftprint_err("[ERROR]: Linker command failed\n");
