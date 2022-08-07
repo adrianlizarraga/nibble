@@ -1073,7 +1073,10 @@ bool import_all_mod_syms(Module* dst_mod, Module* src_mod, ErrorStream* errors);
 
 struct Module {
     ProgRange range;
+
+    u64 id;
     StrLit* abs_path;
+
     List import_stmts;
     List export_stmts;
     List stmts;
@@ -1088,7 +1091,7 @@ struct Module {
     bool is_parsing;
 };
 
-void module_init(Module* mod, StrLit* abs_path);
+void module_init(Module* mod, u64 id, StrLit* abs_path);
 void module_init_tables(Module* mod, Allocator* allocator, size_t num_builtins);
 Symbol* module_get_export_sym(Module* mod, Identifier* name);
 bool module_add_export_sym(Module* mod, Identifier* name, Symbol* sym);

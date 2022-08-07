@@ -1559,49 +1559,29 @@ char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
     // TODO: Change to something stronger. Will require regenerating builtin code though.
     static const char intrin_pre[] = "_nibble";
 
-    char* dstr = NULL;
-    size_t len = sym->name->len;
+    char* dstr = array_create(allocator, char, 32);
 
     if (sym->name == main_proc_ident) {
-        dstr = array_create(allocator, char, len + 1);
         ftprint_char_array(&dstr, true, "%s", sym->name->str);
     }
     else if (sym->name->kind == IDENTIFIER_INTRINSIC) {
-        len += sizeof(intrin_pre); // Counts the +1 for the joining `_`
-        dstr = array_create(allocator, char, len + 1); // TODO: Print to a fixed buffer
-
         ftprint_char_array(&dstr, true, "%s_%s", intrin_pre, sym->name->str);
     }
     else if (!sym->is_local) {
         Module* mod = sym->home;
-
-        Path mod_path;
-        path_init(&mod_path, allocator);
-        path_set(&mod_path, mod->abs_path->str, mod->abs_path->len);
-
-        // TODO: !!! should use a unique hash/id per module! This can confict with other
-        // global symbols in different modules.
-        const char* fname_begin = path_filename(&mod_path);
-        const char* fname_end = mod_path.str + mod_path.len;
-        size_t fname_len = fname_end - fname_begin;
-
-        len += fname_len + 2;
-        dstr = array_create(allocator, char, len + 1);
-
-        ftprint_char_array(&dstr, true, "_%.*s_%s", fname_len, fname_begin, sym->name->str);
+        ftprint_char_array(&dstr, true, "module%u_%s", mod->id, sym->name->str);
     }
     else {
-        dstr = array_create(allocator, char, len + 1);
         ftprint_char_array(&dstr, true, "%s", sym->name->str);
     }
+
+    size_t len = array_len(dstr);
 
     for (size_t i = 0; i < len; i += 1) {
         if (dstr[i] == NIBBLE_PATH_SEP || dstr[i] == '.') {
             dstr[i] = '_';
         }
     }
-
-    assert(len + 1 == array_len(dstr));
 
     return dstr;
 }
@@ -1816,8 +1796,9 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt, ErrorSt
     return true;
 }
 
-void module_init(Module* mod, StrLit* abs_path)
+void module_init(Module* mod, u64 id, StrLit* abs_path)
 {
+    mod->id = id;
     mod->abs_path = abs_path;
     mod->num_decls = 0;
 

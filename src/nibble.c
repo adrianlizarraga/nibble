@@ -599,7 +599,7 @@ static Module* add_module(HMap* mod_map, StrLit* abs_path)
 {
     Module* mod = alloc_type(mod_map->allocator, Module, true);
 
-    module_init(mod, abs_path);
+    module_init(mod, mod_map->len, abs_path);
     hmap_put(mod_map, PTR_UINT(abs_path), PTR_UINT(mod));
 
     return mod;
