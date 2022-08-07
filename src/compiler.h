@@ -32,12 +32,10 @@ typedef struct NibbleCtx {
 
     TypeCache type_cache;
 
-    Path base_ospath;
-    char* entry_filename;
-
     OS target_os;
     Arch target_arch;
 
+    struct Module* main_mod;
     struct Module* builtin_mod;
     size_t num_builtins;
 

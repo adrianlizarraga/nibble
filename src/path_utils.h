@@ -77,8 +77,6 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
 void dirent_it_next(DirentIter* it);
 void dirent_it_free(DirentIter* it);
 
-void cpath_str_to_ospath(Allocator* alloc, Path* dst, const char* cpath_str, size_t cpath_len, const Path* base_ospath);
-NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* base_ospath,
+NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str,
                                 Path* importer_ospath, Allocator* alloc);
-NibblePathErr ospath_to_cpath(Path* dst_path, const Path* src_ospath, const Path* base_ospath, Allocator* alloc);
 #endif

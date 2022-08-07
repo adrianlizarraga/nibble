@@ -1573,10 +1573,22 @@ char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
         ftprint_char_array(&dstr, true, "%s_%s", intrin_pre, sym->name->str);
     }
     else if (!sym->is_local) {
-        len += sym->home->cpath_lit->len + 1;
+        Module* mod = sym->home;
+
+        Path mod_path;
+        path_init(&mod_path, allocator);
+        path_set(&mod_path, mod->abs_path->str, mod->abs_path->len);
+
+        // TODO: !!! should use a unique hash/id per module! This can confict with other
+        // global symbols in different modules.
+        const char* fname_begin = path_filename(&mod_path);
+        const char* fname_end = mod_path.str + mod_path.len;
+        size_t fname_len = fname_end - fname_begin;
+
+        len += fname_len + 2;
         dstr = array_create(allocator, char, len + 1);
 
-        ftprint_char_array(&dstr, true, "%s_%s", sym->home->cpath_lit->str, sym->name->str);
+        ftprint_char_array(&dstr, true, "_%.*s_%s", fname_len, fname_begin, sym->name->str);
     }
     else {
         dstr = array_create(allocator, char, len + 1);
@@ -1788,7 +1800,7 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt, ErrorSt
 
         if (!sym) {
             report_error(errors, stmt->super.range, "Importing unknown or private symbol `%s` from module `%s`", isym->name->str,
-                         src_mod->cpath_lit->str); // TODO: mod_path is not an OS path
+                         src_mod->abs_path->str);
             return false;
         }
 
@@ -1804,9 +1816,9 @@ bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt, ErrorSt
     return true;
 }
 
-void module_init(Module* mod, StrLit* cpath_lit)
+void module_init(Module* mod, StrLit* abs_path)
 {
-    mod->cpath_lit = cpath_lit;
+    mod->abs_path = abs_path;
     mod->num_decls = 0;
 
     memset(&mod->export_table, 0, sizeof(HMap));
