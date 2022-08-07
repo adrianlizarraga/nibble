@@ -550,21 +550,6 @@ static Stmt* parse_stmt_static_assert(Parser* parser)
     return new_stmt_static_assert(parser->ast_arena, cond, msg, range);
 }
 
-static bool is_mod_path_relative(const char* path, size_t len)
-{
-    assert(path);
-
-    if (len < 3) {
-        return false;
-    }
-
-    char c0 = path[0];
-    char c1 = path[1];
-    char c2 = path[2];
-
-    return (c0 == '/') || (c0 == '.' && ((c1 == '/') || (c1 == '.' && c2 == '/')));
-}
-
 // import_sym = TKN_IDENT ('as' TKN_IDENT)?
 static ImportSymbol* parse_import_symbol(Parser* parser)
 {
@@ -697,14 +682,6 @@ static Stmt* parse_stmt_import(Parser* parser)
     }
 
     StrLit* mod_pathname = parser->ptoken.as_str.str_lit;
-
-    // TODO: Support non-relative module paths (when support a node_modules-like module repository).
-    if (!is_mod_path_relative(mod_pathname->str, mod_pathname->len)) {
-        parser_on_error(parser, parser->ptoken.range,
-                        "Module import path must be relative (i.e., starts with `./`, `../`, or `/`)");
-        return NULL;
-    }
-
     Identifier* mod_namespace = NULL;
 
     if (match_keyword(parser, KW_AS)) {
@@ -738,12 +715,6 @@ static Stmt* parse_stmt_include(Parser* parser)
     }
 
     StrLit* file_pathname = parser->ptoken.as_str.str_lit;
-
-    if (!is_mod_path_relative(file_pathname->str, file_pathname->len)) {
-        parser_on_error(parser, parser->ptoken.range,
-                        "Include path must be relative (i.e., starts with `./`, `../`, or `/`)");
-        return NULL;
-    }
 
     if (!expect_token(parser, TKN_SEMICOLON, error_prefix)) {
         return NULL;

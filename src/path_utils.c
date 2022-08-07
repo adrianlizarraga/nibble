@@ -200,6 +200,45 @@ char* path_ext(Path* path)
     return path->str;
 }
 
+bool path_isabs(Path* path)
+{
+    ASSERT_PATH_INIT(path);
+    return (path->len > 0) && (path->str[0] == '/');
+}
+
+PathRelativity path_relativity(Path* path)
+{
+    if (path->len == 0) {
+        return PATH_REL_INVALID;
+    }
+
+    if (path_isabs(path)) {
+        return PATH_REL_ABS;
+    }
+
+    if (path->len >= 2) {
+        char c0 = path->str[0];
+        char c1 = path->str[1];
+
+        // ./ is relative the the current directory.
+        if ((c0 == '.') && (c1 == '/')) {
+            return PATH_REL_CURR;
+        }
+
+        // $/ is relative the main's parent directory.
+        if ((c0 == '$') && (c1 == '/')) {
+            return PATH_REL_PROG_ENTRY;
+        }
+
+        // ../ is relative to the current directory's parent directory.
+        if ((path->len >= 3) && (c0 == '.' && c1 == '.' && path->str[2] == '/')) {
+            return PATH_REL_PARENT;
+        }
+    }
+
+    return PATH_REL_UNKNOWN;
+}
+
 bool dirent_it_skip(const char* name)
 {
     return (cstr_cmp(name, ".") == 0) || (cstr_cmp(name, "..") == 0);

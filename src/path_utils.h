@@ -20,6 +20,15 @@ enum PathFlags {
     PATH_IS_CANONICAL = 1 << 1,
 };
 
+typedef enum PathRelativity {
+    PATH_REL_INVALID, // Invalid
+    PATH_REL_ABS, // Absolute path: /
+    PATH_REL_CURR, // Relative to current directory: ./
+    PATH_REL_PARENT, // Relative to parent directory: ../
+    PATH_REL_PROG_ENTRY, // Relative to program entry dir: $/
+    PATH_REL_UNKNOWN, // Relative to unknown path (must resolve with search paths): some_dir/
+} PathRelativity;
+
 typedef struct Path {
     char* str; // Points to _buf if the path length is < MAX_PATH_LEN
                // Otherwise, points to an allocated buffer.
@@ -69,6 +78,8 @@ void path_set(Path* path, const char* src, size_t len);
 void path_join(Path* dst, Path* src);
 void path_append(Path* dst, const char* str, size_t len);
 bool path_abs(Path* path);
+bool path_isabs(Path* path);
+PathRelativity path_relativity(Path* path);
 char* path_filename(Path* path);
 char* path_ext(Path* path);
 FileKind path_kind(Path* path);

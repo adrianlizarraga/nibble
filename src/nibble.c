@@ -866,11 +866,11 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
     AllocatorState mem_state = allocator_get_state(&ctx->tmp_mem);
 
-    // Parse the code text
     Path mod_ospath;
     path_init(&mod_ospath, &ctx->tmp_mem);
     path_set(&mod_ospath, mod->abs_path->str, mod->abs_path->len);
 
+    // Parse the code text
     StringView code;
 
     if (!slurp_file(&code, &ctx->gen_mem, mod_ospath.str)) {
