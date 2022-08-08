@@ -14,6 +14,7 @@ typedef struct ArrayHdr {
 
 #define _array_hdr(a) ((ArrayHdr*)a - 1)
 #define _array_fit(a, n) (((n) > array_cap(a)) ? array_reserve(a, (n)) : 0)
+#define _array_allctr(a) (_array_hdr(a)->allocator)
 
 #define array_cap(a) (!(a) ? 0 : _array_hdr(a)->cap)
 #define array_len(a) (!(a) ? 0 : _array_hdr(a)->len)

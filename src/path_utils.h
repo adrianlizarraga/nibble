@@ -80,7 +80,8 @@ void path_append(Path* dst, const char* str, size_t len);
 bool path_abs(Path* path);
 bool path_isabs(Path* path);
 PathRelativity path_relativity(Path* path);
-char* path_filename(Path* path);
+char* path_basename(Path* path);
+bool path_dirname(Path* dst, Path* path, Allocator* alloc);
 char* path_ext(Path* path);
 FileKind path_kind(Path* path);
 

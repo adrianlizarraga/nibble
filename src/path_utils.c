@@ -174,7 +174,7 @@ void path_append(Path* dst, const char* str, size_t len)
     dst->len = new_len;
 }
 
-char* path_filename(Path* path)
+char* path_basename(Path* path)
 {
     ASSERT_PATH_INIT(path);
 
@@ -185,6 +185,26 @@ char* path_filename(Path* path)
     }
 
     return path->str;
+}
+
+bool path_dirname(Path* dst, Path* path, Allocator* alloc)
+{
+    ASSERT_PATH_INIT(path);
+    path_init(dst, alloc);
+
+    const char* basename_ptr = path_basename(path);
+
+    if (basename_ptr == path->str) {
+        dst->flags |= PATH_IS_INVALID;
+        return false;
+    }
+
+    const char* dirname_beg = path->str;
+    const char* dirname_end = basename_ptr - 1;
+
+    path_set(dst, dirname_beg, (dirname_end - dirname_beg));
+
+    return true;
 }
 
 char* path_ext(Path* path)
@@ -370,7 +390,7 @@ NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_s
     }
     else {
         const char* dir_begp = importer_ospath->str;
-        const char* dir_endp = path_filename(importer_ospath) - 1;
+        const char* dir_endp = path_basename(importer_ospath) - 1;
 
         path_set(import_ospath, dir_begp, dir_endp - dir_begp);
 
