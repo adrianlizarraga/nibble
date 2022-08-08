@@ -3,29 +3,95 @@
 #include "nibble.h"
 
 #define ASSERT_PATH_INIT(p) assert((p)->str && array_cap((p)->str))
+#define MAX_PATH_COMPS 64
 
-Path path_norm(const Path* path)
+Path path_norm(Allocator* allctr, const char* path, u32 len)
 {
+    assert(path[len] == '\0'); // Parsing relies on the input being null-terminated.
+
     Path result;
-    path_init(&result, path_allctr(path));
+    result->str = array_create(allctr, char, 128);
 
-    // TODO: Actually normalize. Remove ., .., etc.
+    const char* in = path;
+    bool is_abs = path[0] == '/';
 
-    size_t len = path_len(path);
-    array_set_len(result.str, len + 1); // Make room for null terminator.
+    // Tracks the start of each component so that we can backtrack when the input path has a '..' component.
+    int out_comps[MAX_PATH_COMPS];
+    int num_comps = 0;
 
-    // Copy entire path (including null terminator).
-    for (size_t i = 0; i <= len; i += 1) {
-        result.str[i] = path->str[i];
+    if (is_abs) {
+        array_push(result.str, '/');
     }
 
-    // Remove end `/` (if not at the beginning).
-    if (len > 1 && (result.str[len - 1] == '/')) {
-        result.str[res_len - 1] = '\0';
+    out_comps[num_comps++] = array_len(result.str);
+
+    while (*in) {
+
+        // Skip consecutive '/'
+        while (*in == '/') {
+            in += 1;
+        }
+
+        // Check for './' component. Just skip it.
+        if (in[0] == '.' && in[1] == '/') {
+            in += 2;
+            continue;
+        }
+
+        // Handle '../' component. Backtrack the output if necessary.
+        if (in[0] == '.' && in[1] == '.' && in[2] == '/') {
+            in += 3;
+
+            // Have more than one component, so just backtrack.
+            if (num_comps > 1) {
+                array_set_len(result.str, out_comps[num_comps - 1]);
+                num_comps -= 1;
+            }
+            // Have one component.
+            else {
+                assert(num_comps == 1);
+
+                // This is an absolute path, so '/..' is just '/'.
+                if (is_abs) {
+                    assert(out_comps[0] == 1);
+                    array_set_len(result.str, 1);
+                }
+                // Normalized path must start with '../'
+                else {
+                    array_push(result.str, '.');
+                    array_push(result.str, '.');
+                    array_push(result.str, '/');
+                }
+            }
+
+            continue;
+        }
+
+        assert(num_comps < MAX_PATH_COMPS);
+
+        // Mark the beginning of a new component and copy.
+        out_comps[num_comps++] = array_len(result.str);
+
+        while (*in && *in != '/') {
+            array_push(result.str, *in);
+            in += 1;
+        }
+
+        if (*in == '/') {
+            array_push(result.str, '/');
+            in += 1;
+        }
+    }
+
+    // Removing trailing '/' and null-terminate.
+    if (array_len(result.str) == 0) {
+        array_push(result.str, '.');
+    }
+    else if (array_back(result.str) == '/') {
         array_pop(result.str);
     }
 
-    assert(result.str[path_len(&result)] == '\0');
+    array_push(result.str, '\0');
 
     return result;
 }
@@ -33,29 +99,6 @@ Path path_norm(const Path* path)
 void path_free(Path* path)
 {
     array_free(path->str);
-}
-
-void path_init(Path* path, Allocator* alloc)
-{
-    path->str = array_create(alloc, char, 128);
-}
-
-void path_set(Path* path, const char* src, size_t src_len)
-{
-    ASSERT_PATH_INIT(path);
-    array_set_len(path->str, src_len + 1);
-
-    // Copy src characters (including null char) into our path.
-    size_t i = 0;
-
-    while (i < src_len) {
-        path->str[i] = src[i];
-        i += 1;
-    }
-
-    path->str[i] = '\0';
-
-    path_norm(path, NIBBLE_PATH_SEP, OS_PATH_SEP);
 }
 
 void path_join(Path* dst, Path* src)

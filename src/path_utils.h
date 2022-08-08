@@ -63,10 +63,8 @@ extern const char dot_exe_ext[];
 #define path_cap(p) array_cap((p)->str)
 #define path_allctr(p) array_allctr((p)->str)
 
-void path_init(Path* path, Allocator* alloc);
 void path_norm(Path* path, char old_sep, char new_sep);
 void path_free(Path* path);
-void path_set(Path* path, const char* src, size_t len);
 void path_join(Path* dst, Path* src);
 void path_append(Path* dst, const char* str, size_t len);
 bool path_abs(Path* path);
