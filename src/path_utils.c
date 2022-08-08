@@ -2,82 +2,48 @@
 #include "cstring.h"
 #include "nibble.h"
 
-#define ASSERT_PATH_INIT(p) assert((p)->str && (p)->cap)
+#define ASSERT_PATH_INIT(p) assert((p)->str && array_cap((p)->str))
 
-void path_norm(Path* path, char old_sep, char new_sep)
+Path path_norm(const Path* path)
 {
-    ASSERT_PATH_INIT(path);
+    Path result;
+    path_init(&result, path_allctr(path));
 
-    if (new_sep != old_sep) {
-        for (char* p = path->str; *p; p += 1) {
-            if (*p == old_sep) {
-                *p = new_sep;
-            }
-        }
+    // TODO: Actually normalize. Remove ., .., etc.
+
+    size_t len = path_len(path);
+    array_set_len(result.str, len + 1); // Make room for null terminator.
+
+    // Copy entire path (including null terminator).
+    for (size_t i = 0; i <= len; i += 1) {
+        result.str[i] = path->str[i];
     }
 
-    // Remove ending `/` (if not at the beginning of path)
-    if ((path->len > 1) && (path->str[path->len - 1] == new_sep)) {
-        path->str[path->len - 1] = '\0';
-        path->len -= 1;
-    }
-}
-
-static void path_ensure_cap(Path* path, size_t cap)
-{
-    if (path->cap >= cap) {
-        return;
+    // Remove end `/` (if not at the beginning).
+    if (len > 1 && (result.str[len - 1] == '/')) {
+        result.str[res_len - 1] = '\0';
+        array_pop(result.str);
     }
 
-    char* str = alloc_array(path->alloc, char, cap, false);
+    assert(result.str[path_len(&result)] == '\0');
 
-    for (size_t i = 0; i < path->len; i += 1) {
-        str[i] = path->str[i];
-    }
-
-    str[path->len] = '\0';
-
-    if (path->str != path->_buf) {
-        mem_free(path->alloc, path->str);
-    }
-
-    path->str = str;
-    path->cap = cap;
+    return result;
 }
 
 void path_free(Path* path)
 {
-    ASSERT_PATH_INIT(path);
-
-    if (path->str != path->_buf) {
-        mem_free(path->alloc, path->str);
-        path->len = 0;
-        path->cap = 0;
-    }
+    array_free(path->str);
 }
 
 void path_init(Path* path, Allocator* alloc)
 {
-    path->str = path->_buf;
-    path->len = 0;
-    path->cap = sizeof(path->_buf);
-    path->alloc = alloc;
-    path->_buf[0] = 0;
+    path->str = array_create(alloc, char, 128);
 }
 
 void path_set(Path* path, const char* src, size_t src_len)
 {
     ASSERT_PATH_INIT(path);
-
-    if (src_len >= path->cap) {
-        path_free(path);
-
-        const size_t _buf_size = sizeof(path->_buf);
-        const size_t cap = src_len + 1 + (_buf_size >> 2);
-
-        path->str = alloc_array(path->alloc, char, cap, false);
-        path->cap = cap;
-    }
+    array_set_len(path->str, src_len + 1);
 
     // Copy src characters (including null char) into our path.
     size_t i = 0;
@@ -88,7 +54,6 @@ void path_set(Path* path, const char* src, size_t src_len)
     }
 
     path->str[i] = '\0';
-    path->len = src_len;
 
     path_norm(path, NIBBLE_PATH_SEP, OS_PATH_SEP);
 }

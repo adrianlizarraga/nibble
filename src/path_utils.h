@@ -13,12 +13,8 @@
 #warning "Cannot determine maximum path length (PATH_MAX or MAX_PATH)"
 #endif
 
+#include "array.h"
 #include "allocator.h"
-
-enum PathFlags {
-    PATH_IS_INVALID = 1 << 0,
-    PATH_IS_CANONICAL = 1 << 1,
-};
 
 typedef enum PathRelativity {
     PATH_REL_INVALID, // Invalid
@@ -30,14 +26,7 @@ typedef enum PathRelativity {
 } PathRelativity;
 
 typedef struct Path {
-    char* str; // Points to _buf if the path length is < MAX_PATH_LEN
-               // Otherwise, points to an allocated buffer.
-
-    size_t len; // Length of str (not counting null character).
-    size_t cap; // Total capacity of the buffer pointed to by str.
-    Allocator* alloc;
-    unsigned flags;
-    char _buf[NIBBLE_MAX_PATH];
+    char* str; // Stretchy buffer.
 } Path;
 
 enum DirentFlags {
@@ -52,8 +41,7 @@ typedef struct DirentIter {
     void* os_handle;
 } DirentIter;
 
-typedef enum FileKind
-{
+typedef enum FileKind {
     FILE_NONE,
     FILE_REG,
     FILE_DIR,
@@ -70,6 +58,10 @@ typedef enum NibblePathErr {
 extern const char nib_ext[];
 extern const char exe_ext[];
 extern const char dot_exe_ext[];
+
+#define path_len(p) (array_len((p)->str) - 1)
+#define path_cap(p) array_cap((p)->str)
+#define path_allctr(p) array_allctr((p)->str)
 
 void path_init(Path* path, Allocator* alloc);
 void path_norm(Path* path, char old_sep, char new_sep);
