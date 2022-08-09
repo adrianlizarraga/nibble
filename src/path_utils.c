@@ -431,6 +431,8 @@ NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_s
 
     *import_ospath = path_norm(alloc, imp.str, path_len(&imp));
 
+    path_free(&imp);
+
     // Check if file's path exists somewhere.
     if (path_kind(import_ospath) != FILE_REG) {
         return NIB_PATH_INV_PATH;
