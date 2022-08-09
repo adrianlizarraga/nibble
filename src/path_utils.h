@@ -73,6 +73,7 @@ Path path_str_join(Allocator* allctr, const char* a, u32 a_len, const char* b, u
 Path path_join(Allocator* allctr, const Path* a, const Path* b);
 
 Path path_abs(Allocator* allctr, const Path* cwd, const Path* path);
+Path path_str_abs(Allocator* allctr, const char* cwd_str, u32 cwd_len, const char* p_str, u32 p_len);
 bool path_real(Path* dst, const Path* path);
 bool path_isabs(const Path* path);
 bool path_str_isabs(const char* path);
@@ -88,6 +89,5 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
 void dirent_it_next(DirentIter* it);
 void dirent_it_free(DirentIter* it);
 
-NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str,
-                                const Path* importer_ospath, Allocator* alloc);
+NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* importer_ospath, Allocator* alloc);
 #endif

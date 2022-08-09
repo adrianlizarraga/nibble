@@ -683,8 +683,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
             }
 
             Path include_ospath;
-            NibblePathErr ret =
-                get_import_ospath(&include_ospath, stmt_include->file_pathname, &file_ospath, &ctx->tmp_mem);
+            NibblePathErr ret = get_import_ospath(&include_ospath, stmt_include->file_pathname, &file_ospath, &ctx->tmp_mem);
 
             // Check if included file's path exists somewhere.
             if (ret == NIB_PATH_INV_PATH) {
@@ -722,7 +721,8 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
                     CachedInclude* cached = (void*)*pval;
 
                     for (CachedInclude* it = cached; it; it = it->next) {
-                        if ((it->len == path_len(&include_ospath)) && (cstr_ncmp(it->str, include_ospath.str, path_len(&include_ospath)) == 0)) {
+                        if ((it->len == path_len(&include_ospath)) &&
+                            (cstr_ncmp(it->str, include_ospath.str, path_len(&include_ospath)) == 0)) {
                             seen = true;
                             cached_include = it;
                             break;
@@ -1064,8 +1064,7 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     //////////////////////////////////////////
     static const char builtin_mod_name[] = "nibble_builtin";
 
-    Path main_rel = path_create(&nib_ctx->tmp_mem, mainf_name, mainf_len);
-    Path main_path = path_abs(&nib_ctx->tmp_mem, &nib_ctx->working_dir, &main_rel); // TODO: path_str_abs that passes cstrs
+    Path main_path = path_str_abs(&nib_ctx->tmp_mem, nib_ctx->working_dir.str, path_len(&nib_ctx->working_dir), mainf_name, mainf_len);
     FileKind file_kind = path_kind(&main_path);
 
     if (file_kind == FILE_NONE) {
@@ -1083,10 +1082,8 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
         add_module(&nib_ctx->mod_map, intern_str_lit(&nib_ctx->str_lit_map, builtin_mod_name, sizeof(builtin_mod_name) - 1));
     nib_ctx->builtin_mod = builtin_mod;
 
-
     // Main module
-    Module* main_mod =
-        add_module(&nib_ctx->mod_map, intern_str_lit(&nib_ctx->str_lit_map, main_path.str, path_len(&main_path)));
+    Module* main_mod = add_module(&nib_ctx->mod_map, intern_str_lit(&nib_ctx->str_lit_map, main_path.str, path_len(&main_path)));
     nib_ctx->main_mod = main_mod;
 
     //////////////////////////////////////////

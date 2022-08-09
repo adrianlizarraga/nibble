@@ -4,7 +4,7 @@
 #include "cstring.h"
 #include "nibble.h"
 
-#define ASSERT_PATH_INIT(p) assert((p)->str && array_cap((p)->str))
+#define ASSERT_PATH_INIT(p) assert((p)->str&& array_cap((p)->str))
 #define MAX_PATH_COMPS 64
 
 Path path_create(Allocator* allctr, const char* path, u32 len)
@@ -66,7 +66,6 @@ Path path_norm(Allocator* allctr, const char* path, u32 len)
     out_comps[num_comps++] = out;
 
     while (*in) {
-
         // Skip consecutive '/'
         while (*in == NIBBLE_PATH_SEP) {
             in += 1;
@@ -323,15 +322,23 @@ Path get_curr_dir(Allocator* allctr)
 
 Path path_abs(Allocator* allctr, const Path* cwd, const Path* path)
 {
-    if (path_isabs(path)) {
-        return path_norm(allctr, path->str, path_len(path));
+    return path_str_abs(allctr, cwd->str, path_len(cwd), path->str, path_len(path));
+}
+
+Path path_str_abs(Allocator* allctr, const char* cwd_str, u32 cwd_len, const char* p_str, u32 p_len)
+{
+    if (path_str_isabs(p_str)) {
+        return path_norm(allctr, p_str, p_len);
     }
 
-    assert(path_isabs(cwd));
+    assert(path_str_isabs(cwd_str));
 
-    Path joined = path_join(allctr, cwd, path);
+    Path joined = path_str_join(allctr, cwd_str, cwd_len, p_str, p_len);
+    Path normed = path_norm(allctr, joined.str, path_len(&joined));
 
-    return path_norm(allctr, joined.str, path_len(&joined));
+    path_free(&joined);
+
+    return normed;
 }
 
 bool path_real(Path* dst, const Path* path)
@@ -409,8 +416,7 @@ const char nib_ext[] = "nib";
 const char exe_ext[] = "exe";
 const char dot_exe_ext[] = ".exe";
 
-NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str,
-                                const Path* importer_ospath, Allocator* alloc)
+NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* importer_ospath, Allocator* alloc)
 {
     assert(path_isabs(importer_ospath));
 
@@ -445,4 +451,3 @@ NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_s
 
     return NIB_PATH_OK;
 }
-
