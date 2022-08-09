@@ -4,7 +4,6 @@ static void X64_bblock_add_instr(X64_BBlock* bblock, X64_Instr* instr)
 {
     if (!bblock->first) {
         bblock->first = instr;
-        instr->is_leader = true;
     }
     else {
         bblock->last->next = instr;

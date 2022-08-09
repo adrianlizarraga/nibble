@@ -310,7 +310,7 @@ typedef struct InstrMemset {
 typedef struct InstrLinuxSyscall {
     OpRIA nr;
     u8 count; // [1 - 6]
-    OpRIA args[6];
+    OpRIA* args;
     IR_Reg r;
 } InstrLinuxSyscall;
 
@@ -326,10 +326,11 @@ typedef struct InstrPhi {
     PhiArg* args;
 } InstrPhi;
 
+// TODO: Replace union with light "inheritance" to reduce memory costs.
+// TODO: Look into removing link-list support and storing instrs in an array (reduce memory costs).
 struct Instr {
     InstrKind kind;
     long ino; // Instruction number
-    bool is_leader;
 
     union {
         InstrIntBinary int_binary;

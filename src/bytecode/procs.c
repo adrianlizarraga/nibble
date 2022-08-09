@@ -200,7 +200,6 @@ static void IR_bblock_add_instr(BBlock* bblock, Instr* instr)
 
     if (!bblock->first) {
         bblock->first = instr;
-        instr->is_leader = true;
     }
     else {
         bblock->last->next = instr;
@@ -601,8 +600,8 @@ static void IR_emit_instr_linux_syscall(IR_ProcBuilder* builder, BBlock* bblock,
     instr->linux_syscall.r = r;
     instr->linux_syscall.nr = syscall_nr;
     instr->linux_syscall.count = num_args;
+    instr->linux_syscall.args = mem_dup_array(builder->arena, OpRIA, args, num_args);
 
-    memcpy(instr->linux_syscall.args, args, num_args * sizeof(args[0]));
     IR_add_instr(builder, bblock, instr);
 }
 
