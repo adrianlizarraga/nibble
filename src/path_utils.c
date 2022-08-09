@@ -126,7 +126,7 @@ Path path_norm(Allocator* allctr, const char* path, u32 len)
     if (out == result.str) {
         *out++ = '.';
     }
-    else if (*out == NIBBLE_PATH_SEP) {
+    else if (out[-1] == NIBBLE_PATH_SEP) {
         out -= 1; // Remove ending path separator.
     }
 
@@ -136,7 +136,7 @@ Path path_norm(Allocator* allctr, const char* path, u32 len)
     // Set the length now that we now it.
     u32 result_len = out - result.str;
 
-    assert(result_len >= len + 1);
+    assert(result_len <= len + 1);
     array_set_len(result.str, result_len);
 
     return result;
@@ -414,19 +414,22 @@ NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_s
 {
     assert(path_isabs(importer_ospath));
 
+    Path imp = {0};
     bool starts_root = import_path_str->str[0] == NIBBLE_PATH_SEP; // Is absolute path
 
     if (starts_root) {
-        path_init(import_ospath, alloc, import_path_str->str, import_path_str->len);
+        path_init(&imp, alloc, import_path_str->str, import_path_str->len);
     }
     else {
         const char* dir_begp = importer_ospath->str;
         const char* dir_endp = path_basename_ptr(importer_ospath) - 1;
 
-        *import_ospath = path_str_join(alloc, dir_begp, dir_endp - dir_begp, import_path_str->str, import_path_str->len);
+        imp = path_str_join(alloc, dir_begp, dir_endp - dir_begp, import_path_str->str, import_path_str->len);
     }
 
-    assert(path_isabs(import_ospath));
+    assert(path_isabs(&imp));
+
+    *import_ospath = path_norm(alloc, imp.str, path_len(&imp));
 
     // Check if file's path exists somewhere.
     if (path_kind(import_ospath) != FILE_REG) {

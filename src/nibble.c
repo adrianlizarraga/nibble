@@ -545,15 +545,15 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent)
     exit(1);
 #endif
 
-    Allocator bootstrap = allocator_create(32768);
+    Allocator bootstrap = allocator_create(65536);
     nib_ctx = alloc_type(&bootstrap, NibbleCtx, true);
 
     nib_ctx->silent = silent;
     nib_ctx->target_os = target_os;
     nib_ctx->target_arch = target_arch;
     nib_ctx->gen_mem = bootstrap;
-    nib_ctx->ast_mem = allocator_create(16384);
-    nib_ctx->tmp_mem = allocator_create(4096);
+    nib_ctx->ast_mem = allocator_create(65536);
+    nib_ctx->tmp_mem = allocator_create(32768);
     nib_ctx->str_lit_map = hmap(8, &nib_ctx->gen_mem);
     nib_ctx->float_lit_map = hmap(8, &nib_ctx->gen_mem);
     nib_ctx->ident_map = hmap(8, &nib_ctx->gen_mem);

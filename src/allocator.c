@@ -62,6 +62,7 @@ static bool alloc_mem_block(Allocator* allocator, size_t block_size)
     allocator->at = block;
     allocator->pat = NULL;
     allocator->end = block + block_size;
+    allocator->num_expanded += 1;
 
     MemBlockFooter* footer = (MemBlockFooter*)allocator->end;
     footer->pbuffer = pbuffer;
@@ -274,6 +275,6 @@ void print_allocator_stats(Allocator* allocator, const char* label)
 {
     AllocatorStats stats = allocator_stats(allocator);
 
-    ftprint_out("%s: num_blocks = %lu, total_size = %lu, used = %lu\n", label, stats.num_blocks, stats.total_size,
-                stats.used);
+    ftprint_out("%s: num_blocks = %lu, total_size = %lu, used = %lu, num_expanded = %lu\n", label, stats.num_blocks, stats.total_size,
+                stats.used, allocator->num_expanded);
 }
