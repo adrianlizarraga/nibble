@@ -514,10 +514,11 @@ typedef struct X64_InstrSyscall {
     u32 args[6];
 } X64_InstrSyscall;
 
+// TODO: Replace union with light "inheritance" to reduce memory costs.
+// TODO: Look into removing link-list support and storing instrs in an array (reduce memory costs).
 struct X64_Instr {
     X64_InstrKind kind;
     long ino;
-    bool is_leader;
 
     union {
         X64_InstrBinary_R_R binary_r_r;
