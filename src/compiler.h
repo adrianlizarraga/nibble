@@ -4,6 +4,7 @@
 #include "cstring.h"
 #include "stream.h"
 #include "hash_map.h"
+#include "path_utils.h"
 
 typedef struct TypeCache {
     HMap ptrs;
@@ -20,6 +21,8 @@ typedef struct NibbleCtx {
     Allocator tmp_mem;
 
     bool silent;
+
+    Path working_dir;
 
     HMap ident_map;
     HMap str_lit_map;

@@ -63,22 +63,31 @@ extern const char dot_exe_ext[];
 #define path_cap(p) array_cap((p)->str)
 #define path_allctr(p) array_allctr((p)->str)
 
-void path_norm(Path* path, char old_sep, char new_sep);
+Path path_create(Allocator* allctr, const char* path, u32 len);
+Path path_createf(Allocator* allctr, const char* format, ...);
+void path_init(Path* dst, Allocator* allctr, const char* path, u32 len);
+void path_set(Path* dst, const char* path, u32 len);
+Path path_norm(Allocator* allctr, const char* path, u32 len);
 void path_free(Path* path);
-void path_join(Path* dst, Path* src);
-void path_append(Path* dst, const char* str, size_t len);
-bool path_abs(Path* path);
-bool path_isabs(Path* path);
-PathRelativity path_relativity(Path* path);
-char* path_basename(Path* path);
-bool path_dirname(Path* dst, Path* path, Allocator* alloc);
-char* path_ext(Path* path);
-FileKind path_kind(Path* path);
+Path path_str_join(Allocator* allctr, const char* a, u32 a_len, const char* b, u32 b_len);
+Path path_join(Allocator* allctr, const Path* a, const Path* b);
+
+Path path_abs(Allocator* allctr, const Path* cwd, const Path* path);
+bool path_real(Path* dst, const Path* path);
+bool path_isabs(const Path* path);
+bool path_str_isabs(const char* path);
+
+const char* path_basename_ptr(const Path* path);
+const char* path_ext_ptr(const Path* path);
+Path path_dirname(Allocator* allctr, const Path* path);
+
+FileKind path_kind(const Path* path);
+PathRelativity path_relativity(const Path* path);
 
 void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
 void dirent_it_next(DirentIter* it);
 void dirent_it_free(DirentIter* it);
 
 NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str,
-                                Path* importer_ospath, Allocator* alloc);
+                                const Path* importer_ospath, Allocator* alloc);
 #endif

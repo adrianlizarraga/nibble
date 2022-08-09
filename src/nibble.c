@@ -564,6 +564,11 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent)
     nib_ctx->type_cache.slices = hmap(8, &nib_ctx->ast_mem);
     nib_ctx->type_cache.structs = hmap(8, &nib_ctx->ast_mem);
     nib_ctx->type_cache.unions = hmap(8, &nib_ctx->ast_mem);
+    nib_ctx->working_dir = get_curr_dir(&nib_ctx->gen_mem);
+
+    if (!path_isabs(&nib_ctx->working_dir)) {
+        return NULL;
+    }
 
     if (!init_keywords(&nib_ctx->ident_map))
         return NULL;
@@ -668,9 +673,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
         if (stmt->kind == CST_StmtInclude) {
             StmtInclude* stmt_include = (StmtInclude*)stmt;
 
-            Path file_ospath;
-            path_init(&file_ospath, &ctx->tmp_mem);
-            path_set(&file_ospath, abs_path, abs_path_len);
+            Path file_ospath = path_create(&ctx->tmp_mem, abs_path, abs_path_len);
 
             if (include_depth > NIBBLE_INCLUDE_LIMIT) {
                 report_error(&ctx->errors, stmt->range,
@@ -699,7 +702,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
             assert(ret == NIB_PATH_OK);
 
             // Check that the include file is not the same as the current file.
-            if (cstr_ncmp(file_ospath.str, include_ospath.str, include_ospath.len) == 0) {
+            if (cstr_ncmp(file_ospath.str, include_ospath.str, path_len(&include_ospath)) == 0) {
                 report_error(&ctx->errors, stmt->range, "Cyclic file inclusion detected at file `%s`. Cannot include self.",
                              file_ospath.str);
                 return false;
@@ -707,7 +710,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
 
             // Check if the file we're trying to include is in the seen_includes table.
             // If yes, fail. Otherwise, add.
-            u64 key = hash_bytes(include_ospath.str, include_ospath.len, FNV_INIT);
+            u64 key = hash_bytes(include_ospath.str, path_len(&include_ospath), FNV_INIT);
             CachedInclude* cached_include = NULL;
             bool seen = false;
 
@@ -719,7 +722,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
                     CachedInclude* cached = (void*)*pval;
 
                     for (CachedInclude* it = cached; it; it = it->next) {
-                        if ((it->len == include_ospath.len) && (cstr_ncmp(it->str, include_ospath.str, include_ospath.len) == 0)) {
+                        if ((it->len == path_len(&include_ospath)) && (cstr_ncmp(it->str, include_ospath.str, path_len(&include_ospath)) == 0)) {
                             seen = true;
                             cached_include = it;
                             break;
@@ -737,7 +740,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
             // Add to seen_includes
             {
                 CachedInclude* new_cached_include =
-                    mem_allocate(&ctx->tmp_mem, offsetof(CachedInclude, str) + include_ospath.len + 1, DEFAULT_ALIGN, true);
+                    mem_allocate(&ctx->tmp_mem, offsetof(CachedInclude, str) + path_len(&include_ospath) + 1, DEFAULT_ALIGN, true);
 
                 if (!new_cached_include) {
                     NIBBLE_FATAL_EXIT("Out of memory: %s:%d", __FILE__, __LINE__);
@@ -745,11 +748,11 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
                 }
 
                 new_cached_include->next = cached_include;
-                new_cached_include->len = include_ospath.len;
+                new_cached_include->len = path_len(&include_ospath);
                 new_cached_include->includer_ospath = &file_ospath;
 
-                memcpy(new_cached_include->str, include_ospath.str, include_ospath.len);
-                new_cached_include->str[include_ospath.len] = '\0';
+                memcpy(new_cached_include->str, include_ospath.str, path_len(&include_ospath));
+                new_cached_include->str[path_len(&include_ospath)] = '\0';
 
                 hmap_put(seen_includes, key, (uintptr_t)new_cached_include);
             }
@@ -760,7 +763,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
                 return false;
             }
 
-            if (!parse_code_recursive(ctx, mod, include_ospath.str, include_ospath.len, included_code.str, included_code.len,
+            if (!parse_code_recursive(ctx, mod, include_ospath.str, path_len(&include_ospath), included_code.str, included_code.len,
                                       seen_includes, include_depth + 1)) {
                 return false;
             }
@@ -866,9 +869,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
     AllocatorState mem_state = allocator_get_state(&ctx->tmp_mem);
 
-    Path mod_ospath;
-    path_init(&mod_ospath, &ctx->tmp_mem);
-    path_set(&mod_ospath, mod->abs_path->str, mod->abs_path->len);
+    Path mod_ospath = path_create(&ctx->tmp_mem, mod->abs_path->str, mod->abs_path->len);
 
     // Parse the code text
     StringView code;
@@ -927,7 +928,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             // Parse import module
             //
 
-            Module* import_mod = parse_import_module(ctx, import_mod_ospath.str, import_mod_ospath.len);
+            Module* import_mod = parse_import_module(ctx, import_mod_ospath.str, path_len(&import_mod_ospath));
 
             if (!import_mod) {
                 return false;
@@ -1054,9 +1055,7 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     //////////////////////////////////////////
     //      Check output file name
     //////////////////////////////////////////
-    Path outf_ospath;
-    path_init(&outf_ospath, &nib_ctx->tmp_mem);
-    path_set(&outf_ospath, outf_name, outf_len);
+    Path outf_ospath = path_create(&nib_ctx->tmp_mem, outf_name, outf_len);
 
     // TODO: Validate output file name more extensively.
 
@@ -1065,18 +1064,16 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     //////////////////////////////////////////
     static const char builtin_mod_name[] = "nibble_builtin";
 
-    Path main_path;
-    path_init(&main_path, &nib_ctx->tmp_mem);
-    path_set(&main_path, mainf_name, mainf_len);
+    Path main_rel = path_create(&nib_ctx->tmp_mem, mainf_name, mainf_len);
+    Path main_path = path_abs(&nib_ctx->tmp_mem, &nib_ctx->working_dir, &main_rel); // TODO: path_str_abs that passes cstrs
+    FileKind file_kind = path_kind(&main_path);
 
-    if (!path_abs(&main_path)) {
+    if (file_kind == FILE_NONE) {
         ftprint_err("[ERROR]: Cannot find file `%s`\n", mainf_name);
         return false;
     }
 
-    FileKind file_kind = path_kind(&main_path);
-
-    if ((file_kind != FILE_REG) || cstr_cmp(path_ext(&main_path), nib_ext) != 0) {
+    if ((file_kind != FILE_REG) || cstr_cmp(path_ext_ptr(&main_path), nib_ext) != 0) {
         ftprint_err("[ERROR]: Program entry file `%s` is not a valid `.nib` source file.\n", main_path.str);
         return false;
     }
@@ -1089,7 +1086,7 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
 
     // Main module
     Module* main_mod =
-        add_module(&nib_ctx->mod_map, intern_str_lit(&nib_ctx->str_lit_map, main_path.str, main_path.len));
+        add_module(&nib_ctx->mod_map, intern_str_lit(&nib_ctx->str_lit_map, main_path.str, path_len(&main_path)));
     nib_ctx->main_mod = main_mod;
 
     //////////////////////////////////////////
@@ -1209,12 +1206,7 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     //////////////////////////////////////////
     assert(nib_ctx->target_arch == ARCH_X64); // TODO: Support other architectures
 
-    const char nasm_ext[] = ".s";
-
-    Path nasm_fname;
-    path_init(&nasm_fname, &nib_ctx->tmp_mem);
-    path_set(&nasm_fname, outf_ospath.str, outf_ospath.len);
-    path_append(&nasm_fname, nasm_ext, sizeof(nasm_ext) - 1);
+    Path nasm_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.s", path_len(&outf_ospath), outf_ospath.str);
 
     print_info(nib_ctx, "Generating NASM assembly output: %s ...", nasm_fname.str);
     x64_init_target(nib_ctx->target_os);
@@ -1224,15 +1216,8 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     //////////////////////////////////////////
     //          Run NASM assembler
     //////////////////////////////////////////
-    char obj_ext[] = ".o";
+    Path obj_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.o", path_len(&outf_ospath), outf_ospath.str);
     char nasm_fformat[] = "elf64";
-    size_t obj_ext_len = sizeof(obj_ext) - 1;
-
-    Path obj_fname;
-    path_init(&obj_fname, &nib_ctx->tmp_mem);
-    path_set(&obj_fname, outf_ospath.str, outf_ospath.len);
-    path_append(&obj_fname, obj_ext, obj_ext_len);
-
     char* nasm_cmd[] = {"nasm", "-f", nasm_fformat, nasm_fname.str, "-o", obj_fname.str, NULL};
 
     if (run_cmd(&nib_ctx->tmp_mem, nasm_cmd, ARRAY_LEN(nasm_cmd) - 1, nib_ctx->silent) < 0) {
