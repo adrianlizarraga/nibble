@@ -45,11 +45,12 @@ void path_set(Path* dst, const char* path, u32 len)
     dst->str[len] = '\0';
 }
 
+// Modified version of gist authored by GitHub user starwing: https://gist.github.com/starwing/2761647
 Path path_norm(Allocator* allctr, const char* path, u32 len)
 {
     assert(path[len] == '\0'); // Parsing relies on the input being null-terminated.
 
-    Path result = {.str = array_create(allctr, char, len + 1)}; // Will never be larger than len.
+    Path result = {.str = array_create(allctr, char, len + 2)}; // Will never be larger than len.
 
     char* out = result.str;
     const char* in = path;
@@ -71,15 +72,15 @@ Path path_norm(Allocator* allctr, const char* path, u32 len)
             in += 1;
         }
 
-        // Check for './' component. Just skip it.
-        if (in[0] == '.' && in[1] == NIBBLE_PATH_SEP) {
-            in += 2;
+        // Check for '.' component. Just skip it.
+        if (in[0] == '.' && (in[1] == NIBBLE_PATH_SEP || !in[1])) {
+            in += 1;
             continue;
         }
 
-        // Handle '../' component. Backtrack the output if necessary.
-        if (in[0] == '.' && in[1] == '.' && in[2] == NIBBLE_PATH_SEP) {
-            in += 3;
+        // Handle '..' component. Backtrack the output if necessary.
+        if (in[0] == '.' && in[1] == '.' && (in[2] == NIBBLE_PATH_SEP || !in[2])) {
+            in += 2;
 
             // Have more than one component, so just backtrack.
             if (num_comps > 1) {
@@ -121,21 +122,23 @@ Path path_norm(Allocator* allctr, const char* path, u32 len)
         }
     }
 
+    u32 result_len = out - result.str;
+
     // Empty path should result in '.'
-    if (out == result.str) {
+    if (result_len == 0) {
         *out++ = '.';
     }
-    else if (out[-1] == NIBBLE_PATH_SEP) {
+    else if ((result_len > 1) && out[-1] == NIBBLE_PATH_SEP) {
         out -= 1; // Remove ending path separator.
     }
 
     // Write null-terminator.
     *out++ = '\0';
 
-    // Set the length now that we now it.
-    u32 result_len = out - result.str;
+    // Set the final length now that we now it.
+    result_len = out - result.str;
 
-    assert(result_len <= len + 1);
+    assert(result_len <= len + 2);
     array_set_len(result.str, result_len);
 
     return result;
@@ -451,3 +454,4 @@ NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_s
 
     return NIB_PATH_OK;
 }
+
