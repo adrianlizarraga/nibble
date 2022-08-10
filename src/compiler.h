@@ -23,6 +23,7 @@ typedef struct NibbleCtx {
     bool silent;
 
     Path working_dir;
+    Path prog_entry_dir;
 
     HMap ident_map;
     HMap str_lit_map;

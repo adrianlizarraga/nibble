@@ -2,7 +2,7 @@ import { len,
          CSTR_CONST, CSTR_CONST as CONST20, // Can import twice using different names!
          get_rand as rand } from "./cstring.nib";
 
-import { cstr_var, cstr_var as var2 } from "./cstring.nib";
+import { cstr_var, cstr_var as var2 } from "$/cstring.nib"; // '$/' is relative to main's parent directory
 
 //import { _internal_var } from "./cstring.nib"; // Cannot import private symbols!
 //import { nonexisting_var } from "./cstring.nib"; // Cannot import nonexisting symbols!

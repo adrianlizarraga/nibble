@@ -18,9 +18,8 @@
 
 typedef enum PathRelativity {
     PATH_REL_INVALID, // Invalid
-    PATH_REL_ABS, // Absolute path: /
-    PATH_REL_CURR, // Relative to current directory: ./
-    PATH_REL_PARENT, // Relative to parent directory: ../
+    PATH_REL_ROOT, // Absolute path: /
+    PATH_REL_CURR, // Relative to current directory: ./ or ../
     PATH_REL_PROG_ENTRY, // Relative to program entry dir: $/
     PATH_REL_UNKNOWN, // Relative to unknown path (must resolve with search paths): some_dir/
 } PathRelativity;
@@ -54,6 +53,8 @@ extern const char nib_ext[];
 #define path_cap(p) array_cap((p)->str)
 #define path_allctr(p) array_allctr((p)->str)
 
+#define PATH_AS_ARGS(p) ((p)->str), path_len(p)
+
 Path path_create(Allocator* allctr, const char* path, u32 len);
 Path path_createf(Allocator* allctr, const char* format, ...);
 void path_init(Path* dst, Allocator* allctr, const char* path, u32 len);
@@ -74,7 +75,7 @@ const char* path_ext_ptr(const Path* path);
 Path path_dirname(Allocator* allctr, const Path* path);
 
 FileKind path_kind(const Path* path);
-PathRelativity path_relativity(const Path* path);
+PathRelativity path_relativity(const char* path, u32 len);
 
 void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
 void dirent_it_next(DirentIter* it);

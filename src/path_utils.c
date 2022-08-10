@@ -248,35 +248,32 @@ bool path_isabs(const Path* path)
     return (path_len(path) > 0) && (path->str[0] == NIBBLE_PATH_SEP);
 }
 
-PathRelativity path_relativity(const Path* path)
+PathRelativity path_relativity(const char* path, u32 len)
 {
-    u32 len = path_len(path);
-
     if (len == 0) {
         return PATH_REL_INVALID;
     }
 
-    if (path_isabs(path)) {
-        return PATH_REL_ABS;
+    if (path_str_isabs(path)) {
+        return PATH_REL_ROOT;
     }
 
     if (len >= 2) {
-        char c0 = path->str[0];
-        char c1 = path->str[1];
+        char c0 = path[0];
+        char c1 = path[1];
 
         // ./ is relative the the current directory.
         if ((c0 == '.') && (c1 == NIBBLE_PATH_SEP)) {
             return PATH_REL_CURR;
         }
 
+        // ../ is relative to the current directory's parent directory.
+        if ((len >= 3) && (c0 == '.' && c1 == '.' && path[2] == NIBBLE_PATH_SEP)) {
+            return PATH_REL_CURR;
+        }
         // $/ is relative the main's parent directory.
         if ((c0 == '$') && (c1 == NIBBLE_PATH_SEP)) {
             return PATH_REL_PROG_ENTRY;
-        }
-
-        // ../ is relative to the current directory's parent directory.
-        if ((len >= 3) && (c0 == '.' && c1 == '.' && path->str[2] == NIBBLE_PATH_SEP)) {
-            return PATH_REL_PARENT;
         }
     }
 

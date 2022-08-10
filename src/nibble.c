@@ -348,40 +348,56 @@ typedef enum NibblePathErr {
     NIB_PATH_OK = 0,
     NIB_PATH_INV_PATH,
     NIB_PATH_INV_EXT,
-    NIB_PATH_OUTSIDE_ROOT,
 } NibblePathErr;
 
-static NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* importer_ospath, Allocator* alloc)
+static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_str, const Path* importer_ospath,
+                                        const Path* prog_entry_dir, Allocator* alloc)
 {
     assert(path_isabs(importer_ospath));
 
     Path imp = {0};
-    // TODO: Handle relativeness!
-    bool starts_root = import_path_str->str[0] == NIBBLE_PATH_SEP; // Is absolute path
+    PathRelativity rel = path_relativity(import_path_str->str, import_path_str->len);
 
-    if (starts_root) {
+    switch (rel) {
+    case PATH_REL_ROOT: // Import path is absolute.
         path_init(&imp, alloc, import_path_str->str, import_path_str->len);
-    }
-    else {
+        break;
+    case PATH_REL_CURR: { // Import path is relative to importer.
         const char* dir_begp = importer_ospath->str;
         const char* dir_endp = path_basename_ptr(importer_ospath) - 1;
 
         imp = path_str_join(alloc, dir_begp, dir_endp - dir_begp, import_path_str->str, import_path_str->len);
+        break;
+    }
+    case PATH_REL_PROG_ENTRY: {
+        assert(import_path_str->len > 2);
+
+        // Strip away the beginning '$/' because it is not standard.
+        const char* rel_start = import_path_str->str + 2;
+        u32 rel_len = import_path_str->len - 2;
+
+        imp = path_str_join(alloc, PATH_AS_ARGS(prog_entry_dir), rel_start, rel_len);
+        break;
+    }
+    case PATH_REL_UNKNOWN:
+        // TODO: Use search paths to locate file.
+        return NIB_PATH_INV_PATH;
+    default:
+        return NIB_PATH_INV_PATH;
     }
 
     assert(path_isabs(&imp));
 
-    *import_ospath = path_norm(alloc, imp.str, path_len(&imp));
-
+    *result = path_norm(alloc, imp.str, path_len(&imp));
     path_free(&imp);
 
     // Check if file's path exists somewhere.
-    if (path_kind(import_ospath) != FILE_REG) {
+    if (path_kind(result) != FILE_REG) {
         return NIB_PATH_INV_PATH;
     }
 
     // Check for .nib extension.
-    if (cstr_cmp(path_ext_ptr(import_ospath), nib_ext) != 0) {
+    if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
         return NIB_PATH_INV_EXT;
     }
 
@@ -727,7 +743,8 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
             }
 
             Path include_ospath;
-            NibblePathErr ret = get_import_ospath(&include_ospath, stmt_include->file_pathname, &file_ospath, &ctx->tmp_mem);
+            NibblePathErr ret =
+                get_import_abspath(&include_ospath, stmt_include->file_pathname, &file_ospath, &ctx->prog_entry_dir, &ctx->tmp_mem);
 
             // Check if included file's path exists somewhere.
             if (ret == NIB_PATH_INV_PATH) {
@@ -951,7 +968,8 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             StmtImport* simport = (StmtImport*)stmt;
 
             Path import_mod_ospath;
-            NibblePathErr ret_err = get_import_ospath(&import_mod_ospath, simport->mod_pathname, &mod_ospath, &ctx->tmp_mem);
+            NibblePathErr ret_err =
+                get_import_abspath(&import_mod_ospath, simport->mod_pathname, &mod_ospath, &ctx->prog_entry_dir, &ctx->tmp_mem);
 
             // Check if imported module's path exists somewhere.
             if (ret_err == NIB_PATH_INV_PATH) {
@@ -1120,6 +1138,11 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
         ftprint_err("[ERROR]: Program entry file `%s` is not a valid `.nib` source file.\n", main_path.str);
         return false;
     }
+
+    nib_ctx->prog_entry_dir = path_dirname(&nib_ctx->gen_mem, &main_path);
+
+    print_info(nib_ctx, "Working directory: %s", nib_ctx->working_dir.str);
+    print_info(nib_ctx, "Program entry directory: %s", nib_ctx->prog_entry_dir.str);
 
     // Builtin module
     Module* builtin_mod =
