@@ -351,7 +351,8 @@ typedef enum NibblePathErr {
 } NibblePathErr;
 
 static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_str, const Path* importer_ospath,
-                                        const Path* prog_entry_dir, Allocator* alloc)
+                                        const Path* prog_entry_dir, const StringView* search_paths, u32 num_search_paths,
+                                        Allocator* alloc)
 {
     assert(path_isabs(importer_ospath));
 
@@ -379,9 +380,10 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         imp = path_str_join(alloc, PATH_AS_ARGS(prog_entry_dir), rel_start, rel_len);
         break;
     }
-    case PATH_REL_UNKNOWN:
-        // TODO: Use search paths to locate file.
+    case PATH_REL_UNKNOWN: {
+        // TODO: SEARCH paths
         return NIB_PATH_INV_PATH;
+    }
     default:
         return NIB_PATH_INV_PATH;
     }
@@ -750,7 +752,8 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
 
             Path include_ospath;
             NibblePathErr ret =
-                get_import_abspath(&include_ospath, stmt_include->file_pathname, &file_ospath, &ctx->prog_entry_dir, &ctx->tmp_mem);
+                get_import_abspath(&include_ospath, stmt_include->file_pathname, &file_ospath, &ctx->prog_entry_dir,
+                                   ctx->search_paths, ctx->num_search_paths, &ctx->tmp_mem);
 
             // Check if included file's path exists somewhere.
             if (ret == NIB_PATH_INV_PATH) {
@@ -975,7 +978,8 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
 
             Path import_mod_ospath;
             NibblePathErr ret_err =
-                get_import_abspath(&import_mod_ospath, simport->mod_pathname, &mod_ospath, &ctx->prog_entry_dir, &ctx->tmp_mem);
+                get_import_abspath(&import_mod_ospath, simport->mod_pathname, &mod_ospath, &ctx->prog_entry_dir,
+                                   ctx->search_paths, ctx->num_search_paths, &ctx->tmp_mem);
 
             // Check if imported module's path exists somewhere.
             if (ret_err == NIB_PATH_INV_PATH) {
@@ -1149,11 +1153,6 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
 
     print_info(nib_ctx, "Working directory: %s", nib_ctx->working_dir.str);
     print_info(nib_ctx, "Program entry directory: %s", nib_ctx->prog_entry_dir.str);
-
-    for (u32 i = 0; i < nib_ctx->num_search_paths; i += 1) {
-        const StringView* sview = nib_ctx->search_paths + i;
-        print_info(nib_ctx, "Search path %u: \"%.*s\"", i + 1, sview->len, sview->str);
-    }
 
     // Builtin module
     Module* builtin_mod =

@@ -138,7 +138,7 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
 void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* new_path, const char* prog_name)
 {
     if (*p_num_paths >= cap) {
-        ftprint_err("ERROR: Too many import search paths (maximum is %u)\n", cap);
+        ftprint_err("ERROR: Too many import search paths (maximum of %u)\n", cap);
         print_usage(stderr, prog_name);
         exit(1);
     }
