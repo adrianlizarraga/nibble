@@ -344,6 +344,50 @@ static void print_info(NibbleCtx* nib_ctx, const char* format, ...)
     ftprint_out("\n");
 }
 
+typedef enum NibblePathErr {
+    NIB_PATH_OK = 0,
+    NIB_PATH_INV_PATH,
+    NIB_PATH_INV_EXT,
+    NIB_PATH_OUTSIDE_ROOT,
+} NibblePathErr;
+
+static NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* importer_ospath, Allocator* alloc)
+{
+    assert(path_isabs(importer_ospath));
+
+    Path imp = {0};
+    // TODO: Handle relativeness!
+    bool starts_root = import_path_str->str[0] == NIBBLE_PATH_SEP; // Is absolute path
+
+    if (starts_root) {
+        path_init(&imp, alloc, import_path_str->str, import_path_str->len);
+    }
+    else {
+        const char* dir_begp = importer_ospath->str;
+        const char* dir_endp = path_basename_ptr(importer_ospath) - 1;
+
+        imp = path_str_join(alloc, dir_begp, dir_endp - dir_begp, import_path_str->str, import_path_str->len);
+    }
+
+    assert(path_isabs(&imp));
+
+    *import_ospath = path_norm(alloc, imp.str, path_len(&imp));
+
+    path_free(&imp);
+
+    // Check if file's path exists somewhere.
+    if (path_kind(import_ospath) != FILE_REG) {
+        return NIB_PATH_INV_PATH;
+    }
+
+    // Check for .nib extension.
+    if (cstr_cmp(path_ext_ptr(import_ospath), nib_ext) != 0) {
+        return NIB_PATH_INV_EXT;
+    }
+
+    return NIB_PATH_OK;
+}
+
 static bool init_annotations(HMap* ident_map)
 {
     static const StringView names[ANNOTATION_COUNT] = {

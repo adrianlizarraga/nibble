@@ -7,6 +7,8 @@
 #define ASSERT_PATH_INIT(p) assert((p)->str&& array_cap((p)->str))
 #define MAX_PATH_COMPS 64
 
+const char nib_ext[] = "nib";
+
 Path path_create(Allocator* allctr, const char* path, u32 len)
 {
     Path r = {.str = array_create(allctr, char, len + 1)};
@@ -408,50 +410,5 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
     path_init(&it->name, alloc, NULL, 0);
 
     dirent_it_next(it);
-}
-
-///////////////////////////////////////////
-// Utils for working with OS and Canonical
-// paths
-///////////////////////////////////////////
-
-const char nib_ext[] = "nib";
-const char exe_ext[] = "exe";
-const char dot_exe_ext[] = ".exe";
-
-NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* importer_ospath, Allocator* alloc)
-{
-    assert(path_isabs(importer_ospath));
-
-    Path imp = {0};
-    bool starts_root = import_path_str->str[0] == NIBBLE_PATH_SEP; // Is absolute path
-
-    if (starts_root) {
-        path_init(&imp, alloc, import_path_str->str, import_path_str->len);
-    }
-    else {
-        const char* dir_begp = importer_ospath->str;
-        const char* dir_endp = path_basename_ptr(importer_ospath) - 1;
-
-        imp = path_str_join(alloc, dir_begp, dir_endp - dir_begp, import_path_str->str, import_path_str->len);
-    }
-
-    assert(path_isabs(&imp));
-
-    *import_ospath = path_norm(alloc, imp.str, path_len(&imp));
-
-    path_free(&imp);
-
-    // Check if file's path exists somewhere.
-    if (path_kind(import_ospath) != FILE_REG) {
-        return NIB_PATH_INV_PATH;
-    }
-
-    // Check for .nib extension.
-    if (cstr_cmp(path_ext_ptr(import_ospath), nib_ext) != 0) {
-        return NIB_PATH_INV_EXT;
-    }
-
-    return NIB_PATH_OK;
 }
 

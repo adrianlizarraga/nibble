@@ -48,16 +48,7 @@ typedef enum FileKind {
     FILE_OTHER,
 } FileKind;
 
-typedef enum NibblePathErr {
-    NIB_PATH_OK = 0,
-    NIB_PATH_INV_PATH,
-    NIB_PATH_INV_EXT,
-    NIB_PATH_OUTSIDE_ROOT,
-} NibblePathErr;
-
 extern const char nib_ext[];
-extern const char exe_ext[];
-extern const char dot_exe_ext[];
 
 #define path_len(p) (array_len((p)->str) - 1)
 #define path_cap(p) array_cap((p)->str)
@@ -88,7 +79,5 @@ PathRelativity path_relativity(const Path* path);
 void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
 void dirent_it_next(DirentIter* it);
 void dirent_it_free(DirentIter* it);
-
-NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* importer_ospath, Allocator* alloc);
 
 #endif
