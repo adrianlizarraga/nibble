@@ -60,6 +60,7 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "    -s                              Silent mode (no output to stdout)\n");
     ftprint_file(fd, true, "    -os   [linux | win32 | osx]     Target OS\n");
     ftprint_file(fd, true, "    -arch [x64 | x86]               Target architecture\n");
+    ftprint_file(fd, true, "    -I    <import_search_path>      Add import search path\n");
     ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `out`\n");
 }
 
@@ -131,8 +132,26 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
     return target_arch;
 }
 
+#define NUM_USER_SEARCH_PATHS 63
+#define NUM_DEFAULT_SEARCH_PATHS 1
+
+void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* new_path, const char* prog_name)
+{
+    if (*p_num_paths >= cap) {
+        ftprint_err("ERROR: Too many import search paths (maximum is %u)\n", cap);
+        print_usage(stderr, prog_name);
+        exit(1);
+    }
+
+    paths[*p_num_paths] = (StringView){new_path, cstr_len(new_path)};
+    *p_num_paths += 1;
+}
+
 int main(int argc, char* argv[])
 {
+    StringView search_paths[NUM_USER_SEARCH_PATHS + NUM_DEFAULT_SEARCH_PATHS];
+    u32 num_search_paths;
+
     const char* program_name = consume_arg(&argc, &argv);
     const char* mainf_name = NULL;
     const char* outf_name = "out";
@@ -167,6 +186,11 @@ int main(int argc, char* argv[])
         else if (cstr_cmp(arg, "-o") == 0) {
             outf_name = get_flag_value(&argc, &argv, program_name, "-o");
         }
+        else if (cstr_cmp(arg, "-I") == 0) {
+            const char* search_path = get_flag_value(&argc, &argv, program_name, "-I");
+
+            add_search_path(search_paths, &num_search_paths, NUM_USER_SEARCH_PATHS, search_path, program_name);
+        }
         else {
             if (mainf_name) {
                 ftprint_err("[ERROR]: unknown option `%s`\n\n", arg);
@@ -177,6 +201,9 @@ int main(int argc, char* argv[])
             mainf_name = arg;
         }
     }
+
+    // Add working directory as a search path.
+    add_search_path(search_paths, &num_search_paths, ARRAY_LEN(search_paths), ".", program_name);
 
     size_t mainf_len = mainf_name ? cstr_len(mainf_name) : 0;
     size_t outf_len = outf_name ? cstr_len(outf_name) : 0;
@@ -193,7 +220,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    NibbleCtx* nib_ctx = nibble_init(target_os, target_arch, silent);
+    NibbleCtx* nib_ctx = nibble_init(target_os, target_arch, silent, search_paths, num_search_paths);
 
     if (!nib_ctx) {
         ftprint_err("[ERROR]: Failed to initialize compiler.\n");

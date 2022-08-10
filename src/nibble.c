@@ -589,7 +589,7 @@ static bool init_keywords(HMap* ident_map)
     return true;
 }
 
-NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent)
+NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const StringView* search_paths, u32 num_search_paths)
 {
     static NibbleCtx* nib_ctx;
     static const char main_name[] = "main";
@@ -625,22 +625,28 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent)
     nib_ctx->type_cache.structs = hmap(8, &nib_ctx->ast_mem);
     nib_ctx->type_cache.unions = hmap(8, &nib_ctx->ast_mem);
     nib_ctx->working_dir = get_curr_dir(&nib_ctx->gen_mem);
+    nib_ctx->search_paths = search_paths;
+    nib_ctx->num_search_paths = num_search_paths;
 
     if (!path_isabs(&nib_ctx->working_dir)) {
         return NULL;
     }
 
-    if (!init_keywords(&nib_ctx->ident_map))
+    if (!init_keywords(&nib_ctx->ident_map)) {
         return NULL;
+    }
 
-    if (!init_intrinsics(&nib_ctx->ident_map))
+    if (!init_intrinsics(&nib_ctx->ident_map)) {
         return NULL;
+    }
 
-    if (!init_annotations(&nib_ctx->ident_map))
+    if (!init_annotations(&nib_ctx->ident_map)) {
         return NULL;
+    }
 
-    if (!init_builtin_struct_fields(&nib_ctx->ident_map))
+    if (!init_builtin_struct_fields(&nib_ctx->ident_map)) {
         return NULL;
+    }
 
     main_proc_ident = intern_ident(&nib_ctx->ident_map, main_name, sizeof(main_name) - 1);
 
@@ -1143,6 +1149,11 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
 
     print_info(nib_ctx, "Working directory: %s", nib_ctx->working_dir.str);
     print_info(nib_ctx, "Program entry directory: %s", nib_ctx->prog_entry_dir.str);
+
+    for (u32 i = 0; i < nib_ctx->num_search_paths; i += 1) {
+        const StringView* sview = nib_ctx->search_paths + i;
+        print_info(nib_ctx, "Search path %u: \"%.*s\"", i + 1, sview->len, sview->str);
+    }
 
     // Builtin module
     Module* builtin_mod =
