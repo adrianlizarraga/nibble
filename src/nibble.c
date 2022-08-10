@@ -370,7 +370,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         break;
     }
     case PATH_REL_PROG_ENTRY: {
-        assert(import_path_str->len > 2);
+        assert(import_path_str->len >= 2);
 
         // Strip away the beginning '$/' because it is not standard.
         const char* rel_start = import_path_str->str + 2;
