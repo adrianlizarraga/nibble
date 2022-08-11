@@ -48,22 +48,24 @@ void path_set(Path* dst, const char* path, u32 len)
 }
 
 // Modified version of gist authored by GitHub user starwing: https://gist.github.com/starwing/2761647
-Path path_norm(Allocator* allctr, const char* path, u32 len)
+Path* path_norm(Path* path)
 {
-    assert(path[len] == '\0'); // Parsing relies on the input being null-terminated.
+    u32 len = path_len(path);
 
-    Path result = {.str = array_create(allctr, char, len + 2)}; // Will never be larger than len.
+    assert(path->str[len] == '\0'); // Parsing relies on the input being null-terminated.
+    array_reserve(path->str, 2); // Need enough space for '.'
 
-    char* out = result.str;
-    const char* in = path;
-    bool is_abs = path[0] == NIBBLE_PATH_SEP;
+    char* out = path->str;
+    const char* in = path->str;
+    bool is_abs = path_isabs(path);
 
     // Tracks the start of each component so that we can backtrack when the input path has a '..' component.
     char* out_comps[MAX_PATH_COMPS];
     int num_comps = 0;
 
     if (is_abs) {
-        *out++ = NIBBLE_PATH_SEP;
+        out += 1;
+        in += 1;
     }
 
     out_comps[num_comps++] = out;
@@ -90,31 +92,24 @@ Path path_norm(Allocator* allctr, const char* path, u32 len)
                 num_comps -= 1;
             }
             // Have one component.
-            else {
-                assert(num_comps == 1);
-
-                // This is an absolute path, so '/..' is just '/'.
-                if (is_abs) {
-                    out = out_comps[0];
-                }
-                // Normalized path must start with '../'
-                else {
-                    out[0] = '.';
-                    out[1] = '.';
-                    out[2] = NIBBLE_PATH_SEP;
-                    out += 3;
-                }
+            else if (!is_abs) {
+                // Normalized path starts with '../'
+                out[0] = '.';
+                out[1] = '.';
+                out[2] = NIBBLE_PATH_SEP;
+                out += 3;
             }
 
             continue;
         }
 
         assert(num_comps < MAX_PATH_COMPS);
+        assert(out <= in);
 
         // Mark the beginning of a new component and copy from in to result.
         out_comps[num_comps++] = out;
 
-        while (*in && *in != NIBBLE_PATH_SEP) {
+        while (*in && *in != '\0' && *in != NIBBLE_PATH_SEP) {
             *out++ = *in++;
         }
 
@@ -124,13 +119,13 @@ Path path_norm(Allocator* allctr, const char* path, u32 len)
         }
     }
 
-    u32 result_len = out - result.str;
+    u32 num_bytes = out - path->str;
 
     // Empty path should result in '.'
-    if (result_len == 0) {
+    if (num_bytes == 0) {
         *out++ = '.';
     }
-    else if ((result_len > 1) && out[-1] == NIBBLE_PATH_SEP) {
+    else if ((num_bytes > 1) && out[-1] == NIBBLE_PATH_SEP) {
         out -= 1; // Remove ending path separator.
     }
 
@@ -138,12 +133,12 @@ Path path_norm(Allocator* allctr, const char* path, u32 len)
     *out++ = '\0';
 
     // Set the final length now that we now it.
-    result_len = out - result.str;
+    num_bytes = out - path->str;
 
-    assert(result_len <= len + 2);
-    array_set_len(result.str, result_len);
+    assert(num_bytes - 1 <= len + 1);
+    array_set_len(path->str, num_bytes);
 
-    return result;
+    return path;
 }
 
 void path_free(Path* path)
@@ -151,24 +146,27 @@ void path_free(Path* path)
     array_free(path->str);
 }
 
-Path path_str_join(Allocator* allctr, const char* a, u32 a_len, const char* b, u32 b_len)
+Path* path_join(Path* dst, const char* b, u32 b_len)
 {
+    u32 a_len = path_len(dst);
+
     if (b_len == 0) {
-        return path_create(allctr, a, a_len);
+        return dst;
     }
 
     if (a_len == 0 || path_str_isabs(b)) {
-        return path_create(allctr, b, b_len);
+        path_set(dst, b, b_len);
+        return dst;
     }
 
-    Path r = path_create(allctr, a, a_len); // Init r with a
-    array_reserve(r.str, a_len + b_len + 2); // Will never be bigger than <a>/<b><NULL-TERM>
+    array_reserve(dst->str, a_len + b_len + 2); // Will never be bigger than <a>/<b><NULL-TERM>
 
     const char* s = b;
-    char* d = r.str + path_len(&r);
+    char* d = dst->str + a_len;
 
     // Add '/' between paths if necessary.
-    if (a[a_len - 1] != NIBBLE_PATH_SEP) {
+    // NOTE: 'b' does not start with '/' from this point forward.
+    if (dst->str[a_len - 1] != NIBBLE_PATH_SEP) {
         *d++ = NIBBLE_PATH_SEP;
     }
 
@@ -178,20 +176,12 @@ Path path_str_join(Allocator* allctr, const char* a, u32 a_len, const char* b, u
     }
 
     // Write null-terminator.
-    *d++ = '\0';
+    *d = '\0';
 
     // Set correct length.
-    array_set_len(r.str, d - r.str);
+    array_set_len(dst->str, d - dst->str + 1);
 
-    return r;
-}
-
-Path path_join(Allocator* allctr, const Path* a, const Path* b)
-{
-    ASSERT_PATH_INIT(a);
-    ASSERT_PATH_INIT(b);
-
-    return path_str_join(allctr, a->str, path_len(a), b->str, path_len(b));
+    return dst;
 }
 
 const char* path_basename_ptr(const Path* path)
@@ -322,25 +312,24 @@ Path get_curr_dir(Allocator* allctr)
     return r;
 }
 
-Path path_abs(Allocator* allctr, const Path* cwd, const Path* path)
+Path* path_abs(Path* path, const char* cwd_str, u32 cwd_len)
 {
-    return path_str_abs(allctr, cwd->str, path_len(cwd), path->str, path_len(path));
-}
-
-Path path_str_abs(Allocator* allctr, const char* cwd_str, u32 cwd_len, const char* p_str, u32 p_len)
-{
-    if (path_str_isabs(p_str)) {
-        return path_norm(allctr, p_str, p_len);
+    if (path_isabs(path)) {
+        return path_norm(path);
     }
 
     assert(path_str_isabs(cwd_str));
 
-    Path joined = path_str_join(allctr, cwd_str, cwd_len, p_str, p_len);
-    Path normed = path_norm(allctr, joined.str, path_len(&joined));
+    // Copy 'path' into tmp array
+    u32 n = path_len(path) + 1;
+    char* tmp = alloca(n);
+    memcpy(tmp, path->str, n);
 
-    path_free(&joined);
+    // Overwrite 'path' with 'cwd'.
+    path_set(path, cwd_str, cwd_len);
 
-    return normed;
+    // Join cwd/path and normalize
+    return path_norm(path_join(path, tmp, n));
 }
 
 bool path_real(Path* dst, const Path* path)

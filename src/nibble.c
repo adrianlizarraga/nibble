@@ -356,18 +356,19 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
 {
     assert(path_isabs(importer_ospath));
 
-    Path imp = {0};
     PathRelativity rel = path_relativity(import_path_str->str, import_path_str->len);
 
     switch (rel) {
     case PATH_REL_ROOT: // Import path is absolute.
-        path_init(&imp, alloc, import_path_str->str, import_path_str->len);
+        path_init(result, alloc, import_path_str->str, import_path_str->len);
+        path_norm(result);
         break;
     case PATH_REL_CURR: { // Import path is relative to importer.
         const char* dir_begp = importer_ospath->str;
         const char* dir_endp = path_basename_ptr(importer_ospath) - 1;
 
-        imp = path_str_join(alloc, dir_begp, dir_endp - dir_begp, import_path_str->str, import_path_str->len);
+        path_init(result, alloc, dir_begp, (dir_endp - dir_begp));
+        path_norm(path_join(result, import_path_str->str, import_path_str->len));
         break;
     }
     case PATH_REL_PROG_ENTRY: {
@@ -377,7 +378,8 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         const char* rel_start = import_path_str->str + 2;
         u32 rel_len = import_path_str->len - 2;
 
-        imp = path_str_join(alloc, PATH_AS_ARGS(prog_entry_dir), rel_start, rel_len);
+        path_init(result, alloc, PATH_AS_ARGS(prog_entry_dir));
+        path_norm(path_join(result, rel_start, rel_len));
         break;
     }
     case PATH_REL_UNKNOWN: {
@@ -388,10 +390,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         return NIB_PATH_INV_PATH;
     }
 
-    assert(path_isabs(&imp));
-
-    *result = path_norm(alloc, imp.str, path_len(&imp));
-    path_free(&imp);
+    assert(path_isabs(result));
 
     // Check if file's path exists somewhere.
     if (path_kind(result) != FILE_REG) {
@@ -1136,7 +1135,8 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     //////////////////////////////////////////
     static const char builtin_mod_name[] = "nibble_builtin";
 
-    Path main_path = path_str_abs(&nib_ctx->tmp_mem, nib_ctx->working_dir.str, path_len(&nib_ctx->working_dir), mainf_name, mainf_len);
+    Path main_path = path_create(&nib_ctx->tmp_mem, mainf_name, mainf_len);
+    path_abs(&main_path, PATH_AS_ARGS(&nib_ctx->working_dir));
     FileKind file_kind = path_kind(&main_path);
 
     if (file_kind == FILE_NONE) {

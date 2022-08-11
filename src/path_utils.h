@@ -59,13 +59,14 @@ Path path_create(Allocator* allctr, const char* path, u32 len);
 Path path_createf(Allocator* allctr, const char* format, ...);
 void path_init(Path* dst, Allocator* allctr, const char* path, u32 len);
 void path_set(Path* dst, const char* path, u32 len);
-Path path_norm(Allocator* allctr, const char* path, u32 len);
 void path_free(Path* path);
-Path path_str_join(Allocator* allctr, const char* a, u32 a_len, const char* b, u32 b_len);
-Path path_join(Allocator* allctr, const Path* a, const Path* b);
 
-Path path_abs(Allocator* allctr, const Path* cwd, const Path* path);
-Path path_str_abs(Allocator* allctr, const char* cwd_str, u32 cwd_len, const char* p_str, u32 p_len);
+// The following modify the path argument in place AND return a pointer to the path argument to
+// allow chaining.
+Path* path_norm(Path* path);
+Path* path_join(Path* dst, const char* b, u32 b_len); // dst/b
+Path* path_abs(Path* path, const char* cwd_str, u32 cwd_len);
+
 bool path_real(Path* dst, const Path* path);
 bool path_isabs(const Path* path);
 bool path_str_isabs(const char* path);
