@@ -1119,14 +1119,14 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     return true;
 }
 
-bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len, const char* outf_name, size_t outf_len)
+bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_file)
 {
     AllocatorState mem_state = allocator_get_state(&nib_ctx->tmp_mem);
 
     //////////////////////////////////////////
     //      Check output file name
     //////////////////////////////////////////
-    Path outf_ospath = path_create(&nib_ctx->tmp_mem, outf_name, outf_len);
+    Path outf_ospath = path_create(&nib_ctx->tmp_mem, out_file.str, out_file.len);
 
     // TODO: Validate output file name more extensively.
 
@@ -1135,12 +1135,12 @@ bool nibble_compile(NibbleCtx* nib_ctx, const char* mainf_name, size_t mainf_len
     //////////////////////////////////////////
     static const char builtin_mod_name[] = "nibble_builtin";
 
-    Path main_path = path_create(&nib_ctx->tmp_mem, mainf_name, mainf_len);
+    Path main_path = path_create(&nib_ctx->tmp_mem, main_file.str, main_file.len);
     path_abs(&main_path, PATH_AS_ARGS(&nib_ctx->working_dir));
     FileKind file_kind = path_kind(&main_path);
 
     if (file_kind == FILE_NONE) {
-        ftprint_err("[ERROR]: Cannot find file `%s`\n", mainf_name);
+        ftprint_err("[ERROR]: Cannot find file `%s`\n", main_file.str);
         return false;
     }
 

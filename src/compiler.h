@@ -59,7 +59,7 @@ typedef struct NibbleCtx {
 } NibbleCtx;
 
 NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const StringView* search_paths, u32 num_search_paths);
-bool nibble_compile(NibbleCtx* nibble, const char* mainf_name, size_t mainf_len, const char* outf_name, size_t outf_len);
+bool nibble_compile(NibbleCtx* nibble, StringView main_file, StringView out_file);
 void nibble_cleanup(NibbleCtx* nibble);
 
 void report_error(ErrorStream* error_stream, ProgRange range, const char* format, ...);

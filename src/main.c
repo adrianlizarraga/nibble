@@ -132,6 +132,7 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
     return target_arch;
 }
 
+#define MAX_INPUT_PATH_LEN 1024
 #define NUM_USER_SEARCH_PATHS 63
 #define NUM_DEFAULT_SEARCH_PATHS 1
 
@@ -147,14 +148,24 @@ void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* n
     *p_num_paths += 1;
 }
 
+void check_input_filepath(StringView path, const char* program_name)
+{
+    if (path.len > MAX_INPUT_PATH_LEN) {
+        ftprint_err("ERROR: input (%.*s...) is too long (maximum of %u characters)\n",
+                    20, path.str, MAX_INPUT_PATH_LEN);
+        print_usage(stderr, program_name);
+        exit(1);
+    }
+}
+
 int main(int argc, char* argv[])
 {
     StringView search_paths[NUM_USER_SEARCH_PATHS + NUM_DEFAULT_SEARCH_PATHS];
     u32 num_search_paths = 0;
 
     const char* program_name = consume_arg(&argc, &argv);
-    const char* mainf_name = NULL;
-    const char* outf_name = "out";
+    StringView main_file = {0};
+    StringView out_file = string_view_lit("out");
 
     bool silent = false;
 
@@ -184,7 +195,10 @@ int main(int argc, char* argv[])
             target_arch = get_target_arch(&argc, &argv, program_name);
         }
         else if (cstr_cmp(arg, "-o") == 0) {
-            outf_name = get_flag_value(&argc, &argv, program_name, "-o");
+            const char* name = get_flag_value(&argc, &argv, program_name, "-o");
+            out_file = string_view(name);
+
+            check_input_filepath(out_file, program_name);
         }
         else if (cstr_cmp(arg, "-I") == 0) {
             const char* search_path = get_flag_value(&argc, &argv, program_name, "-I");
@@ -192,29 +206,27 @@ int main(int argc, char* argv[])
             add_search_path(search_paths, &num_search_paths, NUM_USER_SEARCH_PATHS, search_path, program_name);
         }
         else {
-            if (mainf_name) {
+            if (main_file.len) {
                 ftprint_err("[ERROR]: unknown option `%s`\n\n", arg);
                 print_usage(stderr, program_name);
                 exit(1);
             }
 
-            mainf_name = arg;
+            main_file = string_view(arg);
+            check_input_filepath(main_file, program_name);
         }
     }
 
     // Add working directory as a search path.
     add_search_path(search_paths, &num_search_paths, ARRAY_LEN(search_paths), ".", program_name);
 
-    size_t mainf_len = mainf_name ? cstr_len(mainf_name) : 0;
-    size_t outf_len = outf_name ? cstr_len(outf_name) : 0;
-
-    if (!mainf_len) {
+    if (!main_file.len) {
         ftprint_err("[ERROR]: No input source file provided.\n\n");
         print_usage(stderr, program_name);
         exit(1);
     }
 
-    if (!outf_len) {
+    if (!out_file.len) {
         ftprint_err("[ERROR]: Invalid output file name provided.\n\n");
         print_usage(stderr, program_name);
         exit(1);
@@ -227,7 +239,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    bool success = nibble_compile(nib_ctx, mainf_name, mainf_len, outf_name, outf_len);
+    bool success = nibble_compile(nib_ctx, main_file, out_file);
     nibble_cleanup(nib_ctx);
 
     return !success;
