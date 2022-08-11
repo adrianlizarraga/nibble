@@ -1,0 +1,58 @@
+@exported
+proc cstr_cmp(str1: ^char, str2: ^char) => int {
+    while ((*str1 == *str2) && *str1 && *str2) {
+        str1 = str1 + 1;
+        str2 = str2 + 1;
+    }
+
+    return *(str1 :> ^uchar) - *(str2 :> ^uchar);
+}
+
+@exported
+proc cstr_ncmp(str1: ^char, str2: ^char, num: usize) => int {
+    if (!num) {
+        return 0;
+    }
+
+    num = num - 1;
+
+    while ((*str1 == *str2) && *str1 && *str2 && num) {
+        str1 = str1 + 1;
+        str2 = str2 + 1;
+        num = num - 1;
+    }
+
+    return *(str1 :> ^uchar) - *(str2 :> ^uchar);
+}
+
+// From "Hacker's Delight 2nd edition", pg 118. Attributed to: Mycroft, Alan. Newsgroup comp.arch, April 8, 1987.
+// Returns non-zero value if the uint32_t has a zero-byte. Works for any endianness.
+const U32_ONE_BYTES : u32 = 0x01010101;
+const U32_EIGHT_BYTES : u32 = 0x80808080;
+const U32_ALIGN_MASK : u32 = (#sizeof(u32) - 1);
+
+@exported
+proc cstr_len(str : ^char) => usize {
+    var s := str;
+
+    // Calc length until s pointer is aligned to a 4-byte boundary.
+    while (((s :> usize) & U32_ALIGN_MASK)) {
+        if (!*s)
+            return s - str;
+
+        s = s + 1;
+    }
+
+    // Iterate over the data in 4-byte increments until the null terminator is found.
+    var w : ^u32 = s :> ^void;
+
+    while (!((*w - U32_ONE_BYTES) & (~(*w)) & U32_EIGHT_BYTES))
+        w = w + 1;
+
+    s = w :> ^void; // Point to the beginning of the word containing the 0 byte.
+
+    while (*s)
+        s = s + 1;
+
+    return s - str;
+}

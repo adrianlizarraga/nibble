@@ -13,22 +13,19 @@
 #warning "Cannot determine maximum path length (PATH_MAX or MAX_PATH)"
 #endif
 
+#include "array.h"
 #include "allocator.h"
 
-enum PathFlags {
-    PATH_IS_INVALID = 1 << 0,
-    PATH_IS_CANONICAL = 1 << 1,
-};
+typedef enum PathRelativity {
+    PATH_REL_INVALID, // Invalid
+    PATH_REL_ROOT, // Absolute path: /
+    PATH_REL_CURR, // Relative to current directory: ./ or ../
+    PATH_REL_PROG_ENTRY, // Relative to program entry dir: $/
+    PATH_REL_UNKNOWN, // Relative to unknown path (must resolve with search paths): some_dir/
+} PathRelativity;
 
 typedef struct Path {
-    char* str; // Points to _buf if the path length is < MAX_PATH_LEN
-               // Otherwise, points to an allocated buffer.
-
-    size_t len; // Length of str (not counting null character).
-    size_t cap; // Total capacity of the buffer pointed to by str.
-    Allocator* alloc;
-    unsigned flags;
-    char _buf[NIBBLE_MAX_PATH];
+    char* str; // Stretchy buffer.
 } Path;
 
 enum DirentFlags {
@@ -43,42 +40,46 @@ typedef struct DirentIter {
     void* os_handle;
 } DirentIter;
 
-typedef enum FileKind
-{
+typedef enum FileKind {
     FILE_NONE,
     FILE_REG,
     FILE_DIR,
     FILE_OTHER,
 } FileKind;
 
-typedef enum NibblePathErr {
-    NIB_PATH_OK = 0,
-    NIB_PATH_INV_PATH,
-    NIB_PATH_INV_EXT,
-    NIB_PATH_OUTSIDE_ROOT,
-} NibblePathErr;
-
 extern const char nib_ext[];
-extern const char exe_ext[];
-extern const char dot_exe_ext[];
 
-void path_init(Path* path, Allocator* alloc);
-void path_norm(Path* path, char old_sep, char new_sep);
+#define path_len(p) (array_len((p)->str) - 1)
+#define path_cap(p) array_cap((p)->str)
+#define path_allctr(p) array_allctr((p)->str)
+
+#define PATH_AS_ARGS(p) ((p)->str), path_len(p)
+
+Path path_create(Allocator* allctr, const char* path, u32 len);
+Path path_createf(Allocator* allctr, const char* format, ...);
+void path_init(Path* dst, Allocator* allctr, const char* path, u32 len);
+void path_set(Path* dst, const char* path, u32 len);
 void path_free(Path* path);
-void path_set(Path* path, const char* src, size_t len);
-void path_join(Path* dst, Path* src);
-void path_append(Path* dst, const char* str, size_t len);
-bool path_abs(Path* path);
-char* path_filename(Path* path);
-char* path_ext(Path* path);
-FileKind path_kind(Path* path);
+
+// The following modify the path argument in place AND return a pointer to the path argument to
+// allow chaining.
+Path* path_norm(Path* path);
+Path* path_join(Path* dst, const char* b, u32 b_len); // dst/b
+Path* path_abs(Path* path, const char* cwd_str, u32 cwd_len);
+
+bool path_real(Path* dst, const Path* path);
+bool path_isabs(const Path* path);
+bool path_str_isabs(const char* path);
+
+const char* path_basename_ptr(const Path* path);
+const char* path_ext_ptr(const Path* path);
+Path path_dirname(Allocator* allctr, const Path* path);
+
+FileKind path_kind(const Path* path);
+PathRelativity path_relativity(const char* path, u32 len);
 
 void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
 void dirent_it_next(DirentIter* it);
 void dirent_it_free(DirentIter* it);
 
-void cpath_str_to_ospath(Allocator* alloc, Path* dst, const char* cpath_str, size_t cpath_len, const Path* base_ospath);
-NibblePathErr get_import_ospath(Path* import_ospath, const StrLit* import_path_str, const Path* base_ospath,
-                                Path* importer_ospath, Allocator* alloc);
-NibblePathErr ospath_to_cpath(Path* dst_path, const Path* src_ospath, const Path* base_ospath, Allocator* alloc);
 #endif

@@ -1,5 +1,6 @@
 /* TODO:
 
+   - Consider making string literals evaluate to slices (or pointers to static arrays) rather than arrays
    - Only generate assembly for procs reachable from main()
      - Currently, we prune procs not reachable from the main _MODULE_, but unused procs in main module remain.
      - RELATED: Compile all module symbols, but only generate used symbols.
@@ -51,6 +52,15 @@
 #include "x64_gen/module.c"
 #include "nibble.c"
 
+// The maximum number of characters in any path provided by the user.
+#define MAX_INPUT_PATH_LEN 1024
+
+// The maximum number of search paths a user can specify via the '-I' option.
+#define MAX_NUM_USER_SEARCH_PATHS 63
+
+// The number of default search paths added by the compiler.
+#define NUM_DEFAULT_SEARCH_PATHS 1
+
 void print_usage(FILE* fd, const char* program_name)
 {
     ftprint_file(fd, true, "Usage: %s [OPTIONS] <input.nib>\n", program_name);
@@ -59,6 +69,7 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "    -s                              Silent mode (no output to stdout)\n");
     ftprint_file(fd, true, "    -os   [linux | win32 | osx]     Target OS\n");
     ftprint_file(fd, true, "    -arch [x64 | x86]               Target architecture\n");
+    ftprint_file(fd, true, "    -I    <import_search_path>      Add import search path\n");
     ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `out`\n");
 }
 
@@ -130,11 +141,39 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
     return target_arch;
 }
 
+void check_input_filepath(StringView path, const char* program_name)
+{
+    if (path.len > MAX_INPUT_PATH_LEN) {
+        ftprint_err("ERROR: input (%.*s...) is too long (maximum of %u characters)\n",
+                    MAX_INPUT_PATH_LEN >> 5, path.str, MAX_INPUT_PATH_LEN);
+        print_usage(stderr, program_name);
+        exit(1);
+    }
+}
+
+void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* new_path, const char* prog_name)
+{
+    if (*p_num_paths >= cap) {
+        ftprint_err("ERROR: Too many import search paths (maximum of %u)\n", cap);
+        print_usage(stderr, prog_name);
+        exit(1);
+    }
+
+    StringView sp = string_view(new_path);
+    check_input_filepath(sp, prog_name);
+
+    paths[*p_num_paths] = sp;
+    *p_num_paths += 1;
+}
+
 int main(int argc, char* argv[])
 {
+    StringView search_paths[MAX_NUM_USER_SEARCH_PATHS + NUM_DEFAULT_SEARCH_PATHS];
+    u32 num_search_paths = 0;
+
     const char* program_name = consume_arg(&argc, &argv);
-    const char* mainf_name = NULL;
-    const char* outf_name = "out";
+    StringView main_file = {0};
+    StringView out_file = string_view_lit("out");
 
     bool silent = false;
 
@@ -164,42 +203,51 @@ int main(int argc, char* argv[])
             target_arch = get_target_arch(&argc, &argv, program_name);
         }
         else if (cstr_cmp(arg, "-o") == 0) {
-            outf_name = get_flag_value(&argc, &argv, program_name, "-o");
+            const char* name = get_flag_value(&argc, &argv, program_name, "-o");
+            out_file = string_view(name);
+
+            check_input_filepath(out_file, program_name);
+        }
+        else if (cstr_cmp(arg, "-I") == 0) {
+            const char* search_path = get_flag_value(&argc, &argv, program_name, "-I");
+
+            add_search_path(search_paths, &num_search_paths, MAX_NUM_USER_SEARCH_PATHS, search_path, program_name);
         }
         else {
-            if (mainf_name) {
+            if (main_file.len) {
                 ftprint_err("[ERROR]: unknown option `%s`\n\n", arg);
                 print_usage(stderr, program_name);
                 exit(1);
             }
 
-            mainf_name = arg;
+            main_file = string_view(arg);
+            check_input_filepath(main_file, program_name);
         }
     }
 
-    size_t mainf_len = mainf_name ? cstr_len(mainf_name) : 0;
-    size_t outf_len = outf_name ? cstr_len(outf_name) : 0;
+    // Add working directory as a search path.
+    add_search_path(search_paths, &num_search_paths, ARRAY_LEN(search_paths), ".", program_name);
 
-    if (!mainf_len) {
+    if (!main_file.len) {
         ftprint_err("[ERROR]: No input source file provided.\n\n");
         print_usage(stderr, program_name);
         exit(1);
     }
 
-    if (!outf_len) {
+    if (!out_file.len) {
         ftprint_err("[ERROR]: Invalid output file name provided.\n\n");
         print_usage(stderr, program_name);
         exit(1);
     }
 
-    NibbleCtx* nib_ctx = nibble_init(target_os, target_arch, silent);
+    NibbleCtx* nib_ctx = nibble_init(target_os, target_arch, silent, search_paths, num_search_paths);
 
     if (!nib_ctx) {
         ftprint_err("[ERROR]: Failed to initialize compiler.\n");
         exit(1);
     }
 
-    bool success = nibble_compile(nib_ctx, mainf_name, mainf_len, outf_name, outf_len);
+    bool success = nibble_compile(nib_ctx, main_file, out_file);
     nibble_cleanup(nib_ctx);
 
     return !success;

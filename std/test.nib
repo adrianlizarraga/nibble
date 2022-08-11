@@ -1,0 +1,102 @@
+import "./cstring.nib" as CStr;
+import "./print.nib";
+import "./math.nib" as Math;
+
+/*
+    TODO:
+    - Make char a u8 instead of s8?
+*/
+
+proc test_cstr_cmp() => bool {
+    var s : []char = "123";
+
+    if (CStr::cstr_cmp("123", s) != 0) {
+        return 0;
+    }
+
+    if (CStr::cstr_cmp("123", "124") != -1) {
+        return 0;
+    }
+
+    if (CStr::cstr_cmp("125", "124") != 1) {
+        return 0;
+    }
+
+    return 1;
+}
+
+proc test_cstr_ncmp() => bool {
+    var s : []char = "123";
+
+    if (CStr::cstr_ncmp("123", s, 3) != 0) {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("123", "124", 3) != -1) {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("125", "124", 3) != 1) {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("123", "124", 2) != 0) {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("1234567", "123", 7) != '4') {
+        return 0;
+    }
+
+    if (CStr::cstr_ncmp("123", "1234567", 7) != -'4') {
+        return 0;
+    }
+
+    return 1;
+}
+
+proc test_cstr_len() => bool {
+    if (CStr::cstr_len("") != 0) {
+        return 0;
+    }
+
+    if (CStr::cstr_len("Hello") != 5) {
+        return 0;
+    }
+
+    if (CStr::cstr_len("1234567890123456789012345") != 25) {
+        return 0;
+    }
+
+    return 1;
+}
+
+proc main() => int {
+    var pass : bool = test_cstr_cmp() &&
+                      test_cstr_ncmp() &&
+                      test_cstr_len();
+
+    if (!pass) {
+        #writeout("Fail\n", 5);
+    }
+    else {
+        #writeout("Pass\n", 5);
+    }
+
+    var x : f64 = 1.33;
+    var tflt : f64 = Math::ceil(x);
+
+    // TODO: Consider making string literals evaluate to slices instead of arrays
+    var r := print_out("Print nums {0}, {}, {2}, {}! Escape '{{' f64 {}, large f64 {}\n",
+                       {value = 321, base = 10, flags = FmtFlag::FORCE_SIGN : FmtInt},
+                       {value = 15, base = 16, flags = FmtFlag::HASH | FmtFlag::UPPERCASE : FmtInt}, 4333, "Hello" :> []char,
+                       //{value = Math::ceil(1.33), precision = 3 : FmtFloat},
+                       {value = tflt, precision = 3 : FmtFloat},
+                       1.7976931348623157e308);
+
+    if (r.[1] != PrintErr::NONE) {
+        #writeout("Error!\n", 7);
+    }
+
+    return !pass;
+}

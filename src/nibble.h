@@ -51,10 +51,12 @@ typedef struct StringView {
     const char* str;
     size_t len;
 } StringView;
+
 #define string_view_lit(cstr_lit)                    \
     {                                                \
         .str = cstr_lit, .len = sizeof(cstr_lit) - 1 \
     }
+#define string_view(s) ((StringView){.str = (s), .len = cstr_len(s)})
 
 typedef uint8_t u8;
 typedef int8_t s8;

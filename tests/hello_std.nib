@@ -1,0 +1,5 @@
+import "std" as std;
+
+proc main() => int {
+    return std::print_out("Hello std!\n").[0];
+}
