@@ -356,6 +356,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
 {
     assert(path_isabs(importer_ospath));
 
+    StringView dir_module_entry = string_view_lit("module.nib");
     PathRelativity rel = path_relativity(import_path_str->str, import_path_str->len);
 
     switch (rel) {
@@ -365,8 +366,16 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
 
         assert(path_isabs(result));
 
+        FileKind file_kind = path_kind(result);
+
+        // If import points to a directory, modify path to <dir>/module.nib
+        if (file_kind == FILE_DIR) {
+            path_join(result, dir_module_entry.str, dir_module_entry.len);
+            file_kind = path_kind(result);
+        }
+
         // Check if file's path exists somewhere.
-        if (path_kind(result) != FILE_REG) {
+        if (file_kind != FILE_REG) {
             return NIB_PATH_INV_PATH;
         }
 
@@ -385,8 +394,16 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
 
         assert(path_isabs(result));
 
+        FileKind file_kind = path_kind(result);
+
+        // If import points to a directory, modify path to <dir>/module.nib
+        if (file_kind == FILE_DIR) {
+            path_join(result, dir_module_entry.str, dir_module_entry.len);
+            file_kind = path_kind(result);
+        }
+
         // Check if file's path exists somewhere.
-        if (path_kind(result) != FILE_REG) {
+        if (file_kind != FILE_REG) {
             return NIB_PATH_INV_PATH;
         }
 
@@ -409,8 +426,16 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
 
         assert(path_isabs(result));
 
+        FileKind file_kind = path_kind(result);
+
+        // If import points to a directory, modify path to <dir>/module.nib
+        if (file_kind == FILE_DIR) {
+            path_join(result, dir_module_entry.str, dir_module_entry.len);
+            file_kind = path_kind(result);
+        }
+
         // Check if file's path exists somewhere.
-        if (path_kind(result) != FILE_REG) {
+        if (file_kind != FILE_REG) {
             return NIB_PATH_INV_PATH;
         }
 
@@ -433,10 +458,17 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
             path_set(result, sp->str, sp->len); // Initialize to the search path.
             path_abs(path_join(result, import_path_str->str, import_path_str->len), PATH_AS_ARGS(working_dir));
 
-            // Return if this path exists.
             file_kind = path_kind(result);
+
+            // If import points to a directory, modify path to <dir>/module.nib
+            if (file_kind == FILE_DIR) {
+                path_join(result, dir_module_entry.str, dir_module_entry.len);
+                file_kind = path_kind(result);
+            }
+
             file_ext = path_ext_ptr(result);
 
+            // Return if the .nib file exists.
             if ((file_kind == FILE_REG) && (cstr_cmp(file_ext, nib_ext) == 0)) {
                 assert(path_isabs(result));
                 return NIB_PATH_OK;

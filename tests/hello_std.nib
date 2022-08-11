@@ -1,5 +1,5 @@
-import "std/print.nib";
+import "std" as std;
 
 proc main() => int {
-    return print_out("Hello std!\n").[0];
+    return std::print_out("Hello std!\n").[0];
 }
