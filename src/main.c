@@ -150,7 +150,7 @@ void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* n
 int main(int argc, char* argv[])
 {
     StringView search_paths[NUM_USER_SEARCH_PATHS + NUM_DEFAULT_SEARCH_PATHS];
-    u32 num_search_paths;
+    u32 num_search_paths = 0;
 
     const char* program_name = consume_arg(&argc, &argv);
     const char* mainf_name = NULL;

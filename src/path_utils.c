@@ -47,28 +47,33 @@ void path_set(Path* dst, const char* path, u32 len)
     dst->str[len] = '\0';
 }
 
+typedef struct PComp {
+    char* loc;
+    struct PComp* next;
+} PComp;
+
 // Modified version of gist authored by GitHub user starwing: https://gist.github.com/starwing/2761647
 Path* path_norm(Path* path)
 {
     u32 len = path_len(path);
 
-    assert(path->str[len] == '\0'); // Parsing relies on the input being null-terminated.
+    assert(path->str[len] == '\0'); // Parsing depends on the input being null-terminated.
     array_reserve(path->str, 2); // Need enough space for '.'
 
     char* out = path->str;
     const char* in = path->str;
     bool is_abs = path_isabs(path);
 
-    // Tracks the start of each component so that we can backtrack when the input path has a '..' component.
-    char* out_comps[MAX_PATH_COMPS];
-    int num_comps = 0;
-
     if (is_abs) {
         out += 1;
         in += 1;
     }
 
-    out_comps[num_comps++] = out;
+    // Linked-list tracks the start of each component so that we can backtrack when we encounter a '..'.
+    // The head points to the start of the most recent component.
+    PComp* comps = alloca(sizeof(PComp));
+    comps->loc = out;
+    comps->next = NULL;
 
     while (*in) {
         // Skip consecutive '/'
@@ -84,32 +89,38 @@ Path* path_norm(Path* path)
 
         // Handle '..' component. Backtrack the output if necessary.
         if (in[0] == '.' && in[1] == '.' && (in[2] == NIBBLE_PATH_SEP || !in[2])) {
-            in += 2;
-
             // Have more than one component, so just backtrack.
-            if (num_comps > 1) {
-                out = out_comps[num_comps - 1];
-                num_comps -= 1;
+            if (comps->next != NULL) {
+                out = comps->loc;
+                comps = comps->next;
             }
             // Have one component.
             else if (!is_abs) {
                 // Normalized path starts with '../'
-                out[0] = '.';
-                out[1] = '.';
-                out[2] = NIBBLE_PATH_SEP;
-                out += 3;
+                if (out != in) {
+                    out[0] = '.';
+                    out[1] = '.';
+                    out[2] = '/';
+                    out += 3;
+                }
+                else {
+                    out += 2 + (in[2] != '\0');
+                }
             }
 
+            in += 2;
             continue;
         }
 
-        assert(num_comps < MAX_PATH_COMPS);
         assert(out <= in);
 
-        // Mark the beginning of a new component and copy from in to result.
-        out_comps[num_comps++] = out;
+        // Mark the beginning of a new component and copy from in to out.
+        PComp* new_comp = alloca(sizeof(PComp));
+        new_comp->loc = out;
+        new_comp->next = comps;
+        comps = new_comp;
 
-        while (*in && *in != '\0' && *in != NIBBLE_PATH_SEP) {
+        while (*in && *in != NIBBLE_PATH_SEP) {
             *out++ = *in++;
         }
 
@@ -397,4 +408,3 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc)
 
     dirent_it_next(it);
 }
-
