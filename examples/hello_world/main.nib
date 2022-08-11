@@ -1,8 +1,8 @@
+import "std/basic" as std;
+
 proc main(argc : int, argv : ^^char) => int
 {
-    var msg : []char = "Hello, World\n";
-
-    #writeout(msg.data, msg.length);
+    std::print_out("Hello, World!\n");
 
     return 0;
 }
