@@ -1,0 +1,9 @@
+:argc 0
+:stdin 0
+
+:stdout 11
+Hello std!
+
+:stderr 0
+
+:returncode 11

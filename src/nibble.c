@@ -351,8 +351,8 @@ typedef enum NibblePathErr {
 } NibblePathErr;
 
 static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_str, const Path* importer_ospath,
-                                        const Path* prog_entry_dir, const StringView* search_paths, u32 num_search_paths,
-                                        Allocator* alloc)
+                                        const Path* working_dir, const Path* prog_entry_dir, const StringView* search_paths,
+                                        u32 num_search_paths, Allocator* alloc)
 {
     assert(path_isabs(importer_ospath));
 
@@ -362,14 +362,40 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
     case PATH_REL_ROOT: // Import path is absolute.
         path_init(result, alloc, import_path_str->str, import_path_str->len);
         path_norm(result);
-        break;
+
+        assert(path_isabs(result));
+
+        // Check if file's path exists somewhere.
+        if (path_kind(result) != FILE_REG) {
+            return NIB_PATH_INV_PATH;
+        }
+
+        // Check for .nib extension.
+        if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
+            return NIB_PATH_INV_EXT;
+        }
+
+        return NIB_PATH_OK;
     case PATH_REL_CURR: { // Import path is relative to importer.
         const char* dir_begp = importer_ospath->str;
         const char* dir_endp = path_basename_ptr(importer_ospath) - 1;
 
         path_init(result, alloc, dir_begp, (dir_endp - dir_begp));
         path_norm(path_join(result, import_path_str->str, import_path_str->len));
-        break;
+
+        assert(path_isabs(result));
+
+        // Check if file's path exists somewhere.
+        if (path_kind(result) != FILE_REG) {
+            return NIB_PATH_INV_PATH;
+        }
+
+        // Check for .nib extension.
+        if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
+            return NIB_PATH_INV_EXT;
+        }
+
+        return NIB_PATH_OK;
     }
     case PATH_REL_PROG_ENTRY: {
         assert(import_path_str->len >= 2);
@@ -380,29 +406,48 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
 
         path_init(result, alloc, PATH_AS_ARGS(prog_entry_dir));
         path_norm(path_join(result, rel_start, rel_len));
-        break;
+
+        assert(path_isabs(result));
+
+        // Check if file's path exists somewhere.
+        if (path_kind(result) != FILE_REG) {
+            return NIB_PATH_INV_PATH;
+        }
+
+        // Check for .nib extension.
+        if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
+            return NIB_PATH_INV_EXT;
+        }
+
+        return NIB_PATH_OK;
     }
     case PATH_REL_UNKNOWN: {
-        // TODO: SEARCH paths
-        return NIB_PATH_INV_PATH;
+        FileKind file_kind = FILE_NONE;
+        const char* file_ext = NULL;
+
+        path_init(result, alloc, NULL, 0);
+
+        for (u32 i = 0; i < num_search_paths; i += 1) {
+            const StringView* sp = search_paths + i;
+
+            path_set(result, sp->str, sp->len); // Initialize to the search path.
+            path_abs(path_join(result, import_path_str->str, import_path_str->len), PATH_AS_ARGS(working_dir));
+
+            // Return if this path exists.
+            file_kind = path_kind(result);
+            file_ext = path_ext_ptr(result);
+
+            if ((file_kind == FILE_REG) && (cstr_cmp(file_ext, nib_ext) == 0)) {
+                assert(path_isabs(result));
+                return NIB_PATH_OK;
+            }
+        }
+
+        return file_kind == FILE_REG ? NIB_PATH_INV_EXT : NIB_PATH_INV_PATH;
     }
     default:
         return NIB_PATH_INV_PATH;
     }
-
-    assert(path_isabs(result));
-
-    // Check if file's path exists somewhere.
-    if (path_kind(result) != FILE_REG) {
-        return NIB_PATH_INV_PATH;
-    }
-
-    // Check for .nib extension.
-    if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
-        return NIB_PATH_INV_EXT;
-    }
-
-    return NIB_PATH_OK;
 }
 
 static bool init_annotations(HMap* ident_map)
@@ -750,9 +795,8 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
             }
 
             Path include_ospath;
-            NibblePathErr ret =
-                get_import_abspath(&include_ospath, stmt_include->file_pathname, &file_ospath, &ctx->prog_entry_dir,
-                                   ctx->search_paths, ctx->num_search_paths, &ctx->tmp_mem);
+            NibblePathErr ret = get_import_abspath(&include_ospath, stmt_include->file_pathname, &file_ospath, &ctx->working_dir,
+                                                   &ctx->prog_entry_dir, ctx->search_paths, ctx->num_search_paths, &ctx->tmp_mem);
 
             // Check if included file's path exists somewhere.
             if (ret == NIB_PATH_INV_PATH) {
@@ -976,9 +1020,8 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             StmtImport* simport = (StmtImport*)stmt;
 
             Path import_mod_ospath;
-            NibblePathErr ret_err =
-                get_import_abspath(&import_mod_ospath, simport->mod_pathname, &mod_ospath, &ctx->prog_entry_dir,
-                                   ctx->search_paths, ctx->num_search_paths, &ctx->tmp_mem);
+            NibblePathErr ret_err = get_import_abspath(&import_mod_ospath, simport->mod_pathname, &mod_ospath, &ctx->working_dir,
+                                                       &ctx->prog_entry_dir, ctx->search_paths, ctx->num_search_paths, &ctx->tmp_mem);
 
             // Check if imported module's path exists somewhere.
             if (ret_err == NIB_PATH_INV_PATH) {

@@ -1,0 +1,5 @@
+import "std/print.nib";
+
+proc main() => int {
+    return print_out("Hello std!\n").[0];
+}
