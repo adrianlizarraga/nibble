@@ -5,7 +5,6 @@
 #include "nibble.h"
 
 #define ASSERT_PATH_INIT(p) assert((p)->str&& array_cap((p)->str))
-#define MAX_PATH_COMPS 64
 
 const char nib_ext[] = "nib";
 
