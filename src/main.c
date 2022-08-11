@@ -52,6 +52,15 @@
 #include "x64_gen/module.c"
 #include "nibble.c"
 
+// The maximum number of characters in any path provided by the user.
+#define MAX_INPUT_PATH_LEN 1024
+
+// The maximum number of search paths a user can specify via the '-I' option.
+#define MAX_NUM_USER_SEARCH_PATHS 63
+
+// The number of default search paths added by the compiler.
+#define NUM_DEFAULT_SEARCH_PATHS 1
+
 void print_usage(FILE* fd, const char* program_name)
 {
     ftprint_file(fd, true, "Usage: %s [OPTIONS] <input.nib>\n", program_name);
@@ -132,9 +141,15 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
     return target_arch;
 }
 
-#define MAX_INPUT_PATH_LEN 1024
-#define NUM_USER_SEARCH_PATHS 63
-#define NUM_DEFAULT_SEARCH_PATHS 1
+void check_input_filepath(StringView path, const char* program_name)
+{
+    if (path.len > MAX_INPUT_PATH_LEN) {
+        ftprint_err("ERROR: input (%.*s...) is too long (maximum of %u characters)\n",
+                    MAX_INPUT_PATH_LEN >> 5, path.str, MAX_INPUT_PATH_LEN);
+        print_usage(stderr, program_name);
+        exit(1);
+    }
+}
 
 void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* new_path, const char* prog_name)
 {
@@ -144,23 +159,16 @@ void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* n
         exit(1);
     }
 
-    paths[*p_num_paths] = (StringView){new_path, cstr_len(new_path)};
-    *p_num_paths += 1;
-}
+    StringView sp = string_view(new_path);
+    check_input_filepath(sp, prog_name);
 
-void check_input_filepath(StringView path, const char* program_name)
-{
-    if (path.len > MAX_INPUT_PATH_LEN) {
-        ftprint_err("ERROR: input (%.*s...) is too long (maximum of %u characters)\n",
-                    20, path.str, MAX_INPUT_PATH_LEN);
-        print_usage(stderr, program_name);
-        exit(1);
-    }
+    paths[*p_num_paths] = sp;
+    *p_num_paths += 1;
 }
 
 int main(int argc, char* argv[])
 {
-    StringView search_paths[NUM_USER_SEARCH_PATHS + NUM_DEFAULT_SEARCH_PATHS];
+    StringView search_paths[MAX_NUM_USER_SEARCH_PATHS + NUM_DEFAULT_SEARCH_PATHS];
     u32 num_search_paths = 0;
 
     const char* program_name = consume_arg(&argc, &argv);
@@ -203,7 +211,7 @@ int main(int argc, char* argv[])
         else if (cstr_cmp(arg, "-I") == 0) {
             const char* search_path = get_flag_value(&argc, &argv, program_name, "-I");
 
-            add_search_path(search_paths, &num_search_paths, NUM_USER_SEARCH_PATHS, search_path, program_name);
+            add_search_path(search_paths, &num_search_paths, MAX_NUM_USER_SEARCH_PATHS, search_path, program_name);
         }
         else {
             if (main_file.len) {
