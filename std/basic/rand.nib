@@ -1,0 +1,13 @@
+// MMIX values by Donald Knuth.
+const RAND_A : u64 = 6364136223846793005;
+const RAND_B : u64 = 1442695040888963407;
+var _rand_state : u64;
+
+// This is a really bad random func.
+// See https://en.wikipedia.org/wiki/Linear_congruential_generator
+@exported
+proc rand() => u64 {
+    _rand_state = _rand_state * RAND_A + RAND_B;
+    return _rand_state;
+}
+

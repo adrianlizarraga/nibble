@@ -1,4 +1,6 @@
-#include "./syscalls.nib";
+import "std/linux" as lnx;
+import "std/basic" as std;
+
 #include "./utils.nib";
 
 const ROWS : u32 = 20;
@@ -92,8 +94,8 @@ proc spawn_food(screen: ^[BUF_LEN]Entity) {
     do {
         var pos : Position = ---;
 
-        pos.x = (rand() << 32) % COLS;
-        pos.y = (rand() << 32) % ROWS;
+        pos.x = (std::rand() << 32) % COLS;
+        pos.y = (std::rand() << 32) % ROWS;
         entity_idx = pos_to_screen_idx(pos);
     } while((*screen)[entity_idx] != Entity::EMPTY);
 
@@ -116,11 +118,6 @@ proc step_pos(pos : Position, dir : Dir) => Position {
     }
 
     return pos;
-}
-
-proc display(screen : ^[BUF_LEN]Entity) {
-    #static_assert(BUF_LEN == ROWS * (COLS + 1));
-    #writeout(*screen, BUF_LEN * #sizeof(Entity));
 }
 
 proc get_term_reset_cmd(dst: []char, rows : u32, cols : u32) => s32 {
@@ -177,32 +174,29 @@ proc get_term_reset_cmd(dst: []char, rows : u32, cols : u32) => s32 {
 
 proc main() => int {
     const snake_size_goal : u32 = ROWS - 4; // Note that score = size - 2
-    var goal_txt : [36]char = {[0] = ' ', [1] = '/', [2] = ' '}; // 3 for ` / `, 32 for digits, and 1 for \n.
-    var goal_len := print_int(snake_size_goal - 2, {data = ^goal_txt[3], length = #length(goal_txt) - 4 : []char}) + 3;
 
     // Exit if not running within a terminal.
-    if (!isatty(STDIN).isatty) {
-        var err_msg : []char = "This game can only be played in a terminal\n";
-        #writeout(err_msg, err_msg.length - 1);
+    if (!lnx::isatty(lnx::STDIN).isatty) {
+        std::print_out("This game can only be played in a terminal\n");
         return 1;
     }
 
     // Must disable terminal canonical mode (dont' wait for <ENTER> on input read) and echo:
     // Equivalent to running `stty -icanon -echo` in the terminal.
-    var saved_term_attr : termios;
-    var term_attr : termios;
+    var saved_term_attr : lnx::termios;
+    var term_attr : lnx::termios;
 
-    tcgetattr(STDIN, ^saved_term_attr); // Save terminal attributes to restore at program exit.
-    tcgetattr(STDIN, ^term_attr);
+    lnx::tcgetattr(lnx::STDIN, ^saved_term_attr); // Save terminal attributes to restore at program exit.
+    lnx::tcgetattr(lnx::STDIN, ^term_attr);
 
-    term_attr.c_lflag &= ~(ICANON | ECHO); // Turn off canonical mode and echo.
-    term_attr.c_cc[VMIN] = 1; // read() returns when min(VMIN, requested) chars are available.
-    term_attr.c_cc[VTIME] = 0; // Do not use an expiration timer for read().
+    term_attr.c_lflag &= ~(lnx::ICANON | lnx::ECHO); // Turn off canonical mode and echo.
+    term_attr.c_cc[lnx::VMIN] = 1; // read() returns when min(VMIN, requested) chars are available.
+    term_attr.c_cc[lnx::VTIME] = 0; // Do not use an expiration timer for read().
 
-    tcsetattr(STDIN, TCSAFLUSH, ^term_attr);
+    lnx::tcsetattr(lnx::STDIN, lnx::TCSAFLUSH, ^term_attr);
 
     // Make STDIN non-blocking.
-    fcntl(STDIN, F_SETFL, fcntl(STDIN, F_GETFL, 0) | O_NONBLOCK);
+    lnx::fcntl(lnx::STDIN, lnx::F_SETFL, lnx::fcntl(lnx::STDIN, lnx::F_GETFL, 0) | lnx::O_NONBLOCK);
 
     // Initialize screen buffer to all empty tiles.
     var screen : [BUF_LEN]Entity = ---;
@@ -236,38 +230,32 @@ proc main() => int {
         return 1;
     }
 
-    var start_time : timespec;
-    var end_time : timespec;
-    var target_frame_time : timespec = {0, 33300000}; // 33.3 ms
+    var start_time : lnx::timespec;
+    var end_time : lnx::timespec;
+    var target_frame_time : lnx::timespec = {0, 33300000}; // 33.3 ms
     var frame_count : u32;
     const frames_per_unit_move : u32 = 5;
 
-    var score_txt : [34]char = ---;
-
     while (true) {
         // Get frame start time.
-        if (clock_gettime(CLOCK_MONOTONIC, ^start_time) < 0) {
+        if (lnx::clock_gettime(lnx::CLOCK_MONOTONIC, ^start_time) < 0) {
             return 1;
         }
 
         // Display score.
-        var score_len := print_int(snake.size - 2, score_txt);
-        #writeout("\nScore: ", 8);
-        #writeout(score_txt, score_len);
-        goal_txt[goal_len] = '\n'; // Guaranteed to have room in the static array for newline.
-        #writeout(goal_txt, goal_len + 1);
+        std::print_out("\nScore: {}/{}\n", snake.size - 2, snake_size_goal - 2);
 
         // Display the level.
-        display(^screen);
+        #writeout(screen, BUF_LEN * #sizeof(Entity));
 
         if (snake.size == snake_size_goal) {
-            #writeout("You win!\n", 9);
+            std::print_out("You win!\n");
             break;
         }
 
         // Read user command from stdin.
         var cmd : char;
-        var num_read := read(STDIN, ^cmd, 1);
+        var num_read := lnx::read(lnx::STDIN, ^cmd, 1);
 
         if (num_read == 1) {
             if (cmd == 'q') {
@@ -290,7 +278,7 @@ proc main() => int {
                 snake_add_head(^screen, ^snake, new_pos);
             }
         }
-        else if (num_read != -EAGAIN) {
+        else if (num_read != -lnx::EAGAIN) {
             return 1;
         }
 
@@ -308,7 +296,7 @@ proc main() => int {
 
             // Exit game if snake turns into itself.
             if (entity_at_new_pos == Entity::SNAKE_BODY || entity_at_new_pos == Entity::SNAKE_HEAD) {
-                #writeout("\nGame Over!\n", 12);
+                std::print_out("\nGame Over!\n");
                 break;
             }
 
@@ -333,33 +321,33 @@ proc main() => int {
         #writeout(term_reset_cmd, term_reset_cmd_len);
 
         // Get frame end time
-        if (clock_gettime(CLOCK_MONOTONIC, ^end_time) < 0) {
+        if (lnx::clock_gettime(lnx::CLOCK_MONOTONIC, ^end_time) < 0) {
             return 1;
         }
 
-        var elapsed_time : timespec = ---;
-        time_diff(^elapsed_time, ^start_time, ^end_time);
+        var elapsed_time : lnx::timespec = ---;
+        lnx::timespec_diff(^elapsed_time, ^start_time, ^end_time);
 
         // Sleep until we've hit the target frame time.
         while ((elapsed_time.tv_sec == 0) && (elapsed_time.tv_nsec < target_frame_time.tv_nsec)) {
             // Try to sleep for the amount of time remaining.
-            var sleep_time : timespec = ---;
-            time_diff(^sleep_time, ^elapsed_time, ^target_frame_time); // sleep_time = target_frame_time - elapsed_time
-            clock_nanosleep(CLOCK_MONOTONIC, 0, ^sleep_time, null);
+            var sleep_time : lnx::timespec = ---;
+            lnx::timespec_diff(^sleep_time, ^elapsed_time, ^target_frame_time); // sleep_time = target_frame_time - elapsed_time
+            lnx::clock_nanosleep(lnx::CLOCK_MONOTONIC, 0, ^sleep_time, null);
 
             // Check how much time has elapsed since the start of the frame once more.
             // This sleep loop will continue until we've hit our frame time.
-            if (clock_gettime(CLOCK_MONOTONIC, ^end_time) < 0) {
+            if (lnx::clock_gettime(lnx::CLOCK_MONOTONIC, ^end_time) < 0) {
                 return 1;
             }
 
-            time_diff(^elapsed_time, ^start_time, ^end_time);
+            lnx::timespec_diff(^elapsed_time, ^start_time, ^end_time);
         }
     }
 
     // Restore initial terminal attributes.
     // TODO: Handle even on exit() call. Maybe use defer
-    tcsetattr(STDIN, TCSANOW, ^saved_term_attr);
+    lnx::tcsetattr(lnx::STDIN, lnx::TCSANOW, ^saved_term_attr);
 
     return 0;
 }

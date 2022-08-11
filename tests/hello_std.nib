@@ -1,5 +1,5 @@
-import "std" as std;
+import "std/basic" as stdb;
 
 proc main() => int {
-    return std::print_out("Hello std!\n").[0];
+    return stdb::print_out("Hello std!\n").[0];
 }

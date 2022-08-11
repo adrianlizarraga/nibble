@@ -1,5 +1,0 @@
-import "./print.nib";
-import "./cstring.nib";
-import "./math.nib";
-
-export {print_out, cstr_cmp, cstr_ncmp, cstr_len, ceil};

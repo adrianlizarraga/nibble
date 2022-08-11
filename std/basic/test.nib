@@ -96,6 +96,9 @@ proc main() => int {
 
     if (r.[1] != PrintErr::NONE) {
         #writeout("Error!\n", 7);
+        var _c : char = '0' + r.[1];
+        #writeout(^_c, 1);
+        #writeout("\n", 1);
     }
 
     return !pass;

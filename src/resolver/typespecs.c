@@ -36,6 +36,7 @@ static TypeAggregateField* resolve_aggregate_fields(Resolver* resolver, List* in
 
         // Resolve field's type.
         Type* field_type = resolve_typespec(resolver, field->typespec);
+        assert(field_type);
 
         if (!try_complete_aggregate_type(resolver, field_type)) {
             return NULL;
@@ -194,8 +195,13 @@ static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
         TypeSpecArray* ts = (TypeSpecArray*)typespec;
         Type* base_type = resolve_typespec(resolver, ts->base);
 
-        if (!base_type)
+        if (!base_type) {
             return NULL;
+        }
+
+        if (!try_complete_aggregate_type(resolver, base_type)) {
+            return NULL;
+        }
 
         if (base_type->size == 0) {
             resolver_on_error(resolver, ts->base->range, "Array element type must have non-zero size");

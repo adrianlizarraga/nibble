@@ -219,12 +219,7 @@ proc print_int_internal(wstate: ^WriteState, value : usize, base : u32, is_neg: 
     var zero_padded : bool = flags & FmtFlag::ZERO_PAD;
     var uppercased : bool = flags & FmtFlag::UPPERCASE;
 
-    if ((precision == 0) && (value == 0)) {
-        return;
-    }
-
     // Write the value into the temporary buffer in reverse order.
-
     var tmp_buf : [PRINT_MAX_NUM_DIGITS]char = ---;
     var base_10_digit : char = uppercased ? 'A' : 'a';
     var len : usize;
@@ -407,7 +402,7 @@ proc print_arg(wstate : ^WriteState, arg : ^any) => PrintErr {
 
 proc print_out_internal(put_char : PutCharProc, arg : ^void, format : ^char, args : []any) => {usize; PrintErr} {
     var write_state : WriteState = {arg = arg, put_char = put_char};
-    var arg_idx := 0;
+    var arg_idx : u32 = 0;
     var at := format;
 
     while (*at) {
@@ -426,9 +421,6 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : ^char, arg
             // Get argument index.
             if (is_dec_digit(*at)) {
                 arg_idx = scan_num(^at);
-            }
-            else {
-                arg_idx = arg_idx + 1;
             }
 
             // Check if arg index is within bounds.
@@ -449,6 +441,7 @@ proc print_out_internal(put_char : PutCharProc, arg : ^void, format : ^char, arg
             }
 
             at = at + 1;
+            arg_idx = arg_idx + 1;
         }
         // Just print character.
         else {

@@ -1,0 +1,481 @@
+
+// Syscall numbers: https://filippo.io/linux-syscall-table/
+@exported const SYS_read  : ssize = 0;
+@exported const SYS_write : ssize = 1;
+@exported const SYS_open  : ssize = 2;
+@exported const SYS_close : ssize = 3;
+@exported const SYS_stat : ssize = 4;
+@exported const SYS_fstat : ssize = 5;
+@exported const SYS_lstat : ssize = 6;
+@exported const SYS_poll : ssize = 7;
+@exported const SYS_lseek : ssize = 8;
+@exported const SYS_mmap : ssize = 9;
+@exported const SYS_mprotect : ssize = 10;
+@exported const SYS_munmap : ssize = 11;
+@exported const SYS_brk : ssize = 12;
+@exported const SYS_rt_sigaction : ssize = 13;
+@exported const SYS_rt_sigprocmask : ssize = 14;
+@exported const SYS_rt_sigreturn : ssize = 15;
+@exported const SYS_ioctl : ssize = 16;
+@exported const SYS_pread64 : ssize = 17;
+@exported const SYS_pwrite64 : ssize = 18;
+@exported const SYS_readv : ssize = 19;
+@exported const SYS_writev : ssize = 20;
+@exported const SYS_access : ssize = 21;
+@exported const SYS_pipe : ssize = 22;
+@exported const SYS_select : ssize = 23;
+@exported const SYS_sched_yield : ssize = 24;
+@exported const SYS_mremap : ssize = 25;
+@exported const SYS_msync : ssize = 26;
+@exported const SYS_mincore : ssize = 27;
+@exported const SYS_madvise : ssize = 28;
+@exported const SYS_shmget : ssize = 29;
+@exported const SYS_shmat : ssize = 30;
+@exported const SYS_shmctl : ssize = 31;
+@exported const SYS_dup : ssize = 32;
+@exported const SYS_dup2 : ssize = 33;
+@exported const SYS_pause : ssize = 34;
+@exported const SYS_nanosleep : ssize = 35;
+@exported const SYS_getitimer : ssize = 36;
+@exported const SYS_alarm : ssize = 37;
+@exported const SYS_setitimer : ssize = 38;
+@exported const SYS_getpid : ssize = 39;
+@exported const SYS_sendfile : ssize = 40;
+@exported const SYS_socket : ssize = 41;
+@exported const SYS_connect : ssize = 42;
+@exported const SYS_accept : ssize = 43;
+@exported const SYS_sendto : ssize = 44;
+@exported const SYS_recvfrom : ssize = 45;
+@exported const SYS_sendmsg : ssize = 46;
+@exported const SYS_recvmsg : ssize = 47;
+@exported const SYS_shutdown : ssize = 48;
+@exported const SYS_bind : ssize = 49;
+@exported const SYS_listen : ssize = 50;
+@exported const SYS_getsockname : ssize = 51;
+@exported const SYS_getpeername : ssize = 52;
+@exported const SYS_socketpair : ssize = 53;
+@exported const SYS_setsockopt : ssize = 54;
+@exported const SYS_getsockopt : ssize = 55;
+@exported const SYS_clone : ssize = 56;
+@exported const SYS_fork : ssize = 57;
+@exported const SYS_vfork : ssize = 58;
+@exported const SYS_execve : ssize = 59;
+@exported const SYS_exit : ssize = 60;
+@exported const SYS_wait4 : ssize = 61;
+@exported const SYS_kill : ssize = 62;
+@exported const SYS_uname : ssize = 63;
+@exported const SYS_semget : ssize = 64;
+@exported const SYS_semop : ssize = 65;
+@exported const SYS_semctl : ssize = 66;
+@exported const SYS_shmdt : ssize = 67;
+@exported const SYS_msgget : ssize = 68;
+@exported const SYS_msgsnd : ssize = 69;
+@exported const SYS_msgrcv : ssize = 70;
+@exported const SYS_msgctl : ssize = 71;
+@exported const SYS_fcntl : ssize = 72;
+@exported const SYS_flock : ssize = 73;
+@exported const SYS_fsync : ssize = 74;
+@exported const SYS_fdatasync : ssize = 75;
+@exported const SYS_truncate : ssize = 76;
+@exported const SYS_ftruncate : ssize = 77;
+@exported const SYS_getdents : ssize = 78;
+@exported const SYS_getcwd : ssize = 79;
+@exported const SYS_chdir : ssize = 80;
+@exported const SYS_fchdir : ssize = 81;
+@exported const SYS_rename : ssize = 82;
+@exported const SYS_mkdir : ssize = 83;
+@exported const SYS_rmdir : ssize = 84;
+@exported const SYS_creat : ssize = 85;
+@exported const SYS_link : ssize = 86;
+@exported const SYS_unlink : ssize = 87;
+@exported const SYS_symlink : ssize = 88;
+@exported const SYS_readlink : ssize = 89;
+@exported const SYS_chmod : ssize = 90;
+@exported const SYS_fchmod : ssize = 91;
+@exported const SYS_chown : ssize = 92;
+@exported const SYS_fchown : ssize = 93;
+@exported const SYS_lchown : ssize = 94;
+@exported const SYS_umask : ssize = 95;
+@exported const SYS_gettimeofday : ssize = 96;
+@exported const SYS_getrlimit : ssize = 97;
+@exported const SYS_getrusage : ssize = 98;
+@exported const SYS_sysinfo : ssize = 99;
+@exported const SYS_times : ssize = 100;
+@exported const SYS_ptrace : ssize = 101;
+@exported const SYS_getuid : ssize = 102;
+@exported const SYS_syslog : ssize = 103;
+@exported const SYS_getgid : ssize = 104;
+@exported const SYS_setuid : ssize = 105;
+@exported const SYS_setgid : ssize = 106;
+@exported const SYS_geteuid : ssize = 107;
+@exported const SYS_getegid : ssize = 108;
+@exported const SYS_setpgid : ssize = 109;
+@exported const SYS_getppid : ssize = 110;
+@exported const SYS_getpgrp : ssize = 111;
+@exported const SYS_setsid : ssize = 112;
+@exported const SYS_setreuid : ssize = 113;
+@exported const SYS_setregid : ssize = 114;
+@exported const SYS_getgroups : ssize = 115;
+@exported const SYS_setgroups : ssize = 116;
+@exported const SYS_setresuid : ssize = 117;
+@exported const SYS_getresuid : ssize = 118;
+@exported const SYS_setresgid : ssize = 119;
+@exported const SYS_getresgid : ssize = 120;
+@exported const SYS_getpgid : ssize = 121;
+@exported const SYS_setfsuid : ssize = 122;
+@exported const SYS_setfsgid : ssize = 123;
+@exported const SYS_getsid : ssize = 124;
+@exported const SYS_capget : ssize = 125;
+@exported const SYS_capset : ssize = 126;
+@exported const SYS_rt_sigpending : ssize = 127;
+@exported const SYS_rt_sigtimedwait : ssize = 128;
+@exported const SYS_rt_sigqueueinfo : ssize = 129;
+@exported const SYS_rt_sigsuspend : ssize = 130;
+@exported const SYS_sigaltstack : ssize = 131;
+@exported const SYS_utime : ssize = 132;
+@exported const SYS_mknod : ssize = 133;
+@exported const SYS_uselib : ssize = 134;
+@exported const SYS_personality : ssize = 135;
+@exported const SYS_ustat : ssize = 136;
+@exported const SYS_statfs : ssize = 137;
+@exported const SYS_fstatfs : ssize = 138;
+@exported const SYS_sysfs : ssize = 139;
+@exported const SYS_getpriority : ssize = 140;
+@exported const SYS_setpriority : ssize = 141;
+@exported const SYS_sched_setparam : ssize = 142;
+@exported const SYS_sched_getparam : ssize = 143;
+@exported const SYS_sched_setscheduler : ssize = 144;
+@exported const SYS_sched_getscheduler : ssize = 145;
+@exported const SYS_sched_get_priority_max : ssize = 146;
+@exported const SYS_sched_get_priority_min : ssize = 147;
+@exported const SYS_sched_rr_get_interval : ssize = 148;
+@exported const SYS_mlock : ssize = 149;
+@exported const SYS_munlock : ssize = 150;
+@exported const SYS_mlockall : ssize = 151;
+@exported const SYS_munlockall : ssize = 152;
+@exported const SYS_vhangup : ssize = 153;
+@exported const SYS_modify_ldt : ssize = 154;
+@exported const SYS_pivot_root : ssize = 155;
+@exported const SYS__sysctl : ssize = 156;
+@exported const SYS_prctl : ssize = 157;
+@exported const SYS_arch_prctl : ssize = 158;
+@exported const SYS_adjtimex : ssize = 159;
+@exported const SYS_setrlimit : ssize = 160;
+@exported const SYS_chroot : ssize = 161;
+@exported const SYS_sync : ssize = 162;
+@exported const SYS_acct : ssize = 163;
+@exported const SYS_settimeofday : ssize = 164;
+@exported const SYS_mount : ssize = 165;
+@exported const SYS_umount2 : ssize = 166;
+@exported const SYS_swapon : ssize = 167;
+@exported const SYS_swapoff : ssize = 168;
+@exported const SYS_reboot : ssize = 169;
+@exported const SYS_sethostname : ssize = 170;
+@exported const SYS_setdomainname : ssize = 171;
+@exported const SYS_iopl : ssize = 172;
+@exported const SYS_ioperm : ssize = 173;
+@exported const SYS_create_module : ssize = 174;
+@exported const SYS_init_module : ssize = 175;
+@exported const SYS_delete_module : ssize = 176;
+@exported const SYS_get_kernel_syms : ssize = 177;
+@exported const SYS_query_module : ssize = 178;
+@exported const SYS_quotactl : ssize = 179;
+@exported const SYS_nfsservctl : ssize = 180;
+@exported const SYS_getpmsg : ssize = 181;
+@exported const SYS_putpmsg : ssize = 182;
+@exported const SYS_afs_syscall : ssize = 183;
+@exported const SYS_tuxcall : ssize = 184;
+@exported const SYS_security : ssize = 185;
+@exported const SYS_gettid : ssize = 186;
+@exported const SYS_readahead : ssize = 187;
+@exported const SYS_setxattr : ssize = 188;
+@exported const SYS_lsetxattr : ssize = 189;
+@exported const SYS_fsetxattr : ssize = 190;
+@exported const SYS_getxattr : ssize = 191;
+@exported const SYS_lgetxattr : ssize = 192;
+@exported const SYS_fgetxattr : ssize = 193;
+@exported const SYS_listxattr : ssize = 194;
+@exported const SYS_llistxattr : ssize = 195;
+@exported const SYS_flistxattr : ssize = 196;
+@exported const SYS_removexattr : ssize = 197;
+@exported const SYS_lremovexattr : ssize = 198;
+@exported const SYS_fremovexattr : ssize = 199;
+@exported const SYS_tkill : ssize = 200;
+@exported const SYS_time : ssize = 201;
+@exported const SYS_futex : ssize = 202;
+@exported const SYS_sched_setaffinity : ssize = 203;
+@exported const SYS_sched_getaffinity : ssize = 204;
+@exported const SYS_set_thread_area : ssize = 205;
+@exported const SYS_io_setup : ssize = 206;
+@exported const SYS_io_destroy : ssize = 207;
+@exported const SYS_io_getevents : ssize = 208;
+@exported const SYS_io_submit : ssize = 209;
+@exported const SYS_io_cancel : ssize = 210;
+@exported const SYS_get_thread_area : ssize = 211;
+@exported const SYS_lookup_dcookie : ssize = 212;
+@exported const SYS_epoll_create : ssize = 213;
+@exported const SYS_epoll_ctl_old : ssize = 214;
+@exported const SYS_epoll_wait_old : ssize = 215;
+@exported const SYS_remap_file_pages : ssize = 216;
+@exported const SYS_getdents64 : ssize = 217;
+@exported const SYS_set_tid_address : ssize = 218;
+@exported const SYS_restart_syscall : ssize = 219;
+@exported const SYS_semtimedop : ssize = 220;
+@exported const SYS_fadvise64 : ssize = 221;
+@exported const SYS_timer_create : ssize = 222;
+@exported const SYS_timer_settime : ssize = 223;
+@exported const SYS_timer_gettime : ssize = 224;
+@exported const SYS_timer_getoverrun : ssize = 225;
+@exported const SYS_timer_delete : ssize = 226;
+@exported const SYS_clock_settime : ssize = 227;
+@exported const SYS_clock_gettime : ssize = 228;
+@exported const SYS_clock_getres : ssize = 229;
+@exported const SYS_clock_nanosleep : ssize = 230;
+@exported const SYS_exit_group : ssize = 231;
+@exported const SYS_epoll_wait : ssize = 232;
+@exported const SYS_epoll_ctl : ssize = 233;
+@exported const SYS_tgkill : ssize = 234;
+@exported const SYS_utimes : ssize = 235;
+@exported const SYS_vserver : ssize = 236;
+@exported const SYS_mbind : ssize = 237;
+@exported const SYS_set_mempolicy : ssize = 238;
+@exported const SYS_get_mempolicy : ssize = 239;
+@exported const SYS_mq_open : ssize = 240;
+@exported const SYS_mq_unlink : ssize = 241;
+@exported const SYS_mq_timedsend : ssize = 242;
+@exported const SYS_mq_timedreceive : ssize = 243;
+@exported const SYS_mq_notify : ssize = 244;
+@exported const SYS_mq_getsetattr : ssize = 245;
+@exported const SYS_kexec_load : ssize = 246;
+@exported const SYS_waitid : ssize = 247;
+@exported const SYS_add_key : ssize = 248;
+@exported const SYS_request_key : ssize = 249;
+@exported const SYS_keyctl : ssize = 250;
+@exported const SYS_ioprio_set : ssize = 251;
+@exported const SYS_ioprio_get : ssize = 252;
+@exported const SYS_inotify_init : ssize = 253;
+@exported const SYS_inotify_add_watch : ssize = 254;
+@exported const SYS_inotify_rm_watch : ssize = 255;
+@exported const SYS_migrate_pages : ssize = 256;
+@exported const SYS_openat : ssize = 257;
+@exported const SYS_mkdirat : ssize = 258;
+@exported const SYS_mknodat : ssize = 259;
+@exported const SYS_fchownat : ssize = 260;
+@exported const SYS_futimesat : ssize = 261;
+@exported const SYS_newfstatat : ssize = 262;
+@exported const SYS_unlinkat : ssize = 263;
+@exported const SYS_renameat : ssize = 264;
+@exported const SYS_linkat : ssize = 265;
+@exported const SYS_symlinkat : ssize = 266;
+@exported const SYS_readlinkat : ssize = 267;
+@exported const SYS_fchmodat : ssize = 268;
+@exported const SYS_faccessat : ssize = 269;
+@exported const SYS_pselect6 : ssize = 270;
+@exported const SYS_ppoll : ssize = 271;
+@exported const SYS_unshare : ssize = 272;
+@exported const SYS_set_robust_list : ssize = 273;
+@exported const SYS_get_robust_list : ssize = 274;
+@exported const SYS_splice : ssize = 275;
+@exported const SYS_tee : ssize = 276;
+@exported const SYS_sync_file_range : ssize = 277;
+@exported const SYS_vmsplice : ssize = 278;
+@exported const SYS_move_pages : ssize = 279;
+@exported const SYS_utimensat : ssize = 280;
+@exported const SYS_epoll_pwait : ssize = 281;
+@exported const SYS_signalfd : ssize = 282;
+@exported const SYS_timerfd_create : ssize = 283;
+@exported const SYS_eventfd : ssize = 284;
+@exported const SYS_fallocate : ssize = 285;
+@exported const SYS_timerfd_settime : ssize = 286;
+@exported const SYS_timerfd_gettime : ssize = 287;
+@exported const SYS_accept4 : ssize = 288;
+@exported const SYS_signalfd4 : ssize = 289;
+@exported const SYS_eventfd2 : ssize = 290;
+@exported const SYS_epoll_create1 : ssize = 291;
+@exported const SYS_dup3 : ssize = 292;
+@exported const SYS_pipe2 : ssize = 293;
+@exported const SYS_inotify_init1 : ssize = 294;
+@exported const SYS_preadv : ssize = 295;
+@exported const SYS_pwritev : ssize = 296;
+@exported const SYS_rt_tgsigqueueinfo : ssize = 297;
+@exported const SYS_perf_event_open : ssize = 298;
+@exported const SYS_recvmmsg : ssize = 299;
+@exported const SYS_fanotify_init : ssize = 300;
+@exported const SYS_fanotify_mark : ssize = 301;
+@exported const SYS_prlimit64 : ssize = 302;
+@exported const SYS_name_to_handle_at : ssize = 303;
+@exported const SYS_open_by_handle_at : ssize = 304;
+@exported const SYS_clock_adjtime : ssize = 305;
+@exported const SYS_syncfs : ssize = 306;
+@exported const SYS_sendmmsg : ssize = 307;
+@exported const SYS_setns : ssize = 308;
+@exported const SYS_getcpu : ssize = 309;
+@exported const SYS_process_vm_readv : ssize = 310;
+@exported const SYS_process_vm_writev : ssize = 311;
+@exported const SYS_kcmp : ssize = 312;
+@exported const SYS_finit_module : ssize = 313;
+
+// Builtin file descriptors.
+@exported const STDIN : s32 = 0;
+@exported const STDOUT : s32 = 1;
+
+// Error values for 'errno'.
+// https://man7.org/linux/man-pages/man3/errno.3.html
+@exported const EPERM : s32 =  1; // Operation not permitted.
+@exported const ENOENT : s32 =  2; // No such file or directory.
+@exported const ESRCH : s32 =  3; // No such process.
+@exported const EINTR : s32 =  4; // Interrupted system call.
+@exported const EIO : s32 =  5; // Input/output error.
+@exported const ENXIO : s32 =  6; // No such device or address.
+@exported const E2BIG : s32 =  7; // Argument list too long.
+@exported const ENOEXEC : s32 =  8; // Exec format error.
+@exported const EBADF : s32 =  9; // Bad file number.
+@exported const ECHILD : s32 = 10; // No child processes.
+@exported const EAGAIN : s32 = 11; // Resource temporarily unavailable.
+@exported const ENOMEM : s32 = 12; // Not enough space/cannot allocate memory.
+@exported const EACCES : s32 = 13; // Permission denied.
+@exported const EFAULT : s32 = 14; // Bad address.
+@exported const ENOTBLK : s32 = 15; // Block device required.
+@exported const EBUSY : s32 = 16; // Device or resource busy.
+@exported const EEXIST : s32 = 17; // File exists.
+@exported const EXDEV : s32 = 18; // Improper link.
+@exported const ENODEV : s32 = 19; // No such device.
+@exported const ENOTDIR : s32 = 20; // Not a directory.
+@exported const EISDIR : s32 = 21; // Is a directory.
+@exported const EINVAL : s32 = 22; // Invalid argument.
+@exported const ENFILE : s32 = 23; // Too many open files in system. See /proc/sys/fs/file-max
+@exported const EMFILE : s32 = 24; // Too many open files. See RLIMIT_NOFILE in getrlimir(2) or /proc/sys/fs/nr_open
+@exported const ENOTTY : s32 = 25; // Inappropriate I/O control operation
+@exported const ETXTBSY : s32 = 26; // Text file busy.
+@exported const EFBIG : s32 = 27; // File too large.
+@exported const ENOSPC : s32 = 28; // No space left on device.
+@exported const ESPIPE : s32 = 29; // Invalid seek.
+@exported const EROFS : s32 = 30; // Read-only file system.
+@exported const EMLINK : s32 = 31; // Too many links.
+@exported const EPIPE : s32 = 32; // Broken pipe.
+@exported const EDOM : s32 = 33; // Mathematics argument out of domain of function.
+@exported const ERANGE : s32 = 34; // Result too large.
+
+// Some linux magic constants.
+@exported const O_RDONLY : u32 = 0;
+@exported const F_SETFL : s32 = 4;
+@exported const F_GETFL : s32 = 3;
+@exported const O_NONBLOCK : s32 = 2048;
+@exported const CLOCK_MONOTONIC : s32 = 1;
+@exported const NCCS : s32 = 32;
+@exported const TIOCGWINSZ : s32 = 0x5413;
+@exported const TCGETS : s32 = 0x5401;
+@exported const TCSETS : s32 = 0x5402;
+@exported const ICANON : s32 = 2;
+@exported const ECHO : s32 = 8;
+@exported const VTIME : s32 = 5;
+@exported const VMIN : s32 = 6;
+@exported const TCSAFLUSH : s32 = 2;
+@exported const TCSANOW : s32 = 0;
+
+// Common syscall wrappers.
+@exported
+proc read(fd : s32, buf : ^void, count : usize) => ssize {
+    return #syscall3(SYS_read, fd, (buf :> ssize), (count :> ssize));
+}
+
+@exported
+proc write(fd : s32, buf : ^void, count : usize) => ssize {
+    return #syscall3(SYS_write, fd, (buf :> ssize), (count :> ssize));
+}
+
+@exported
+proc open(pathname : ^char, flags : u32, mode : u32) => s32 {
+    return #syscall3(SYS_open, (pathname :> ssize), flags, mode);
+}
+
+@exported
+proc close(fd : s32) => s32 {
+    return #syscall1(SYS_close, fd);
+}
+
+@exported
+proc ioctl(fd : s32, request : u64, argp : ^void) => s32 {
+    return #syscall3(SYS_ioctl, fd, request, argp :> ssize);
+}
+
+@exported
+proc fcntl(fd : s32, cmd : s32, arg: s32) => s32 {
+    return #syscall3(SYS_fcntl, fd, cmd, arg);
+}
+
+@exported
+proc clock_gettime(clockid: ssize, tp : ^timespec) => s32 {
+    return #syscall2(SYS_clock_gettime, clockid, (tp :> ssize));
+}
+
+@exported
+proc clock_nanosleep(clockid: ssize, flags : s32, request : ^timespec, remain: ^timespec) => s32 {
+    return #syscall4(SYS_clock_nanosleep, clockid, flags, (request :> ssize), (remain :> ssize));
+}
+
+// Timespec utils.
+@exported
+struct timespec {
+    tv_sec : s64;
+    tv_nsec : s64;
+}
+
+@exported
+proc timespec_diff(result: ^timespec, start : ^timespec, end : ^timespec) {
+    // NOTE: Requires end >= start!
+    if (end.tv_nsec < start.tv_nsec) {
+        result.tv_nsec = (1000000000 + end.tv_nsec) - start.tv_nsec; // Borrow a second (1e9 ns) from end.tv_sec
+        result.tv_sec = (end.tv_sec - 1) - start.tv_sec;
+    }
+    else {
+        result.tv_nsec = end.tv_nsec - start.tv_nsec;
+        result.tv_sec = end.tv_sec - start.tv_sec;
+    }
+}
+
+// Linux (x64) terminal utils.
+@exported
+struct termios {
+    c_iflag : u32; // input modes
+    c_oflag : u32; // output modes
+    c_cflag : u32; // control modes
+    c_lflag : u32; // local modes
+    c_line  : char; // line discipline
+    c_cc    : [NCCS]char; // control characters
+    c_ispeed : u32; // input speed
+    c_ospeed : u32; // output speed
+}
+
+@exported
+struct winsize {
+    ws_row : u16;
+    ws_col : u16;
+    ws_xpixel: u16;
+    ws_ypixel: u16;
+}
+
+@exported
+proc tcgetattr(fd : s32, termios_p : ^termios) => s32 {
+    return ioctl(fd, TCGETS, termios_p);
+}
+
+@exported
+proc tcsetattr(fd : s32, action : s32, termios_p : ^termios) => s32 {
+    if ((action < 0) || (action > 2)) {
+        return -EINVAL;
+    }
+
+    return ioctl(fd, TCSETS + action, termios_p);
+}
+
+@exported
+proc isatty(fd : s32) => {err: s32; isatty: bool} {
+        // Query the terminal window size. If we don't get an error, then
+        // fd is connected to a terminal.
+        var size : winsize = ---;
+        var r := ioctl(fd, TIOCGWINSZ, ^size);
+
+        return {-r, r == 0};
+}
+
