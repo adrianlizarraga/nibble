@@ -2,25 +2,25 @@
 #include "x64_gen/lir.h"
 
 static X64_InstrKind binary_kind[] = {
-    [INSTR_INT_ADD] = X64_INSTR_ADD_R_R, [INSTR_INT_SUB] = X64_INSTR_SUB_R_R, [INSTR_INT_MUL] = X64_INSTR_IMUL_R_R,
-    [INSTR_AND] = X64_INSTR_AND_R_R,     [INSTR_OR] = X64_INSTR_OR_R_R,       [INSTR_XOR] = X64_INSTR_XOR_R_R};
+    [IR_InstrIntAdd_KIND] = X64_INSTR_ADD_R_R, [IR_InstrIntSub_KIND] = X64_INSTR_SUB_R_R, [IR_InstrIntMul_KIND] = X64_INSTR_IMUL_R_R,
+    [IR_InstrAnd_KIND] = X64_INSTR_AND_R_R,     [IR_InstrOr_KIND] = X64_INSTR_OR_R_R,       [IR_InstrXor_KIND] = X64_INSTR_XOR_R_R};
 
 static X64_InstrKind binary_r_i_kind[] = {
-    [INSTR_INT_ADD] = X64_INSTR_ADD_R_I, [INSTR_INT_SUB] = X64_INSTR_SUB_R_I, [INSTR_INT_MUL] = X64_INSTR_IMUL_R_I,
-    [INSTR_AND] = X64_INSTR_AND_R_I,     [INSTR_OR] = X64_INSTR_OR_R_I,       [INSTR_XOR] = X64_INSTR_XOR_R_I};
+    [IR_InstrIntAdd_KIND] = X64_INSTR_ADD_R_I, [IR_InstrIntSub_KIND] = X64_INSTR_SUB_R_I, [IR_InstrIntMul_KIND] = X64_INSTR_IMUL_R_I,
+    [IR_InstrAnd_KIND] = X64_INSTR_AND_R_I,     [IR_InstrOr_KIND] = X64_INSTR_OR_R_I,       [IR_InstrXor_KIND] = X64_INSTR_XOR_R_I};
 
 static X64_InstrKind binary_r_m_kind[] = {
-    [INSTR_INT_ADD] = X64_INSTR_ADD_R_M, [INSTR_INT_SUB] = X64_INSTR_SUB_R_M, [INSTR_INT_MUL] = X64_INSTR_IMUL_R_M,
-    [INSTR_AND] = X64_INSTR_AND_R_M,     [INSTR_OR] = X64_INSTR_OR_R_M,       [INSTR_XOR] = X64_INSTR_XOR_R_M};
+    [IR_InstrIntAdd_KIND] = X64_INSTR_ADD_R_M, [IR_InstrIntSub_KIND] = X64_INSTR_SUB_R_M, [IR_InstrIntMul_KIND] = X64_INSTR_IMUL_R_M,
+    [IR_InstrAnd_KIND] = X64_INSTR_AND_R_M,     [IR_InstrOr_KIND] = X64_INSTR_OR_R_M,       [IR_InstrXor_KIND] = X64_INSTR_XOR_R_M};
 
-static X64_InstrKind shift_kind[] = {[INSTR_SHL] = X64_INSTR_SHL_R_R, [INSTR_SAR] = X64_INSTR_SAR_R_R};
+static X64_InstrKind shift_kind[] = {[IR_InstrShl_KIND] = X64_INSTR_SHL_R_R, [IR_InstrSar_KIND] = X64_INSTR_SAR_R_R};
 
-static X64_InstrKind shift_r_i_kind[] = {[INSTR_SHL] = X64_INSTR_SHL_R_I, [INSTR_SAR] = X64_INSTR_SAR_R_I};
+static X64_InstrKind shift_r_i_kind[] = {[IR_InstrShl_KIND] = X64_INSTR_SHL_R_I, [IR_InstrSar_KIND] = X64_INSTR_SAR_R_I};
 
-static X64_InstrKind unary_kind[] = {[INSTR_NEG] = X64_INSTR_NEG, [INSTR_NOT] = X64_INSTR_NOT};
+static X64_InstrKind unary_kind[] = {[IR_InstrNeg_KIND] = X64_INSTR_NEG, [IR_InstrNot_KIND] = X64_INSTR_NOT};
 
 static X64_InstrKind convert_kind[] =
-    {[INSTR_TRUNC] = X64_INSTR_MOV_R_R, [INSTR_SEXT] = X64_INSTR_MOVSX_R_R, [INSTR_ZEXT] = X64_INSTR_MOVZX_R_R};
+    {[IR_InstrTrunc_KIND] = X64_INSTR_MOV_R_R, [IR_InstrSExt_KIND] = X64_INSTR_MOVSX_R_R, [IR_InstrZExt_KIND] = X64_INSTR_MOVZX_R_R};
 
 // The floating-point comparison instructions in X86_64 use the unsigned condition variants.
 static const ConditionKind flt_cond_map[] = {
@@ -209,11 +209,11 @@ static u32 X64_lea_sib(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 index_r
 
     // mul index_reg, <scale>
     Scalar scale_imm = {.as_int._u64 = scale};
-    X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[INSTR_INT_MUL], X64_MAX_INT_REG_SIZE, index_reg, scale_imm);
+    X64_emit_instr_binary_r_i(builder, xbblock, binary_r_i_kind[IR_InstrIntMul_KIND], X64_MAX_INT_REG_SIZE, index_reg, scale_imm);
 
     // add index_reg, base_reg
     if (base_reg != (u32)-1) {
-        X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_INT_ADD], X64_MAX_INT_REG_SIZE, index_reg, base_reg);
+        X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[IR_InstrIntAdd_KIND], X64_MAX_INT_REG_SIZE, index_reg, base_reg);
     }
 
     return index_reg;
@@ -492,9 +492,9 @@ static void X64_add_call_site(X64_LIRBuilder* builder, X64_Instr* instr)
     array_push(builder->call_sites, instr);
 }
 
-static void X64_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
+static void X64_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_InstrRet* ir_instr)
 {
-    Type* ret_type = ir_instr->ret.val.type;
+    Type* ret_type = ir_instr->val.type;
 
     u32 ax = X64_LIR_REG_COUNT;
     u32 dx = X64_LIR_REG_COUNT;
@@ -502,7 +502,7 @@ static void X64_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbbloc
     if (ret_type != builtin_types[BUILTIN_TYPE_VOID].type) {
         if (type_is_obj_like(ret_type)) {
             X64_MemAddr obj_addr;
-            X64_get_lir_addr(builder, xbblock, &obj_addr, &ir_instr->ret.val.addr, (1 << X64_RDI));
+            X64_get_lir_addr(builder, xbblock, &obj_addr, &ir_instr->val.addr, (1 << X64_RDI));
 
             if (X64_is_obj_retarg_large(ret_type->size)) { // Large obj
                 // Copy object to the address provided to the procedure.
@@ -566,7 +566,7 @@ static void X64_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbbloc
             X64_RegClass reg_class = ret_type->kind == TYPE_FLOAT ? X64_REG_CLASS_FLOAT : X64_REG_CLASS_INT;
             X64_Reg ret_reg = (*x64_target.ret_regs)[reg_class].regs[0];
 
-            u32 a = X64_get_lir_reg(builder, ir_instr->ret.val.reg, reg_class);
+            u32 a = X64_get_lir_reg(builder, ir_instr->val.reg, reg_class);
             ax = X64_def_phys_reg(builder, ret_reg);
 
             if (reg_class == X64_REG_CLASS_INT) {
@@ -584,7 +584,7 @@ static void X64_convert_ir_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbbloc
     X64_emit_instr_ret(builder, xbblock, ax, dx);
 }
 
-static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
+static void X64_convert_int_binary_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr)
 {
     // EX: r = a + b
     //
@@ -644,12 +644,12 @@ static u32 X64_mov_flt_op_ra_into_reg(X64_LIRBuilder* builder, X64_BBlock* xbblo
     return r;
 }
 
-static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, Instr* ir_instr)
+static IR_Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr)
 {
-    Instr* next_instr = ir_instr->next;
+    IR_Instr* next_instr = ir_instr->next;
 
     switch (ir_instr->kind) {
-    case INSTR_FLT_ADD: {
+    case IR_InstrFltAdd_KIND: {
         FloatKind fkind = ir_instr->flt_binary.fkind;
         OpRA ir_a = ir_instr->flt_binary.a;
         OpRA ir_b = ir_instr->flt_binary.b;
@@ -669,7 +669,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
-    case INSTR_FLT_SUB: {
+    case IR_InstrFltSub_KIND: {
         FloatKind fkind = ir_instr->flt_binary.fkind;
         OpRA ir_a = ir_instr->flt_binary.a;
         OpRA ir_b = ir_instr->flt_binary.b;
@@ -689,7 +689,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
-    case INSTR_FLT_MUL: {
+    case IR_InstrFltMul_KIND: {
         FloatKind fkind = ir_instr->flt_binary.fkind;
         OpRA ir_a = ir_instr->flt_binary.a;
         OpRA ir_b = ir_instr->flt_binary.b;
@@ -709,7 +709,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
-    case INSTR_FLT_DIV: {
+    case IR_InstrFltDiv_KIND: {
         FloatKind fkind = ir_instr->flt_binary.fkind;
         OpRA ir_a = ir_instr->flt_binary.a;
         OpRA ir_b = ir_instr->flt_binary.b;
@@ -729,16 +729,16 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
-    case INSTR_INT_ADD:
-    case INSTR_INT_SUB:
-    case INSTR_INT_MUL:
-    case INSTR_AND:
-    case INSTR_OR:
-    case INSTR_XOR: {
+    case IR_InstrIntAdd_KIND:
+    case IR_InstrIntSub_KIND:
+    case IR_InstrIntMul_KIND:
+    case IR_InstrAnd_KIND:
+    case IR_InstrOr_KIND:
+    case IR_InstrXor_KIND: {
         X64_convert_int_binary_instr(builder, xbblock, ir_instr);
         break;
     }
-    case INSTR_INT_DIV: {
+    case IR_InstrIntDiv_KIND: {
         // EX: r = a / b
         //
         // mov _ax, a ; Only if `a` is not already in `_ax`
@@ -767,7 +767,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             }
             else {
                 // Clear rdx by xor
-                X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_XOR], X64_MAX_INT_REG_SIZE, dx, dx);
+                X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[IR_InstrXor_KIND], X64_MAX_INT_REG_SIZE, dx, dx);
             }
         }
 
@@ -797,7 +797,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_hint_same_reg(builder, r, ax);
         break;
     }
-    case INSTR_MOD: {
+    case IR_InstrMod_KIND: {
         // EX: r = a % b
         //
         // mov _ax, a ; Only if `a` is not already in `_ax`
@@ -826,7 +826,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             }
             else {
                 // Clear rdx by xor
-                X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_XOR], X64_MAX_INT_REG_SIZE, dx, dx);
+                X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[IR_InstrXor_KIND], X64_MAX_INT_REG_SIZE, dx, dx);
             }
         }
 
@@ -864,7 +864,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_DIVMOD: {
+    case IR_InstrDivMod_KIND: {
         // EX: q,r = a % b
         //
         // mov _ax, a ; Only if `a` is not already in `_ax`
@@ -894,7 +894,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             }
             else {
                 // Clear rdx by xor
-                X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[INSTR_XOR], X64_MAX_INT_REG_SIZE, dx, dx);
+                X64_emit_instr_binary_r_r(builder, xbblock, binary_kind[IR_InstrXor_KIND], X64_MAX_INT_REG_SIZE, dx, dx);
             }
         }
 
@@ -937,8 +937,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_SAR:
-    case INSTR_SHL: {
+    case IR_InstrSar_KIND:
+    case IR_InstrShl_KIND: {
         size_t size = ir_instr->shift.type->size;
         OpRIA ir_a = ir_instr->shift.a;
         OpRIA ir_b = ir_instr->shift.b;
@@ -974,8 +974,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_NEG:
-    case INSTR_NOT: {
+    case IR_InstrNeg_KIND:
+    case IR_InstrNot_KIND: {
         // EX: r = ~neg
         //
         // mov r, a
@@ -990,7 +990,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_emit_instr_unary(builder, xbblock, unary_kind[ir_instr->kind], size, r);
         break;
     }
-    case INSTR_TRUNC: {
+    case IR_InstrTrunc_KIND: {
         size_t dst_size = ir_instr->convert.dst_type->size;
 
         u32 r = X64_get_lir_reg(builder, ir_instr->convert.r, X64_REG_CLASS_INT);
@@ -999,8 +999,8 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_emit_instr_mov_r_r(builder, xbblock, dst_size, r, a);
         break;
     }
-    case INSTR_ZEXT:
-    case INSTR_SEXT: {
+    case IR_InstrZExt_KIND:
+    case IR_InstrSExt_KIND: {
         // EX: r = sext(a)
         //
         // movsx r, a
@@ -1014,7 +1014,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_emit_instr_convert_r_r(builder, xbblock, convert_kind[ir_instr->kind], dst_size, r, src_size, a);
         break;
     }
-    case INSTR_FLT2FLT: {
+    case IR_InstrFlt2Flt_KIND: {
         // EX: r = flt2flt(a)
         //
         // cvtss2sd r, a
@@ -1037,7 +1037,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_FLT2INT: {
+    case IR_InstrFlt2Int_KIND: {
         // EX: r = flt2int(a_fp)
         //
         // cvttsd2si r, a_fp
@@ -1060,7 +1060,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_INT2FLT: {
+    case IR_InstrInt2Flt_KIND: {
         // EX: r_fp = int2flt(a)
         //
         // cvtsi2sd r_fp, a
@@ -1109,7 +1109,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_LIMM: {
+    case IR_InstrLImm_KIND: {
         // EX: r = 10
         //
         // mov r, 10
@@ -1120,7 +1120,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_LOAD: {
+    case IR_InstrLoad_KIND: {
         // EX: r = load(base + scale * index + disp)
         //
         // mov r, [base + scale * index + disp]
@@ -1141,7 +1141,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
-    case INSTR_LADDR: {
+    case IR_InstrLAddr_KIND: {
         // EX: r = laddr(base + scale*index + disp)
         //
         // lea r, [..addr]
@@ -1153,7 +1153,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_emit_instr_lea(builder, xbblock, r, addr);
         break;
     }
-    case INSTR_STORE: {
+    case IR_InstrStore_KIND: {
         // EX: $addr = a
         //
         // mov [..addr], a
@@ -1179,7 +1179,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
-    case INSTR_FLT_CMP: {
+    case IR_InstrFltCmp_KIND: {
         FloatKind fkind = ir_instr->flt_cmp.fkind;
         IR_Reg ir_a = ir_instr->flt_cmp.a;
         OpRA ir_b = ir_instr->flt_cmp.b;
@@ -1196,7 +1196,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             X64_emit_instr_flt_cmp_r_r(builder, xbblock, fkind, a, b);
         }
 
-        bool combine_next = next_instr && (next_instr->kind == INSTR_COND_JMP) && (next_instr->cond_jmp.a == ir_instr->flt_cmp.r);
+        bool combine_next = next_instr && (next_instr->kind == IR_InstrCondJmp_KIND) && (next_instr->cond_jmp.a == ir_instr->flt_cmp.r);
         ConditionKind float_cond = flt_cond_map[ir_instr->flt_cmp.cond];
 
         if (combine_next) {
@@ -1225,7 +1225,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_INT_CMP: {
+    case IR_InstrIntCmp_KIND: {
         size_t size = ir_instr->int_cmp.type->size;
         OpRIA ir_a = ir_instr->int_cmp.a;
         OpRIA ir_b = ir_instr->int_cmp.b;
@@ -1294,7 +1294,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
             }
         }
 
-        bool combine_next = next_instr && (next_instr->kind == INSTR_COND_JMP) && (next_instr->cond_jmp.a == ir_instr->int_cmp.r);
+        bool combine_next = next_instr && (next_instr->kind == IR_InstrCondJmp_KIND) && (next_instr->cond_jmp.a == ir_instr->int_cmp.r);
 
         if (combine_next) {
             // Combine this comparison instruction with the next conditional jump.
@@ -1322,12 +1322,12 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_JMP: {
+    case IR_InstrJmp_KIND: {
         X64_emit_instr_jmp(builder, xbblock, NULL);
         assert(!next_instr);
         break;
     }
-    case INSTR_COND_JMP: {
+    case IR_InstrCondJmp_KIND: {
         // EX: cond_jmp a, <target>
         //
         //     BECOMES
@@ -1343,7 +1343,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         assert(!next_instr);
         break;
     }
-    case INSTR_PHI: {
+    case IR_InstrPhi_KIND: {
         // For now, just force all registers in PHI instruction into the same physical register.
         X64_RegClass reg_class = ir_instr->phi.type->kind == TYPE_FLOAT ? X64_REG_CLASS_FLOAT : X64_REG_CLASS_INT;
 
@@ -1357,7 +1357,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         }
         break;
     }
-    case INSTR_MEMCPY: {
+    case IR_InstrMemcpy_KIND: {
         // memcpy(dst, src, size)
         //
         // BECOMES
@@ -1375,7 +1375,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_emit_memcpy(builder, xbblock, dst_addr, src_addr, ir_instr->memcpy.size);
         break;
     }
-    case INSTR_MEMSET: {
+    case IR_InstrMemset_KIND: {
         // memset(dst, value, size)
         //
         // BECOMES
@@ -1391,7 +1391,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         X64_emit_memset(builder, xbblock, dst_addr, ir_instr->memset.value, ir_instr->memset.size);
         break;
     }
-    case INSTR_SYSCALL: {
+    case IR_InstrSyscall_KIND: {
         // res = syscall6(nr, arg1, arg2, arg3, arg4, arg5, arg6);
         //
         // BECOMES
@@ -1432,7 +1432,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         break;
     }
-    case INSTR_RET: {
+    case IR_InstrRet_KIND: {
         // EX: ret a
         //
         //     BECOMES (for primitive return types)
@@ -1440,17 +1440,17 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
         //     mov _ax, a  ; if `a` not in `ax`
         //     ret
 
-        X64_convert_ir_ret_instr(builder, xbblock, ir_instr);
+        X64_convert_ir_ret_instr(builder, xbblock, (IR_InstrRet*)ir_instr);
         break;
     }
-    case INSTR_CALL_INDIRECT:
-    case INSTR_CALL: {
+    case IR_InstrCallIndirect_KIND:
+    case IR_InstrCall_KIND: {
         u32 num_args;
         IR_Value* args;
         Type* proc_type;
         IR_Value ir_r;
 
-        if (ir_instr->kind == INSTR_CALL) {
+        if (ir_instr->kind == IR_InstrCall_KIND) {
             num_args = ir_instr->call.num_args;
             args = ir_instr->call.args;
             proc_type = ir_instr->call.sym->type;
@@ -1484,7 +1484,7 @@ static Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 
         X64_Instr* instr;
 
-        if (ir_instr->kind == INSTR_CALL) {
+        if (ir_instr->kind == IR_InstrCall_KIND) {
             instr = X64_emit_instr_call(builder, xbblock, ir_instr->call.sym, r, num_args, x64_args, stack_info);
         }
         else {
@@ -1510,7 +1510,7 @@ static X64_BBlock* X64_make_bblock(X64_LIRBuilder* builder, BBlock* bblock)
     xbblock->id = bblock->id;
     xbblock->flags = bblock->flags;
 
-    for (Instr* it = bblock->first; it;) {
+    for (IR_Instr* it = bblock->first; it;) {
         it = X64_convert_ir_instr(builder, xbblock, it);
     }
 
@@ -1555,10 +1555,10 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
 
         assert(bb->id == xbb->id);
 
-        Instr* instr = bb->last;
+        IR_Instr* instr = bb->last;
         X64_Instr* xinstr = xbb->last;
 
-        if (instr->kind == INSTR_JMP) {
+        if (instr->kind == IR_InstrJmp_KIND) {
             assert(xinstr->kind == X64_INSTR_JMP);
 
             BBlock* n = instr->jmp.target;
@@ -1566,7 +1566,7 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
 
             xinstr->jmp.target = xn;
         }
-        else if (instr->kind == INSTR_COND_JMP) {
+        else if (instr->kind == IR_InstrCondJmp_KIND) {
             assert(xinstr->kind == X64_INSTR_JMPCC);
 
             BBlock* n_false = instr->cond_jmp.false_bb;
