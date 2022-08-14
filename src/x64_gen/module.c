@@ -1645,30 +1645,30 @@ static void X64_cpy_ret_small_obj(X64_Generator* generator, Type* ret_type, X64_
 
 static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_instr, long bblock_id)
 {
-    static const char* binary_r_r_name[] = {[X64_InstrAdd_R_R_KIND] = "add", [X64_INSTR_SUB_R_R] = "sub", [X64_INSTR_IMUL_R_R] = "imul",
-                                            [X64_INSTR_AND_R_R] = "and", [X64_INSTR_OR_R_R] = "or",   [X64_INSTR_XOR_R_R] = "xor"};
+    static const char* binary_r_r_name[] = {[X64_InstrAdd_R_R_KIND] = "add", [X64_InstrSub_R_R_KIND] = "sub", [X64_InstrIMul_R_R_KIND] = "imul",
+                                            [X64_InstrAnd_R_R_KIND] = "and", [X64_InstrOr_R_R_KIND] = "or",   [X64_InstrXor_R_R_KIND] = "xor"};
 
-    static const char* binary_r_i_name[] = {[X64_InstrAdd_R_I_KIND] = "add", [X64_INSTR_SUB_R_I] = "sub", [X64_INSTR_IMUL_R_I] = "imul",
-                                            [X64_INSTR_AND_R_I] = "and", [X64_INSTR_OR_R_I] = "or",   [X64_INSTR_XOR_R_I] = "xor"};
+    static const char* binary_r_i_name[] = {[X64_InstrAdd_R_I_KIND] = "add", [X64_InstrSub_R_I_KIND] = "sub", [X64_InstrIMul_R_I_KIND] = "imul",
+                                            [X64_InstrAnd_R_I_KIND] = "and", [X64_InstrOr_R_I_KIND] = "or",   [X64_InstrXor_R_I_KIND] = "xor"};
 
-    static const char* binary_r_m_name[] = {[X64_InstrAdd_R_M_KIND] = "add", [X64_INSTR_SUB_R_M] = "sub", [X64_INSTR_IMUL_R_M] = "imul",
-                                            [X64_INSTR_AND_R_M] = "and", [X64_INSTR_OR_R_M] = "or",   [X64_INSTR_XOR_R_M] = "xor"};
+    static const char* binary_r_m_name[] = {[X64_InstrAdd_R_M_KIND] = "add", [X64_InstrSub_R_M_KIND] = "sub", [X64_InstrIMul_R_M_KIND] = "imul",
+                                            [X64_InstrAnd_R_M_KIND] = "and", [X64_InstrOr_R_M_KIND] = "or",   [X64_InstrXor_R_M_KIND] = "xor"};
 
-    static const char* shift_r_r_name[] = {[X64_INSTR_SAR_R_R] = "sar", [X64_INSTR_SHL_R_R] = "shl"};
+    static const char* shift_r_r_name[] = {[X64_InstrSar_R_R_KIND] = "sar", [X64_InstrShl_R_R_KIND] = "shl"};
 
-    static const char* shift_r_i_name[] = {[X64_INSTR_SAR_R_I] = "sar", [X64_INSTR_SHL_R_I] = "shl"};
+    static const char* shift_r_i_name[] = {[X64_InstrSar_R_I_KIND] = "sar", [X64_InstrShl_R_I_KIND] = "shl"};
 
-    static const char* unary_name[] = {[X64_INSTR_NEG] = "neg", [X64_INSTR_NOT] = "not"};
+    static const char* unary_name[] = {[X64_InstrNeg_KIND] = "neg", [X64_InstrNot_KIND] = "not"};
 
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
     switch (instr->kind) {
     case X64_InstrAdd_R_R_KIND:
-    case X64_INSTR_SUB_R_R:
-    case X64_INSTR_IMUL_R_R:
-    case X64_INSTR_AND_R_R:
-    case X64_INSTR_OR_R_R:
-    case X64_INSTR_XOR_R_R: {
+    case X64_InstrSub_R_R_KIND:
+    case X64_InstrIMul_R_R_KIND:
+    case X64_InstrAnd_R_R_KIND:
+    case X64_InstrOr_R_R_KIND:
+    case X64_InstrXor_R_R_KIND: {
         u32 size = (u32)instr->binary_r_r.size;
 
         X64_emit_rr_instr(generator, binary_r_r_name[instr->kind], true, X64_REG_CLASS_INT, size, instr->binary_r_r.dst, size,
@@ -1676,22 +1676,22 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         break;
     }
     case X64_InstrAdd_R_I_KIND:
-    case X64_INSTR_SUB_R_I:
-    case X64_INSTR_IMUL_R_I:
-    case X64_INSTR_AND_R_I:
-    case X64_INSTR_OR_R_I:
-    case X64_INSTR_XOR_R_I: {
+    case X64_InstrSub_R_I_KIND:
+    case X64_InstrIMul_R_I_KIND:
+    case X64_InstrAnd_R_I_KIND:
+    case X64_InstrOr_R_I_KIND:
+    case X64_InstrXor_R_I_KIND: {
         u32 size = (u32)instr->binary_r_i.size;
 
         X64_emit_ri_instr(generator, binary_r_i_name[instr->kind], size, instr->binary_r_i.dst, size, instr->binary_r_i.src);
         break;
     }
     case X64_InstrAdd_R_M_KIND:
-    case X64_INSTR_SUB_R_M:
-    case X64_INSTR_IMUL_R_M:
-    case X64_INSTR_AND_R_M:
-    case X64_INSTR_OR_R_M:
-    case X64_INSTR_XOR_R_M: {
+    case X64_InstrSub_R_M_KIND:
+    case X64_InstrIMul_R_M_KIND:
+    case X64_InstrAnd_R_M_KIND:
+    case X64_InstrOr_R_M_KIND:
+    case X64_InstrXor_R_M_KIND: {
         u32 size = (u32)instr->binary_r_m.size;
 
         X64_emit_rm_instr(generator, binary_r_m_name[instr->kind], true, X64_REG_CLASS_INT, size, instr->binary_r_m.dst, size,
@@ -1726,93 +1726,93 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                           &instr->binary_flt_r_m.src);
         break;
     }
-    case X64_INSTR_SUBSS_R_R: {
+    case X64_InstrSubSS_R_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_rr_instr(generator, "subss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
                           instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_SUBSS_R_M: {
+    case X64_InstrSubSS_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_rm_instr(generator, "subss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
                           &instr->binary_flt_r_m.src);
         break;
     }
-    case X64_INSTR_SUBSD_R_R: {
+    case X64_InstrSubSD_R_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_rr_instr(generator, "subsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
                           instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_SUBSD_R_M: {
+    case X64_InstrSubSD_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_rm_instr(generator, "subsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
                           &instr->binary_flt_r_m.src);
         break;
     }
-    case X64_INSTR_MULSS_R_R: {
+    case X64_InstrMulSS_R_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_rr_instr(generator, "mulss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
                           instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_MULSS_R_M: {
+    case X64_InstrMulSS_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_rm_instr(generator, "mulss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
                           &instr->binary_flt_r_m.src);
         break;
     }
-    case X64_INSTR_MULSD_R_R: {
+    case X64_InstrMulSD_R_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_rr_instr(generator, "mulsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
                           instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_MULSD_R_M: {
+    case X64_InstrMulSD_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_rm_instr(generator, "mulsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
                           &instr->binary_flt_r_m.src);
         break;
     }
-    case X64_INSTR_DIVSS_R_R: {
+    case X64_InstrDivSS_R_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_rr_instr(generator, "divss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
                           instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_DIVSS_R_M: {
+    case X64_InstrDivSS_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_rm_instr(generator, "divss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
                           &instr->binary_flt_r_m.src);
         break;
     }
-    case X64_INSTR_DIVSD_R_R: {
+    case X64_InstrDivSD_R_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_rr_instr(generator, "divsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
                           instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_DIVSD_R_M: {
+    case X64_InstrDivSD_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_rm_instr(generator, "divsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
                           &instr->binary_flt_r_m.src);
         break;
     }
-    case X64_INSTR_DIV_R:
-    case X64_INSTR_IDIV_R: {
-        const char* instr_name = instr->kind == X64_INSTR_IDIV_R ? "idiv" : "div";
+    case X64_InstrDiv_R_KIND:
+    case X64_InstrIDiv_R_KIND: {
+        const char* instr_name = instr->kind == X64_InstrIDiv_R_KIND ? "idiv" : "div";
         u32 size = (u32)instr->div_r.size;
 
         X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->div_r.src);
@@ -1824,9 +1824,9 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
 
         break;
     }
-    case X64_INSTR_DIV_M:
-    case X64_INSTR_IDIV_M: {
-        const char* instr_name = instr->kind == X64_INSTR_IDIV_M ? "idiv" : "div";
+    case X64_InstrDiv_M_KIND:
+    case X64_InstrIDiv_M_KIND: {
+        const char* instr_name = instr->kind == X64_InstrIDiv_M_KIND ? "idiv" : "div";
         u32 size = (u32)instr->div_m.size;
         X64_SIBDAddr op_addr = {0};
 
@@ -1835,13 +1835,13 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
 
         break;
     }
-    case X64_INSTR_SEXT_AX_TO_DX: {
+    case X64_InstrSExtAxToDx_KIND: {
         u32 size = (u32)instr->sext_ax_to_dx.size;
         X64_emit_text(generator, "  %s", x64_sext_ax_into_dx[size]);
         break;
     }
-    case X64_INSTR_SAR_R_R:
-    case X64_INSTR_SHL_R_R: {
+    case X64_InstrSar_R_R_KIND:
+    case X64_InstrShl_R_R_KIND: {
         u32 dst_size = (u32)instr->shift_r_r.size;
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->shift_r_r.dst);
         X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->shift_r_r.src);
@@ -1855,8 +1855,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_text(generator, "  %s %s, %s", shift_r_r_name[instr->kind], dst_op_str, x64_int_reg_names[1][X64_RCX]);
         break;
     }
-    case X64_INSTR_SAR_R_I:
-    case X64_INSTR_SHL_R_I: {
+    case X64_InstrSar_R_I_KIND:
+    case X64_InstrShl_R_I_KIND: {
         u32 dst_size = (u32)instr->shift_r_i.size;
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->shift_r_i.dst);
         bool dst_in_reg = IS_LREG_IN_REG(dst_loc.kind);
@@ -1866,8 +1866,8 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_text(generator, "  %s %s, %d", shift_r_i_name[instr->kind], dst_op_str, instr->shift_r_i.src.as_int._u8);
         break;
     }
-    case X64_INSTR_NEG:
-    case X64_INSTR_NOT: {
+    case X64_InstrNeg_KIND:
+    case X64_InstrNot_KIND: {
         u32 size = (u32)instr->unary.size;
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->unary.dst);
         bool dst_in_reg = IS_LREG_IN_REG(dst_loc.kind);
@@ -1877,19 +1877,19 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_text(generator, "  %s %s", unary_name[instr->kind], dst_op_str);
         break;
     }
-    case X64_INSTR_REP_MOVSB: {
+    case X64_InstrRepMovsb_KIND: {
         X64_emit_text(generator, "  rep movsb");
         break;
     }
-    case X64_INSTR_REP_STOSB: {
+    case X64_InstrRepStosb_KIND: {
         X64_emit_text(generator, "  rep stosb");
         break;
     }
-    case X64_INSTR_SYSCALL: {
+    case X64_InstrSyscall_KIND: {
         X64_emit_text(generator, "  syscall");
         break;
     }
-    case X64_INSTR_MOV_R_RH: {
+    case X64_InstrMov_R_RH_KIND: {
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_r_rh.dst);
         X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_r_rh.src);
 
@@ -1909,12 +1909,12 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
             break;
         }
         default:
-            NIBBLE_FATAL_EXIT("Invalid dst_loc.kind in X64_INSTR_MOV_R_RH generation.");
+            NIBBLE_FATAL_EXIT("Invalid dst_loc.kind in X64_InstrMov_R_RH_KIND generation.");
             break;
         }
         break;
     }
-    case X64_INSTR_MOV_R_R: {
+    case X64_InstrMov_R_R_KIND: {
         u32 size = (u32)instr->mov_r_r.size;
 
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_r_r.dst);
@@ -1928,31 +1928,31 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         }
         break;
     }
-    case X64_INSTR_MOV_R_I: {
+    case X64_InstrMov_R_I_KIND: {
         u32 size = (u32)instr->mov_r_i.size;
 
         X64_emit_ri_instr(generator, "mov", size, instr->mov_r_i.dst, size, instr->mov_r_i.src);
         break;
     }
-    case X64_INSTR_MOV_R_M: {
+    case X64_InstrMov_R_M_KIND: {
         u32 size = (u32)instr->mov_r_m.size;
 
         X64_emit_rm_instr(generator, "mov", true, X64_REG_CLASS_INT, size, instr->mov_r_m.dst, size, &instr->mov_r_m.src);
         break;
     }
-    case X64_INSTR_MOV_M_R: {
+    case X64_InstrMov_M_R_KIND: {
         u32 size = (u32)instr->mov_m_r.size;
 
         X64_emit_mr_instr(generator, "mov", size, &instr->mov_m_r.dst, X64_REG_CLASS_INT, size, instr->mov_m_r.src);
         break;
     }
-    case X64_INSTR_MOV_M_I: {
+    case X64_InstrMov_M_I_KIND: {
         u32 size = (u32)instr->mov_m_i.size;
 
         X64_emit_mi_instr(generator, "mov", size, &instr->mov_m_i.dst, size, instr->mov_m_i.src);
         break;
     }
-    case X64_INSTR_MOVZX_R_R: {
+    case X64_InstrMovZX_R_R_KIND: {
         size_t dst_size = instr->convert_r_r.dst_size;
         size_t src_size = instr->convert_r_r.src_size;
 
@@ -1974,7 +1974,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         }
         break;
     }
-    case X64_INSTR_MOVZX_R_M: {
+    case X64_InstrMovZX_R_M_KIND: {
         size_t dst_size = instr->convert_r_m.dst_size;
         size_t src_size = instr->convert_r_m.src_size;
 
@@ -1996,7 +1996,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         }
         break;
     }
-    case X64_INSTR_MOVSX_R_R: {
+    case X64_InstrMovSX_R_R_KIND: {
         size_t dst_size = instr->convert_r_r.dst_size;
         size_t src_size = instr->convert_r_r.src_size;
         const char* movsx = src_size >= builtin_types[BUILTIN_TYPE_U32].type->size ? "movsxd" : "movsx";
@@ -2005,7 +2005,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                           instr->convert_r_r.src);
         break;
     }
-    case X64_INSTR_MOVSX_R_M: {
+    case X64_InstrMovSX_R_M_KIND: {
         u32 dst_size = (u32)instr->convert_r_m.dst_size;
         u32 src_size = (u32)instr->convert_r_m.src_size;
         const char* movsx = src_size >= builtin_types[BUILTIN_TYPE_U32].type->size ? "movsxd" : "movsx";
@@ -2014,7 +2014,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                           &instr->convert_r_m.src);
         break;
     }
-    case X64_INSTR_MOVSS_R_R: {
+    case X64_InstrMovSS_R_R_KIND: {
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_flt_r_r.dst);
         X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_flt_r_r.src);
 
@@ -2028,7 +2028,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         }
         break;
     }
-    case X64_INSTR_MOVSD_R_R: {
+    case X64_InstrMovSD_R_R_KIND: {
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->mov_flt_r_r.dst);
         X64_LRegLoc src_loc = X64_lreg_loc(generator, instr->mov_flt_r_r.src);
 
@@ -2042,41 +2042,41 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         }
         break;
     }
-    case X64_INSTR_MOVSS_R_M: {
+    case X64_InstrMovSS_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_rm_instr(generator, "movss", true, X64_REG_CLASS_FLOAT, size, instr->mov_flt_r_m.dst, size, &instr->mov_flt_r_m.src);
         break;
     }
-    case X64_INSTR_MOVSD_R_M: {
+    case X64_InstrMovSD_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_rm_instr(generator, "movsd", true, X64_REG_CLASS_FLOAT, size, instr->mov_flt_r_m.dst, size, &instr->mov_flt_r_m.src);
         break;
     }
-    case X64_INSTR_MOVSS_M_R: {
+    case X64_InstrMovSS_M_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_mr_instr(generator, "movss", size, &instr->mov_flt_m_r.dst, X64_REG_CLASS_FLOAT, size, instr->mov_flt_m_r.src);
         break;
     }
-    case X64_INSTR_MOVSD_M_R: {
+    case X64_InstrMovSD_M_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_mr_instr(generator, "movsd", size, &instr->mov_flt_m_r.dst, X64_REG_CLASS_FLOAT, size, instr->mov_flt_m_r.src);
         break;
     }
-    case X64_INSTR_CVTSS2SD_R_R: { // f32 to f64
+    case X64_InstrCvtSS2SD_R_R_KIND: { // f32 to f64
         X64_emit_flt2flt_rr_instr(generator, "cvtss2sd", float_kind_sizes[FLOAT_F32], float_kind_sizes[FLOAT_F64],
                                   &instr->flt2flt_r_r);
         break;
     }
-    case X64_INSTR_CVTSD2SS_R_R: { // f64 to f32
+    case X64_InstrCvtSD2SS_R_R_KIND: { // f64 to f32
         X64_emit_flt2flt_rr_instr(generator, "cvtsd2ss", float_kind_sizes[FLOAT_F64], float_kind_sizes[FLOAT_F32],
                                   &instr->flt2flt_r_r);
         break;
     }
-    case X64_INSTR_CVTSS2SD_R_M: { // f32 (in memory) to f64
+    case X64_InstrCvtSS2SD_R_M_KIND: { // f32 (in memory) to f64
         X64_SIBDAddr src_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->flt2flt_r_m.src);
 
@@ -2090,7 +2090,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_end_reg_group(&tmp_group);
         break;
     }
-    case X64_INSTR_CVTSD2SS_R_M: { // f64 (in memory) to f32
+    case X64_InstrCvtSD2SS_R_M_KIND: { // f64 (in memory) to f32
         X64_SIBDAddr src_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->flt2flt_r_m.src);
 
@@ -2104,15 +2104,15 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_end_reg_group(&tmp_group);
         break;
     }
-    case X64_INSTR_CVTTSS2SI_R_R: { // f32 to integer
+    case X64_InstrCvtSS2SI_R_R_KIND: { // f32 to integer
         X64_emit_flt2int_rr_instr(generator, "cvttss2si", float_kind_sizes[FLOAT_F32], &instr->flt2int_r_r);
         break;
     }
-    case X64_INSTR_CVTTSD2SI_R_R: { // f64 to integer
+    case X64_InstrCvtSD2SI_R_R_KIND: { // f64 to integer
         X64_emit_flt2int_rr_instr(generator, "cvttsd2si", float_kind_sizes[FLOAT_F64], &instr->flt2int_r_r);
         break;
     }
-    case X64_INSTR_CVTTSS2SI_R_M: { // f32 (in memory) to integer
+    case X64_InstrCvtSS2SI_R_M_KIND: { // f32 (in memory) to integer
         X64_SIBDAddr src_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->flt2int_r_m.src);
 
@@ -2128,7 +2128,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_end_reg_group(&tmp_group);
         break;
     }
-    case X64_INSTR_CVTTSD2SI_R_M: { // f64 (in memory) to integer
+    case X64_InstrCvtSD2SI_R_M_KIND: { // f64 (in memory) to integer
         X64_SIBDAddr src_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->flt2int_r_m.src);
 
@@ -2144,15 +2144,15 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_end_reg_group(&tmp_group);
         break;
     }
-    case X64_INSTR_CVTSI2SS_R_R: { // integer -> f32
+    case X64_InstrCvtSI2SS_R_R_KIND: { // integer -> f32
         X64_emit_int2flt_rr_instr(generator, "cvtsi2ss", float_kind_sizes[FLOAT_F32], &instr->int2flt_r_r);
         break;
     }
-    case X64_INSTR_CVTSI2SD_R_R: { // integer -> f64
+    case X64_InstrCvtSI2SD_R_R_KIND: { // integer -> f64
         X64_emit_int2flt_rr_instr(generator, "cvtsi2sd", float_kind_sizes[FLOAT_F64], &instr->int2flt_r_r);
         break;
     }
-    case X64_INSTR_CVTSI2SS_R_M: { // integer (in memory) -> f32
+    case X64_InstrCvtSI2SS_R_M_KIND: { // integer (in memory) -> f32
         X64_SIBDAddr src_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->int2flt_r_m.src);
         size_t dst_size = float_kind_sizes[FLOAT_F32];
@@ -2168,7 +2168,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_end_reg_group(&tmp_group);
         break;
     }
-    case X64_INSTR_CVTSI2SD_R_M: { // integer (in memory) -> f64
+    case X64_InstrCvtSI2SD_R_M_KIND: { // integer (in memory) -> f64
         X64_SIBDAddr src_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &src_addr, &instr->int2flt_r_m.src);
         size_t dst_size = float_kind_sizes[FLOAT_F64];
@@ -2184,49 +2184,49 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_end_reg_group(&tmp_group);
         break;
     }
-    case X64_INSTR_LEA: {
+    case X64_InstrLEA_KIND: {
         X64_emit_rm_instr(generator, "lea", true, X64_REG_CLASS_INT, X64_MAX_INT_REG_SIZE, instr->lea.dst, 0, &instr->lea.mem);
         break;
     }
-    case X64_INSTR_CMP_R_R: {
+    case X64_InstrCmp_R_R_KIND: {
         u32 size = (u32)instr->cmp_r_r.size;
 
         X64_emit_rr_instr(generator, "cmp", false, X64_REG_CLASS_INT, size, instr->cmp_r_r.op1, size, instr->cmp_r_r.op2);
         break;
     }
-    case X64_INSTR_CMP_R_I: {
+    case X64_InstrCmp_R_I_KIND: {
         u32 size = (u32)instr->cmp_r_i.size;
 
         X64_emit_ri_instr(generator, "cmp", size, instr->cmp_r_i.op1, size, instr->cmp_r_i.op2);
         break;
     }
-    case X64_INSTR_CMP_R_M: {
+    case X64_InstrCmp_R_M_KIND: {
         u32 size = (u32)instr->cmp_r_m.size;
 
         X64_emit_rm_instr(generator, "cmp", false, X64_REG_CLASS_INT, size, instr->cmp_r_m.op1, size, &instr->cmp_r_m.op2);
         break;
     }
-    case X64_INSTR_CMP_M_R: {
+    case X64_InstrCmp_M_R_KIND: {
         u32 size = (u32)instr->cmp_m_r.size;
 
         X64_emit_mr_instr(generator, "cmp", size, &instr->cmp_m_r.op1, X64_REG_CLASS_INT, size, instr->cmp_m_r.op2);
         break;
     }
-    case X64_INSTR_CMP_M_I: {
+    case X64_InstrCmp_M_I_KIND: {
         u32 size = (u32)instr->cmp_m_i.size;
 
         X64_emit_mi_instr(generator, "cmp", size, &instr->cmp_m_i.op1, size, instr->cmp_m_i.op2);
         break;
     }
-    case X64_INSTR_UCOMISS_R_R: {
+    case X64_InstrUComiSS_R_R_KIND: {
         X64_emit_flt_cmp_rr_instr(generator, "ucomiss", FLOAT_F32, &instr->cmp_flt_r_r);
         break;
     }
-    case X64_INSTR_UCOMISD_R_R: {
+    case X64_InstrUComiSD_R_R_KIND: {
         X64_emit_flt_cmp_rr_instr(generator, "ucomisd", FLOAT_F64, &instr->cmp_flt_r_r);
         break;
     }
-    case X64_INSTR_UCOMISS_R_M: {
+    case X64_InstrUComiSS_R_M_KIND: {
         X64_SIBDAddr op2_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &op2_addr, &instr->cmp_flt_r_m.op2);
 
@@ -2240,7 +2240,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_end_reg_group(&tmp_group);
         break;
     }
-    case X64_INSTR_UCOMISD_R_M: {
+    case X64_InstrUComiSD_R_M_KIND: {
         X64_SIBDAddr op2_addr = {0};
         u32 used_regs = X64_get_sibd_addr(generator, &op2_addr, &instr->cmp_flt_r_m.op2);
 
@@ -2254,7 +2254,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_end_reg_group(&tmp_group);
         break;
     }
-    case X64_INSTR_JMP: {
+    case X64_InstrJmp_KIND: {
         long target_id = instr->jmp.target->id;
 
         if (target_id != bblock_id + 1) {
@@ -2262,12 +2262,12 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         }
         break;
     }
-    case X64_INSTR_JMPCC: {
+    case X64_InstrJmpCC_KIND: {
         X64_emit_text(generator, "  j%s %s", x64_condition_codes[instr->jmpcc.cond],
                       X64_get_label(generator, instr->jmpcc.true_bb->id));
         break;
     }
-    case X64_INSTR_SETCC: {
+    case X64_InstrSetCC_KIND: {
         X64_LRegLoc dst_loc = X64_lreg_loc(generator, instr->setcc.dst);
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
@@ -2280,15 +2280,15 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         }
         break;
     }
-    case X64_INSTR_RET: {
+    case X64_InstrRet_KIND: {
         if (!last_instr) { // Not the last instruction
             X64_emit_text(generator, "  jmp end.%s", symbol_mangled_name(generator->tmp_mem, generator->curr_proc.sym));
         }
 
         break;
     }
-    case X64_INSTR_CALL:
-    case X64_INSTR_CALL_R: {
+    case X64_InstrCall_KIND:
+    case X64_InstrCall_R_KIND: {
         Type* proc_type;
         X64_CallValue dst_val;
         u32 num_args;
@@ -2296,7 +2296,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_StackArgsInfo stack_args_info;
         unsigned save_reg_mask;
 
-        if (instr->kind == X64_INSTR_CALL) {
+        if (instr->kind == X64_InstrCall_KIND) {
             proc_type = instr->call.sym->type;
             dst_val = instr->call.dst;
             num_args = instr->call.num_args;
@@ -2305,7 +2305,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
             save_reg_mask = instr->call.save_reg_mask;
         }
         else {
-            assert(instr->kind == X64_INSTR_CALL_R);
+            assert(instr->kind == X64_InstrCall_R_KIND);
             proc_type = instr->call_r.proc_type;
             dst_val = instr->call_r.dst;
             num_args = instr->call_r.num_args;
@@ -2376,7 +2376,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         // Stack should now be aligned properly for procedure call.
         assert((total_stack_size & (X64_STACK_ALIGN - 1)) == 0);
 
-        if (instr->kind == X64_INSTR_CALL) {
+        if (instr->kind == X64_InstrCall_KIND) {
             X64_emit_text(generator, "  call %s", symbol_mangled_name(generator->tmp_mem, instr->call.sym));
         }
         else {

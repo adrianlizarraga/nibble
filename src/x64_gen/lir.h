@@ -11,7 +11,7 @@ typedef struct X64_Instr X64_Instr;
 
 typedef enum X64_InstrKind
 {
-    X64_INSTR_NONE = 0,
+    X64_INSTR_KIND_NONE = 0,
 
     // Addition
     X64_InstrAdd_R_R_KIND,
@@ -27,160 +27,160 @@ typedef enum X64_InstrKind
     X64_InstrAddSD_R_M_KIND,
 
     // Subtraction
-    X64_INSTR_SUB_R_R,
-    X64_INSTR_SUB_R_I,
-    X64_INSTR_SUB_R_M,
+    X64_InstrSub_R_R_KIND,
+    X64_InstrSub_R_I_KIND,
+    X64_InstrSub_R_M_KIND,
 
     // f32 sub
-    X64_INSTR_SUBSS_R_R,
-    X64_INSTR_SUBSS_R_M,
+    X64_InstrSubSS_R_R_KIND,
+    X64_InstrSubSS_R_M_KIND,
 
     // f64 sub
-    X64_INSTR_SUBSD_R_R,
-    X64_INSTR_SUBSD_R_M,
+    X64_InstrSubSD_R_R_KIND,
+    X64_InstrSubSD_R_M_KIND,
 
     // Multiplication
-    X64_INSTR_IMUL_R_R,
-    X64_INSTR_IMUL_R_I,
-    X64_INSTR_IMUL_R_M,
+    X64_InstrIMul_R_R_KIND,
+    X64_InstrIMul_R_I_KIND,
+    X64_InstrIMul_R_M_KIND,
 
     // f32 mul
-    X64_INSTR_MULSS_R_R,
-    X64_INSTR_MULSS_R_M,
+    X64_InstrMulSS_R_R_KIND,
+    X64_InstrMulSS_R_M_KIND,
 
     // f64 mul
-    X64_INSTR_MULSD_R_R,
-    X64_INSTR_MULSD_R_M,
+    X64_InstrMulSD_R_R_KIND,
+    X64_InstrMulSD_R_M_KIND,
 
     // Unsigned division
-    X64_INSTR_DIV_R,
-    X64_INSTR_DIV_M,
+    X64_InstrDiv_R_KIND,
+    X64_InstrDiv_M_KIND,
 
     // Signed division
-    X64_INSTR_IDIV_R,
-    X64_INSTR_IDIV_M,
+    X64_InstrIDiv_R_KIND,
+    X64_InstrIDiv_M_KIND,
 
     // f32 div
-    X64_INSTR_DIVSS_R_R,
-    X64_INSTR_DIVSS_R_M,
+    X64_InstrDivSS_R_R_KIND,
+    X64_InstrDivSS_R_M_KIND,
 
     // f64 div
-    X64_INSTR_DIVSD_R_R,
-    X64_INSTR_DIVSD_R_M,
+    X64_InstrDivSD_R_R_KIND,
+    X64_InstrDivSD_R_M_KIND,
 
     // Bitwise AND
-    X64_INSTR_AND_R_R,
-    X64_INSTR_AND_R_I,
-    X64_INSTR_AND_R_M,
+    X64_InstrAnd_R_R_KIND,
+    X64_InstrAnd_R_I_KIND,
+    X64_InstrAnd_R_M_KIND,
 
     // Bitwise OR
-    X64_INSTR_OR_R_R,
-    X64_INSTR_OR_R_I,
-    X64_INSTR_OR_R_M,
+    X64_InstrOr_R_R_KIND,
+    X64_InstrOr_R_I_KIND,
+    X64_InstrOr_R_M_KIND,
 
     // Bitwise XOR
-    X64_INSTR_XOR_R_R,
-    X64_INSTR_XOR_R_I,
-    X64_INSTR_XOR_R_M,
+    X64_InstrXor_R_R_KIND,
+    X64_InstrXor_R_I_KIND,
+    X64_InstrXor_R_M_KIND,
 
     // Arithmetic shift right
-    X64_INSTR_SAR_R_R,
-    X64_INSTR_SAR_R_I,
+    X64_InstrSar_R_R_KIND,
+    X64_InstrSar_R_I_KIND,
 
     // Shift left
-    X64_INSTR_SHL_R_R,
-    X64_INSTR_SHL_R_I,
+    X64_InstrShl_R_R_KIND,
+    X64_InstrShl_R_I_KIND,
 
     // Bitwise NOT
-    X64_INSTR_NOT,
+    X64_InstrNot_KIND,
 
     // Two's complement negation.
-    X64_INSTR_NEG,
+    X64_InstrNeg_KIND,
 
-    X64_INSTR_MOV_R_I, // Load imm
-    X64_INSTR_MOV_R_R, // Register copy
-    X64_INSTR_MOV_R_M, // Load memory
+    X64_InstrMov_R_I_KIND, // Load imm
+    X64_InstrMov_R_R_KIND, // Register copy
+    X64_InstrMov_R_M_KIND, // Load memory
 
-    X64_INSTR_MOV_R_RH, // Copy high byte of register to another register.
+    X64_InstrMov_R_RH_KIND, // Copy high byte of register to another register.
 
     // Store into memory.
-    X64_INSTR_MOV_M_R,
-    X64_INSTR_MOV_M_I,
+    X64_InstrMov_M_R_KIND,
+    X64_InstrMov_M_I_KIND,
 
     // Zero-extend
-    X64_INSTR_MOVZX_R_R,
-    X64_INSTR_MOVZX_R_M,
+    X64_InstrMovZX_R_R_KIND,
+    X64_InstrMovZX_R_M_KIND,
 
     // Sign-extend
-    X64_INSTR_MOVSX_R_R,
-    X64_INSTR_MOVSX_R_M,
-    X64_INSTR_SEXT_AX_TO_DX,
+    X64_InstrMovSX_R_R_KIND,
+    X64_InstrMovSX_R_M_KIND,
+    X64_InstrSExtAxToDx_KIND,
 
     // f32 mov
-    X64_INSTR_MOVSS_R_R,
-    X64_INSTR_MOVSS_R_M,
-    X64_INSTR_MOVSS_M_R,
+    X64_InstrMovSS_R_R_KIND,
+    X64_InstrMovSS_R_M_KIND,
+    X64_InstrMovSS_M_R_KIND,
 
     // f64 mov
-    X64_INSTR_MOVSD_R_R,
-    X64_INSTR_MOVSD_R_M,
-    X64_INSTR_MOVSD_M_R,
+    X64_InstrMovSD_R_R_KIND,
+    X64_InstrMovSD_R_M_KIND,
+    X64_InstrMovSD_M_R_KIND,
 
     // Flt to Flt
-    X64_INSTR_CVTSS2SD_R_R,
-    X64_INSTR_CVTSS2SD_R_M,
-    X64_INSTR_CVTSD2SS_R_R,
-    X64_INSTR_CVTSD2SS_R_M,
+    X64_InstrCvtSS2SD_R_R_KIND,
+    X64_InstrCvtSS2SD_R_M_KIND,
+    X64_InstrCvtSD2SS_R_R_KIND,
+    X64_InstrCvtSD2SS_R_M_KIND,
 
     // Flt to Int
-    X64_INSTR_CVTTSS2SI_R_R,
-    X64_INSTR_CVTTSS2SI_R_M,
-    X64_INSTR_CVTTSD2SI_R_R,
-    X64_INSTR_CVTTSD2SI_R_M,
+    X64_InstrCvtSS2SI_R_R_KIND,
+    X64_InstrCvtSS2SI_R_M_KIND,
+    X64_InstrCvtSD2SI_R_R_KIND,
+    X64_InstrCvtSD2SI_R_M_KIND,
 
     // Int to Flt
-    X64_INSTR_CVTSI2SS_R_R,
-    X64_INSTR_CVTSI2SS_R_M,
-    X64_INSTR_CVTSI2SD_R_R,
-    X64_INSTR_CVTSI2SD_R_M,
+    X64_InstrCvtSI2SS_R_R_KIND,
+    X64_InstrCvtSI2SS_R_M_KIND,
+    X64_InstrCvtSI2SD_R_R_KIND,
+    X64_InstrCvtSI2SD_R_M_KIND,
 
     // Load an address computation into a register.
-    X64_INSTR_LEA,
+    X64_InstrLEA_KIND,
 
     // Compare two values and set condition flags
-    X64_INSTR_CMP_R_R,
-    X64_INSTR_CMP_R_I,
-    X64_INSTR_CMP_R_M,
-    X64_INSTR_CMP_M_R,
-    X64_INSTR_CMP_M_I,
+    X64_InstrCmp_R_R_KIND,
+    X64_InstrCmp_R_I_KIND,
+    X64_InstrCmp_R_M_KIND,
+    X64_InstrCmp_M_R_KIND,
+    X64_InstrCmp_M_I_KIND,
 
     // Compare floating-point values and set condition flags.
-    X64_INSTR_UCOMISS_R_R,
-    X64_INSTR_UCOMISS_R_M,
-    X64_INSTR_UCOMISD_R_R,
-    X64_INSTR_UCOMISD_R_M,
+    X64_InstrUComiSS_R_R_KIND,
+    X64_InstrUComiSS_R_M_KIND,
+    X64_InstrUComiSD_R_R_KIND,
+    X64_InstrUComiSD_R_M_KIND,
 
     // Jump to instruction index
-    X64_INSTR_JMP,
+    X64_InstrJmp_KIND,
 
     // Jump to instruction index based on condition
-    X64_INSTR_JMPCC,
+    X64_InstrJmpCC_KIND,
 
     // Set a byte (0 or 1) based on condition
-    X64_INSTR_SETCC,
+    X64_InstrSetCC_KIND,
 
     // Return value in specifed register
-    X64_INSTR_RET,
+    X64_InstrRet_KIND,
 
     // Call a procedure directly
-    X64_INSTR_CALL,
+    X64_InstrCall_KIND,
 
     // Call a procedure indirectly (register has procedure address)
-    X64_INSTR_CALL_R,
+    X64_InstrCall_R_KIND,
 
-    X64_INSTR_REP_MOVSB,
-    X64_INSTR_REP_STOSB,
-    X64_INSTR_SYSCALL,
+    X64_InstrRepMovsb_KIND,
+    X64_InstrRepStosb_KIND,
+    X64_InstrSyscall_KIND,
 } X64_InstrKind;
 
 typedef enum X64_MemAddrKind

@@ -70,55 +70,55 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
 {
     static const char* binary_r_r_name[] = {
         [X64_InstrAdd_R_R_KIND] = "add",
-        [X64_INSTR_SUB_R_R] = "sub",
-        [X64_INSTR_IMUL_R_R] = "imul",
-        [X64_INSTR_AND_R_R] = "and",
-        [X64_INSTR_OR_R_R] = "or",
-        [X64_INSTR_XOR_R_R] = "xor"
+        [X64_InstrSub_R_R_KIND] = "sub",
+        [X64_InstrIMul_R_R_KIND] = "imul",
+        [X64_InstrAnd_R_R_KIND] = "and",
+        [X64_InstrOr_R_R_KIND] = "or",
+        [X64_InstrXor_R_R_KIND] = "xor"
     };
 
     static const char* binary_r_i_name[] = {
         [X64_InstrAdd_R_I_KIND] = "add",
-        [X64_INSTR_SUB_R_I] = "sub",
-        [X64_INSTR_IMUL_R_I] = "imul",
-        [X64_INSTR_AND_R_I] = "and",
-        [X64_INSTR_OR_R_I] = "or",
-        [X64_INSTR_XOR_R_I] = "xor"
+        [X64_InstrSub_R_I_KIND] = "sub",
+        [X64_InstrIMul_R_I_KIND] = "imul",
+        [X64_InstrAnd_R_I_KIND] = "and",
+        [X64_InstrOr_R_I_KIND] = "or",
+        [X64_InstrXor_R_I_KIND] = "xor"
     };
 
     static const char* binary_r_m_name[] = {
         [X64_InstrAdd_R_M_KIND] = "add",
-        [X64_INSTR_SUB_R_M] = "sub",
-        [X64_INSTR_IMUL_R_M] = "imul",
-        [X64_INSTR_AND_R_M] = "and",
-        [X64_INSTR_OR_R_M] = "or",
-        [X64_INSTR_XOR_R_M] = "xor"
+        [X64_InstrSub_R_M_KIND] = "sub",
+        [X64_InstrIMul_R_M_KIND] = "imul",
+        [X64_InstrAnd_R_M_KIND] = "and",
+        [X64_InstrOr_R_M_KIND] = "or",
+        [X64_InstrXor_R_M_KIND] = "xor"
     };
 
     static const char* shift_r_r_name[] = {
-        [X64_INSTR_SAR_R_R] = "sar",
-        [X64_INSTR_SHL_R_R] = "shl"
+        [X64_InstrSar_R_R_KIND] = "sar",
+        [X64_InstrShl_R_R_KIND] = "shl"
     };
 
     static const char* shift_r_i_name[] = {
-        [X64_INSTR_SAR_R_I] = "sar",
-        [X64_INSTR_SHL_R_I] = "shl"
+        [X64_InstrSar_R_I_KIND] = "sar",
+        [X64_InstrShl_R_I_KIND] = "shl"
     };
 
     static const char* unary_name[] = {
-        [X64_INSTR_NEG] = "neg",
-        [X64_INSTR_NOT] = "not"
+        [X64_InstrNeg_KIND] = "neg",
+        [X64_InstrNot_KIND] = "not"
     };
 
     char* dstr = array_create(arena, char, 16);
 
     switch (instr->kind) {
     case X64_InstrAdd_R_R_KIND:
-    case X64_INSTR_SUB_R_R:
-    case X64_INSTR_IMUL_R_R:
-    case X64_INSTR_AND_R_R:
-    case X64_INSTR_OR_R_R:
-    case X64_INSTR_XOR_R_R: {
+    case X64_InstrSub_R_R_KIND:
+    case X64_InstrIMul_R_R_KIND:
+    case X64_InstrAnd_R_R_KIND:
+    case X64_InstrOr_R_R_KIND:
+    case X64_InstrXor_R_R_KIND: {
         u32 size = (u32)instr->binary_r_r.size;
 
         ftprint_char_array(&dstr, false, "%s <%lu> r%d, r%d", binary_r_r_name[instr->kind], size,
@@ -126,11 +126,11 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         break;
     }
     case X64_InstrAdd_R_I_KIND:
-    case X64_INSTR_SUB_R_I:
-    case X64_INSTR_IMUL_R_I:
-    case X64_INSTR_AND_R_I:
-    case X64_INSTR_OR_R_I:
-    case X64_INSTR_XOR_R_I: {
+    case X64_InstrSub_R_I_KIND:
+    case X64_InstrIMul_R_I_KIND:
+    case X64_InstrAnd_R_I_KIND:
+    case X64_InstrOr_R_I_KIND:
+    case X64_InstrXor_R_I_KIND: {
         u32 size = (u32)instr->binary_r_i.size;
 
         ftprint_char_array(&dstr, false, "%s <%lu> r%d, 0x%lx", binary_r_i_name[instr->kind], size,
@@ -138,28 +138,28 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         break;
     }
     case X64_InstrAdd_R_M_KIND:
-    case X64_INSTR_SUB_R_M:
-    case X64_INSTR_IMUL_R_M:
-    case X64_INSTR_AND_R_M:
-    case X64_INSTR_OR_R_M:
-    case X64_INSTR_XOR_R_M: {
+    case X64_InstrSub_R_M_KIND:
+    case X64_InstrIMul_R_M_KIND:
+    case X64_InstrAnd_R_M_KIND:
+    case X64_InstrOr_R_M_KIND:
+    case X64_InstrXor_R_M_KIND: {
         u32 size = (u32)instr->binary_r_m.size;
 
         ftprint_char_array(&dstr, false, "%s <%lu> r%d, %s", binary_r_m_name[instr->kind], size,
                            instr->binary_r_m.dst, LIR_print_mem(arena, &instr->binary_r_m.src));
         break;
     }
-    case X64_INSTR_DIV_R:
-    case X64_INSTR_IDIV_R: {
-        const char* instr_name = instr->kind == X64_INSTR_IDIV_R ? "idiv" : "div";
+    case X64_InstrDiv_R_KIND:
+    case X64_InstrIDiv_R_KIND: {
+        const char* instr_name = instr->kind == X64_InstrIDiv_R_KIND ? "idiv" : "div";
         u32 size = (u32)instr->div_r.size;
 
         ftprint_char_array(&dstr, false, "%s <%lu> r%d", instr_name, size, instr->div_r.src);
         break;
     }
-    case X64_INSTR_DIV_M:
-    case X64_INSTR_IDIV_M: {
-        const char* instr_name = instr->kind == X64_INSTR_IDIV_M ? "idiv" : "div";
+    case X64_InstrDiv_M_KIND:
+    case X64_InstrIDiv_M_KIND: {
+        const char* instr_name = instr->kind == X64_InstrIDiv_M_KIND ? "idiv" : "div";
         u32 size = (u32)instr->div_m.size;
 
         ftprint_char_array(&dstr, false, "%s <%lu> %s", instr_name, size, LIR_print_mem(arena, &instr->div_m.src));
@@ -183,136 +183,136 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
-    case X64_INSTR_SUBSS_R_R: {
+    case X64_InstrSubSS_R_R_KIND: {
         ftprint_char_array(&dstr, false, "subss r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_SUBSD_R_R: {
+    case X64_InstrSubSD_R_R_KIND: {
         ftprint_char_array(&dstr, false, "subsd r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_SUBSS_R_M: {
+    case X64_InstrSubSS_R_M_KIND: {
         ftprint_char_array(&dstr, false, "subss r%d, %s", instr->binary_flt_r_m.dst,
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
-    case X64_INSTR_SUBSD_R_M: {
+    case X64_InstrSubSD_R_M_KIND: {
         ftprint_char_array(&dstr, false, "subsd r%d, %s", instr->binary_flt_r_m.dst,
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
-    case X64_INSTR_MULSS_R_R: {
+    case X64_InstrMulSS_R_R_KIND: {
         ftprint_char_array(&dstr, false, "mulss r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_MULSD_R_R: {
+    case X64_InstrMulSD_R_R_KIND: {
         ftprint_char_array(&dstr, false, "mulsd r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_MULSS_R_M: {
+    case X64_InstrMulSS_R_M_KIND: {
         ftprint_char_array(&dstr, false, "mulss r%d, %s", instr->binary_flt_r_m.dst,
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
-    case X64_INSTR_MULSD_R_M: {
+    case X64_InstrMulSD_R_M_KIND: {
         ftprint_char_array(&dstr, false, "mulsd r%d, %s", instr->binary_flt_r_m.dst,
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
-    case X64_INSTR_DIVSS_R_R: {
+    case X64_InstrDivSS_R_R_KIND: {
         ftprint_char_array(&dstr, false, "divss r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_DIVSD_R_R: {
+    case X64_InstrDivSD_R_R_KIND: {
         ftprint_char_array(&dstr, false, "divsd r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_DIVSS_R_M: {
+    case X64_InstrDivSS_R_M_KIND: {
         ftprint_char_array(&dstr, false, "divss r%d, %s", instr->binary_flt_r_m.dst,
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
-    case X64_INSTR_DIVSD_R_M: {
+    case X64_InstrDivSD_R_M_KIND: {
         ftprint_char_array(&dstr, false, "divsd r%d, %s", instr->binary_flt_r_m.dst,
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
-    case X64_INSTR_SEXT_AX_TO_DX: {
+    case X64_InstrSExtAxToDx_KIND: {
         u32 size = (u32)instr->sext_ax_to_dx.size;
         ftprint_char_array(&dstr, false, "%s", x64_sext_ax_into_dx[size]);
         break;
     }
-    case X64_INSTR_SAR_R_R:
-    case X64_INSTR_SHL_R_R: {
+    case X64_InstrSar_R_R_KIND:
+    case X64_InstrShl_R_R_KIND: {
         u32 dst_size = (u32)instr->shift_r_r.size;
 
         ftprint_char_array(&dstr, false, "%s <%lu> r%d, r%d", shift_r_r_name[instr->kind], dst_size, instr->shift_r_r.dst,
                            instr->shift_r_r.src);
         break;
     }
-    case X64_INSTR_SAR_R_I:
-    case X64_INSTR_SHL_R_I: {
+    case X64_InstrSar_R_I_KIND:
+    case X64_InstrShl_R_I_KIND: {
         u32 dst_size = (u32)instr->shift_r_i.size;
 
         ftprint_char_array(&dstr, false, "%s <%lu> r%d, 0x%lx", shift_r_i_name[instr->kind], dst_size, instr->shift_r_i.dst,
                            instr->shift_r_i.src.as_int._u8);
         break;
     }
-    case X64_INSTR_NEG:
-    case X64_INSTR_NOT: {
+    case X64_InstrNeg_KIND:
+    case X64_InstrNot_KIND: {
         u32 size = (u32)instr->unary.size;
 
         ftprint_char_array(&dstr, false, "%s <%lu> r%d", unary_name[instr->kind], size, instr->unary.dst);
         break;
     }
-    case X64_INSTR_REP_MOVSB: {
+    case X64_InstrRepMovsb_KIND: {
         ftprint_char_array(&dstr, false, "rep movsb");
         break;
     }
-    case X64_INSTR_SYSCALL: {
+    case X64_InstrSyscall_KIND: {
         ftprint_char_array(&dstr, false, "syscall");
         break;
     }
-    case X64_INSTR_REP_STOSB: {
+    case X64_InstrRepStosb_KIND: {
         ftprint_char_array(&dstr, false, "rep stosb");
         break;
     }
-    case X64_INSTR_MOV_R_RH: {
+    case X64_InstrMov_R_RH_KIND: {
         ftprint_char_array(&dstr, false, "mov <1> r%d, r%d[h]", instr->mov_r_rh.dst, instr->mov_r_rh.src);
         break;
     }
-    case X64_INSTR_MOV_R_R: {
+    case X64_InstrMov_R_R_KIND: {
         u32 size = (u32)instr->mov_r_r.size;
 
         ftprint_char_array(&dstr, false, "mov <%lu> r%d, r%d", size, instr->mov_r_r.dst, instr->mov_r_r.src);
         break;
     }
-    case X64_INSTR_MOV_R_I: {
+    case X64_InstrMov_R_I_KIND: {
         u32 size = (u32)instr->mov_r_i.size;
 
         ftprint_char_array(&dstr, false, "mov <%lu> r%d, 0x%lx", size, instr->mov_r_i.dst, instr->mov_r_i.src.as_int._u64);
         break;
     }
-    case X64_INSTR_MOV_R_M: {
+    case X64_InstrMov_R_M_KIND: {
         u32 size = (u32)instr->mov_r_m.size;
 
         ftprint_char_array(&dstr, false, "mov <%lu> r%d, %s", size, instr->mov_r_m.dst, LIR_print_mem(arena, &instr->mov_r_m.src));
         break;
     }
-    case X64_INSTR_MOV_M_R: {
+    case X64_InstrMov_M_R_KIND: {
         u32 size = (u32)instr->mov_m_r.size;
 
         ftprint_char_array(&dstr, false, "mov <%lu> %s, r%d", size, LIR_print_mem(arena, &instr->mov_m_r.dst), instr->mov_m_r.src);
         break;
     }
-    case X64_INSTR_MOV_M_I: {
+    case X64_InstrMov_M_I_KIND: {
         u32 size = (u32)instr->mov_m_i.size;
 
         ftprint_char_array(&dstr, false, "mov <%lu> %s, 0x%lx", size, LIR_print_mem(arena, &instr->mov_m_i.dst),
                            instr->mov_m_i.src.as_int._u64);
         break;
     }
-    case X64_INSTR_MOVZX_R_R: {
+    case X64_InstrMovZX_R_R_KIND: {
         size_t dst_size = instr->convert_r_r.dst_size;
         size_t src_size = instr->convert_r_r.src_size;
 
@@ -320,7 +320,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            src_size, instr->convert_r_r.src);
         break;
     }
-    case X64_INSTR_MOVZX_R_M: {
+    case X64_InstrMovZX_R_M_KIND: {
         size_t dst_size = instr->convert_r_m.dst_size;
         size_t src_size = instr->convert_r_m.src_size;
 
@@ -328,7 +328,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            src_size, LIR_print_mem(arena, &instr->convert_r_m.src));
         break;
     }
-    case X64_INSTR_MOVSX_R_R: {
+    case X64_InstrMovSX_R_R_KIND: {
         size_t dst_size = instr->convert_r_r.dst_size;
         size_t src_size = instr->convert_r_r.src_size;
         const char* movsx = src_size >= builtin_types[BUILTIN_TYPE_U32].type->size ? "movsxd" : "movsx";
@@ -337,7 +337,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            src_size, instr->convert_r_r.src);
         break;
     }
-    case X64_INSTR_MOVSX_R_M: {
+    case X64_InstrMovSX_R_M_KIND: {
         size_t dst_size = instr->convert_r_m.dst_size;
         size_t src_size = instr->convert_r_m.src_size;
         const char* movsx = src_size >= builtin_types[BUILTIN_TYPE_U32].type->size ? "movsxd" : "movsx";
@@ -346,170 +346,170 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            src_size, LIR_print_mem(arena, &instr->convert_r_m.src));
         break;
     }
-    case X64_INSTR_MOVSS_R_R: {
+    case X64_InstrMovSS_R_R_KIND: {
         ftprint_char_array(&dstr, false, "movss r%d, r%d", instr->mov_flt_r_r.dst, instr->mov_flt_r_r.src);
         break;
     }
-    case X64_INSTR_MOVSD_R_R: {
+    case X64_InstrMovSD_R_R_KIND: {
         ftprint_char_array(&dstr, false, "movsd r%d, r%d", instr->mov_flt_r_r.dst, instr->mov_flt_r_r.src);
         break;
     }
-    case X64_INSTR_MOVSS_R_M: {
+    case X64_InstrMovSS_R_M_KIND: {
         ftprint_char_array(&dstr, false, "movss r%d, %s", instr->mov_flt_r_m.dst, LIR_print_mem(arena, &instr->mov_flt_r_m.src));
         break;
     }
-    case X64_INSTR_MOVSD_R_M: {
+    case X64_InstrMovSD_R_M_KIND: {
         ftprint_char_array(&dstr, false, "movsd r%d, %s", instr->mov_flt_r_m.dst, LIR_print_mem(arena, &instr->mov_flt_r_m.src));
         break;
     }
-    case X64_INSTR_MOVSS_M_R: {
+    case X64_InstrMovSS_M_R_KIND: {
         ftprint_char_array(&dstr, false, "movss %s, r%d", LIR_print_mem(arena, &instr->mov_flt_m_r.dst), instr->mov_flt_m_r.src);
         break;
     }
-    case X64_INSTR_MOVSD_M_R: {
+    case X64_InstrMovSD_M_R_KIND: {
         ftprint_char_array(&dstr, false, "movsd %s, r%d", LIR_print_mem(arena, &instr->mov_flt_m_r.dst), instr->mov_flt_m_r.src);
         break;
     }
-    case X64_INSTR_CVTSS2SD_R_R: {
+    case X64_InstrCvtSS2SD_R_R_KIND: {
         ftprint_char_array(&dstr, false, "cvtss2sd r%d, r%d", instr->flt2flt_r_r.dst, instr->flt2flt_r_r.src);
         break;
     }
-    case X64_INSTR_CVTSD2SS_R_R: {
+    case X64_InstrCvtSD2SS_R_R_KIND: {
         ftprint_char_array(&dstr, false, "cvtsd2ss r%d, r%d", instr->flt2flt_r_r.dst, instr->flt2flt_r_r.src);
         break;
     }
-    case X64_INSTR_CVTSS2SD_R_M: {
+    case X64_InstrCvtSS2SD_R_M_KIND: {
         ftprint_char_array(&dstr, false, "cvtss2sd r%d, %s", instr->flt2flt_r_m.dst, LIR_print_mem(arena, &instr->flt2flt_r_m.src));
         break;
     }
-    case X64_INSTR_CVTSD2SS_R_M: {
+    case X64_InstrCvtSD2SS_R_M_KIND: {
         ftprint_char_array(&dstr, false, "cvtsd2ss r%d, %s", instr->flt2flt_r_m.dst, LIR_print_mem(arena, &instr->flt2flt_r_m.src));
         break;
     }
-    case X64_INSTR_CVTTSS2SI_R_R: {
+    case X64_InstrCvtSS2SI_R_R_KIND: {
         ftprint_char_array(&dstr, false, "cvttss2si <%lu> r%d, r%d", instr->flt2int_r_r.dst_size, instr->flt2int_r_r.dst,
                            instr->flt2int_r_r.src);
         break;
     }
-    case X64_INSTR_CVTTSD2SI_R_R: {
+    case X64_InstrCvtSD2SI_R_R_KIND: {
         ftprint_char_array(&dstr, false, "cvttsd2si <%lu> r%d, r%d", instr->flt2int_r_r.dst_size, instr->flt2int_r_r.dst,
                            instr->flt2int_r_r.src);
         break;
     }
-    case X64_INSTR_CVTTSS2SI_R_M: {
+    case X64_InstrCvtSS2SI_R_M_KIND: {
         ftprint_char_array(&dstr, false, "cvttss2si <%lu> r%d, %s", instr->flt2int_r_m.dst_size, instr->flt2int_r_m.dst,
                            LIR_print_mem(arena, &instr->flt2int_r_m.src));
         break;
     }
-    case X64_INSTR_CVTTSD2SI_R_M: {
+    case X64_InstrCvtSD2SI_R_M_KIND: {
         ftprint_char_array(&dstr, false, "cvttsd2si <%lu> r%d, %s", instr->flt2int_r_m.dst_size, instr->flt2int_r_m.dst,
                            LIR_print_mem(arena, &instr->flt2int_r_m.src));
         break;
     }
-    case X64_INSTR_CVTSI2SS_R_R: {
+    case X64_InstrCvtSI2SS_R_R_KIND: {
         ftprint_char_array(&dstr, false, "cvtsi2ss r%d, <%lu> r%d", instr->int2flt_r_r.dst, instr->int2flt_r_r.src_size,
                            instr->int2flt_r_r.src);
         break;
     }
-    case X64_INSTR_CVTSI2SD_R_R: {
+    case X64_InstrCvtSI2SD_R_R_KIND: {
         ftprint_char_array(&dstr, false, "cvtsi2sd r%d, <%lu> r%d", instr->int2flt_r_r.dst, instr->int2flt_r_r.src_size,
                            instr->int2flt_r_r.src);
         break;
     }
-    case X64_INSTR_CVTSI2SS_R_M: {
+    case X64_InstrCvtSI2SS_R_M_KIND: {
         ftprint_char_array(&dstr, false, "cvtsi2ss r%d, <%lu> %s", instr->int2flt_r_m.dst, instr->int2flt_r_m.src_size,
                            LIR_print_mem(arena, &instr->int2flt_r_m.src));
         break;
     }
-    case X64_INSTR_CVTSI2SD_R_M: {
+    case X64_InstrCvtSI2SD_R_M_KIND: {
         ftprint_char_array(&dstr, false, "cvtsi2sd r%d, <%lu> %s", instr->int2flt_r_m.dst, instr->int2flt_r_m.src_size,
                            LIR_print_mem(arena, &instr->int2flt_r_m.src));
         break;
     }
-    case X64_INSTR_LEA: {
+    case X64_InstrLEA_KIND: {
         ftprint_char_array(&dstr, false, "lea r%d, %s", instr->lea.dst, LIR_print_mem(arena, &instr->lea.mem));
         break;
     }
-    case X64_INSTR_CMP_R_R: {
+    case X64_InstrCmp_R_R_KIND: {
         u32 size = (u32)instr->cmp_r_r.size;
 
         ftprint_char_array(&dstr, false, "cmp <%lu> r%d, r%d", size, instr->cmp_r_r.op1, instr->cmp_r_r.op2);
         break;
     }
-    case X64_INSTR_CMP_R_I: {
+    case X64_InstrCmp_R_I_KIND: {
         u32 size = (u32)instr->cmp_r_i.size;
 
         ftprint_char_array(&dstr, false, "cmp <%lu> r%d, 0x%lx", size, instr->cmp_r_i.op1, instr->cmp_r_i.op2.as_int._u64);
         break;
     }
-    case X64_INSTR_CMP_R_M: {
+    case X64_InstrCmp_R_M_KIND: {
         u32 size = (u32)instr->cmp_r_m.size;
 
         ftprint_char_array(&dstr, false, "cmp <%lu> r%d, %s", size, instr->cmp_r_m.op1, LIR_print_mem(arena, &instr->cmp_r_m.op2));
         break;
     }
-    case X64_INSTR_CMP_M_R: {
+    case X64_InstrCmp_M_R_KIND: {
         u32 size = (u32)instr->cmp_m_r.size;
 
         ftprint_char_array(&dstr, false, "cmp <%lu> %s, r%d", size, LIR_print_mem(arena, &instr->cmp_m_r.op1), instr->cmp_m_r.op2);
         break;
     }
-    case X64_INSTR_CMP_M_I: {
+    case X64_InstrCmp_M_I_KIND: {
         u32 size = (u32)instr->cmp_m_i.size;
 
         ftprint_char_array(&dstr, false, "cmp <%lu> %s, 0x%lx", size, LIR_print_mem(arena, &instr->cmp_m_i.op1),
                            instr->cmp_m_i.op2.as_int._u64);
         break;
     }
-    case X64_INSTR_UCOMISS_R_R: {
+    case X64_InstrUComiSS_R_R_KIND: {
         ftprint_char_array(&dstr, false, "ucomiss r%d, r%d", instr->cmp_flt_r_r.op1, instr->cmp_flt_r_r.op2);
         break;
     }
-    case X64_INSTR_UCOMISD_R_R: {
+    case X64_InstrUComiSD_R_R_KIND: {
         ftprint_char_array(&dstr, false, "ucomisd r%d, r%d", instr->cmp_flt_r_r.op1, instr->cmp_flt_r_r.op2);
         break;
     }
-    case X64_INSTR_UCOMISS_R_M: {
+    case X64_InstrUComiSS_R_M_KIND: {
         ftprint_char_array(&dstr, false, "ucomiss r%d, %s", instr->cmp_flt_r_m.op1, LIR_print_mem(arena, &instr->cmp_flt_r_m.op2));
         break;
     }
-    case X64_INSTR_UCOMISD_R_M: {
+    case X64_InstrUComiSD_R_M_KIND: {
         ftprint_char_array(&dstr, false, "ucomisd r%d, %s", instr->cmp_flt_r_m.op1, LIR_print_mem(arena, &instr->cmp_flt_r_m.op2));
         break;
     }
-    case X64_INSTR_JMP: {
+    case X64_InstrJmp_KIND: {
         ftprint_char_array(&dstr, false, "jmp B.%ld", instr->jmp.target->id);
         break;
     }
-    case X64_INSTR_JMPCC: {
+    case X64_InstrJmpCC_KIND: {
         ftprint_char_array(&dstr, false, "j%s B.%ld else B.%ld", x64_condition_codes[instr->jmpcc.cond],
                            instr->jmpcc.true_bb->id, instr->jmpcc.false_bb->id);
         break;
     }
-    case X64_INSTR_SETCC: {
+    case X64_InstrSetCC_KIND: {
         ftprint_char_array(&dstr, false, "set%s r%d", x64_condition_codes[instr->setcc.cond], instr->setcc.dst);
         break;
     }
-    case X64_INSTR_RET: {
+    case X64_InstrRet_KIND: {
         ftprint_char_array(&dstr, false, "ret");
 
         break;
     }
-    case X64_INSTR_CALL:
-    case X64_INSTR_CALL_R: {
+    case X64_InstrCall_KIND:
+    case X64_InstrCall_R_KIND: {
         Type* proc_type;
         X64_CallValue dst_val;
         u32 num_args;
         X64_InstrCallArg* args;
 
-        if (instr->kind == X64_INSTR_CALL) {
+        if (instr->kind == X64_InstrCall_KIND) {
             proc_type = instr->call.sym->type;
             dst_val = instr->call.dst;
             num_args = instr->call.num_args;
             args = instr->call.args;
         }
         else {
-            assert(instr->kind == X64_INSTR_CALL_R);
+            assert(instr->kind == X64_InstrCall_R_KIND);
             proc_type = instr->call_r.proc_type;
             dst_val = instr->call_r.dst;
             num_args = instr->call_r.num_args;
@@ -527,7 +527,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
             }
         }
 
-        if (instr->kind == X64_INSTR_CALL) {
+        if (instr->kind == X64_InstrCall_KIND) {
             ftprint_char_array(&dstr, false, "call %s (", symbol_mangled_name(arena, instr->call.sym));
         }
         else {
@@ -585,15 +585,15 @@ static void LIR_dump_bblock_dot(Allocator* arena, X64_BBlock* bblock)
 
     X64_Instr* last_instr = bblock->last;
 
-    if (last_instr->kind == X64_INSTR_JMP) {
+    if (last_instr->kind == X64_InstrJmp_KIND) {
         ftprint_out("\tB%d -> B%d\n", bblock->id, last_instr->jmp.target->id);
     }
-    else if (last_instr->kind == X64_INSTR_JMPCC) {
+    else if (last_instr->kind == X64_InstrJmpCC_KIND) {
         ftprint_out("\tB%d -> B%d\n", bblock->id, last_instr->jmpcc.true_bb->id);
         ftprint_out("\tB%d -> B%d\n", bblock->id, last_instr->jmpcc.false_bb->id);
     }
     else {
-        assert(last_instr->kind == X64_INSTR_RET);
+        assert(last_instr->kind == X64_InstrRet_KIND);
     }
 }
 
