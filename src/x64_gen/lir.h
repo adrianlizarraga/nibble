@@ -14,17 +14,17 @@ typedef enum X64_InstrKind
     X64_INSTR_NONE = 0,
 
     // Addition
-    X64_INSTR_ADD_R_R,
-    X64_INSTR_ADD_R_I,
-    X64_INSTR_ADD_R_M,
+    X64_InstrAdd_R_R_KIND,
+    X64_InstrAdd_R_I_KIND,
+    X64_InstrAdd_R_M_KIND,
 
     // f32 add
-    X64_INSTR_ADDSS_R_R,
-    X64_INSTR_ADDSS_R_M,
+    X64_InstrAddSS_R_R_KIND,
+    X64_InstrAddSS_R_M_KIND,
 
     // f64 add
-    X64_INSTR_ADDSD_R_R,
-    X64_INSTR_ADDSD_R_M,
+    X64_InstrAddSD_R_R_KIND,
+    X64_InstrAddSD_R_M_KIND,
 
     // Subtraction
     X64_INSTR_SUB_R_R,

@@ -69,7 +69,7 @@ static char* LIR_print_mem(Allocator* arena, X64_MemAddr* addr)
 static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
 {
     static const char* binary_r_r_name[] = {
-        [X64_INSTR_ADD_R_R] = "add",
+        [X64_InstrAdd_R_R_KIND] = "add",
         [X64_INSTR_SUB_R_R] = "sub",
         [X64_INSTR_IMUL_R_R] = "imul",
         [X64_INSTR_AND_R_R] = "and",
@@ -78,7 +78,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
     };
 
     static const char* binary_r_i_name[] = {
-        [X64_INSTR_ADD_R_I] = "add",
+        [X64_InstrAdd_R_I_KIND] = "add",
         [X64_INSTR_SUB_R_I] = "sub",
         [X64_INSTR_IMUL_R_I] = "imul",
         [X64_INSTR_AND_R_I] = "and",
@@ -87,7 +87,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
     };
 
     static const char* binary_r_m_name[] = {
-        [X64_INSTR_ADD_R_M] = "add",
+        [X64_InstrAdd_R_M_KIND] = "add",
         [X64_INSTR_SUB_R_M] = "sub",
         [X64_INSTR_IMUL_R_M] = "imul",
         [X64_INSTR_AND_R_M] = "and",
@@ -113,7 +113,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
     char* dstr = array_create(arena, char, 16);
 
     switch (instr->kind) {
-    case X64_INSTR_ADD_R_R:
+    case X64_InstrAdd_R_R_KIND:
     case X64_INSTR_SUB_R_R:
     case X64_INSTR_IMUL_R_R:
     case X64_INSTR_AND_R_R:
@@ -125,7 +125,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            instr->binary_r_r.dst, instr->binary_r_r.src);
         break;
     }
-    case X64_INSTR_ADD_R_I:
+    case X64_InstrAdd_R_I_KIND:
     case X64_INSTR_SUB_R_I:
     case X64_INSTR_IMUL_R_I:
     case X64_INSTR_AND_R_I:
@@ -137,7 +137,7 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
                            instr->binary_r_i.dst, instr->binary_r_i.src.as_int._u64);
         break;
     }
-    case X64_INSTR_ADD_R_M:
+    case X64_InstrAdd_R_M_KIND:
     case X64_INSTR_SUB_R_M:
     case X64_INSTR_IMUL_R_M:
     case X64_INSTR_AND_R_M:
@@ -165,20 +165,20 @@ static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
         ftprint_char_array(&dstr, false, "%s <%lu> %s", instr_name, size, LIR_print_mem(arena, &instr->div_m.src));
         break;
     }
-    case X64_INSTR_ADDSS_R_R: {
+    case X64_InstrAddSS_R_R_KIND: {
         ftprint_char_array(&dstr, false, "addss r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_ADDSD_R_R: {
+    case X64_InstrAddSD_R_R_KIND: {
         ftprint_char_array(&dstr, false, "addsd r%d, r%d", instr->binary_flt_r_r.dst, instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_ADDSS_R_M: {
+    case X64_InstrAddSS_R_M_KIND: {
         ftprint_char_array(&dstr, false, "addss r%d, %s", instr->binary_flt_r_m.dst,
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;
     }
-    case X64_INSTR_ADDSD_R_M: {
+    case X64_InstrAddSD_R_M_KIND: {
         ftprint_char_array(&dstr, false, "addsd r%d, %s", instr->binary_flt_r_m.dst,
                            LIR_print_mem(arena, &instr->binary_flt_r_m.src));
         break;

@@ -2,15 +2,15 @@
 #include "x64_gen/lir.h"
 
 static X64_InstrKind binary_kind[] = {
-    [IR_InstrIntAdd_KIND] = X64_INSTR_ADD_R_R, [IR_InstrIntSub_KIND] = X64_INSTR_SUB_R_R, [IR_InstrIntMul_KIND] = X64_INSTR_IMUL_R_R,
+    [IR_InstrIntAdd_KIND] = X64_InstrAdd_R_R_KIND, [IR_InstrIntSub_KIND] = X64_INSTR_SUB_R_R, [IR_InstrIntMul_KIND] = X64_INSTR_IMUL_R_R,
     [IR_InstrAnd_KIND] = X64_INSTR_AND_R_R,     [IR_InstrOr_KIND] = X64_INSTR_OR_R_R,       [IR_InstrXor_KIND] = X64_INSTR_XOR_R_R};
 
 static X64_InstrKind binary_r_i_kind[] = {
-    [IR_InstrIntAdd_KIND] = X64_INSTR_ADD_R_I, [IR_InstrIntSub_KIND] = X64_INSTR_SUB_R_I, [IR_InstrIntMul_KIND] = X64_INSTR_IMUL_R_I,
+    [IR_InstrIntAdd_KIND] = X64_InstrAdd_R_I_KIND, [IR_InstrIntSub_KIND] = X64_INSTR_SUB_R_I, [IR_InstrIntMul_KIND] = X64_INSTR_IMUL_R_I,
     [IR_InstrAnd_KIND] = X64_INSTR_AND_R_I,     [IR_InstrOr_KIND] = X64_INSTR_OR_R_I,       [IR_InstrXor_KIND] = X64_INSTR_XOR_R_I};
 
 static X64_InstrKind binary_r_m_kind[] = {
-    [IR_InstrIntAdd_KIND] = X64_INSTR_ADD_R_M, [IR_InstrIntSub_KIND] = X64_INSTR_SUB_R_M, [IR_InstrIntMul_KIND] = X64_INSTR_IMUL_R_M,
+    [IR_InstrIntAdd_KIND] = X64_InstrAdd_R_M_KIND, [IR_InstrIntSub_KIND] = X64_INSTR_SUB_R_M, [IR_InstrIntMul_KIND] = X64_INSTR_IMUL_R_M,
     [IR_InstrAnd_KIND] = X64_INSTR_AND_R_M,     [IR_InstrOr_KIND] = X64_INSTR_OR_R_M,       [IR_InstrXor_KIND] = X64_INSTR_XOR_R_M};
 
 static X64_InstrKind shift_kind[] = {[IR_InstrShl_KIND] = X64_INSTR_SHL_R_R, [IR_InstrSar_KIND] = X64_INSTR_SAR_R_R};

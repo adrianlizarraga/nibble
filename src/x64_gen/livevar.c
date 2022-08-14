@@ -41,7 +41,7 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
         ino = instr->ino;
 
         switch (instr->kind) {
-        case X64_INSTR_ADD_R_R:
+        case X64_InstrAdd_R_R_KIND:
         case X64_INSTR_SUB_R_R:
         case X64_INSTR_IMUL_R_R:
         case X64_INSTR_AND_R_R:
@@ -51,7 +51,7 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_lreg(builder, instr->binary_r_r.src, ino);
             break;
         }
-        case X64_INSTR_ADD_R_I:
+        case X64_InstrAdd_R_I_KIND:
         case X64_INSTR_SUB_R_I:
         case X64_INSTR_IMUL_R_I:
         case X64_INSTR_AND_R_I:
@@ -60,7 +60,7 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_lreg(builder, instr->binary_r_i.dst, ino);
             break;
         }
-        case X64_INSTR_ADD_R_M:
+        case X64_InstrAdd_R_M_KIND:
         case X64_INSTR_SUB_R_M:
         case X64_INSTR_IMUL_R_M:
         case X64_INSTR_AND_R_M:
@@ -70,8 +70,8 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_mem_lregs(builder, &instr->binary_r_m.src, ino);
             break;
         }
-        case X64_INSTR_ADDSS_R_R:
-        case X64_INSTR_ADDSD_R_R:
+        case X64_InstrAddSS_R_R_KIND:
+        case X64_InstrAddSD_R_R_KIND:
         case X64_INSTR_SUBSS_R_R:
         case X64_INSTR_SUBSD_R_R:
         case X64_INSTR_MULSS_R_R:
@@ -82,8 +82,8 @@ static long X64_compute_bblock_live_intervals(X64_LIRBuilder* builder, X64_BBloc
             X64_touch_lreg(builder, instr->binary_flt_r_r.src, ino);
             break;
         }
-        case X64_INSTR_ADDSS_R_M:
-        case X64_INSTR_ADDSD_R_M:
+        case X64_InstrAddSS_R_M_KIND:
+        case X64_InstrAddSD_R_M_KIND:
         case X64_INSTR_SUBSS_R_M:
         case X64_INSTR_SUBSD_R_M:
         case X64_INSTR_MULSS_R_M:

@@ -1645,13 +1645,13 @@ static void X64_cpy_ret_small_obj(X64_Generator* generator, Type* ret_type, X64_
 
 static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_instr, long bblock_id)
 {
-    static const char* binary_r_r_name[] = {[X64_INSTR_ADD_R_R] = "add", [X64_INSTR_SUB_R_R] = "sub", [X64_INSTR_IMUL_R_R] = "imul",
+    static const char* binary_r_r_name[] = {[X64_InstrAdd_R_R_KIND] = "add", [X64_INSTR_SUB_R_R] = "sub", [X64_INSTR_IMUL_R_R] = "imul",
                                             [X64_INSTR_AND_R_R] = "and", [X64_INSTR_OR_R_R] = "or",   [X64_INSTR_XOR_R_R] = "xor"};
 
-    static const char* binary_r_i_name[] = {[X64_INSTR_ADD_R_I] = "add", [X64_INSTR_SUB_R_I] = "sub", [X64_INSTR_IMUL_R_I] = "imul",
+    static const char* binary_r_i_name[] = {[X64_InstrAdd_R_I_KIND] = "add", [X64_INSTR_SUB_R_I] = "sub", [X64_INSTR_IMUL_R_I] = "imul",
                                             [X64_INSTR_AND_R_I] = "and", [X64_INSTR_OR_R_I] = "or",   [X64_INSTR_XOR_R_I] = "xor"};
 
-    static const char* binary_r_m_name[] = {[X64_INSTR_ADD_R_M] = "add", [X64_INSTR_SUB_R_M] = "sub", [X64_INSTR_IMUL_R_M] = "imul",
+    static const char* binary_r_m_name[] = {[X64_InstrAdd_R_M_KIND] = "add", [X64_INSTR_SUB_R_M] = "sub", [X64_INSTR_IMUL_R_M] = "imul",
                                             [X64_INSTR_AND_R_M] = "and", [X64_INSTR_OR_R_M] = "or",   [X64_INSTR_XOR_R_M] = "xor"};
 
     static const char* shift_r_r_name[] = {[X64_INSTR_SAR_R_R] = "sar", [X64_INSTR_SHL_R_R] = "shl"};
@@ -1663,7 +1663,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
     AllocatorState mem_state = allocator_get_state(generator->tmp_mem);
 
     switch (instr->kind) {
-    case X64_INSTR_ADD_R_R:
+    case X64_InstrAdd_R_R_KIND:
     case X64_INSTR_SUB_R_R:
     case X64_INSTR_IMUL_R_R:
     case X64_INSTR_AND_R_R:
@@ -1675,7 +1675,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                           instr->binary_r_r.src);
         break;
     }
-    case X64_INSTR_ADD_R_I:
+    case X64_InstrAdd_R_I_KIND:
     case X64_INSTR_SUB_R_I:
     case X64_INSTR_IMUL_R_I:
     case X64_INSTR_AND_R_I:
@@ -1686,7 +1686,7 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
         X64_emit_ri_instr(generator, binary_r_i_name[instr->kind], size, instr->binary_r_i.dst, size, instr->binary_r_i.src);
         break;
     }
-    case X64_INSTR_ADD_R_M:
+    case X64_InstrAdd_R_M_KIND:
     case X64_INSTR_SUB_R_M:
     case X64_INSTR_IMUL_R_M:
     case X64_INSTR_AND_R_M:
@@ -1698,28 +1698,28 @@ static void X64_gen_instr(X64_Generator* generator, X64_Instr* instr, bool last_
                           &instr->binary_r_m.src);
         break;
     }
-    case X64_INSTR_ADDSS_R_R: {
+    case X64_InstrAddSS_R_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_rr_instr(generator, "addss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
                           instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_ADDSS_R_M: {
+    case X64_InstrAddSS_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F32];
 
         X64_emit_rm_instr(generator, "addss", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
                           &instr->binary_flt_r_m.src);
         break;
     }
-    case X64_INSTR_ADDSD_R_R: {
+    case X64_InstrAddSD_R_R_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_rr_instr(generator, "addsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_r.dst, size,
                           instr->binary_flt_r_r.src);
         break;
     }
-    case X64_INSTR_ADDSD_R_M: {
+    case X64_InstrAddSD_R_M_KIND: {
         u32 size = float_kind_sizes[FLOAT_F64];
 
         X64_emit_rm_instr(generator, "addsd", true, X64_REG_CLASS_FLOAT, size, instr->binary_flt_r_m.dst, size,
