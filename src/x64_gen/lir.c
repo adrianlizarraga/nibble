@@ -31,7 +31,7 @@ static X64_Instr* X64_new_instr(Allocator* arena, X64_InstrKind kind)
     return instr;
 }
 
-void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, u32 src)
+void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 size, u32 dst, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->binary_r_r.size = size;
@@ -41,7 +41,7 @@ void X64_emit_instr_binary_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, Scalar src)
+void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 size, u32 dst, Scalar src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->binary_r_i.size = size;
@@ -51,7 +51,7 @@ void X64_emit_instr_binary_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_binary_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, X64_MemAddr src)
+void X64_emit_instr_binary_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 size, u32 dst, X64_MemAddr src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->binary_r_m.size = size;
@@ -149,7 +149,7 @@ void X64_emit_instr_flt_div_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, Fl
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, u32 src)
+void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 size, u32 dst, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->shift_r_r.size = size;
@@ -159,7 +159,7 @@ void X64_emit_instr_shift_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst, Scalar src)
+void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 size, u32 dst, Scalar src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->shift_r_i.size = size;
@@ -169,7 +169,7 @@ void X64_emit_instr_shift_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_div_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 rdx, u32 rax, u32 src)
+void X64_emit_instr_div_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 size, u32 rdx, u32 rax, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->div_r.size = size;
@@ -180,7 +180,7 @@ void X64_emit_instr_div_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Inst
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_div_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 rdx, u32 rax,
+void X64_emit_instr_div_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 size, u32 rdx, u32 rax,
                           X64_MemAddr src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
@@ -192,7 +192,7 @@ void X64_emit_instr_div_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Inst
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_unary(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t size, u32 dst)
+void X64_emit_instr_unary(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 size, u32 dst)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->unary.size = size;
@@ -201,7 +201,7 @@ void X64_emit_instr_unary(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_Inst
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_mov_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, u32 src)
+void X64_emit_instr_mov_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_MOV_R_R);
     instr->mov_r_r.size = size;
@@ -220,7 +220,7 @@ void X64_emit_instr_mov_r_rh(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 d
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, X64_MemAddr src)
+void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, X64_MemAddr src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_MOV_R_M);
     instr->mov_r_m.size = size;
@@ -230,7 +230,7 @@ void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_mov_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 dst, Scalar src)
+void X64_emit_instr_mov_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_MOV_R_I);
     instr->mov_r_i.size = size;
@@ -240,7 +240,7 @@ void X64_emit_instr_mov_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_mov_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr dst, u32 src)
+void X64_emit_instr_mov_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, X64_MemAddr dst, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_MOV_M_R);
     instr->mov_m_r.size = size;
@@ -250,7 +250,7 @@ void X64_emit_instr_mov_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_mov_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr dst, Scalar src)
+void X64_emit_instr_mov_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, X64_MemAddr dst, Scalar src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_MOV_M_I);
     instr->mov_m_i.size = size;
@@ -317,7 +317,7 @@ void X64_emit_instr_flt2flt_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, Fl
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_flt2int_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t dst_size, u32 dst, FloatKind src_kind, u32 src)
+void X64_emit_instr_flt2int_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, FloatKind src_kind, u32 src)
 {
     X64_InstrKind kind = src_kind == FLOAT_F64 ? X64_INSTR_CVTTSD2SI_R_R : X64_INSTR_CVTTSS2SI_R_R;
 
@@ -329,7 +329,7 @@ void X64_emit_instr_flt2int_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, si
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_flt2int_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t dst_size, u32 dst, FloatKind src_kind, X64_MemAddr src)
+void X64_emit_instr_flt2int_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, FloatKind src_kind, X64_MemAddr src)
 {
     X64_InstrKind kind = src_kind == FLOAT_F64 ? X64_INSTR_CVTTSD2SI_R_M : X64_INSTR_CVTTSS2SI_R_M;
 
@@ -341,7 +341,7 @@ void X64_emit_instr_flt2int_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, si
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_int2flt_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, size_t src_size, u32 src)
+void X64_emit_instr_int2flt_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, u8 src_size, u32 src)
 {
     X64_InstrKind kind = dst_kind == FLOAT_F64 ? X64_INSTR_CVTSI2SD_R_R : X64_INSTR_CVTSI2SS_R_R;
 
@@ -353,7 +353,7 @@ void X64_emit_instr_int2flt_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Fl
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_int2flt_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, size_t src_size, X64_MemAddr src)
+void X64_emit_instr_int2flt_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, FloatKind dst_kind, u32 dst, u8 src_size, X64_MemAddr src)
 {
     X64_InstrKind kind = dst_kind == FLOAT_F64 ? X64_INSTR_CVTSI2SD_R_M : X64_INSTR_CVTSI2SS_R_M;
 
@@ -365,8 +365,8 @@ void X64_emit_instr_int2flt_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, Fl
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_convert_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t dst_size, u32 dst,
-                                size_t src_size, u32 src)
+void X64_emit_instr_convert_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 dst_size, u32 dst,
+                                u8 src_size, u32 src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->convert_r_r.dst_size = dst_size;
@@ -377,8 +377,8 @@ void X64_emit_instr_convert_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X6
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_convert_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, size_t dst_size, u32 dst,
-                                size_t src_size, X64_MemAddr src)
+void X64_emit_instr_convert_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_InstrKind kind, u8 dst_size, u32 dst,
+                                u8 src_size, X64_MemAddr src)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, kind);
     instr->convert_r_m.dst_size = dst_size;
@@ -389,7 +389,7 @@ void X64_emit_instr_convert_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, X6
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 rdx, u32 rax)
+void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 rdx, u32 rax)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_SEXT_AX_TO_DX);
     instr->sext_ax_to_dx.size = size;
@@ -408,7 +408,7 @@ void X64_emit_instr_lea(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_cmp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, u32 op2)
+void X64_emit_instr_cmp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 op1, u32 op2)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CMP_R_R);
     instr->cmp_r_r.size = size;
@@ -418,7 +418,7 @@ void X64_emit_instr_cmp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_cmp_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, Scalar op2)
+void X64_emit_instr_cmp_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 op1, Scalar op2)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CMP_R_I);
     instr->cmp_r_i.size = size;
@@ -428,7 +428,7 @@ void X64_emit_instr_cmp_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_cmp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, u32 op1, X64_MemAddr op2)
+void X64_emit_instr_cmp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 op1, X64_MemAddr op2)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CMP_R_M);
     instr->cmp_r_m.size = size;
@@ -438,7 +438,7 @@ void X64_emit_instr_cmp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_cmp_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr op1, u32 op2)
+void X64_emit_instr_cmp_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, X64_MemAddr op1, u32 op2)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CMP_M_R);
     instr->cmp_m_r.size = size;
@@ -448,7 +448,7 @@ void X64_emit_instr_cmp_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t
     X64_add_lir_instr(builder, xbblock, instr);
 }
 
-void X64_emit_instr_cmp_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, size_t size, X64_MemAddr op1, Scalar op2)
+void X64_emit_instr_cmp_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, X64_MemAddr op1, Scalar op2)
 {
     X64_Instr* instr = X64_new_instr(builder->arena, X64_INSTR_CMP_M_I);
     instr->cmp_m_i.size = size;

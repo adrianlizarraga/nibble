@@ -2503,7 +2503,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     // Register allocation.
     BBlock** ir_bblocks = sym->as_proc.bblocks;
     size_t num_ir_bblocks = array_len(ir_bblocks);
-    X64_LIRBuilder builder = {.arena = generator->tmp_mem};
+    X64_LIRBuilder builder = {.arena = generator->gen_mem};
 
     X64_emit_lir_instrs(&builder, sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks);
 
