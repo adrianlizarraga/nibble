@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import glob
 import json
 import re
@@ -15,7 +17,7 @@ def find_replace(glob_pattern : str, find : str, replace : str):
                 file.write(s)
 
 def print_usage(exe_name: str):
-    print(f"Usage: {exe_name} <items.json> <targets.json>")
+    print(f"Usage: python3 {exe_name} <items.json> <targets.json>")
     print("    <items.json>       JSON file containing \"word\" items to find and replace (list of [2]str items)")
     print("    <targets.json>     JSON file containing a list of glob patterns for the target files")
     print("")
