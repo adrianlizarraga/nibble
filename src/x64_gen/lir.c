@@ -536,8 +536,7 @@ void X64_emit_instr_syscall(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 ra
     instr->syscall.rcx = rcx;
     instr->syscall.r11 = r11;
     instr->syscall.num_args = num_args;
-
-    memcpy(instr->syscall.args, args, num_args * sizeof(args[0]));
+    instr->syscall.args = mem_dup_array(builder->arena, u32, args, num_args);
 
     X64_add_lir_instr(builder, xbblock, instr);
 }

@@ -510,8 +510,8 @@ typedef struct X64_InstrSyscall {
     u32 rax; // return
     u32 rcx; // clobbered
     u32 r11; // clobbered
-    u8 num_args;
-    u32 args[6]; // TODO: Make a pointer to reduce memory footprint.
+    u8 num_args; // At most 6
+    u32* args;
 } X64_InstrSyscall;
 
 // TODO: Replace union with light "inheritance" to reduce memory costs.
