@@ -63,6 +63,21 @@ static const X64_EmitInstrMovXX_R_M_Func x64_movxx_r_m_funcs[] = {
     [1] = X64_emit_instr_movsx_r_m,
 };
 
+static const X64_EmitInstrMovFlt_R_R_Func x64_movflt_r_r_funcs[] = {
+    [FLOAT_F32] = X64_emit_instr_movss_r_r,
+    [FLOAT_F64] = X64_emit_instr_movsd_r_r
+};
+
+static const X64_EmitInstrMovFlt_R_M_Func x64_movflt_r_m_funcs[] = {
+    [FLOAT_F32] = X64_emit_instr_movss_r_m,
+    [FLOAT_F64] = X64_emit_instr_movsd_r_m
+};
+
+static const X64_EmitInstrMovFlt_M_R_Func x64_movflt_m_r_funcs[] = {
+    [FLOAT_F32] = X64_emit_instr_movss_m_r,
+    [FLOAT_F64] = X64_emit_instr_movsd_m_r
+};
+
 // The floating-point comparison instructions in X86_64 use the unsigned condition variants.
 static const ConditionKind flt_cond_map[] = {
     [COND_U_LT] = COND_U_LT, [COND_S_LT] = COND_U_LT, [COND_U_LTEQ] = COND_U_LTEQ, [COND_S_LTEQ] = COND_U_LTEQ,
@@ -1095,6 +1110,34 @@ static bool X64_convert_limm_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
     return false;
 }
 
+static bool X64_convert_load_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
+{
+    (void)next_ir_instr;
+
+    // EX: r = load(base + scale * index + disp)
+    //
+    // mov r, [base + scale * index + disp]
+
+    IR_InstrLoad* ir_load = (IR_InstrLoad*)ir_instr;
+
+    Type* type = ir_load->type;
+    size_t size = type->size;
+
+    X64_MemAddr addr = {0};
+    X64_get_lir_addr(builder, xbblock, &addr, &ir_load->addr, 0);
+
+    if (type->kind == TYPE_FLOAT) {
+        u32 r = X64_get_lir_reg(builder, ir_load->r, X64_REG_CLASS_FLOAT);
+        x64_movflt_r_m_funcs[type->as_float.kind](builder, xbblock, r, addr);
+    }
+    else {
+        u32 r = X64_get_lir_reg(builder, ir_load->r, X64_REG_CLASS_INT);
+        X64_emit_instr_mov_r_m(builder, xbblock, size, r, addr);
+    }
+
+    return false;
+}
+
 static const X64_LIRCreateFunc x64_convert_ir_funcs[IR_INSTR_KIND_COUNT] = {
     [IR_InstrIntAdd_KIND] = X64_convert_int_add_instr,
     [IR_InstrIntSub_KIND] = X64_convert_int_sub_instr,
@@ -1120,7 +1163,7 @@ static const X64_LIRCreateFunc x64_convert_ir_funcs[IR_INSTR_KIND_COUNT] = {
     [IR_InstrFlt2Int_KIND] = X64_convert_flt2int_instr,
     [IR_InstrInt2Flt_KIND] = X64_convert_int2flt_instr,
     [IR_InstrLImm_KIND] = X64_convert_limm_instr,
-    [IR_InstrLoad_KIND] = X64_fun,
+    [IR_InstrLoad_KIND] = X64_convert_load_instr,
     [IR_InstrLAddr_KIND] = X64_fun,
     [IR_InstrStore_KIND] = X64_fun,
     [IR_InstrIntCmp_KIND] = X64_fun,
@@ -1313,26 +1356,6 @@ static IR_Instr* X64_convert_ir_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
         break;
     }
     case IR_InstrLoad_KIND: {
-        // EX: r = load(base + scale * index + disp)
-        //
-        // mov r, [base + scale * index + disp]
-
-        IR_InstrLoad* ir_load = (IR_InstrLoad*)ir_instr;
-
-        Type* type = ir_load->type;
-        size_t size = type->size;
-
-        X64_MemAddr addr = {0};
-        X64_get_lir_addr(builder, xbblock, &addr, &ir_load->addr, 0);
-
-        if (type->kind == TYPE_FLOAT) {
-            u32 r = X64_get_lir_reg(builder, ir_load->r, X64_REG_CLASS_FLOAT);
-            X64_emit_instr_mov_flt_r_m(builder, xbblock, type->as_float.kind, r, addr);
-        }
-        else {
-            u32 r = X64_get_lir_reg(builder, ir_load->r, X64_REG_CLASS_INT);
-            X64_emit_instr_mov_r_m(builder, xbblock, size, r, addr);
-        }
         break;
     }
     case IR_InstrLAddr_KIND: {
