@@ -184,7 +184,6 @@ typedef enum X64_InstrKind
 
 } X64_InstrKind;
 
-// TODO: Replace union with light "inheritance" to reduce memory costs.
 // TODO: Look into removing link-list support and storing instrs in an array (reduce memory costs).
 struct X64_Instr {
     X64_InstrKind kind;
@@ -192,76 +191,6 @@ struct X64_Instr {
 
     X64_Instr* prev;
     X64_Instr* next;
-
-    /*union {
-        X64_InstrBinary_R_R binary_r_r;
-        X64_InstrBinary_R_I binary_r_i;
-        X64_InstrBinary_R_M binary_r_m;
-
-        X64_InstrBinaryFlt_R_R binary_flt_r_r;
-        X64_InstrBinaryFlt_R_M binary_flt_r_m;
-
-        X64_InstrShift_R_R shift_r_r;
-        X64_InstrShift_R_I shift_r_i;
-
-        X64_InstrDiv_R div_r;
-        X64_InstrDiv_M div_m;
-
-        X64_InstrUnary unary;
-
-        X64_InstrMov_R_R mov_r_rh;
-        X64_InstrMov_R_R mov_r_r;
-        X64_InstrMov_R_M mov_r_m;
-        X64_InstrMov_R_I mov_r_i;
-        X64_InstrMov_M_R mov_m_r;
-        X64_InstrMov_M_I mov_m_i;
-
-        X64_InstrMovFlt_R_R mov_flt_r_r;
-        X64_InstrMovFlt_R_M mov_flt_r_m;
-        X64_InstrMovFlt_M_R mov_flt_m_r;
-
-        X64_InstrFlt2Flt_R_R flt2flt_r_r;
-        X64_InstrFlt2Flt_R_M flt2flt_r_m;
-
-        X64_InstrFlt2Int_R_R flt2int_r_r;
-        X64_InstrFlt2Int_R_M flt2int_r_m;
-
-        X64_InstrInt2Flt_R_R int2flt_r_r;
-        X64_InstrInt2Flt_R_M int2flt_r_m;
-
-        X64_InstrRepMovsb rep_movsb;
-        X64_InstrRepStosb rep_stosb;
-
-        X64_InstrSyscall syscall;
-
-        X64_InstrConvert_R_R convert_r_r;
-        X64_InstrConvert_R_M convert_r_m;
-
-        X64_InstrSExtAxToDx sext_ax_to_dx;
-
-        X64_InstrLEA lea;
-
-        X64_InstrCmp_R_R cmp_r_r;
-        X64_InstrCmp_R_I cmp_r_i;
-        X64_InstrCmp_R_M cmp_r_m;
-        X64_InstrCmp_M_R cmp_m_r;
-        X64_InstrCmp_M_I cmp_m_i;
-
-        X64_InstrCmpFlt_R_R cmp_flt_r_r;
-        X64_InstrCmpFlt_R_M cmp_flt_r_m;
-
-        X64_InstrJmp jmp;
-
-        X64_InstrJmpCC jmpcc;
-
-        X64_InstrSetCC setcc;
-
-        X64_InstrRet ret;
-
-        X64_InstrCall call;
-
-        X64_InstrCall_R call_r;
-    }; */
 };
 
 typedef enum X64_MemAddrKind {
