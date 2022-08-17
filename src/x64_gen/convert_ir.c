@@ -34,16 +34,10 @@ static const X64_EmitInstrMovXX_R_M_Func x64_movxx_r_m_funcs[] = {
 };
 
 // Indexed on `is_signed` boolean.
-static const X64_EmitInstrIntDiv_R_Func x64_int_div_r_funcs[] = {
-    [0] = X64_emit_instr_div_r,
-    [1] = X64_emit_instr_idiv_r
-};
+static const X64_EmitInstrIntDiv_R_Func x64_int_div_r_funcs[] = {[0] = X64_emit_instr_div_r, [1] = X64_emit_instr_idiv_r};
 
 // Indexed on `is_signed` boolean.
-static const X64_EmitInstrIntDiv_M_Func x64_int_div_m_funcs[] = {
-    [0] = X64_emit_instr_div_m,
-    [1] = X64_emit_instr_idiv_m
-};
+static const X64_EmitInstrIntDiv_M_Func x64_int_div_m_funcs[] = {[0] = X64_emit_instr_div_m, [1] = X64_emit_instr_idiv_m};
 
 static const X64_EmitInstrMovFlt_R_R_Func x64_movflt_r_r_funcs[] =
     {[FLOAT_F32] = X64_emit_instr_movss_r_r, [FLOAT_F64] = X64_emit_instr_movsd_r_r};
@@ -555,6 +549,7 @@ typedef bool (*X64_LIRCreateFunc)(X64_LIRBuilder* builder, X64_BBlock* xbblock, 
     static bool f_n(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)              \
     {                                                                                                                       \
         (void)next_ir_instr;                                                                                                \
+        assert(ir_instr->kind == ir_t##_KIND);                                                                              \
         ir_t* ir_v = (ir_t*)ir_instr;                                                                                       \
         size_t size = ir_v->type->size;                                                                                     \
         OpRIA ir_a = ir_v->a;                                                                                               \
@@ -594,8 +589,8 @@ X64_DEF_CONVERT_INT_BINARY_FUNC(X64_convert_int_add_instr, IR_InstrIntAdd, X64_e
                                 X64_emit_instr_add_r_m)
 X64_DEF_CONVERT_INT_BINARY_FUNC(X64_convert_int_sub_instr, IR_InstrIntSub, X64_emit_instr_sub_r_i, X64_emit_instr_sub_r_r,
                                 X64_emit_instr_sub_r_m)
-X64_DEF_CONVERT_INT_BINARY_FUNC(X64_convert_int_mul_instr, IR_InstrIntMul, X64_emit_instr_mul_r_i, X64_emit_instr_mul_r_r,
-                                X64_emit_instr_mul_r_m)
+X64_DEF_CONVERT_INT_BINARY_FUNC(X64_convert_int_mul_instr, IR_InstrIntMul, X64_emit_instr_imul_r_i, X64_emit_instr_imul_r_r,
+                                X64_emit_instr_imul_r_m)
 X64_DEF_CONVERT_INT_BINARY_FUNC(X64_convert_and_instr, IR_InstrAnd, X64_emit_instr_and_r_i, X64_emit_instr_and_r_r,
                                 X64_emit_instr_and_r_m)
 X64_DEF_CONVERT_INT_BINARY_FUNC(X64_convert_or_instr, IR_InstrOr, X64_emit_instr_or_r_i, X64_emit_instr_or_r_r, X64_emit_instr_or_r_m)
@@ -605,6 +600,8 @@ X64_DEF_CONVERT_INT_BINARY_FUNC(X64_convert_xor_instr, IR_InstrXor, X64_emit_ins
 static bool X64_convert_int_div_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+
+    assert(ir_instr->kind == IR_InstrIntDiv_KIND);
 
     // EX: r = a / b
     //
@@ -670,6 +667,7 @@ static bool X64_convert_int_div_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 static bool X64_convert_mod_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrMod_KIND);
 
     // EX: r = a % b
     //
@@ -742,6 +740,7 @@ static bool X64_convert_mod_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, 
 static bool X64_convert_divmod_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrDivMod_KIND);
 
     // EX: q,r = a % b
     //
@@ -821,6 +820,7 @@ static bool X64_convert_divmod_instr(X64_LIRBuilder* builder, X64_BBlock* xbbloc
     static bool f_n(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr) \
     {                                                                                                          \
         (void)next_ir_instr;                                                                                   \
+        assert(ir_instr->kind == ir_t##_KIND);                                                                 \
                                                                                                                \
         ir_t* ir_f = (ir_t*)ir_instr;                                                                          \
                                                                                                                \
@@ -862,6 +862,7 @@ X64_DEF_CONVERT_FLT_BINARY_FUNC(X64_convert_flt_div_instr, IR_InstrFltDiv, X64_e
     static bool f_n(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr) \
     {                                                                                                          \
         (void)next_ir_instr;                                                                                   \
+        assert(ir_instr->kind == ir_t##_KIND);                                                                 \
         ir_t* ir_shift = (ir_t*)ir_instr;                                                                      \
                                                                                                                \
         size_t size = ir_shift->type->size;                                                                    \
@@ -891,7 +892,6 @@ X64_DEF_CONVERT_FLT_BINARY_FUNC(X64_convert_flt_div_instr, IR_InstrFltDiv, X64_e
                                                                                                                \
             f_r_r(builder, xbblock, size, r, cx);                                                              \
         }                                                                                                      \
-        \ 
         return false;                                                                                          \
     }
 
@@ -906,6 +906,7 @@ X64_DEF_CONVERT_SHIFT_FUNC(X64_convert_shl_instr, IR_InstrShl, X64_emit_instr_sh
     static bool f_n(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr) \
     {                                                                                                          \
         (void)next_ir_instr;                                                                                   \
+        assert(ir_instr->kind == ir_t##_KIND);                                                                 \
         ir_t* ir_unary = (ir_t*)ir_instr;                                                                      \
                                                                                                                \
         size_t size = ir_unary->type->size;                                                                    \
@@ -923,9 +924,11 @@ X64_DEF_CONVERT_SHIFT_FUNC(X64_convert_shl_instr, IR_InstrShl, X64_emit_instr_sh
 X64_DEF_CONVERT_UNARY_FUNC(X64_convert_neg_instr, IR_InstrNeg, X64_emit_instr_neg)
 X64_DEF_CONVERT_UNARY_FUNC(X64_convert_not_instr, IR_InstrNot, X64_emit_instr_not)
 
-static bool X64_convert_trunc_instr(X64_LIRBuilder* builder, X64_BBlock xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
+static bool X64_convert_trunc_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrTrunc_KIND);
+
     IR_InstrTrunc* ir_trunc = (IR_InstrTrunc*)ir_instr;
 
     size_t dst_size = ir_trunc->dst_type->size;
@@ -937,9 +940,10 @@ static bool X64_convert_trunc_instr(X64_LIRBuilder* builder, X64_BBlock xbblock,
     return false;
 }
 
-static bool X64_convert_zext_instr(X64_LIRBuilder* builder, X64_BBlock xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
+static bool X64_convert_zext_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrZExt_KIND);
 
     // EX: r = zext(a)
     //
@@ -957,9 +961,10 @@ static bool X64_convert_zext_instr(X64_LIRBuilder* builder, X64_BBlock xbblock, 
     return false;
 }
 
-static bool X64_convert_sext_instr(X64_LIRBuilder* builder, X64_BBlock xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
+static bool X64_convert_sext_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrSExt_KIND);
 
     // EX: r = sext(a)
     //
@@ -979,6 +984,7 @@ static bool X64_convert_sext_instr(X64_LIRBuilder* builder, X64_BBlock xbblock, 
 static bool X64_convert_flt2flt_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrFlt2Flt_KIND);
 
     // EX: r = flt2flt(a)
     //
@@ -1010,6 +1016,7 @@ static bool X64_convert_flt2flt_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 static bool X64_convert_flt2int_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrFlt2Int_KIND);
 
     // EX: r = flt2int(a_fp)
     //
@@ -1041,6 +1048,7 @@ static bool X64_convert_flt2int_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 static bool X64_convert_int2flt_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrInt2Flt_KIND);
 
     // EX: r_fp = int2flt(a)
     //
@@ -1095,6 +1103,7 @@ static bool X64_convert_int2flt_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 static bool X64_convert_limm_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrLImm_KIND);
 
     // EX: r = 10
     //
@@ -1111,6 +1120,7 @@ static bool X64_convert_limm_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 static bool X64_convert_load_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrLoad_KIND);
 
     // EX: r = load(base + scale * index + disp)
     //
@@ -1139,6 +1149,7 @@ static bool X64_convert_load_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 static bool X64_convert_laddr_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrLAddr_KIND);
 
     // EX: r = laddr(base + scale*index + disp)
     //
@@ -1158,6 +1169,7 @@ static bool X64_convert_laddr_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock
 static bool X64_convert_store_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrStore_KIND);
 
     // EX: $addr = a
     //
@@ -1191,6 +1203,7 @@ static bool X64_convert_store_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock
 static bool X64_convert_int_cmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrIntCmp_KIND);
 
     IR_InstrIntCmp* ir_int_cmp = (IR_InstrIntCmp*)ir_instr;
 
@@ -1294,6 +1307,7 @@ static bool X64_convert_int_cmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 static bool X64_convert_flt_cmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrFltCmp_KIND);
 
     IR_InstrFltCmp* ir_flt_cmp = (IR_InstrFltCmp*)ir_instr;
 
@@ -1347,6 +1361,7 @@ static bool X64_convert_flt_cmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 static bool X64_convert_jmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)ir_instr;
+    assert(ir_instr->kind == IR_InstrJmp_KIND);
 
     assert(!next_ir_instr);
     X64_emit_instr_jmp(builder, xbblock, NULL);
@@ -1357,6 +1372,7 @@ static bool X64_convert_jmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, 
 static bool X64_convert_cond_jmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     assert(!next_ir_instr);
+    assert(ir_instr->kind == IR_InstrCondJmp_KIND);
 
     // EX: cond_jmp a, <target>
     //
@@ -1379,6 +1395,8 @@ static bool X64_convert_cond_jmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbbl
 static bool X64_convert_phi_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    (void)xbblock;
+    assert(ir_instr->kind == IR_InstrPhi_KIND);
 
     IR_InstrPhi* ir_phi = (IR_InstrPhi*)ir_instr;
 
@@ -1400,6 +1418,7 @@ static bool X64_convert_phi_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, 
 static bool X64_convert_memcpy_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrMemcpy_KIND);
 
     // memcpy(dst, src, size)
     //
@@ -1424,6 +1443,7 @@ static bool X64_convert_memcpy_instr(X64_LIRBuilder* builder, X64_BBlock* xbbloc
 static bool X64_convert_memset_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrMemset_KIND);
 
     // memset(dst, value, size)
     //
@@ -1445,6 +1465,7 @@ static bool X64_convert_memset_instr(X64_LIRBuilder* builder, X64_BBlock* xbbloc
 static bool X64_convert_syscall_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrSyscall_KIND);
 
     // res = syscall6(nr, arg1, arg2, arg3, arg4, arg5, arg6);
     //
@@ -1492,6 +1513,7 @@ static bool X64_convert_syscall_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 static bool X64_convert_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrRet_KIND);
 
     // EX: ret a
     //
@@ -1589,11 +1611,14 @@ static bool X64_convert_ret_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, 
     }
 
     X64_emit_instr_ret(builder, xbblock, ax, dx);
+
+    return false;
 }
 
 static bool X64_convert_call_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrCall_KIND);
 
     IR_InstrCall* ir_call = (IR_InstrCall*)ir_instr;
 
@@ -1628,6 +1653,7 @@ static bool X64_convert_call_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock,
 static bool X64_convert_call_indirect_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     (void)next_ir_instr;
+    assert(ir_instr->kind == IR_InstrCallIndirect_KIND);
 
     IR_InstrCallIndirect* ir_calli = (IR_InstrCallIndirect*)ir_instr;
 
@@ -1676,8 +1702,8 @@ static const X64_LIRCreateFunc x64_convert_ir_funcs[IR_INSTR_KIND_COUNT] = {
     [IR_InstrFltDiv_KIND] = X64_convert_flt_div_instr,
     [IR_InstrSar_KIND] = X64_convert_sar_instr,
     [IR_InstrShl_KIND] = X64_convert_shl_instr,
-    [IR_InstrNot_KIND] = X64_convert_neg_instr,
-    [IR_InstrNeg_KIND] = X64_convert_not_instr,
+    [IR_InstrNot_KIND] = X64_convert_not_instr,
+    [IR_InstrNeg_KIND] = X64_convert_neg_instr,
     [IR_InstrTrunc_KIND] = X64_convert_trunc_instr,
     [IR_InstrZExt_KIND] = X64_convert_zext_instr,
     [IR_InstrSExt_KIND] = X64_convert_sext_instr,
@@ -1775,7 +1801,7 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
             BBlock* n = ((IR_InstrJmp*)instr)->target;
             X64_BBlock* xn = builder->bblocks[n->id];
 
-            xinstr->jmp.target = xn;
+            ((X64_InstrJmp*)xinstr)->target = xn;
         }
         else if (instr->kind == IR_InstrCondJmp_KIND) {
             assert(xinstr->kind == X64_InstrJmpCC_KIND);
@@ -1783,12 +1809,12 @@ static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_
             BBlock* n_false = ((IR_InstrCondJmp*)instr)->false_bb;
             X64_BBlock* xn_false = builder->bblocks[n_false->id];
             assert(n_false->id == xn_false->id);
-            xinstr->jmpcc.false_bb = xn_false;
+            ((X64_InstrJmpCC*)xinstr)->false_bb = xn_false;
 
             BBlock* n_true = ((IR_InstrCondJmp*)instr)->true_bb;
             X64_BBlock* xn_true = builder->bblocks[n_true->id];
             assert(n_true->id == xn_true->id);
-            xinstr->jmpcc.true_bb = xn_true;
+            ((X64_InstrJmpCC*)xinstr)->true_bb = xn_true;
         }
     }
 }
