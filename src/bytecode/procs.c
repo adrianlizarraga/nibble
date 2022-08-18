@@ -205,9 +205,7 @@ static void IR_bblock_add_instr(BBlock* bblock, IR_Instr* instr)
         bblock->last->next = instr;
     }
 
-    instr->prev = bblock->last;
     bblock->last = instr;
-
     bblock->num_instrs += 1;
 
     if (instr->kind == IR_InstrJmp_KIND || instr->kind == IR_InstrCondJmp_KIND || instr->kind == IR_InstrRet_KIND) {

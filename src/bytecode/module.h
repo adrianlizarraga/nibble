@@ -136,9 +136,7 @@ typedef enum IR_InstrKind {
 // TODO: Look into removing link-list support and storing instrs in an array (reduce memory costs).
 typedef struct IR_Instr {
     IR_InstrKind kind;
-    long ino; // Instruction number
-
-    struct IR_Instr* prev;
+    u32 ino; // Instruction number in procedure
     struct IR_Instr* next;
 } IR_Instr;
 

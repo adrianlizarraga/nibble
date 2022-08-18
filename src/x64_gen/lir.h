@@ -187,9 +187,7 @@ typedef enum X64_InstrKind
 // TODO: Look into removing link-list support and storing instrs in an array (reduce memory costs).
 struct X64_Instr {
     X64_InstrKind kind;
-    long ino;
-
-    X64_Instr* prev;
+    u32 ino;
     X64_Instr* next;
 };
 

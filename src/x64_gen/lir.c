@@ -9,9 +9,7 @@ static void X64_bblock_add_instr(X64_BBlock* bblock, X64_Instr* instr)
         bblock->last->next = instr;
     }
 
-    instr->prev = bblock->last;
     bblock->last = instr;
-
     bblock->num_instrs += 1;
 }
 
