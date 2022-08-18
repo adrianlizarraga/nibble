@@ -15,9 +15,9 @@ const char* arch_names[NUM_ARCH] = {
     [ARCH_X64] = "x64",
 };
 
-const size_t float_kind_sizes[FLOAT_KIND_COUNT] = {[FLOAT_F64] = 8, [FLOAT_F32] = 4};
+const u8 float_kind_sizes[FLOAT_KIND_COUNT] = {[FLOAT_F64] = 8, [FLOAT_F32] = 4};
 const char* float_kind_names[FLOAT_KIND_COUNT] = {[FLOAT_F64] = "f64", [FLOAT_F32] = "f32"};
-const size_t int_kind_sizes[INTEGER_KIND_COUNT] = {
+const u8 int_kind_sizes[INTEGER_KIND_COUNT] = {
     [INTEGER_BOOL] = 1, [INTEGER_U8] = 1,  [INTEGER_S8] = 1,  [INTEGER_U16] = 2, [INTEGER_S16] = 2,
     [INTEGER_U32] = 4,  [INTEGER_S32] = 4, [INTEGER_U64] = 8, [INTEGER_S64] = 8,
 };

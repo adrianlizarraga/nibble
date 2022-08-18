@@ -425,12 +425,16 @@ X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_Scratc
         long ino = instr->ino;
         unsigned* save_reg_mask;
 
-        if (instr->kind == X64_INSTR_CALL) {
-            save_reg_mask = &instr->call.save_reg_mask;
+        if (instr->kind == X64_InstrCall_KIND) {
+            X64_InstrCall* instr_call = (X64_InstrCall*)instr;
+
+            save_reg_mask = &instr_call->save_reg_mask;
         }
         else {
-            assert(instr->kind == X64_INSTR_CALL_R);
-            save_reg_mask = &instr->call_r.save_reg_mask;
+            assert(instr->kind == X64_InstrCall_R_KIND);
+            X64_InstrCall_R* instr_call_r = (X64_InstrCall_R*)instr;
+
+            save_reg_mask = &instr_call_r->save_reg_mask;
         }
 
         *save_reg_mask = 0;

@@ -44,8 +44,8 @@ typedef struct IR_TmpObjList {
 
 typedef struct IR_DeferredJmpcc {
     bool result;
-    Instr* jmp; // target needs to be patched. Cond reg needs to be set.
-    Instr* cmp; // Condition may need to be inverted.
+    IR_Instr* jmp; // target needs to be patched. Cond reg needs to be set.
+    IR_Instr* cmp; // Condition may need to be inverted.
     struct IR_DeferredJmpcc* next;
 } IR_DeferredJmpcc;
 
@@ -143,7 +143,7 @@ static MemAddr IR_get_zero_flt_addr(IR_ProcBuilder* builder, FloatKind fkind)
 //
 //////////////////////////////////////////////////////
 typedef struct IR_UJmpNode {
-    Instr* instr; // Unpatched jump instruction.
+    IR_Instr* instr; // Unpatched jump instruction.
     struct IR_UJmpNode* next;
 } IR_UJmpNode;
 
@@ -152,7 +152,7 @@ typedef struct IR_UJmpList {
     IR_UJmpNode* last;
 } IR_UJmpList;
 
-static void IR_add_ujmp(IR_ProcBuilder* builder, IR_UJmpList* list, Instr* instr)
+static void IR_add_ujmp(IR_ProcBuilder* builder, IR_UJmpList* list, IR_Instr* instr)
 {
     IR_UJmpNode* node;
 
@@ -194,7 +194,7 @@ static void IR_ujmp_list_free(IR_ProcBuilder* builder, IR_UJmpList* list)
     list->first = list->last = NULL;
 }
 
-static void IR_bblock_add_instr(BBlock* bblock, Instr* instr)
+static void IR_bblock_add_instr(BBlock* bblock, IR_Instr* instr)
 {
     assert(!bblock->closed);
 
@@ -205,12 +205,10 @@ static void IR_bblock_add_instr(BBlock* bblock, Instr* instr)
         bblock->last->next = instr;
     }
 
-    instr->prev = bblock->last;
     bblock->last = instr;
-
     bblock->num_instrs += 1;
 
-    if (instr->kind == INSTR_JMP || instr->kind == INSTR_COND_JMP || instr->kind == INSTR_RET) {
+    if (instr->kind == IR_InstrJmp_KIND || instr->kind == IR_InstrCondJmp_KIND || instr->kind == IR_InstrRet_KIND) {
         bblock->closed = true;
     }
 }
@@ -248,19 +246,23 @@ static void IR_connect_bblocks(BBlock* pred, BBlock* succ)
     IR_try_push_bblock_elem(&succ->preds, pred);
 }
 
-static void IR_patch_jmp_target(Instr* jmp_instr, BBlock* target)
+static void IR_patch_jmp_target(IR_Instr* jmp_instr, BBlock* target)
 {
     assert(target);
 
     switch (jmp_instr->kind) {
-    case INSTR_JMP:
-        jmp_instr->jmp.target = target;
-        IR_connect_bblocks(jmp_instr->jmp.from, target);
+    case IR_InstrJmp_KIND: {
+        IR_InstrJmp* instr = (IR_InstrJmp*)jmp_instr;
+        instr->target = target;
+        IR_connect_bblocks(instr->from, target);
         break;
-    case INSTR_COND_JMP:
-        jmp_instr->cond_jmp.true_bb = target; // NOTE: Only patches true path
-        IR_connect_bblocks(jmp_instr->cond_jmp.from, target);
+    }
+    case IR_InstrCondJmp_KIND: {
+        IR_InstrCondJmp* instr = (IR_InstrCondJmp*)jmp_instr;
+        instr->true_bb = target; // NOTE: Only patches true path
+        IR_connect_bblocks(instr->from, target);
         break;
+    }
     default:
         assert(0);
         break;
@@ -276,244 +278,362 @@ static void IR_patch_ujmp_list(IR_ProcBuilder* builder, IR_UJmpList* list, BBloc
     IR_ujmp_list_free(builder, list);
 }
 
-static void IR_add_instr(IR_ProcBuilder* builder, BBlock* bblock, Instr* instr)
+static void IR_add_instr(IR_ProcBuilder* builder, BBlock* bblock, IR_Instr* instr)
 {
     instr->ino = builder->curr_proc->as_proc.num_instrs << 1;
     builder->curr_proc->as_proc.num_instrs++;
     IR_bblock_add_instr(bblock, instr);
 }
 
-static Instr* IR_new_instr(Allocator* arena, InstrKind kind)
+#define IR_new_instr(a, k) (k*)IR_new_instr_((a), k##_KIND, sizeof(k), alignof(k))
+static IR_Instr* IR_new_instr_(Allocator* arena, IR_InstrKind kind, size_t size, size_t align)
 {
-    Instr* instr = alloc_type(arena, Instr, true);
+    IR_Instr* instr = mem_allocate(arena, size, align, true);
     instr->kind = kind;
 
     return instr;
 }
 
-#define IR_emit_instr_int_add(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_ADD, (t), (r), (a), (b))
-#define IR_emit_instr_int_sub(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_SUB, (t), (r), (a), (b))
-#define IR_emit_instr_int_mul(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_MUL, (t), (r), (a), (b))
-#define IR_emit_instr_int_div(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_INT_DIV, (t), (r), (a), (b))
-#define IR_emit_instr_and(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_AND, (t), (r), (a), (b))
-#define IR_emit_instr_or(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_OR, (t), (r), (a), (b))
-#define IR_emit_instr_xor(bld, blk, t, r, a, b) IR_emit_instr_int_binary((bld), (blk), INSTR_XOR, (t), (r), (a), (b))
-
-static void IR_emit_instr_int_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+static void IR_emit_instr_int_add(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
-    Instr* instr = IR_new_instr(builder->arena, kind);
-    instr->int_binary.type = type;
-    instr->int_binary.r = r;
-    instr->int_binary.a = a;
-    instr->int_binary.b = b;
+    IR_InstrIntAdd* instr = IR_new_instr(builder->arena, IR_InstrIntAdd);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
-#define IR_emit_instr_flt_add(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_ADD, (fk), (r), (a), (b))
-#define IR_emit_instr_flt_sub(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_SUB, (fk), (r), (a), (b))
-#define IR_emit_instr_flt_mul(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_MUL, (fk), (r), (a), (b))
-#define IR_emit_instr_flt_div(bld, blk, fk, r, a, b) IR_emit_instr_flt_binary((bld), (blk), INSTR_FLT_DIV, (fk), (r), (a), (b))
-
-static void IR_emit_instr_flt_binary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, FloatKind fkind, IR_Reg r, OpRA a,
-                                     OpRA b)
+static void IR_emit_instr_int_sub(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
-    Instr* instr = IR_new_instr(builder->arena, kind);
-    instr->flt_binary.fkind = fkind;
-    instr->flt_binary.r = r;
-    instr->flt_binary.a = a;
-    instr->flt_binary.b = b;
+    IR_InstrIntSub* instr = IR_new_instr(builder->arena, IR_InstrIntSub);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
-#define IR_emit_instr_sar(bld, blk, t, r, a, b) IR_emit_instr_shift((bld), (blk), INSTR_SAR, (t), (r), (a), (b))
-#define IR_emit_instr_shl(bld, blk, t, r, a, b) IR_emit_instr_shift((bld), (blk), INSTR_SHL, (t), (r), (a), (b))
-
-static void IR_emit_instr_shift(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+static void IR_emit_instr_int_mul(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
-    Instr* instr = IR_new_instr(builder->arena, kind);
-    instr->shift.type = type;
-    instr->shift.r = r;
-    instr->shift.a = a;
-    instr->shift.b = b;
+    IR_InstrIntMul* instr = IR_new_instr(builder->arena, IR_InstrIntMul);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_int_div(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+{
+    IR_InstrIntDiv* instr = IR_new_instr(builder->arena, IR_InstrIntDiv);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_and(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+{
+    IR_InstrAnd* instr = IR_new_instr(builder->arena, IR_InstrAnd);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_or(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+{
+    IR_InstrOr* instr = IR_new_instr(builder->arena, IR_InstrOr);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_xor(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+{
+    IR_InstrXor* instr = IR_new_instr(builder->arena, IR_InstrXor);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_flt_add(IR_ProcBuilder* builder, BBlock* bblock, FloatKind fkind, IR_Reg r, OpRA a, OpRA b)
+{
+    IR_InstrFltAdd* instr = IR_new_instr(builder->arena, IR_InstrFltAdd);
+    instr->fkind = fkind;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_flt_sub(IR_ProcBuilder* builder, BBlock* bblock, FloatKind fkind, IR_Reg r, OpRA a, OpRA b)
+{
+    IR_InstrFltSub* instr = IR_new_instr(builder->arena, IR_InstrFltSub);
+    instr->fkind = fkind;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_flt_mul(IR_ProcBuilder* builder, BBlock* bblock, FloatKind fkind, IR_Reg r, OpRA a, OpRA b)
+{
+    IR_InstrFltMul* instr = IR_new_instr(builder->arena, IR_InstrFltMul);
+    instr->fkind = fkind;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_flt_div(IR_ProcBuilder* builder, BBlock* bblock, FloatKind fkind, IR_Reg r, OpRA a, OpRA b)
+{
+    IR_InstrFltDiv* instr = IR_new_instr(builder->arena, IR_InstrFltDiv);
+    instr->fkind = fkind;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_sar(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+{
+    IR_InstrSar* instr = IR_new_instr(builder->arena, IR_InstrSar);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_shl(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
+{
+    IR_InstrShl* instr = IR_new_instr(builder->arena, IR_InstrShl);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_mod(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, OpRIA a, OpRIA b)
 {
     assert(type->kind == TYPE_INTEGER);
 
-    Instr* instr = IR_new_instr(builder->arena, INSTR_MOD);
+    IR_InstrMod* instr = IR_new_instr(builder->arena, IR_InstrMod);
 
-    instr->int_binary.type = type;
-    instr->int_binary.r = r;
-    instr->int_binary.a = a;
-    instr->int_binary.b = b;
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_divmod(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg q, IR_Reg r, OpRIA a, OpRIA b)
 {
     assert(type->kind == TYPE_INTEGER);
 
-    Instr* instr = IR_new_instr(builder->arena, INSTR_DIVMOD);
+    IR_InstrDivMod* instr = IR_new_instr(builder->arena, IR_InstrDivMod);
 
-    instr->divmod.type = type;
-    instr->divmod.q = q;
-    instr->divmod.r = r;
-    instr->divmod.a = a;
-    instr->divmod.b = b;
+    instr->type = type;
+    instr->q = q;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
-#define IR_emit_instr_not(b, blk, t, r, a) IR_emit_instr_unary((b), (blk), INSTR_NOT, (t), (r), (a))
-#define IR_emit_instr_neg(b, blk, t, r, a) IR_emit_instr_unary((b), (blk), INSTR_NEG, (t), (r), (a))
-
-static void IR_emit_instr_unary(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* type, IR_Reg r, IR_Reg a)
+static void IR_emit_instr_not(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, IR_Reg a)
 {
-    Instr* instr = IR_new_instr(builder->arena, kind);
-    instr->unary.type = type;
-    instr->unary.r = r;
-    instr->unary.a = a;
+    IR_InstrNot* instr = IR_new_instr(builder->arena, IR_InstrNot);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
-#define IR_emit_instr_trunc(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_TRUNC, (dt), (st), (r), (a))
-#define IR_emit_instr_zext(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_ZEXT, (dt), (st), (r), (a))
-#define IR_emit_instr_sext(b, blk, dt, st, r, a) IR_emit_instr_convert((b), (blk), INSTR_SEXT, (dt), (st), (r), (a))
-
-static void IR_emit_instr_convert(IR_ProcBuilder* builder, BBlock* bblock, InstrKind kind, Type* dst_type, Type* src_type, IR_Reg r,
-                                  IR_Reg a)
+static void IR_emit_instr_neg(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, IR_Reg a)
 {
-    Instr* instr = IR_new_instr(builder->arena, kind);
-    instr->convert.dst_type = dst_type;
-    instr->convert.src_type = src_type;
-    instr->convert.r = r;
-    instr->convert.a = a;
+    IR_InstrNeg* instr = IR_new_instr(builder->arena, IR_InstrNeg);
+    instr->type = type;
+    instr->r = r;
+    instr->a = a;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_trunc(IR_ProcBuilder* builder, BBlock* bblock, Type* dst_type, Type* src_type, IR_Reg r, IR_Reg a)
+{
+    IR_InstrTrunc* instr = IR_new_instr(builder->arena, IR_InstrTrunc);
+    instr->dst_type = dst_type;
+    instr->src_type = src_type;
+    instr->r = r;
+    instr->a = a;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_zext(IR_ProcBuilder* builder, BBlock* bblock, Type* dst_type, Type* src_type, IR_Reg r, IR_Reg a)
+{
+    IR_InstrZExt* instr = IR_new_instr(builder->arena, IR_InstrZExt);
+    instr->dst_type = dst_type;
+    instr->src_type = src_type;
+    instr->r = r;
+    instr->a = a;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+}
+
+static void IR_emit_instr_sext(IR_ProcBuilder* builder, BBlock* bblock, Type* dst_type, Type* src_type, IR_Reg r, IR_Reg a)
+{
+    IR_InstrSExt* instr = IR_new_instr(builder->arena, IR_InstrSExt);
+    instr->dst_type = dst_type;
+    instr->src_type = src_type;
+    instr->r = r;
+    instr->a = a;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_flt2int(IR_ProcBuilder* builder, BBlock* bblock, IntegerKind dst_kind, FloatKind src_kind, IR_Reg dst,
                                   OpRA src)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_FLT2INT);
-    instr->flt2int.dst_kind = dst_kind;
-    instr->flt2int.src_kind = src_kind;
-    instr->flt2int.dst = dst;
-    instr->flt2int.src = src;
+    IR_InstrFlt2Int* instr = IR_new_instr(builder->arena, IR_InstrFlt2Int);
+    instr->dst_kind = dst_kind;
+    instr->src_kind = src_kind;
+    instr->dst = dst;
+    instr->src = src;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_int2flt(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, IntegerKind src_kind, IR_Reg dst,
                                   OpRA src)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_INT2FLT);
-    instr->int2flt.dst_kind = dst_kind;
-    instr->int2flt.src_kind = src_kind;
-    instr->int2flt.dst = dst;
-    instr->int2flt.src = src;
+    IR_InstrInt2Flt* instr = IR_new_instr(builder->arena, IR_InstrInt2Flt);
+    instr->dst_kind = dst_kind;
+    instr->src_kind = src_kind;
+    instr->dst = dst;
+    instr->src = src;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_flt2flt(IR_ProcBuilder* builder, BBlock* bblock, FloatKind dst_kind, FloatKind src_kind, IR_Reg dst,
                                   OpRA src)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_FLT2FLT);
-    instr->flt2flt.dst_kind = dst_kind;
-    instr->flt2flt.src_kind = src_kind;
-    instr->flt2flt.dst = dst;
-    instr->flt2flt.src = src;
+    IR_InstrFlt2Flt* instr = IR_new_instr(builder->arena, IR_InstrFlt2Flt);
+    instr->dst_kind = dst_kind;
+    instr->src_kind = src_kind;
+    instr->dst = dst;
+    instr->src = src;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_limm(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, Scalar imm)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_LIMM);
-    instr->limm.type = type;
-    instr->limm.r = r;
-    instr->limm.imm = imm;
+    IR_InstrLImm* instr = IR_new_instr(builder->arena, IR_InstrLImm);
+    instr->type = type;
+    instr->r = r;
+    instr->imm = imm;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_load(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, MemAddr addr)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_LOAD);
-    instr->load.type = type;
-    instr->load.r = r;
-    instr->load.addr = addr;
+    IR_InstrLoad* instr = IR_new_instr(builder->arena, IR_InstrLoad);
+    instr->type = type;
+    instr->r = r;
+    instr->addr = addr;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_laddr(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, MemAddr addr)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_LADDR);
-    instr->laddr.type = type;
-    instr->laddr.r = r;
-    instr->laddr.addr = addr;
+    IR_InstrLAddr* instr = IR_new_instr(builder->arena, IR_InstrLAddr);
+    instr->type = type;
+    instr->r = r;
+    instr->addr = addr;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_store(IR_ProcBuilder* builder, BBlock* bblock, Type* type, MemAddr addr, OpRI a)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_STORE);
-    instr->store.type = type;
-    instr->store.addr = addr;
-    instr->store.a = a;
+    IR_InstrStore* instr = IR_new_instr(builder->arena, IR_InstrStore);
+    instr->type = type;
+    instr->addr = addr;
+    instr->a = a;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
-static Instr* IR_emit_instr_int_cmp(IR_ProcBuilder* builder, BBlock* bblock, Type* type, ConditionKind cond, IR_Reg r, OpRIA a,
-                                    OpRIA b)
+static IR_Instr* IR_emit_instr_int_cmp(IR_ProcBuilder* builder, BBlock* bblock, Type* type, ConditionKind cond, IR_Reg r, OpRIA a,
+                                       OpRIA b)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_INT_CMP);
-    instr->int_cmp.type = type;
-    instr->int_cmp.cond = cond;
-    instr->int_cmp.r = r;
-    instr->int_cmp.a = a;
-    instr->int_cmp.b = b;
+    IR_InstrIntCmp* instr = IR_new_instr(builder->arena, IR_InstrIntCmp);
+    instr->type = type;
+    instr->cond = cond;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 
-    return instr;
+    return (IR_Instr*)instr;
 }
 
-static Instr* IR_emit_instr_flt_cmp(IR_ProcBuilder* builder, BBlock* bblock, FloatKind fkind, ConditionKind cond, IR_Reg r, IR_Reg a,
-                                    OpRA b)
+static IR_Instr* IR_emit_instr_flt_cmp(IR_ProcBuilder* builder, BBlock* bblock, FloatKind fkind, ConditionKind cond, IR_Reg r,
+                                       IR_Reg a, OpRA b)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_FLT_CMP);
-    instr->flt_cmp.fkind = fkind;
-    instr->flt_cmp.cond = cond;
-    instr->flt_cmp.r = r;
-    instr->flt_cmp.a = a;
-    instr->flt_cmp.b = b;
+    IR_InstrFltCmp* instr = IR_new_instr(builder->arena, IR_InstrFltCmp);
+    instr->fkind = fkind;
+    instr->cond = cond;
+    instr->r = r;
+    instr->a = a;
+    instr->b = b;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 
-    return instr;
+    return (IR_Instr*)instr;
 }
 
-static Instr* IR_emit_instr_cond_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock* true_bb, BBlock* false_bb, IR_Reg a)
+static IR_Instr* IR_emit_instr_cond_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock* true_bb, BBlock* false_bb, IR_Reg a)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_COND_JMP);
-    instr->cond_jmp.from = bblock;
-    instr->cond_jmp.true_bb = true_bb;
-    instr->cond_jmp.false_bb = false_bb;
-    instr->cond_jmp.a = a;
+    IR_InstrCondJmp* instr = IR_new_instr(builder->arena, IR_InstrCondJmp);
+    instr->from = bblock;
+    instr->true_bb = true_bb;
+    instr->false_bb = false_bb;
+    instr->a = a;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 
     if (true_bb) {
         IR_connect_bblocks(bblock, true_bb);
@@ -523,97 +643,97 @@ static Instr* IR_emit_instr_cond_jmp(IR_ProcBuilder* builder, BBlock* bblock, BB
         IR_connect_bblocks(bblock, false_bb);
     }
 
-    return instr;
+    return (IR_Instr*)instr;
 }
 
-static Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock* target)
+static IR_Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlock* target)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_JMP);
-    instr->jmp.from = bblock;
-    instr->jmp.target = target;
+    IR_InstrJmp* instr = IR_new_instr(builder->arena, IR_InstrJmp);
+    instr->from = bblock;
+    instr->target = target;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 
     if (target) {
         IR_connect_bblocks(bblock, target);
     }
 
-    return instr;
+    return (IR_Instr*)instr;
 }
 
 static void IR_emit_instr_call(IR_ProcBuilder* builder, BBlock* bblock, Symbol* sym, IR_Value r, u32 num_args, IR_Value* args)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_CALL);
-    instr->call.sym = sym;
-    instr->call.r = r;
-    instr->call.num_args = num_args;
-    instr->call.args = args;
+    IR_InstrCall* instr = IR_new_instr(builder->arena, IR_InstrCall);
+    instr->sym = sym;
+    instr->r = r;
+    instr->num_args = num_args;
+    instr->args = args;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_call_indirect(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg loc, IR_Value r, u32 num_args,
                                         IR_Value* args)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_CALL_INDIRECT);
-    instr->calli.proc_type = type;
-    instr->calli.loc = loc;
-    instr->calli.r = r;
-    instr->calli.num_args = num_args;
-    instr->calli.args = args;
+    IR_InstrCallIndirect* instr = IR_new_instr(builder->arena, IR_InstrCallIndirect);
+    instr->proc_type = type;
+    instr->loc = loc;
+    instr->r = r;
+    instr->num_args = num_args;
+    instr->args = args;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_ret(IR_ProcBuilder* builder, BBlock* bblock, IR_Value val)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_RET);
-    instr->ret.val = val;
+    IR_InstrRet* instr = IR_new_instr(builder->arena, IR_InstrRet);
+    instr->val = val;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_memcpy(IR_ProcBuilder* builder, BBlock* bblock, MemAddr dst, MemAddr src, OpRI size)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_MEMCPY);
-    instr->memcpy.size = size;
-    instr->memcpy.dst = dst;
-    instr->memcpy.src = src;
+    IR_InstrMemcpy* instr = IR_new_instr(builder->arena, IR_InstrMemcpy);
+    instr->size = size;
+    instr->dst = dst;
+    instr->src = src;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_memset(IR_ProcBuilder* builder, BBlock* bblock, MemAddr dst, OpRI value, OpRI size)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_MEMSET);
-    instr->memset.dst = dst;
-    instr->memset.value = value;
-    instr->memset.size = size;
+    IR_InstrMemset* instr = IR_new_instr(builder->arena, IR_InstrMemset);
+    instr->dst = dst;
+    instr->value = value;
+    instr->size = size;
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
-static void IR_emit_instr_linux_syscall(IR_ProcBuilder* builder, BBlock* bblock, IR_Reg r, OpRIA syscall_nr, u8 num_args, OpRIA* args)
+static void IR_emit_instr_syscall(IR_ProcBuilder* builder, BBlock* bblock, IR_Reg r, OpRIA syscall_nr, u8 num_args, OpRIA* args)
 {
     assert(num_args <= 6);
-    Instr* instr = IR_new_instr(builder->arena, INSTR_LINUX_SYSCALL);
-    instr->linux_syscall.r = r;
-    instr->linux_syscall.nr = syscall_nr;
-    instr->linux_syscall.count = num_args;
-    instr->linux_syscall.args = mem_dup_array(builder->arena, OpRIA, args, num_args);
+    IR_InstrSyscall* instr = IR_new_instr(builder->arena, IR_InstrSyscall);
+    instr->r = r;
+    instr->nr = syscall_nr;
+    instr->count = num_args;
+    instr->args = mem_dup_array(builder->arena, OpRIA, args, num_args);
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static void IR_emit_instr_phi(IR_ProcBuilder* builder, BBlock* bblock, Type* type, IR_Reg r, size_t num_args, PhiArg* args)
 {
-    Instr* instr = IR_new_instr(builder->arena, INSTR_PHI);
-    instr->phi.type = type;
-    instr->phi.r = r;
-    instr->phi.num_args = num_args;
-    instr->phi.args = mem_dup_array(builder->arena, PhiArg, args, num_args);
+    IR_InstrPhi* instr = IR_new_instr(builder->arena, IR_InstrPhi);
+    instr->type = type;
+    instr->r = r;
+    instr->num_args = num_args;
+    instr->args = mem_dup_array(builder->arena, PhiArg, args, num_args);
 
-    IR_add_instr(builder, bblock, instr);
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
 }
 
 static bool IR_type_fits_in_reg(Type* type)
@@ -676,7 +796,7 @@ static void IR_expr_result_from_sym(IR_ExprResult* op, Symbol* sym)
     op->sym = sym;
 }
 
-static void IR_new_deferred_sc_jmp(IR_ProcBuilder* builder, IR_DeferredCmp* cmp, Instr* cmp_instr, bool result, Instr* jmp_instr)
+static void IR_new_deferred_sc_jmp(IR_ProcBuilder* builder, IR_DeferredCmp* cmp, IR_Instr* cmp_instr, bool result, IR_Instr* jmp_instr)
 {
     IR_DeferredJmpcc* new_node = NULL;
 
@@ -747,8 +867,8 @@ static void IR_mov_deferred_sc_jmp_list(IR_DeferredCmp* dst_cmp, IR_DeferredCmp*
 
 static void IR_fix_sc_jmp_path(IR_DeferredJmpcc* def_jmp, bool desired_result)
 {
-    Instr* instr = def_jmp->cmp;
-    ConditionKind* p_cond = instr->kind == INSTR_INT_CMP ? &instr->int_cmp.cond : &instr->flt_cmp.cond;
+    IR_Instr* instr = def_jmp->cmp;
+    ConditionKind* p_cond = instr->kind == IR_InstrIntCmp_KIND ? &((IR_InstrIntCmp*)instr)->cond : &((IR_InstrFltCmp*)instr)->cond;
 
     if (def_jmp->result != desired_result) {
         *p_cond = ir_opposite_cond[*p_cond];
@@ -768,8 +888,8 @@ static BBlock* IR_copy_sc_jmp(IR_ProcBuilder* builder, BBlock* bblock, IR_Deferr
     }
 
     BBlock* last_bb = IR_alloc_bblock(builder);
-    Instr* cmp_instr = dst_jmp->cmp;
-    IR_Reg cmp_result = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
+    IR_Instr* cmp_instr = dst_jmp->cmp;
+    IR_Reg cmp_result = cmp_instr->kind == IR_InstrIntCmp_KIND ? ((IR_InstrIntCmp*)cmp_instr)->r : ((IR_InstrFltCmp*)cmp_instr)->r;
 
     dst_jmp->jmp = IR_emit_instr_cond_jmp(builder, bblock, NULL, last_bb, cmp_result);
 
@@ -791,8 +911,8 @@ static BBlock* IR_execute_deferred_cmp(IR_ProcBuilder* builder, BBlock* bblock, 
     if (!has_sc_jmps && !has_final_jmp) {
         e_bblock = bblock;
 
-        Instr* cmp_instr = def_cmp->final_jmp.cmp;
-        dst_reg = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
+        IR_Instr* cmp_instr = def_cmp->final_jmp.cmp;
+        dst_reg = cmp_instr->kind == IR_InstrIntCmp_KIND ? ((IR_InstrIntCmp*)cmp_instr)->r : ((IR_InstrFltCmp*)cmp_instr)->r;
     }
     else {
         // Fix final jmp condition so that it jumps to "false" control path.
@@ -1123,9 +1243,9 @@ static OpRIA IR_expr_result_to_op_ria(IR_ProcBuilder* builder, BBlock** p_bblock
     return ria;
 }
 
-static Instr* IR_cmp_to_zero(IR_ProcBuilder* builder, BBlock** p_bblock, IR_ExprResult* src_er, ConditionKind cond)
+static IR_Instr* IR_cmp_to_zero(IR_ProcBuilder* builder, BBlock** p_bblock, IR_ExprResult* src_er, ConditionKind cond)
 {
-    Instr* cmp_instr = NULL;
+    IR_Instr* cmp_instr = NULL;
     Type* type = src_er->type;
 
     if (type_is_int_scalar(type)) {
@@ -1489,7 +1609,7 @@ static BBlock* IR_emit_binary_cmp(IR_ProcBuilder* builder, BBlock* bblock, Condi
     BBlock* curr_bb = bblock;
 
     IR_Reg cmp_reg = IR_REG_COUNT;
-    Instr* cmp_instr = NULL;
+    IR_Instr* cmp_instr = NULL;
 
     if (type_is_int_scalar(left_er->type)) {
         OpRIA a = IR_expr_result_to_op_ria(builder, &curr_bb, left_er);
@@ -1601,11 +1721,11 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     else {
         left_end_bb = IR_expr_result_to_reg(builder, left_end_bb, &left_er);
 
-        Instr* cmp_instr = IR_cmp_to_zero(builder, &left_end_bb, &left_er, short_circuit_cond);
-        IR_Reg cmp_reg = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
+        IR_Instr* cmp_instr = IR_cmp_to_zero(builder, &left_end_bb, &left_er, short_circuit_cond);
+        IR_Reg cmp_reg = cmp_instr->kind == IR_InstrIntCmp_KIND ? ((IR_InstrIntCmp*)cmp_instr)->r : ((IR_InstrFltCmp*)cmp_instr)->r;
 
         right_bb = IR_alloc_bblock(builder);
-        Instr* jmp_instr = IR_emit_instr_cond_jmp(builder, left_end_bb, NULL, right_bb, cmp_reg);
+        IR_Instr* jmp_instr = IR_emit_instr_cond_jmp(builder, left_end_bb, NULL, right_bb, cmp_reg);
 
         IR_new_deferred_sc_jmp(builder, &dst_er->cmp, cmp_instr, short_circuit_val, jmp_instr);
     }
@@ -1631,11 +1751,11 @@ static BBlock* IR_emit_short_circuit_cmp(IR_ProcBuilder* builder, BBlock* bblock
     else {
         right_end_bb = IR_expr_result_to_reg(builder, right_end_bb, &right_er);
 
-        Instr* cmp_instr = IR_cmp_to_zero(builder, &right_end_bb, &right_er, COND_EQ);
-        IR_Reg cmp_reg = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
+        IR_Instr* cmp_instr = IR_cmp_to_zero(builder, &right_end_bb, &right_er, COND_EQ);
+        IR_Reg cmp_reg = cmp_instr->kind == IR_InstrIntCmp_KIND ? ((IR_InstrIntCmp*)cmp_instr)->r : ((IR_InstrFltCmp*)cmp_instr)->r;
 
         last_bb = IR_alloc_bblock(builder);
-        Instr* jmp_instr = IR_emit_instr_cond_jmp(builder, right_end_bb, NULL, last_bb, cmp_reg);
+        IR_Instr* jmp_instr = IR_emit_instr_cond_jmp(builder, right_end_bb, NULL, last_bb, cmp_reg);
 
         dst_er->cmp.final_jmp.result = false;
         dst_er->cmp.final_jmp.jmp = jmp_instr;
@@ -2218,7 +2338,7 @@ static BBlock* IR_emit_expr_unary(IR_ProcBuilder* builder, BBlock* bblock, ExprU
             dst->cmp.final_jmp.result = !inner_er.cmp.final_jmp.result;
         }
         else {
-            Instr* cmp_instr = IR_cmp_to_zero(builder, &curr_bb, &inner_er, COND_EQ);
+            IR_Instr* cmp_instr = IR_cmp_to_zero(builder, &curr_bb, &inner_er, COND_EQ);
 
             dst->cmp.final_jmp.cmp = cmp_instr;
             dst->cmp.final_jmp.result = true;
@@ -2389,8 +2509,13 @@ static BBlock* IR_emit_int_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_Expr
     // Extend (sign or zero) src to larger type.
     else {
         dst_reg = IR_next_reg(builder);
-        InstrKind instr_kind = type_is_signed(src_type) ? INSTR_SEXT : INSTR_ZEXT;
-        IR_emit_instr_convert(builder, curr_bb, instr_kind, dst_type, src_type, dst_reg, src_reg);
+
+        if (type_is_signed(src_type)) {
+            IR_emit_instr_sext(builder, curr_bb, dst_type, src_type, dst_reg, src_reg);
+        }
+        else {
+            IR_emit_instr_zext(builder, curr_bb, dst_type, src_type, dst_reg, src_reg);
+        }
     }
 
     if (dst_er->type->kind == TYPE_PTR) {
@@ -2451,7 +2576,7 @@ static BBlock* IR_emit_op_cast(IR_ProcBuilder* builder, BBlock* bblock, IR_TmpOb
     else if (type_is_bool(dst_er->type) && type_is_scalar(src_er->type)) {
         assert(src_er->kind != IR_EXPR_RESULT_DEFERRED_CMP);
 
-        Instr* cmp_instr = IR_cmp_to_zero(builder, &curr_bb, src_er, COND_NEQ);
+        IR_Instr* cmp_instr = IR_cmp_to_zero(builder, &curr_bb, src_er, COND_NEQ);
 
         // Create a "deferred" comparison that will either be resolved into a boolean value or used in a conditional jump.
         dst_er->kind = IR_EXPR_RESULT_DEFERRED_CMP;
@@ -2630,8 +2755,8 @@ static BBlock* IR_emit_memset_call(IR_ProcBuilder* builder, BBlock* bblock, size
     return curr_bb;
 }
 
-static BBlock* IR_emit_linux_syscall_call(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* dst_er, size_t num_args, List* args,
-                                          IR_TmpObjList* tmp_obj_list)
+static BBlock* IR_emit_syscall_call(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* dst_er, size_t num_args, List* args,
+                                    IR_TmpObjList* tmp_obj_list)
 {
     BBlock* curr_bb = bblock;
     OpRIA nr_and_args[7];
@@ -2664,7 +2789,7 @@ static BBlock* IR_emit_linux_syscall_call(IR_ProcBuilder* builder, BBlock* bbloc
     dst_er->kind = IR_EXPR_RESULT_REG;
     dst_er->reg = IR_next_reg(builder);
 
-    IR_emit_instr_linux_syscall(builder, curr_bb, dst_er->reg, syscall_nr, num_syscall_args, syscall_args);
+    IR_emit_instr_syscall(builder, curr_bb, dst_er->reg, syscall_nr, num_syscall_args, syscall_args);
 
     return curr_bb;
 }
@@ -2872,7 +2997,7 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
               proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL2] || proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL3] ||
               proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL4] || proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL5] ||
               proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL6])) {
-        curr_bb = IR_emit_linux_syscall_call(builder, curr_bb, dst_er, expr_call->num_args, &expr_call->args, tmp_obj_list);
+        curr_bb = IR_emit_syscall_call(builder, curr_bb, dst_er, expr_call->num_args, &expr_call->args, tmp_obj_list);
     }
     else {
         size_t num_args = 0;
@@ -3522,8 +3647,9 @@ static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* 
         }
         else {
             BBlock* last_bb = IR_alloc_bblock(builder);
-            Instr* cmp_instr = final_jmp->cmp;
-            IR_Reg cmp_result = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
+            IR_Instr* cmp_instr = final_jmp->cmp;
+            IR_Reg cmp_result =
+                cmp_instr->kind == IR_InstrIntCmp_KIND ? ((IR_InstrIntCmp*)cmp_instr)->r : ((IR_InstrFltCmp*)cmp_instr)->r;
 
             final_jmp->jmp = IR_emit_instr_cond_jmp(builder, curr_bb, jmp_bb, last_bb, cmp_result);
 
@@ -3537,8 +3663,8 @@ static BBlock* IR_process_cfg_cond(IR_ProcBuilder* builder, Expr* expr, BBlock* 
     }
     else {
         ConditionKind cond_kind = jmp_result ? COND_NEQ : COND_EQ;
-        Instr* cmp_instr = IR_cmp_to_zero(builder, &curr_bb, &cond_er, cond_kind);
-        IR_Reg cmp_reg = cmp_instr->kind == INSTR_INT_CMP ? cmp_instr->int_cmp.r : cmp_instr->flt_cmp.r;
+        IR_Instr* cmp_instr = IR_cmp_to_zero(builder, &curr_bb, &cond_er, cond_kind);
+        IR_Reg cmp_reg = cmp_instr->kind == IR_InstrIntCmp_KIND ? ((IR_InstrIntCmp*)cmp_instr)->r : ((IR_InstrFltCmp*)cmp_instr)->r;
 
         BBlock* last_bb = IR_alloc_bblock(builder);
         IR_emit_instr_cond_jmp(builder, curr_bb, jmp_bb, last_bb, cmp_reg);
@@ -3773,12 +3899,13 @@ static bool IR_rm_dead_bblocks(Symbol* sym)
 
         assert(bb->num_instrs == 1);
 
-        Instr* instr = bb->first;
+        IR_Instr* instr = bb->first;
 
         // This basic block only has a single jump instruction, so we can
         // remove it and make its predecessors jump to the intended target.
-        if (instr->kind == INSTR_JMP) {
-            BBlock* target = instr->jmp.target;
+        if (instr->kind == IR_InstrJmp_KIND) {
+            IR_InstrJmp* jmp = (IR_InstrJmp*)instr;
+            BBlock* target = jmp->target;
 
             BBlock** preds = bb->preds;
             size_t npreds = array_len(preds);
@@ -3793,11 +3920,11 @@ static bool IR_rm_dead_bblocks(Symbol* sym)
 
             for (size_t p = 0; p < npreds; p++) {
                 BBlock* p_bb = preds[p];
-                Instr* p_instr = p_bb->last;
+                IR_Instr* p_instr = p_bb->last;
 
                 assert(p_bb->last && p_bb->num_instrs);
 
-                if (p_instr->kind == INSTR_COND_JMP && p_instr->cond_jmp.false_bb == bb) {
+                if (p_instr->kind == IR_InstrCondJmp_KIND && ((IR_InstrCondJmp*)p_instr)->false_bb == bb) {
                     can_remove = false;
                     break;
                 }
@@ -3810,18 +3937,21 @@ static bool IR_rm_dead_bblocks(Symbol* sym)
             // Now, update jmp targets for predecessors.
             for (size_t p = 0; p < npreds; p++) {
                 BBlock* p_bb = preds[p];
-                Instr* p_instr = p_bb->last;
+                IR_Instr* p_instr = p_bb->last;
 
                 // Replace bb's predecessors' jmp targets with `target` instead of `bb`.
-                if (p_instr->kind == INSTR_JMP) {
-                    assert(p_instr->jmp.target == bb); // Should be jumping to bb.
-                    p_instr->jmp.target = target; // Skip bb and jump directly to the intended target.
+                if (p_instr->kind == IR_InstrJmp_KIND) {
+                    IR_InstrJmp* p_jmp = (IR_InstrJmp*)p_instr;
+                    assert(p_jmp->target == bb); // Should be jumping to bb.
+                    p_jmp->target = target; // Skip bb and jump directly to the intended target.
                 }
                 else {
-                    assert(p_instr->kind == INSTR_COND_JMP);
-                    assert(p_instr->cond_jmp.true_bb == bb);
+                    assert(p_instr->kind == IR_InstrCondJmp_KIND);
 
-                    p_instr->cond_jmp.true_bb = target;
+                    IR_InstrCondJmp* p_jmp = (IR_InstrCondJmp*)p_instr;
+                    assert(p_jmp->true_bb == bb);
+
+                    p_jmp->true_bb = target;
                 }
 
                 // Add p_bb to target->preds
@@ -3886,14 +4016,14 @@ static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt,
         last_bb = IR_emit_stmt_for(builder, bblock, (StmtFor*)stmt, &tmp_obj_list);
         break;
     case CST_StmtBreak: {
-        Instr* instr = IR_emit_instr_jmp(builder, bblock, NULL);
+        IR_Instr* instr = IR_emit_instr_jmp(builder, bblock, NULL);
         IR_add_ujmp(builder, break_ujmps, instr); // Add to list of unpatched jumps
 
         last_bb = NULL;
         break;
     }
     case CST_StmtContinue: {
-        Instr* instr = IR_emit_instr_jmp(builder, bblock, NULL);
+        IR_Instr* instr = IR_emit_instr_jmp(builder, bblock, NULL);
         IR_add_ujmp(builder, cont_ujmps, instr); // Add to list of unpatched jumps
 
         last_bb = NULL;
@@ -3997,7 +4127,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
 
             bb->id = i;
 
-            for (Instr* it = bb->first; it; it = it->next) {
+            for (IR_Instr* it = bb->first; it; it = it->next) {
                 it->ino = ino;
                 ino += 2;
             }
