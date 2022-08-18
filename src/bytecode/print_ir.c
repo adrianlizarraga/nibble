@@ -430,7 +430,6 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
         ftprint_char_array(&dstr, false, "syscall%u %s, (%s", act_instr->count, IR_print_reg(arena, act_instr->r),
                            IR_print_op_ria(arena, &act_instr->nr));
 
-
         for (u32 i = 0; i < act_instr->count; i += 1) {
             ftprint_char_array(&dstr, false, ", %s", IR_print_op_ria(arena, &act_instr->args[i]));
         }
