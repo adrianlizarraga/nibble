@@ -6,7 +6,7 @@
 #include "x64_gen/convert_ir.c"
 #include "x64_gen/livevar.c"
 #include "x64_gen/reg_alloc.c"
-//#include "x64_gen/print_lir.c"
+#include "x64_gen/print_lir.c"
 
 #define X64_ASM_LINE_LEN 64
 #define X64_STR_LIT_PRE "__nibble_str_lit_"
