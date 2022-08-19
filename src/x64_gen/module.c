@@ -2674,7 +2674,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
 
     const char* proc_mangled = symbol_mangled_name(generator->tmp_mem, sym);
     X64_emit_text(generator, "");
-    X64_emit_text(generator, "global %s", proc_mangled);
     X64_emit_text(generator, "%s:", proc_mangled);
 
     X64_emit_text(generator, "  push rbp");
