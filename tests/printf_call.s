@@ -1,17 +1,18 @@
-#.section .rodata
-.data
-string: .asciz "hello nibble\n"
+extern printf
 
-.text
-.globl main
+SECTION .rodata
+string: db "hello nibble\n", 0
+
+SECTION .text
+global main
 main:
-    push %rbp
-    movq %rsp, %rbp
+    push rbp
+    mov rbp, rsp
 
-    xor %eax, %eax  # No vector args to variadic function
-    lea string(%rip), %rdi
+    xor eax, eax  ; No vector args to variadic function
+    lea rdi, [rel string]
     call printf
 
-    xor %eax, %eax # Return 0
-    pop %rbp
+    xor eax, eax ; Return 0
+    pop rbp
     ret
