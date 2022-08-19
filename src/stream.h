@@ -28,4 +28,5 @@ void** bucket_list_add_elem_dup(BucketList* bucket_list, Allocator* arena, const
 
 void** bucket_list_get_elem(BucketList* bucket_list, size_t index);
 void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index);
+void** bucket_list_get_last_packed(BucketList* bucket_list);
 #endif
