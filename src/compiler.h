@@ -51,6 +51,9 @@ typedef struct NibbleCtx {
     struct Module* builtin_mod;
     size_t num_builtins;
 
+    BucketList foreign_libs;
+    BucketList foreign_procs;
+
     BucketList vars;
     BucketList procs;
     BucketList aggregate_types;

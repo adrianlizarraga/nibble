@@ -3,7 +3,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-int run_cmd(Allocator* allocator, char* argv[], int argc, bool silent)
+int run_cmd(Allocator* allocator, const char* const argv[], int argc, bool silent)
 {
     (void)allocator;
     (void)argc;
@@ -13,7 +13,7 @@ int run_cmd(Allocator* allocator, char* argv[], int argc, bool silent)
 
     if (!silent) {
         ftprint_out("[CMD]:");
-        for (char** p = argv; *p; p += 1) {
+        for (const char* const* p = argv; *p; p += 1) {
             ftprint_out(" %s", *p);
         }
         ftprint_out("\n");
@@ -27,7 +27,7 @@ int run_cmd(Allocator* allocator, char* argv[], int argc, bool silent)
     }
     else if (child_pid == 0) {
         // Replace child process image with the command to run.
-        execvp(argv[0], argv);
+        execvp(argv[0], (char* const*)argv);
 
         // Error if execvp returns!
         return -1;

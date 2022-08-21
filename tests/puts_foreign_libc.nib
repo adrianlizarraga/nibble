@@ -1,0 +1,10 @@
+
+@foreign("libc.so")
+proc puts(str : ^char) => int;
+
+
+proc main() => int {
+    var msg : []char = "Hello libc!\n";
+
+    return puts(msg);
+}

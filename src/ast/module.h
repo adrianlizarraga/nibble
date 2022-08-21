@@ -576,6 +576,8 @@ Identifier* get_import_sym_name(StmtImport* stmt, Identifier* name);
 typedef struct DeclAnnotation {
     Identifier* ident;
     ProgRange range;
+    size_t num_args;
+    List args; // List of ProcCallArg elems
     ListNode lnode;
 } DeclAnnotation;
 
@@ -668,7 +670,7 @@ typedef struct DeclTypedef {
     TypeSpec* typespec;
 } DeclTypedef;
 
-DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRange range);
+DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, u32 num_args, List* args, ProgRange range);
 Decl* new_decl_var(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, unsigned flags, ProgRange range);
 Decl* new_decl_const(Allocator* allocator, Identifier* name, TypeSpec* type, Expr* init, ProgRange range);
 Decl* new_decl_typedef(Allocator* allocator, Identifier* name, TypeSpec* type, ProgRange range);
@@ -988,6 +990,8 @@ struct SymbolProc {
 
     List tmp_objs;
     size_t num_tmp_objs;
+
+    StrLit* foreign_lib;
 };
 
 struct SymbolModule {

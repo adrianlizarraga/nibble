@@ -400,14 +400,14 @@ static ProcCallArg* parse_proc_call_arg(Parser* parser)
 
     if (match_token(parser, TKN_ASSIGN)) {
         if (expr->kind != CST_ExprIdent) {
-            parser_on_error(parser, expr->range, "Procedure argument's name must be an alphanumeric identifier");
+            parser_on_error(parser, expr->range, "Argument's name must be an alphanumeric identifier");
             return NULL;
         }
 
         ExprIdent* e = (ExprIdent*)expr;
 
         if (e->ns_ident.num_idents > 1) {
-            parser_on_error(parser, expr->range, "Argument name cannot be prefixed by a namespace.");
+            parser_on_error(parser, expr->range, "Argument's name cannot be prefixed by a namespace.");
             return NULL;
         }
 

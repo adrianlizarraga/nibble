@@ -298,6 +298,22 @@ static bool resolve_proc_param(Resolver* resolver, Symbol* sym)
     return true;
 }
 
+static DeclAnnotation* find_annotation(List* annotations, Annotation which)
+{
+    List* head = annotations;
+
+    for (List* it = head->next; it != head; it = it->next) {
+        DeclAnnotation* annotation = list_entry(it, DeclAnnotation, lnode);
+        const char* name_cstr = annotation->ident->str;
+
+        if (name_cstr == annotation_names[which]) {
+            return annotation;
+        }
+    }
+
+    return NULL;
+}
+
 static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
@@ -311,6 +327,43 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         // TODO: Need a ProgRange for just the procedure header.
         resolver_on_error(resolver, decl->super.range, "Foreign declaration cannot have a body");
         return false;
+    }
+
+    if (is_foreign && decl->is_variadic) {
+        resolver_on_error(resolver, decl->super.range, "Foreign procedures cannot use nibble-style variadic parameters");
+        return false;
+    }
+
+    // Get the library for the foreign procedure.
+    if (is_foreign) {
+        DeclAnnotation* foreign_anno = find_annotation(&decl->super.annotations, ANNOTATION_FOREIGN);
+        assert(foreign_anno);
+
+        List* args = &foreign_anno->args;
+        u32 num_args = foreign_anno->num_args;
+
+        // TODO: Handle 2nd argument that denotes the foreign proc's original name.
+        if (num_args != 1) {
+            resolver_on_error(resolver, foreign_anno->range, "Foreign declaration must have 1 argument: lib_name.");
+            return false;
+        }
+
+        ProcCallArg* lib_arg = list_entry(args->next, ProcCallArg, lnode);
+
+        if (!resolve_expr(resolver, lib_arg->expr, NULL)) {
+            return false;
+        }
+
+        // TODO: Proper typechecking (is_constrexpr && is_string_type)
+        if (lib_arg->expr->kind != CST_ExprStr) {
+            resolver_on_error(resolver, lib_arg->expr->range, "Argument to foreign annotation must be a string literal, but got %s.",
+                              type_name(lib_arg->expr->type));
+            return false;
+        }
+
+        // Record name of foreign lib.
+        bucket_list_add_elem(&resolver->ctx->foreign_libs, ((ExprStr*)(lib_arg->expr))->str_lit);
+        bucket_list_add_elem(&resolver->ctx->foreign_procs, sym);
     }
 
     if (is_incomplete && !(is_foreign || is_intrinsic)) {
@@ -335,7 +388,15 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
             return false;
         }
 
-        array_push(params, param_sym->type);
+        Type* param_type = param_sym->type;
+
+        if (is_foreign && ((param_type->kind == TYPE_ARRAY) || type_is_slice(param_type))) {
+            resolver_on_error(resolver, proc_param->range, "Foreign procedures cannot have array type arguments. Use pointers instead.");
+            allocator_restore_state(mem_state);
+            return false;
+        }
+
+        array_push(params, param_type);
     }
 
     pop_scope(resolver);

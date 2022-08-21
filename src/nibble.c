@@ -737,6 +737,9 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const String
     bucket_list_init(&nib_ctx->str_lits, &nib_ctx->ast_mem, 8);
     bucket_list_init(&nib_ctx->float_lits, &nib_ctx->ast_mem, 8);
 
+    bucket_list_init(&nib_ctx->foreign_libs, &nib_ctx->ast_mem, 8);
+    bucket_list_init(&nib_ctx->foreign_procs, &nib_ctx->ast_mem, 8);
+
     error_stream_init(&nib_ctx->errors, &nib_ctx->gen_mem);
 
     init_builtin_types(target_os, target_arch, &nib_ctx->ast_mem, &nib_ctx->type_cache);
@@ -1360,14 +1363,13 @@ bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_fil
     print_info(nib_ctx, "Generating NASM assembly output: %s ...", nasm_fname.str);
     x64_init_target(nib_ctx->target_os);
     x64_gen_module(&nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, &nib_ctx->str_lits, &nib_ctx->float_lits,
-                   nasm_fname.str);
+                   &nib_ctx->foreign_procs, nasm_fname.str);
 
     //////////////////////////////////////////
     //          Run NASM assembler
     //////////////////////////////////////////
     Path obj_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.o", path_len(&outf_ospath), outf_ospath.str);
-    char nasm_fformat[] = "elf64";
-    char* nasm_cmd[] = {"nasm", "-f", nasm_fformat, nasm_fname.str, "-o", obj_fname.str, NULL};
+    const char* nasm_cmd[] = {"nasm", "-f", "elf64", nasm_fname.str, "-o", obj_fname.str, NULL};
 
     if (run_cmd(&nib_ctx->tmp_mem, nasm_cmd, ARRAY_LEN(nasm_cmd) - 1, nib_ctx->silent) < 0) {
         ftprint_err("[ERROR]: NASM command failed\n");
@@ -1377,9 +1379,61 @@ bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_fil
     //////////////////////////////////////////
     //          Run linker
     //////////////////////////////////////////
-    char* outf_name_dup = cstr_dup(&nib_ctx->tmp_mem, outf_ospath.str);
-    char* ld_cmd[] = {"ld", "-o", outf_name_dup, obj_fname.str, NULL};
-    int ld_cmd_argc = ARRAY_LEN(ld_cmd) - 1;
+
+    const char** ld_cmd = NULL;
+    int ld_cmd_argc = 0;
+
+    u32 num_foreign_libs = nib_ctx->foreign_libs.num_elems;
+
+    // Generate a dynamically-linked executable.
+    if (num_foreign_libs > 0) {
+        const char* dyn_linker_path = "/lib64/ld-linux-x86-64.so.2"; // TODO: Check if exists!
+        const char** ld_dyn_cmd = array_create(&nib_ctx->tmp_mem, const char *, 16);
+
+        // EX: ld out.o -o out -pie -dynamic-linker /lib64/ld-linux-x86-64.so.2 -l :libc -L .
+        array_push(ld_dyn_cmd, "ld");
+        array_push(ld_dyn_cmd, obj_fname.str);
+        array_push(ld_dyn_cmd, "-o"); array_push(ld_dyn_cmd, outf_ospath.str);
+        array_push(ld_dyn_cmd, "-pie");
+        array_push(ld_dyn_cmd, "-dynamic-linker"); array_push(ld_dyn_cmd, dyn_linker_path);
+
+        // Push foreign libs in cmd array.
+        for (u32 i = 0; i < num_foreign_libs; i++) {
+            StrLit* lib = (void*)(*bucket_list_get_elem_packed(&nib_ctx->foreign_libs, i));
+
+            
+            char* libname_arg = array_create(&nib_ctx->tmp_mem, char, lib->len + 1);
+            ftprint_char_array(&libname_arg, true, ":%s", lib->str);
+
+            array_push(ld_dyn_cmd, "-l");
+            array_push(ld_dyn_cmd, libname_arg);
+        }
+
+        u32 num_search_paths = nib_ctx->num_search_paths;
+
+        // Push search dirs into cmd.
+        if (num_search_paths) {
+            array_push(ld_dyn_cmd, "-L");
+
+            for (u32 i = 0; i < nib_ctx->num_search_paths; i++) {
+                const StringView* sp = nib_ctx->search_paths + i;
+
+                array_push(ld_dyn_cmd, sp->str);
+            }
+        }
+
+        array_push(ld_dyn_cmd, NULL);
+
+        ld_cmd = ld_dyn_cmd;
+        ld_cmd_argc = array_len(ld_dyn_cmd) - 1;
+    }
+    // Generate a statically-linked executable.
+    else {
+        const char* ld_static_cmd[] = {"ld", "-o", outf_ospath.str, obj_fname.str, NULL};
+
+        ld_cmd = ld_static_cmd;
+        ld_cmd_argc = ARRAY_LEN(ld_static_cmd) - 1;
+    }
 
     if (run_cmd(&nib_ctx->tmp_mem, ld_cmd, ld_cmd_argc, nib_ctx->silent) < 0) {
         ftprint_err("[ERROR]: Linker command failed\n");
