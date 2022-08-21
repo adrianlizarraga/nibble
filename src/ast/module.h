@@ -990,8 +990,6 @@ struct SymbolProc {
 
     List tmp_objs;
     size_t num_tmp_objs;
-
-    StrLit* foreign_lib;
 };
 
 struct SymbolModule {
