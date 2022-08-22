@@ -23,7 +23,7 @@ typedef struct ForeignLib {
 
 typedef struct NibbleCtx {
     // Arena allocators.
-    Allocator gen_mem;
+    Allocator* gen_mem;
     Allocator ast_mem;
     Allocator tmp_mem;
 
@@ -31,13 +31,16 @@ typedef struct NibbleCtx {
     // Set with '-s' compiler flag.
     bool silent;
 
-    Path working_dir; // The path from which the compiler is called.
-    Path prog_entry_dir; // The directory containing the program entry file (i.e., main())
+    const Path* working_dir; // The path from which the compiler is called.
+    const Path* prog_entry_dir; // The directory containing the program entry file (i.e., main())
 
-    // Import and include search paths.
+    // Search paths for imported/included modules.
     // Add paths with '-I <new_path>'
-    const StringView* search_paths;
-    u32 num_search_paths;
+    const StringView* module_paths;
+    u32 num_module_paths;
+
+    const StringView* lib_paths;
+    u32 num_lib_paths;
 
     HMap ident_map;
     HMap str_lit_map;
@@ -71,8 +74,11 @@ typedef struct NibbleCtx {
     BucketList float_lits;
 } NibbleCtx;
 
-NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const StringView* search_paths, u32 num_search_paths);
-bool nibble_compile(NibbleCtx* nibble, StringView main_file, StringView out_file);
+NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent,
+                       const Path* working_dir, const Path* prog_entry_dir,
+                       const StringView* module_paths, u32 num_module_paths,
+                       const StringView* lib_paths, u32 num_lib_paths);
+bool nibble_compile(NibbleCtx* nibble, const Path* main_path, const Path* out_path);
 void nibble_cleanup(NibbleCtx* nibble);
 
 ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, StrLit* foreign_lib_name);

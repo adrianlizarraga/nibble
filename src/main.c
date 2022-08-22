@@ -56,10 +56,16 @@
 #define MAX_INPUT_PATH_LEN 1024
 
 // The maximum number of search paths a user can specify via the '-I' option.
-#define MAX_NUM_USER_SEARCH_PATHS 63
+#define MAX_NUM_USER_MODULE_PATHS 63
 
 // The number of default search paths added by the compiler.
-#define NUM_DEFAULT_SEARCH_PATHS 1
+#define NUM_DEFAULT_MODULE_PATHS 1
+
+// The maximum number of lib/obj search paths a user can specify via the '-L' option.
+#define MAX_NUM_USER_LIB_PATHS 63
+
+// The number of default foreign lib/obj search paths added by the compiler.
+#define NUM_DEFAULT_LIB_PATHS 1
 
 void print_usage(FILE* fd, const char* program_name)
 {
@@ -69,7 +75,8 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "    -s                              Silent mode (no output to stdout)\n");
     ftprint_file(fd, true, "    -os   [linux | win32 | osx]     Target OS\n");
     ftprint_file(fd, true, "    -arch [x64 | x86]               Target architecture\n");
-    ftprint_file(fd, true, "    -I    <import_search_path>      Add import search path\n");
+    ftprint_file(fd, true, "    -I    <module_search_path>      Add module (import/include) search path\n");
+    ftprint_file(fd, true, "    -L    <library_search_path>     Add library search path\n");
     ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `out`\n");
 }
 
@@ -151,10 +158,10 @@ void check_input_filepath(StringView path, const char* program_name)
     }
 }
 
-void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* new_path, const char* prog_name)
+void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* new_path, const char* prog_name, const char* type)
 {
     if (*p_num_paths >= cap) {
-        ftprint_err("ERROR: Too many import search paths (maximum of %u)\n", cap);
+        ftprint_err("ERROR: Too many %s search paths (maximum of %u)\n", type, cap);
         print_usage(stderr, prog_name);
         exit(1);
     }
@@ -168,8 +175,11 @@ void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* n
 
 int main(int argc, char* argv[])
 {
-    StringView search_paths[MAX_NUM_USER_SEARCH_PATHS + NUM_DEFAULT_SEARCH_PATHS];
-    u32 num_search_paths = 0;
+    StringView module_paths[MAX_NUM_USER_MODULE_PATHS + NUM_DEFAULT_MODULE_PATHS];
+    StringView lib_paths[MAX_NUM_USER_LIB_PATHS + NUM_DEFAULT_LIB_PATHS];
+
+    u32 num_module_paths = 0;
+    u32 num_lib_paths = 0;
 
     const char* program_name = consume_arg(&argc, &argv);
     StringView main_file = {0};
@@ -211,7 +221,12 @@ int main(int argc, char* argv[])
         else if (cstr_cmp(arg, "-I") == 0) {
             const char* search_path = get_flag_value(&argc, &argv, program_name, "-I");
 
-            add_search_path(search_paths, &num_search_paths, MAX_NUM_USER_SEARCH_PATHS, search_path, program_name);
+            add_search_path(module_paths, &num_module_paths, MAX_NUM_USER_MODULE_PATHS, search_path, program_name, "module");
+        }
+        else if (cstr_cmp(arg, "-L") == 0) {
+            const char* search_path = get_flag_value(&argc, &argv, program_name, "-L");
+
+            add_search_path(lib_paths, &num_lib_paths, MAX_NUM_USER_LIB_PATHS, search_path, program_name, "library");
         }
         else {
             if (main_file.len) {
@@ -225,9 +240,6 @@ int main(int argc, char* argv[])
         }
     }
 
-    // Add working directory as a search path.
-    add_search_path(search_paths, &num_search_paths, ARRAY_LEN(search_paths), ".", program_name);
-
     if (!main_file.len) {
         ftprint_err("[ERROR]: No input source file provided.\n\n");
         print_usage(stderr, program_name);
@@ -240,15 +252,64 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    NibbleCtx* nib_ctx = nibble_init(target_os, target_arch, silent, search_paths, num_search_paths);
+    Allocator arena = allocator_create(65536);
+    Path working_dir = get_curr_dir(&arena);
 
-    if (!nib_ctx) {
-        ftprint_err("[ERROR]: Failed to initialize compiler.\n");
+    // Validate output file's path and get output directory.
+    Path out_path = path_create(&arena, out_file.str, out_file.len);
+    path_abs(&out_path, PATH_AS_ARGS(&working_dir));
+    Path out_dir_path = path_dirname(&arena, &out_path);
+
+    if (path_kind(&out_dir_path) != FILE_DIR) {
+        ftprint_err("[ERROR]: Output path `%s` is invalid\n", out_dir_path.str);
+        allocator_destroy(&arena);
         exit(1);
     }
 
-    bool success = nibble_compile(nib_ctx, main_file, out_file);
+    // Validate main file path and get program entry directory.
+    Path main_path = path_create(&arena, main_file.str, main_file.len);
+    path_abs(&main_path, PATH_AS_ARGS(&working_dir));
+    FileKind main_file_kind = path_kind(&main_path);
+
+    if (main_file_kind == FILE_NONE) {
+        ftprint_err("[ERROR]: Cannot find file `%s`\n", main_file.str);
+        allocator_destroy(&arena);
+        exit(1);
+    }
+
+    if ((main_file_kind != FILE_REG) || cstr_cmp(path_ext_ptr(&main_path), nib_ext) != 0) {
+        ftprint_err("[ERROR]: Program entry file `%s` is not a valid `.nib` source file.\n", main_path.str);
+        allocator_destroy(&arena);
+        exit(1);
+    }
+
+    Path prog_entry_dir = path_dirname(&arena, &main_path);
+
+    // Add default search paths.
+    add_search_path(module_paths, &num_module_paths, ARRAY_LEN(module_paths), ".", program_name, "module");
+    add_search_path(lib_paths, &num_lib_paths, ARRAY_LEN(lib_paths), out_dir_path.str, program_name, "library");
+
+    NibbleCtx* nib_ctx = nibble_init(&arena, target_os, target_arch, silent,
+                                     &working_dir, &prog_entry_dir,
+                                     module_paths, num_module_paths, lib_paths, num_lib_paths);
+
+    if (!nib_ctx) {
+        ftprint_err("[ERROR]: Failed to initialize compiler.\n");
+        allocator_destroy(&arena);
+        exit(1);
+    }
+
+    bool success = nibble_compile(nib_ctx, &main_path, &out_path);
     nibble_cleanup(nib_ctx);
+    allocator_destroy(&arena);
+
+#ifdef NIBBLE_PRINT_MEM_USAGE
+    ftprint_out("heap usage: %u allocs, %u frees, %lu bytes allocated\n", nib_alloc_count, nib_free_count, nib_alloc_size);
+
+    if (nib_free_count != nib_alloc_count) {
+        ftprint_out("[ERROR]: MEMORY LEAK DETECTED\n");
+    }
+#endif
 
     return !success;
 }
