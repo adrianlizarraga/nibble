@@ -1402,7 +1402,6 @@ bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_fil
         for (u32 i = 0; i < num_foreign_libs; i++) {
             ForeignLib* lib = (void*)(*bucket_list_get_elem_packed(&nib_ctx->foreign_libs, i));
 
-            
             char* libname_arg = array_create(&nib_ctx->tmp_mem, char, lib->name->len + 1);
             ftprint_char_array(&libname_arg, true, ":%s", lib->name->str);
 
