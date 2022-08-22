@@ -737,7 +737,8 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const String
     bucket_list_init(&nib_ctx->str_lits, &nib_ctx->ast_mem, 8);
     bucket_list_init(&nib_ctx->float_lits, &nib_ctx->ast_mem, 8);
 
-    bucket_list_init(&nib_ctx->foreign_libs, &nib_ctx->ast_mem, 8);
+    nib_ctx->foreign_lib_map = hmap(3, &nib_ctx->gen_mem);
+    bucket_list_init(&nib_ctx->foreign_libs, &nib_ctx->gen_mem, 8);
     bucket_list_init(&nib_ctx->foreign_procs, &nib_ctx->ast_mem, 8);
 
     error_stream_init(&nib_ctx->errors, &nib_ctx->gen_mem);
@@ -1399,11 +1400,11 @@ bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_fil
 
         // Push foreign libs in cmd array.
         for (u32 i = 0; i < num_foreign_libs; i++) {
-            StrLit* lib = (void*)(*bucket_list_get_elem_packed(&nib_ctx->foreign_libs, i));
+            ForeignLib* lib = (void*)(*bucket_list_get_elem_packed(&nib_ctx->foreign_libs, i));
 
             
-            char* libname_arg = array_create(&nib_ctx->tmp_mem, char, lib->len + 1);
-            ftprint_char_array(&libname_arg, true, ":%s", lib->str);
+            char* libname_arg = array_create(&nib_ctx->tmp_mem, char, lib->name->len + 1);
+            ftprint_char_array(&libname_arg, true, ":%s", lib->name->str);
 
             array_push(ld_dyn_cmd, "-l");
             array_push(ld_dyn_cmd, libname_arg);
@@ -1442,6 +1443,24 @@ bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_fil
 
     allocator_restore_state(mem_state);
     return true;
+}
+
+ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, StrLit* foreign_lib_name)
+{
+    ForeignLib* lib = hmap_get_obj(&nib_ctx->foreign_lib_map, PTR_UINT(foreign_lib_name));
+
+    if (!lib) {
+        lib = alloc_type(&nib_ctx->gen_mem, ForeignLib, true);
+        lib->name = foreign_lib_name;
+
+        hmap_put(&nib_ctx->foreign_lib_map, PTR_UINT(foreign_lib_name), PTR_UINT(lib));
+        bucket_list_add_elem(&nib_ctx->foreign_libs, lib);
+    }
+    else {
+        lib->ref_count += 1;
+    }
+
+    return lib;
 }
 
 void nibble_cleanup(NibbleCtx* nib_ctx)

@@ -5,4 +5,4 @@
 
 :stderr 0
 
-:returncode 13
+:returncode 25

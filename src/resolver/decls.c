@@ -314,6 +314,27 @@ static DeclAnnotation* find_annotation(List* annotations, Annotation which)
     return NULL;
 }
 
+static bool check_foreign_ident_name(const char* str, size_t len)
+{
+    if (!len) {
+        return false;
+    }
+
+    // Cannot just be '_'
+    if (str[0] == '_' && len == 1) {
+        return false;
+    }
+
+    // Characters must be alphanumeric (or '_')
+    for (size_t i = 0; i < len; i += 1) {
+        if (!is_alphanum(str[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
@@ -342,28 +363,61 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         List* args = &foreign_anno->args;
         u32 num_args = foreign_anno->num_args;
 
-        // TODO: Handle 2nd argument that denotes the foreign proc's original name.
-        if (num_args != 1) {
-            resolver_on_error(resolver, foreign_anno->range, "Foreign declaration must have 1 argument: lib_name.");
+        if (!num_args || (num_args > 2)) {
+            resolver_on_error(resolver, foreign_anno->range, "Foreign declaration must have 1 or 2 arguments: <lib_name> [, <foreign_func_name>].");
             return false;
         }
 
-        ProcCallArg* lib_arg = list_entry(args->next, ProcCallArg, lnode);
+        ExprStr* foreign_lib_arg = NULL;
+        ExprStr* foreign_name_arg = NULL;
+        u32 arg_index = 0;
 
-        if (!resolve_expr(resolver, lib_arg->expr, NULL)) {
-            return false;
+        for (List* it = args->next; it != args; it = it->next) {
+            ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
+
+            if (!resolve_expr(resolver, arg->expr, NULL)) {
+                return false;
+            }
+
+            // TODO: Proper typechecking (is_constrexpr && is_string_type)
+            if (arg->expr->kind != CST_ExprStr) {
+                resolver_on_error(resolver, arg->expr->range, "Arguments to foreign annotation must be string literals, but got %s.",
+                                  type_name(arg->expr->type));
+                return false;
+            }
+
+            // TODO: Allow named args
+            if (arg_index == 0) {
+                foreign_lib_arg = (ExprStr*)(arg->expr);
+            }
+            else if (arg_index == 1) {
+                foreign_name_arg = (ExprStr*)(arg->expr);
+            }
+
+            arg_index += 1;
         }
 
-        // TODO: Proper typechecking (is_constrexpr && is_string_type)
-        if (lib_arg->expr->kind != CST_ExprStr) {
-            resolver_on_error(resolver, lib_arg->expr->range, "Argument to foreign annotation must be a string literal, but got %s.",
-                              type_name(lib_arg->expr->type));
-            return false;
-        }
-
-        // Record name of foreign lib.
-        bucket_list_add_elem(&resolver->ctx->foreign_libs, ((ExprStr*)(lib_arg->expr))->str_lit);
         bucket_list_add_elem(&resolver->ctx->foreign_procs, sym);
+        nibble_add_foreign_lib(resolver->ctx, foreign_lib_arg->str_lit);
+
+        StrLit* foreign_name = NULL;
+
+        // Set symbol's foreign name. If not provided as an annotation arg, copy the symbol's current name.
+        // Otherwise, we need to check that the provided foreign name is a valid 'C' identifier.
+        if (!foreign_name_arg) {
+            foreign_name = intern_str_lit(&resolver->ctx->str_lit_map, sym->name->str, sym->name->len);
+        }
+        else {
+            foreign_name = foreign_name_arg->str_lit;
+
+            if (!check_foreign_ident_name(foreign_name->str, foreign_name->len)) {
+                resolver_on_error(resolver, foreign_name_arg->super.range, "Invalid identifer for foreign procedure `%.*s`.",
+                                  foreign_name->len, foreign_name->str);
+                return false;
+            }
+        }
+
+        sym->foreign_name = foreign_name;
     }
 
     if (is_incomplete && !(is_foreign || is_intrinsic)) {

@@ -15,6 +15,12 @@ typedef struct TypeCache {
     HMap unions; // Anonymous
 } TypeCache;
 
+typedef struct ForeignLib {
+    StrLit* name;
+    u32 ref_count;
+    // NOTE: Might add a list of the actual symbols accessed from this foreign lib.
+} ForeignLib;
+
 typedef struct NibbleCtx {
     // Arena allocators.
     Allocator gen_mem;
@@ -36,7 +42,7 @@ typedef struct NibbleCtx {
     HMap ident_map;
     HMap str_lit_map;
     HMap float_lit_map;
-    HMap mod_map;
+    HMap mod_map; // Mod path => Module
 
     BucketList src_files;
 
@@ -51,12 +57,16 @@ typedef struct NibbleCtx {
     struct Module* builtin_mod;
     size_t num_builtins;
 
-    BucketList foreign_libs;
-    BucketList foreign_procs;
+    HMap foreign_lib_map; // lib name => ForeignLib struct
+    BucketList foreign_libs; // Array of ForeignLib elems
+    BucketList foreign_procs; // Array of Symbol elems
 
+    // List of symbols reachable from main
     BucketList vars;
     BucketList procs;
     BucketList aggregate_types;
+
+    // List of literals reachable from main
     BucketList str_lits;
     BucketList float_lits;
 } NibbleCtx;
@@ -64,6 +74,8 @@ typedef struct NibbleCtx {
 NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const StringView* search_paths, u32 num_search_paths);
 bool nibble_compile(NibbleCtx* nibble, StringView main_file, StringView out_file);
 void nibble_cleanup(NibbleCtx* nibble);
+
+ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, StrLit* foreign_lib_name);
 
 void report_error(ErrorStream* error_stream, ProgRange range, const char* format, ...);
 

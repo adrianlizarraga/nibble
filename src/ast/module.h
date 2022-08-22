@@ -1003,6 +1003,7 @@ struct Symbol {
 
     bool is_local;
     Identifier* name;
+    StrLit* foreign_name;
     Decl* decl;
     Type* type;
     Module* home;
