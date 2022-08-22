@@ -2864,7 +2864,7 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bu
 
     for (u32 i = 0; i < num_foreign_procs; i += 1) {
         Symbol* proc_sym = (Symbol*)(*bucket_list_get_elem_packed(foreign_procs, i));
-        ftprint_file(out_fd, false, "extern %s\n", proc_sym->foreign_name->str);
+        ftprint_file(out_fd, false, "extern %s\n", proc_sym->as_proc.foreign_name->str);
     }
 
     AllocatorState gen_mem_state = allocator_get_state(gen_mem);

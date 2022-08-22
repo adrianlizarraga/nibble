@@ -990,6 +990,10 @@ struct SymbolProc {
 
     List tmp_objs;
     size_t num_tmp_objs;
+
+    // For procs in foreign libs
+    // Check decl->flags first.
+    StrLit* foreign_name;
 };
 
 struct SymbolModule {
@@ -1003,7 +1007,6 @@ struct Symbol {
 
     bool is_local;
     Identifier* name;
-    StrLit* foreign_name;
     Decl* decl;
     Type* type;
     Module* home;

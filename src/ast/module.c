@@ -1565,7 +1565,7 @@ char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
     char* dstr = array_create(allocator, char, 32);
 
     if ((sym->kind == SYMBOL_PROC) && (sym->decl->flags & DECL_IS_FOREIGN)) {
-        ftprint_char_array(&dstr, true, "%s wrt ..plt", sym->foreign_name->str);
+        ftprint_char_array(&dstr, true, "%s wrt ..plt", sym->as_proc.foreign_name->str);
     }
     else if (sym->name == main_proc_ident) {
         ftprint_char_array(&dstr, true, "%s", sym->name->str);

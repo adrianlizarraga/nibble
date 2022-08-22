@@ -417,7 +417,7 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
             }
         }
 
-        sym->foreign_name = foreign_name;
+        sym->as_proc.foreign_name = foreign_name;
     }
 
     if (is_incomplete && !(is_foreign || is_intrinsic)) {
