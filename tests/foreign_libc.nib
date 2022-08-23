@@ -6,6 +6,12 @@ proc strlen(str : ^char) => usize;
 @foreign("libc.so", "puts")
 proc c_puts(str : ^char) => int;
 
+typedef FILE = void;
+
+// 'fflush' from c standard library
+@foreign("libc.so")
+proc fflush(stream : ^FILE) => int;
+
 // Nibble-native puts that does nothing.
 // This is just here to show that we can rename foreign procs.
 proc puts(str: ^char) => int {
@@ -14,11 +20,15 @@ proc puts(str: ^char) => int {
 }
 
 proc main() => int {
-    var msg : []char = "Hello libc!\n";
+    var msg : []char = "Hello libc!";
 
     var puts_ptr := c_puts; // Can store a pointer to a foreign proc!
 
-    puts_ptr("Hi\n");
+    puts_ptr("Hi");
 
-    return c_puts(msg) + strlen(msg);
+    var ret := c_puts(msg) + strlen(msg);
+
+    fflush(null);
+
+    return ret;
 }
