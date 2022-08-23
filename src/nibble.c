@@ -1359,6 +1359,7 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
     //          Run linker
     //////////////////////////////////////////
 
+    const char* ld_static_cmd[5] = {"ld", "-o", out_path->str, obj_fname.str, NULL};
     const char** ld_cmd = NULL;
     int ld_cmd_argc = 0;
 
@@ -1407,8 +1408,6 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
     }
     // Generate a statically-linked executable.
     else {
-        const char* ld_static_cmd[] = {"ld", "-o", out_path->str, obj_fname.str, NULL};
-
         ld_cmd = ld_static_cmd;
         ld_cmd_argc = ARRAY_LEN(ld_static_cmd) - 1;
     }
