@@ -4,6 +4,7 @@
 #include "bytecode/module.h"
 #include "x64_gen/module.h"
 #include "path_utils.h"
+#include "linker.h"
 #include "os_utils.h"
 #include "compiler.h"
 
@@ -1347,9 +1348,10 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
     //          Run NASM assembler
     //////////////////////////////////////////
     Path obj_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.o", path_len(out_path), out_path->str);
-    const char* nasm_cmd[] = {"nasm", "-f", "elf64", nasm_fname.str, "-o", obj_fname.str, NULL};
+    const char* nasm_cmd_argv[] = {"nasm", "-f", "elf64", nasm_fname.str, "-o", obj_fname.str, NULL};
+    ExecCmd nasm_cmd = {.argv = nasm_cmd_argv, .argc = ARRAY_LEN(nasm_cmd_argv) - 1};
 
-    if (run_cmd(&nib_ctx->tmp_mem, nasm_cmd, ARRAY_LEN(nasm_cmd) - 1, nib_ctx->silent) < 0) {
+    if (run_cmd(&nib_ctx->tmp_mem, &nasm_cmd, nib_ctx->silent) != 0) {
         ftprint_err("[ERROR]: NASM command failed\n");
         return false;
     }
@@ -1357,79 +1359,10 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
     //////////////////////////////////////////
     //          Run linker
     //////////////////////////////////////////
+    ExecCmd ld_cmd = get_linker_cmd(&nib_ctx->tmp_mem, &nib_ctx->foreign_libs, nib_ctx->lib_paths, nib_ctx->num_lib_paths,
+                                    obj_fname.str, out_path->str);
 
-    const char* ld_static_cmd[5] = {"ld", "-o", out_path->str, obj_fname.str, NULL};
-    const char** ld_cmd = NULL;
-    int ld_cmd_argc = 0;
-
-    u32 num_foreign_libs = nib_ctx->foreign_libs.num_elems;
-
-    // Generate a dynamically-linked executable.
-    if (num_foreign_libs > 0) {
-        const char* dyn_linker_path = "/lib64/ld-linux-x86-64.so.2"; // TODO: Check if exists!
-        const char** ld_dyn_cmd = array_create(&nib_ctx->tmp_mem, const char*, 16);
-
-        // EX: ld out.o -o out -pie -dynamic-linker /lib64/ld-linux-x86-64.so.2 -l :libc -L .
-        array_push(ld_dyn_cmd, "ld");
-        array_push(ld_dyn_cmd, obj_fname.str);
-        array_push(ld_dyn_cmd, "-o");
-        array_push(ld_dyn_cmd, out_path->str);
-        array_push(ld_dyn_cmd, "-pie");
-
-        bool has_shared_lib = false;
-
-        // Push foreign libs in cmd array.
-        for (u32 i = 0; i < num_foreign_libs; i++) {
-            ForeignLib* lib = (void*)(*bucket_list_get_elem_packed(&nib_ctx->foreign_libs, i));
-
-            bool is_shared_lib = lib->kind == FOREIGN_LIB_SHARED;
-            bool is_static_lib = lib->kind == FOREIGN_LIB_STATIC;
-
-            if (is_shared_lib || is_static_lib) {
-                char* libname_arg = array_create(&nib_ctx->tmp_mem, char, lib->name->len + 1);
-                ftprint_char_array(&libname_arg, true, ":%s", lib->name->str);
-
-                array_push(ld_dyn_cmd, "-l");
-                array_push(ld_dyn_cmd, libname_arg);
-            }
-            else {
-                assert(lib->kind == FOREIGN_LIB_OBJ);
-                array_push(ld_dyn_cmd, lib->name->str);
-            }
-
-            has_shared_lib = has_shared_lib || is_shared_lib;
-        }
-
-        if (has_shared_lib) {
-            array_push(ld_dyn_cmd, "-dynamic-linker");
-            array_push(ld_dyn_cmd, dyn_linker_path);
-        }
-
-        u32 num_lib_paths = nib_ctx->num_lib_paths;
-
-        // Push search dirs into cmd.
-        if (num_lib_paths) {
-            array_push(ld_dyn_cmd, "-L");
-
-            for (u32 i = 0; i < num_lib_paths; i++) {
-                const StringView* sp = nib_ctx->lib_paths + i;
-
-                array_push(ld_dyn_cmd, sp->str);
-            }
-        }
-
-        array_push(ld_dyn_cmd, NULL);
-
-        ld_cmd = ld_dyn_cmd;
-        ld_cmd_argc = array_len(ld_dyn_cmd) - 1;
-    }
-    // Generate a statically-linked executable.
-    else {
-        ld_cmd = ld_static_cmd;
-        ld_cmd_argc = ARRAY_LEN(ld_static_cmd) - 1;
-    }
-
-    if (run_cmd(&nib_ctx->tmp_mem, ld_cmd, ld_cmd_argc, nib_ctx->silent) < 0) {
+    if (run_cmd(&nib_ctx->tmp_mem, &ld_cmd, nib_ctx->silent) != 0) {
         ftprint_err("[ERROR]: Linker command failed\n");
         return false;
     }

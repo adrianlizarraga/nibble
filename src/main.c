@@ -44,6 +44,7 @@
 #include "array.c"
 #include "hash_map.c"
 #include "stream.c"
+#include "linker.c"
 #include "lexer/module.c"
 #include "ast/module.c"
 #include "parser/module.c"

@@ -22,7 +22,7 @@ static Bucket* bucket_list_add_bucket(BucketList* bucket_list)
 
 // NOTE: Does not assume that any bucket is full.
 // However, it does assume that any elements in a bucket are contiguous.
-void** bucket_list_get_elem(BucketList* bucket_list, size_t index)
+void** bucket_list_get_elem(const BucketList* bucket_list, size_t index)
 {
     if (index >= bucket_list->num_elems)
         return NULL;
@@ -41,7 +41,7 @@ void** bucket_list_get_elem(BucketList* bucket_list, size_t index)
 }
 
 // NOTE: Assumes that all buckets, except the last, are full.
-void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index)
+void** bucket_list_get_elem_packed(const BucketList* bucket_list, size_t index)
 {
     if (index >= bucket_list->num_elems)
         return NULL;
@@ -60,7 +60,7 @@ void** bucket_list_get_elem_packed(BucketList* bucket_list, size_t index)
     return bucket->elems + index;
 }
 
-void** bucket_list_get_last_packed(BucketList* bucket_list)
+void** bucket_list_get_last_packed(const BucketList* bucket_list)
 {
     if (!bucket_list->num_elems) {
         return NULL;

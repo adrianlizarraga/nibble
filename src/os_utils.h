@@ -3,6 +3,11 @@
 #include "nibble.h"
 #include "allocator.h"
 
-int run_cmd(Allocator* allocator, const char* const argv[], int argc, bool silent);
+typedef struct ExecCmd {
+    const char** argv;
+    size_t argc;
+} ExecCmd;
+
+int run_cmd(Allocator* allocator, const ExecCmd* cmd, bool silent);
 bool is_stderr_atty();
 #endif
