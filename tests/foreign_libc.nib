@@ -19,9 +19,6 @@ proc puts(str: ^char) => int {
     return 0;
 }
 
-//@foreign("libtest.a")
-//proc add(a: int, b: int) => int;
-
 proc main() => int {
     var msg : []char = "Hello libc!";
 
@@ -33,6 +30,5 @@ proc main() => int {
 
     fflush(null);
 
-    //return ret + add(1, 2);
-    return ret + 3;
+    return ret;
 }

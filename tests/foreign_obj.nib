@@ -1,0 +1,7 @@
+@foreign("mul.o")
+proc mul(a: int, b: int) => int;
+
+proc main() => int {
+    // 11 * 2 = 22
+    return mul(11, 2);
+}

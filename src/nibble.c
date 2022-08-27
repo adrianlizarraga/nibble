@@ -1360,7 +1360,11 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
     //          Run linker
     //////////////////////////////////////////
     ExecCmd ld_cmd = get_linker_cmd(&nib_ctx->tmp_mem, &nib_ctx->foreign_libs, nib_ctx->lib_paths, nib_ctx->num_lib_paths,
-                                    obj_fname.str, out_path->str);
+                                    nib_ctx->working_dir, obj_fname.str, out_path->str);
+
+    if (!ld_cmd.argc) {
+        return false;
+    }
 
     if (run_cmd(&nib_ctx->tmp_mem, &ld_cmd, nib_ctx->silent) != 0) {
         ftprint_err("[ERROR]: Linker command failed\n");
