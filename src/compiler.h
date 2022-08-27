@@ -15,10 +15,16 @@ typedef struct TypeCache {
     HMap unions; // Anonymous
 } TypeCache;
 
+typedef enum ForeignLibKind {
+    FOREIGN_LIB_OBJ,
+    FOREIGN_LIB_STATIC,
+    FOREIGN_LIB_SHARED
+} ForeignLibKind;
+
 typedef struct ForeignLib {
+    ForeignLibKind kind;
     StrLit* name;
     u32 ref_count;
-    // NOTE: Might add a list of the actual symbols accessed from this foreign lib.
 } ForeignLib;
 
 typedef struct NibbleCtx {

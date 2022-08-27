@@ -6,7 +6,11 @@
 
 #define ASSERT_PATH_INIT(p) assert((p)->str&& array_cap((p)->str))
 
-const char nib_ext[] = "nib";
+const char* nib_ext = "nib";
+const char* shared_lib_ext = "so";
+const char* static_lib_ext = "a";
+const char* obj_file_ext = "o";
+
 
 Path path_create(Allocator* allctr, const char* path, u32 len)
 {
@@ -208,18 +212,15 @@ const char* path_basename_ptr(const Path* path)
     return path->str;
 }
 
-const char* path_ext_ptr(const Path* path)
+const char* path_ext_ptr(const char* path, u32 len)
 {
-    ASSERT_PATH_INIT(path);
-    u32 len = path_len(path);
-
-    for (char* p = path->str + len; p != path->str; p -= 1) {
+    for (const char* p = path + len; p != path; p -= 1) {
         if (p[-1] == '.') {
             return p;
         }
     }
 
-    return path->str;
+    return path;
 }
 
 Path path_dirname(Allocator* allctr, const Path* path)

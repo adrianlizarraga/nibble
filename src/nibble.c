@@ -380,7 +380,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         }
 
         // Check for .nib extension.
-        if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
+        if (cstr_cmp(path_ext_ptr(PATH_AS_ARGS(result)), nib_ext) != 0) {
             return NIB_PATH_INV_EXT;
         }
 
@@ -408,7 +408,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         }
 
         // Check for .nib extension.
-        if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
+        if (cstr_cmp(path_ext_ptr(PATH_AS_ARGS(result)), nib_ext) != 0) {
             return NIB_PATH_INV_EXT;
         }
 
@@ -440,7 +440,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         }
 
         // Check for .nib extension.
-        if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
+        if (cstr_cmp(path_ext_ptr(PATH_AS_ARGS(result)), nib_ext) != 0) {
             return NIB_PATH_INV_EXT;
         }
 
@@ -466,7 +466,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
                 file_kind = path_kind(result);
             }
 
-            file_ext = path_ext_ptr(result);
+            file_ext = path_ext_ptr(PATH_AS_ARGS(result));
 
             // Return if the .nib file exists.
             if ((file_kind == FILE_REG) && (cstr_cmp(file_ext, nib_ext) == 0)) {
@@ -667,10 +667,9 @@ static bool init_keywords(HMap* ident_map)
     return true;
 }
 
-NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent,
-                       const Path* working_dir, const Path* prog_entry_dir,
-                       const StringView* module_paths, u32 num_module_paths,
-                       const StringView* lib_paths, u32 num_lib_paths)
+NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent, const Path* working_dir,
+                       const Path* prog_entry_dir, const StringView* module_paths, u32 num_module_paths, const StringView* lib_paths,
+                       u32 num_lib_paths)
 {
     static NibbleCtx* nib_ctx;
     static const char main_name[] = "main";
@@ -1368,24 +1367,42 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
     // Generate a dynamically-linked executable.
     if (num_foreign_libs > 0) {
         const char* dyn_linker_path = "/lib64/ld-linux-x86-64.so.2"; // TODO: Check if exists!
-        const char** ld_dyn_cmd = array_create(&nib_ctx->tmp_mem, const char *, 16);
+        const char** ld_dyn_cmd = array_create(&nib_ctx->tmp_mem, const char*, 16);
 
         // EX: ld out.o -o out -pie -dynamic-linker /lib64/ld-linux-x86-64.so.2 -l :libc -L .
         array_push(ld_dyn_cmd, "ld");
         array_push(ld_dyn_cmd, obj_fname.str);
-        array_push(ld_dyn_cmd, "-o"); array_push(ld_dyn_cmd, out_path->str);
+        array_push(ld_dyn_cmd, "-o");
+        array_push(ld_dyn_cmd, out_path->str);
         array_push(ld_dyn_cmd, "-pie");
-        array_push(ld_dyn_cmd, "-dynamic-linker"); array_push(ld_dyn_cmd, dyn_linker_path);
+
+        bool has_shared_lib = false;
 
         // Push foreign libs in cmd array.
         for (u32 i = 0; i < num_foreign_libs; i++) {
             ForeignLib* lib = (void*)(*bucket_list_get_elem_packed(&nib_ctx->foreign_libs, i));
 
-            char* libname_arg = array_create(&nib_ctx->tmp_mem, char, lib->name->len + 1);
-            ftprint_char_array(&libname_arg, true, ":%s", lib->name->str);
+            bool is_shared_lib = lib->kind == FOREIGN_LIB_SHARED;
+            bool is_static_lib = lib->kind == FOREIGN_LIB_STATIC;
 
-            array_push(ld_dyn_cmd, "-l");
-            array_push(ld_dyn_cmd, libname_arg);
+            if (is_shared_lib || is_static_lib) {
+                char* libname_arg = array_create(&nib_ctx->tmp_mem, char, lib->name->len + 1);
+                ftprint_char_array(&libname_arg, true, ":%s", lib->name->str);
+
+                array_push(ld_dyn_cmd, "-l");
+                array_push(ld_dyn_cmd, libname_arg);
+            }
+            else {
+                assert(lib->kind == FOREIGN_LIB_OBJ);
+                array_push(ld_dyn_cmd, lib->name->str);
+            }
+
+            has_shared_lib = has_shared_lib || is_shared_lib;
+        }
+
+        if (has_shared_lib) {
+            array_push(ld_dyn_cmd, "-dynamic-linker");
+            array_push(ld_dyn_cmd, dyn_linker_path);
         }
 
         u32 num_lib_paths = nib_ctx->num_lib_paths;
@@ -1428,6 +1445,21 @@ ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, StrLit* foreign_lib_name)
     if (!lib) {
         lib = alloc_type(nib_ctx->gen_mem, ForeignLib, true);
         lib->name = foreign_lib_name;
+
+        const char* lib_ext = path_ext_ptr(foreign_lib_name->str, foreign_lib_name->len);
+
+        if (cstr_cmp(lib_ext, shared_lib_ext) == 0) {
+            lib->kind = FOREIGN_LIB_SHARED;
+        }
+        else if (cstr_cmp(lib_ext, static_lib_ext) == 0) {
+            lib->kind = FOREIGN_LIB_STATIC;
+        }
+        else if (cstr_cmp(lib_ext, obj_file_ext) == 0) {
+            lib->kind = FOREIGN_LIB_OBJ;
+        }
+        else {
+            NIBBLE_FATAL_EXIT("Unknown library kind for `%.*s`", foreign_lib_name->len, foreign_lib_name->str);
+        }
 
         hmap_put(&nib_ctx->foreign_lib_map, PTR_UINT(foreign_lib_name), PTR_UINT(lib));
         bucket_list_add_elem(&nib_ctx->foreign_libs, lib);

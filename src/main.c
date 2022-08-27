@@ -277,7 +277,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    if ((main_file_kind != FILE_REG) || cstr_cmp(path_ext_ptr(&main_path), nib_ext) != 0) {
+    if ((main_file_kind != FILE_REG) || cstr_cmp(path_ext_ptr(PATH_AS_ARGS(&main_path)), nib_ext) != 0) {
         ftprint_err("[ERROR]: Program entry file `%s` is not a valid `.nib` source file.\n", main_path.str);
         allocator_destroy(&arena);
         exit(1);
