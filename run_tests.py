@@ -117,13 +117,15 @@ def check_test_case(cmd_ret: subprocess.CompletedProcess, test_case: TestCase) -
 
     return err
 
+COMMON_NIBBLE_ARGS = ["-s", "-L", "./tests/libs"]
+
 def run_file_test(file_path: str, stats: RunStats = RunStats()):
     test_case_path = file_path[:-len(NIBBLE_EXT)] + TEST_CASE_EXT
     test_case, err = load_test_case(test_case_path)
 
     if test_case is not None:
         # Compile nibble program first.
-        cmd_ret = run_cmd(["./nibble", "-s", file_path], capture_output=True)
+        cmd_ret = run_cmd(["./nibble", *COMMON_NIBBLE_ARGS, file_path], capture_output=True)
 
         # Run nibble program if it compiled.
         if cmd_ret.returncode == 0:
@@ -135,7 +137,7 @@ def run_file_test(file_path: str, stats: RunStats = RunStats()):
             stats.test_failed.append((file_path, err))
     else:
         print(f"[WARNING] Failed to load test case file for {file_path}: {err}", file=sys.stderr)
-        compile_ret = run_cmd(["./nibble", file_path], capture_output=True)
+        compile_ret = run_cmd(["./nibble", *COMMON_NIBBLE_ARGS, file_path], capture_output=True)
 
         if compile_ret.returncode != 0:
             stats.compile_failed.append((file_path, compile_ret.stderr.decode("utf-8")))
@@ -156,7 +158,7 @@ def update_file_output(file_path: str):
     if err is not None:
         test_case = DEFAULT_TEST_CASE
 
-    compile_ret = run_cmd(["./nibble", "-s", file_path], capture_output=True)
+    compile_ret = run_cmd(["./nibble", *COMMON_NIBBLE_ARGS, file_path], capture_output=True)
 
     print(f"[INFO] Saving output to {test_case_path}")
 

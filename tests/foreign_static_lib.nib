@@ -1,0 +1,10 @@
+@foreign("libaddsub.a")
+proc add(a: int, b: int) => int;
+
+@foreign("libaddsub.a")
+proc sub(a: int, b: int) => int;
+
+proc main() => int {
+    // 11 + 2 = 13
+    return add(10, 1) + sub(3, 1);
+}

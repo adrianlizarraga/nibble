@@ -47,7 +47,10 @@ typedef enum FileKind {
     FILE_OTHER,
 } FileKind;
 
-extern const char nib_ext[];
+extern const char* nib_ext;
+extern const char* shared_lib_ext;
+extern const char* static_lib_ext;
+extern const char* obj_file_ext;
 
 #define path_len(p) (array_len((p)->str) - 1)
 #define path_cap(p) array_cap((p)->str)
@@ -72,7 +75,7 @@ bool path_isabs(const Path* path);
 bool path_str_isabs(const char* path);
 
 const char* path_basename_ptr(const Path* path);
-const char* path_ext_ptr(const Path* path);
+const char* path_ext_ptr(const char* path, u32 len);
 Path path_dirname(Allocator* allctr, const Path* path);
 
 FileKind path_kind(const Path* path);

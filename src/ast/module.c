@@ -329,11 +329,14 @@ Expr* new_expr_null_lit(Allocator* allocator, ProgRange range)
     return (Expr*)expr;
 }
 
-DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, ProgRange range)
+DeclAnnotation* new_annotation(Allocator* allocator, Identifier* ident, u32 num_args, List* args, ProgRange range)
 {
     DeclAnnotation* annotation = alloc_type(allocator, DeclAnnotation, true);
     annotation->ident = ident;
     annotation->range = range;
+    annotation->num_args = num_args;
+
+    list_replace(args, &annotation->args);
 
     return annotation;
 }
@@ -1561,7 +1564,10 @@ char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
 
     char* dstr = array_create(allocator, char, 32);
 
-    if (sym->name == main_proc_ident) {
+    if ((sym->kind == SYMBOL_PROC) && (sym->decl->flags & DECL_IS_FOREIGN)) {
+        ftprint_char_array(&dstr, true, "%s wrt ..plt", sym->as_proc.foreign_name->str);
+    }
+    else if (sym->name == main_proc_ident) {
         ftprint_char_array(&dstr, true, "%s", sym->name->str);
     }
     else if (sym->name->kind == IDENTIFIER_INTRINSIC) {
@@ -1578,7 +1584,7 @@ char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
     size_t len = array_len(dstr);
 
     for (size_t i = 0; i < len; i += 1) {
-        if (dstr[i] == NIBBLE_PATH_SEP || dstr[i] == '.') {
+        if (dstr[i] == NIBBLE_PATH_SEP) {
             dstr[i] = '_';
         }
     }

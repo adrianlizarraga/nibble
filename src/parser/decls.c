@@ -5,18 +5,47 @@
 static DeclAnnotation* parse_annotation(Parser* parser)
 {
     assert(is_token_kind(parser, TKN_AT));
+    const char* err_prefix = "Failed to parse annotation";
     ProgRange range = {.start = parser->token.range.start};
 
     next_token(parser);
 
-    if (!expect_token(parser, TKN_IDENT, "Failed to parse annotation")) {
+    // Parse annotation name
+    if (!expect_token(parser, TKN_IDENT, err_prefix)) {
         return NULL;
     }
 
     Identifier* name = parser->ptoken.as_ident.ident;
+
+    // Parse annotation arguments
+    u32 num_args = 0;
+    List args = list_head_create(args);
+
+    if (match_token(parser, TKN_LPAREN)) {
+        while (!is_token_kind(parser, TKN_RPAREN) && !is_token_kind(parser, TKN_EOF)) {
+            ProcCallArg* arg = parse_proc_call_arg(parser);
+
+            if (!arg) {
+                return NULL;
+            }
+
+            num_args += 1;
+            list_add_last(&args, &arg->lnode);
+
+            if (!match_token(parser, TKN_COMMA)) {
+                break;
+            }
+        }
+
+        // Parse closing parenthesis.
+        if (!expect_token(parser, TKN_RPAREN, err_prefix)) {
+            return NULL;
+        }
+    }
+
     range.end = parser->ptoken.range.end;
 
-    return new_annotation(parser->ast_arena, name, range);
+    return new_annotation(parser->ast_arena, name, num_args, &args, range);
 }
 
 static bool parse_annotations(Parser* parser, List* annotations)

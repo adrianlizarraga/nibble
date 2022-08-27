@@ -4,6 +4,7 @@
 #include "bytecode/module.h"
 #include "x64_gen/module.h"
 #include "path_utils.h"
+#include "linker.h"
 #include "os_utils.h"
 #include "compiler.h"
 
@@ -351,8 +352,8 @@ typedef enum NibblePathErr {
 } NibblePathErr;
 
 static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_str, const Path* importer_ospath,
-                                        const Path* working_dir, const Path* prog_entry_dir, const StringView* search_paths,
-                                        u32 num_search_paths, Allocator* alloc)
+                                        const Path* working_dir, const Path* prog_entry_dir, const StringView* module_paths,
+                                        u32 num_module_paths, Allocator* alloc)
 {
     assert(path_isabs(importer_ospath));
 
@@ -380,7 +381,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         }
 
         // Check for .nib extension.
-        if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
+        if (cstr_cmp(path_ext_ptr(PATH_AS_ARGS(result)), nib_ext) != 0) {
             return NIB_PATH_INV_EXT;
         }
 
@@ -408,7 +409,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         }
 
         // Check for .nib extension.
-        if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
+        if (cstr_cmp(path_ext_ptr(PATH_AS_ARGS(result)), nib_ext) != 0) {
             return NIB_PATH_INV_EXT;
         }
 
@@ -440,7 +441,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         }
 
         // Check for .nib extension.
-        if (cstr_cmp(path_ext_ptr(result), nib_ext) != 0) {
+        if (cstr_cmp(path_ext_ptr(PATH_AS_ARGS(result)), nib_ext) != 0) {
             return NIB_PATH_INV_EXT;
         }
 
@@ -452,8 +453,8 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
 
         path_init(result, alloc, NULL, 0);
 
-        for (u32 i = 0; i < num_search_paths; i += 1) {
-            const StringView* sp = search_paths + i;
+        for (u32 i = 0; i < num_module_paths; i += 1) {
+            const StringView* sp = module_paths + i;
 
             path_set(result, sp->str, sp->len); // Initialize to the search path.
             path_abs(path_join(result, import_path_str->str, import_path_str->len), PATH_AS_ARGS(working_dir));
@@ -466,7 +467,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
                 file_kind = path_kind(result);
             }
 
-            file_ext = path_ext_ptr(result);
+            file_ext = path_ext_ptr(PATH_AS_ARGS(result));
 
             // Return if the .nib file exists.
             if ((file_kind == FILE_REG) && (cstr_cmp(file_ext, nib_ext) == 0)) {
@@ -667,7 +668,9 @@ static bool init_keywords(HMap* ident_map)
     return true;
 }
 
-NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const StringView* search_paths, u32 num_search_paths)
+NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent, const Path* working_dir,
+                       const Path* prog_entry_dir, const StringView* module_paths, u32 num_module_paths, const StringView* lib_paths,
+                       u32 num_lib_paths)
 {
     static NibbleCtx* nib_ctx;
     static const char main_name[] = "main";
@@ -683,18 +686,17 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const String
     exit(1);
 #endif
 
-    Allocator bootstrap = allocator_create(65536);
-    nib_ctx = alloc_type(&bootstrap, NibbleCtx, true);
+    nib_ctx = alloc_type(mem_arena, NibbleCtx, true);
 
     nib_ctx->silent = silent;
     nib_ctx->target_os = target_os;
     nib_ctx->target_arch = target_arch;
-    nib_ctx->gen_mem = bootstrap;
+    nib_ctx->gen_mem = mem_arena;
     nib_ctx->ast_mem = allocator_create(65536);
     nib_ctx->tmp_mem = allocator_create(32768);
-    nib_ctx->str_lit_map = hmap(8, &nib_ctx->gen_mem);
-    nib_ctx->float_lit_map = hmap(8, &nib_ctx->gen_mem);
-    nib_ctx->ident_map = hmap(8, &nib_ctx->gen_mem);
+    nib_ctx->str_lit_map = hmap(8, nib_ctx->gen_mem);
+    nib_ctx->float_lit_map = hmap(8, nib_ctx->gen_mem);
+    nib_ctx->ident_map = hmap(8, nib_ctx->gen_mem);
     nib_ctx->mod_map = hmap(8, &nib_ctx->ast_mem);
     nib_ctx->type_cache.ptrs = hmap(8, &nib_ctx->ast_mem);
     nib_ctx->type_cache.arrays = hmap(8, &nib_ctx->ast_mem);
@@ -702,11 +704,14 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const String
     nib_ctx->type_cache.slices = hmap(8, &nib_ctx->ast_mem);
     nib_ctx->type_cache.structs = hmap(8, &nib_ctx->ast_mem);
     nib_ctx->type_cache.unions = hmap(8, &nib_ctx->ast_mem);
-    nib_ctx->working_dir = get_curr_dir(&nib_ctx->gen_mem);
-    nib_ctx->search_paths = search_paths;
-    nib_ctx->num_search_paths = num_search_paths;
+    nib_ctx->working_dir = working_dir;
+    nib_ctx->prog_entry_dir = prog_entry_dir;
+    nib_ctx->module_paths = module_paths;
+    nib_ctx->num_module_paths = num_module_paths;
+    nib_ctx->lib_paths = lib_paths;
+    nib_ctx->num_lib_paths = num_lib_paths;
 
-    if (!path_isabs(&nib_ctx->working_dir)) {
+    if (!path_isabs(nib_ctx->working_dir)) {
         return NULL;
     }
 
@@ -730,14 +735,18 @@ NibbleCtx* nibble_init(OS target_os, Arch target_arch, bool silent, const String
 
     assert(nib_ctx->ident_map.len == (KW_COUNT + ANNOTATION_COUNT + INTRINSIC_COUNT + BUILTIN_STRUCT_FIELD_COUNT + 1));
 
-    bucket_list_init(&nib_ctx->src_files, &nib_ctx->gen_mem, 16);
+    bucket_list_init(&nib_ctx->src_files, nib_ctx->gen_mem, 16);
     bucket_list_init(&nib_ctx->vars, &nib_ctx->ast_mem, 32);
     bucket_list_init(&nib_ctx->procs, &nib_ctx->ast_mem, 32);
     bucket_list_init(&nib_ctx->aggregate_types, &nib_ctx->ast_mem, 16);
     bucket_list_init(&nib_ctx->str_lits, &nib_ctx->ast_mem, 8);
     bucket_list_init(&nib_ctx->float_lits, &nib_ctx->ast_mem, 8);
 
-    error_stream_init(&nib_ctx->errors, &nib_ctx->gen_mem);
+    nib_ctx->foreign_lib_map = hmap(3, nib_ctx->gen_mem);
+    bucket_list_init(&nib_ctx->foreign_libs, nib_ctx->gen_mem, 8);
+    bucket_list_init(&nib_ctx->foreign_procs, &nib_ctx->ast_mem, 8);
+
+    error_stream_init(&nib_ctx->errors, nib_ctx->gen_mem);
 
     init_builtin_types(target_os, target_arch, &nib_ctx->ast_mem, &nib_ctx->type_cache);
 
@@ -827,8 +836,8 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
             }
 
             Path include_ospath;
-            NibblePathErr ret = get_import_abspath(&include_ospath, stmt_include->file_pathname, &file_ospath, &ctx->working_dir,
-                                                   &ctx->prog_entry_dir, ctx->search_paths, ctx->num_search_paths, &ctx->tmp_mem);
+            NibblePathErr ret = get_import_abspath(&include_ospath, stmt_include->file_pathname, &file_ospath, ctx->working_dir,
+                                                   ctx->prog_entry_dir, ctx->module_paths, ctx->num_module_paths, &ctx->tmp_mem);
 
             // Check if included file's path exists somewhere.
             if (ret == NIB_PATH_INV_PATH) {
@@ -904,7 +913,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
 
             StringView included_code;
 
-            if (!slurp_file(&included_code, &ctx->gen_mem, include_ospath.str)) {
+            if (!slurp_file(&included_code, ctx->gen_mem, include_ospath.str)) {
                 return false;
             }
 
@@ -942,7 +951,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
         }
 
 #ifdef NIBBLE_PRINT_IRS
-        ftprint_out("%s\n", ftprint_stmt(&ctx->gen_mem, stmt));
+        ftprint_out("%s\n", ftprint_stmt(ctx->gen_mem, stmt));
 #endif
     }
 
@@ -1019,7 +1028,7 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     // Parse the code text
     StringView code;
 
-    if (!slurp_file(&code, &ctx->gen_mem, mod_ospath.str)) {
+    if (!slurp_file(&code, ctx->gen_mem, mod_ospath.str)) {
         return false;
     }
 
@@ -1052,8 +1061,8 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
             StmtImport* simport = (StmtImport*)stmt;
 
             Path import_mod_ospath;
-            NibblePathErr ret_err = get_import_abspath(&import_mod_ospath, simport->mod_pathname, &mod_ospath, &ctx->working_dir,
-                                                       &ctx->prog_entry_dir, ctx->search_paths, ctx->num_search_paths, &ctx->tmp_mem);
+            NibblePathErr ret_err = get_import_abspath(&import_mod_ospath, simport->mod_pathname, &mod_ospath, ctx->working_dir,
+                                                       ctx->prog_entry_dir, ctx->module_paths, ctx->num_module_paths, &ctx->tmp_mem);
 
             // Check if imported module's path exists somewhere.
             if (ret_err == NIB_PATH_INV_PATH) {
@@ -1194,48 +1203,21 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     return true;
 }
 
-bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_file)
+bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_path)
 {
     AllocatorState mem_state = allocator_get_state(&nib_ctx->tmp_mem);
 
-    //////////////////////////////////////////
-    //      Check output file name
-    //////////////////////////////////////////
-    Path outf_ospath = path_create(&nib_ctx->tmp_mem, out_file.str, out_file.len);
-
-    // TODO: Validate output file name more extensively.
-
-    //////////////////////////////////////////
-    //      Check main file validity
-    //////////////////////////////////////////
-    static const char builtin_mod_name[] = "nibble_builtin";
-
-    Path main_path = path_create(&nib_ctx->tmp_mem, main_file.str, main_file.len);
-    path_abs(&main_path, PATH_AS_ARGS(&nib_ctx->working_dir));
-    FileKind file_kind = path_kind(&main_path);
-
-    if (file_kind == FILE_NONE) {
-        ftprint_err("[ERROR]: Cannot find file `%s`\n", main_file.str);
-        return false;
-    }
-
-    if ((file_kind != FILE_REG) || cstr_cmp(path_ext_ptr(&main_path), nib_ext) != 0) {
-        ftprint_err("[ERROR]: Program entry file `%s` is not a valid `.nib` source file.\n", main_path.str);
-        return false;
-    }
-
-    nib_ctx->prog_entry_dir = path_dirname(&nib_ctx->gen_mem, &main_path);
-
-    print_info(nib_ctx, "Working directory: %s", nib_ctx->working_dir.str);
-    print_info(nib_ctx, "Program entry directory: %s", nib_ctx->prog_entry_dir.str);
+    print_info(nib_ctx, "Working directory: %s", nib_ctx->working_dir->str);
+    print_info(nib_ctx, "Program entry directory: %s", nib_ctx->prog_entry_dir->str);
 
     // Builtin module
+    static const char builtin_mod_name[] = "nibble_builtin";
     Module* builtin_mod =
         add_module(&nib_ctx->mod_map, intern_str_lit(&nib_ctx->str_lit_map, builtin_mod_name, sizeof(builtin_mod_name) - 1));
     nib_ctx->builtin_mod = builtin_mod;
 
     // Main module
-    Module* main_mod = add_module(&nib_ctx->mod_map, intern_str_lit(&nib_ctx->str_lit_map, main_path.str, path_len(&main_path)));
+    Module* main_mod = add_module(&nib_ctx->mod_map, intern_str_lit(&nib_ctx->str_lit_map, main_path->str, path_len(main_path)));
     nib_ctx->main_mod = main_mod;
 
     //////////////////////////////////////////
@@ -1355,21 +1337,21 @@ bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_fil
     //////////////////////////////////////////
     assert(nib_ctx->target_arch == ARCH_X64); // TODO: Support other architectures
 
-    Path nasm_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.s", path_len(&outf_ospath), outf_ospath.str);
+    Path nasm_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.s", path_len(out_path), out_path->str);
 
     print_info(nib_ctx, "Generating NASM assembly output: %s ...", nasm_fname.str);
     x64_init_target(nib_ctx->target_os);
-    x64_gen_module(&nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, &nib_ctx->str_lits, &nib_ctx->float_lits,
-                   nasm_fname.str);
+    x64_gen_module(nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, &nib_ctx->str_lits, &nib_ctx->float_lits,
+                   &nib_ctx->foreign_procs, nasm_fname.str);
 
     //////////////////////////////////////////
     //          Run NASM assembler
     //////////////////////////////////////////
-    Path obj_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.o", path_len(&outf_ospath), outf_ospath.str);
-    char nasm_fformat[] = "elf64";
-    char* nasm_cmd[] = {"nasm", "-f", nasm_fformat, nasm_fname.str, "-o", obj_fname.str, NULL};
+    Path obj_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.o", path_len(out_path), out_path->str);
+    const char* nasm_cmd_argv[] = {"nasm", "-f", "elf64", nasm_fname.str, "-o", obj_fname.str, NULL};
+    ExecCmd nasm_cmd = {.argv = nasm_cmd_argv, .argc = ARRAY_LEN(nasm_cmd_argv) - 1};
 
-    if (run_cmd(&nib_ctx->tmp_mem, nasm_cmd, ARRAY_LEN(nasm_cmd) - 1, nib_ctx->silent) < 0) {
+    if (run_cmd(&nib_ctx->tmp_mem, &nasm_cmd, nib_ctx->silent) != 0) {
         ftprint_err("[ERROR]: NASM command failed\n");
         return false;
     }
@@ -1377,11 +1359,14 @@ bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_fil
     //////////////////////////////////////////
     //          Run linker
     //////////////////////////////////////////
-    char* outf_name_dup = cstr_dup(&nib_ctx->tmp_mem, outf_ospath.str);
-    char* ld_cmd[] = {"ld", "-o", outf_name_dup, obj_fname.str, NULL};
-    int ld_cmd_argc = ARRAY_LEN(ld_cmd) - 1;
+    ExecCmd ld_cmd = get_linker_cmd(&nib_ctx->tmp_mem, &nib_ctx->foreign_libs, nib_ctx->lib_paths, nib_ctx->num_lib_paths,
+                                    nib_ctx->working_dir, obj_fname.str, out_path->str);
 
-    if (run_cmd(&nib_ctx->tmp_mem, ld_cmd, ld_cmd_argc, nib_ctx->silent) < 0) {
+    if (!ld_cmd.argc) {
+        return false;
+    }
+
+    if (run_cmd(&nib_ctx->tmp_mem, &ld_cmd, nib_ctx->silent) != 0) {
         ftprint_err("[ERROR]: Linker command failed\n");
         return false;
     }
@@ -1390,10 +1375,43 @@ bool nibble_compile(NibbleCtx* nib_ctx, StringView main_file, StringView out_fil
     return true;
 }
 
+ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, StrLit* foreign_lib_name)
+{
+    ForeignLib* lib = hmap_get_obj(&nib_ctx->foreign_lib_map, PTR_UINT(foreign_lib_name));
+
+    if (!lib) {
+        lib = alloc_type(nib_ctx->gen_mem, ForeignLib, true);
+        lib->name = foreign_lib_name;
+
+        const char* lib_ext = path_ext_ptr(foreign_lib_name->str, foreign_lib_name->len);
+
+        if (cstr_cmp(lib_ext, shared_lib_ext) == 0) {
+            lib->kind = FOREIGN_LIB_SHARED;
+        }
+        else if (cstr_cmp(lib_ext, static_lib_ext) == 0) {
+            lib->kind = FOREIGN_LIB_STATIC;
+        }
+        else if (cstr_cmp(lib_ext, obj_file_ext) == 0) {
+            lib->kind = FOREIGN_LIB_OBJ;
+        }
+        else {
+            NIBBLE_FATAL_EXIT("Unknown library kind for `%.*s`", foreign_lib_name->len, foreign_lib_name->str);
+        }
+
+        hmap_put(&nib_ctx->foreign_lib_map, PTR_UINT(foreign_lib_name), PTR_UINT(lib));
+        bucket_list_add_elem(&nib_ctx->foreign_libs, lib);
+    }
+    else {
+        lib->ref_count += 1;
+    }
+
+    return lib;
+}
+
 void nibble_cleanup(NibbleCtx* nib_ctx)
 {
 #ifdef NIBBLE_PRINT_MEM_USAGE
-    print_allocator_stats(&nib_ctx->gen_mem, "GEN mem stats");
+    print_allocator_stats(nib_ctx->gen_mem, "GEN mem stats");
     print_allocator_stats(&nib_ctx->ast_mem, "AST mem stats");
     print_allocator_stats(&nib_ctx->tmp_mem, "TMP mem stats");
     ftprint_out("Ident map: len = %lu, cap = %lu, total_size (gen arean) = %lu\n", nib_ctx->ident_map.len, nib_ctx->ident_map.cap,
@@ -1430,17 +1448,6 @@ void nibble_cleanup(NibbleCtx* nib_ctx)
     hmap_destroy(&nib_ctx->type_cache.unions);
     allocator_destroy(&nib_ctx->tmp_mem);
     allocator_destroy(&nib_ctx->ast_mem);
-
-    Allocator bootstrap = nib_ctx->gen_mem;
-    allocator_destroy(&bootstrap);
-
-#ifdef NIBBLE_PRINT_MEM_USAGE
-    ftprint_out("heap usage: %u allocs, %u frees, %lu bytes allocated\n", nib_alloc_count, nib_free_count, nib_alloc_size);
-
-    if (nib_free_count != nib_alloc_count) {
-        ftprint_out("[ERROR]: MEMORY LEAK DETECTED\n");
-    }
-#endif
 }
 
 FloatLit* intern_float_lit(HMap* float_lit_map, FloatKind kind, Float value)
