@@ -1395,7 +1395,7 @@ ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, StrLit* foreign_lib_name)
             lib->kind = FOREIGN_LIB_OBJ;
         }
         else {
-            NIBBLE_FATAL_EXIT("Unknown library kind for `%.*s`", foreign_lib_name->len, foreign_lib_name->str);
+            return NULL;
         }
 
         hmap_put(&nib_ctx->foreign_lib_map, PTR_UINT(foreign_lib_name), PTR_UINT(lib));

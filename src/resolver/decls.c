@@ -398,7 +398,11 @@ static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         }
 
         bucket_list_add_elem(&resolver->ctx->foreign_procs, sym);
-        nibble_add_foreign_lib(resolver->ctx, foreign_lib_arg->str_lit);
+
+        if (!nibble_add_foreign_lib(resolver->ctx, foreign_lib_arg->str_lit)) {
+            resolver_on_error(resolver, foreign_lib_arg->super.range, "Unsupported library type for `%s`", foreign_lib_arg->str_lit->str);
+            return false;
+        }
 
         StrLit* foreign_name = NULL;
 
