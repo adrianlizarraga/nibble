@@ -66,7 +66,8 @@ OPTIONS:
     -s                              Silent mode (no output to stdout)
     -os   [linux | win32 | osx]     Target OS
     -arch [x64 | x86]               Target architecture
-    -I    <import_search_path>      Add import search path
+    -I    <module_search_path>      Add module (import/include) search path
+    -L    <library_search_path>     Add library search path
     -o    <output_file>             Output binary file name. Defaults to `out`
 ```
 
