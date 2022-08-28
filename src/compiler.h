@@ -24,7 +24,7 @@ typedef enum ForeignLibKind {
 
 typedef struct ForeignLib {
     ForeignLibKind kind;
-    StrLit* name;
+    const StrLit* name;
     u32 ref_count;
 } ForeignLib;
 
@@ -88,7 +88,7 @@ NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, boo
 bool nibble_compile(NibbleCtx* nibble, const Path* main_path, const Path* out_path);
 void nibble_cleanup(NibbleCtx* nibble);
 
-ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, StrLit* foreign_lib_name);
+ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, const StrLit* foreign_lib_name);
 
 void report_error(ErrorStream* error_stream, ProgRange range, const char* format, ...);
 

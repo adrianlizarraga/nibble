@@ -1375,7 +1375,7 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
     return true;
 }
 
-ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, StrLit* foreign_lib_name)
+ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, const StrLit* foreign_lib_name)
 {
     ForeignLib* lib = hmap_get_obj(&nib_ctx->foreign_lib_map, PTR_UINT(foreign_lib_name));
 
