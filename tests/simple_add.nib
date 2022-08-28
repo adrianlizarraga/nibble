@@ -1,0 +1,7 @@
+// Inspect instruction bytes with: objdump -M intel -d out.o
+proc main() => int {
+    var a : int = 10;
+    var b : int = 1;
+
+    return a + b;
+}
