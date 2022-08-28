@@ -1,9 +1,9 @@
 :argc 0
 :stdin 0
 
-:stdout 11
-Hello std!
+:stdout 36
+Hello std! num is 0x102030405060708
 
 :stderr 0
 
-:returncode 11
+:returncode 36

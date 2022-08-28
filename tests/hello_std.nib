@@ -1,5 +1,7 @@
 import "std/basic" as stdb;
 
 proc main() => int {
-    return stdb::print_out("Hello std!\n").[0];
+    var num : u64 = 0x0102030405060708;
+
+    return stdb::print_out("Hello std! num is 0x{}\n", {value = num, base = 16 : stdb::FmtUInt}).[0];
 }

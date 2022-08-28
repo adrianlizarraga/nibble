@@ -3,4 +3,7 @@ import "./cstring.nib";
 import "./math.nib";
 import "./rand.nib";
 
-export {print_out, cstr_cmp, cstr_ncmp, cstr_len, ceil, rand};
+export {
+    print_out, PrintErr, FmtFlag, FmtInt, FmtUInt, FmtFloat,
+    cstr_cmp, cstr_ncmp, cstr_len, ceil, rand
+};
