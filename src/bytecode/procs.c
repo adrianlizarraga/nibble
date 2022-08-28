@@ -2755,6 +2755,100 @@ static BBlock* IR_emit_memset_call(IR_ProcBuilder* builder, BBlock* bblock, size
     return curr_bb;
 }
 
+// TODO: This should really be a builtin nibble macro that wraps the write syscall.
+// Ex: macro #writeout(buf: ^char, size: usize) => ssize { return #syscall3(SYS_write, STDOUT, buf, size); }
+static BBlock* IR_emit_writeout_call(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* dst_er, size_t num_args, List* args,
+                                     IR_TmpObjList* tmp_obj_list)
+{
+    BBlock* curr_bb = bblock;
+
+    if (num_args != 2) {
+        NIBBLE_FATAL_EXIT("#writeout intrinsic must have 2 arguments."); // Internal compiler error.
+        return NULL;
+    }
+
+    const s32 STDOUT_FD = 1;
+    const s64 SYS_write = 1;
+
+    // syscall_nr, STDOUT, buf, size
+    OpRIA syscall_nr = {.kind = OP_RIA_IMM, .imm.as_int._u64 = SYS_write};
+    OpRIA syscall_args[3] = {
+        [0] = {.kind = OP_RIA_IMM, .imm.as_int._u64 = STDOUT_FD}
+    };
+
+    List* it = args->next;
+    size_t arg_index = 1;
+
+    while (arg_index < ARRAY_LEN(syscall_args)) {
+        ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
+        IR_ExprResult arg_er = {0};
+
+        curr_bb = IR_emit_expr(builder, curr_bb, arg->expr, &arg_er, tmp_obj_list);
+
+        syscall_args[arg_index] = IR_expr_result_to_op_ria(builder, &curr_bb, &arg_er);
+
+        arg_index += 1;
+        it = it->next;
+    }
+
+    assert(it == args);
+
+    dst_er->type = builtin_types[BUILTIN_TYPE_SSIZE].type;
+    dst_er->kind = IR_EXPR_RESULT_REG;
+    dst_er->reg = IR_next_reg(builder);
+
+    IR_emit_instr_syscall(builder, curr_bb, dst_er->reg, syscall_nr, ARRAY_LEN(syscall_args), syscall_args);
+
+    return curr_bb;
+}
+
+// TODO: This should really be a builtin nibble macro that wraps the read syscall.
+// Ex: macro #readin(buf: ^char, size: usize) => ssize { return #syscall3(SYS_read, STDIN, buf, size); }
+static BBlock* IR_emit_readin_call(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* dst_er, size_t num_args, List* args,
+                                   IR_TmpObjList* tmp_obj_list)
+{
+    BBlock* curr_bb = bblock;
+
+    if (num_args != 2) {
+        NIBBLE_FATAL_EXIT("#readin intrinsic must have 2 arguments."); // Internal compiler error.
+        return NULL;
+    }
+
+    const s32 STDIN_FD = 0;
+    const s64 SYS_read = 0;
+
+    // syscall_nr, STDIN, buf, size
+    OpRIA syscall_nr = {.kind = OP_RIA_IMM, .imm.as_int._u64 = SYS_read};
+    OpRIA syscall_args[3] = {
+        [0] = {.kind = OP_RIA_IMM, .imm.as_int._u64 = STDIN_FD}
+    };
+
+    List* it = args->next;
+    size_t arg_index = 1;
+
+    while (arg_index < ARRAY_LEN(syscall_args)) {
+        ProcCallArg* arg = list_entry(it, ProcCallArg, lnode);
+        IR_ExprResult arg_er = {0};
+
+        curr_bb = IR_emit_expr(builder, curr_bb, arg->expr, &arg_er, tmp_obj_list);
+
+        syscall_args[arg_index] = IR_expr_result_to_op_ria(builder, &curr_bb, &arg_er);
+
+        arg_index += 1;
+        it = it->next;
+    }
+
+    assert(it == args);
+
+    dst_er->type = builtin_types[BUILTIN_TYPE_SSIZE].type;
+    dst_er->kind = IR_EXPR_RESULT_REG;
+    dst_er->reg = IR_next_reg(builder);
+
+    IR_emit_instr_syscall(builder, curr_bb, dst_er->reg, syscall_nr, ARRAY_LEN(syscall_args), syscall_args);
+
+    return curr_bb;
+}
+
 static BBlock* IR_emit_syscall_call(IR_ProcBuilder* builder, BBlock* bblock, IR_ExprResult* dst_er, size_t num_args, List* args,
                                     IR_TmpObjList* tmp_obj_list)
 {
@@ -2991,6 +3085,12 @@ static BBlock* IR_emit_expr_call(IR_ProcBuilder* builder, BBlock* bblock, ExprCa
     }
     else if ((proc_er.kind == IR_EXPR_RESULT_PROC) && (proc_er.sym->name == intrinsic_idents[INTRINSIC_MEMSET])) {
         curr_bb = IR_emit_memset_call(builder, curr_bb, expr_call->num_args, &expr_call->args, tmp_obj_list);
+    }
+    else if ((proc_er.kind == IR_EXPR_RESULT_PROC) && (proc_er.sym->name == intrinsic_idents[INTRINSIC_WRITEOUT])) {
+        curr_bb = IR_emit_writeout_call(builder, curr_bb, dst_er, expr_call->num_args, &expr_call->args, tmp_obj_list);
+    }
+    else if ((proc_er.kind == IR_EXPR_RESULT_PROC) && (proc_er.sym->name == intrinsic_idents[INTRINSIC_READIN])) {
+        curr_bb = IR_emit_readin_call(builder, curr_bb, dst_er, expr_call->num_args, &expr_call->args, tmp_obj_list);
     }
     else if ((proc_er.kind == IR_EXPR_RESULT_PROC) &&
              (proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL0] || proc_er.sym->name == intrinsic_idents[INTRINSIC_SYSCALL1] ||
