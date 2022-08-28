@@ -543,46 +543,51 @@ static u32 X64_mov_flt_op_ra_into_reg(X64_LIRBuilder* builder, X64_BBlock* xbblo
     return r;
 }
 
+static inline bool X64_imm_fits_4bytes(Scalar imm, size_t size)
+{
+    return (size < X64_MAX_INT_REG_SIZE) || (imm.as_int._u64 < (u64)int_kind_max[INTEGER_U32]);
+}
+
 typedef bool (*X64_LIRCreateFunc)(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr);
 
-#define X64_DEF_CONVERT_INT_BINARY_FUNC(f_n, ir_t, f_r_i, f_r_r, f_r_m)                                                     \
-    static bool f_n(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)              \
-    {                                                                                                                       \
-        (void)next_ir_instr;                                                                                                \
-        assert(ir_instr->kind == ir_t##_KIND);                                                                              \
-        ir_t* ir_v = (ir_t*)ir_instr;                                                                                       \
-        size_t size = ir_v->type->size;                                                                                     \
-        OpRIA ir_a = ir_v->a;                                                                                               \
-        OpRIA ir_b = ir_v->b;                                                                                               \
-                                                                                                                            \
-        assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM);                                                         \
-        u32 r = X64_get_lir_reg(builder, ir_v->r, X64_REG_CLASS_INT);                                                       \
-                                                                                                                            \
-        X64_load_op_ria(builder, xbblock, size, r, ir_a);                                                                   \
-                                                                                                                            \
-        if (ir_b.kind == OP_RIA_IMM) {                                                                                      \
-            bool fits_in_4bytes = (size < X64_MAX_INT_REG_SIZE) || (ir_b.imm.as_int._u64 < (u64)int_kind_max[INTEGER_U32]); \
-                                                                                                                            \
-            if (fits_in_4bytes) {                                                                                           \
-                f_r_i(builder, xbblock, size, r, ir_b.imm);                                                                 \
-            }                                                                                                               \
-            else {                                                                                                          \
-                u32 imm_reg = X64_next_lir_reg(builder, X64_REG_CLASS_INT);                                                 \
-                X64_emit_instr_mov_r_i(builder, xbblock, size, imm_reg, ir_b.imm);                                          \
-                f_r_r(builder, xbblock, size, r, imm_reg);                                                                  \
-            }                                                                                                               \
-        }                                                                                                                   \
-        else if (ir_b.kind == OP_RIA_REG) {                                                                                 \
-            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);                                                  \
-            f_r_r(builder, xbblock, size, r, b);                                                                            \
-        }                                                                                                                   \
-        else {                                                                                                              \
-            assert(ir_b.kind == OP_RIA_ADDR);                                                                               \
-            X64_MemAddr addr = {0};                                                                                         \
-            X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);                                                       \
-            f_r_m(builder, xbblock, size, r, addr);                                                                         \
-        }                                                                                                                   \
-        return false;                                                                                                       \
+#define X64_DEF_CONVERT_INT_BINARY_FUNC(f_n, ir_t, f_r_i, f_r_r, f_r_m)                                        \
+    static bool f_n(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr) \
+    {                                                                                                          \
+        (void)next_ir_instr;                                                                                   \
+        assert(ir_instr->kind == ir_t##_KIND);                                                                 \
+        ir_t* ir_v = (ir_t*)ir_instr;                                                                          \
+        size_t size = ir_v->type->size;                                                                        \
+        OpRIA ir_a = ir_v->a;                                                                                  \
+        OpRIA ir_b = ir_v->b;                                                                                  \
+                                                                                                               \
+        assert(ir_a.kind != OP_RIA_IMM || ir_b.kind != OP_RIA_IMM);                                            \
+        u32 r = X64_get_lir_reg(builder, ir_v->r, X64_REG_CLASS_INT);                                          \
+                                                                                                               \
+        X64_load_op_ria(builder, xbblock, size, r, ir_a);                                                      \
+                                                                                                               \
+        if (ir_b.kind == OP_RIA_IMM) {                                                                         \
+            bool fits_in_4bytes = X64_imm_fits_4bytes(ir_b.imm, size);                                         \
+                                                                                                               \
+            if (fits_in_4bytes) {                                                                              \
+                f_r_i(builder, xbblock, size, r, ir_b.imm);                                                    \
+            }                                                                                                  \
+            else {                                                                                             \
+                u32 imm_reg = X64_next_lir_reg(builder, X64_REG_CLASS_INT);                                    \
+                X64_emit_instr_mov_r_i(builder, xbblock, size, imm_reg, ir_b.imm);                             \
+                f_r_r(builder, xbblock, size, r, imm_reg);                                                     \
+            }                                                                                                  \
+        }                                                                                                      \
+        else if (ir_b.kind == OP_RIA_REG) {                                                                    \
+            u32 b = X64_get_lir_reg(builder, ir_b.reg, X64_REG_CLASS_INT);                                     \
+            f_r_r(builder, xbblock, size, r, b);                                                               \
+        }                                                                                                      \
+        else {                                                                                                 \
+            assert(ir_b.kind == OP_RIA_ADDR);                                                                  \
+            X64_MemAddr addr = {0};                                                                            \
+            X64_get_lir_addr(builder, xbblock, &addr, &ir_b.addr, 0);                                          \
+            f_r_m(builder, xbblock, size, r, addr);                                                            \
+        }                                                                                                      \
+        return false;                                                                                          \
     }
 
 X64_DEF_CONVERT_INT_BINARY_FUNC(X64_convert_int_add_instr, IR_InstrIntAdd, X64_emit_instr_add_r_i, X64_emit_instr_add_r_r,
@@ -1190,7 +1195,14 @@ static bool X64_convert_store_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock
         x64_movflt_m_r_funcs[type->as_float.kind](builder, xbblock, addr, a);
     }
     else if (ir_a.is_imm) {
-        X64_emit_instr_mov_m_i(builder, xbblock, size, addr, ir_a.imm);
+        if (X64_imm_fits_4bytes(ir_a.imm, size)) {
+            X64_emit_instr_mov_m_i(builder, xbblock, size, addr, ir_a.imm);
+        }
+        else {
+            u32 imm_reg = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
+            X64_emit_instr_mov_r_i(builder, xbblock, size, imm_reg, ir_a.imm);
+            X64_emit_instr_mov_m_r(builder, xbblock, size, addr, imm_reg);
+        }
     }
     else {
         u32 a = X64_get_lir_reg(builder, ir_a.reg, X64_REG_CLASS_INT);
