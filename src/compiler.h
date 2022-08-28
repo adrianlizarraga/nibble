@@ -16,6 +16,7 @@ typedef struct TypeCache {
 } TypeCache;
 
 typedef enum ForeignLibKind {
+    FOREIGN_LIB_INVALID,
     FOREIGN_LIB_OBJ,
     FOREIGN_LIB_STATIC,
     FOREIGN_LIB_SHARED

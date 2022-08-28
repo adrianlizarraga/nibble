@@ -1380,23 +1380,25 @@ ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, StrLit* foreign_lib_name)
     ForeignLib* lib = hmap_get_obj(&nib_ctx->foreign_lib_map, PTR_UINT(foreign_lib_name));
 
     if (!lib) {
-        lib = alloc_type(nib_ctx->gen_mem, ForeignLib, true);
-        lib->name = foreign_lib_name;
-
+        ForeignLibKind kind = FOREIGN_LIB_INVALID;
         const char* lib_ext = path_ext_ptr(foreign_lib_name->str, foreign_lib_name->len);
 
         if (cstr_cmp(lib_ext, shared_lib_ext) == 0) {
-            lib->kind = FOREIGN_LIB_SHARED;
+            kind = FOREIGN_LIB_SHARED;
         }
         else if (cstr_cmp(lib_ext, static_lib_ext) == 0) {
-            lib->kind = FOREIGN_LIB_STATIC;
+            kind = FOREIGN_LIB_STATIC;
         }
         else if (cstr_cmp(lib_ext, obj_file_ext) == 0) {
-            lib->kind = FOREIGN_LIB_OBJ;
+            kind = FOREIGN_LIB_OBJ;
         }
         else {
             return NULL;
         }
+
+        lib = alloc_type(nib_ctx->gen_mem, ForeignLib, true);
+        lib->name = foreign_lib_name;
+        lib->kind = kind;
 
         hmap_put(&nib_ctx->foreign_lib_map, PTR_UINT(foreign_lib_name), PTR_UINT(lib));
         bucket_list_add_elem(&nib_ctx->foreign_libs, lib);
