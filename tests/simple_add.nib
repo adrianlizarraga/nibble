@@ -1,7 +1,14 @@
 // Inspect instruction bytes with: objdump -M intel -d out.o
-proc main() => int {
+var g1 : int = 100;
+var g2 : int = 2;
+
+proc main(argc: int, argv: ^^char) => int {
     var a : int = 10;
     var b : int = 1;
 
-    return a + b;
+    if (argc == 2) {
+        b = g1;
+    }
+
+    return a + b - g2;
 }
