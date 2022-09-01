@@ -7,6 +7,8 @@
 #include "x64_gen/livevar.c"
 #include "x64_gen/reg_alloc.c"
 #include "x64_gen/print_lir.c"
+#include "x64_gen/elf_writer.c"
+
 
 #define X64_ASM_LINE_LEN 64
 #define X64_STR_LIT_PRE "__nibble_str_lit_"
@@ -2900,5 +2902,6 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bu
 
     fclose(out_fd);
 
+    x64_gen_elf(gen_mem, tmp_mem, vars, procs, str_lits, float_lits, foreign_procs, output_file);
     return true;
 }
