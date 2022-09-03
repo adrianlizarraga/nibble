@@ -1559,9 +1559,6 @@ Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, M
 
 char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
 {
-    // TODO: Change to something stronger. Will require regenerating builtin code though.
-    static const char intrin_pre[] = "_nibble";
-
     char* dstr = array_create(allocator, char, 32);
 
     if ((sym->kind == SYMBOL_PROC) && (sym->decl->flags & DECL_IS_FOREIGN)) {
@@ -1570,15 +1567,10 @@ char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
     else if (sym->name == main_proc_ident) {
         ftprint_char_array(&dstr, true, "%s", sym->name->str);
     }
-    else if (sym->name->kind == IDENTIFIER_INTRINSIC) {
-        ftprint_char_array(&dstr, true, "%s_%s", intrin_pre, sym->name->str);
-    }
-    else if (!sym->is_local) {
+    else {
+        assert(!sym->is_local);
         Module* mod = sym->home;
         ftprint_char_array(&dstr, true, "module%u_%s", mod->id, sym->name->str);
-    }
-    else {
-        ftprint_char_array(&dstr, true, "%s", sym->name->str);
     }
 
     size_t len = array_len(dstr);

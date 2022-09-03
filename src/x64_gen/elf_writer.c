@@ -79,6 +79,10 @@ typedef struct Elf64_Sym {
    u64 st_size;
 } Elf64_Sym;
 
+//
+// ELF String table
+//
+
 typedef struct Elf_StrTable {
     Array(u8) bytes;
 } Elf_StrTable;
@@ -107,6 +111,14 @@ static u32 Elf_strtab_size(const Elf_StrTable* table)
 {
     return (u32) array_len(table->bytes);
 }
+
+//
+// Data segment
+//
+
+typedef struct X64_DataSegment {
+    Array(u8) bytes;
+} X64_DataSegment;
 
 /*
 $ xxd -g 1 -s $((0x180)) -l $((0x41)) out.o
@@ -157,6 +169,17 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bucke
 
     AllocatorState gen_mem_state = allocator_get_state(gen_mem);
 
+    const bool has_data_sec = vars->num_elems > 0;
+    const bool has_rodata_sec = (str_lits->num_elems > 0) || (float_lits->num_elems > 0);
+    const bool has_rela_sec = false; // TODO: Determined by text section usage of "global" syms
+
+    const u32 rodata_shndx = has_rodata_sec;
+    const u32 data_shndx = has_data_sec ? has_rodata_sec + has_data_sec : 0;
+    const u32 txt_shndx = has_rodata_sec + has_data_sec + 1;
+
+    // NULL, .rodata?, .data?, .text, .shstrtab, .symtab, .strtab, .rela.text?
+    const u32 num_shdrs = 5 + has_rodata_sec + has_data_sec + has_rela_sec;
+
     Elf64_Hdr elf_hdr = {
         .e_ident = {ELF_MAGIC0, ELF_MAGIC1, ELF_MAGIC2, ELF_MAGIC3, ELF_CLASS64, ELF_DATA_2_LSB, 1, ELF_OS_ABI_SYSV},
         .e_type = ELF_REL_FILE,
@@ -170,16 +193,23 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bucke
         .e_phentsize = 0,
         .e_phnum = 0,
         .e_shentsize = sizeof(Elf64_Shdr),
-        .e_shnum = 5, // NULL, .text, .shstrtab, .symtab, .strtab,
-        .e_shstrndx = 2,
+        .e_shnum = num_shdrs,
+        .e_shstrndx = txt_shndx + 1,
     };
+
+    const u32 sections_off = elf_hdr.e_ehsize + elf_hdr.e_shnum * elf_hdr.e_shentsize; 
+
+    const u32 rodata_off = sections_off;
+    const u32 rodata_size = 0; // TODO
+
+    const u32 data_off = ALIGN_UP(rodata_off + rodata_size, 16);
+    const u32 data_size = 0; // TODO
+
+    const u32 text_off = ALIGN_UP(data_off + data_size, 16);
+    const u32 text_size = sizeof(text_bin);
 
     Elf_StrTable shstrtab = {0};
     Elf_strtab_init(&shstrtab, gen_mem, 38);
-
-    const u32 text_off = elf_hdr.e_ehsize + elf_hdr.e_shnum * elf_hdr.e_shentsize;
-    const u32 text_size = sizeof(text_bin);
-    const u32 text_shndx = 1;
 
     Elf64_Shdr elf_shdrs[5] = {
         // .text
@@ -236,7 +266,7 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bucke
         }
     };
 
-    // Path size of shstrtab in the corresponding section header table entry.
+    // Patch size of shstrtab in the corresponding section header table entry.
     elf_shdrs[2].sh_size = Elf_strtab_size(&shstrtab);
 
     // Patch location of symtab (after .shstrtab)
@@ -247,6 +277,48 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bucke
     Elf_strtab_init(&strtab, gen_mem, 16);
 
     // Add symbols to symtab. Try just adding global syms.
+    const u32 num_sec_syms = 1 + has_data_sec + has_rodata_sec; // .text + .data? + .rodata?
+    const u32 start_sym_idx = num_sec_syms + 1; // Will be the first global sym.
+    const u32 num_syms = 1 + num_sec_syms + 1 + foreign_procs->num_elems; // null <sections> _start <foreign>
+
+    Elf64_Sym* elf_syms = alloc_array(gen_mem, Elf64_Sym, num_syms, true);
+
+    u32 sym_idx = 1;
+
+    // .rodata symbol
+    if (has_rodata_sec) {
+        elf_syms[sym_idx++] = (Elf64_Sym){
+            .st_name = 0;
+            .st_info = ELF_ST_INFO(ELF_STB_LOCAL, ELF_STT_SECTION);
+            .st_other = ELF_STV_DEFAULT;
+            .st_shndx = rodata_shndx;
+            .st_value = 0;
+            .st_size = 0;
+        };
+    }
+
+    // .data symbol
+    if (has_data_sec) {
+        elf_syms[sym_idx++] = (Elf64_Sym){
+            .st_name = 0;
+            .st_info = ELF_ST_INFO(ELF_STB_LOCAL, ELF_STT_SECTION);
+            .st_other = ELF_STV_DEFAULT;
+            .st_shndx = data_shndx;
+            .st_value = 0;
+            .st_size = 0;
+        };
+    }
+
+    // .text symbol
+    elf_syms[sym_idx++] = (Elf64_Sym){
+        .st_name = 0;
+        .st_info = ELF_ST_INFO(ELF_STB_LOCAL, ELF_STT_SECTION);
+        .st_other = ELF_STV_DEFAULT;
+        .st_shndx = text_shndx;
+        .st_value = 0;
+        .st_size = 0;
+    };
+
     Elf64_Sym elf_syms[2] = {
         [1] = {
             .st_name = Elf_strtab_add(&strtab, "_start"),
@@ -260,8 +332,8 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bucke
 
     // Patch .symtab size in section header table.
     Elf64_Shdr* symtab_she = &elf_shdrs[3];
-    symtab_she->sh_size = sizeof(elf_syms);
-    symtab_she->sh_info = 1; // Point to first global sym in table.
+    symtab_she->sh_size = num_syms * sizeof(Elf64_Sym);
+    symtab_she->sh_info = start_sym_idx; // Point to first global sym in table.
 
     // Patch .strtab offset and size in section header table.
     Elf64_Shdr* strtab_she = &elf_shdrs[4];
