@@ -1,8 +1,8 @@
 typedef struct IR_ProcBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
-    BucketList* str_lits;
-    BucketList* float_lits;
+    GlobalData* str_lits;
+    GlobalData* float_lits;
     TypeCache* type_cache;
     HMap* float_lit_map;
     Symbol* curr_proc;
@@ -3421,7 +3421,7 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
 
             if (!float_lit->used) {
                 float_lit->used = true;
-                bucket_list_add_elem(builder->float_lits, float_lit);
+                add_global_data(builder->float_lits, float_lit, float_kind_sizes[float_lit->kind]);
             }
         }
         else {
@@ -3468,7 +3468,7 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
 
         if (!str_lit->used) {
             str_lit->used = true;
-            bucket_list_add_elem(builder->str_lits, str_lit);
+            add_global_data(builder->str_lits, str_lit, str_lit->len + 1);
         }
 
         return bblock;
@@ -4241,7 +4241,7 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     allocator_restore_state(mem_state);
 }
 
-static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, BucketList* str_lits, BucketList* float_lits,
+static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, GlobalData* str_lits, GlobalData* float_lits,
                            TypeCache* type_cache, HMap* float_lit_map)
 {
     IR_ProcBuilder builder = {.arena = arena,

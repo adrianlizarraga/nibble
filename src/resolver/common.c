@@ -108,7 +108,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
         success = resolve_decl_var(resolver, sym);
 
         if (is_global) {
-            bucket_list_add_elem(&resolver->ctx->vars, sym);
+            add_global_data(&resolver->ctx->vars, sym, sym->type->size);
         }
         break;
     case SYMBOL_CONST:

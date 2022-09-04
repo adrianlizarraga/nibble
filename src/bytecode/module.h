@@ -394,8 +394,8 @@ struct BBlock {
     bool closed; // Currently used for debugging. A BBlock is closed once the final jmp/ret instruction has been added.
 };
 
-void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* procs, BucketList* str_lits,
-                     BucketList* float_lits, TypeCache* type_cache, HMap* float_lit_map);
+void IR_gen_bytecode(Allocator* arena, Allocator* tmp_arena, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
+                     GlobalData* float_lits, TypeCache* type_cache, HMap* float_lit_map);
 
 char* IR_print_instr(Allocator* arena, IR_Instr* instr);
 void IR_print_out_proc(Allocator* arena, Symbol* sym);

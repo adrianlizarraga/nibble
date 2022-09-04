@@ -964,7 +964,7 @@ struct ConstArrayMemberInitzer {
 struct SymbolVar {
     union {
         // Used by backends to store this var's
-        // location in the stack.
+        // location in the stack (if local) or offset from .data segment (if global)
         s32 offset;
 
         // Used to describe initial value (constexpr) for global variable

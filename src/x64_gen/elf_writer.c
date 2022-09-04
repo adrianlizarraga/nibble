@@ -121,6 +121,37 @@ typedef struct X64_DataSegment {
 } X64_DataSegment;
 
 /*
+static void X64_add_data_var(X64_DataSegment* data_seg, Allocator* gen_mem, Allocator* tmp_mem, const char* name, ConstExpr* const_expr)
+{
+    Type* type = const_expr->type;
+
+    size_t offset = array_len(data_seg->bytes);
+    size_t align_pad = ALIGN_UP(offset, type->align) - offset;
+
+    X64_
+
+    offset += align_pad;
+}
+*/
+
+static void X64_init_data_segment(X64_DataSegment* data_seg, Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars)
+{
+    size_t num_vars = vars->num_elems;
+
+    if (!num_vars) {
+        return;
+    }
+
+    data_seg->bytes = array_create(gen_mem, u8, num_vars << 3); // Initial capacity of 8 bytes per variable.
+
+    for (size_t i = 0; i < num_vars; i += 1) {
+        Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(vars, i));
+
+        //X64_add_data_var(data_seg, gen_mem, tmp_mem, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
+    }
+}
+
+/*
 $ xxd -g 1 -s $((0x180)) -l $((0x41)) out.o
 00000180: 48 31 ed 8b 3c 24 48 8d 74 24 08 48 8d 54 fc 10  H1..<$H.t$.H.T..
 00000190: 31 c0 e8 09 00 00 00 89 c7 b8 3c 00 00 00 0f 05  1.........<.....
@@ -155,8 +186,8 @@ static u32 write_bin(FILE* fd, const void* bin, u32 size, u32 tgt_offset, u32 cu
     return offset + size;
 }
 
-bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs, BucketList* str_lits,
-                 BucketList* float_lits, BucketList* foreign_procs, const char* output_file)
+bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
+                 GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
     FILE* out_fd = fopen("elf.o", "wb");
     if (!out_fd) {
@@ -166,8 +197,8 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bucke
 
     AllocatorState gen_mem_state = allocator_get_state(gen_mem);
 
-    const bool has_data_sec = vars->num_elems > 0;
-    const bool has_rodata_sec = (str_lits->num_elems > 0) || (float_lits->num_elems > 0);
+    const bool has_data_sec = vars->list.num_elems > 0;
+    const bool has_rodata_sec = (str_lits->list.num_elems > 0) || (float_lits->list.num_elems > 0);
     const bool has_rela_sec = false; // TODO: Determined by text section usage of "global" syms
 
     // NULL, .rodata?, .data?, .text, .shstrtab, .symtab, .strtab, .rela.text?

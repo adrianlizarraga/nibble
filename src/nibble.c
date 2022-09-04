@@ -345,6 +345,12 @@ static void print_info(NibbleCtx* nib_ctx, const char* format, ...)
     ftprint_out("\n");
 }
 
+void add_global_data(GlobalData* data, void* item, size_t size)
+{
+    bucket_list_add_elem(&data->list, item);
+    data->size += size;
+}
+
 typedef enum NibblePathErr {
     NIB_PATH_OK = 0,
     NIB_PATH_INV_PATH,
@@ -736,11 +742,11 @@ NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, boo
     assert(nib_ctx->ident_map.len == (KW_COUNT + ANNOTATION_COUNT + INTRINSIC_COUNT + BUILTIN_STRUCT_FIELD_COUNT + 1));
 
     bucket_list_init(&nib_ctx->src_files, nib_ctx->gen_mem, 16);
-    bucket_list_init(&nib_ctx->vars, &nib_ctx->ast_mem, 32);
+    bucket_list_init(&nib_ctx->vars.list, &nib_ctx->ast_mem, 32);
     bucket_list_init(&nib_ctx->procs, &nib_ctx->ast_mem, 32);
     bucket_list_init(&nib_ctx->aggregate_types, &nib_ctx->ast_mem, 16);
-    bucket_list_init(&nib_ctx->str_lits, &nib_ctx->ast_mem, 8);
-    bucket_list_init(&nib_ctx->float_lits, &nib_ctx->ast_mem, 8);
+    bucket_list_init(&nib_ctx->str_lits.list, &nib_ctx->ast_mem, 8);
+    bucket_list_init(&nib_ctx->float_lits.list, &nib_ctx->ast_mem, 8);
 
     nib_ctx->foreign_lib_map = hmap(3, nib_ctx->gen_mem);
     bucket_list_init(&nib_ctx->foreign_libs, nib_ctx->gen_mem, 8);

@@ -1,5 +1,5 @@
 // Inspect instruction bytes with: objdump -M intel -d out.o
-//var g1 : int = 1;
+var g1 : int = 1;
 //var g2 : int = 2;
 
 proc main() => int {
