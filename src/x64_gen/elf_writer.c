@@ -117,38 +117,219 @@ static u32 Elf_strtab_size(const Elf_StrTable* table)
 //
 
 typedef struct X64_DataSegment {
-    Array(u8) bytes;
+    Array(char) bytes;
+    size_t init_align;
 } X64_DataSegment;
 
-/*
-static void X64_add_data_var(X64_DataSegment* data_seg, Allocator* gen_mem, Allocator* tmp_mem, const char* name, ConstExpr* const_expr)
+// Forward declaration.
+static void X64_data_serialize(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr);
+
+static inline void X64_data_fill_zeros(X64_DataSegment* data_seg, size_t size)
+{
+    for (size_t i = 0; i < size; i += 1) {
+        array_push(data_seg->bytes, 0);
+    }
+}
+
+static inline void X64_data_serialize_int(X64_DataSegment* data_seg, Scalar imm, size_t size)
+{
+    u64 elem_val = imm.as_int._u64;
+
+    // Write each byte of the value
+    for (size_t i = 0; i < size; i += 1) {
+        array_push(data_seg->bytes, elem_val & 0xFFLL);
+        elem_val = elem_val >> 8;
+    }
+}
+
+static void X64_data_serialize_array_init(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr)
+{
+    AllocatorState mem_state = allocator_get_state(tmp_mem);
+
+    Type* type = const_expr->type;
+    assert(type->kind == TYPE_ARRAY);
+
+    Type* elem_type = type->as_array.base;
+    size_t num_elems = type->as_array.len;
+    ConstExpr** init_vals = alloc_array(tmp_mem, ConstExpr*, num_elems, true); // Initialized to NULL
+
+    // Iterate through initializers and overwrite appropriate elements in init_vals array with
+    // the specified initializer value.
+    ConstArrayInitzer* init = &const_expr->array_initzer;
+
+    for (size_t i = 0; i < init->num_initzers; i += 1) {
+        ConstArrayMemberInitzer* initzer = init->initzers + i;
+
+        init_vals[initzer->index] = &initzer->const_expr;
+    }
+
+    // Print an initial value for each element.
+    for (u64 i = 0; i < num_elems; i += 1) {
+        if (init_vals[i]) {
+            X64_data_serialize(data_seg, tmp_mem, init_vals[i]);
+        }
+        else {
+            X64_data_fill_zeros(data_seg, elem_type->size);
+        }
+    }
+
+    allocator_restore_state(mem_state);
+}
+
+static void X64_data_serialize_struct_init(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr)
 {
     Type* type = const_expr->type;
+    assert(type->kind == TYPE_STRUCT);
 
+    TypeAggregateBody* type_agg = &type->as_struct.body;
+    ConstExpr** field_exprs = const_expr->struct_initzer.field_exprs;
+
+    TypeAggregateField* fields = type_agg->fields;
+    size_t num_fields = type_agg->num_fields;
+    size_t offset = 0; // Tracks the struct byte offset that has been initialized.
+
+    // Init fields.
+    for (size_t i = 0; i < num_fields; i++) {
+        TypeAggregateField* field = fields + i;
+        size_t field_size = field->type->size;
+        size_t padding = field->offset - offset;
+
+        // Fill padding with zeros.
+        X64_data_fill_zeros(data_seg, padding);
+        offset += padding;
+
+        // Init field with specified value or zero.
+        if (field_exprs[i]) {
+            X64_data_serialize(data_seg, tmp_mem, field_exprs[i]);
+        }
+        else {
+            X64_data_fill_zeros(data_seg, field_size);
+        }
+
+        offset += field_size;
+    }
+
+    // Clear padding after last field.
+    X64_data_fill_zeros(data_seg, type->size - offset);
+}
+
+static void X64_data_serialize_union_init(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr)
+{
+    Type* type = const_expr->type;
+    assert(type->kind == TYPE_UNION);
+
+    TypeAggregateField* field = &type->as_union.body.fields[const_expr->union_initzer.field_index];
+    ConstExpr* field_expr = const_expr->union_initzer.field_expr;
+
+    if (field_expr) {
+        X64_data_serialize(data_seg, tmp_mem, field_expr);
+        X64_data_fill_zeros(data_seg, type->size - field->type->size);
+    }
+    else {
+        X64_data_fill_zeros(data_seg, type->size);
+    }
+}
+
+static void X64_data_serialize(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr)
+{
+    switch (const_expr->kind) {
+    case CONST_EXPR_NONE: {
+        X64_data_fill_zeros(data_seg, const_expr->type->size);
+        break;
+    }
+    case CONST_EXPR_IMM: {
+        X64_data_serialize_int(data_seg, const_expr->imm, const_expr->type->size);
+        break;
+    }
+    case CONST_EXPR_MEM_ADDR: {
+        // TODO: Need relocations for address of symbols or string literals.
+        NIBBLE_FATAL_EXIT("Unhandled ConstExprKind `%d`\n", const_expr->kind);
+        break;
+    }
+    case CONST_EXPR_STR_LIT: {
+        StrLit* str_lit = const_expr->str_lit;
+        size_t len = str_lit->len;
+        const char* str = str_lit->str;
+
+        for (size_t i = 0; i < len; i += 1) {
+            array_push(data_seg->bytes, str[i]);
+        }
+
+        array_push(data_seg->bytes, '\0');
+        break;
+    }
+    case CONST_EXPR_FLOAT_LIT: {
+        FloatLit* float_lit = const_expr->float_lit;
+        Scalar imm = {.as_float = float_lit->value};
+        size_t size = float_kind_sizes[float_lit->kind];
+
+        X64_data_serialize_int(data_seg, imm, size);
+        break;
+    }
+    case CONST_EXPR_PROC: {
+        // TODO: Need relocations for procedure addresses.
+        NIBBLE_FATAL_EXIT("Unhandled ConstExprKind `%d`\n", const_expr->kind);
+        break;
+    }
+    case CONST_EXPR_ARRAY_INIT: {
+        X64_data_serialize_array_init(data_seg, tmp_mem, const_expr);
+        break;
+    }
+    case CONST_EXPR_STRUCT_INIT: {
+        X64_data_serialize_struct_init(data_seg, tmp_mem, const_expr);
+        break;
+    }
+    case CONST_EXPR_UNION_INIT: {
+        X64_data_serialize_union_init(data_seg, tmp_mem, const_expr);
+        break;
+    }
+    default:
+        NIBBLE_FATAL_EXIT("Unhandled ConstExprKind `%d`\n", const_expr->kind);
+        break;
+    }
+}
+
+static void X64_add_data_var(X64_DataSegment* data_seg, Allocator* tmp_mem, const char* name, ConstExpr* const_expr)
+{
+    (void)name; // TODO: Use to create map for relocations.
+    Type* type = const_expr->type;
     size_t offset = array_len(data_seg->bytes);
     size_t align_pad = ALIGN_UP(offset, type->align) - offset;
 
-    X64_
-
-    offset += align_pad;
+    X64_data_fill_zeros(data_seg, align_pad);
+    X64_data_serialize(data_seg, tmp_mem, const_expr);
 }
-*/
 
-static void X64_init_data_segment(X64_DataSegment* data_seg, Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars)
+static void X64_init_data_segment(X64_DataSegment* data_seg, Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars)
 {
-    size_t num_vars = vars->num_elems;
+    size_t num_vars = vars->list.num_elems;
 
     if (!num_vars) {
         return;
     }
 
-    data_seg->bytes = array_create(gen_mem, u8, num_vars << 3); // Initial capacity of 8 bytes per variable.
+    // Set the initial capacity to twice the combined size of all variables to avoid reallocation
+    // due to additional alignment bytes.
+    data_seg->bytes = array_create(gen_mem, char, vars->size << 1);
 
-    for (size_t i = 0; i < num_vars; i += 1) {
-        Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(vars, i));
+    // Serialize the first variable separately to get its required alignment (w/o a branch in the loop).
+    {
+        Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, 0));
+        X64_add_data_var(data_seg, tmp_mem, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
 
-        //X64_add_data_var(data_seg, gen_mem, tmp_mem, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
+        data_seg->init_align = sym->type->align;
     }
+
+    // Serialize all other variables.
+    for (size_t i = 1; i < num_vars; i += 1) {
+        Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, i));
+        X64_add_data_var(data_seg, tmp_mem, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
+    }
+}
+
+static inline size_t X64_data_segment_size(X64_DataSegment* data_seg)
+{
+    return array_len(data_seg->bytes);
 }
 
 /*
@@ -227,9 +408,14 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
     const u32 rodata_size = 0; // TODO
     const char* rodata_bin = NULL; // TODO
 
-    const u32 data_off = ALIGN_UP(rodata_off + rodata_size, 16);
-    const u32 data_size = 0; // TODO
-    const char* data_bin = NULL; // TODO
+    // Serialize .data segment.
+    X64_DataSegment data_seg = {0};
+    X64_init_data_segment(&data_seg, gen_mem, tmp_mem, vars);
+
+    const u32 data_size = X64_data_segment_size(&data_seg);
+    const u32 data_align = data_seg.init_align;
+    const u32 data_off = ALIGN_UP(rodata_off + rodata_size, data_align);
+    const char* data_bin = data_seg.bytes;
 
     const u32 text_off = ALIGN_UP(data_off + data_size, 16);
     const u32 text_size = sizeof(text_bin);
@@ -273,7 +459,7 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
                                              .sh_size = data_size,
                                              .sh_link = 0,
                                              .sh_info = 0,
-                                             .sh_addralign = 0x10,
+                                             .sh_addralign = data_align,
                                              .sh_entsize = 0};
     }
 
