@@ -327,9 +327,39 @@ static void X64_init_data_segment(X64_DataSegment* data_seg, Allocator* gen_mem,
     }
 }
 
-static inline size_t X64_data_segment_size(X64_DataSegment* data_seg)
+static void X64_init_rodata_segment(X64_DataSegment* data_seg, Allocator* gen_mem, GlobalData* floats, GlobalData* strs)
 {
-    return array_len(data_seg->bytes);
+    size_t num_floats = floats->list.num_elems;
+    size_t num_strs = strs->list.num_elems;
+
+    if (!num_floats && !num_strs) {
+        return;
+    }
+
+    data_seg->bytes = array_create(gen_mem, char, floats->size + strs->size);
+    data_seg->init_align = 0x10; // 16-byte alignment is good enough for floats and strings.
+
+    // Serialize all floats.
+    for (size_t i = 0; i < num_floats; i += 1) {
+        FloatLit* float_lit = (FloatLit*)(*bucket_list_get_elem_packed(&floats->list, i));
+        Scalar imm = {.as_float = float_lit->value};
+        size_t size = float_kind_sizes[float_lit->kind];
+
+        X64_data_serialize_int(data_seg, imm, size);
+    }
+
+    // Serialize all strings.
+    for (size_t i = 0; i < num_strs; i += 1) {
+        StrLit* str_lit = (StrLit*)(*bucket_list_get_elem_packed(&strs->list, i));
+        size_t len = str_lit->len;
+        const char* str = str_lit->str;
+
+        for (size_t i = 0; i < len; i += 1) {
+            array_push(data_seg->bytes, str[i]);
+        }
+
+        array_push(data_seg->bytes, '\0');
+    }
 }
 
 /*
@@ -404,17 +434,22 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
 
     const u32 sections_off = elf_hdr.e_ehsize + elf_hdr.e_shnum * elf_hdr.e_shentsize;
 
-    const u32 rodata_off = sections_off;
-    const u32 rodata_size = 0; // TODO
-    const char* rodata_bin = NULL; // TODO
+    // Serialize .rodata segment.
+    X64_DataSegment rodata_seg = {0};
+    X64_init_rodata_segment(&rodata_seg, gen_mem, float_lits, str_lits);
+
+    const u32 rodata_size = array_len(rodata_seg.bytes);
+    const u32 rodata_align = rodata_seg.init_align;
+    const u32 rodata_off = has_rodata_sec ? ALIGN_UP(sections_off, rodata_align) : sections_off;
+    const char* rodata_bin = rodata_seg.bytes;
 
     // Serialize .data segment.
     X64_DataSegment data_seg = {0};
     X64_init_data_segment(&data_seg, gen_mem, tmp_mem, vars);
 
-    const u32 data_size = X64_data_segment_size(&data_seg);
+    const u32 data_size = array_len(data_seg.bytes);
     const u32 data_align = data_seg.init_align;
-    const u32 data_off = ALIGN_UP(rodata_off + rodata_size, data_align);
+    const u32 data_off = has_data_sec ? ALIGN_UP(rodata_off + rodata_size, data_align) : rodata_off;
     const char* data_bin = data_seg.bytes;
 
     const u32 text_off = ALIGN_UP(data_off + data_size, 16);
@@ -444,7 +479,7 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
                                                .sh_size = rodata_size,
                                                .sh_link = 0,
                                                .sh_info = 0,
-                                               .sh_addralign = 0x10,
+                                               .sh_addralign = rodata_align,
                                                .sh_entsize = 0};
     }
 
