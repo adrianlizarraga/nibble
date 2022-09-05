@@ -84,65 +84,76 @@ typedef struct Elf64_Sym {
 //
 
 typedef struct Elf_StrTable {
-    Array(u8) bytes;
+    Array(u8) buf;
 } Elf_StrTable;
 
 static void Elf_strtab_init(Elf_StrTable* table, Allocator* arena, u32 cap)
 {
-    table->bytes = array_create(arena, u8, cap);
+    table->buf = array_create(arena, u8, cap);
 
-    array_push(table->bytes, '\0');
+    array_push(table->buf, '\0');
 }
 
 static u32 Elf_strtab_add(Elf_StrTable* table, const char* str)
 {
-    u32 loc = (u32)array_len(table->bytes);
+    u32 loc = (u32)array_len(table->buf);
 
     for (const char* p = str; *p; p += 1) {
-        array_push(table->bytes, *p);
+        array_push(table->buf, *p);
     }
 
-    array_push(table->bytes, '\0');
+    array_push(table->buf, '\0');
 
     return loc;
 }
 
 static u32 Elf_strtab_size(const Elf_StrTable* table)
 {
-    return (u32)array_len(table->bytes);
+    return (u32)array_len(table->buf);
 }
 
 //
 // Data segment
 //
 
-typedef struct X64_DataSegment {
-    Array(char) bytes;
-    size_t init_align;
-} X64_DataSegment;
+typedef struct X64_DataSection {
+    Array(char) buf;
+    size_t align;
+
+    HMap var_offs; // Symbol* -> size_t (offset in buf)
+} X64_DataSection;
+
+typedef struct X64_RODataSection {
+    Array(char) buf;
+    size_t align;
+
+    HMap float_offs; // FloatLit* -> size_t (offset in buf)
+    HMap str_offs;   // StrLit* -> size_t (offset in buf)
+} X64_RODataSection;
+
 
 // Forward declaration.
-static void X64_data_serialize(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr);
+static void X64_data_serialize(Array(char)* buf, Allocator* tmp_mem, ConstExpr* const_expr);
 
-static inline void X64_data_fill_zeros(X64_DataSegment* data_seg, size_t size)
+static inline void X64_data_fill_zeros(Array(char)* buf, size_t size)
 {
     for (size_t i = 0; i < size; i += 1) {
-        array_push(data_seg->bytes, 0);
+        array_push(*buf, 0);
     }
 }
 
-static inline void X64_data_serialize_int(X64_DataSegment* data_seg, Scalar imm, size_t size)
+static inline void X64_data_serialize_int(Array(char)* buf, Scalar imm, size_t size)
 {
     u64 elem_val = imm.as_int._u64;
 
     // Write each byte of the value
     for (size_t i = 0; i < size; i += 1) {
-        array_push(data_seg->bytes, elem_val & 0xFFLL);
+        array_push(*buf, elem_val & 0xFFLL);
         elem_val = elem_val >> 8;
     }
 }
 
-static void X64_data_serialize_array_init(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr)
+static void X64_data_serialize_array_init(Array(char)* buf, Allocator* tmp_mem, ConstExpr* const_expr)
 {
     AllocatorState mem_state = allocator_get_state(tmp_mem);
 
@@ -166,17 +177,17 @@ static void X64_data_serialize_array_init(X64_DataSegment* data_seg, Allocator* 
     // Print an initial value for each element.
     for (u64 i = 0; i < num_elems; i += 1) {
         if (init_vals[i]) {
-            X64_data_serialize(data_seg, tmp_mem, init_vals[i]);
+            X64_data_serialize(buf, tmp_mem, init_vals[i]);
         }
         else {
-            X64_data_fill_zeros(data_seg, elem_type->size);
+            X64_data_fill_zeros(buf, elem_type->size);
         }
     }
 
     allocator_restore_state(mem_state);
 }
 
-static void X64_data_serialize_struct_init(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr)
+static void X64_data_serialize_struct_init(Array(char)* buf, Allocator* tmp_mem, ConstExpr* const_expr)
 {
     Type* type = const_expr->type;
     assert(type->kind == TYPE_STRUCT);
@@ -195,25 +206,25 @@ static void X64_data_serialize_struct_init(X64_DataSegment* data_seg, Allocator*
         size_t padding = field->offset - offset;
 
         // Fill padding with zeros.
-        X64_data_fill_zeros(data_seg, padding);
+        X64_data_fill_zeros(buf, padding);
         offset += padding;
 
         // Init field with specified value or zero.
         if (field_exprs[i]) {
-            X64_data_serialize(data_seg, tmp_mem, field_exprs[i]);
+            X64_data_serialize(buf, tmp_mem, field_exprs[i]);
         }
         else {
-            X64_data_fill_zeros(data_seg, field_size);
+            X64_data_fill_zeros(buf, field_size);
         }
 
         offset += field_size;
     }
 
     // Clear padding after last field.
-    X64_data_fill_zeros(data_seg, type->size - offset);
+    X64_data_fill_zeros(buf, type->size - offset);
 }
 
-static void X64_data_serialize_union_init(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr)
+static void X64_data_serialize_union_init(Array(char)* buf, Allocator* tmp_mem, ConstExpr* const_expr)
 {
     Type* type = const_expr->type;
     assert(type->kind == TYPE_UNION);
@@ -222,23 +233,23 @@ static void X64_data_serialize_union_init(X64_DataSegment* data_seg, Allocator* 
     ConstExpr* field_expr = const_expr->union_initzer.field_expr;
 
     if (field_expr) {
-        X64_data_serialize(data_seg, tmp_mem, field_expr);
-        X64_data_fill_zeros(data_seg, type->size - field->type->size);
+        X64_data_serialize(buf, tmp_mem, field_expr);
+        X64_data_fill_zeros(buf, type->size - field->type->size);
     }
     else {
-        X64_data_fill_zeros(data_seg, type->size);
+        X64_data_fill_zeros(buf, type->size);
     }
 }
 
-static void X64_data_serialize(X64_DataSegment* data_seg, Allocator* tmp_mem, ConstExpr* const_expr)
+static void X64_data_serialize(Array(char)* buf, Allocator* tmp_mem, ConstExpr* const_expr)
 {
     switch (const_expr->kind) {
     case CONST_EXPR_NONE: {
-        X64_data_fill_zeros(data_seg, const_expr->type->size);
+        X64_data_fill_zeros(buf, const_expr->type->size);
         break;
     }
     case CONST_EXPR_IMM: {
-        X64_data_serialize_int(data_seg, const_expr->imm, const_expr->type->size);
+        X64_data_serialize_int(buf, const_expr->imm, const_expr->type->size);
         break;
     }
     case CONST_EXPR_MEM_ADDR: {
@@ -252,10 +263,10 @@ static void X64_data_serialize(X64_DataSegment* data_seg, Allocator* tmp_mem, Co
         const char* str = str_lit->str;
 
         for (size_t i = 0; i < len; i += 1) {
-            array_push(data_seg->bytes, str[i]);
+            array_push(*buf, str[i]);
         }
 
-        array_push(data_seg->bytes, '\0');
+        array_push(*buf, '\0');
         break;
     }
     case CONST_EXPR_FLOAT_LIT: {
@@ -263,7 +274,7 @@ static void X64_data_serialize(X64_DataSegment* data_seg, Allocator* tmp_mem, Co
         Scalar imm = {.as_float = float_lit->value};
         size_t size = float_kind_sizes[float_lit->kind];
 
-        X64_data_serialize_int(data_seg, imm, size);
+        X64_data_serialize_int(buf, imm, size);
         break;
     }
     case CONST_EXPR_PROC: {
@@ -272,15 +283,15 @@ static void X64_data_serialize(X64_DataSegment* data_seg, Allocator* tmp_mem, Co
         break;
     }
     case CONST_EXPR_ARRAY_INIT: {
-        X64_data_serialize_array_init(data_seg, tmp_mem, const_expr);
+        X64_data_serialize_array_init(buf, tmp_mem, const_expr);
         break;
     }
     case CONST_EXPR_STRUCT_INIT: {
-        X64_data_serialize_struct_init(data_seg, tmp_mem, const_expr);
+        X64_data_serialize_struct_init(buf, tmp_mem, const_expr);
         break;
     }
     case CONST_EXPR_UNION_INIT: {
-        X64_data_serialize_union_init(data_seg, tmp_mem, const_expr);
+        X64_data_serialize_union_init(buf, tmp_mem, const_expr);
         break;
     }
     default:
@@ -289,18 +300,20 @@ static void X64_data_serialize(X64_DataSegment* data_seg, Allocator* tmp_mem, Co
     }
 }
 
-static void X64_add_data_var(X64_DataSegment* data_seg, Allocator* tmp_mem, const char* name, ConstExpr* const_expr)
+static void X64_add_data_var(X64_DataSection* data_sec, Allocator* tmp_mem, Symbol* sym)
 {
-    (void)name; // TODO: Use to create map for relocations.
+    ConstExpr* const_expr = &sym->as_var.const_expr;
     Type* type = const_expr->type;
-    size_t offset = array_len(data_seg->bytes);
+    size_t offset = array_len(data_sec->buf);
     size_t align_pad = ALIGN_UP(offset, type->align) - offset;
 
-    X64_data_fill_zeros(data_seg, align_pad);
-    X64_data_serialize(data_seg, tmp_mem, const_expr);
+    X64_data_fill_zeros(&data_sec->buf, align_pad);
+    X64_data_serialize(&data_sec->buf, tmp_mem, const_expr);
+
+    hmap_put(&data_sec->var_offs, PTR_UINT(sym), offset + align_pad);
 }
 
-static void X64_init_data_segment(X64_DataSegment* data_seg, Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars)
+static void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars)
 {
     size_t num_vars = vars->list.num_elems;
 
@@ -309,25 +322,26 @@ static void X64_init_data_segment(X64_DataSegment* data_seg, Allocator* gen_mem,
     }
 
     // Set the initial capacity to twice the combined size of all variables to avoid reallocation
-    // due to additional alignment bytes.
-    data_seg->bytes = array_create(gen_mem, char, vars->size << 1);
+    // due to additional alignment buf.
+    data_sec->buf = array_create(gen_mem, char, vars->size << 1);
+    data_sec->var_offs = hmap(clp2(vars->size), gen_mem);
 
     // Serialize the first variable separately to get its required alignment (w/o a branch in the loop).
     {
         Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, 0));
-        X64_add_data_var(data_seg, tmp_mem, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
+        X64_add_data_var(data_sec, tmp_mem, sym);
 
-        data_seg->init_align = sym->type->align;
+        data_sec->align = sym->type->align;
     }
 
     // Serialize all other variables.
     for (size_t i = 1; i < num_vars; i += 1) {
         Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, i));
-        X64_add_data_var(data_seg, tmp_mem, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
+        X64_add_data_var(data_sec, tmp_mem, sym);
     }
 }
 
-static void X64_init_rodata_segment(X64_DataSegment* data_seg, Allocator* gen_mem, GlobalData* floats, GlobalData* strs)
+static void X64_init_rodata_section(X64_RODataSection* rodata_sec, Allocator* gen_mem, GlobalData* floats, GlobalData* strs)
 {
     size_t num_floats = floats->list.num_elems;
     size_t num_strs = strs->list.num_elems;
@@ -336,8 +350,8 @@ static void X64_init_rodata_segment(X64_DataSegment* data_seg, Allocator* gen_me
         return;
     }
 
-    data_seg->bytes = array_create(gen_mem, char, floats->size + strs->size);
-    data_seg->init_align = 0x10; // 16-byte alignment is good enough for floats and strings.
+    rodata_sec->buf = array_create(gen_mem, char, floats->size + strs->size);
+    rodata_sec->align = 0x10; // 16-byte alignment is good enough for floats and strings.
 
     // Serialize all floats.
     for (size_t i = 0; i < num_floats; i += 1) {
@@ -345,7 +359,7 @@ static void X64_init_rodata_segment(X64_DataSegment* data_seg, Allocator* gen_me
         Scalar imm = {.as_float = float_lit->value};
         size_t size = float_kind_sizes[float_lit->kind];
 
-        X64_data_serialize_int(data_seg, imm, size);
+        X64_data_serialize_int(&rodata_sec->buf, imm, size);
     }
 
     // Serialize all strings.
@@ -355,10 +369,10 @@ static void X64_init_rodata_segment(X64_DataSegment* data_seg, Allocator* gen_me
         const char* str = str_lit->str;
 
         for (size_t i = 0; i < len; i += 1) {
-            array_push(data_seg->bytes, str[i]);
+            array_push(rodata_sec->buf, str[i]);
         }
 
-        array_push(data_seg->bytes, '\0');
+        array_push(rodata_sec->buf, '\0');
     }
 }
 
@@ -435,22 +449,22 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
     const u32 sections_off = elf_hdr.e_ehsize + elf_hdr.e_shnum * elf_hdr.e_shentsize;
 
     // Serialize .rodata segment.
-    X64_DataSegment rodata_seg = {0};
-    X64_init_rodata_segment(&rodata_seg, gen_mem, float_lits, str_lits);
+    X64_RODataSection rodata_sec = {0};
+    X64_init_rodata_section(&rodata_sec, gen_mem, float_lits, str_lits);
 
-    const u32 rodata_size = array_len(rodata_seg.bytes);
-    const u32 rodata_align = rodata_seg.init_align;
+    const u32 rodata_size = array_len(rodata_sec.buf);
+    const u32 rodata_align = rodata_sec.align;
     const u32 rodata_off = has_rodata_sec ? ALIGN_UP(sections_off, rodata_align) : sections_off;
-    const char* rodata_bin = rodata_seg.bytes;
+    const char* rodata_bin = rodata_sec.buf;
 
     // Serialize .data segment.
-    X64_DataSegment data_seg = {0};
-    X64_init_data_segment(&data_seg, gen_mem, tmp_mem, vars);
+    X64_DataSection data_sec = {0};
+    X64_init_data_section(&data_sec, gen_mem, tmp_mem, vars);
 
-    const u32 data_size = array_len(data_seg.bytes);
-    const u32 data_align = data_seg.init_align;
+    const u32 data_size = array_len(data_sec.buf);
+    const u32 data_align = data_sec.align;
     const u32 data_off = has_data_sec ? ALIGN_UP(rodata_off + rodata_size, data_align) : rodata_off;
-    const char* data_bin = data_seg.bytes;
+    const char* data_bin = data_sec.buf;
 
     const u32 text_off = ALIGN_UP(data_off + data_size, 16);
     const u32 text_size = sizeof(text_bin);
@@ -643,9 +657,9 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
 
     curr_file_off = write_bin(out_fd, text_bin, elf_shdrs[text_shndx].sh_size, elf_shdrs[text_shndx].sh_offset, curr_file_off);
     curr_file_off =
-        write_bin(out_fd, shstrtab.bytes, elf_shdrs[shstrtab_shndx].sh_size, elf_shdrs[shstrtab_shndx].sh_offset, curr_file_off);
+        write_bin(out_fd, shstrtab.buf, elf_shdrs[shstrtab_shndx].sh_size, elf_shdrs[shstrtab_shndx].sh_offset, curr_file_off);
     curr_file_off = write_bin(out_fd, elf_syms, elf_shdrs[symtab_shndx].sh_size, elf_shdrs[symtab_shndx].sh_offset, curr_file_off);
-    curr_file_off = write_bin(out_fd, strtab.bytes, elf_shdrs[strtab_shndx].sh_size, elf_shdrs[strtab_shndx].sh_offset, curr_file_off);
+    curr_file_off = write_bin(out_fd, strtab.buf, elf_shdrs[strtab_shndx].sh_size, elf_shdrs[strtab_shndx].sh_offset, curr_file_off);
 
     fclose(out_fd);
     allocator_restore_state(gen_mem_state);
