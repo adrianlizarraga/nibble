@@ -5,6 +5,8 @@
 
 #define ARRAY_MIN_CAP 16
 
+#define Array(t) t*
+
 typedef struct ArrayHdr {
     size_t len;
     size_t cap;

@@ -10,27 +10,3 @@ _start:
   mov edi, eax
   mov rax, 60
   syscall
-
-_nibble_#writeout:
-  push rbp
-  mov rbp, rsp
-  xchg rdi, rsi
-  mov rax, 1
-  mov rdx, rdi
-  mov rdi, 1
-  syscall
-  mov rsp, rbp
-  pop rbp
-  ret
-
-_nibble_#readin:
-  push rbp
-  mov rbp, rsp
-  xchg rdi, rsi
-  mov rax, 0
-  mov rdx, rdi
-  mov rdi, 0
-  syscall
-  mov rsp, rbp
-  pop rbp
-  ret
