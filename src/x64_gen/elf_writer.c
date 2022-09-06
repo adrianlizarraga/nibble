@@ -324,7 +324,7 @@ static void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem,
     // Set the initial capacity to twice the combined size of all variables to avoid reallocation
     // due to additional alignment buf.
     data_sec->buf = array_create(gen_mem, char, vars->size << 1);
-    data_sec->var_offs = hmap(clp2(vars->size), gen_mem);
+    data_sec->var_offs = hmap(clp2(num_vars), gen_mem);
 
     // Serialize the first variable separately to get its required alignment (w/o a branch in the loop).
     {
