@@ -300,17 +300,16 @@ static void X64_data_serialize(Array(char)* buf, Allocator* tmp_mem, ConstExpr* 
     }
 }
 
-static void X64_add_data_var(X64_DataSection* data_sec, Allocator* tmp_mem, Symbol* sym)
+static size_t X64_add_data_item(Array(char)* buf, Allocator* tmp_mem, ConstExpr* const_expr)
 {
-    ConstExpr* const_expr = &sym->as_var.const_expr;
     Type* type = const_expr->type;
-    size_t offset = array_len(data_sec->buf);
+    size_t offset = array_len(*buf);
     size_t align_pad = ALIGN_UP(offset, type->align) - offset;
 
-    X64_data_fill_zeros(&data_sec->buf, align_pad);
-    X64_data_serialize(&data_sec->buf, tmp_mem, const_expr);
+    X64_data_fill_zeros(buf, align_pad);
+    X64_data_serialize(buf, tmp_mem, const_expr);
 
-    hmap_put(&data_sec->var_offs, PTR_UINT(sym), offset + align_pad);
+    return offset + align_pad;
 }
 
 static void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars)
@@ -329,7 +328,9 @@ static void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem,
     // Serialize the first variable separately to get its required alignment (w/o a branch in the loop).
     {
         Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, 0));
-        X64_add_data_var(data_sec, tmp_mem, sym);
+        size_t offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr);
+
+        hmap_put(&data_sec->var_offs, PTR_UINT(sym), offset); // Record offset.
 
         data_sec->align = sym->type->align;
     }
@@ -337,11 +338,13 @@ static void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem,
     // Serialize all other variables.
     for (size_t i = 1; i < num_vars; i += 1) {
         Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, i));
-        X64_add_data_var(data_sec, tmp_mem, sym);
+        size_t offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr);
+
+        hmap_put(&data_sec->var_offs, PTR_UINT(sym), offset); // Record offset.
     }
 }
 
-static void X64_init_rodata_section(X64_RODataSection* rodata_sec, Allocator* gen_mem, GlobalData* floats, GlobalData* strs)
+static void X64_init_rodata_section(X64_RODataSection* rodata_sec, Allocator* gen_mem, Allocator* tmp_mem, GlobalData* floats, GlobalData* strs)
 {
     size_t num_floats = floats->list.num_elems;
     size_t num_strs = strs->list.num_elems;
@@ -354,25 +357,36 @@ static void X64_init_rodata_section(X64_RODataSection* rodata_sec, Allocator* ge
     rodata_sec->align = 0x10; // 16-byte alignment is good enough for floats and strings.
 
     // Serialize all floats.
-    for (size_t i = 0; i < num_floats; i += 1) {
-        FloatLit* float_lit = (FloatLit*)(*bucket_list_get_elem_packed(&floats->list, i));
-        Scalar imm = {.as_float = float_lit->value};
-        size_t size = float_kind_sizes[float_lit->kind];
+    if (num_floats) {
+        rodata_sec->float_offs = hmap(clp2(num_floats), gen_mem);
 
-        X64_data_serialize_int(&rodata_sec->buf, imm, size);
+        for (size_t i = 0; i < num_floats; i += 1) {
+            FloatLit* float_lit = (FloatLit*)(*bucket_list_get_elem_packed(&floats->list, i));
+            Type* type = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
+            ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = type, .float_lit = float_lit};
+            size_t offset = X64_add_data_item(&rodata_sec->buf, tmp_mem, &const_expr);
+
+            hmap_put(&rodata_sec->float_offs, PTR_UINT(float_lit), offset);
+        }
     }
 
     // Serialize all strings.
-    for (size_t i = 0; i < num_strs; i += 1) {
-        StrLit* str_lit = (StrLit*)(*bucket_list_get_elem_packed(&strs->list, i));
-        size_t len = str_lit->len;
-        const char* str = str_lit->str;
+    if (num_strs) {
+        rodata_sec->str_offs = hmap(clp2(num_strs), gen_mem);
 
-        for (size_t i = 0; i < len; i += 1) {
-            array_push(rodata_sec->buf, str[i]);
+        for (size_t i = 0; i < num_strs; i += 1) {
+            StrLit* str_lit = (StrLit*)(*bucket_list_get_elem_packed(&strs->list, i));
+            size_t len = str_lit->len;
+            const char* str = str_lit->str;
+            size_t offset = array_len(rodata_sec->buf);
+
+            for (size_t i = 0; i < len; i += 1) {
+                array_push(rodata_sec->buf, str[i]);
+            }
+
+            array_push(rodata_sec->buf, '\0');
+            hmap_put(&rodata_sec->str_offs, PTR_UINT(str_lit), offset);
         }
-
-        array_push(rodata_sec->buf, '\0');
     }
 }
 
@@ -450,7 +464,7 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
 
     // Serialize .rodata segment.
     X64_RODataSection rodata_sec = {0};
-    X64_init_rodata_section(&rodata_sec, gen_mem, float_lits, str_lits);
+    X64_init_rodata_section(&rodata_sec, gen_mem, tmp_mem, float_lits, str_lits);
 
     const u32 rodata_size = array_len(rodata_sec.buf);
     const u32 rodata_align = rodata_sec.align;
