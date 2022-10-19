@@ -767,25 +767,25 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, X64_ElfProg* e
         .e_phnum = 0,
         .e_shentsize = sizeof(Elf64_Shdr),
         .e_shnum = num_shdrs,
-        .e_shstrndx = x64_prog_shndx(elf_prog, X64_ELF_SECTION_SHSTRTAB);
-};
+        .e_shstrndx = x64_prog_shndx(elf_prog, X64_ELF_SECTION_SHSTRTAB)
+    };
 
-const u32 sections_init_off = elf_hdr.e_ehsize + elf_hdr.e_shnum * elf_hdr.e_shentsize;
-x64_prog_finalize_offsets(elf_prog, sections_init_off);
+    const u32 sections_init_off = elf_hdr.e_ehsize + elf_hdr.e_shnum * elf_hdr.e_shentsize;
+    x64_prog_finalize_offsets(elf_prog, sections_init_off);
 
-Elf64_Shdr* elf_shdrs = alloc_array(gen_mem, Elf64_Shdr, num_shdrs, true);
-x64_prog_fill_shdrs(elf_prog, elf_shdrs);
+    Elf64_Shdr* elf_shdrs = alloc_array(gen_mem, Elf64_Shdr, num_shdrs, true);
+    x64_prog_fill_shdrs(elf_prog, elf_shdrs);
 
-// Write elf file.
-u32 curr_file_off = 0;
+    // Write elf file.
+    u32 curr_file_off = 0;
 
-curr_file_off = write_bin(out_fd, &elf_hdr, sizeof(Elf64_Hdr), 0, curr_file_off);
-curr_file_off = write_bin(out_fd, elf_shdrs, num_shdrs * sizeof(Elf64_Shdr), elf_hdr.e_shoff, curr_file_off);
+    curr_file_off = write_bin(out_fd, &elf_hdr, sizeof(Elf64_Hdr), 0, curr_file_off);
+    curr_file_off = write_bin(out_fd, elf_shdrs, num_shdrs * sizeof(Elf64_Shdr), elf_hdr.e_shoff, curr_file_off);
 
-x64_prog_write_sections(elf_prog, out_fd, currr_file_off);
+    x64_prog_write_sections(elf_prog, out_fd, currr_file_off);
 
-fclose(out_fd);
-return true;
+    fclose(out_fd);
+    return true;
 }
 
 bool x64_gen_elf2(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
