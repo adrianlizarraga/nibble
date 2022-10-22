@@ -363,42 +363,77 @@ static void X64_init_rodata_section(X64_RODataSection* rodata, Allocator* gen_me
         return;
     }
 
-    rodata.buf = array_create(gen_mem, char, floats->size + strs->size);
+    rodata->buf = array_create(gen_mem, char, floats->size + strs->size);
 
     // Serialize all floats.
     if (num_floats) {
-        rodata.float_offs = hmap(clp2(num_floats), gen_mem);
+        rodata->float_offs = hmap(clp2(num_floats), gen_mem);
 
         for (size_t i = 0; i < num_floats; i += 1) {
             FloatLit* float_lit = (FloatLit*)(*bucket_list_get_elem_packed(&floats->list, i));
             Type* type = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
             ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = type, .float_lit = float_lit};
-            size_t offset = X64_add_data_item(&rodata.buf, tmp_mem, &const_expr);
+            size_t offset = X64_add_data_item(&rodata->buf, tmp_mem, &const_expr);
 
-            hmap_put(&rodata.float_offs, PTR_UINT(float_lit), offset);
+            hmap_put(&rodata->float_offs, PTR_UINT(float_lit), offset);
         }
     }
 
     // Serialize all strings.
     if (num_strs) {
-        rodata.str_offs = hmap(clp2(num_strs), gen_mem);
+        rodata->str_offs = hmap(clp2(num_strs), gen_mem);
 
         for (size_t i = 0; i < num_strs; i += 1) {
             StrLit* str_lit = (StrLit*)(*bucket_list_get_elem_packed(&strs->list, i));
             size_t len = str_lit->len;
             const char* str = str_lit->str;
-            size_t offset = array_len(rodata.buf);
+            size_t offset = array_len(rodata->buf);
 
             for (size_t i = 0; i < len; i += 1) {
-                array_push(rodata.buf, str[i]);
+                array_push(rodata->buf, str[i]);
             }
 
-            array_push(rodata.buf, '\0');
-            hmap_put(&rodata.str_offs, PTR_UINT(str_lit), offset);
+            array_push(rodata->buf, '\0');
+            hmap_put(&rodata->str_offs, PTR_UINT(str_lit), offset);
         }
     }
 
     return;
+}
+
+/*
+$ xxd -g 1 -s $((0x180)) -l $((0x41)) out.o
+00000180: 48 31 ed 8b 3c 24 48 8d 74 24 08 48 8d 54 fc 10  H1..<$H.t$.H.T..
+00000190: 31 c0 e8 09 00 00 00 89 c7 b8 3c 00 00 00 0f 05  1.........<.....
+000001a0: 55 48 89 e5 48 83 ec 10 c7 45 fc 0a 00 00 00 c7  UH..H....E......
+000001b0: 45 f8 01 00 00 00 8b 45 fc 03 45 f8 48 89 ec 5d  E......E..E.H..]
+000001c0: c3
+*/
+// Hard-coded for now.
+static const u8 text_bin[] = {0x48, 0x31, 0xed, 0x8b, 0x3c, 0x24, 0x48, 0x8d, 0x74, 0x24, 0x08, 0x48, 0x8d, 0x54, 0xfc, 0x10, 0x31,
+                              0xc0, 0xe8, 0x09, 0x00, 0x00, 0x00, 0x89, 0xc7, 0xb8, 0x3c, 0x00, 0x00, 0x00, 0x0f, 0x05, 0x55, 0x48,
+                              0x89, 0xe5, 0x48, 0x83, 0xec, 0x10, 0xc7, 0x45, 0xfc, 0x0a, 0x00, 0x00, 0x00, 0xc7, 0x45, 0xf8, 0x01,
+                              0x00, 0x00, 0x00, 0x8b, 0x45, 0xfc, 0x03, 0x45, 0xf8, 0x48, 0x89, 0xec, 0x5d, 0xc3};
+
+static u32 write_bin(FILE* fd, const void* bin, u32 size, u32 tgt_offset, u32 curr_offset)
+{
+    u32 offset = curr_offset;
+
+    while (offset < tgt_offset) {
+        fputc('\0', fd);
+        offset += 1;
+    }
+
+    assert(offset == tgt_offset);
+
+    u32 num_written = (u32)fwrite(bin, 1, size, fd);
+
+    if (num_written != size) {
+        NIBBLE_FATAL_EXIT("Failed to write elf binary.");
+        return offset;
+    }
+
+    return offset + size;
 }
 
 typedef enum X64_SectionKind {
@@ -425,6 +460,13 @@ typedef struct X64_Section {
         Elf_StrTable strtab;
     };
 } X64_Section;
+
+typedef struct X64_ElfProg {
+    u32 num_sections;
+    X64_Section sections[X64_ELF_SECTION_COUNT];
+    u32 sh_indices[X64_ELF_SECTION_COUNT];
+    u32 sh_name_locs[X64_ELF_SECTION_COUNT];
+} X64_ElfProg;
 
 static inline const void* x64_prog_sec_data(const X64_ElfProg* prog, X64_SectionKind section_kind)
 {
@@ -515,18 +557,11 @@ static inline u32 x64_prog_sec_offset(const X64_ElfProg* prog, X64_SectionKind s
     return prog->sections[section_kind].offset;
 }
 
-typedef struct X64_ElfProg {
-    u32 num_sections;
-    X64_ElfSectionData sections[X64_ELF_SECTION_COUNT];
-    u32 sh_indices[X64_ELF_SECTION_COUNT];
-    u32 sh_name_locs[X64_ELF_SECTION_COUNT];
-} X64_ElfProg;
-
-static inline void x64_init_elf_prog(X64_ElfProg* elf_prog, bool has_rodata_sec, bool has_data_sec, bool has_rela_text_sec,
-                                     bool has_rela_data_sec)
+static inline void x64_init_elf_prog(X64_ElfProg* elf_prog, Allocator* gen_mem, bool has_rodata_sec,
+                                     bool has_data_sec, bool has_rela_text_sec, bool has_rela_data_sec)
 {
     // Init shstrtab
-    Elf_StrTable* shstrtab = &elf_prog->section[X64_ELF_SECTION_SHSTRTAB].shstrtab;
+    Elf_StrTable* shstrtab = &elf_prog->sections[X64_ELF_SECTION_SHSTRTAB].shstrtab;
     Elf_strtab_init(shstrtab, gen_mem, 38);
 
     // .rodata?, .data?, .text, .shstrtab, .symtab, .strtab, .rela.text?, .rela.data?
@@ -536,8 +571,8 @@ static inline void x64_init_elf_prog(X64_ElfProg* elf_prog, bool has_rodata_sec,
 
 #define _ADD_SECTION(k, i, n)                                \
     do {                                                     \
-        prog->sh_indices[k] = i;                             \
-        prog->sh_name_locs[k] = Elf_strtab_add(shstrtab, n); \
+        elf_prog->sh_indices[k] = i;                             \
+        elf_prog->sh_name_locs[k] = Elf_strtab_add(shstrtab, n); \
     } while (0)
 
     if (has_rodata_sec) {
@@ -568,12 +603,12 @@ static inline u32 x64_prog_sh_name_loc(const X64_ElfProg* prog, X64_SectionKind 
     return prog->sh_name_locs[kind];
 }
 
-static inline u32 x64_prog_finalize_offsets(X64_ElfProg* prog, u32 init_offset)
+static inline void x64_prog_finalize_offsets(X64_ElfProg* prog, u32 init_offset)
 {
     u32 offset = init_offset;
 
     for (u32 i = 0; i < X64_ELF_SECTION_COUNT; ++i) {
-        X64_ElfSectionData* section = &prog->sections[i];
+        X64_Section* section = &prog->sections[i];
         u32 index = prog->sh_indices[i];
 
         if (index > 0) {
@@ -707,41 +742,6 @@ static void x64_prog_write_sections(const X64_ElfProg* prog, FILE* out_fd, u32 i
     }
 }
 
-/*
-$ xxd -g 1 -s $((0x180)) -l $((0x41)) out.o
-00000180: 48 31 ed 8b 3c 24 48 8d 74 24 08 48 8d 54 fc 10  H1..<$H.t$.H.T..
-00000190: 31 c0 e8 09 00 00 00 89 c7 b8 3c 00 00 00 0f 05  1.........<.....
-000001a0: 55 48 89 e5 48 83 ec 10 c7 45 fc 0a 00 00 00 c7  UH..H....E......
-000001b0: 45 f8 01 00 00 00 8b 45 fc 03 45 f8 48 89 ec 5d  E......E..E.H..]
-000001c0: c3
-*/
-// Hard-coded for now.
-static const u8 text_bin[] = {0x48, 0x31, 0xed, 0x8b, 0x3c, 0x24, 0x48, 0x8d, 0x74, 0x24, 0x08, 0x48, 0x8d, 0x54, 0xfc, 0x10, 0x31,
-                              0xc0, 0xe8, 0x09, 0x00, 0x00, 0x00, 0x89, 0xc7, 0xb8, 0x3c, 0x00, 0x00, 0x00, 0x0f, 0x05, 0x55, 0x48,
-                              0x89, 0xe5, 0x48, 0x83, 0xec, 0x10, 0xc7, 0x45, 0xfc, 0x0a, 0x00, 0x00, 0x00, 0xc7, 0x45, 0xf8, 0x01,
-                              0x00, 0x00, 0x00, 0x8b, 0x45, 0xfc, 0x03, 0x45, 0xf8, 0x48, 0x89, 0xec, 0x5d, 0xc3};
-
-static u32 write_bin(FILE* fd, const void* bin, u32 size, u32 tgt_offset, u32 curr_offset)
-{
-    u32 offset = curr_offset;
-
-    while (offset < tgt_offset) {
-        fputc('\0', fd);
-        offset += 1;
-    }
-
-    assert(offset == tgt_offset);
-
-    u32 num_written = (u32)fwrite(bin, 1, size, fd);
-
-    if (num_written != size) {
-        NIBBLE_FATAL_EXIT("Failed to write elf binary.");
-        return offset;
-    }
-
-    return offset + size;
-}
-
 static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, X64_ElfProg* elf_prog, const BucketList* foreign_procs,
                           const char* output_file)
 {
@@ -782,14 +782,14 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, X64_ElfProg* e
     curr_file_off = write_bin(out_fd, &elf_hdr, sizeof(Elf64_Hdr), 0, curr_file_off);
     curr_file_off = write_bin(out_fd, elf_shdrs, num_shdrs * sizeof(Elf64_Shdr), elf_hdr.e_shoff, curr_file_off);
 
-    x64_prog_write_sections(elf_prog, out_fd, currr_file_off);
+    x64_prog_write_sections(elf_prog, out_fd, curr_file_off);
 
     fclose(out_fd);
     return true;
 }
 
-bool x64_gen_elf2(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
-                  GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
+bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
+                 GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
     AllocatorState gen_mem_state = allocator_get_state(gen_mem);
 
@@ -797,7 +797,7 @@ bool x64_gen_elf2(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Buck
     const bool has_data_sec = vars->list.num_elems > 0;
 
     X64_ElfProg elf_prog = {0};
-    x64_init_elf_prog(&elf_prog, has_rodata_sec, has_data_sec, false, false);
+    x64_init_elf_prog(&elf_prog, gen_mem, has_rodata_sec, has_data_sec, false, false);
 
     // .rodata
     if (has_rodata_sec) {
@@ -871,6 +871,7 @@ bool x64_gen_elf2(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Buck
     return success;
 }
 
+/*
 bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
                  GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
@@ -1125,3 +1126,5 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
     allocator_restore_state(gen_mem_state);
     return true;
 }
+*/
+
