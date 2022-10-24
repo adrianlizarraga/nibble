@@ -37,8 +37,8 @@ void hmap_clear(HMap* map);
 void hmap_destroy(HMap* map);
 
 uint64_t* hmap_put(HMap* map, uint64_t key, uint64_t value);
-uint64_t* hmap_get(HMap* map, uint64_t key);
-void* hmap_get_obj(HMap* map, uint64_t key);
+uint64_t* hmap_get(const HMap* map, uint64_t key);
+void* hmap_get_obj(const HMap* map, uint64_t key);
 
 #define FNV_INIT 0xcbf29ce484222325ULL
 

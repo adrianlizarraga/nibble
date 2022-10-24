@@ -38,7 +38,10 @@
 // Symbol visibility
 #define ELF_STV_DEFAULT 0
 
-#define ELF_NEED_PATCH 0
+// AMD X86_64 relocation types
+#define ELF_R_X86_64_NONE 0 // None
+#define ELF_R_X86_64_64 1 // Direct: S + A
+#define ELF_R_X86_64_PC32 2 // PC relative: S + A - P
 
 typedef struct Elf64_Hdr {
     u8 e_ident[16]; // Magic number + stuff
@@ -78,6 +81,12 @@ typedef struct Elf64_Sym {
     u64 st_value;
     u64 st_size;
 } Elf64_Sym;
+
+typedef struct Elf64_Rela {
+    u64 r_offset;
+    u64 r_info;
+    s64 r_addend;
+} Elf64_Rela;
 
 //
 // ELF String table
@@ -123,13 +132,28 @@ typedef struct Elf_SymTable {
 } Elf_SymTable;
 
 //
+// ELF Relocations table
+//
+
+typedef struct Elf_RelaTable {
+    Elf64_Rela* relocs;
+    u32 num_relocs;
+} Elf_RelaTable;
+
+//
 // Data segment
 //
+
+typedef struct X64_DataReloc {
+    ConstAddr ref_addr; // Referenced address of symbol or string that needs to be determined by linker.
+    u32 usage_off; // Offset into data section that needs to be patched by linker.
+} X64_DataReloc;
 
 typedef struct X64_DataSection {
     Array(char) buf;
     u32 align;
     HMap var_offs; // Symbol* -> size_t (offset in buf)
+    Array(X64_DataReloc) relocs;
 } X64_DataSection;
 
 typedef struct X64_RODataSection {
@@ -139,8 +163,14 @@ typedef struct X64_RODataSection {
     HMap str_offs; // StrLit* -> size_t (offset in buf)
 } X64_RODataSection;
 
+static inline void X64_add_reloc_use(Array(X64_DataReloc) * relocs, u64 usage_off, const ConstAddr* ref_addr)
+{
+    X64_DataReloc r = {.ref_addr = *ref_addr, .usage_off = usage_off};
+    array_push(*relocs, r);
+}
+
 // Forward declaration.
-static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr);
+static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr, Array(X64_DataReloc) * relocs);
 
 static inline void X64_data_fill_zeros(Array(char) * buf, size_t size)
 {
@@ -160,7 +190,7 @@ static inline void X64_data_serialize_int(Array(char) * buf, Scalar imm, size_t 
     }
 }
 
-static void X64_data_serialize_array_init(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr)
+static void X64_data_serialize_array_init(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr, Array(X64_DataReloc) * relocs)
 {
     AllocatorState mem_state = allocator_get_state(tmp_mem);
 
@@ -184,7 +214,7 @@ static void X64_data_serialize_array_init(Array(char) * buf, Allocator* tmp_mem,
     // Print an initial value for each element.
     for (u64 i = 0; i < num_elems; i += 1) {
         if (init_vals[i]) {
-            X64_data_serialize(buf, tmp_mem, init_vals[i]);
+            X64_data_serialize(buf, tmp_mem, init_vals[i], relocs);
         }
         else {
             X64_data_fill_zeros(buf, elem_type->size);
@@ -194,7 +224,7 @@ static void X64_data_serialize_array_init(Array(char) * buf, Allocator* tmp_mem,
     allocator_restore_state(mem_state);
 }
 
-static void X64_data_serialize_struct_init(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr)
+static void X64_data_serialize_struct_init(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr, Array(X64_DataReloc) * relocs)
 {
     Type* type = const_expr->type;
     assert(type->kind == TYPE_STRUCT);
@@ -218,7 +248,7 @@ static void X64_data_serialize_struct_init(Array(char) * buf, Allocator* tmp_mem
 
         // Init field with specified value or zero.
         if (field_exprs[i]) {
-            X64_data_serialize(buf, tmp_mem, field_exprs[i]);
+            X64_data_serialize(buf, tmp_mem, field_exprs[i], relocs);
         }
         else {
             X64_data_fill_zeros(buf, field_size);
@@ -231,7 +261,7 @@ static void X64_data_serialize_struct_init(Array(char) * buf, Allocator* tmp_mem
     X64_data_fill_zeros(buf, type->size - offset);
 }
 
-static void X64_data_serialize_union_init(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr)
+static void X64_data_serialize_union_init(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr, Array(X64_DataReloc) * relocs)
 {
     Type* type = const_expr->type;
     assert(type->kind == TYPE_UNION);
@@ -240,7 +270,7 @@ static void X64_data_serialize_union_init(Array(char) * buf, Allocator* tmp_mem,
     ConstExpr* field_expr = const_expr->union_initzer.field_expr;
 
     if (field_expr) {
-        X64_data_serialize(buf, tmp_mem, field_expr);
+        X64_data_serialize(buf, tmp_mem, field_expr, relocs);
         X64_data_fill_zeros(buf, type->size - field->type->size);
     }
     else {
@@ -248,7 +278,7 @@ static void X64_data_serialize_union_init(Array(char) * buf, Allocator* tmp_mem,
     }
 }
 
-static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr)
+static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr, Array(X64_DataReloc) * relocs)
 {
     switch (const_expr->kind) {
     case CONST_EXPR_NONE: {
@@ -260,8 +290,14 @@ static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr*
         break;
     }
     case CONST_EXPR_MEM_ADDR: {
-        // TODO: Need relocations for address of symbols or string literals.
-        NIBBLE_FATAL_EXIT("Unhandled ConstExprKind `%d`\n", const_expr->kind);
+        assert(relocs != NULL);
+
+        // Handles relocations for address of symbols and string literals.
+        X64_add_reloc_use(relocs, array_len(*buf), &const_expr->addr);
+
+        // Fill with zeros. Linker will fill-in the actual address
+        // using the relacation information we generate.
+        X64_data_fill_zeros(buf, const_expr->type->size);
         break;
     }
     case CONST_EXPR_STR_LIT: {
@@ -290,15 +326,15 @@ static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr*
         break;
     }
     case CONST_EXPR_ARRAY_INIT: {
-        X64_data_serialize_array_init(buf, tmp_mem, const_expr);
+        X64_data_serialize_array_init(buf, tmp_mem, const_expr, relocs);
         break;
     }
     case CONST_EXPR_STRUCT_INIT: {
-        X64_data_serialize_struct_init(buf, tmp_mem, const_expr);
+        X64_data_serialize_struct_init(buf, tmp_mem, const_expr, relocs);
         break;
     }
     case CONST_EXPR_UNION_INIT: {
-        X64_data_serialize_union_init(buf, tmp_mem, const_expr);
+        X64_data_serialize_union_init(buf, tmp_mem, const_expr, relocs);
         break;
     }
     default:
@@ -307,14 +343,14 @@ static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr*
     }
 }
 
-static size_t X64_add_data_item(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr)
+static size_t X64_add_data_item(Array(char) * buf, Allocator* tmp_mem, ConstExpr* const_expr, Array(X64_DataReloc) * relocs)
 {
     Type* type = const_expr->type;
     size_t offset = array_len(*buf);
     size_t align_pad = ALIGN_UP(offset, type->align) - offset;
 
     X64_data_fill_zeros(buf, align_pad);
-    X64_data_serialize(buf, tmp_mem, const_expr);
+    X64_data_serialize(buf, tmp_mem, const_expr, relocs);
 
     return offset + align_pad;
 }
@@ -331,11 +367,12 @@ static void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem,
     // due to additional alignment buf.
     data_sec->buf = array_create(gen_mem, char, vars->size << 1);
     data_sec->var_offs = hmap(clp2(num_vars), gen_mem);
+    data_sec->relocs = array_create(gen_mem, X64_DataReloc, vars->size);
 
     // Serialize the first variable separately to get its required alignment (w/o a branch in the loop).
     {
         Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, 0));
-        size_t offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr);
+        size_t offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr, &data_sec->relocs);
 
         hmap_put(&data_sec->var_offs, PTR_UINT(sym), offset); // Record offset.
 
@@ -345,7 +382,7 @@ static void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem,
     // Serialize all other variables.
     for (size_t i = 1; i < num_vars; i += 1) {
         Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, i));
-        size_t offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr);
+        size_t offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr, &data_sec->relocs);
 
         hmap_put(&data_sec->var_offs, PTR_UINT(sym), offset); // Record offset.
     }
@@ -373,7 +410,7 @@ static void X64_init_rodata_section(X64_RODataSection* rodata, Allocator* gen_me
             FloatLit* float_lit = (FloatLit*)(*bucket_list_get_elem_packed(&floats->list, i));
             Type* type = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
             ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = type, .float_lit = float_lit};
-            size_t offset = X64_add_data_item(&rodata->buf, tmp_mem, &const_expr);
+            size_t offset = X64_add_data_item(&rodata->buf, tmp_mem, &const_expr, NULL);
 
             hmap_put(&rodata->float_offs, PTR_UINT(float_lit), offset);
         }
@@ -401,6 +438,10 @@ static void X64_init_rodata_section(X64_RODataSection* rodata, Allocator* gen_me
     return;
 }
 
+//
+// Text segment
+//
+
 /*
 $ xxd -g 1 -s $((0x180)) -l $((0x41)) out.o
 00000180: 48 31 ed 8b 3c 24 48 8d 74 24 08 48 8d 54 fc 10  H1..<$H.t$.H.T..
@@ -414,6 +455,12 @@ static const u8 text_bin[] = {0x48, 0x31, 0xed, 0x8b, 0x3c, 0x24, 0x48, 0x8d, 0x
                               0xc0, 0xe8, 0x09, 0x00, 0x00, 0x00, 0x89, 0xc7, 0xb8, 0x3c, 0x00, 0x00, 0x00, 0x0f, 0x05, 0x55, 0x48,
                               0x89, 0xe5, 0x48, 0x83, 0xec, 0x10, 0xc7, 0x45, 0xfc, 0x0a, 0x00, 0x00, 0x00, 0xc7, 0x45, 0xf8, 0x01,
                               0x00, 0x00, 0x00, 0x8b, 0x45, 0xfc, 0x03, 0x45, 0xf8, 0x48, 0x89, 0xec, 0x5d, 0xc3};
+
+typedef struct X64_TextSection {
+    const u8* buf;
+    size_t size;
+    u32 align;
+} X64_TextSection;
 
 static u32 write_bin(FILE* fd, const void* bin, u32 size, u32 tgt_offset, u32 curr_offset)
 {
@@ -442,7 +489,7 @@ typedef enum X64_SectionKind {
     X64_ELF_SECTION_TEXT,
     X64_ELF_SECTION_SYMTAB,
     X64_ELF_SECTION_STRTAB,
-    // X64_ELF_SECTION_RELA_DATA,
+    X64_ELF_SECTION_RELA_DATA,
     // X64_ELF_SECTION_RELA_TEXT,
     X64_ELF_SECTION_SHSTRTAB,
     X64_ELF_SECTION_COUNT
@@ -450,14 +497,15 @@ typedef enum X64_SectionKind {
 
 typedef struct X64_Section {
     u32 offset;
-    X64_SectionKind kind;
+    X64_SectionKind kind; // TODO: not needed? We always pass in the kind explicitly with elf_prog
     union {
-        X64_RODataSection rodata;
-        X64_DataSection data;
-        const u8* text;
-        Elf_StrTable shstrtab;
+        const X64_RODataSection* rodata;
+        const X64_DataSection* data;
+        const X64_TextSection* text;
         Elf_SymTable symtab;
         Elf_StrTable strtab;
+        Elf_StrTable shstrtab;
+        Elf_RelaTable rela_data;
     };
 } X64_Section;
 
@@ -470,24 +518,29 @@ typedef struct X64_ElfProg {
 
 static inline const void* x64_prog_sec_data(const X64_ElfProg* prog, X64_SectionKind section_kind)
 {
+    const X64_Section* section = &prog->sections[section_kind];
+
     switch (section_kind) {
     case X64_ELF_SECTION_RO_DATA: {
-        return prog->sections[X64_ELF_SECTION_RO_DATA].rodata.buf;
+        return section->rodata->buf;
     }
     case X64_ELF_SECTION_DATA: {
-        return prog->sections[X64_ELF_SECTION_DATA].data.buf;
+        return section->data->buf;
     }
     case X64_ELF_SECTION_TEXT: {
-        return prog->sections[X64_ELF_SECTION_TEXT].text;
-    }
-    case X64_ELF_SECTION_SHSTRTAB: {
-        return prog->sections[X64_ELF_SECTION_SHSTRTAB].shstrtab.buf;
+        return section->text->buf;
     }
     case X64_ELF_SECTION_SYMTAB: {
-        return prog->sections[X64_ELF_SECTION_SYMTAB].symtab.syms;
+        return section->symtab.syms;
     }
     case X64_ELF_SECTION_STRTAB: {
-        return prog->sections[X64_ELF_SECTION_STRTAB].strtab.buf;
+        return section->strtab.buf;
+    }
+    case X64_ELF_SECTION_RELA_DATA: {
+        return section->rela_data.relocs;
+    }
+    case X64_ELF_SECTION_SHSTRTAB: {
+        return section->shstrtab.buf;
     }
     default:
         NIBBLE_FATAL_EXIT("Unhandled X64_SectionKind %d", section_kind);
@@ -498,24 +551,29 @@ static inline const void* x64_prog_sec_data(const X64_ElfProg* prog, X64_Section
 
 static inline u32 x64_prog_sec_size(const X64_ElfProg* prog, X64_SectionKind section_kind)
 {
+    const X64_Section* section = &prog->sections[section_kind];
+
     switch (section_kind) {
     case X64_ELF_SECTION_RO_DATA: {
-        return array_len(prog->sections[X64_ELF_SECTION_RO_DATA].rodata.buf);
+        return array_len(section->rodata->buf);
     }
     case X64_ELF_SECTION_DATA: {
-        return array_len(prog->sections[X64_ELF_SECTION_DATA].data.buf);
+        return array_len(section->data->buf);
     }
     case X64_ELF_SECTION_TEXT: {
-        return sizeof(text_bin);
-    }
-    case X64_ELF_SECTION_SHSTRTAB: {
-        return Elf_strtab_size(&prog->sections[X64_ELF_SECTION_SHSTRTAB].shstrtab);
+        return section->text->size;
     }
     case X64_ELF_SECTION_SYMTAB: {
-        return prog->sections[X64_ELF_SECTION_SYMTAB].symtab.num_syms * sizeof(Elf64_Sym);
+        return section->symtab.num_syms * sizeof(Elf64_Sym);
     }
     case X64_ELF_SECTION_STRTAB: {
-        return Elf_strtab_size(&prog->sections[X64_ELF_SECTION_STRTAB].strtab);
+        return Elf_strtab_size(&section->strtab);
+    }
+    case X64_ELF_SECTION_RELA_DATA: {
+        return section->rela_data.num_relocs * sizeof(Elf64_Rela);
+    }
+    case X64_ELF_SECTION_SHSTRTAB: {
+        return Elf_strtab_size(&section->shstrtab);
     }
     default:
         NIBBLE_FATAL_EXIT("Unhandled X64_SectionKind %d", section_kind);
@@ -526,23 +584,28 @@ static inline u32 x64_prog_sec_size(const X64_ElfProg* prog, X64_SectionKind sec
 
 static inline u32 x64_prog_sec_align(const X64_ElfProg* prog, X64_SectionKind section_kind)
 {
+    const X64_Section* section = &prog->sections[section_kind];
+
     switch (section_kind) {
     case X64_ELF_SECTION_RO_DATA: {
-        return prog->sections[X64_ELF_SECTION_RO_DATA].rodata.align;
+        return section->rodata->align;
     }
     case X64_ELF_SECTION_DATA: {
-        return prog->sections[X64_ELF_SECTION_DATA].data.align;
+        return section->data->align;
     }
     case X64_ELF_SECTION_TEXT: {
-        return sizeof(text_bin);
-    }
-    case X64_ELF_SECTION_SHSTRTAB: {
-        return 1;
+        return section->text->align;
     }
     case X64_ELF_SECTION_SYMTAB: {
         return 0x8;
     }
     case X64_ELF_SECTION_STRTAB: {
+        return 1;
+    }
+    case X64_ELF_SECTION_RELA_DATA: {
+        return 0x8;
+    }
+    case X64_ELF_SECTION_SHSTRTAB: {
         return 1;
     }
     default:
@@ -552,43 +615,62 @@ static inline u32 x64_prog_sec_align(const X64_ElfProg* prog, X64_SectionKind se
     return 0;
 }
 
+static inline bool x64_prog_has_sec(const X64_ElfProg* prog, X64_SectionKind section_kind)
+{
+    return prog->sh_indices[section_kind] > 0;
+}
+
 static inline u32 x64_prog_sec_offset(const X64_ElfProg* prog, X64_SectionKind section_kind)
 {
     return prog->sections[section_kind].offset;
 }
 
-static inline void x64_init_elf_prog(X64_ElfProg* elf_prog, Allocator* gen_mem, bool has_rodata_sec,
-                                     bool has_data_sec, bool has_rela_text_sec, bool has_rela_data_sec)
+static inline void x64_init_elf_prog(X64_ElfProg* elf_prog, Allocator* gen_mem, const X64_RODataSection* rodata_sec,
+                                     const X64_DataSection* data_sec, const X64_TextSection* text_sec)
 {
     // Init shstrtab
     Elf_StrTable* shstrtab = &elf_prog->sections[X64_ELF_SECTION_SHSTRTAB].shstrtab;
     Elf_strtab_init(shstrtab, gen_mem, 38);
+
+    const bool has_rodata_sec = array_len(rodata_sec->buf) > 0;
+    const bool has_data_sec = array_len(data_sec->buf) > 0;
+    const bool has_rela_text_sec = false; // TODO: Check .text relocs array.
+    const bool has_rela_data_sec = array_len(data_sec->relocs) > 0;
 
     // .rodata?, .data?, .text, .shstrtab, .symtab, .strtab, .rela.text?, .rela.data?
     elf_prog->num_sections = 4 + has_rodata_sec + has_data_sec + has_rela_text_sec + has_rela_data_sec;
 
     u32 sh_idx = 1;
 
-#define _ADD_SECTION(k, i, n)                                \
-    do {                                                     \
+#define _ADD_SECTION(k, i, n)                                    \
+    do {                                                         \
         elf_prog->sh_indices[k] = i;                             \
         elf_prog->sh_name_locs[k] = Elf_strtab_add(shstrtab, n); \
+        elf_prog->sections[k].kind = k;                          \
     } while (0)
 
     if (has_rodata_sec) {
         _ADD_SECTION(X64_ELF_SECTION_RO_DATA, sh_idx++, ".rodata");
+        elf_prog->sections[X64_ELF_SECTION_RO_DATA].rodata = rodata_sec;
     }
 
     if (has_data_sec) {
         _ADD_SECTION(X64_ELF_SECTION_DATA, sh_idx++, ".data");
+        elf_prog->sections[X64_ELF_SECTION_DATA].data = data_sec;
     }
 
     _ADD_SECTION(X64_ELF_SECTION_TEXT, sh_idx++, ".text");
-    _ADD_SECTION(X64_ELF_SECTION_SHSTRTAB, sh_idx++, ".shstrtab");
+    elf_prog->sections[X64_ELF_SECTION_TEXT].text = text_sec;
+
     _ADD_SECTION(X64_ELF_SECTION_SYMTAB, sh_idx++, ".symtab");
     _ADD_SECTION(X64_ELF_SECTION_STRTAB, sh_idx++, ".strtab");
     //_ADD_SECTION(X64_ELF_SECTION_RELA_TEXT, sh_idx++, ".rela.text");
-    //_ADD_SECTION(X64_ELF_SECTION_RELA_DATA, sh_idx++, ".rela.data");
+
+    if (has_rela_data_sec) {
+        _ADD_SECTION(X64_ELF_SECTION_RELA_DATA, sh_idx++, ".rela.data");
+    }
+
+    _ADD_SECTION(X64_ELF_SECTION_SHSTRTAB, sh_idx++, ".shstrtab");
 
 #undef _ADD_SECTION
 }
@@ -667,19 +749,6 @@ static inline void x64_prog_sec_fill_shdr(const X64_ElfProg* prog, X64_SectionKi
                              .sh_entsize = 0};
         break;
     }
-    case X64_ELF_SECTION_SHSTRTAB: {
-        *shdr = (Elf64_Shdr){.sh_name = name_loc,
-                             .sh_type = ELF_SHT_STRTAB,
-                             .sh_flags = 0,
-                             .sh_addr = 0,
-                             .sh_offset = offset,
-                             .sh_size = size,
-                             .sh_link = 0,
-                             .sh_info = 0,
-                             .sh_addralign = align,
-                             .sh_entsize = 0};
-        break;
-    }
     case X64_ELF_SECTION_SYMTAB: {
         const Elf_SymTable* symtab = &section->symtab;
 
@@ -696,6 +765,33 @@ static inline void x64_prog_sec_fill_shdr(const X64_ElfProg* prog, X64_SectionKi
         break;
     }
     case X64_ELF_SECTION_STRTAB: {
+        *shdr = (Elf64_Shdr){.sh_name = name_loc,
+                             .sh_type = ELF_SHT_STRTAB,
+                             .sh_flags = 0,
+                             .sh_addr = 0,
+                             .sh_offset = offset,
+                             .sh_size = size,
+                             .sh_link = 0,
+                             .sh_info = 0,
+                             .sh_addralign = align,
+                             .sh_entsize = 0};
+        break;
+    }
+    case X64_ELF_SECTION_RELA_DATA: {
+        *shdr = (Elf64_Shdr){
+            .sh_name = name_loc,
+            .sh_type = ELF_SHT_RELA,
+            .sh_flags = 0,
+            .sh_addr = 0,
+            .sh_offset = offset,
+            .sh_size = size,
+            .sh_link = x64_prog_shndx(prog, X64_ELF_SECTION_SYMTAB), // Index of symbol table entry that contains referenced symbol.
+            .sh_info = x64_prog_shndx(prog, X64_ELF_SECTION_DATA), // Index of section that needs relocation patch (.data here)
+            .sh_addralign = align,
+            .sh_entsize = sizeof(Elf64_Rela)};
+        break;
+    }
+    case X64_ELF_SECTION_SHSTRTAB: {
         *shdr = (Elf64_Shdr){.sh_name = name_loc,
                              .sh_type = ELF_SHT_STRTAB,
                              .sh_flags = 0,
@@ -742,8 +838,8 @@ static void x64_prog_write_sections(const X64_ElfProg* prog, FILE* out_fd, u32 i
     }
 }
 
-static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, X64_ElfProg* elf_prog, const BucketList* foreign_procs,
-                          const char* output_file)
+static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODataSection* rodata_sec, const X64_DataSection* data_sec,
+                          const X64_TextSection* text_sec, const BucketList* foreign_procs, const char* output_file)
 {
     FILE* out_fd = fopen("elf.o", "wb");
     if (!out_fd) {
@@ -751,67 +847,12 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, X64_ElfProg* e
         return false;
     }
 
-    const u32 num_shdrs = 1 + elf_prog->num_sections; // Account for NULL section header
-
-    Elf64_Hdr elf_hdr = {
-        .e_ident = {ELF_MAGIC0, ELF_MAGIC1, ELF_MAGIC2, ELF_MAGIC3, ELF_CLASS64, ELF_DATA_2_LSB, 1, ELF_OS_ABI_SYSV},
-        .e_type = ELF_REL_FILE,
-        .e_machine = ELF_MACHINE_X86_64,
-        .e_version = 1,
-        .e_entry = 0,
-        .e_phoff = 0,
-        .e_shoff = sizeof(Elf64_Hdr), // Right after this header
-        .e_flags = 0,
-        .e_ehsize = sizeof(Elf64_Hdr),
-        .e_phentsize = 0,
-        .e_phnum = 0,
-        .e_shentsize = sizeof(Elf64_Shdr),
-        .e_shnum = num_shdrs,
-        .e_shstrndx = x64_prog_shndx(elf_prog, X64_ELF_SECTION_SHSTRTAB)
-    };
-
-    const u32 sections_init_off = elf_hdr.e_ehsize + elf_hdr.e_shnum * elf_hdr.e_shentsize;
-    x64_prog_finalize_offsets(elf_prog, sections_init_off);
-
-    Elf64_Shdr* elf_shdrs = alloc_array(gen_mem, Elf64_Shdr, num_shdrs, true);
-    x64_prog_fill_shdrs(elf_prog, elf_shdrs);
-
-    // Write elf file.
-    u32 curr_file_off = 0;
-
-    curr_file_off = write_bin(out_fd, &elf_hdr, sizeof(Elf64_Hdr), 0, curr_file_off);
-    curr_file_off = write_bin(out_fd, elf_shdrs, num_shdrs * sizeof(Elf64_Shdr), elf_hdr.e_shoff, curr_file_off);
-
-    x64_prog_write_sections(elf_prog, out_fd, curr_file_off);
-
-    fclose(out_fd);
-    return true;
-}
-
-bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
-                 GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
-{
-    AllocatorState gen_mem_state = allocator_get_state(gen_mem);
-
-    const bool has_rodata_sec = (str_lits->list.num_elems > 0) || (float_lits->list.num_elems > 0);
-    const bool has_data_sec = vars->list.num_elems > 0;
-
     X64_ElfProg elf_prog = {0};
-    x64_init_elf_prog(&elf_prog, gen_mem, has_rodata_sec, has_data_sec, false, false);
+    x64_init_elf_prog(&elf_prog, gen_mem, rodata_sec, data_sec, text_sec);
 
-    // .rodata
-    if (has_rodata_sec) {
-        X64_init_rodata_section(&elf_prog.sections[X64_ELF_SECTION_RO_DATA].rodata, gen_mem, tmp_mem, float_lits, str_lits);
-    }
-
-    // .data
-    if (has_data_sec) {
-        X64_init_data_section(&elf_prog.sections[X64_ELF_SECTION_DATA].data, gen_mem, tmp_mem, vars);
-    }
-
-    // .text
-    X64_Section* text = &elf_prog.sections[X64_ELF_SECTION_TEXT];
-    text->text = text_bin;
+    const bool has_rodata_sec = x64_prog_has_sec(&elf_prog, X64_ELF_SECTION_RO_DATA);
+    const bool has_data_sec = x64_prog_has_sec(&elf_prog, X64_ELF_SECTION_DATA);
+    const bool has_rela_data_sec = x64_prog_has_sec(&elf_prog, X64_ELF_SECTION_RELA_DATA);
 
     // .strtab
     X64_Section* strtab = &elf_prog.sections[X64_ELF_SECTION_STRTAB];
@@ -827,9 +868,12 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
     symtab->symtab.syms = alloc_array(gen_mem, Elf64_Sym, symtab->symtab.num_syms, true);
 
     u32 sym_idx = 1;
+    u32 rodata_sym_idx = 0;
+    u32 data_sym_idx = 0;
 
     // .rodata symbol
     if (has_rodata_sec) {
+        rodata_sym_idx = sym_idx;
         symtab->symtab.syms[sym_idx++] = (Elf64_Sym){.st_name = 0,
                                                      .st_info = ELF_ST_INFO(ELF_STB_LOCAL, ELF_STT_SECTION),
                                                      .st_other = ELF_STV_DEFAULT,
@@ -840,6 +884,7 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
 
     // .data symbol
     if (has_data_sec) {
+        data_sym_idx = sym_idx;
         symtab->symtab.syms[sym_idx++] = (Elf64_Sym){.st_name = 0,
                                                      .st_info = ELF_ST_INFO(ELF_STB_LOCAL, ELF_STT_SECTION),
                                                      .st_other = ELF_STV_DEFAULT,
@@ -864,10 +909,106 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
                                                  .st_value = 0,
                                                  .st_size = 0};
 
-    bool success = x64_write_elf(gen_mem, tmp_mem, &elf_prog, foreign_procs, output_file);
+    // .rela.data
+    if (has_rela_data_sec) {
+        Array(const X64_DataReloc) relocs_info = data_sec->relocs;
+        const u32 num_relocs = array_len(relocs_info);
+
+        X64_Section* rela_data = &elf_prog.sections[X64_ELF_SECTION_RELA_DATA];
+        rela_data->rela_data.num_relocs = num_relocs;
+        rela_data->rela_data.relocs = alloc_array(gen_mem, Elf64_Rela, num_relocs, true);
+
+        for (size_t i = 0; i < num_relocs; ++i) {
+            const X64_DataReloc* reloc_info = &relocs_info[i];
+            Elf64_Rela* reloc = &rela_data->rela_data.relocs[i];
+
+            reloc->r_offset = reloc_info->usage_off;
+
+            if (reloc_info->ref_addr.kind == CONST_ADDR_STR_LIT) {
+                const StrLit* str_lit = reloc_info->ref_addr.str_lit;
+                u64* str_off_ptr = hmap_get(&rodata_sec->str_offs, PTR_UINT(str_lit));
+
+                assert(str_off_ptr != NULL);
+
+                reloc->r_info = ((u64)(rodata_sym_idx) << 32) + (u64)(ELF_R_X86_64_64);
+                reloc->r_addend = *str_off_ptr + reloc_info->ref_addr.disp;
+            }
+            else if (reloc_info->ref_addr.kind == CONST_ADDR_SYM) {
+                const Symbol* sym = reloc_info->ref_addr.sym;
+                u64* sym_off_ptr = hmap_get(&data_sec->var_offs, PTR_UINT(sym));
+
+                assert(sym_off_ptr != NULL);
+
+                reloc->r_info = ((u64)(data_sym_idx) << 32) + (u64)(ELF_R_X86_64_64);
+                reloc->r_addend = *sym_off_ptr + reloc_info->ref_addr.disp;
+            }
+            else {
+                NIBBLE_FATAL_EXIT("Only support string lits and vars for rela.data relocations");
+            }
+        }
+    }
+
+    const u32 num_shdrs = 1 + elf_prog.num_sections; // Account for NULL section header
+
+    Elf64_Hdr elf_hdr = {.e_ident = {ELF_MAGIC0, ELF_MAGIC1, ELF_MAGIC2, ELF_MAGIC3, ELF_CLASS64, ELF_DATA_2_LSB, 1, ELF_OS_ABI_SYSV},
+                         .e_type = ELF_REL_FILE,
+                         .e_machine = ELF_MACHINE_X86_64,
+                         .e_version = 1,
+                         .e_entry = 0,
+                         .e_phoff = 0,
+                         .e_shoff = sizeof(Elf64_Hdr), // Right after this header
+                         .e_flags = 0,
+                         .e_ehsize = sizeof(Elf64_Hdr),
+                         .e_phentsize = 0,
+                         .e_phnum = 0,
+                         .e_shentsize = sizeof(Elf64_Shdr),
+                         .e_shnum = num_shdrs,
+                         .e_shstrndx = x64_prog_shndx(&elf_prog, X64_ELF_SECTION_SHSTRTAB)};
+
+    const u32 sections_init_off = elf_hdr.e_ehsize + elf_hdr.e_shnum * elf_hdr.e_shentsize;
+    x64_prog_finalize_offsets(&elf_prog, sections_init_off);
+
+    Elf64_Shdr* elf_shdrs = alloc_array(gen_mem, Elf64_Shdr, num_shdrs, true);
+    x64_prog_fill_shdrs(&elf_prog, elf_shdrs);
+
+    // Write elf file.
+    u32 curr_file_off = 0;
+
+    curr_file_off = write_bin(out_fd, &elf_hdr, sizeof(Elf64_Hdr), 0, curr_file_off);
+    curr_file_off = write_bin(out_fd, elf_shdrs, num_shdrs * sizeof(Elf64_Shdr), elf_hdr.e_shoff, curr_file_off);
+
+    x64_prog_write_sections(&elf_prog, out_fd, curr_file_off);
+
+    fclose(out_fd);
+    return true;
+}
+
+bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
+                 GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
+{
+    AllocatorState gen_mem_state = allocator_get_state(gen_mem);
+
+    const bool has_rodata_sec = (str_lits->list.num_elems > 0) || (float_lits->list.num_elems > 0);
+    const bool has_data_sec = vars->list.num_elems > 0;
+
+    // .rodata
+    X64_RODataSection rodata_sec = {0};
+    if (has_rodata_sec) {
+        X64_init_rodata_section(&rodata_sec, gen_mem, tmp_mem, float_lits, str_lits);
+    }
+
+    // .data
+    X64_DataSection data_sec = {0};
+    if (has_data_sec) {
+        X64_init_data_section(&data_sec, gen_mem, tmp_mem, vars);
+    }
+
+    // .text
+    X64_TextSection text_sec = {.buf = text_bin, .size = sizeof(text_bin), .align = 0x10};
+
+    bool success = x64_write_elf(gen_mem, tmp_mem, &rodata_sec, &data_sec, &text_sec, foreign_procs, output_file);
 
     allocator_restore_state(gen_mem_state);
 
     return success;
 }
-
