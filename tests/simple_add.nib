@@ -1,9 +1,11 @@
 // Inspect instruction bytes with: objdump -M intel -d out.o
+/*
 var g1 : int = 1;
 var g2 : [_]char = "hello\n";
 var g3 : ^char = "hello\n";
 var g4 : ^char = "abc";
 var g5 : ^int = ^g1;
+*/
 
 proc main() => int {
     var a : int = 10;
