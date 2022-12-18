@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <assert.h>
 
 #include "path_utils.h"
 #include "cstring.h"

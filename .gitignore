@@ -52,3 +52,6 @@ x64/
 nibble
 out
 out.s
+
+# clangd cache
+.cache

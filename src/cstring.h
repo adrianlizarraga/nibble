@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "nibble.h"
 #include "allocator.h"
 
 int cstr_cmp(const char* str1, const char* str2);
@@ -28,6 +29,10 @@ extern const char escaped_to_char[256];
 
 #define unescape_char(c) (escaped_to_char[(unsigned char)(c)])
 #define biased_digit(c) (char_to_biased_digit[(unsigned char)(c)])
+
+#define PRINT_MAX_NUM_DIGITS 32
+#define PRINT_DEFAULT_FLOAT_PRECISION 6
+#define PRINT_FILE_BUF_SIZE 128
 
 typedef bool(PutCharFunc)(void* data, char character);
 

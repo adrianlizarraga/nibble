@@ -1,3 +1,5 @@
+#include <assert.h>
+#include "ast/module.h"
 
 char* ftprint_ns_ident(Allocator* allocator, NSIdent* ns_ident)
 {

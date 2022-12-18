@@ -1,6 +1,9 @@
+#include <string.h>
+#include <assert.h>
+
+#include "nibble.h"
 #include "stream.h"
 
-#include <string.h>
 
 static Bucket* bucket_list_add_bucket(BucketList* bucket_list)
 {

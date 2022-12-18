@@ -1,6 +1,7 @@
 #ifndef NIBBLE_STREAM_H
 #define NIBBLE_STREAM_H
 #include <stddef.h>
+#include "allocator.h"
 #include "llist.h"
 
 typedef struct Bucket Bucket;

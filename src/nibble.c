@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "nibble.h"
 #include "parser/module.h"
 #include "resolver/module.h"

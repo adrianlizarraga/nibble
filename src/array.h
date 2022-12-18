@@ -2,6 +2,7 @@
 #define NIBBLE_ARRAY_H
 #include "allocator.h"
 #include <string.h>
+#include <stdarg.h>
 
 #define ARRAY_MIN_CAP 16
 

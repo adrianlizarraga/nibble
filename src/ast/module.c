@@ -1,8 +1,7 @@
+#include <assert.h>
 #include "ast/module.h"
 #include "array.h"
 #include "cstring.h"
-
-#include "ast/print_ast.c"
 
 #define new_typespec(a, k, r) (k*)new_typespec_((a), sizeof(k), alignof(k), CST_##k, (r))
 static TypeSpec* new_typespec_(Allocator* allocator, size_t size, size_t align, TypeSpecKind kind, ProgRange range)

@@ -3,6 +3,7 @@
 #include "nibble.h"
 #include "allocator.h"
 #include "lexer/module.h"
+#include "ast/module.h"
 
 typedef struct Parser {
     Allocator* ast_arena;

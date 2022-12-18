@@ -13,6 +13,7 @@
 #warning "Cannot determine maximum path length (PATH_MAX or MAX_PATH)"
 #endif
 
+#include "nibble.h"
 #include "array.h"
 #include "allocator.h"
 
