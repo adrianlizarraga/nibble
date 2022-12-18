@@ -8,6 +8,8 @@
 #include "x64_gen/reg_alloc.c"
 #include "x64_gen/print_lir.c"
 #include "x64_gen/elf.c"
+#include "x64_gen/data.c"
+#include "x64_gen/text.c"
 #include "x64_gen/elf_writer.c"
 
 
@@ -2903,6 +2905,6 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bu
 
     fclose(out_fd);
 
-    //x64_gen_elf(gen_mem, tmp_mem, vars, procs, str_lits, float_lits, foreign_procs, output_file);
+    x64_gen_elf(gen_mem, tmp_mem, vars, procs, str_lits, float_lits, foreign_procs, output_file);
     return true;
 }
