@@ -1072,6 +1072,7 @@ AnonObj* add_anon_obj(Allocator* allocator, List* objs, s32 id, size_t size, siz
 bool install_module_decls(Allocator* ast_mem, Module* mod, ErrorStream* errors);
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym, ErrorStream* errors);
 bool import_all_mod_syms(Module* dst_mod, Module* src_mod, ErrorStream* errors);
+bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt, ErrorStream* errors);
 
 ///////////////////////////////
 //      Module

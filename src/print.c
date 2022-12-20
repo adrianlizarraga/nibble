@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <float.h>
 
 #include "cstring.h"

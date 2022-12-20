@@ -1,5 +1,8 @@
 #ifndef NIBBLE_LLIST_H
 #define NIBBLE_LLIST_H
+#include <stddef.h>
+#include <stdbool.h>
+
 // Intrusive linked-list implementation inspired by the Linux Kernel.
 // Can be embedded in any struct type.
 

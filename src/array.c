@@ -1,5 +1,7 @@
 #include "array.h"
-#include "stdarg.h"
+#include "cstring.h"
+
+#include <stdarg.h>
 
 typedef struct ArrayPrintCtx {
     char** dst;
