@@ -1,3 +1,6 @@
+#include <assert.h>
+#include "parser/module.h"
+
 ///////////////////////////////
 //    Parse declarations
 //////////////////////////////

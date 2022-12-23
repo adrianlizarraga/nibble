@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <stdlib.h>
+#include <stddef.h>
 #include "ast/module.h"
 #include "array.h"
 #include "cstring.h"
@@ -1373,7 +1375,7 @@ Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_
 
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic)
 {
-    size_t params_size = num_params * sizeof(params[0]);
+    size_t params_size = num_params * sizeof(Type*);
     uint64_t key = hash_mix_uint64(hash_mix_uint64(hash_bytes(params, params_size, FNV_INIT), hash_ptr(ret)), is_variadic);
     uint64_t* pval = hmap_get(type_proc_cache, key);
     CachedType* cached = pval ? (void*)*pval : NULL;

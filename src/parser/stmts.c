@@ -1,13 +1,11 @@
+#include <assert.h>
+#include "parser/module.h"
+
 ///////////////////////////////
 //    Parse statements
 //////////////////////////////
 
-typedef struct StmtBlockBody {
-    List stmts;
-    u32 num_decls;
-} StmtBlockBody;
-
-static bool parse_fill_stmt_block_body(Parser* parser, StmtBlockBody* body, const char* err_prefix)
+bool parse_fill_stmt_block_body(Parser* parser, StmtBlockBody* body, const char* err_prefix)
 {
     assert(is_token_kind(parser, TKN_LBRACE));
 

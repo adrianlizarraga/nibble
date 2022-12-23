@@ -1,3 +1,6 @@
+#include <assert.h>
+#include "parser/module.h"
+
 ///////////////////////////////
 //    Parse type specifiers
 //////////////////////////////
@@ -67,7 +70,7 @@ static bool parse_aggregate_fields(Parser* parser, List* fields)
     return true;
 }
 
-static bool parse_aggregate_body(Parser* parser, List* fields, ProgPos start, const char* err_prefix)
+bool parse_aggregate_body(Parser* parser, List* fields, ProgPos start, const char* err_prefix)
 {
     if (!expect_token(parser, TKN_LBRACE, err_prefix)) {
         return false;
@@ -266,7 +269,7 @@ static TypeSpec* parse_typespec_proc(Parser* parser)
 }
 
 // namespaced_ident = (TKN_IDENT '::')* TKN_IDENT
-static bool parse_namespaced_ident(Parser* parser, NSIdent* ns_ident, const char* err_prefix)
+bool parse_namespaced_ident(Parser* parser, NSIdent* ns_ident, const char* err_prefix)
 {
     ns_ident->range = parser->token.range;
     ns_ident->num_idents = 0;
