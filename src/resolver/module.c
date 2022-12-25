@@ -1,8 +1,5 @@
-#include "resolver/common.c"
-#include "resolver/typespecs.c"
-#include "resolver/exprs.c"
-#include "resolver/stmts.c"
-#include "resolver/decls.c"
+#include <assert.h>
+#include "resolver/internal.h"
 
 bool resolve_module(Resolver* resolver, Module* mod)
 {
@@ -70,3 +67,4 @@ bool resolve_reachable_sym_defs(Resolver* resolver)
 
     return true;
 }
+

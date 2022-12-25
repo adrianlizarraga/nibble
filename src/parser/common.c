@@ -1,4 +1,4 @@
-#include "parser/module.h"
+#include "parser/internal.h"
 #include "ast/module.h"
 
 #include <string.h>

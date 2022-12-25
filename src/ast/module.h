@@ -870,6 +870,7 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
 Type* type_unsigned_int(Type* type_int);
 Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl);
 Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym);
+Type* type_anon_aggregate(Allocator* allocator, HMap* type_cache, TypeKind kind, size_t num_fields, const TypeAggregateField* fields);
 Type* type_slice(Allocator* allocator, HMap* type_slice_cache, HMap* type_ptr_cache, Type* elem_type);
 
 ///////////////////////////////

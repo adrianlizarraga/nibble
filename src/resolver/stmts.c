@@ -1,3 +1,6 @@
+#include <assert.h>
+#include "resolver/internal.h"
+
 enum ResolveStmtRetFlags {
     RESOLVE_STMT_SUCCESS = 0x1,
     RESOLVE_STMT_RETURNS = 0x2,
@@ -47,7 +50,7 @@ static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* r
     return ret_success;
 }
 
-static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
+bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_PROC);
     DeclProc* dproc = (DeclProc*)(sym->decl);
@@ -459,7 +462,7 @@ static bool resolve_static_assert(Resolver* resolver, StmtStaticAssert* sassert)
     return true;
 }
 
-static bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
+bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
 {
     switch (stmt->kind) {
     case CST_StmtStaticAssert: {
@@ -475,7 +478,7 @@ static bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
     return false;
 }
 
-static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
+unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     unsigned ret = 0;
     bool break_continue_allowed = flags & RESOLVE_STMT_BREAK_CONTINUE_ALLOWED;

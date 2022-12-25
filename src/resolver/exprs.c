@@ -1,42 +1,7 @@
-#define OP_FROM_EXPR(e)                                                                                                           \
-    {                                                                                                                             \
-        .type = (e)->type, .is_constexpr = (e)->is_constexpr, .is_lvalue = (e)->is_lvalue, .is_imm = (e)->is_imm, .imm = (e)->imm \
-    }
+#include <assert.h>
+#include "resolver/internal.h"
 
-#define OP_FROM_CONST(t, s)                                                               \
-    {                                                                                     \
-        .type = (t), .is_constexpr = true, .is_lvalue = false, .is_imm = true, .imm = (s) \
-    }
-
-typedef struct ExprOperand {
-    Type* type;
-    bool is_constexpr;
-    bool is_lvalue;
-    bool is_imm;
-    Scalar imm;
-} ExprOperand;
-
-typedef struct CastResult {
-    bool success;
-    bool bad_lvalue;
-} CastResult;
-
-static void resolver_cast_error(Resolver* resolver, CastResult cast_res, ProgRange range, const char* err_prefix, Type* src_type,
-                                Type* dst_type)
-{
-    assert(!cast_res.success);
-
-    if (cast_res.bad_lvalue) {
-        resolver_on_error(resolver, range, "%s: cannot convert a temporary (`%s`) to type `%s`.", err_prefix, type_name(src_type),
-                          type_name(dst_type));
-    }
-    else {
-        resolver_on_error(resolver, range, "%s: cannot convert `%s` to type `%s`.", err_prefix, type_name(src_type),
-                          type_name(dst_type));
-    }
-}
-
-static Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr)
+Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr)
 {
     Expr* expr = orig_expr;
 
@@ -371,7 +336,7 @@ static void eop_array_slice_decay(ExprOperand* eop)
     eop->is_lvalue = false;
 }
 
-static CastResult convert_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay)
+CastResult convert_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay)
 {
     CastResult r = can_convert_eop(eop, dst_type, forbid_rvalue_decay);
 
@@ -627,7 +592,7 @@ DEF_EVAL_BINARY_LOGICAL_OP_FUNC(u64)
 DEF_EVAL_BINARY_OP_INT_FUNC(s64)
 DEF_EVAL_BINARY_OP_INT_FUNC(u64)
 
-static void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
+void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
 {
     if (type_is_integer_like(type)) {
         ExprOperand left_eop = OP_FROM_CONST(type, left);
@@ -1063,7 +1028,7 @@ static bool resolve_expr_str(Resolver* resolver, ExprStr* expr)
     return true;
 }
 
-static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOperand* ptr, ExprOperand* int_eop)
+bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOperand* ptr, ExprOperand* int_eop)
 {
     // Convert ^void to ^s8
     if (ptr->type->as_ptr.base == builtin_types[BUILTIN_TYPE_VOID].type) {
@@ -1093,7 +1058,7 @@ static bool resolve_ptr_int_arith(Resolver* resolver, ExprOperand* dst, ExprOper
     return true;
 }
 
-static void resolve_non_const_binary_eop(ExprOperand* dst, ExprOperand* left, ExprOperand* right)
+void resolve_non_const_binary_eop(ExprOperand* dst, ExprOperand* left, ExprOperand* right)
 {
     dst->type = convert_arith_eops(left, right);
     dst->is_constexpr = false;
@@ -2420,7 +2385,7 @@ static bool resolve_expr_compound_lit(Resolver* resolver, ExprCompoundLit* expr,
     return false;
 }
 
-static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
+bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
 {
     switch (expr->kind) {
     case CST_ExprInt:

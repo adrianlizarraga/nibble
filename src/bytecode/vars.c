@@ -1,3 +1,5 @@
+#include "bytecode/module.h"
+
 typedef struct IR_VarBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
@@ -402,8 +404,8 @@ static void IR_build_var(IR_VarBuilder* builder, Symbol* sym)
     sym->as_var.const_expr = const_expr;
 }
 
-static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, GlobalData* vars, GlobalData* str_lits, GlobalData* float_lits,
-                          TypeCache* type_cache, HMap* float_lit_map)
+void IR_build_vars(Allocator* arena, Allocator* tmp_arena, GlobalData* vars, GlobalData* str_lits, GlobalData* float_lits,
+                   TypeCache* type_cache, HMap* float_lit_map)
 {
     IR_VarBuilder builder = {.arena = arena,
                              .tmp_arena = tmp_arena,

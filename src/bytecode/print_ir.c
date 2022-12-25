@@ -1,3 +1,4 @@
+#include "bytecode/module.h"
 #include "cstring.h"
 
 static const char* ir_cond_names[] = {
@@ -589,3 +590,4 @@ void IR_dump_proc_dot(Allocator* arena, Symbol* sym)
     allocator_restore_state(mem_state);
     ftprint_out("}\n");
 }
+

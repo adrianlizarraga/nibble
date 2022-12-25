@@ -1,3 +1,5 @@
+#include "bytecode/module.h"
+
 typedef struct IR_ProcBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
@@ -4241,8 +4243,8 @@ static void IR_build_proc(IR_ProcBuilder* builder, Symbol* sym)
     allocator_restore_state(mem_state);
 }
 
-static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, GlobalData* str_lits, GlobalData* float_lits,
-                           TypeCache* type_cache, HMap* float_lit_map)
+void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, GlobalData* str_lits, GlobalData* float_lits,
+                    TypeCache* type_cache, HMap* float_lit_map)
 {
     IR_ProcBuilder builder = {.arena = arena,
                               .tmp_arena = tmp_arena,
@@ -4265,3 +4267,4 @@ static void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* p
         IR_build_proc(&builder, sym);
     }
 }
+

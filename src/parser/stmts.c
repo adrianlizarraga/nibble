@@ -1,5 +1,5 @@
 #include <assert.h>
-#include "parser/module.h"
+#include "parser/internal.h"
 
 ///////////////////////////////
 //    Parse statements
