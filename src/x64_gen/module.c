@@ -1,17 +1,8 @@
 #include "stream.h"
 #include "x64_gen/module.h"
-
-#include "x64_gen/regs.c"
-#include "x64_gen/lir.c"
-#include "x64_gen/convert_ir.c"
-#include "x64_gen/livevar.c"
-#include "x64_gen/reg_alloc.c"
-#include "x64_gen/print_lir.c"
-#include "x64_gen/elf.c"
-#include "x64_gen/data.c"
-#include "x64_gen/text.c"
-#include "x64_gen/elf_writer.c"
-
+#include "x64_gen/regs.h"
+#include "x64_gen/lir.h"
+#include "x64_gen/reg_alloc.h"
 
 #define X64_ASM_LINE_LEN 64
 #define X64_STR_LIT_PRE "__nibble_str_lit_"

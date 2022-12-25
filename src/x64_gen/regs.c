@@ -1,4 +1,5 @@
 #include "cstring.h"
+#include "bytecode/module.h"
 #include "x64_gen/regs.h"
 #include "x64_gen/startup_linux.c"
 

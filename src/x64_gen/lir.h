@@ -2,6 +2,7 @@
 #define NIBBLE_X64_LIR_H
 #include "allocator.h"
 #include "hash_map.h"
+#include "bytecode/module.h"
 #include "x64_gen/regs.h"
 
 #define X64_LIR_REG_COUNT 0xFFFFFFFF
@@ -689,6 +690,7 @@ typedef struct X64_LIRBuilder {
 } X64_LIRBuilder;
 
 u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r);
+void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_t num_bblocks, BBlock** bblocks);
 
 void X64_emit_instr_add_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
 void X64_emit_instr_add_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);

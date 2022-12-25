@@ -1,5 +1,7 @@
 #ifndef NIBBLE_X64_ELF_H
 #define NIBBLE_X64_ELF_H
+#include "nibble.h"
+#include "array.h"
 
 #define ELF_MAGIC0 127
 #define ELF_MAGIC1 'E'

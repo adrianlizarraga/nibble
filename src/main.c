@@ -33,10 +33,12 @@
 //#define NIBBLE_PRINT_IRS
 //#define NIBBLE_PRINT_MEM_USAGE
 
+#ifdef NIBBLE_ENABLE_UNITY_BUILD
 // This is a "unity build".
 // Having a single compilation unit makes building trivial.
 // I'll add a proper build system later.
 #include "all_srcs.h"
+#endif
 
 // The maximum number of characters in any path provided by the user.
 #define MAX_INPUT_PATH_LEN 1024

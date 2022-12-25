@@ -10,6 +10,8 @@ typedef struct X64_RegAllocResult {
     bool success;
 } X64_RegAllocResult;
 
+void X64_compute_live_intervals(X64_LIRBuilder* builder);
+
 // Modified linear scan register allocation adapted from Poletto et al (1999)
 X64_RegAllocResult X64_linear_scan_reg_alloc(X64_LIRBuilder* builder, X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT],
                                              u32 init_stack_offset);

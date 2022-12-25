@@ -1,6 +1,6 @@
 #ifndef NIBBLE_X64_REGS_H
 #define NIBBLE_X64_REGS_H
-#include "nibble.h"
+#include "ast/module.h"
 
 #define X64_MAX_INT_REG_SIZE 8
 #define X64_STACK_ALIGN 16

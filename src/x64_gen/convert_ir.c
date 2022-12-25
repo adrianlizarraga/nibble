@@ -1766,7 +1766,7 @@ static X64_BBlock* X64_make_bblock(X64_LIRBuilder* builder, BBlock* bblock)
     return xbblock;
 }
 
-static void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_t num_bblocks, BBlock** bblocks)
+void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_t num_bblocks, BBlock** bblocks)
 {
     //
     // Initialize aux data structures for LIR

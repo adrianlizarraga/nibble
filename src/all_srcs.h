@@ -45,6 +45,16 @@
 
 // X86_64 backend
 #include "x64_gen/module.c"
+#include "x64_gen/regs.c"
+#include "x64_gen/lir.c"
+#include "x64_gen/convert_ir.c"
+#include "x64_gen/livevar.c"
+#include "x64_gen/reg_alloc.c"
+#include "x64_gen/print_lir.c"
+#include "x64_gen/elf.c"
+#include "x64_gen/data.c"
+#include "x64_gen/text.c"
+#include "x64_gen/elf_writer.c"
 
 // Compiler main logic
 #include "nibble.c"
