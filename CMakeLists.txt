@@ -22,7 +22,37 @@ set(NIBBLE_PARSER_SRCS src/parser/common.c
 	src/parser/exprs.c
 	src/parser/stmts.c
 	src/parser/decls.c)
-set()
+set(NIBBLE_RESOLVER_SRCS src/resolver/module.c
+	src/resolver/common.c
+	src/resolver/typespecs.c
+	src/resolver/exprs.c
+	src/resolver/stmts.c
+	src/resolver/decls.c)
+set(NIBBLE_IR_SRCS src/bytecode/module.c
+	src/bytecode/vars.c
+	src/bytecode/procs.c
+	src/bytecode/print_ir.c)
+set(NIBBLE_X64_SRCS src/x64_gen/module.c
+	src/x64_gen/regs.c
+	src/x64_gen/lir.c
+	src/x64_gen/convert_ir.c
+	src/x64_gen/livevar.c
+	src/x64_gen/reg_alloc.c
+	src/x64_gen/print_lir.c
+	src/x64_gen/elf.c
+	src/x64_gen/data.c
+	src/x64_gen/text.c
+	src/x64_gen/elf_writer.c)
 
-add_executable(nibble src/main.c)
+set(NIBBLE_MAIN_SRCS src/nibble.c src/main.c)
+
+add_executable(nibble ${NIBBLE_UTIL_SRCS}
+	${NIBBLE_LINKER_SRCS}
+	${NIBBLE_LEXER_SRCS}
+	${NIBBLE_AST_SRCS}
+	${NIBBLE_PARSER_SRCS}
+	${NIBBLE_RESOLVER_SRCS}
+	${NIBBLE_IR_SRCS}
+	${NIBBLE_X64_SRCS}
+	${NIBBLE_MAIN_SRCS})
 target_include_directories(nibble PUBLIC "${PROJECT_SOURCE_DIR}/src")

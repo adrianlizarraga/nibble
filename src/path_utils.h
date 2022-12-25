@@ -86,4 +86,5 @@ void dirent_it_init(DirentIter* it, const char* path_str, Allocator* alloc);
 void dirent_it_next(DirentIter* it);
 void dirent_it_free(DirentIter* it);
 
+Path get_curr_dir(Allocator* allctr);
 #endif

@@ -33,6 +33,11 @@
 //#define NIBBLE_PRINT_IRS
 //#define NIBBLE_PRINT_MEM_USAGE
 
+#include "nibble.h"
+#include "cstring.h"
+#include "path_utils.h"
+#include "compiler.h"
+
 #ifdef NIBBLE_ENABLE_UNITY_BUILD
 // This is a "unity build".
 // Having a single compilation unit makes building trivial.
