@@ -6,4 +6,6 @@ void x64_init_target(OS target_os);
 bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
                     GlobalData* float_lits, BucketList* foreign_procs, const char* output_file);
 
+bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
+                 GlobalData* float_lits, BucketList* foreign_procs, const char* output_file);
 #endif

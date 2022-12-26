@@ -8,6 +8,6 @@ typedef struct X64_TextSection {
     u32 align;
 } X64_TextSection;
 
-void X64_init_text_section(X64_TextSection* text_sec);
+void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem);
 
 #endif
