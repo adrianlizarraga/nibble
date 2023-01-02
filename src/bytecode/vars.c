@@ -1,8 +1,10 @@
+#include "bytecode/module.h"
+
 typedef struct IR_VarBuilder {
     Allocator* arena;
     Allocator* tmp_arena;
-    BucketList* str_lits;
-    BucketList* float_lits;
+    GlobalData* str_lits;
+    GlobalData* float_lits;
     TypeCache* type_cache;
     HMap* float_lit_map;
     Module* curr_mod;
@@ -335,7 +337,7 @@ static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* d
 
             if (!float_lit->used) {
                 float_lit->used = true;
-                bucket_list_add_elem(builder->float_lits, float_lit);
+                add_global_data(builder->float_lits, float_lit, float_kind_sizes[float_lit->kind]);
             }
         }
         else {
@@ -377,7 +379,7 @@ static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* d
 
         if (!str_lit->used) {
             str_lit->used = true;
-            bucket_list_add_elem(builder->str_lits, str_lit);
+            add_global_data(builder->str_lits, str_lit, str_lit->len + 1);
         }
 
         break;
@@ -402,8 +404,8 @@ static void IR_build_var(IR_VarBuilder* builder, Symbol* sym)
     sym->as_var.const_expr = const_expr;
 }
 
-static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, BucketList* vars, BucketList* str_lits, BucketList* float_lits,
-                          TypeCache* type_cache, HMap* float_lit_map)
+void IR_build_vars(Allocator* arena, Allocator* tmp_arena, GlobalData* vars, GlobalData* str_lits, GlobalData* float_lits,
+                   TypeCache* type_cache, HMap* float_lit_map)
 {
     IR_VarBuilder builder = {.arena = arena,
                              .tmp_arena = tmp_arena,
@@ -416,10 +418,10 @@ static void IR_build_vars(Allocator* arena, Allocator* tmp_arena, BucketList* va
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 
     // Iterate through all global variables and generate operands.
-    size_t num_vars = vars->num_elems;
+    size_t num_vars = vars->list.num_elems;
 
     for (size_t i = 0; i < num_vars; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(vars, i);
+        void** sym_ptr = bucket_list_get_elem_packed(&vars->list, i);
         assert(sym_ptr);
         Symbol* sym = (Symbol*)(*sym_ptr);
         assert(sym->kind == SYMBOL_VAR);

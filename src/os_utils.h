@@ -9,5 +9,5 @@ typedef struct ExecCmd {
 } ExecCmd;
 
 int run_cmd(Allocator* allocator, const ExecCmd* cmd, bool silent);
-bool is_stderr_atty();
+bool is_stderr_atty(void);
 #endif

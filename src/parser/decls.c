@@ -1,3 +1,6 @@
+#include <assert.h>
+#include "parser/internal.h"
+
 ///////////////////////////////
 //    Parse declarations
 //////////////////////////////

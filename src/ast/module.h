@@ -870,6 +870,7 @@ Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, 
 Type* type_unsigned_int(Type* type_int);
 Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl);
 Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym);
+Type* type_anon_aggregate(Allocator* allocator, HMap* type_cache, TypeKind kind, size_t num_fields, const TypeAggregateField* fields);
 Type* type_slice(Allocator* allocator, HMap* type_slice_cache, HMap* type_ptr_cache, Type* elem_type);
 
 ///////////////////////////////
@@ -964,7 +965,7 @@ struct ConstArrayMemberInitzer {
 struct SymbolVar {
     union {
         // Used by backends to store this var's
-        // location in the stack.
+        // location in the stack (if local) or offset from .data segment (if global)
         s32 offset;
 
         // Used to describe initial value (constexpr) for global variable
@@ -1072,6 +1073,7 @@ AnonObj* add_anon_obj(Allocator* allocator, List* objs, s32 id, size_t size, siz
 bool install_module_decls(Allocator* ast_mem, Module* mod, ErrorStream* errors);
 bool module_add_global_sym(Module* mod, Identifier* name, Symbol* sym, ErrorStream* errors);
 bool import_all_mod_syms(Module* dst_mod, Module* src_mod, ErrorStream* errors);
+bool import_mod_syms(Module* dst_mod, Module* src_mod, StmtImport* stmt, ErrorStream* errors);
 
 ///////////////////////////////
 //      Module

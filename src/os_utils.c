@@ -1,4 +1,5 @@
 #include "os_utils.h"
+#include "cstring.h"
 
 #include <sys/wait.h>
 #include <unistd.h>
@@ -42,7 +43,7 @@ int run_cmd(Allocator* allocator, const ExecCmd* cmd, bool silent)
     }
 }
 
-bool is_stderr_atty()
+bool is_stderr_atty(void)
 {
     return isatty(STDERR_FILENO);
 }

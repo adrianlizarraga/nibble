@@ -1,3 +1,6 @@
+#include <assert.h>
+#include "parser/internal.h"
+
 ///////////////////////////////
 //    Parse expressions
 //////////////////////////////
@@ -389,7 +392,7 @@ static Expr* parse_expr_base(Parser* parser)
 }
 
 // proc_call_arg = (IDENTIFIER '=')? expr
-static ProcCallArg* parse_proc_call_arg(Parser* parser)
+ProcCallArg* parse_proc_call_arg(Parser* parser)
 {
     Identifier* name = NULL;
     Expr* expr = parse_expr(parser);

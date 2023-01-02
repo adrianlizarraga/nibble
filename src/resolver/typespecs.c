@@ -1,4 +1,36 @@
-static bool try_complete_aggregate_type(Resolver* resolver, Type* type);
+#include <assert.h>
+#include "resolver/internal.h"
+#include "ast/module.h"
+
+static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregate* decl_aggregate);
+
+bool try_complete_aggregate_type(Resolver* resolver, Type* type)
+{
+    if (type->kind != TYPE_INCOMPLETE_AGGREGATE) {
+        return true;
+    }
+
+    Symbol* sym = type->as_incomplete.sym;
+
+    if (type->as_incomplete.is_completing) {
+        resolver_on_error(resolver, sym->decl->range, "Cannot resolve type `%s` due to cyclic dependency", sym->name->str);
+        return false;
+    }
+
+    assert(sym->decl->kind == CST_DeclStruct || sym->decl->kind == CST_DeclUnion);
+
+    bool success;
+    DeclAggregate* decl_aggregate = (DeclAggregate*)sym->decl;
+
+    ModuleState mod_state = enter_module(resolver, sym->home);
+    {
+        type->as_incomplete.is_completing = true; // Mark as `completing` to detect dependency cycles.
+        success = complete_aggregate_type(resolver, type, decl_aggregate);
+    }
+    exit_module(resolver, mod_state);
+
+    return success;
+}
 
 typedef struct SeenField {
     Identifier* name;
@@ -86,35 +118,7 @@ static bool complete_aggregate_type(Resolver* resolver, Type* type, DeclAggregat
     return true;
 }
 
-static bool try_complete_aggregate_type(Resolver* resolver, Type* type)
-{
-    if (type->kind != TYPE_INCOMPLETE_AGGREGATE) {
-        return true;
-    }
-
-    Symbol* sym = type->as_incomplete.sym;
-
-    if (type->as_incomplete.is_completing) {
-        resolver_on_error(resolver, sym->decl->range, "Cannot resolve type `%s` due to cyclic dependency", sym->name->str);
-        return false;
-    }
-
-    assert(sym->decl->kind == CST_DeclStruct || sym->decl->kind == CST_DeclUnion);
-
-    bool success;
-    DeclAggregate* decl_aggregate = (DeclAggregate*)sym->decl;
-
-    ModuleState mod_state = enter_module(resolver, sym->home);
-    {
-        type->as_incomplete.is_completing = true; // Mark as `completing` to detect dependency cycles.
-        success = complete_aggregate_type(resolver, type, decl_aggregate);
-    }
-    exit_module(resolver, mod_state);
-
-    return success;
-}
-
-static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
+Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec)
 {
     if (!typespec)
         return builtin_types[BUILTIN_TYPE_VOID].type;

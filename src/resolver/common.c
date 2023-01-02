@@ -1,17 +1,7 @@
-#include "resolver/module.h"
-#include "parser/module.h"
+#include <assert.h>
+#include "resolver/internal.h"
 
-static bool resolve_decl_var(Resolver* resolver, Symbol* sym);
-static bool resolve_decl_const(Resolver* resolver, Symbol* sym);
-static bool resolve_decl_proc(Resolver* resolver, Symbol* sym);
-static bool resolve_decl_enum(Resolver* resolver, Symbol* sym);
-static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym);
-static bool resolve_global_proc_body(Resolver* resolver, Symbol* sym);
-static bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type);
-static Type* resolve_typespec(Resolver* resolver, TypeSpec* typespec);
-static unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags);
-
-static void resolver_on_error(Resolver* resolver, ProgRange range, const char* format, ...)
+void resolver_on_error(Resolver* resolver, ProgRange range, const char* format, ...)
 {
     char buf[MAX_ERROR_LEN];
     size_t size = 0;
@@ -24,7 +14,22 @@ static void resolver_on_error(Resolver* resolver, ProgRange range, const char* f
     error_stream_add(&resolver->ctx->errors, range, buf, size > sizeof(buf) ? sizeof(buf) : size);
 }
 
-static ModuleState enter_module(Resolver* resolver, Module* mod)
+void resolver_cast_error(Resolver* resolver, CastResult cast_res, ProgRange range, const char* err_prefix, Type* src_type,
+                         Type* dst_type)
+{
+    assert(!cast_res.success);
+
+    if (cast_res.bad_lvalue) {
+        resolver_on_error(resolver, range, "%s: cannot convert a temporary (`%s`) to type `%s`.", err_prefix, type_name(src_type),
+                          type_name(dst_type));
+    }
+    else {
+        resolver_on_error(resolver, range, "%s: cannot convert `%s` to type `%s`.", err_prefix, type_name(src_type),
+                          type_name(dst_type));
+    }
+}
+
+ModuleState enter_module(Resolver* resolver, Module* mod)
 {
     ModuleState old_state = resolver->state;
 
@@ -35,17 +40,17 @@ static ModuleState enter_module(Resolver* resolver, Module* mod)
     return old_state;
 }
 
-static void exit_module(Resolver* resolver, ModuleState state)
+void exit_module(Resolver* resolver, ModuleState state)
 {
     resolver->state = state;
 }
 
-static void set_scope(Resolver* resolver, Scope* scope)
+void set_scope(Resolver* resolver, Scope* scope)
 {
     resolver->state.scope = scope;
 }
 
-static Scope* push_scope(Resolver* resolver, size_t num_syms)
+Scope* push_scope(Resolver* resolver, size_t num_syms)
 {
     Scope* prev_scope = resolver->state.scope;
     Scope* scope = new_scope(&resolver->ctx->ast_mem, num_syms + num_syms);
@@ -58,12 +63,12 @@ static Scope* push_scope(Resolver* resolver, size_t num_syms)
     return scope;
 }
 
-static void pop_scope(Resolver* resolver)
+void pop_scope(Resolver* resolver)
 {
     resolver->state.scope = resolver->state.scope->parent;
 }
 
-static ModuleState enter_proc(Resolver* resolver, Symbol* sym)
+ModuleState enter_proc(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_PROC);
     ModuleState mod_state = enter_module(resolver, sym->home);
@@ -76,14 +81,14 @@ static ModuleState enter_proc(Resolver* resolver, Symbol* sym)
     return mod_state;
 }
 
-static void exit_proc(Resolver* resolver, ModuleState state)
+void exit_proc(Resolver* resolver, ModuleState state)
 {
     pop_scope(resolver);
     resolver->state.proc = NULL;
     exit_module(resolver, state);
 }
 
-static bool resolve_symbol(Resolver* resolver, Symbol* sym)
+bool resolve_symbol(Resolver* resolver, Symbol* sym)
 {
     if (sym->status == SYMBOL_STATUS_RESOLVED)
         return true;
@@ -108,7 +113,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
         success = resolve_decl_var(resolver, sym);
 
         if (is_global) {
-            bucket_list_add_elem(&resolver->ctx->vars, sym);
+            add_global_data(&resolver->ctx->vars, sym, sym->type->size);
         }
         break;
     case SYMBOL_CONST:
@@ -157,7 +162,7 @@ static bool resolve_symbol(Resolver* resolver, Symbol* sym)
     return success;
 }
 
-static Symbol* resolve_name(Resolver* resolver, Identifier* name)
+Symbol* resolve_name(Resolver* resolver, Identifier* name)
 {
     Symbol* sym = lookup_symbol(resolver->state.scope, name);
 
@@ -172,7 +177,7 @@ static Symbol* resolve_name(Resolver* resolver, Identifier* name)
     return sym;
 }
 
-static Symbol* resolve_export_name(Resolver* resolver, Identifier* name)
+Symbol* resolve_export_name(Resolver* resolver, Identifier* name)
 {
     Symbol* sym = module_get_export_sym(resolver->state.mod, name);
 
@@ -187,7 +192,7 @@ static Symbol* resolve_export_name(Resolver* resolver, Identifier* name)
     return sym;
 }
 
-static Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident)
+Symbol* lookup_ident(Resolver* resolver, NSIdent* ns_ident)
 {
     //
     // Tries to lookup a symbol for an identifier in the form <module_namespace>::...::<identifier_name>

@@ -1,4 +1,7 @@
+#include <alloca.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include "path_utils.h"
 #include "cstring.h"

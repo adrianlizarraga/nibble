@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <string.h>
 
 // TODO: Use clp2 from Hacker's Delight 2nd edition, pg 62.
 size_t calc_hmap_size(size_t cap)
@@ -147,7 +148,7 @@ uint64_t* hmap_put(HMap* map, uint64_t key, uint64_t value)
     return NULL;
 }
 
-uint64_t* hmap_get(HMap* map, uint64_t key)
+uint64_t* hmap_get(const HMap* map, uint64_t key)
 {
     assert(key != HASH_MAP_NULL_KEY);
 
@@ -174,7 +175,7 @@ uint64_t* hmap_get(HMap* map, uint64_t key)
     return NULL;
 }
 
-void* hmap_get_obj(HMap* map, uint64_t key)
+void* hmap_get_obj(const HMap* map, uint64_t key)
 {
     uint64_t* obj_ptr = hmap_get(map, key);
 

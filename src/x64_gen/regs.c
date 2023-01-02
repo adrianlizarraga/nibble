@@ -1,4 +1,5 @@
 #include "cstring.h"
+#include "bytecode/module.h"
 #include "x64_gen/regs.h"
 #include "x64_gen/startup_linux.c"
 
@@ -98,7 +99,7 @@ void x64_init_target(OS target_os)
         x64_target.arg_reg_mask = x64_linux_arg_reg_mask;
         x64_target.ret_reg_mask = x64_linux_ret_reg_mask;
 
-        x64_target.startup_code = x64_linux_startup_code;
+        x64_target.startup_code = x64_linux_startup_code_text;
         break;
     default:
         NIBBLE_FATAL_EXIT("Unsupported x86_64 OS kind '%d'", target_os);

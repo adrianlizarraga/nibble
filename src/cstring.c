@@ -1,5 +1,8 @@
+#include <assert.h>
+
 #include "cstring.h"
 #include "array.h"
+
 
 int cstr_cmp(const char* str1, const char* str2)
 {

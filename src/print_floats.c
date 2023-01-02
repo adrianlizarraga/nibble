@@ -1,7 +1,7 @@
-#define F64_SIGN_MASK 0x8000000000000000ULL
-#define F64_EXP_MASK 0x7FF0000000000000ULL
-#define F64_EXP_POS 52
-#define F64_FRAC_MASK 0x000FFFFFFFFFFFFFULL
+#include <string.h>
+#include <assert.h>
+#include "cstring.h"
+#include "print_floats.h"
 
 // x = f * (2^e)
 typedef struct CustomFP {
@@ -108,30 +108,18 @@ static CustomFP custom_fp_from_f64(double x)
     return fp;
 }
 
-enum F64StringFlags {
-    F64_STRING_IS_NEG = 1 << 0,
-    F64_STRING_IS_INF = 1 << 1,
-    F64_STRING_IS_NAN = 1 << 2,
-};
 
-typedef struct F64String {
-    char digits[1024];
-    u32 num_digits;
-    int decimal_point; // location of the decimal point (left of corresponding digit index).
-    u32 flags;
-} F64String;
-
-static inline u32 f64str_num_frac_digits(F64String* fstr)
+u32 f64str_num_frac_digits(F64String* fstr)
 {
     return MAX(fstr->num_digits - fstr->decimal_point, 0);
 }
 
-static inline u32 f64str_num_int_digits(F64String* fstr)
+u32 f64str_num_int_digits(F64String* fstr)
 {
     return MAX(fstr->decimal_point, 0);
 }
 
-static bool f64str_has_nonzero_digit(F64String* fstr, u32 round_digit)
+bool f64str_has_nonzero_digit(F64String* fstr, u32 round_digit)
 {
     u32 start = round_digit + 1;
 
@@ -145,7 +133,7 @@ static bool f64str_has_nonzero_digit(F64String* fstr, u32 round_digit)
 }
 
 // Adapted from https://research.swtch.com/ftoa
-static void f64_to_str(F64String* dst, double f)
+void f64_to_str(F64String* dst, double f)
 {
     dst->num_digits = 0;
     dst->decimal_point = 0;
@@ -254,7 +242,7 @@ static void f64_to_str(F64String* dst, double f)
     dst->digits[dst->num_digits] = '\0';
 }
 
-static void f64str_round(F64String* fstr, u32 precision)
+void f64str_round(F64String* fstr, u32 precision)
 {
     const u32 digits_cap = ARRAY_LEN(fstr->digits);
     u32 tot_frac_digits = f64str_num_frac_digits(fstr);
@@ -313,3 +301,4 @@ static void f64str_round(F64String* fstr, u32 precision)
 
     fstr->digits[fstr->num_digits] = '\0'; // Null terminate
 }
+

@@ -1,9 +1,9 @@
-#include "parser/module.h"
+#include "parser/internal.h"
 #include "ast/module.h"
 
 #include <string.h>
 
-static void parser_on_error(Parser* parser, ProgRange range, const char* format, ...)
+void parser_on_error(Parser* parser, ProgRange range, const char* format, ...)
 {
     if (parser->errors) {
         char buf[MAX_ERROR_LEN];
@@ -104,7 +104,7 @@ bool match_keyword(Parser* parser, Keyword kw)
     return matches;
 }
 
-static void parser_unexpected_token(Parser* parser, TokenKind expected_kind, const char* error_prefix)
+void parser_unexpected_token(Parser* parser, TokenKind expected_kind, const char* error_prefix)
 {
     char tmp[32];
 

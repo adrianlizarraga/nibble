@@ -1,12 +1,8 @@
 #include "stream.h"
 #include "x64_gen/module.h"
-
-#include "x64_gen/regs.c"
-#include "x64_gen/lir.c"
-#include "x64_gen/convert_ir.c"
-#include "x64_gen/livevar.c"
-#include "x64_gen/reg_alloc.c"
-#include "x64_gen/print_lir.c"
+#include "x64_gen/regs.h"
+#include "x64_gen/lir.h"
+#include "x64_gen/reg_alloc.h"
 
 #define X64_ASM_LINE_LEN 64
 #define X64_STR_LIT_PRE "__nibble_str_lit_"
@@ -2790,63 +2786,68 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     allocator_restore_state(gen_mem_state);
 }
 
-static void X64_gen_global_vars(X64_Generator* generator, BucketList* vars, BucketList* str_lits, BucketList* float_lits)
+static void X64_gen_global_vars(X64_Generator* generator, GlobalData* vars, GlobalData* str_lits, GlobalData* float_lits)
 {
     Allocator* tmp_mem = generator->tmp_mem;
     AllocatorState mem_state = allocator_get_state(tmp_mem);
 
-    X64_emit_data(generator, "SECTION .rodata\n");
+    size_t num_str_lits = str_lits->list.num_elems;
+    size_t num_float_lits = float_lits->list.num_elems;
 
-    // Emit static/const string literals
-    size_t num_str_lits = str_lits->num_elems;
+    if (num_str_lits || num_float_lits) {
+        X64_emit_data(generator, "SECTION .rodata\n");
 
-    for (size_t i = 0; i < num_str_lits; i++) {
-        void** str_lit_ptr = bucket_list_get_elem_packed(str_lits, i);
-        assert(str_lit_ptr);
+        // Emit static/const string literals
+        for (size_t i = 0; i < num_str_lits; i++) {
+            void** str_lit_ptr = bucket_list_get_elem_packed(&str_lits->list, i);
+            assert(str_lit_ptr);
 
-        StrLit* str_lit = (StrLit*)(*str_lit_ptr);
+            StrLit* str_lit = (StrLit*)(*str_lit_ptr);
 
-        assert(str_lit->used);
+            assert(str_lit->used);
 
-        const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
+            const char* escaped_str = cstr_escape(generator->tmp_mem, str_lit->str, str_lit->len, '`');
 
-        X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
-        X64_emit_data(generator, "db `%s\\0`", escaped_str);
+            X64_emit_data(generator, "%s_%llu: ", X64_STR_LIT_PRE, str_lit->id);
+            X64_emit_data(generator, "db `%s\\0`", escaped_str);
+        }
+
+        // Emit static/const float literals
+        for (size_t i = 0; i < num_float_lits; i++) {
+            void** float_lit_ptr = bucket_list_get_elem_packed(&float_lits->list, i);
+            assert(float_lit_ptr);
+
+            FloatLit* float_lit = (FloatLit*)(*float_lit_ptr);
+
+            assert(float_lit->used);
+
+            Type* ftype = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
+            ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = ftype, .float_lit = float_lit};
+
+            X64_emit_global_data(generator, X64_float_lit_mangled_name(tmp_mem, float_lit), &const_expr);
+        }
     }
 
-    // Emit static/const float literals
-    size_t num_float_lits = float_lits->num_elems;
 
-    for (size_t i = 0; i < num_float_lits; i++) {
-        void** float_lit_ptr = bucket_list_get_elem_packed(float_lits, i);
-        assert(float_lit_ptr);
+    size_t num_vars = vars->list.num_elems;
 
-        FloatLit* float_lit = (FloatLit*)(*float_lit_ptr);
+    if (num_vars) {
+        X64_emit_data(generator, "\nSECTION .data\n");
 
-        assert(float_lit->used);
+        for (u32 i = 0; i < num_vars; i += 1) {
+            void** sym_ptr = bucket_list_get_elem_packed(&vars->list, i);
+            assert(sym_ptr);
+            Symbol* sym = (Symbol*)(*sym_ptr);
 
-        Type* ftype = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
-        ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = ftype, .float_lit = float_lit};
-
-        X64_emit_global_data(generator, X64_float_lit_mangled_name(tmp_mem, float_lit), &const_expr);
+            X64_emit_global_data(generator, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
+        }
     }
 
-    X64_emit_data(generator, "\nSECTION .data\n");
-
-    size_t num_vars = vars->num_elems;
-
-    for (u32 i = 0; i < num_vars; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(vars, i);
-        assert(sym_ptr);
-        Symbol* sym = (Symbol*)(*sym_ptr);
-
-        X64_emit_global_data(generator, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
-    }
     allocator_restore_state(mem_state);
 }
 
-bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, BucketList* procs, BucketList* str_lits,
-                    BucketList* float_lits, BucketList* foreign_procs, const char* output_file)
+bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
+                    GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
     FILE* out_fd = fopen(output_file, "w");
     if (!out_fd) {
@@ -2895,5 +2896,8 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, BucketList* vars, Bu
 
     fclose(out_fd);
 
+#if 0
+    x64_gen_elf(gen_mem, tmp_mem, vars, procs, str_lits, float_lits, foreign_procs, output_file);
+#endif
     return true;
 }

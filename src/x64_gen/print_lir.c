@@ -1,4 +1,5 @@
-#include "regs.h"
+#include "x64_gen/regs.h"
+#include "x64_gen/lir.h"
 
 static char* LIR_print_mem(Allocator* arena, X64_MemAddr* addr)
 {
@@ -751,3 +752,4 @@ void LIR_dump_proc_dot(Allocator* arena, const char* proc_name, size_t num_xbblo
     allocator_restore_state(mem_state);
     ftprint_out("}\n");
 }
+

@@ -1,11 +1,9 @@
-#include "cstring.h"
+#include <assert.h>
 #include <float.h>
 
-#define PRINT_MAX_NUM_DIGITS 32
-#define PRINT_DEFAULT_FLOAT_PRECISION 6
-#define PRINT_FILE_BUF_SIZE 128
+#include "cstring.h"
+#include "print_floats.h"
 
-#include "print_floats.c"
 
 enum format_flags {
     FORMAT_FLAG_LEFT_JUSTIFIED = 1U << 0,

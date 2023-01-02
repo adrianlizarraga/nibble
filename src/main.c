@@ -33,25 +33,17 @@
 //#define NIBBLE_PRINT_IRS
 //#define NIBBLE_PRINT_MEM_USAGE
 
+#include "nibble.h"
+#include "cstring.h"
+#include "path_utils.h"
+#include "compiler.h"
+
+#ifdef NIBBLE_ENABLE_UNITY_BUILD
 // This is a "unity build".
 // Having a single compilation unit makes building trivial.
 // I'll add a proper build system later.
-#include "allocator.c"
-#include "cstring.c"
-#include "path_utils.c"
-#include "os_utils.c"
-#include "print.c"
-#include "array.c"
-#include "hash_map.c"
-#include "stream.c"
-#include "linker.c"
-#include "lexer/module.c"
-#include "ast/module.c"
-#include "parser/module.c"
-#include "resolver/module.c"
-#include "bytecode/module.c"
-#include "x64_gen/module.c"
-#include "nibble.c"
+#include "all_srcs.h"
+#endif
 
 // The maximum number of characters in any path provided by the user.
 #define MAX_INPUT_PATH_LEN 1024

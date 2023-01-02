@@ -1,3 +1,4 @@
+#include <assert.h>
 #include "linker.h"
 #include "array.h"
 #include "compiler.h"

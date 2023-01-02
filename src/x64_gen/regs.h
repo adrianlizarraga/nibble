@@ -1,6 +1,6 @@
 #ifndef NIBBLE_X64_REGS_H
 #define NIBBLE_X64_REGS_H
-#include "nibble.h"
+#include "ast/module.h"
 
 #define X64_MAX_INT_REG_SIZE 8
 #define X64_STACK_ALIGN 16
@@ -79,7 +79,6 @@ typedef struct X64_Target {
 
 extern X64_Target x64_target;
 
-void x64_init_target(OS target_os);
 bool X64_is_caller_saved_reg(X64_Reg reg);
 bool X64_is_callee_saved_reg(X64_Reg reg);
 bool X64_is_arg_reg(X64_Reg reg);

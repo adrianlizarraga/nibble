@@ -1,4 +1,7 @@
-static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
+#include <assert.h>
+#include "resolver/internal.h"
+
+bool resolve_decl_var(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_VAR);
 
@@ -99,7 +102,7 @@ static bool resolve_decl_var(Resolver* resolver, Symbol* sym)
     return true;
 }
 
-static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
+bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
 {
     DeclTypedef* decl = (DeclTypedef*)sym->decl;
     Type* type = resolve_typespec(resolver, decl->typespec);
@@ -114,7 +117,7 @@ static bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
     return true;
 }
 
-static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
+bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_TYPE);
     DeclEnum* decl_enum = (DeclEnum*)sym->decl;
@@ -206,7 +209,7 @@ static bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
     return true;
 }
 
-static bool resolve_decl_const(Resolver* resolver, Symbol* sym)
+bool resolve_decl_const(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_CONST);
 
@@ -335,7 +338,7 @@ static bool check_foreign_ident_name(const char* str, size_t len)
     return true;
 }
 
-static bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
+bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
 {
     DeclProc* decl = (DeclProc*)sym->decl;
 

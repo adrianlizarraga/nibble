@@ -1,6 +1,7 @@
 #ifndef NIBBLE_RESOLVER_H
 #define NIBBLE_RESOLVER_H
 #include "compiler.h"
+#include "ast/module.h"
 
 #define MAX_LOCAL_SYMS 512
 

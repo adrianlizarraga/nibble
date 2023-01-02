@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <assert.h>
 
 #include "allocator.h"
 #include "hash_map.h"
@@ -15,6 +16,8 @@
 #define IS_POW2(x) (((x) & ((x) - 1)) == 0)
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
+
+#define NIBBLE_UNUSED_VAR(x) (void)(x)
 
 #if defined(__linux__)
 #define NIBBLE_HOST_LINUX

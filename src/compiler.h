@@ -28,6 +28,11 @@ typedef struct ForeignLib {
     u32 ref_count;
 } ForeignLib;
 
+typedef struct GlobalData {
+    BucketList list;
+    size_t size;
+} GlobalData;
+
 typedef struct NibbleCtx {
     // Arena allocators.
     Allocator* gen_mem;
@@ -72,13 +77,13 @@ typedef struct NibbleCtx {
     BucketList foreign_procs; // Array of Symbol elems
 
     // List of symbols reachable from main
-    BucketList vars;
+    GlobalData vars;
     BucketList procs;
     BucketList aggregate_types;
 
     // List of literals reachable from main
-    BucketList str_lits;
-    BucketList float_lits;
+    GlobalData str_lits;
+    GlobalData float_lits;
 } NibbleCtx;
 
 NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent,
@@ -89,6 +94,8 @@ bool nibble_compile(NibbleCtx* nibble, const Path* main_path, const Path* out_pa
 void nibble_cleanup(NibbleCtx* nibble);
 
 ForeignLib* nibble_add_foreign_lib(NibbleCtx* nib_ctx, const StrLit* foreign_lib_name);
+
+void add_global_data(GlobalData* data, void* item, size_t size);
 
 void report_error(ErrorStream* error_stream, ProgRange range, const char* format, ...);
 
