@@ -2896,6 +2896,8 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bu
 
     fclose(out_fd);
 
+#if 0
     x64_gen_elf(gen_mem, tmp_mem, vars, procs, str_lits, float_lits, foreign_procs, output_file);
+#endif
     return true;
 }

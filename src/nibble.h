@@ -17,6 +17,8 @@
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 
+#define NIBBLE_UNUSED_VAR(x) (void)(x)
+
 #if defined(__linux__)
 #define NIBBLE_HOST_LINUX
 #else

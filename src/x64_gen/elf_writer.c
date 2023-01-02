@@ -1,3 +1,4 @@
+#include "nibble.h"
 #include "x64_gen/elf.h"
 #include "x64_gen/data.h"
 #include "x64_gen/text.h"
@@ -382,6 +383,10 @@ static void x64_prog_write_sections(const X64_ElfProg* prog, FILE* out_fd, u32 i
 static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODataSection* rodata_sec, const X64_DataSection* data_sec,
                           const X64_TextSection* text_sec, const BucketList* foreign_procs, const char* output_file)
 {
+    // TODO: Actually use vars.
+    NIBBLE_UNUSED_VAR(tmp_mem);
+    NIBBLE_UNUSED_VAR(output_file);
+
     FILE* out_fd = fopen("elf.o", "wb");
     if (!out_fd) {
         ftprint_err("Failed to open output file `elf.o`\n");
@@ -527,6 +532,8 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
 bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
                  GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
+    NIBBLE_UNUSED_VAR(procs); // TODO: Remove
+
     AllocatorState gen_mem_state = allocator_get_state(gen_mem);
 
     const bool has_rodata_sec = (str_lits->list.num_elems > 0) || (float_lits->list.num_elems > 0);
