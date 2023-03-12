@@ -31,6 +31,20 @@ typedef struct X64_SIBD_Addr {
     };
 } X64_SIBD_Addr;
 
+X64_SIBD_Addr X64__get_stack_offset_addr(s32 offset)
+{
+    X64_SIBD_Addr addr = {
+        .kind = X64_SIBD_ADDR_LOCAL,
+        .local = {
+            .base_reg = X64_RBP,
+            .index_reg = -1,
+            .disp = offset
+        }
+    };
+
+    return addr;
+}
+
 typedef enum X64_Instr_Kind {
     X64_Instr_Kind_NOOP = 0,
     X64_Instr_Kind_RET,
@@ -38,11 +52,16 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_JMP_TO_RET, // Doesn't correspond to an actual X64 instruction. Jumps to ret label.
     X64_Instr_Kind_PUSH,
     X64_Instr_Kind_POP,
+    X64_Instr_Kind_ADD_RR,
+    X64_Instr_Kind_ADD_RM,
+    X64_Instr_Kind_ADD_MR,
     X64_Instr_Kind_MOV_RR,
     X64_Instr_Kind_MOV_MR,
     X64_Instr_Kind_MOVSS_MR,
     X64_Instr_Kind_MOVSD_MR,
     X64_Instr_Kind_SUB_RI,
+
+    X64_Instr_Kind_COUNT
 } X64_Instr_Kind;
 
 typedef struct X64__Instr {
@@ -60,6 +79,24 @@ typedef struct X64__Instr {
         struct {
             size_t target;
         } jmp; // Also for JMP_TO_RET
+
+        struct {
+            u8 size;
+            u8 dst;
+            u8 src;
+        } add_rr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            X64_SIBD_Addr src;
+        } add_rm;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u8 src;
+        } add_mr;
 
         struct {
             u8 size;
@@ -99,6 +136,7 @@ static void X64__emit_instr_ret(Array(X64__Instr) * instrs)
 
 static void X64__emit_instr_push(Array(X64__Instr) * instrs, X64_Reg reg)
 {
+    assert(x64_reg_classes[reg] == X64_REG_CLASS_INT); // TODO: Support floating point regs. See X64_print_push_reg()
     X64__Instr push_instr = {
         .kind = X64_Instr_Kind_PUSH,
         .push.reg = reg,
@@ -109,12 +147,49 @@ static void X64__emit_instr_push(Array(X64__Instr) * instrs, X64_Reg reg)
 
 static void X64__emit_instr_pop(Array(X64__Instr) * instrs, X64_Reg reg)
 {
+    assert(x64_reg_classes[reg] == X64_REG_CLASS_INT); // TODO: Support floating point regs. See X64_print_pop_reg()
     X64__Instr pop_instr = {
         .kind = X64_Instr_Kind_POP,
         .pop.reg = reg,
     };
 
     array_push(*instrs, pop_instr);
+}
+
+static void X64__emit_instr_add_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr add_rr_instr = {
+        .kind = X64_Instr_Kind_ADD_RR,
+        .add_rr.size = size,
+        .add_rr.dst = dst,
+        .add_rr.src = src,
+    };
+
+    array_push(*instrs, add_rr_instr);
+}
+
+static void X64__emit_instr_add_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr add_rm_instr = {
+        .kind = X64_Instr_Kind_ADD_RM,
+        .add_rm.size = size,
+        .add_rm.dst = dst,
+        .add_rm.src = src,
+    };
+
+    array_push(*instrs, add_rm_instr);
+}
+
+static void X64__emit_instr_add_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
+{
+    X64__Instr add_mr_instr = {
+        .kind = X64_Instr_Kind_ADD_MR,
+        .add_mr.size = size,
+        .add_mr.dst = dst,
+        .add_mr.src = src,
+    };
+
+    array_push(*instrs, add_mr_instr);
 }
 
 static void X64__emit_instr_mov_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
@@ -170,19 +245,118 @@ static size_t X64__emit_instr_placeholder(Array(X64__Instr) * instrs, X64_Instr_
     return array_len(*instrs) - 1;
 }
 
+typedef void X64_Emit_Bin_Op_RR_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, X64_Reg src);
+typedef void X64_Emit_Bin_Op_RM_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Op_MR_Func (Array(X64__Instr)* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
+
+static X64_Emit_Bin_Op_RR_Func* x64_bin_op_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
+    [X64_Instr_Kind_ADD_RR] = X64__emit_instr_add_rr,
+};
+
+static X64_Emit_Bin_Op_RM_Func* x64_bin_op_rm_emit_funcs[X64_Instr_Kind_COUNT] = {
+    [X64_Instr_Kind_ADD_RM] = X64__emit_instr_add_rm,
+};
+
+static X64_Emit_Bin_Op_MR_Func* x64_bin_op_mr_emit_funcs[X64_Instr_Kind_COUNT] = {
+    [X64_Instr_Kind_ADD_MR] = X64__emit_instr_add_mr,
+};
+
 typedef struct X64_Proc_State {
     Allocator* gen_mem;
     Allocator* tmp_mem;
     Symbol* sym; // Procedure symbol.
     u32 id; // Procedure ID.
-    const X64_LIRBuilder* builder;
+    X64_LIRBuilder* builder;
     X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT];
     Array(X64__Instr) instrs;
 } X64_Proc_State;
 
-static void X64__gen_instr(X64_Proc_State* proc_state, X64__Instr* instr, bool is_last_instr, long bblock_id)
+static X64_LRegLoc X64__lreg_loc(X64_Proc_State* proc_state, u32 lreg)
 {
-    // TODO
+    u32 rng_idx = X64_find_alias_reg(proc_state->builder, lreg);
+    X64_LRegLoc reg_loc = proc_state->builder->lreg_ranges[rng_idx].loc;
+
+    assert(reg_loc.kind != X64_LREG_LOC_UNASSIGNED);
+
+    return reg_loc;
+}
+
+static void X64__emit_bin_op_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, X64_RegClass reg_class,
+                                      u32 op_size, u32 op1_lreg, u32 op2_lreg)
+{
+    X64_LRegLoc op1_loc = X64__lreg_loc(proc_state, op1_lreg);
+    X64_LRegLoc op2_loc = X64__lreg_loc(proc_state, op2_lreg);
+
+    switch (op1_loc.kind) {
+    case X64_LREG_LOC_REG: {
+        switch (op2_loc.kind) {
+        case X64_LREG_LOC_REG: {
+            x64_bin_op_rr_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, op2_loc.reg);
+            break;
+        }
+        case X64_LREG_LOC_STACK: {
+            x64_bin_op_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, X64__get_stack_offset_addr(op2_loc.offset));
+            break;
+        }
+        default:
+            assert(0);
+            break;
+        }
+        break;
+    }
+    case X64_LREG_LOC_STACK: {
+        switch (op2_loc.kind) {
+        case X64_LREG_LOC_REG: {
+            x64_bin_op_mr_emit_funcs[instr_kind](&proc_state->instrs, op_size, X64__get_stack_offset_addr(op1_loc.offset), op2_loc.reg);
+            break;
+        }
+        case X64_LREG_LOC_STACK: {
+            const X64_SIBD_Addr op1_addr = X64__get_stack_offset_addr(op1_loc.offset);
+            const X64_SIBD_Addr op2_addr = X64__get_stack_offset_addr(op2_loc.offset);
+
+            X64_Reg tmp_reg = (reg_class == X64_REG_CLASS_INT) ? X64_RAX : X64_XMM0;
+            //const char* tmp_reg_str = X64_reg_name(tmp_reg, op1_size);
+
+            /*
+            // Save the contents of a temporary register into the stack.
+            X64_print_push_reg(generator, generator->curr_proc.text_lines.prev, tmp_reg);
+
+            // Load dst into the temporary register,
+            const char* mov_instr =
+                (reg_class == X64_REG_CLASS_FLOAT) ? (op1_size == float_kind_sizes[FLOAT_F64] ? "movsd" : "movss") : "mov";
+            X64_emit_text(generator, "  %s %s, %s", mov_instr, tmp_reg_str, op1_op_str);
+
+            // Execute the instruction using the temporary register as the destination.
+            X64_emit_text(generator, "  %s %s, %s", instr, tmp_reg_str, op2_op_str);
+
+            // Store the result of the instruction (contents of temporary register) into dst.
+            if (writes_op1) {
+                X64_emit_text(generator, "  %s %s, %s", mov_instr, op1_op_str, tmp_reg_str);
+            }
+
+            // Restore the contents of the temporary register.
+            X64_print_pop_reg(generator, generator->curr_proc.text_lines.prev, tmp_reg);
+            */
+
+            break;
+        }
+        default:
+            assert(0);
+            break;
+        }
+        break;
+    }
+    default:
+        assert(0);
+        break;
+    }
+}
+
+static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is_last_instr, long bblock_id)
+{
+    AllocatorState mem_state = allocator_get_state(proc_state->tmp_mem);
+
+    allocator_restore_state(mem_state);
 }
 
 typedef struct X64_Stack_Params_Info {
@@ -543,6 +717,7 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
     // Fill in sub rsp, <stack_size>
     if (stack_size) {
         X64__Instr* sub_rsp_instr = &state.instrs[sub_rsp_idx];
+        sub_rsp_instr->kind = X64_Instr_Kind_SUB_RI;
         sub_rsp_instr->sub_ri.size = X64_MAX_INT_REG_SIZE;
         sub_rsp_instr->sub_ri.dst = X64_RSP;
         sub_rsp_instr->sub_ri.imm = stack_size;
@@ -558,7 +733,7 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64__emit_instr_push(&state.instrs, reg);
+            X64__emit_instr_push(&state.instrs, reg); // TODO: Can also be a float reg!!!!
         }
     }
 
@@ -590,7 +765,7 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64__emit_instr_pop(&state.instrs, reg);
+            X64__emit_instr_pop(&state.instrs, reg); // TODO: Can also be a float reg!!!
         }
     }
 
