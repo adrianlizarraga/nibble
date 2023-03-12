@@ -2746,6 +2746,8 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     X64_emit_text(generator, "  end.%s:", proc_mangled);
 
     // Patch instruction to save callee-saved registers.
+    // TODO: Not necessary since we know all used callee regs after register allocation.
+    // The procedure instructions always save tmp registers into the stack anyway.
     for (uint32_t r = 0; r < X64_REG_COUNT; r += 1) {
         X64_Reg reg = (X64_Reg)r;
 
