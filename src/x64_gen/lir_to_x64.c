@@ -44,25 +44,25 @@ typedef struct X64Instr {
     union {
         struct {
             u8 reg;
-	} push;
+        } push;
 
         struct {
-	    u8 size;
+            u8 size;
             u8 dst;
             u8 src;
-	} mov_rr;
+        } mov_rr;
 
         struct {
             u8 size;
             X64_SIBDAddr dst;
             u8 src;
-	} mov_mr;
+        } mov_mr;
 
         struct {
-	    u8 size;
+            u8 size;
             u8 dst;
             u32 imm;
-	} sub_ri;
+        } sub_ri;
 
         struct {
             X64_SIBDAddr dst;
@@ -76,65 +76,65 @@ typedef struct X64Instr {
     };
 } X64Instr;
 
-static void X64__emit_instr_push(Array(X64Instr)* instrs, X64_Reg reg)
+static void X64__emit_instr_push(Array(X64Instr) * instrs, X64_Reg reg)
 {
     X64Instr push_instr = {
         .kind = X64InstrKind_PUSH,
-	.push.reg = reg,
+        .push.reg = reg,
     };
 
     array_push(*instrs, push_instr);
 }
 
-static void X64__emit_instr_mov_rr(Array(X64Instr)* instrs, u8 size, X64_Reg dst, X64_Reg src)
+static void X64__emit_instr_mov_rr(Array(X64Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64Instr mov_rr_instr = {
         .kind = X64InstrKind_MOV_RR,
-	.mov_rr.size = size,
-	.mov_rr.dst = dst,
-	.mov_rr.src = src,
+        .mov_rr.size = size,
+        .mov_rr.dst = dst,
+        .mov_rr.src = src,
     };
 
     array_push(*instrs, mov_rr_instr);
 }
 
-static void X64__emit_instr_mov_mr(Array(X64Instr)* instrs, u8 size, X64_SIBDAddr dst, X64_Reg src)
+static void X64__emit_instr_mov_mr(Array(X64Instr) * instrs, u8 size, X64_SIBDAddr dst, X64_Reg src)
 {
     X64Instr mov_mr_instr = {
         .kind = X64InstrKind_MOV_MR,
-	.mov_mr.size = size,
-	.mov_mr.dst = dst,
-	.mov_mr.src = src,
+        .mov_mr.size = size,
+        .mov_mr.dst = dst,
+        .mov_mr.src = src,
     };
 
     array_push(*instrs, mov_mr_instr);
 }
 
-static void X64__emit_instr_movss_mr(Array(X64Instr)* instrs, X64_SIBDAddr dst, X64_Reg src)
+static void X64__emit_instr_movss_mr(Array(X64Instr) * instrs, X64_SIBDAddr dst, X64_Reg src)
 {
     X64Instr movss_mr_instr = {
         .kind = X64InstrKind_MOVSS_MR,
-	.movss_mr.dst = dst,
-	.movss_mr.src = src,
+        .movss_mr.dst = dst,
+        .movss_mr.src = src,
     };
 
     array_push(*instrs, movss_mr_instr);
 }
 
-static void X64__emit_instr_movsd_mr(Array(X64Instr)* instrs, X64_SIBDAddr dst, X64_Reg src)
+static void X64__emit_instr_movsd_mr(Array(X64Instr) * instrs, X64_SIBDAddr dst, X64_Reg src)
 {
     X64Instr movsd_mr_instr = {
         .kind = X64InstrKind_MOVSD_MR,
-	.movsd_mr.dst = dst,
-	.movsd_mr.src = src,
+        .movsd_mr.dst = dst,
+        .movsd_mr.src = src,
     };
 
     array_push(*instrs, movsd_mr_instr);
 }
 
-static size_t X64__emit_instr_placeholder(Array(X64Instr)* instrs, X64InstrKind kind)
+static size_t X64__emit_instr_placeholder(Array(X64Instr) * instrs, X64InstrKind kind)
 {
-    X64Instr instr = { .kind = kind };
+    X64Instr instr = {.kind = kind};
     array_push(*instrs, instr);
     return array_len(*instrs) - 1;
 }
@@ -170,7 +170,7 @@ static s32 X64_consume_stack_arg(u64* stack_arg_offset, u64 arg_size, u64 arg_al
     return offset;
 }
 
-static s32 X64_spill_reg(Array(X64Instr)* instrs, X64_LinuxAssignParamState* state, u64 size, u64 align, X64_Reg preg)
+static s32 X64_spill_reg(Array(X64Instr) * instrs, X64_LinuxAssignParamState* state, u64 size, u64 align, X64_Reg preg)
 {
     state->stack_spill_size += size;
     state->stack_spill_size = ALIGN_UP(state->stack_spill_size, align);
@@ -180,8 +180,8 @@ static s32 X64_spill_reg(Array(X64Instr)* instrs, X64_LinuxAssignParamState* sta
     X64_SIBDAddr dst_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.index_reg = -1, .local.disp = offset};
 
     if (reg_class == X64_REG_CLASS_INT) {
-	X64__emit_instr_mov_mr(instrs, (u8)size, dst_addr, preg);
-	return offset;
+        X64__emit_instr_mov_mr(instrs, (u8)size, dst_addr, preg);
+        return offset;
     }
 
     assert(reg_class == X64_REG_CLASS_FLOAT);
@@ -195,7 +195,7 @@ static s32 X64_spill_reg(Array(X64Instr)* instrs, X64_LinuxAssignParamState* sta
     return offset;
 }
 
-static void X64_assign_proc_param_offsets(Array(X64Instr)* instrs, const Symbol* sproc, X64_StackParamsInfo* stack_params_info)
+static void X64_assign_proc_param_offsets(Array(X64Instr) * instrs, const Symbol* sproc, X64_StackParamsInfo* stack_params_info)
 {
     const DeclProc* dproc = (const DeclProc*)sproc->decl;
     const Type* ret_type = sproc->type->as_proc.ret;
@@ -450,11 +450,11 @@ Array(X64Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symb
 
     X64ProcState state = {
         .gen_mem = gen_mem,
-	.tmp_mem = tmp_mem,
-	.sym = proc_sym,
-	.id = proc_id,
-	.instrs = array_create(gen_mem, X64Instr, 64),
-	.scratch_regs = is_nonleaf ? x64_target.nonleaf_scratch_regs : x64_target.leaf_scratch_regs,
+        .tmp_mem = tmp_mem,
+        .sym = proc_sym,
+        .id = proc_id,
+        .instrs = array_create(gen_mem, X64Instr, 64),
+        .scratch_regs = is_nonleaf ? x64_target.nonleaf_scratch_regs : x64_target.leaf_scratch_regs,
     };
 
     AllocatorState tmp_mem_state = allocator_get_state(state.tmp_mem);
