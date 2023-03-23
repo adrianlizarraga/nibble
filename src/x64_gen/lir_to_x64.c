@@ -55,11 +55,14 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_ADD_RR,
     X64_Instr_Kind_ADD_RM,
     X64_Instr_Kind_ADD_MR,
+    X64_Instr_Kind_ADD_RI,
+    X64_Instr_Kind_SUB_RI,
     X64_Instr_Kind_MOV_RR,
     X64_Instr_Kind_MOV_MR,
     X64_Instr_Kind_MOVSS_MR,
     X64_Instr_Kind_MOVSD_MR,
-    X64_Instr_Kind_SUB_RI,
+    X64_Instr_Kind_MOVDQU_MR,
+    X64_Instr_Kind_MOVDQU_RM,
 
     X64_Instr_Kind_COUNT
 } X64_Instr_Kind;
@@ -101,6 +104,18 @@ typedef struct X64__Instr {
         struct {
             u8 size;
             u8 dst;
+            u32 imm;
+        } add_ri;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u32 imm;
+        } sub_ri;
+
+        struct {
+            u8 size;
+            u8 dst;
             u8 src;
         } mov_rr;
 
@@ -111,12 +126,6 @@ typedef struct X64__Instr {
         } mov_mr;
 
         struct {
-            u8 size;
-            u8 dst;
-            u32 imm;
-        } sub_ri;
-
-        struct {
             X64_SIBD_Addr dst;
             u8 src;
         } movss_mr;
@@ -125,6 +134,16 @@ typedef struct X64__Instr {
             X64_SIBD_Addr dst;
             u8 src;
         } movsd_mr;
+
+        struct {
+            X64_SIBD_Addr dst;
+            u8 src;
+        } movdqu_mr;
+
+        struct {
+            u8 dst;
+            X64_SIBD_Addr src;
+        } movdqu_rm;
     };
 } X64__Instr;
 
@@ -136,7 +155,7 @@ static void X64__emit_instr_ret(Array(X64__Instr) * instrs)
 
 static void X64__emit_instr_push(Array(X64__Instr) * instrs, X64_Reg reg)
 {
-    assert(x64_reg_classes[reg] == X64_REG_CLASS_INT); // TODO: Support floating point regs. See X64_print_push_reg()
+    assert(x64_reg_classes[reg] == X64_REG_CLASS_INT);
     X64__Instr push_instr = {
         .kind = X64_Instr_Kind_PUSH,
         .push.reg = reg,
@@ -147,7 +166,7 @@ static void X64__emit_instr_push(Array(X64__Instr) * instrs, X64_Reg reg)
 
 static void X64__emit_instr_pop(Array(X64__Instr) * instrs, X64_Reg reg)
 {
-    assert(x64_reg_classes[reg] == X64_REG_CLASS_INT); // TODO: Support floating point regs. See X64_print_pop_reg()
+    assert(x64_reg_classes[reg] == X64_REG_CLASS_INT);
     X64__Instr pop_instr = {
         .kind = X64_Instr_Kind_POP,
         .pop.reg = reg,
@@ -190,6 +209,30 @@ static void X64__emit_instr_add_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD
     };
 
     array_push(*instrs, add_mr_instr);
+}
+
+static void X64__emit_instr_add_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
+{
+    X64__Instr add_ri_instr = {
+        .kind = X64_Instr_Kind_ADD_RI,
+        .add_ri.size = size,
+        .add_ri.dst = dst,
+        .add_ri.imm = imm,
+    };
+
+    array_push(*instrs, add_ri_instr);
+}
+
+static void X64__emit_instr_sub_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
+{
+    X64__Instr sub_ri_instr = {
+        .kind = X64_Instr_Kind_SUB_RI,
+        .sub_ri.size = size,
+        .sub_ri.dst = dst,
+        .sub_ri.imm = imm,
+    };
+
+    array_push(*instrs, sub_ri_instr);
 }
 
 static void X64__emit_instr_mov_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
@@ -238,11 +281,61 @@ static void X64__emit_instr_movsd_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr d
     array_push(*instrs, movsd_mr_instr);
 }
 
+static void X64__emit_instr_movdqu_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
+{
+    assert(x64_reg_classes[src] == X64_REG_CLASS_FLOAT);
+    X64__Instr movdqu_mr_instr = {
+        .kind = X64_Instr_Kind_MOVDQU_MR,
+        .movdqu_mr.dst = dst,
+        .movdqu_mr.src = src,
+    };
+
+    array_push(*instrs, movdqu_mr_instr);
+}
+
+static void X64__emit_instr_movdqu_rm(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+{
+    assert(x64_reg_classes[dst] == X64_REG_CLASS_FLOAT);
+    X64__Instr movdqu_rm_instr = {
+        .kind = X64_Instr_Kind_MOVDQU_RM,
+        .movdqu_rm.dst = dst,
+        .movdqu_rm.src = src,
+    };
+
+    array_push(*instrs, movdqu_rm_instr);
+}
+
 static size_t X64__emit_instr_placeholder(Array(X64__Instr) * instrs, X64_Instr_Kind kind)
 {
     X64__Instr instr = {.kind = kind};
     array_push(*instrs, instr);
     return array_len(*instrs) - 1;
+}
+
+static void X64__push_reg_to_stack(Array(X64__Instr)* instrs, X64_Reg reg)
+{
+    if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
+        X64__emit_instr_push(instrs, reg);
+    }
+    else {
+        X64__emit_instr_sub_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
+
+        X64_SIBD_Addr dst = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP};
+        X64__emit_instr_movdqu_mr(instrs, dst, reg); // movdqu oword [rsp], reg
+    }
+}
+
+static void X64__pop_reg_from_stack(Array(X64__Instr)* instrs, X64_Reg reg)
+{
+    if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
+        X64__emit_instr_pop(instrs, reg);
+    }
+    else {
+        X64_SIBD_Addr src = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP};
+        X64__emit_instr_movdqu_rm(instrs, reg, src); // movdqu reg, oword [rsp]
+
+        X64__emit_instr_add_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
+    }
 }
 
 typedef void X64_Emit_Bin_Op_RR_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, X64_Reg src);
@@ -733,7 +826,7 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64__emit_instr_push(&state.instrs, reg); // TODO: Can also be a float reg!!!!
+            X64__push_reg_to_stack(&state.instrs, reg);
         }
     }
 
@@ -765,7 +858,7 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64__emit_instr_pop(&state.instrs, reg); // TODO: Can also be a float reg!!!
+            X64__pop_reg_from_stack(&state.instrs, reg);
         }
     }
 
