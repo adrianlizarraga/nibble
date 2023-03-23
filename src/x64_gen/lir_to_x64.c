@@ -56,8 +56,12 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_ADD_RM,
     X64_Instr_Kind_ADD_MR,
     X64_Instr_Kind_ADD_RI,
+    X64_Instr_Kind_SUB_RR,
+    X64_Instr_Kind_SUB_RM,
+    X64_Instr_Kind_SUB_MR,
     X64_Instr_Kind_SUB_RI,
     X64_Instr_Kind_MOV_RR,
+    X64_Instr_Kind_MOV_RM,
     X64_Instr_Kind_MOV_MR,
     X64_Instr_Kind_MOVSS_MR,
     X64_Instr_Kind_MOVSD_MR,
@@ -110,6 +114,24 @@ typedef struct X64__Instr {
         struct {
             u8 size;
             u8 dst;
+            u8 src;
+        } sub_rr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            X64_SIBD_Addr src;
+        } sub_rm;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u8 src;
+        } sub_mr;
+
+        struct {
+            u8 size;
+            u8 dst;
             u32 imm;
         } sub_ri;
 
@@ -118,6 +140,12 @@ typedef struct X64__Instr {
             u8 dst;
             u8 src;
         } mov_rr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            X64_SIBD_Addr src;
+        } mov_rm;
 
         struct {
             u8 size;
@@ -223,6 +251,42 @@ static void X64__emit_instr_add_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     array_push(*instrs, add_ri_instr);
 }
 
+static void X64__emit_instr_sub_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr sub_rr_instr = {
+        .kind = X64_Instr_Kind_SUB_RR,
+        .sub_rr.size = size,
+        .sub_rr.dst = dst,
+        .sub_rr.src = src,
+    };
+
+    array_push(*instrs, sub_rr_instr);
+}
+
+static void X64__emit_instr_sub_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr sub_rm_instr = {
+        .kind = X64_Instr_Kind_SUB_RM,
+        .sub_rm.size = size,
+        .sub_rm.dst = dst,
+        .sub_rm.src = src,
+    };
+
+    array_push(*instrs, sub_rm_instr);
+}
+
+static void X64__emit_instr_sub_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
+{
+    X64__Instr sub_mr_instr = {
+        .kind = X64_Instr_Kind_SUB_MR,
+        .sub_mr.size = size,
+        .sub_mr.dst = dst,
+        .sub_mr.src = src,
+    };
+
+    array_push(*instrs, sub_mr_instr);
+}
+
 static void X64__emit_instr_sub_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
 {
     X64__Instr sub_ri_instr = {
@@ -245,6 +309,18 @@ static void X64__emit_instr_mov_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     };
 
     array_push(*instrs, mov_rr_instr);
+}
+
+static void X64__emit_instr_mov_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr mov_rm_instr = {
+        .kind = X64_Instr_Kind_MOV_RM,
+        .mov_rm.size = size,
+        .mov_rm.dst = dst,
+        .mov_rm.src = src,
+    };
+
+    array_push(*instrs, mov_rm_instr);
 }
 
 static void X64__emit_instr_mov_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
@@ -320,7 +396,7 @@ static void X64__push_reg_to_stack(Array(X64__Instr)* instrs, X64_Reg reg)
     else {
         X64__emit_instr_sub_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
 
-        X64_SIBD_Addr dst = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP};
+        X64_SIBD_Addr dst = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.index_reg = -1};
         X64__emit_instr_movdqu_mr(instrs, dst, reg); // movdqu oword [rsp], reg
     }
 }
@@ -331,27 +407,30 @@ static void X64__pop_reg_from_stack(Array(X64__Instr)* instrs, X64_Reg reg)
         X64__emit_instr_pop(instrs, reg);
     }
     else {
-        X64_SIBD_Addr src = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP};
+        X64_SIBD_Addr src = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.index_reg = -1};
         X64__emit_instr_movdqu_rm(instrs, reg, src); // movdqu reg, oword [rsp]
 
         X64__emit_instr_add_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
     }
 }
 
-typedef void X64_Emit_Bin_Op_RR_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, X64_Reg src);
-typedef void X64_Emit_Bin_Op_RM_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src);
-typedef void X64_Emit_Bin_Op_MR_Func (Array(X64__Instr)* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
+typedef void X64_Emit_Bin_Int_RR_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, X64_Reg src);
+typedef void X64_Emit_Bin_Int_RM_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Int_MR_Func (Array(X64__Instr)* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
 
-static X64_Emit_Bin_Op_RR_Func* x64_bin_op_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
+static X64_Emit_Bin_Int_RR_Func* x64_bin_int_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_ADD_RR] = X64__emit_instr_add_rr,
+    [X64_Instr_Kind_SUB_RR] = X64__emit_instr_sub_rr,
 };
 
-static X64_Emit_Bin_Op_RM_Func* x64_bin_op_rm_emit_funcs[X64_Instr_Kind_COUNT] = {
+static X64_Emit_Bin_Int_RM_Func* x64_bin_int_rm_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_ADD_RM] = X64__emit_instr_add_rm,
+    [X64_Instr_Kind_SUB_RM] = X64__emit_instr_sub_rm,
 };
 
-static X64_Emit_Bin_Op_MR_Func* x64_bin_op_mr_emit_funcs[X64_Instr_Kind_COUNT] = {
+static X64_Emit_Bin_Int_MR_Func* x64_bin_int_mr_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_ADD_MR] = X64__emit_instr_add_mr,
+    [X64_Instr_Kind_SUB_MR] = X64__emit_instr_sub_mr,
 };
 
 typedef struct X64_Proc_State {
@@ -374,8 +453,8 @@ static X64_LRegLoc X64__lreg_loc(X64_Proc_State* proc_state, u32 lreg)
     return reg_loc;
 }
 
-static void X64__emit_bin_op_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, X64_RegClass reg_class,
-                                      u32 op_size, u32 op1_lreg, u32 op2_lreg)
+static void X64__emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, u32 op_size,
+                                       u32 op1_lreg, u32 op2_lreg)
 {
     X64_LRegLoc op1_loc = X64__lreg_loc(proc_state, op1_lreg);
     X64_LRegLoc op2_loc = X64__lreg_loc(proc_state, op2_lreg);
@@ -384,11 +463,11 @@ static void X64__emit_bin_op_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     case X64_LREG_LOC_REG: {
         switch (op2_loc.kind) {
         case X64_LREG_LOC_REG: {
-            x64_bin_op_rr_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, op2_loc.reg);
+            x64_bin_int_rr_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, op2_loc.reg);
             break;
         }
         case X64_LREG_LOC_STACK: {
-            x64_bin_op_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, X64__get_stack_offset_addr(op2_loc.offset));
+            x64_bin_int_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, X64__get_stack_offset_addr(op2_loc.offset));
             break;
         }
         default:
@@ -400,37 +479,31 @@ static void X64__emit_bin_op_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     case X64_LREG_LOC_STACK: {
         switch (op2_loc.kind) {
         case X64_LREG_LOC_REG: {
-            x64_bin_op_mr_emit_funcs[instr_kind](&proc_state->instrs, op_size, X64__get_stack_offset_addr(op1_loc.offset), op2_loc.reg);
+            x64_bin_int_mr_emit_funcs[instr_kind](&proc_state->instrs, op_size, X64__get_stack_offset_addr(op1_loc.offset), op2_loc.reg);
             break;
         }
         case X64_LREG_LOC_STACK: {
             const X64_SIBD_Addr op1_addr = X64__get_stack_offset_addr(op1_loc.offset);
             const X64_SIBD_Addr op2_addr = X64__get_stack_offset_addr(op2_loc.offset);
 
-            X64_Reg tmp_reg = (reg_class == X64_REG_CLASS_INT) ? X64_RAX : X64_XMM0;
-            //const char* tmp_reg_str = X64_reg_name(tmp_reg, op1_size);
+            const X64_Reg tmp_reg = X64_RAX;
 
-            /*
             // Save the contents of a temporary register into the stack.
-            X64_print_push_reg(generator, generator->curr_proc.text_lines.prev, tmp_reg);
+            X64__emit_instr_push(&proc_state->instrs, tmp_reg);
 
-            // Load dst into the temporary register,
-            const char* mov_instr =
-                (reg_class == X64_REG_CLASS_FLOAT) ? (op1_size == float_kind_sizes[FLOAT_F64] ? "movsd" : "movss") : "mov";
-            X64_emit_text(generator, "  %s %s, %s", mov_instr, tmp_reg_str, op1_op_str);
+            // Load dst (currently spilled) into the temporary register,
+            X64__emit_instr_mov_rm(&proc_state->instrs, op_size, tmp_reg, op1_addr);
 
             // Execute the instruction using the temporary register as the destination.
-            X64_emit_text(generator, "  %s %s, %s", instr, tmp_reg_str, op2_op_str);
+            x64_bin_int_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, tmp_reg, op2_addr);
 
             // Store the result of the instruction (contents of temporary register) into dst.
             if (writes_op1) {
-                X64_emit_text(generator, "  %s %s, %s", mov_instr, op1_op_str, tmp_reg_str);
+                X64__emit_instr_mov_mr(&proc_state->instrs, op_size, op1_addr, tmp_reg);
             }
 
             // Restore the contents of the temporary register.
-            X64_print_pop_reg(generator, generator->curr_proc.text_lines.prev, tmp_reg);
-            */
-
+            X64__emit_instr_pop(&proc_state->instrs, tmp_reg);
             break;
         }
         default:
@@ -448,6 +521,23 @@ static void X64__emit_bin_op_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
 static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is_last_instr, long bblock_id)
 {
     AllocatorState mem_state = allocator_get_state(proc_state->tmp_mem);
+
+    switch (instr->kind) {
+    case X64_InstrAdd_R_R_KIND: {
+        X64_InstrAdd_R_R* act_instr = (X64_InstrAdd_R_R*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_ADD_RR, true, size, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrSub_R_R_KIND: {
+        X64_InstrSub_R_R* act_instr = (X64_InstrSub_R_R*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_SUB_RR, true, size, act_instr->dst, act_instr->src);
+        break;
+    }
+    }
 
     allocator_restore_state(mem_state);
 }
