@@ -181,6 +181,18 @@ static void X64__emit_instr_ret(Array(X64__Instr) * instrs)
     array_push(*instrs, ret_instr);
 }
 
+static void X64__emit_instr_jmp(Array(X64__Instr)* instrs, size_t target)
+{
+    X64__Instr instr = {.kind = X64_Instr_Kind_JMP, .jmp.target = target};
+    array_push(*instrs, instr);
+}
+
+static void X64__emit_instr_jmp_to_ret(Array(X64__Instr)* instrs)
+{
+    X64__Instr instr = {.kind = X64_Instr_Kind_JMP_TO_RET, .jmp.target = (size_t)-1};
+    array_push(*instrs, instr);
+}
+
 static void X64__emit_instr_push(Array(X64__Instr) * instrs, X64_Reg reg)
 {
     assert(x64_reg_classes[reg] == X64_REG_CLASS_INT);
@@ -451,95 +463,6 @@ static X64_LRegLoc X64__lreg_loc(X64_Proc_State* proc_state, u32 lreg)
     assert(reg_loc.kind != X64_LREG_LOC_UNASSIGNED);
 
     return reg_loc;
-}
-
-static void X64__emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, u32 op_size,
-                                       u32 op1_lreg, u32 op2_lreg)
-{
-    X64_LRegLoc op1_loc = X64__lreg_loc(proc_state, op1_lreg);
-    X64_LRegLoc op2_loc = X64__lreg_loc(proc_state, op2_lreg);
-
-    switch (op1_loc.kind) {
-    case X64_LREG_LOC_REG: {
-        switch (op2_loc.kind) {
-        case X64_LREG_LOC_REG: {
-            x64_bin_int_rr_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, op2_loc.reg);
-            break;
-        }
-        case X64_LREG_LOC_STACK: {
-            x64_bin_int_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, X64__get_stack_offset_addr(op2_loc.offset));
-            break;
-        }
-        default:
-            assert(0);
-            break;
-        }
-        break;
-    }
-    case X64_LREG_LOC_STACK: {
-        switch (op2_loc.kind) {
-        case X64_LREG_LOC_REG: {
-            x64_bin_int_mr_emit_funcs[instr_kind](&proc_state->instrs, op_size, X64__get_stack_offset_addr(op1_loc.offset), op2_loc.reg);
-            break;
-        }
-        case X64_LREG_LOC_STACK: {
-            const X64_SIBD_Addr op1_addr = X64__get_stack_offset_addr(op1_loc.offset);
-            const X64_SIBD_Addr op2_addr = X64__get_stack_offset_addr(op2_loc.offset);
-
-            const X64_Reg tmp_reg = X64_RAX;
-
-            // Save the contents of a temporary register into the stack.
-            X64__emit_instr_push(&proc_state->instrs, tmp_reg);
-
-            // Load dst (currently spilled) into the temporary register,
-            X64__emit_instr_mov_rm(&proc_state->instrs, op_size, tmp_reg, op1_addr);
-
-            // Execute the instruction using the temporary register as the destination.
-            x64_bin_int_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, tmp_reg, op2_addr);
-
-            // Store the result of the instruction (contents of temporary register) into dst.
-            if (writes_op1) {
-                X64__emit_instr_mov_mr(&proc_state->instrs, op_size, op1_addr, tmp_reg);
-            }
-
-            // Restore the contents of the temporary register.
-            X64__emit_instr_pop(&proc_state->instrs, tmp_reg);
-            break;
-        }
-        default:
-            assert(0);
-            break;
-        }
-        break;
-    }
-    default:
-        assert(0);
-        break;
-    }
-}
-
-static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is_last_instr, long bblock_id)
-{
-    AllocatorState mem_state = allocator_get_state(proc_state->tmp_mem);
-
-    switch (instr->kind) {
-    case X64_InstrAdd_R_R_KIND: {
-        X64_InstrAdd_R_R* act_instr = (X64_InstrAdd_R_R*)instr;
-        u8 size = act_instr->size;
-
-        X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_ADD_RR, true, size, act_instr->dst, act_instr->src);
-        break;
-    }
-    case X64_InstrSub_R_R_KIND: {
-        X64_InstrSub_R_R* act_instr = (X64_InstrSub_R_R*)instr;
-        u8 size = act_instr->size;
-
-        X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_SUB_RR, true, size, act_instr->dst, act_instr->src);
-        break;
-    }
-    }
-
-    allocator_restore_state(mem_state);
 }
 
 typedef struct X64_Stack_Params_Info {
@@ -855,6 +778,111 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
             instr->jmp.target = num_instrs;
         }
     }
+}
+
+static void X64__emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, u32 op_size,
+                                       u32 op1_lreg, u32 op2_lreg)
+{
+    X64_LRegLoc op1_loc = X64__lreg_loc(proc_state, op1_lreg);
+    X64_LRegLoc op2_loc = X64__lreg_loc(proc_state, op2_lreg);
+
+    switch (op1_loc.kind) {
+    case X64_LREG_LOC_REG: {
+        switch (op2_loc.kind) {
+        case X64_LREG_LOC_REG: {
+            x64_bin_int_rr_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, op2_loc.reg);
+            break;
+        }
+        case X64_LREG_LOC_STACK: {
+            x64_bin_int_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, X64__get_stack_offset_addr(op2_loc.offset));
+            break;
+        }
+        default:
+            assert(0);
+            break;
+        }
+        break;
+    }
+    case X64_LREG_LOC_STACK: {
+        switch (op2_loc.kind) {
+        case X64_LREG_LOC_REG: {
+            x64_bin_int_mr_emit_funcs[instr_kind](&proc_state->instrs, op_size, X64__get_stack_offset_addr(op1_loc.offset), op2_loc.reg);
+            break;
+        }
+        case X64_LREG_LOC_STACK: {
+            const X64_SIBD_Addr op1_addr = X64__get_stack_offset_addr(op1_loc.offset);
+            const X64_SIBD_Addr op2_addr = X64__get_stack_offset_addr(op2_loc.offset);
+
+            const X64_Reg tmp_reg = X64_RAX;
+
+            // Save the contents of a temporary register into the stack.
+            X64__emit_instr_push(&proc_state->instrs, tmp_reg);
+
+            // Load dst (currently spilled) into the temporary register,
+            X64__emit_instr_mov_rm(&proc_state->instrs, op_size, tmp_reg, op1_addr);
+
+            // Execute the instruction using the temporary register as the destination.
+            x64_bin_int_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, tmp_reg, op2_addr);
+
+            // Store the result of the instruction (contents of temporary register) into dst.
+            if (writes_op1) {
+                X64__emit_instr_mov_mr(&proc_state->instrs, op_size, op1_addr, tmp_reg);
+            }
+
+            // Restore the contents of the temporary register.
+            X64__emit_instr_pop(&proc_state->instrs, tmp_reg);
+            break;
+        }
+        default:
+            assert(0);
+            break;
+        }
+        break;
+    }
+    default:
+        assert(0);
+        break;
+    }
+}
+
+static void X64__emit_bin_int_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, u32 op_size,
+                                       u32 op1_lreg, X64_MemAddr* op2_vaddr)
+{
+    // TODO: Left off here
+}
+
+static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is_last_instr, long bblock_id)
+{
+    AllocatorState mem_state = allocator_get_state(proc_state->tmp_mem);
+
+    switch (instr->kind) {
+    case X64_InstrAdd_R_R_KIND: {
+        X64_InstrAdd_R_R* act_instr = (X64_InstrAdd_R_R*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_ADD_RR, true, size, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrSub_R_R_KIND: {
+        X64_InstrSub_R_R* act_instr = (X64_InstrSub_R_R*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_SUB_RR, true, size, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrRet_KIND: {
+        if (!is_last_instr) {
+            X64__emit_instr_jmp_to_ret(&proc_state->instrs);
+        }
+
+        break;
+    }
+    default:
+        NIBBLE_FATAL_EXIT("Unknown X64 LIR instruction kind %d at IP %u\n", instr->kind, instr->ino);
+        break;
+    }
+
+    allocator_restore_state(mem_state);
 }
 
 Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym, u32 proc_id)
