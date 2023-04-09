@@ -3,6 +3,7 @@
 #include "ast/module.h"
 
 #define X64_MAX_INT_REG_SIZE 8
+#define X64_MAX_MEM_LABEL_SIZE 16
 #define X64_STACK_ALIGN 16
 #define X64_STACK_WORD_SIZE 8
 #define X64_STACK_ARG_RBP_OFFSET 0x10
@@ -140,7 +141,7 @@ typedef struct X64_StackArgsInfo {
     u64 offset;
 } X64_StackArgsInfo;
 
-extern const char* x64_mem_size_label[X64_MAX_INT_REG_SIZE + 1];
+extern const char* x64_mem_size_label[X64_MAX_MEM_LABEL_SIZE + 1];
 extern const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1];
 extern const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1];
 extern const char* x64_condition_codes[];

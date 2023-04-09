@@ -178,6 +178,6 @@ typedef struct X64__Instr {
     };
 } X64__Instr;
 
-Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym, u32 proc_id);
+Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym);
 
 #endif // defined(NIBBLE_X64_GEN_LIR_TO_X64_H)

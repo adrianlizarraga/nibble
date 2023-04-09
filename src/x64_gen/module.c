@@ -1,8 +1,10 @@
+#include "nibble.h"
 #include "stream.h"
 #include "x64_gen/module.h"
 #include "x64_gen/regs.h"
 #include "x64_gen/lir.h"
 #include "x64_gen/reg_alloc.h"
+#include "x64_gen/nasm_gen.h"
 
 #define X64_ASM_LINE_LEN 64
 #define X64_STR_LIT_PRE "__nibble_str_lit_"
@@ -2897,6 +2899,13 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bu
     }
 
     fclose(out_fd);
+
+#if 1
+    bool ret = X64_nasm_gen_module(gen_mem, tmp_mem, vars, procs, str_lits, float_lits, foreign_procs, output_file);
+    if (!ret) {
+        NIBBLE_FATAL_EXIT("X64_nasm_gen_module failed!!!!");
+    }
+#endif
 
 #if 0
     x64_gen_elf(gen_mem, tmp_mem, vars, procs, str_lits, float_lits, foreign_procs, output_file);

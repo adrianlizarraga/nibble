@@ -370,7 +370,6 @@ typedef struct X64_Proc_State {
     Allocator* gen_mem;
     Allocator* tmp_mem;
     Symbol* sym; // Procedure symbol.
-    u32 id; // Procedure ID.
     X64_LIRBuilder* builder;
     X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT];
     Array(X64__Instr) instrs;
@@ -864,7 +863,7 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
         if (instr->kind == X64_Instr_Kind_JMP) {
             // jmp.target initially contains the target bblock ID.
             // Use the map to get the bblock's starting instruction index.
-            size_t* instr_index = hmap_get(bblock_instr_starts, instr->jmp.target);
+            size_t* instr_index = hmap_get(bblock_instr_starts, instr->jmp.target + 1); // The key is offset by 1 (can't have a 0 key)
             assert(instr_index != NULL);
             assert(*instr_index < num_instrs);
             instr->jmp.target = *instr_index;
@@ -1071,7 +1070,7 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
     allocator_restore_state(mem_state);
 }
 
-Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym, u32 proc_id)
+Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym)
 {
     const bool is_nonleaf = proc_sym->as_proc.is_nonleaf;
 
@@ -1079,7 +1078,6 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
         .gen_mem = gen_mem,
         .tmp_mem = tmp_mem,
         .sym = proc_sym,
-        .id = proc_id,
         .instrs = array_create(gen_mem, X64__Instr, 64),
         .scratch_regs = is_nonleaf ? x64_target.nonleaf_scratch_regs : x64_target.leaf_scratch_regs,
     };
@@ -1141,7 +1139,7 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
         X64_BBlock* bb = builder.bblocks[ii];
         bool last_bb = ii == builder.num_bblocks - 1;
 
-        hmap_put(&bblock_instr_starts, bb->id, array_len(state.instrs));
+        hmap_put(&bblock_instr_starts, bb->id + 1, array_len(state.instrs)); // The key is offset by 1 (can't have 0 key)
 
         for (X64_Instr* instr = bb->first; instr; instr = instr->next) {
             bool last_instr = last_bb && !instr->next;
