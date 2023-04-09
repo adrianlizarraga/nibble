@@ -1,3 +1,4 @@
+#include "x64_gen/lir_to_x64.h"
 #include "allocator.h"
 #include "array.h"
 #include "hash_map.h"
@@ -8,33 +9,10 @@
 #include "x64_gen/lir.h"
 #include "x64_gen/reg_alloc.h"
 
-typedef enum X64_SIBD_Addr_Kind {
-    X64_SIBD_ADDR_GLOBAL,
-    X64_SIBD_ADDR_LOCAL,
-    X64_SIBD_ADDR_STR_LIT,
-    X64_SIBD_ADDR_FLOAT_LIT,
-} X64_SIBD_Addr_Kind;
-
-typedef struct X64_SIBD_Addr {
-    X64_SIBD_Addr_Kind kind;
-
-    union {
-        Symbol* global;
-        struct {
-            u8 base_reg;
-            u8 index_reg;
-            u8 scale;
-            s32 disp;
-        } local;
-        StrLit* str_lit;
-        FloatLit* float_lit;
-    };
-} X64_SIBD_Addr;
-
-X64_SIBD_Addr X64__get_stack_offset_addr(s32 offset)
+static X64_SIBD_Addr X64__get_stack_offset_addr(s32 offset)
 {
     X64_SIBD_Addr addr = {
-        .kind = X64_SIBD_ADDR_LOCAL,
+        .kind = X64__SIBD_ADDR_LOCAL,
         .local = {
             .base_reg = X64_RBP,
             .index_reg = X64_REG_COUNT,
@@ -44,155 +22,6 @@ X64_SIBD_Addr X64__get_stack_offset_addr(s32 offset)
 
     return addr;
 }
-
-typedef enum X64_Instr_Kind {
-    X64_Instr_Kind_NOOP = 0,
-    X64_Instr_Kind_RET,
-    X64_Instr_Kind_JMP,
-    X64_Instr_Kind_JMP_TO_RET, // Doesn't correspond to an actual X64 instruction. Jumps to ret label.
-    X64_Instr_Kind_PUSH,
-    X64_Instr_Kind_POP,
-    X64_Instr_Kind_ADD_RR,
-    X64_Instr_Kind_ADD_RM,
-    X64_Instr_Kind_ADD_MR,
-    X64_Instr_Kind_ADD_RI,
-    X64_Instr_Kind_SUB_RR,
-    X64_Instr_Kind_SUB_RM,
-    X64_Instr_Kind_SUB_MR,
-    X64_Instr_Kind_SUB_RI,
-    X64_Instr_Kind_MOV_RR,
-    X64_Instr_Kind_MOV_RM,
-    X64_Instr_Kind_MOV_MR,
-    X64_Instr_Kind_MOV_MI,
-    X64_Instr_Kind_MOVSS_MR,
-    X64_Instr_Kind_MOVSS_RM,
-    X64_Instr_Kind_MOVSD_MR,
-    X64_Instr_Kind_MOVSD_RM,
-    X64_Instr_Kind_MOVDQU_MR,
-    X64_Instr_Kind_MOVDQU_RM,
-
-    X64_Instr_Kind_COUNT
-} X64_Instr_Kind;
-
-typedef struct X64__Instr {
-    X64_Instr_Kind kind;
-
-    union {
-        struct {
-            u8 reg;
-        } push;
-
-        struct {
-            u8 reg;
-        } pop;
-
-        struct {
-            size_t target;
-        } jmp; // Also for JMP_TO_RET
-
-        struct {
-            u8 size;
-            u8 dst;
-            u8 src;
-        } add_rr;
-
-        struct {
-            u8 size;
-            u8 dst;
-            X64_SIBD_Addr src;
-        } add_rm;
-
-        struct {
-            u8 size;
-            X64_SIBD_Addr dst;
-            u8 src;
-        } add_mr;
-
-        struct {
-            u8 size;
-            u8 dst;
-            u32 imm;
-        } add_ri;
-
-        struct {
-            u8 size;
-            u8 dst;
-            u8 src;
-        } sub_rr;
-
-        struct {
-            u8 size;
-            u8 dst;
-            X64_SIBD_Addr src;
-        } sub_rm;
-
-        struct {
-            u8 size;
-            X64_SIBD_Addr dst;
-            u8 src;
-        } sub_mr;
-
-        struct {
-            u8 size;
-            u8 dst;
-            u32 imm;
-        } sub_ri;
-
-        struct {
-            u8 size;
-            u8 dst;
-            u8 src;
-        } mov_rr;
-
-        struct {
-            u8 size;
-            u8 dst;
-            X64_SIBD_Addr src;
-        } mov_rm;
-
-        struct {
-            u8 size;
-            X64_SIBD_Addr dst;
-            u8 src;
-        } mov_mr;
-
-        struct {
-            u8 size;
-            X64_SIBD_Addr dst;
-            u32 imm;
-        } mov_mi;
-
-        struct {
-            X64_SIBD_Addr dst;
-            u8 src;
-        } movss_mr;
-
-        struct {
-            u8 dst;
-            X64_SIBD_Addr src;
-        } movss_rm;
-
-        struct {
-            X64_SIBD_Addr dst;
-            u8 src;
-        } movsd_mr;
-
-        struct {
-            u8 dst;
-            X64_SIBD_Addr src;
-        } movsd_rm;
-
-        struct {
-            X64_SIBD_Addr dst;
-            u8 src;
-        } movdqu_mr;
-
-        struct {
-            u8 dst;
-            X64_SIBD_Addr src;
-        } movdqu_rm;
-    };
-} X64__Instr;
 
 static void X64__emit_instr_ret(Array(X64__Instr) * instrs)
 {
@@ -461,7 +290,7 @@ static void X64__push_reg_to_stack(Array(X64__Instr)* instrs, X64_Reg reg)
     else {
         X64__emit_instr_sub_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
 
-        X64_SIBD_Addr dst = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.index_reg = X64_REG_COUNT};
+        X64_SIBD_Addr dst = {.kind = X64__SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.index_reg = X64_REG_COUNT};
         X64__emit_instr_movdqu_mr(instrs, dst, reg); // movdqu oword [rsp], reg
     }
 }
@@ -472,7 +301,7 @@ static void X64__pop_reg_from_stack(Array(X64__Instr)* instrs, X64_Reg reg)
         X64__emit_instr_pop(instrs, reg);
     }
     else {
-        X64_SIBD_Addr src = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.index_reg = X64_REG_COUNT};
+        X64_SIBD_Addr src = {.kind = X64__SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.index_reg = X64_REG_COUNT};
         X64__emit_instr_movdqu_rm(instrs, reg, src); // movdqu reg, oword [rsp]
 
         X64__emit_instr_add_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
@@ -714,7 +543,7 @@ static s32 X64__spill_reg(Array(X64__Instr) * instrs, X64_Stack_Spill_State* sta
     state->stack_spill_size = ALIGN_UP(state->stack_spill_size, align);
     s32 offset = -state->stack_spill_size;
 
-    X64_SIBD_Addr dst_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.index_reg = X64_REG_COUNT, .local.disp = offset};
+    X64_SIBD_Addr dst_addr = {.kind = X64__SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.index_reg = X64_REG_COUNT, .local.disp = offset};
 
     X64__save_prim_to_mem(instrs, size, dst_addr, preg);
 
@@ -975,15 +804,15 @@ static u32 X64__get_sibd_addr(X64_Proc_State* proc_state, X64_SIBD_Addr* sibd_ad
     u32 used_regs = 0;
 
     if (vaddr->kind == X64_ADDR_GLOBAL_SYM) {
-        sibd_addr->kind = X64_SIBD_ADDR_GLOBAL;
+        sibd_addr->kind = X64__SIBD_ADDR_GLOBAL;
         sibd_addr->global = vaddr->global;
     }
     else if (vaddr->kind == X64_ADDR_STR_LIT) {
-        sibd_addr->kind = X64_SIBD_ADDR_STR_LIT;
+        sibd_addr->kind = X64__SIBD_ADDR_STR_LIT;
         sibd_addr->str_lit = vaddr->str_lit;
     }
     else if (vaddr->kind == X64_ADDR_FLOAT_LIT) {
-        sibd_addr->kind = X64_SIBD_ADDR_FLOAT_LIT;
+        sibd_addr->kind = X64__SIBD_ADDR_FLOAT_LIT;
         sibd_addr->float_lit = vaddr->float_lit;
     }
     else {
@@ -992,7 +821,7 @@ static u32 X64__get_sibd_addr(X64_Proc_State* proc_state, X64_SIBD_Addr* sibd_ad
         bool has_index = vaddr->sibd.scale && (vaddr->sibd.index_reg != (u32)-1);
         assert(has_base || has_index);
 
-        sibd_addr->kind = X64_SIBD_ADDR_LOCAL;
+        sibd_addr->kind = X64__SIBD_ADDR_LOCAL;
         sibd_addr->local.disp = vaddr->sibd.disp;
         sibd_addr->local.scale = vaddr->sibd.scale;
 

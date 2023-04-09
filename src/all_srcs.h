@@ -55,6 +55,7 @@
 #include "x64_gen/data.c"
 #include "x64_gen/text.c"
 #include "x64_gen/elf_writer.c"
+#include "x64_gen/lir_to_x64.c"
 
 // Compiler main logic
 #include "nibble.c"

@@ -42,7 +42,8 @@ set(NIBBLE_X64_SRCS src/x64_gen/module.c
 	src/x64_gen/elf.c
 	src/x64_gen/data.c
 	src/x64_gen/text.c
-	src/x64_gen/elf_writer.c)
+	src/x64_gen/elf_writer.c
+    src/x64_gen/lir_to_x64.c)
 
 set(NIBBLE_MAIN_SRCS src/nibble.c src/main.c)
 
