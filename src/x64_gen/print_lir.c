@@ -1,5 +1,5 @@
+#include "x64_gen/print_lir.h"
 #include "x64_gen/regs.h"
-#include "x64_gen/lir.h"
 
 static char* LIR_print_mem(Allocator* arena, X64_MemAddr* addr)
 {
@@ -67,7 +67,7 @@ static char* LIR_print_mem(Allocator* arena, X64_MemAddr* addr)
     return dstr;
 }
 
-static char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
+char* LIR_print_instr(Allocator* arena, X64_Instr* instr)
 {
     char* dstr = array_create(arena, char, 16);
 

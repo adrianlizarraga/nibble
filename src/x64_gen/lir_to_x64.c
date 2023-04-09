@@ -1,13 +1,14 @@
 #include "x64_gen/lir_to_x64.h"
 #include "allocator.h"
 #include "array.h"
+#include "ast/module.h"
 #include "hash_map.h"
 #include "nibble.h"
 #include "stream.h"
-#include "x64_gen/module.h"
 #include "x64_gen/regs.h"
 #include "x64_gen/lir.h"
 #include "x64_gen/reg_alloc.h"
+#include "x64_gen/print_lir.h"
 
 static X64_SIBD_Addr X64__get_stack_offset_addr(s32 offset)
 {
@@ -267,6 +268,58 @@ static void X64__emit_instr_mov_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD
     array_push(*instrs, mov_mi_instr);
 }
 
+static void X64__emit_instr_movsx_rr(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
+{
+    X64__Instr movsx_rr_instr = {
+        .kind = X64_Instr_Kind_MOVSX_RR,
+        .movsx_rr.dst_size = dst_size,
+        .movsx_rr.src_size = src_size,
+        .movsx_rr.dst = dst,
+        .movsx_rr.src = src,
+    };
+
+    array_push(*instrs, movsx_rr_instr);
+}
+
+static void X64__emit_instr_movsx_rm(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
+{
+    X64__Instr movsx_rm_instr = {
+        .kind = X64_Instr_Kind_MOVSX_RM,
+        .movsx_rm.dst_size = dst_size,
+        .movsx_rm.src_size = src_size,
+        .movsx_rm.dst = dst,
+        .movsx_rm.src = src,
+    };
+
+    array_push(*instrs, movsx_rm_instr);
+}
+
+static void X64__emit_instr_movsxd_rr(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
+{
+    X64__Instr movsxd_rr_instr = {
+        .kind = X64_Instr_Kind_MOVSXD_RR,
+        .movsxd_rr.dst_size = dst_size,
+        .movsxd_rr.src_size = src_size,
+        .movsxd_rr.dst = dst,
+        .movsxd_rr.src = src,
+    };
+
+    array_push(*instrs, movsxd_rr_instr);
+}
+
+static void X64__emit_instr_movsxd_rm(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
+{
+    X64__Instr movsxd_rm_instr = {
+        .kind = X64_Instr_Kind_MOVSXD_RM,
+        .movsxd_rm.dst_size = dst_size,
+        .movsxd_rm.src_size = src_size,
+        .movsxd_rm.dst = dst,
+        .movsxd_rm.src = src,
+    };
+
+    array_push(*instrs, movsxd_rm_instr);
+}
+
 static void X64__emit_instr_movss_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr movss_mr_instr = {
@@ -404,6 +457,8 @@ typedef void X64_Emit_Bin_Int_RM_Func (Array(X64__Instr)* instrs, u8 size, X64_R
 typedef void X64_Emit_Bin_Int_RI_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, u32 imm);
 typedef void X64_Emit_Bin_Int_MR_Func (Array(X64__Instr)* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
 typedef void X64_Emit_Bin_Int_MI_Func (Array(X64__Instr)* instrs, u8 size, X64_SIBD_Addr dst, u32 imm);
+typedef void X64_Emit_Mov_Ext_RR_Func (Array(X64__Instr)* instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src);
+typedef void X64_Emit_Mov_Ext_RM_Func (Array(X64__Instr)* instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src);
 
 static X64_Emit_Bin_Int_RR_Func* x64_bin_int_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_ADD_RR] = X64__emit_instr_add_rr,
@@ -434,6 +489,16 @@ static X64_Emit_Bin_Int_MR_Func* x64_bin_int_mr_emit_funcs[X64_Instr_Kind_COUNT]
 
 static X64_Emit_Bin_Int_MI_Func* x64_bin_int_mi_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_MOV_MI] = X64__emit_instr_mov_mi,
+};
+
+static X64_Emit_Mov_Ext_RR_Func* x64_mov_ext_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
+    [X64_Instr_Kind_MOVSX_RR] = X64__emit_instr_movsx_rr,
+    [X64_Instr_Kind_MOVSXD_RR] = X64__emit_instr_movsxd_rr,
+};
+
+static X64_Emit_Mov_Ext_RM_Func* x64_mov_ext_rm_emit_funcs[X64_Instr_Kind_COUNT] = {
+    [X64_Instr_Kind_MOVSX_RM] = X64__emit_instr_movsx_rm,
+    [X64_Instr_Kind_MOVSXD_RM] = X64__emit_instr_movsxd_rm,
 };
 
 typedef struct X64_Proc_State {
@@ -1010,6 +1075,35 @@ static void X64__emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
     }
 }
 
+static void X64__emit_mov_ext_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, u32 dst_size,
+                                       u32 dst_lreg, u32 src_size, u32 src_lreg)
+{
+    // NOTE: sign-extension instructions require the destination to be a register. So, if dst is spilled, we get a temporary
+    // register.
+
+    X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+    X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, dst_lreg, dst_size, true, 0); // Get actual reg or a tmp if spilled.
+
+    X64_LRegLoc src_loc = X64__lreg_loc(proc_state, src_lreg);
+
+    switch (src_loc.kind) {
+    case X64_LREG_LOC_REG: {
+        x64_mov_ext_rr_emit_funcs[instr_kind](&proc_state->instrs, dst_size, dst_reg, src_size, src_loc.reg);
+        break;
+    }
+    case X64_LREG_LOC_STACK: {
+        x64_mov_ext_rm_emit_funcs[instr_kind](&proc_state->instrs, dst_size, dst_reg,
+                                              src_size, X64__get_stack_offset_addr(src_loc.offset));
+        break;
+    }
+    default:
+        assert(0);
+        break;
+    }
+
+    X64__end_reg_group(&tmp_group);
+}
+
 static void X64__emit_bin_int_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, u32 op_size,
                                        u32 op1_lreg, X64_MemAddr* op2_vaddr)
 {
@@ -1184,6 +1278,33 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         X64__emit_bin_int_mi_instr(proc_state, X64_Instr_Kind_MOV_MI, size, &act_instr->dst, act_instr->src);
         break;
     }
+    case X64_InstrMovSX_R_R_KIND: {
+        X64_InstrMovSX_R_R* act_instr = (X64_InstrMovSX_R_R*)instr;
+        const u8 dst_size = act_instr->dst_size;
+        const u8 src_size = act_instr->src_size;
+        X64_Instr_Kind movsx_kind = src_size >= builtin_types[BUILTIN_TYPE_U32].type->size ? X64_Instr_Kind_MOVSXD_RR :
+                                                                                             X64_Instr_Kind_MOVSX_RR;
+
+        X64__emit_mov_ext_rr_instr(proc_state, movsx_kind, dst_size, act_instr->dst, src_size, act_instr->src);
+        break;
+    }
+    case X64_InstrMovSX_R_M_KIND: {
+        X64_InstrMovSX_R_M* act_instr = (X64_InstrMovSX_R_M*)instr;
+        const u8 dst_size = act_instr->dst_size;
+        const u8 src_size = act_instr->src_size;
+        X64_Instr_Kind movsx_kind = src_size >= builtin_types[BUILTIN_TYPE_U32].type->size ? X64_Instr_Kind_MOVSXD_RR :
+                                                                                             X64_Instr_Kind_MOVSX_RR;
+
+        X64_SIBD_Addr src_addr = {0};
+        u32 banned_tmp_regs = X64__get_sibd_addr(proc_state, &src_addr, &act_instr->src);
+
+        X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+        X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst,
+                                       dst_size, true, banned_tmp_regs); // Get actual reg or a tmp if spilled.
+        x64_mov_ext_rm_emit_funcs[movsx_kind](&proc_state->instrs, dst_size, dst_reg, src_size, src_addr);
+        X64__end_reg_group(&tmp_group);
+        break;
+    }
     case X64_InstrJmp_KIND: {
         X64_InstrJmp* act_instr = (X64_InstrJmp*)instr;
         long target_id = act_instr->target->id;
@@ -1202,7 +1323,7 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         break;
     }
     default:
-        NIBBLE_FATAL_EXIT("Unknown X64 LIR instruction kind %d at IP %u\n", instr->kind, instr->ino);
+        NIBBLE_FATAL_EXIT("Unhandled X64 LIR instruction \"%s\" at IP %u\n", LIR_print_instr(proc_state->tmp_mem, instr), instr->ino);
         break;
     }
 
