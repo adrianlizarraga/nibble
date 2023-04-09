@@ -1,5 +1,6 @@
 #include "allocator.h"
 #include "array.h"
+#include "cstring.h"
 #include "nibble.h"
 #include "x64_gen/lir_to_x64.h"
 #include "x64_gen/regs.h"
@@ -543,6 +544,7 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
         case X64_Instr_Kind_POP: {
             X64_NASM_PRINT_FTL(proc_str, "pop %s", x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE][instr->pop.reg]);
         } break;
+        // ADD
         case X64_Instr_Kind_ADD_RR: {
             const char* r1 = x64_nasm_int_reg_names[instr->add_rr.size][instr->add_rr.dst];
             const char* r2 = x64_nasm_int_reg_names[instr->add_rr.size][instr->add_rr.src];
@@ -563,6 +565,7 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->add_ri.imm, instr->add_ri.size);
             X64_NASM_PRINT_FTL(proc_str, "add %s, %s", dst_reg, src_imm);
         } break;
+        // SUB
         case X64_Instr_Kind_SUB_RR: {
             const char* r1 = x64_nasm_int_reg_names[instr->sub_rr.size][instr->sub_rr.dst];
             const char* r2 = x64_nasm_int_reg_names[instr->sub_rr.size][instr->sub_rr.src];
@@ -583,6 +586,28 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->sub_ri.imm, instr->sub_ri.size);
             X64_NASM_PRINT_FTL(proc_str, "sub %s, %s", dst_reg, src_imm);
         } break;
+        // IMUL
+        case X64_Instr_Kind_IMUL_RR: {
+            const char* r1 = x64_nasm_int_reg_names[instr->imul_rr.size][instr->imul_rr.dst];
+            const char* r2 = x64_nasm_int_reg_names[instr->imul_rr.size][instr->imul_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", r1, r2);
+        } break;
+        case X64_Instr_Kind_IMUL_RM: {
+            const char* reg_op = x64_nasm_int_reg_names[instr->imul_rm.size][instr->imul_rm.dst];
+            const char* mem_op = X64_nasm_print_sibd_addr(tmp_mem, &instr->imul_rm.src, instr->imul_rm.size);
+            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", reg_op, mem_op);
+        } break;
+        case X64_Instr_Kind_IMUL_MR: {
+            const char* mem_op = X64_nasm_print_sibd_addr(tmp_mem, &instr->imul_mr.dst, instr->imul_mr.size);
+            const char* reg_op = x64_nasm_int_reg_names[instr->imul_mr.size][instr->imul_mr.src];
+            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", mem_op, reg_op);
+        } break;
+        case X64_Instr_Kind_IMUL_RI: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->imul_ri.size][instr->imul_ri.dst];
+            const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->imul_ri.imm, instr->imul_ri.size);
+            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", dst_reg, src_imm);
+        } break;
+        // MOV
         case X64_Instr_Kind_MOV_RR: {
             const char* r1 = x64_nasm_int_reg_names[instr->mov_rr.size][instr->mov_rr.dst];
             const char* r2 = x64_nasm_int_reg_names[instr->mov_rr.size][instr->mov_rr.src];
@@ -597,6 +622,11 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* mem_op = X64_nasm_print_sibd_addr(tmp_mem, &instr->mov_mr.dst, instr->mov_mr.size);
             const char* reg_op = x64_nasm_int_reg_names[instr->mov_mr.size][instr->mov_mr.src];
             X64_NASM_PRINT_FTL(proc_str, "mov %s, %s", mem_op, reg_op);
+        } break;
+        case X64_Instr_Kind_MOV_RI: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->mov_ri.size][instr->mov_ri.dst];
+            const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->mov_ri.imm, instr->mov_ri.size);
+            X64_NASM_PRINT_FTL(proc_str, "mov %s, %s", dst_reg, src_imm);
         } break;
         case X64_Instr_Kind_MOV_MI: {
             const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->mov_mi.dst, instr->mov_mi.size);

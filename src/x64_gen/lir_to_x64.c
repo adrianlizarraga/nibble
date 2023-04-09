@@ -159,6 +159,54 @@ static void X64__emit_instr_sub_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     array_push(*instrs, sub_ri_instr);
 }
 
+static void X64__emit_instr_imul_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr imul_rr_instr = {
+        .kind = X64_Instr_Kind_IMUL_RR,
+        .imul_rr.size = size,
+        .imul_rr.dst = dst,
+        .imul_rr.src = src,
+    };
+
+    array_push(*instrs, imul_rr_instr);
+}
+
+static void X64__emit_instr_imul_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr imul_rm_instr = {
+        .kind = X64_Instr_Kind_IMUL_RM,
+        .imul_rm.size = size,
+        .imul_rm.dst = dst,
+        .imul_rm.src = src,
+    };
+
+    array_push(*instrs, imul_rm_instr);
+}
+
+static void X64__emit_instr_imul_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
+{
+    X64__Instr imul_mr_instr = {
+        .kind = X64_Instr_Kind_IMUL_MR,
+        .imul_mr.size = size,
+        .imul_mr.dst = dst,
+        .imul_mr.src = src,
+    };
+
+    array_push(*instrs, imul_mr_instr);
+}
+
+static void X64__emit_instr_imul_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
+{
+    X64__Instr imul_ri_instr = {
+        .kind = X64_Instr_Kind_IMUL_RI,
+        .imul_ri.size = size,
+        .imul_ri.dst = dst,
+        .imul_ri.imm = imm,
+    };
+
+    array_push(*instrs, imul_ri_instr);
+}
+
 static void X64__emit_instr_mov_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr mov_rr_instr = {
@@ -193,6 +241,18 @@ static void X64__emit_instr_mov_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD
     };
 
     array_push(*instrs, mov_mr_instr);
+}
+
+static void X64__emit_instr_mov_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u64 imm)
+{
+    X64__Instr mov_ri_instr = {
+        .kind = X64_Instr_Kind_MOV_RI,
+        .mov_ri.size = size,
+        .mov_ri.dst = dst,
+        .mov_ri.imm = imm,
+    };
+
+    array_push(*instrs, mov_ri_instr);
 }
 
 static void X64__emit_instr_mov_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
@@ -341,24 +401,34 @@ static void X64__save_prim_to_mem(Array(X64__Instr)* instrs, u8 size, X64_SIBD_A
 
 typedef void X64_Emit_Bin_Int_RR_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, X64_Reg src);
 typedef void X64_Emit_Bin_Int_RM_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Int_RI_Func (Array(X64__Instr)* instrs, u8 size, X64_Reg dst, u32 imm);
 typedef void X64_Emit_Bin_Int_MR_Func (Array(X64__Instr)* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
 typedef void X64_Emit_Bin_Int_MI_Func (Array(X64__Instr)* instrs, u8 size, X64_SIBD_Addr dst, u32 imm);
 
 static X64_Emit_Bin_Int_RR_Func* x64_bin_int_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_ADD_RR] = X64__emit_instr_add_rr,
     [X64_Instr_Kind_SUB_RR] = X64__emit_instr_sub_rr,
+    [X64_Instr_Kind_IMUL_RR] = X64__emit_instr_imul_rr,
     [X64_Instr_Kind_MOV_RR] = X64__emit_instr_mov_rr,
 };
 
 static X64_Emit_Bin_Int_RM_Func* x64_bin_int_rm_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_ADD_RM] = X64__emit_instr_add_rm,
     [X64_Instr_Kind_SUB_RM] = X64__emit_instr_sub_rm,
+    [X64_Instr_Kind_IMUL_RM] = X64__emit_instr_imul_rm,
     [X64_Instr_Kind_MOV_RM] = X64__emit_instr_mov_rm,
+};
+
+static X64_Emit_Bin_Int_RI_Func* x64_bin_int_ri_emit_funcs[X64_Instr_Kind_COUNT] = {
+    [X64_Instr_Kind_ADD_RI] = X64__emit_instr_add_ri,
+    [X64_Instr_Kind_SUB_RI] = X64__emit_instr_sub_ri,
+    [X64_Instr_Kind_IMUL_RI] = X64__emit_instr_imul_ri,
 };
 
 static X64_Emit_Bin_Int_MR_Func* x64_bin_int_mr_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_ADD_MR] = X64__emit_instr_add_mr,
     [X64_Instr_Kind_SUB_MR] = X64__emit_instr_sub_mr,
+    [X64_Instr_Kind_IMUL_MR] = X64__emit_instr_imul_mr,
     [X64_Instr_Kind_MOV_MR] = X64__emit_instr_mov_mr,
 };
 
@@ -869,7 +939,7 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
             instr->jmp.target = *instr_index;
         }
         else if (instr->kind == X64_Instr_Kind_JMP_TO_RET) {
-            // Jump after the last instruction (postamble).
+            // Jump after the last instruction (to post-amble).
             instr->jmp.target = num_instrs;
         }
     }
@@ -976,6 +1046,26 @@ static void X64__emit_bin_int_mi_instr(X64_Proc_State* proc_state, X64_Instr_Kin
     x64_bin_int_mi_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_addr, op2_imm.as_int._u32);
 }
 
+static void X64__emit_bin_int_ri_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, u32 op_size, u32 op1_lreg, Scalar op2_imm)
+{
+    X64_LRegLoc op1_loc = X64__lreg_loc(proc_state, op1_lreg);
+
+    switch (op1_loc.kind) {
+    case X64_LREG_LOC_REG: {
+        x64_bin_int_ri_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, op2_imm.as_int._u32);
+        break;
+    }
+    case X64_LREG_LOC_STACK: {
+        const X64_SIBD_Addr op1_addr = X64__get_stack_offset_addr(op1_loc.offset);
+        x64_bin_int_mi_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_addr, op2_imm.as_int._u32);
+        break;
+    }
+    default:
+        assert(0);
+        break;
+    }
+}
+
 static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is_last_instr, long bblock_id)
 {
     AllocatorState mem_state = allocator_get_state(proc_state->tmp_mem);
@@ -995,6 +1085,13 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         X64__emit_bin_int_rm_instr(proc_state, X64_Instr_Kind_ADD_RM, true, size, act_instr->dst, &act_instr->src);
         break;
     }
+    case X64_InstrAdd_R_I_KIND: {
+        X64_InstrAdd_R_I* act_instr = (X64_InstrAdd_R_I*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_ri_instr(proc_state, X64_Instr_Kind_ADD_RI, size, act_instr->dst, act_instr->src);
+        break;
+    }
     case X64_InstrSub_R_R_KIND: {
         X64_InstrSub_R_R* act_instr = (X64_InstrSub_R_R*)instr;
         u8 size = act_instr->size;
@@ -1007,6 +1104,34 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         u8 size = act_instr->size;
 
         X64__emit_bin_int_rm_instr(proc_state, X64_Instr_Kind_SUB_RM, true, size, act_instr->dst, &act_instr->src);
+        break;
+    }
+    case X64_InstrSub_R_I_KIND: {
+        X64_InstrSub_R_I* act_instr = (X64_InstrSub_R_I*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_ri_instr(proc_state, X64_Instr_Kind_SUB_RI, size, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrIMul_R_R_KIND: {
+        X64_InstrIMul_R_R* act_instr = (X64_InstrIMul_R_R*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_IMUL_RR, true, size, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrIMul_R_M_KIND: {
+        X64_InstrIMul_R_M* act_instr = (X64_InstrIMul_R_M*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_rm_instr(proc_state, X64_Instr_Kind_IMUL_RM, true, size, act_instr->dst, &act_instr->src);
+        break;
+    }
+    case X64_InstrIMul_R_I_KIND: {
+        X64_InstrIMul_R_I* act_instr = (X64_InstrIMul_R_I*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_ri_instr(proc_state, X64_Instr_Kind_IMUL_RI, size, act_instr->dst, act_instr->src);
         break;
     }
     case X64_InstrMov_R_R_KIND: {
@@ -1036,6 +1161,20 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         const u8 size = act_instr->size;
 
         X64__emit_bin_int_mr_instr(proc_state, X64_Instr_Kind_MOV_MR, size, &act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrMov_R_I_KIND: {
+        X64_InstrMov_R_I* act_instr = (X64_InstrMov_R_I*)instr;
+        const u8 size = act_instr->size;
+
+        // NOTE: We don't use X64__emit_bin_int_ri_instr here because MOV is the only instruction
+        // capable of loading a 64-bit immediate (others can only load u32). Additionally, if the destination
+        // was spilled during register allocation, we have to load the immediate (potentially a 64-bit) into a temporary
+        // register, which is subsequently stored into the spilled location.
+        X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+        X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, size, true, 0); // Get actual reg or a tmp if spilled.
+        X64__emit_instr_mov_ri(&proc_state->instrs, size, dst_reg, act_instr->src.as_int._u64);
+        X64__end_reg_group(&tmp_group);
         break;
     }
     case X64_InstrMov_M_I_KIND: {

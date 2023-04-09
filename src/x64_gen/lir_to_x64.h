@@ -44,9 +44,14 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_SUB_RM,
     X64_Instr_Kind_SUB_MR,
     X64_Instr_Kind_SUB_RI,
+    X64_Instr_Kind_IMUL_RR,
+    X64_Instr_Kind_IMUL_RM,
+    X64_Instr_Kind_IMUL_MR,
+    X64_Instr_Kind_IMUL_RI,
     X64_Instr_Kind_MOV_RR,
     X64_Instr_Kind_MOV_RM,
     X64_Instr_Kind_MOV_MR,
+    X64_Instr_Kind_MOV_RI,
     X64_Instr_Kind_MOV_MI,
     X64_Instr_Kind_MOVSS_MR,
     X64_Instr_Kind_MOVSS_RM,
@@ -126,6 +131,30 @@ typedef struct X64__Instr {
             u8 size;
             u8 dst;
             u8 src;
+        } imul_rr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            X64_SIBD_Addr src;
+        } imul_rm;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u8 src;
+        } imul_mr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u32 imm;
+        } imul_ri;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u8 src;
         } mov_rr;
 
         struct {
@@ -139,6 +168,12 @@ typedef struct X64__Instr {
             X64_SIBD_Addr dst;
             u8 src;
         } mov_mr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u64 imm;  // Only mov can load a 64-bit immediate into an integer register.
+        } mov_ri;
 
         struct {
             u8 size;
