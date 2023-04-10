@@ -320,6 +320,32 @@ static void X64__emit_instr_movsxd_rm(Array(X64__Instr) * instrs, u8 dst_size, X
     array_push(*instrs, movsxd_rm_instr);
 }
 
+static void X64__emit_instr_movzx_rr(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
+{
+    X64__Instr movzx_rr_instr = {
+        .kind = X64_Instr_Kind_MOVZX_RR,
+        .movzx_rr.dst_size = dst_size,
+        .movzx_rr.src_size = src_size,
+        .movzx_rr.dst = dst,
+        .movzx_rr.src = src,
+    };
+
+    array_push(*instrs, movzx_rr_instr);
+}
+
+static void X64__emit_instr_movzx_rm(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
+{
+    X64__Instr movzx_rm_instr = {
+        .kind = X64_Instr_Kind_MOVZX_RM,
+        .movzx_rm.dst_size = dst_size,
+        .movzx_rm.src_size = src_size,
+        .movzx_rm.dst = dst,
+        .movzx_rm.src = src,
+    };
+
+    array_push(*instrs, movzx_rm_instr);
+}
+
 static void X64__emit_instr_movss_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr movss_mr_instr = {
@@ -494,11 +520,13 @@ static X64_Emit_Bin_Int_MI_Func* x64_bin_int_mi_emit_funcs[X64_Instr_Kind_COUNT]
 static X64_Emit_Mov_Ext_RR_Func* x64_mov_ext_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_MOVSX_RR] = X64__emit_instr_movsx_rr,
     [X64_Instr_Kind_MOVSXD_RR] = X64__emit_instr_movsxd_rr,
+    [X64_Instr_Kind_MOVZX_RR] = X64__emit_instr_movzx_rr,
 };
 
 static X64_Emit_Mov_Ext_RM_Func* x64_mov_ext_rm_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_MOVSX_RM] = X64__emit_instr_movsx_rm,
     [X64_Instr_Kind_MOVSXD_RM] = X64__emit_instr_movsxd_rm,
+    [X64_Instr_Kind_MOVZX_RM] = X64__emit_instr_movzx_rm,
 };
 
 typedef struct X64_Proc_State {
@@ -1104,6 +1132,19 @@ static void X64__emit_mov_ext_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
     X64__end_reg_group(&tmp_group);
 }
 
+static void X64__emit_mov_ext_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kind movext_kind, u32 dst_size,
+                                       u32 dst_lreg, u32 src_size, X64_MemAddr* src_vaddr)
+{
+        X64_SIBD_Addr src_addr = {0};
+        u32 banned_tmp_regs = X64__get_sibd_addr(proc_state, &src_addr, src_vaddr);
+
+        X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+        X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, dst_lreg,
+                                       dst_size, true, banned_tmp_regs); // Get actual reg or a tmp if spilled.
+        x64_mov_ext_rm_emit_funcs[movext_kind](&proc_state->instrs, dst_size, dst_reg, src_size, src_addr);
+        X64__end_reg_group(&tmp_group);
+}
+
 static void X64__emit_bin_int_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, u32 op_size,
                                        u32 op1_lreg, X64_MemAddr* op2_vaddr)
 {
@@ -1295,14 +1336,51 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         X64_Instr_Kind movsx_kind = src_size >= builtin_types[BUILTIN_TYPE_U32].type->size ? X64_Instr_Kind_MOVSXD_RR :
                                                                                              X64_Instr_Kind_MOVSX_RR;
 
-        X64_SIBD_Addr src_addr = {0};
-        u32 banned_tmp_regs = X64__get_sibd_addr(proc_state, &src_addr, &act_instr->src);
+        X64__emit_mov_ext_rm_instr(proc_state, movsx_kind, dst_size, act_instr->dst, src_size, &act_instr->src);
+        break;
+    }
+    case X64_InstrMovZX_R_R_KIND: {
+        X64_InstrMovZX_R_R* act_instr = (X64_InstrMovZX_R_R*)instr;
+        const u8 dst_size = act_instr->dst_size;
+        const u8 src_size = act_instr->src_size;
 
-        X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
-        X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst,
-                                       dst_size, true, banned_tmp_regs); // Get actual reg or a tmp if spilled.
-        x64_mov_ext_rm_emit_funcs[movsx_kind](&proc_state->instrs, dst_size, dst_reg, src_size, src_addr);
-        X64__end_reg_group(&tmp_group);
+        // There is no encoding for an instruction that zero-extends a 4-byte source to an 8-byte destination! Also, note that
+        // an instruction like mov eax, __ clears the upper 4 bytes of eax.
+        // See: https://stackoverflow.com/a/51394642
+        if (src_size != 4) {
+            X64__emit_mov_ext_rr_instr(proc_state, X64_Instr_Kind_MOVZX_RR, dst_size, act_instr->dst, src_size, act_instr->src);
+        }
+        // EX: Instead of movzx rax, edi (invalid), use mov eax, edi to zero-extend edi into rax.
+        else {
+            assert(dst_size == X64_MAX_INT_REG_SIZE);
+
+            // NOTE: Not necessary if a previous instruction already cleared the upper 4-bytes of the dest reg with a mov instruction.
+            // We would need to track the "zxt" state of all registers: if mov rx, _ => rx is "zxt", otherwise if <not_mov> rx, _ =>
+            // rx is NOT "zxt".
+            X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_MOV_RR, true, src_size, act_instr->dst, act_instr->src);
+        }
+        break;
+    }
+    case X64_InstrMovZX_R_M_KIND: {
+        X64_InstrMovZX_R_M* act_instr = (X64_InstrMovZX_R_M*)instr;
+        const u8 dst_size = act_instr->dst_size;
+        const u8 src_size = act_instr->src_size;
+
+        // There is no encoding for an instruction that zero-extends a 4-byte source to an 8-byte destination! Also, note that
+        // an instruction like mov eax, __ clears the upper 4 bytes of eax.
+        // See: https://stackoverflow.com/a/51394642
+        if (src_size != 4) {
+            X64__emit_mov_ext_rm_instr(proc_state, X64_Instr_Kind_MOVZX_RM, dst_size, act_instr->dst, src_size, &act_instr->src);
+        }
+        // EX: Instead of movzx rax, edi (invalid), use mov eax, edi to zero-extend edi into rax.
+        else {
+            assert(dst_size == X64_MAX_INT_REG_SIZE);
+
+            // NOTE: Not necessary if a previous instruction already cleared the upper 4-bytes of the dest reg with a mov instruction.
+            // We would need to track the "zxt" state of all registers: if mov rx, _ => rx is "zxt", otherwise if <not_mov> rx, _ =>
+            // rx is NOT "zxt".
+            X64__emit_bin_int_rm_instr(proc_state, X64_Instr_Kind_MOV_RM, true, src_size, act_instr->dst, &act_instr->src);
+        }
         break;
     }
     case X64_InstrJmp_KIND: {
