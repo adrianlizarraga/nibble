@@ -1,0 +1,6 @@
+proc main() => int {
+    var a : u8 = 10;
+    var b : u64 = 1;
+
+    return a + b;
+}

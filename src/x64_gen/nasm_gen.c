@@ -655,6 +655,17 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movsxd_rm.src, instr->movsxd_rm.src_size);
             X64_NASM_PRINT_FTL(proc_str, "movsxd %s, %s", dst_reg, src_mem);
         } break;
+        // MOVZX
+        case X64_Instr_Kind_MOVZX_RR: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->movzx_rr.dst_size][instr->movzx_rr.dst];
+            const char* src_reg = x64_nasm_int_reg_names[instr->movzx_rr.src_size][instr->movzx_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "movzx %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_MOVZX_RM: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->movzx_rm.dst_size][instr->movzx_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movzx_rm.src, instr->movzx_rm.src_size);
+            X64_NASM_PRINT_FTL(proc_str, "movzx %s, %s", dst_reg, src_mem);
+        } break;
         // MOVSS
         case X64_Instr_Kind_MOVSS_MR: {
             const u8 size = float_kind_sizes[FLOAT_F32];
