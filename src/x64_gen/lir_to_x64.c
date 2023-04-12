@@ -414,6 +414,17 @@ static void X64__emit_instr_movdqu_rm(Array(X64__Instr) * instrs, X64_Reg dst, X
     array_push(*instrs, movdqu_rm_instr);
 }
 
+static void X64__emit_instr_lea(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr lea_instr = {
+        .kind = X64_Instr_Kind_LEA,
+        .lea.dst = dst,
+        .lea.src = src,
+    };
+
+    array_push(*instrs, lea_instr);
+}
+
 static size_t X64__emit_instr_placeholder(Array(X64__Instr) * instrs, X64_Instr_Kind kind)
 {
     X64__Instr instr = {.kind = kind};
@@ -1381,6 +1392,21 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
             // rx is NOT "zxt".
             X64__emit_bin_int_rm_instr(proc_state, X64_Instr_Kind_MOV_RM, true, src_size, act_instr->dst, &act_instr->src);
         }
+        break;
+    }
+    case X64_InstrLEA_KIND: {
+        X64_InstrLEA* act_instr = (X64_InstrLEA*)instr;
+        const u8 size = X64_MAX_INT_REG_SIZE;
+
+        X64_SIBD_Addr src_addr = {0};
+        u32 pinned_regs = X64__get_sibd_addr(proc_state, &src_addr, &act_instr->mem);
+
+        X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+        X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, size, true, pinned_regs);
+        assert(size <= 8 && IS_POW2(size));
+
+        X64__emit_instr_lea(&proc_state->instrs, dst_reg, src_addr);
+        X64__end_reg_group(&tmp_group);
         break;
     }
     case X64_InstrJmp_KIND: {

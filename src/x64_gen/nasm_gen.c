@@ -703,6 +703,14 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movdqu_rm.src, size);
             X64_NASM_PRINT_FTL(proc_str, "movdqu %s, %s", dst_reg, src_mem);
         } break;
+        // LEA
+        case X64_Instr_Kind_LEA: {
+            const char* dst_reg = x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE][instr->lea.dst];
+
+            // Pass 0 as the mem_label_size so that a memory label (e.g., qword) is not printed.
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->lea.src, 0);
+            X64_NASM_PRINT_FTL(proc_str, "lea %s, %s", dst_reg, src_mem);
+        } break;
         default:
             NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", instr->kind);
             break;
