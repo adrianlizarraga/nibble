@@ -711,6 +711,15 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->lea.src, 0);
             X64_NASM_PRINT_FTL(proc_str, "lea %s, %s", dst_reg, src_mem);
         } break;
+        case X64_Instr_Kind_REP_MOVSB: {
+            X64_NASM_PRINT_TL(proc_str, "rep movsb");
+        } break;
+        case X64_Instr_Kind_REP_STOSB: {
+            X64_NASM_PRINT_TL(proc_str, "rep stosb");
+        } break;
+        case X64_Instr_Kind_SYSCALL: {
+            X64_NASM_PRINT_TL(proc_str, "syscall");
+        } break;
         default:
             NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", instr->kind);
             break;

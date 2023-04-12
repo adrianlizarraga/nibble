@@ -66,6 +66,9 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_MOVDQU_MR,
     X64_Instr_Kind_MOVDQU_RM,
     X64_Instr_Kind_LEA,
+    X64_Instr_Kind_REP_MOVSB,
+    X64_Instr_Kind_REP_STOSB,
+    X64_Instr_Kind_SYSCALL,
 
     X64_Instr_Kind_COUNT
 } X64_Instr_Kind;

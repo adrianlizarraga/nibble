@@ -425,6 +425,24 @@ static void X64__emit_instr_lea(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIB
     array_push(*instrs, lea_instr);
 }
 
+static void X64__emit_instr_rep_movsb(Array(X64__Instr)* instrs)
+{
+    X64__Instr instr = {.kind = X64_Instr_Kind_REP_MOVSB};
+    array_push(*instrs, instr);
+}
+
+static void X64__emit_instr_rep_stosb(Array(X64__Instr)* instrs)
+{
+    X64__Instr instr = {.kind = X64_Instr_Kind_REP_STOSB};
+    array_push(*instrs, instr);
+}
+
+static void X64__emit_instr_syscall(Array(X64__Instr)* instrs)
+{
+    X64__Instr instr = {.kind = X64_Instr_Kind_SYSCALL};
+    array_push(*instrs, instr);
+}
+
 static size_t X64__emit_instr_placeholder(Array(X64__Instr) * instrs, X64_Instr_Kind kind)
 {
     X64__Instr instr = {.kind = kind};
@@ -1407,6 +1425,18 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
 
         X64__emit_instr_lea(&proc_state->instrs, dst_reg, src_addr);
         X64__end_reg_group(&tmp_group);
+        break;
+    }
+    case X64_InstrRepMovsb_KIND: {
+        X64__emit_instr_rep_movsb(&proc_state->instrs);
+        break;
+    }
+    case X64_InstrRepStosb_KIND: {
+        X64__emit_instr_rep_stosb(&proc_state->instrs);
+        break;
+    }
+    case X64_InstrSyscall_KIND: {
+        X64__emit_instr_syscall(&proc_state->instrs);
         break;
     }
     case X64_InstrJmp_KIND: {
