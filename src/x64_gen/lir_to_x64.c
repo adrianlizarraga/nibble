@@ -352,6 +352,50 @@ static void X64__emit_instr_xor_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     array_push(*instrs, xor_ri_instr);
 }
 
+static void X64__emit_instr_neg_r(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
+{
+    X64__Instr neg_r_instr = {
+        .kind = X64_Instr_Kind_NEG_R,
+        .neg_r.size = size,
+        .neg_r.dst = dst,
+    };
+
+    array_push(*instrs, neg_r_instr);
+}
+
+static void X64__emit_instr_neg_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst)
+{
+    X64__Instr neg_m_instr = {
+        .kind = X64_Instr_Kind_NEG_M,
+        .neg_m.size = size,
+        .neg_m.dst = dst,
+    };
+
+    array_push(*instrs, neg_m_instr);
+}
+
+static void X64__emit_instr_not_r(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
+{
+    X64__Instr not_r_instr = {
+        .kind = X64_Instr_Kind_NOT_R,
+        .not_r.size = size,
+        .not_r.dst = dst,
+    };
+
+    array_push(*instrs, not_r_instr);
+}
+
+static void X64__emit_instr_not_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst)
+{
+    X64__Instr not_m_instr = {
+        .kind = X64_Instr_Kind_NOT_M,
+        .not_m.size = size,
+        .not_m.dst = dst,
+    };
+
+    array_push(*instrs, not_m_instr);
+}
+
 static void X64__emit_instr_mov_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr mov_rr_instr = {
@@ -1518,6 +1562,32 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         u8 size = act_instr->size;
 
         X64__emit_bin_int_ri_instr(proc_state, X64_Instr_Kind_XOR_RI, size, act_instr->dst, act_instr->src);
+        break;
+    }
+    // NEG
+    case X64_InstrNeg_KIND: {
+        X64_InstrNeg* act_instr = (X64_InstrNeg*)instr;
+        const u8 size = act_instr->size;
+        X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+
+        if (IS_LREG_IN_REG(dst_loc.kind)) {
+	    X64__emit_instr_neg_r(&proc_state->instrs, size, dst_loc.reg);
+	} else {
+	    X64__emit_instr_neg_m(&proc_state->instrs, size, X64__get_stack_offset_addr(dst_loc.offset));
+	}
+        break;
+    }
+    // NOT
+    case X64_InstrNot_KIND: {
+        X64_InstrNot* act_instr = (X64_InstrNot*)instr;
+        const u8 size = act_instr->size;
+        X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+
+        if (IS_LREG_IN_REG(dst_loc.kind)) {
+	    X64__emit_instr_not_r(&proc_state->instrs, size, dst_loc.reg);
+	} else {
+	    X64__emit_instr_not_m(&proc_state->instrs, size, X64__get_stack_offset_addr(dst_loc.offset));
+	}
         break;
     }
     // MOV

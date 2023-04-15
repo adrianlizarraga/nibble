@@ -670,6 +670,24 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->xor_ri.imm, instr->xor_ri.size);
             X64_NASM_PRINT_FTL(proc_str, "xor %s, %s", dst_reg, src_imm);
         } break;
+        // NEG
+        case X64_Instr_Kind_NEG_R: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->neg_r.size][instr->neg_r.dst];
+            X64_NASM_PRINT_FTL(proc_str, "neg %s", dst_reg);
+        } break;
+        case X64_Instr_Kind_NEG_M: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->neg_m.dst, instr->neg_m.size);
+            X64_NASM_PRINT_FTL(proc_str, "neg %s", dst_mem);
+        } break;
+        // NOT
+        case X64_Instr_Kind_NOT_R: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->not_r.size][instr->not_r.dst];
+            X64_NASM_PRINT_FTL(proc_str, "not %s", dst_reg);
+        } break;
+        case X64_Instr_Kind_NOT_M: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->not_m.dst, instr->not_m.size);
+            X64_NASM_PRINT_FTL(proc_str, "not %s", dst_mem);
+        } break;
         // MOV
         case X64_Instr_Kind_MOV_RR: {
             const char* r1 = x64_nasm_int_reg_names[instr->mov_rr.size][instr->mov_rr.dst];

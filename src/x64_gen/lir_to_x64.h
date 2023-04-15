@@ -56,6 +56,10 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_OR_RM,
     X64_Instr_Kind_OR_MR,
     X64_Instr_Kind_OR_RI,
+    X64_Instr_Kind_NEG_R,
+    X64_Instr_Kind_NEG_M,
+    X64_Instr_Kind_NOT_R,
+    X64_Instr_Kind_NOT_M,
     X64_Instr_Kind_XOR_RR,
     X64_Instr_Kind_XOR_RM,
     X64_Instr_Kind_XOR_MR,
@@ -244,6 +248,26 @@ typedef struct X64__Instr {
             u8 dst;
             u32 imm;
         } xor_ri;
+
+        struct {
+            u8 size;
+            u8 dst;
+        } neg_r;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+        } neg_m;
+
+        struct {
+            u8 size;
+            u8 dst;
+        } not_r;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+        } not_m;
 
         struct {
             u8 size;
