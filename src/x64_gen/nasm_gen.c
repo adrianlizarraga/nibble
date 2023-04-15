@@ -588,24 +588,66 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
         } break;
         // IMUL
         case X64_Instr_Kind_IMUL_RR: {
-            const char* r1 = x64_nasm_int_reg_names[instr->imul_rr.size][instr->imul_rr.dst];
-            const char* r2 = x64_nasm_int_reg_names[instr->imul_rr.size][instr->imul_rr.src];
-            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", r1, r2);
+            const char* dst_reg = x64_nasm_int_reg_names[instr->imul_rr.size][instr->imul_rr.dst];
+            const char* src_reg = x64_nasm_int_reg_names[instr->imul_rr.size][instr->imul_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", dst_reg, src_reg);
         } break;
         case X64_Instr_Kind_IMUL_RM: {
-            const char* reg_op = x64_nasm_int_reg_names[instr->imul_rm.size][instr->imul_rm.dst];
-            const char* mem_op = X64_nasm_print_sibd_addr(tmp_mem, &instr->imul_rm.src, instr->imul_rm.size);
-            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", reg_op, mem_op);
+            const char* dst_reg = x64_nasm_int_reg_names[instr->imul_rm.size][instr->imul_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->imul_rm.src, instr->imul_rm.size);
+            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", dst_reg, src_mem);
         } break;
         case X64_Instr_Kind_IMUL_MR: {
-            const char* mem_op = X64_nasm_print_sibd_addr(tmp_mem, &instr->imul_mr.dst, instr->imul_mr.size);
-            const char* reg_op = x64_nasm_int_reg_names[instr->imul_mr.size][instr->imul_mr.src];
-            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", mem_op, reg_op);
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->imul_mr.dst, instr->imul_mr.size);
+            const char* src_reg = x64_nasm_int_reg_names[instr->imul_mr.size][instr->imul_mr.src];
+            X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", dst_mem, src_reg);
         } break;
         case X64_Instr_Kind_IMUL_RI: {
             const char* dst_reg = x64_nasm_int_reg_names[instr->imul_ri.size][instr->imul_ri.dst];
             const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->imul_ri.imm, instr->imul_ri.size);
             X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", dst_reg, src_imm);
+        } break;
+        // AND
+        case X64_Instr_Kind_AND_RR: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->and_rr.size][instr->and_rr.dst];
+            const char* src_reg = x64_nasm_int_reg_names[instr->and_rr.size][instr->and_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "and %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_AND_RM: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->and_rm.size][instr->and_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->and_rm.src, instr->and_rm.size);
+            X64_NASM_PRINT_FTL(proc_str, "and %s, %s", dst_reg, src_mem);
+        } break;
+        case X64_Instr_Kind_AND_MR: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->and_mr.dst, instr->and_mr.size);
+            const char* src_reg = x64_nasm_int_reg_names[instr->and_mr.size][instr->and_mr.src];
+            X64_NASM_PRINT_FTL(proc_str, "and %s, %s", dst_mem, src_reg);
+        } break;
+        case X64_Instr_Kind_AND_RI: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->and_ri.size][instr->and_ri.dst];
+            const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->and_ri.imm, instr->and_ri.size);
+            X64_NASM_PRINT_FTL(proc_str, "and %s, %s", dst_reg, src_imm);
+        } break;
+        // OR
+        case X64_Instr_Kind_OR_RR: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->or_rr.size][instr->or_rr.dst];
+            const char* src_reg = x64_nasm_int_reg_names[instr->or_rr.size][instr->or_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "or %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_OR_RM: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->or_rm.size][instr->or_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->or_rm.src, instr->or_rm.size);
+            X64_NASM_PRINT_FTL(proc_str, "or %s, %s", dst_reg, src_mem);
+        } break;
+        case X64_Instr_Kind_OR_MR: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->or_mr.dst, instr->or_mr.size);
+            const char* src_reg = x64_nasm_int_reg_names[instr->or_mr.size][instr->or_mr.src];
+            X64_NASM_PRINT_FTL(proc_str, "or %s, %s", dst_mem, src_reg);
+        } break;
+        case X64_Instr_Kind_OR_RI: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->or_ri.size][instr->or_ri.dst];
+            const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->or_ri.imm, instr->or_ri.size);
+            X64_NASM_PRINT_FTL(proc_str, "or %s, %s", dst_reg, src_imm);
         } break;
         // MOV
         case X64_Instr_Kind_MOV_RR: {

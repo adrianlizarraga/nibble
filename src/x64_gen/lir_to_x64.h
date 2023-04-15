@@ -48,6 +48,14 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_IMUL_RM,
     X64_Instr_Kind_IMUL_MR,
     X64_Instr_Kind_IMUL_RI,
+    X64_Instr_Kind_AND_RR,
+    X64_Instr_Kind_AND_RM,
+    X64_Instr_Kind_AND_MR,
+    X64_Instr_Kind_AND_RI,
+    X64_Instr_Kind_OR_RR,
+    X64_Instr_Kind_OR_RM,
+    X64_Instr_Kind_OR_MR,
+    X64_Instr_Kind_OR_RI,
     X64_Instr_Kind_MOV_RR,
     X64_Instr_Kind_MOV_RM,
     X64_Instr_Kind_MOV_MR,
@@ -160,6 +168,54 @@ typedef struct X64__Instr {
             u8 dst;
             u32 imm;
         } imul_ri;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u8 src;
+        } and_rr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            X64_SIBD_Addr src;
+        } and_rm;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u8 src;
+        } and_mr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u32 imm;
+        } and_ri;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u8 src;
+        } or_rr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            X64_SIBD_Addr src;
+        } or_rm;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u8 src;
+        } or_mr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u32 imm;
+        } or_ri;
 
         struct {
             u8 size;
