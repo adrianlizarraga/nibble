@@ -649,6 +649,27 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->or_ri.imm, instr->or_ri.size);
             X64_NASM_PRINT_FTL(proc_str, "or %s, %s", dst_reg, src_imm);
         } break;
+        // XOR
+        case X64_Instr_Kind_XOR_RR: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->xor_rr.size][instr->xor_rr.dst];
+            const char* src_reg = x64_nasm_int_reg_names[instr->xor_rr.size][instr->xor_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "xor %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_XOR_RM: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->xor_rm.size][instr->xor_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->xor_rm.src, instr->xor_rm.size);
+            X64_NASM_PRINT_FTL(proc_str, "xor %s, %s", dst_reg, src_mem);
+        } break;
+        case X64_Instr_Kind_XOR_MR: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->xor_mr.dst, instr->xor_mr.size);
+            const char* src_reg = x64_nasm_int_reg_names[instr->xor_mr.size][instr->xor_mr.src];
+            X64_NASM_PRINT_FTL(proc_str, "xor %s, %s", dst_mem, src_reg);
+        } break;
+        case X64_Instr_Kind_XOR_RI: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->xor_ri.size][instr->xor_ri.dst];
+            const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->xor_ri.imm, instr->xor_ri.size);
+            X64_NASM_PRINT_FTL(proc_str, "xor %s, %s", dst_reg, src_imm);
+        } break;
         // MOV
         case X64_Instr_Kind_MOV_RR: {
             const char* r1 = x64_nasm_int_reg_names[instr->mov_rr.size][instr->mov_rr.dst];
