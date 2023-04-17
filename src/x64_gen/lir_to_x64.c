@@ -2,6 +2,7 @@
 #include "allocator.h"
 #include "array.h"
 #include "ast/module.h"
+#include "bytecode/module.h"
 #include "hash_map.h"
 #include "nibble.h"
 #include "stream.h"
@@ -39,6 +40,50 @@ static void X64__emit_instr_jmp(Array(X64__Instr)* instrs, size_t target)
 static void X64__emit_instr_jmp_to_ret(Array(X64__Instr)* instrs)
 {
     X64__Instr instr = {.kind = X64_Instr_Kind_JMP_TO_RET, .jmp.target = X64_REG_COUNT};
+    array_push(*instrs, instr);
+}
+
+static void X64__emit_instr_jmpcc(Array(X64__Instr)* instrs, ConditionKind cond_kind, size_t target)
+{
+    X64_Instr_Kind kind = X64_Instr_Kind_NOOP;
+
+    switch (cond_kind) {
+        case COND_U_LT:
+            kind = X64_Instr_Kind_JMP_B;
+            break;
+        case COND_S_LT:
+            kind = X64_Instr_Kind_JMP_L;
+            break;
+        case COND_U_LTEQ:
+            kind = X64_Instr_Kind_JMP_BE;
+            break;
+        case COND_S_LTEQ:
+            kind = X64_Instr_Kind_JMP_LE;
+            break;
+        case COND_U_GT:
+            kind = X64_Instr_Kind_JMP_A;
+            break;
+        case COND_S_GT:
+            kind = X64_Instr_Kind_JMP_G;
+            break;
+        case COND_U_GTEQ:
+            kind = X64_Instr_Kind_JMP_AE;
+            break;
+        case COND_S_GTEQ:
+            kind = X64_Instr_Kind_JMP_GE;
+            break;
+        case COND_EQ:
+            kind = X64_Instr_Kind_JMP_E;
+            break;
+        case COND_NEQ:
+            kind = X64_Instr_Kind_JMP_NE;
+            break;
+        default:
+            NIBBLE_FATAL_EXIT("Unhandled ConditionKind %d in X64__emit_instr_jmpcc", cond_kind);
+            break;
+    }
+
+    X64__Instr instr = {.kind = kind, .jmp.target = target};
     array_push(*instrs, instr);
 }
 
@@ -1318,17 +1363,31 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
     for (size_t i = 0; i < num_instrs; ++i) {
         X64__Instr* instr = &instrs[i];
 
-        if (instr->kind == X64_Instr_Kind_JMP) {
+        switch (instr->kind) {
+        case X64_Instr_Kind_JMP_B:
+        case X64_Instr_Kind_JMP_L:
+        case X64_Instr_Kind_JMP_BE:
+        case X64_Instr_Kind_JMP_LE:
+        case X64_Instr_Kind_JMP_A:
+        case X64_Instr_Kind_JMP_G:
+        case X64_Instr_Kind_JMP_AE:
+        case X64_Instr_Kind_JMP_GE:
+        case X64_Instr_Kind_JMP_E:
+        case X64_Instr_Kind_JMP_NE:
+        case X64_Instr_Kind_JMP: {
             // jmp.target initially contains the target bblock ID.
             // Use the map to get the bblock's starting instruction index.
             size_t* instr_index = hmap_get(bblock_instr_starts, instr->jmp.target + 1); // The key is offset by 1 (can't have a 0 key)
             assert(instr_index != NULL);
             assert(*instr_index < num_instrs);
             instr->jmp.target = *instr_index;
-        }
-        else if (instr->kind == X64_Instr_Kind_JMP_TO_RET) {
+        } break;
+        case X64_Instr_Kind_JMP_TO_RET:
             // Jump after the last instruction (to post-amble).
             instr->jmp.target = num_instrs;
+            break;
+        default:
+            break;
         }
     }
 }
@@ -1804,7 +1863,7 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         X64_InstrCmp_M_I* act_instr = (X64_InstrCmp_M_I*)instr;
         const u8 size = act_instr->size;
 
-        X64__emit_bin_int_mi_instr(proc_state, X64_Instr_Kind_MOV_MI, size, &act_instr->op1, act_instr->op2);
+        X64__emit_bin_int_mi_instr(proc_state, X64_Instr_Kind_CMP_MI, size, &act_instr->op1, act_instr->op2);
         break;
     }
     // LEA
@@ -1843,6 +1902,11 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
             assert(target_id >= 0);
             X64__emit_instr_jmp(&proc_state->instrs, (size_t)target_id);
         }
+        break;
+    }
+    case X64_InstrJmpCC_KIND: {
+        X64_InstrJmpCC* act_instr = (X64_InstrJmpCC*)instr;
+        X64__emit_instr_jmpcc(&proc_state->instrs, act_instr->cond, (size_t)act_instr->true_bb->id);
         break;
     }
     case X64_InstrRet_KIND: {

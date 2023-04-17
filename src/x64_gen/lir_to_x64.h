@@ -34,6 +34,16 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_RET,
     X64_Instr_Kind_JMP,
     X64_Instr_Kind_JMP_TO_RET, // Doesn't correspond to an actual X64 instruction. Jumps to ret label.
+    X64_Instr_Kind_JMP_B,
+    X64_Instr_Kind_JMP_L,
+    X64_Instr_Kind_JMP_BE,
+    X64_Instr_Kind_JMP_LE,
+    X64_Instr_Kind_JMP_A,
+    X64_Instr_Kind_JMP_G,
+    X64_Instr_Kind_JMP_AE,
+    X64_Instr_Kind_JMP_GE,
+    X64_Instr_Kind_JMP_E,
+    X64_Instr_Kind_JMP_NE,
     X64_Instr_Kind_PUSH,
     X64_Instr_Kind_POP,
     X64_Instr_Kind_ADD_RR,
@@ -108,7 +118,7 @@ typedef struct X64__Instr {
 
         struct {
             size_t target;
-        } jmp; // Also for JMP_TO_RET
+        } jmp; // Also for JMP_TO_RET, jb, jl, je, ...
 
         struct {
             u8 size;

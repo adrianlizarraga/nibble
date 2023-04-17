@@ -538,6 +538,36 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
         case X64_Instr_Kind_JMP: {
             X64_NASM_PRINT_FTL(proc_str, "jmp %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
         } break;
+        case X64_Instr_Kind_JMP_B:
+            X64_NASM_PRINT_FTL(proc_str, "jb %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_L:
+            X64_NASM_PRINT_FTL(proc_str, "jl %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_BE:
+            X64_NASM_PRINT_FTL(proc_str, "jbe %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_LE:
+            X64_NASM_PRINT_FTL(proc_str, "jle %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_A:
+            X64_NASM_PRINT_FTL(proc_str, "ja %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_G:
+            X64_NASM_PRINT_FTL(proc_str, "jg %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_AE:
+            X64_NASM_PRINT_FTL(proc_str, "jae %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_GE:
+            X64_NASM_PRINT_FTL(proc_str, "jge %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_E:
+            X64_NASM_PRINT_FTL(proc_str, "je %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_NE:
+            X64_NASM_PRINT_FTL(proc_str, "jne %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
         case X64_Instr_Kind_PUSH: {
             X64_NASM_PRINT_FTL(proc_str, "push %s", x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE][instr->push.reg]);
         } break;
