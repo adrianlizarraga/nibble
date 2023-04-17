@@ -875,66 +875,107 @@ typedef void X64_Emit_Bin_Int_MI_Func (Array(X64__Instr)* instrs, u8 size, X64_S
 typedef void X64_Emit_Mov_Ext_RR_Func (Array(X64__Instr)* instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src);
 typedef void X64_Emit_Mov_Ext_RM_Func (Array(X64__Instr)* instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src);
 
-static X64_Emit_Bin_Int_RR_Func* x64_bin_int_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
-    [X64_Instr_Kind_ADD_RR] = X64__emit_instr_add_rr,
-    [X64_Instr_Kind_SUB_RR] = X64__emit_instr_sub_rr,
-    [X64_Instr_Kind_IMUL_RR] = X64__emit_instr_imul_rr,
-    [X64_Instr_Kind_AND_RR] = X64__emit_instr_and_rr,
-    [X64_Instr_Kind_OR_RR] = X64__emit_instr_or_rr,
-    [X64_Instr_Kind_XOR_RR] = X64__emit_instr_xor_rr,
-    [X64_Instr_Kind_MOV_RR] = X64__emit_instr_mov_rr,
-    [X64_Instr_Kind_CMP_RR] = X64__emit_instr_cmp_rr,
-};
+static inline X64_Emit_Bin_Int_RR_Func* x64_bin_int_rr_emit_funcs(X64_Instr_Kind kind)
+{
+    switch (kind) {
+    case X64_Instr_Kind_ADD_RR: return X64__emit_instr_add_rr;
+    case X64_Instr_Kind_SUB_RR: return X64__emit_instr_sub_rr;
+    case X64_Instr_Kind_IMUL_RR: return X64__emit_instr_imul_rr;
+    case X64_Instr_Kind_AND_RR: return X64__emit_instr_and_rr;
+    case X64_Instr_Kind_OR_RR: return X64__emit_instr_or_rr;
+    case X64_Instr_Kind_XOR_RR: return X64__emit_instr_xor_rr;
+    case X64_Instr_Kind_MOV_RR: return X64__emit_instr_mov_rr;
+    case X64_Instr_Kind_CMP_RR: return X64__emit_instr_cmp_rr;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_int_rr_emit_funcs()", kind);
+        return NULL;
+    }
+}
 
-static X64_Emit_Bin_Int_RM_Func* x64_bin_int_rm_emit_funcs[X64_Instr_Kind_COUNT] = {
-    [X64_Instr_Kind_ADD_RM] = X64__emit_instr_add_rm,
-    [X64_Instr_Kind_SUB_RM] = X64__emit_instr_sub_rm,
-    [X64_Instr_Kind_IMUL_RM] = X64__emit_instr_imul_rm,
-    [X64_Instr_Kind_AND_RM] = X64__emit_instr_and_rm,
-    [X64_Instr_Kind_OR_RM] = X64__emit_instr_or_rm,
-    [X64_Instr_Kind_XOR_RM] = X64__emit_instr_xor_rm,
-    [X64_Instr_Kind_MOV_RM] = X64__emit_instr_mov_rm,
-    [X64_Instr_Kind_CMP_RM] = X64__emit_instr_cmp_rm,
-};
+static inline X64_Emit_Bin_Int_RM_Func* x64_bin_int_rm_emit_funcs(X64_Instr_Kind kind)
+{
+    switch (kind) {
+    case X64_Instr_Kind_ADD_RM: return X64__emit_instr_add_rm;
+    case X64_Instr_Kind_SUB_RM: return X64__emit_instr_sub_rm;
+    case X64_Instr_Kind_IMUL_RM: return X64__emit_instr_imul_rm;
+    case X64_Instr_Kind_AND_RM: return X64__emit_instr_and_rm;
+    case X64_Instr_Kind_OR_RM: return X64__emit_instr_or_rm;
+    case X64_Instr_Kind_XOR_RM: return X64__emit_instr_xor_rm;
+    case X64_Instr_Kind_MOV_RM: return X64__emit_instr_mov_rm;
+    case X64_Instr_Kind_CMP_RM: return X64__emit_instr_cmp_rm;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_int_rm_emit_funcs()", kind);
+        return NULL;
+    }
+}
 
-static X64_Emit_Bin_Int_RI_Func* x64_bin_int_ri_emit_funcs[X64_Instr_Kind_COUNT] = {
-    [X64_Instr_Kind_ADD_RI] = X64__emit_instr_add_ri,
-    [X64_Instr_Kind_SUB_RI] = X64__emit_instr_sub_ri,
-    [X64_Instr_Kind_IMUL_RI] = X64__emit_instr_imul_ri,
-    [X64_Instr_Kind_AND_RI] = X64__emit_instr_and_ri,
-    [X64_Instr_Kind_OR_RI] = X64__emit_instr_or_ri,
-    [X64_Instr_Kind_XOR_RI] = X64__emit_instr_xor_ri,
-    [X64_Instr_Kind_CMP_RI] = X64__emit_instr_cmp_ri,
-};
+static inline X64_Emit_Bin_Int_RI_Func* x64_bin_int_ri_emit_funcs(X64_Instr_Kind kind)
+{
+    switch (kind) {
+    case X64_Instr_Kind_ADD_RI: return X64__emit_instr_add_ri;
+    case X64_Instr_Kind_SUB_RI: return X64__emit_instr_sub_ri;
+    case X64_Instr_Kind_IMUL_RI: return X64__emit_instr_imul_ri;
+    case X64_Instr_Kind_AND_RI: return X64__emit_instr_and_ri;
+    case X64_Instr_Kind_OR_RI: return X64__emit_instr_or_ri;
+    case X64_Instr_Kind_XOR_RI: return X64__emit_instr_xor_ri;
+    case X64_Instr_Kind_CMP_RI: return X64__emit_instr_cmp_ri;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_int_ri_emit_funcs()", kind);
+        return NULL;
+    }
+}
 
-static X64_Emit_Bin_Int_MR_Func* x64_bin_int_mr_emit_funcs[X64_Instr_Kind_COUNT] = {
-    [X64_Instr_Kind_ADD_MR] = X64__emit_instr_add_mr,
-    [X64_Instr_Kind_SUB_MR] = X64__emit_instr_sub_mr,
-    [X64_Instr_Kind_IMUL_MR] = X64__emit_instr_imul_mr,
-    [X64_Instr_Kind_AND_MR] = X64__emit_instr_and_mr,
-    [X64_Instr_Kind_OR_MR] = X64__emit_instr_or_mr,
-    [X64_Instr_Kind_XOR_MR] = X64__emit_instr_xor_mr,
-    [X64_Instr_Kind_MOV_MR] = X64__emit_instr_mov_mr,
-    [X64_Instr_Kind_CMP_MR] = X64__emit_instr_cmp_mr,
-};
+static inline X64_Emit_Bin_Int_MR_Func* x64_bin_int_mr_emit_funcs(X64_Instr_Kind kind)
+{
+    switch (kind) {
+    case X64_Instr_Kind_ADD_MR: return X64__emit_instr_add_mr;
+    case X64_Instr_Kind_SUB_MR: return X64__emit_instr_sub_mr;
+    case X64_Instr_Kind_IMUL_MR: return X64__emit_instr_imul_mr;
+    case X64_Instr_Kind_AND_MR: return X64__emit_instr_and_mr;
+    case X64_Instr_Kind_OR_MR: return X64__emit_instr_or_mr;
+    case X64_Instr_Kind_XOR_MR: return X64__emit_instr_xor_mr;
+    case X64_Instr_Kind_MOV_MR: return X64__emit_instr_mov_mr;
+    case X64_Instr_Kind_CMP_MR: return X64__emit_instr_cmp_mr;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_int_mr_emit_funcs()", kind);
+        return NULL;
+    }
+}
 
-static X64_Emit_Bin_Int_MI_Func* x64_bin_int_mi_emit_funcs[X64_Instr_Kind_COUNT] = {
-    [X64_Instr_Kind_MOV_MI] = X64__emit_instr_mov_mi,
-    [X64_Instr_Kind_CMP_MI] = X64__emit_instr_cmp_mi,
+static inline X64_Emit_Bin_Int_MI_Func* x64_bin_int_mi_emit_funcs(X64_Instr_Kind kind)
+{
+    switch (kind) {
+    case X64_Instr_Kind_MOV_MI: return X64__emit_instr_mov_mi;
+    case X64_Instr_Kind_CMP_MI: return X64__emit_instr_cmp_mi;
     // TODO: Add instructions for add, sub, imul, and, or, xor
-};
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_int_mi_emit_funcs()", kind);
+        return NULL;
+    }
+}
 
-static X64_Emit_Mov_Ext_RR_Func* x64_mov_ext_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
-    [X64_Instr_Kind_MOVSX_RR] = X64__emit_instr_movsx_rr,
-    [X64_Instr_Kind_MOVSXD_RR] = X64__emit_instr_movsxd_rr,
-    [X64_Instr_Kind_MOVZX_RR] = X64__emit_instr_movzx_rr,
-};
+static inline X64_Emit_Mov_Ext_RR_Func* x64_mov_ext_rr_emit_funcs(X64_Instr_Kind kind)
+{
+    switch (kind) {
+    case X64_Instr_Kind_MOVSX_RR: return X64__emit_instr_movsx_rr;
+    case X64_Instr_Kind_MOVSXD_RR: return X64__emit_instr_movsxd_rr;
+    case X64_Instr_Kind_MOVZX_RR: return X64__emit_instr_movzx_rr;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_mov_ext_rr_emit_funcs()", kind);
+        return NULL;
+    }
+}
 
-static X64_Emit_Mov_Ext_RM_Func* x64_mov_ext_rm_emit_funcs[X64_Instr_Kind_COUNT] = {
-    [X64_Instr_Kind_MOVSX_RM] = X64__emit_instr_movsx_rm,
-    [X64_Instr_Kind_MOVSXD_RM] = X64__emit_instr_movsxd_rm,
-    [X64_Instr_Kind_MOVZX_RM] = X64__emit_instr_movzx_rm,
-};
+static inline X64_Emit_Mov_Ext_RM_Func* x64_mov_ext_rm_emit_funcs(X64_Instr_Kind kind) {
+    switch (kind) {
+    case X64_Instr_Kind_MOVSX_RM: return X64__emit_instr_movsx_rm;
+    case X64_Instr_Kind_MOVSXD_RM: return X64__emit_instr_movsxd_rm;
+    case X64_Instr_Kind_MOVZX_RM: return X64__emit_instr_movzx_rm;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_mov_ext_rm_emit_funcs()", kind);
+        return NULL;
+    }
+}
 
 typedef struct X64_Proc_State {
     Allocator* gen_mem;
@@ -1469,11 +1510,11 @@ static void X64__emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
     case X64_LREG_LOC_REG: {
         switch (op2_loc.kind) {
         case X64_LREG_LOC_REG: {
-            x64_bin_int_rr_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, op2_loc.reg);
+            x64_bin_int_rr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_loc.reg, op2_loc.reg);
             break;
         }
         case X64_LREG_LOC_STACK: {
-            x64_bin_int_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, X64__get_stack_offset_addr(op2_loc.offset));
+            x64_bin_int_rm_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_loc.reg, X64__get_stack_offset_addr(op2_loc.offset));
             break;
         }
         default:
@@ -1485,7 +1526,7 @@ static void X64__emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
     case X64_LREG_LOC_STACK: {
         switch (op2_loc.kind) {
         case X64_LREG_LOC_REG: {
-            x64_bin_int_mr_emit_funcs[instr_kind](&proc_state->instrs, op_size, X64__get_stack_offset_addr(op1_loc.offset), op2_loc.reg);
+            x64_bin_int_mr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, X64__get_stack_offset_addr(op1_loc.offset), op2_loc.reg);
             break;
         }
         case X64_LREG_LOC_STACK: {
@@ -1501,7 +1542,7 @@ static void X64__emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
             X64__emit_instr_mov_rm(&proc_state->instrs, op_size, tmp_reg, op1_addr);
 
             // Execute the instruction using the temporary register as the destination.
-            x64_bin_int_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, tmp_reg, op2_addr);
+            x64_bin_int_rm_emit_funcs(instr_kind)(&proc_state->instrs, op_size, tmp_reg, op2_addr);
 
             // Store the result of the instruction (contents of temporary register) into dst.
             if (writes_op1) {
@@ -1537,11 +1578,11 @@ static void X64__emit_mov_ext_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
 
     switch (src_loc.kind) {
     case X64_LREG_LOC_REG: {
-        x64_mov_ext_rr_emit_funcs[instr_kind](&proc_state->instrs, dst_size, dst_reg, src_size, src_loc.reg);
+        x64_mov_ext_rr_emit_funcs(instr_kind)(&proc_state->instrs, dst_size, dst_reg, src_size, src_loc.reg);
         break;
     }
     case X64_LREG_LOC_STACK: {
-        x64_mov_ext_rm_emit_funcs[instr_kind](&proc_state->instrs, dst_size, dst_reg,
+        x64_mov_ext_rm_emit_funcs(instr_kind)(&proc_state->instrs, dst_size, dst_reg,
                                               src_size, X64__get_stack_offset_addr(src_loc.offset));
         break;
     }
@@ -1562,7 +1603,7 @@ static void X64__emit_mov_ext_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kin
         X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
         X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, dst_lreg,
                                        dst_size, true, banned_tmp_regs); // Get actual reg or a tmp if spilled.
-        x64_mov_ext_rm_emit_funcs[movext_kind](&proc_state->instrs, dst_size, dst_reg, src_size, src_addr);
+        x64_mov_ext_rm_emit_funcs(movext_kind)(&proc_state->instrs, dst_size, dst_reg, src_size, src_addr);
         X64__end_reg_group(&tmp_group);
 }
 
@@ -1576,7 +1617,7 @@ static void X64__emit_bin_int_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kin
     X64_Reg op1_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, op1_lreg, op_size, writes_op1, pinned_regs);
     assert(op_size <= 8 && IS_POW2(op_size));
 
-    x64_bin_int_rm_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_reg, op2_addr);
+    x64_bin_int_rm_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_reg, op2_addr);
     X64__end_reg_group(&tmp_group);
 }
 
@@ -1590,7 +1631,7 @@ static void X64__emit_bin_int_mr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
     X64_Reg op2_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, op2_lreg, op_size, false, pinned_regs);
     assert(op_size <= 8 && IS_POW2(op_size));
 
-    x64_bin_int_mr_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_addr, op2_reg);
+    x64_bin_int_mr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_addr, op2_reg);
     X64__end_reg_group(&tmp_group);
 }
 
@@ -1599,7 +1640,7 @@ static void X64__emit_bin_int_mi_instr(X64_Proc_State* proc_state, X64_Instr_Kin
 {
     X64_SIBD_Addr op1_addr = {0};
     X64__get_sibd_addr(proc_state, &op1_addr, op1_vaddr);
-    x64_bin_int_mi_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_addr, op2_imm.as_int._u32);
+    x64_bin_int_mi_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_addr, op2_imm.as_int._u32);
 }
 
 static void X64__emit_bin_int_ri_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, u32 op_size, u32 op1_lreg, Scalar op2_imm)
@@ -1608,12 +1649,12 @@ static void X64__emit_bin_int_ri_instr(X64_Proc_State* proc_state, X64_Instr_Kin
 
     switch (op1_loc.kind) {
     case X64_LREG_LOC_REG: {
-        x64_bin_int_ri_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_loc.reg, op2_imm.as_int._u32);
+        x64_bin_int_ri_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_loc.reg, op2_imm.as_int._u32);
         break;
     }
     case X64_LREG_LOC_STACK: {
         const X64_SIBD_Addr op1_addr = X64__get_stack_offset_addr(op1_loc.offset);
-        x64_bin_int_mi_emit_funcs[instr_kind](&proc_state->instrs, op_size, op1_addr, op2_imm.as_int._u32);
+        x64_bin_int_mi_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_addr, op2_imm.as_int._u32);
         break;
     }
     default:
