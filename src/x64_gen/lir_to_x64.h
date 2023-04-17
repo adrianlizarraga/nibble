@@ -50,22 +50,32 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_ADD_RM,
     X64_Instr_Kind_ADD_MR,
     X64_Instr_Kind_ADD_RI,
+    X64_Instr_Kind_ADD_MI,
     X64_Instr_Kind_SUB_RR,
     X64_Instr_Kind_SUB_RM,
     X64_Instr_Kind_SUB_MR,
     X64_Instr_Kind_SUB_RI,
+    X64_Instr_Kind_SUB_MI,
     X64_Instr_Kind_IMUL_RR,
     X64_Instr_Kind_IMUL_RM,
     X64_Instr_Kind_IMUL_MR,
     X64_Instr_Kind_IMUL_RI,
+    X64_Instr_Kind_IMUL_MI,
     X64_Instr_Kind_AND_RR,
     X64_Instr_Kind_AND_RM,
     X64_Instr_Kind_AND_MR,
     X64_Instr_Kind_AND_RI,
+    X64_Instr_Kind_AND_MI,
     X64_Instr_Kind_OR_RR,
     X64_Instr_Kind_OR_RM,
     X64_Instr_Kind_OR_MR,
     X64_Instr_Kind_OR_RI,
+    X64_Instr_Kind_OR_MI,
+    X64_Instr_Kind_XOR_RR,
+    X64_Instr_Kind_XOR_RM,
+    X64_Instr_Kind_XOR_MR,
+    X64_Instr_Kind_XOR_RI,
+    X64_Instr_Kind_XOR_MI,
     X64_Instr_Kind_NEG_R,
     X64_Instr_Kind_NEG_M,
     X64_Instr_Kind_NOT_R,
@@ -77,10 +87,6 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_CWD, // 2-byte sign extend ax into dx
     X64_Instr_Kind_CDQ, // 4-byte sign extend ax into dx
     X64_Instr_Kind_CQO, // 8-byte sign extend ax into dx
-    X64_Instr_Kind_XOR_RR,
-    X64_Instr_Kind_XOR_RM,
-    X64_Instr_Kind_XOR_MR,
-    X64_Instr_Kind_XOR_RI,
     X64_Instr_Kind_MOV_RR,
     X64_Instr_Kind_MOV_RM,
     X64_Instr_Kind_MOV_MR,
@@ -153,6 +159,12 @@ typedef struct X64__Instr {
 
         struct {
             u8 size;
+            X64_SIBD_Addr dst;
+            u32 imm;
+        } add_mi;
+
+        struct {
+            u8 size;
             u8 dst;
             u8 src;
         } sub_rr;
@@ -174,6 +186,12 @@ typedef struct X64__Instr {
             u8 dst;
             u32 imm;
         } sub_ri;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u32 imm;
+        } sub_mi;
 
         struct {
             u8 size;
@@ -201,6 +219,12 @@ typedef struct X64__Instr {
 
         struct {
             u8 size;
+            X64_SIBD_Addr dst;
+            u32 imm;
+        } imul_mi;
+
+        struct {
+            u8 size;
             u8 dst;
             u8 src;
         } and_rr;
@@ -222,6 +246,12 @@ typedef struct X64__Instr {
             u8 dst;
             u32 imm;
         } and_ri;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u32 imm;
+        } and_mi;
 
         struct {
             u8 size;
@@ -249,6 +279,12 @@ typedef struct X64__Instr {
 
         struct {
             u8 size;
+            X64_SIBD_Addr dst;
+            u32 imm;
+        } or_mi;
+
+        struct {
+            u8 size;
             u8 dst;
             u8 src;
         } xor_rr;
@@ -270,6 +306,12 @@ typedef struct X64__Instr {
             u8 dst;
             u32 imm;
         } xor_ri;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u32 imm;
+        } xor_mi;
 
         struct {
             u8 size;

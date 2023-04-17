@@ -157,6 +157,18 @@ static void X64__emit_instr_add_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     array_push(*instrs, add_ri_instr);
 }
 
+static void X64__emit_instr_add_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
+{
+    X64__Instr add_mi_instr = {
+        .kind = X64_Instr_Kind_ADD_MI,
+        .add_mi.size = size,
+        .add_mi.dst = dst,
+        .add_mi.imm = imm,
+    };
+
+    array_push(*instrs, add_mi_instr);
+}
+
 static void X64__emit_instr_sub_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr sub_rr_instr = {
@@ -203,6 +215,18 @@ static void X64__emit_instr_sub_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     };
 
     array_push(*instrs, sub_ri_instr);
+}
+
+static void X64__emit_instr_sub_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
+{
+    X64__Instr sub_mi_instr = {
+        .kind = X64_Instr_Kind_SUB_MI,
+        .sub_mi.size = size,
+        .sub_mi.dst = dst,
+        .sub_mi.imm = imm,
+    };
+
+    array_push(*instrs, sub_mi_instr);
 }
 
 static void X64__emit_instr_imul_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
@@ -253,6 +277,18 @@ static void X64__emit_instr_imul_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg
     array_push(*instrs, imul_ri_instr);
 }
 
+static void X64__emit_instr_imul_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
+{
+    X64__Instr imul_mi_instr = {
+        .kind = X64_Instr_Kind_IMUL_MI,
+        .imul_mi.size = size,
+        .imul_mi.dst = dst,
+        .imul_mi.imm = imm,
+    };
+
+    array_push(*instrs, imul_mi_instr);
+}
+
 static void X64__emit_instr_and_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr and_rr_instr = {
@@ -299,6 +335,18 @@ static void X64__emit_instr_and_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     };
 
     array_push(*instrs, and_ri_instr);
+}
+
+static void X64__emit_instr_and_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
+{
+    X64__Instr and_mi_instr = {
+        .kind = X64_Instr_Kind_AND_MI,
+        .and_mi.size = size,
+        .and_mi.dst = dst,
+        .and_mi.imm = imm,
+    };
+
+    array_push(*instrs, and_mi_instr);
 }
 
 static void X64__emit_instr_or_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
@@ -349,6 +397,18 @@ static void X64__emit_instr_or_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg d
     array_push(*instrs, or_ri_instr);
 }
 
+static void X64__emit_instr_or_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
+{
+    X64__Instr or_mi_instr = {
+        .kind = X64_Instr_Kind_OR_MI,
+        .or_mi.size = size,
+        .or_mi.dst = dst,
+        .or_mi.imm = imm,
+    };
+
+    array_push(*instrs, or_mi_instr);
+}
+
 static void X64__emit_instr_xor_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr xor_rr_instr = {
@@ -395,6 +455,18 @@ static void X64__emit_instr_xor_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     };
 
     array_push(*instrs, xor_ri_instr);
+}
+
+static void X64__emit_instr_xor_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
+{
+    X64__Instr xor_mi_instr = {
+        .kind = X64_Instr_Kind_XOR_MI,
+        .xor_mi.size = size,
+        .xor_mi.dst = dst,
+        .xor_mi.imm = imm,
+    };
+
+    array_push(*instrs, xor_mi_instr);
 }
 
 static void X64__emit_instr_neg_r(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
@@ -945,9 +1017,14 @@ static inline X64_Emit_Bin_Int_MR_Func* x64_bin_int_mr_emit_funcs(X64_Instr_Kind
 static inline X64_Emit_Bin_Int_MI_Func* x64_bin_int_mi_emit_funcs(X64_Instr_Kind kind)
 {
     switch (kind) {
+    case X64_Instr_Kind_ADD_MI: return X64__emit_instr_add_mi;
+    case X64_Instr_Kind_SUB_MI: return X64__emit_instr_sub_mi;
+    case X64_Instr_Kind_IMUL_MI: return X64__emit_instr_imul_mi;
+    case X64_Instr_Kind_AND_MI: return X64__emit_instr_and_mi;
+    case X64_Instr_Kind_OR_MI: return X64__emit_instr_or_mi;
+    case X64_Instr_Kind_XOR_MI: return X64__emit_instr_xor_mi;
     case X64_Instr_Kind_MOV_MI: return X64__emit_instr_mov_mi;
     case X64_Instr_Kind_CMP_MI: return X64__emit_instr_cmp_mi;
-    // TODO: Add instructions for add, sub, imul, and, or, xor
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_int_mi_emit_funcs()", kind);
         return NULL;
