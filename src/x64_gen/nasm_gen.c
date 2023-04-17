@@ -1,5 +1,6 @@
 #include "allocator.h"
 #include "array.h"
+#include "ast/module.h"
 #include "cstring.h"
 #include "nibble.h"
 #include "x64_gen/lir_to_x64.h"
@@ -509,6 +510,11 @@ static Array(char) X64_nasm_gen_data(Allocator* gen_mem, Allocator* tmp_mem, con
 
 static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, size_t proc_id, Symbol* proc_sym)
 {
+    const DeclProc* decl = (const DeclProc*)proc_sym->decl;
+    if (decl->is_incomplete) {
+        return NULL;
+    }
+
     Array(char) proc_str = array_create(gen_mem, char, 256);
 
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
