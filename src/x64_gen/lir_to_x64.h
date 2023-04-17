@@ -81,6 +81,11 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_MOVSD_RM,
     X64_Instr_Kind_MOVDQU_MR,
     X64_Instr_Kind_MOVDQU_RM,
+    X64_Instr_Kind_CMP_RR,
+    X64_Instr_Kind_CMP_RM,
+    X64_Instr_Kind_CMP_MR,
+    X64_Instr_Kind_CMP_RI,
+    X64_Instr_Kind_CMP_MI,
     X64_Instr_Kind_LEA,
     X64_Instr_Kind_REP_MOVSB,
     X64_Instr_Kind_REP_STOSB,
@@ -370,6 +375,36 @@ typedef struct X64__Instr {
             u8 dst;
             X64_SIBD_Addr src;
         } movdqu_rm;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u8 src;
+        } cmp_rr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            X64_SIBD_Addr src;
+        } cmp_rm;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u8 src;
+        } cmp_mr;
+
+        struct {
+            u8 size;
+            u8 dst;
+            u32 imm;
+        } cmp_ri;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr dst;
+            u32 imm;
+        } cmp_mi;
 
         struct {
             u8 dst;

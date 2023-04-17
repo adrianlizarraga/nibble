@@ -784,6 +784,32 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movdqu_rm.src, size);
             X64_NASM_PRINT_FTL(proc_str, "movdqu %s, %s", dst_reg, src_mem);
         } break;
+        // CMP
+        case X64_Instr_Kind_CMP_RR: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->cmp_rr.size][instr->cmp_rr.dst];
+            const char* src_reg = x64_nasm_int_reg_names[instr->cmp_rr.size][instr->cmp_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "cmp %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_CMP_RM: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->cmp_rm.size][instr->cmp_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cmp_rm.src, instr->cmp_rm.size);
+            X64_NASM_PRINT_FTL(proc_str, "cmp %s, %s", dst_reg, src_mem);
+        } break;
+        case X64_Instr_Kind_CMP_MR: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cmp_mr.dst, instr->cmp_mr.size);
+            const char* src_reg = x64_nasm_int_reg_names[instr->cmp_mr.size][instr->cmp_mr.src];
+            X64_NASM_PRINT_FTL(proc_str, "cmp %s, %s", dst_mem, src_reg);
+        } break;
+        case X64_Instr_Kind_CMP_RI: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->cmp_ri.size][instr->cmp_ri.dst];
+            const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->cmp_ri.imm, instr->cmp_ri.size);
+            X64_NASM_PRINT_FTL(proc_str, "cmp %s, %s", dst_reg, src_imm);
+        } break;
+        case X64_Instr_Kind_CMP_MI: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cmp_mi.dst, instr->cmp_mi.size);
+            const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->cmp_mi.imm, instr->cmp_mi.size);
+            X64_NASM_PRINT_FTL(proc_str, "cmp %s, %s", dst_mem, src_imm);
+        } break;
         // LEA
         case X64_Instr_Kind_LEA: {
             const char* dst_reg = x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE][instr->lea.dst];

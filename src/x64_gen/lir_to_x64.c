@@ -602,6 +602,66 @@ static void X64__emit_instr_movdqu_rm(Array(X64__Instr) * instrs, X64_Reg dst, X
     array_push(*instrs, movdqu_rm_instr);
 }
 
+static void X64__emit_instr_cmp_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr cmp_rr_instr = {
+        .kind = X64_Instr_Kind_CMP_RR,
+        .cmp_rr.size = size,
+        .cmp_rr.dst = dst,
+        .cmp_rr.src = src,
+    };
+
+    array_push(*instrs, cmp_rr_instr);
+}
+
+static void X64__emit_instr_cmp_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr cmp_rm_instr = {
+        .kind = X64_Instr_Kind_CMP_RM,
+        .cmp_rm.size = size,
+        .cmp_rm.dst = dst,
+        .cmp_rm.src = src,
+    };
+
+    array_push(*instrs, cmp_rm_instr);
+}
+
+static void X64__emit_instr_cmp_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
+{
+    X64__Instr cmp_mr_instr = {
+        .kind = X64_Instr_Kind_CMP_MR,
+        .cmp_mr.size = size,
+        .cmp_mr.dst = dst,
+        .cmp_mr.src = src,
+    };
+
+    array_push(*instrs, cmp_mr_instr);
+}
+
+static void X64__emit_instr_cmp_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
+{
+    X64__Instr cmp_ri_instr = {
+        .kind = X64_Instr_Kind_CMP_RI,
+        .cmp_ri.size = size,
+        .cmp_ri.dst = dst,
+        .cmp_ri.imm = imm,
+    };
+
+    array_push(*instrs, cmp_ri_instr);
+}
+
+static void X64__emit_instr_cmp_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
+{
+    X64__Instr cmp_mi_instr = {
+        .kind = X64_Instr_Kind_CMP_MI,
+        .cmp_mi.size = size,
+        .cmp_mi.dst = dst,
+        .cmp_mi.imm = imm,
+    };
+
+    array_push(*instrs, cmp_mi_instr);
+}
+
 static void X64__emit_instr_lea(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr lea_instr = {
@@ -711,6 +771,7 @@ static X64_Emit_Bin_Int_RR_Func* x64_bin_int_rr_emit_funcs[X64_Instr_Kind_COUNT]
     [X64_Instr_Kind_OR_RR] = X64__emit_instr_or_rr,
     [X64_Instr_Kind_XOR_RR] = X64__emit_instr_xor_rr,
     [X64_Instr_Kind_MOV_RR] = X64__emit_instr_mov_rr,
+    [X64_Instr_Kind_CMP_RR] = X64__emit_instr_cmp_rr,
 };
 
 static X64_Emit_Bin_Int_RM_Func* x64_bin_int_rm_emit_funcs[X64_Instr_Kind_COUNT] = {
@@ -721,6 +782,7 @@ static X64_Emit_Bin_Int_RM_Func* x64_bin_int_rm_emit_funcs[X64_Instr_Kind_COUNT]
     [X64_Instr_Kind_OR_RM] = X64__emit_instr_or_rm,
     [X64_Instr_Kind_XOR_RM] = X64__emit_instr_xor_rm,
     [X64_Instr_Kind_MOV_RM] = X64__emit_instr_mov_rm,
+    [X64_Instr_Kind_CMP_RM] = X64__emit_instr_cmp_rm,
 };
 
 static X64_Emit_Bin_Int_RI_Func* x64_bin_int_ri_emit_funcs[X64_Instr_Kind_COUNT] = {
@@ -730,6 +792,7 @@ static X64_Emit_Bin_Int_RI_Func* x64_bin_int_ri_emit_funcs[X64_Instr_Kind_COUNT]
     [X64_Instr_Kind_AND_RI] = X64__emit_instr_and_ri,
     [X64_Instr_Kind_OR_RI] = X64__emit_instr_or_ri,
     [X64_Instr_Kind_XOR_RI] = X64__emit_instr_xor_ri,
+    [X64_Instr_Kind_CMP_RI] = X64__emit_instr_cmp_ri,
 };
 
 static X64_Emit_Bin_Int_MR_Func* x64_bin_int_mr_emit_funcs[X64_Instr_Kind_COUNT] = {
@@ -740,10 +803,13 @@ static X64_Emit_Bin_Int_MR_Func* x64_bin_int_mr_emit_funcs[X64_Instr_Kind_COUNT]
     [X64_Instr_Kind_OR_MR] = X64__emit_instr_or_mr,
     [X64_Instr_Kind_XOR_MR] = X64__emit_instr_xor_mr,
     [X64_Instr_Kind_MOV_MR] = X64__emit_instr_mov_mr,
+    [X64_Instr_Kind_CMP_MR] = X64__emit_instr_cmp_mr,
 };
 
 static X64_Emit_Bin_Int_MI_Func* x64_bin_int_mi_emit_funcs[X64_Instr_Kind_COUNT] = {
     [X64_Instr_Kind_MOV_MI] = X64__emit_instr_mov_mi,
+    [X64_Instr_Kind_CMP_MI] = X64__emit_instr_cmp_mi,
+    // TODO: Add instructions for add, sub, imul, and, or, xor
 };
 
 static X64_Emit_Mov_Ext_RR_Func* x64_mov_ext_rr_emit_funcs[X64_Instr_Kind_COUNT] = {
@@ -1705,6 +1771,43 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         }
         break;
     }
+    // CMP
+    case X64_InstrCmp_R_R_KIND: {
+        X64_InstrCmp_R_R* act_instr = (X64_InstrCmp_R_R*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_CMP_RR, true, size, act_instr->op1, act_instr->op2);
+        break;
+    }
+    case X64_InstrCmp_R_I_KIND: {
+        X64_InstrCmp_R_I* act_instr = (X64_InstrCmp_R_I*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_ri_instr(proc_state, X64_Instr_Kind_CMP_RI, size, act_instr->op1, act_instr->op2);
+        break;
+    }
+    case X64_InstrCmp_R_M_KIND: {
+        X64_InstrCmp_R_M* act_instr = (X64_InstrCmp_R_M*)instr;
+        u8 size = act_instr->size;
+
+        X64__emit_bin_int_rm_instr(proc_state, X64_Instr_Kind_CMP_RM, true, size, act_instr->op1, &act_instr->op2);
+        break;
+    }
+    case X64_InstrCmp_M_R_KIND: {
+        X64_InstrCmp_M_R* act_instr = (X64_InstrCmp_M_R*)instr;
+        const u8 size = act_instr->size;
+
+        X64__emit_bin_int_mr_instr(proc_state, X64_Instr_Kind_CMP_MR, size, &act_instr->op1, act_instr->op2);
+        break;
+    }
+    case X64_InstrCmp_M_I_KIND: {
+        X64_InstrCmp_M_I* act_instr = (X64_InstrCmp_M_I*)instr;
+        const u8 size = act_instr->size;
+
+        X64__emit_bin_int_mi_instr(proc_state, X64_Instr_Kind_MOV_MI, size, &act_instr->op1, act_instr->op2);
+        break;
+    }
+    // LEA
     case X64_InstrLEA_KIND: {
         X64_InstrLEA* act_instr = (X64_InstrLEA*)instr;
         const u8 size = X64_MAX_INT_REG_SIZE;
