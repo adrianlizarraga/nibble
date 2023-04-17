@@ -718,6 +718,34 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->not_m.dst, instr->not_m.size);
             X64_NASM_PRINT_FTL(proc_str, "not %s", dst_mem);
         } break;
+        // DIV
+        case X64_Instr_Kind_DIV_R: {
+            const char* src_reg = x64_nasm_int_reg_names[instr->div_r.size][instr->div_r.src];
+            X64_NASM_PRINT_FTL(proc_str, "div %s", src_reg);
+        } break;
+        case X64_Instr_Kind_DIV_M: {
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->div_m.src, instr->div_m.size);
+            X64_NASM_PRINT_FTL(proc_str, "div %s", src_mem);
+        } break;
+        // IDIV
+        case X64_Instr_Kind_IDIV_R: {
+            const char* src_reg = x64_nasm_int_reg_names[instr->idiv_r.size][instr->idiv_r.src];
+            X64_NASM_PRINT_FTL(proc_str, "idiv %s", src_reg);
+        } break;
+        case X64_Instr_Kind_IDIV_M: {
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->idiv_m.src, instr->idiv_m.size);
+            X64_NASM_PRINT_FTL(proc_str, "idiv %s", src_mem);
+        } break;
+        // Sign-extend _ax into _dx
+        case X64_Instr_Kind_CWD: // 2-byte sign extend ax into dx
+            X64_NASM_PRINT_TL(proc_str, "cwd");
+            break;
+        case X64_Instr_Kind_CDQ: // 4-byte sign extend ax into dx
+            X64_NASM_PRINT_TL(proc_str, "cdq");
+            break;
+        case X64_Instr_Kind_CQO: // 8-byte sign extend ax into dx
+            X64_NASM_PRINT_TL(proc_str, "cqo");
+            break;
         // MOV
         case X64_Instr_Kind_MOV_RR: {
             const char* r1 = x64_nasm_int_reg_names[instr->mov_rr.size][instr->mov_rr.dst];

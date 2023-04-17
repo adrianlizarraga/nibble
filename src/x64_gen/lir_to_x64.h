@@ -70,6 +70,13 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_NEG_M,
     X64_Instr_Kind_NOT_R,
     X64_Instr_Kind_NOT_M,
+    X64_Instr_Kind_DIV_R,
+    X64_Instr_Kind_DIV_M,
+    X64_Instr_Kind_IDIV_R,
+    X64_Instr_Kind_IDIV_M,
+    X64_Instr_Kind_CWD, // 2-byte sign extend ax into dx
+    X64_Instr_Kind_CDQ, // 4-byte sign extend ax into dx
+    X64_Instr_Kind_CQO, // 8-byte sign extend ax into dx
     X64_Instr_Kind_XOR_RR,
     X64_Instr_Kind_XOR_RM,
     X64_Instr_Kind_XOR_MR,
@@ -283,6 +290,26 @@ typedef struct X64__Instr {
             u8 size;
             X64_SIBD_Addr dst;
         } not_m;
+
+        struct {
+            u8 size;
+            u8 src;
+        } div_r;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr src;
+        } div_m;
+
+        struct {
+            u8 size;
+            u8 src;
+        } idiv_r;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr src;
+        } idiv_m;
 
         struct {
             u8 size;

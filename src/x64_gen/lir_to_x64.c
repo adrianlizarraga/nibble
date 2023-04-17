@@ -441,6 +441,73 @@ static void X64__emit_instr_not_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_
     array_push(*instrs, not_m_instr);
 }
 
+static void X64__emit_instr_div_r(Array(X64__Instr) * instrs, u8 size, X64_Reg src)
+{
+    X64__Instr div_r_instr = {
+        .kind = X64_Instr_Kind_DIV_R,
+        .div_r.size = size,
+        .div_r.src = src,
+    };
+
+    array_push(*instrs, div_r_instr);
+}
+
+static void X64__emit_instr_div_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr src)
+{
+    X64__Instr div_m_instr = {
+        .kind = X64_Instr_Kind_DIV_M,
+        .div_m.size = size,
+        .div_m.src = src,
+    };
+
+    array_push(*instrs, div_m_instr);
+}
+
+static void X64__emit_instr_idiv_r(Array(X64__Instr) * instrs, u8 size, X64_Reg src)
+{
+    X64__Instr idiv_r_instr = {
+        .kind = X64_Instr_Kind_IDIV_R,
+        .idiv_r.size = size,
+        .idiv_r.src = src,
+    };
+
+    array_push(*instrs, idiv_r_instr);
+}
+
+static void X64__emit_instr_idiv_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr src)
+{
+    X64__Instr idiv_m_instr = {
+        .kind = X64_Instr_Kind_IDIV_M,
+        .idiv_m.size = size,
+        .idiv_m.src = src,
+    };
+
+    array_push(*instrs, idiv_m_instr);
+}
+
+static void X64__emit_instr_sext_ax_into_dx(Array(X64__Instr)* instrs, u8 size)
+{
+    X64_Instr_Kind kind = X64_Instr_Kind_NOOP;
+
+    switch (size) {
+    case 2:
+        kind = X64_Instr_Kind_CWD;
+        break;
+    case 4:
+        kind = X64_Instr_Kind_CDQ;
+        break;
+    case 8:
+        kind = X64_Instr_Kind_CQO;
+        break;
+    default:
+        NIBBLE_FATAL_EXIT("Unhandled size %d for X64__emit_instr_sext_ax_into_dx()", size);
+        break;
+    }
+
+    X64__Instr instr = {.kind = kind};
+    array_push(*instrs, instr);
+}
+
 static void X64__emit_instr_mov_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr mov_rr_instr = {
@@ -1696,10 +1763,10 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-	    X64__emit_instr_neg_r(&proc_state->instrs, size, dst_loc.reg);
-	} else {
-	    X64__emit_instr_neg_m(&proc_state->instrs, size, X64__get_stack_offset_addr(dst_loc.offset));
-	}
+            X64__emit_instr_neg_r(&proc_state->instrs, size, dst_loc.reg);
+        } else {
+            X64__emit_instr_neg_m(&proc_state->instrs, size, X64__get_stack_offset_addr(dst_loc.offset));
+        }
         break;
     }
     // NOT
@@ -1709,10 +1776,60 @@ static void X64__gen_instr(X64_Proc_State* proc_state, X64_Instr* instr, bool is
         X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-	    X64__emit_instr_not_r(&proc_state->instrs, size, dst_loc.reg);
-	} else {
-	    X64__emit_instr_not_m(&proc_state->instrs, size, X64__get_stack_offset_addr(dst_loc.offset));
-	}
+            X64__emit_instr_not_r(&proc_state->instrs, size, dst_loc.reg);
+        } else {
+            X64__emit_instr_not_m(&proc_state->instrs, size, X64__get_stack_offset_addr(dst_loc.offset));
+        }
+        break;
+    }
+    // DIV
+    case X64_InstrDiv_R_KIND: {
+        X64_InstrDiv_R* act_instr = (X64_InstrDiv_R*)instr;
+        const u8 size = act_instr->size;
+
+        X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+        if (IS_LREG_IN_REG(src_loc.kind)) {
+            X64__emit_instr_div_r(&proc_state->instrs, size, src_loc.reg);
+        } else {
+            X64__emit_instr_div_m(&proc_state->instrs, size, X64__get_stack_offset_addr(src_loc.offset));
+        }
+        break;
+    }
+    case X64_InstrDiv_M_KIND: {
+        X64_InstrDiv_M* act_instr = (X64_InstrDiv_M*)instr;
+        const u8 size = act_instr->size;
+        X64_SIBD_Addr op_addr = {0};
+
+        X64__get_sibd_addr(proc_state, &op_addr, &act_instr->src);
+        X64__emit_instr_div_m(&proc_state->instrs, size, op_addr);
+        break;
+    }
+    // IDIV
+    case X64_InstrIDiv_R_KIND: {
+        X64_InstrIDiv_R* act_instr = (X64_InstrIDiv_R*)instr;
+        const u8 size = act_instr->size;
+
+        X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+        if (IS_LREG_IN_REG(src_loc.kind)) {
+            X64__emit_instr_idiv_r(&proc_state->instrs, size, src_loc.reg);
+        } else {
+            X64__emit_instr_idiv_m(&proc_state->instrs, size, X64__get_stack_offset_addr(src_loc.offset));
+        }
+        break;
+    }
+    case X64_InstrIDiv_M_KIND: {
+        X64_InstrIDiv_M* act_instr = (X64_InstrIDiv_M*)instr;
+        const u8 size = act_instr->size;
+        X64_SIBD_Addr op_addr = {0};
+
+        X64__get_sibd_addr(proc_state, &op_addr, &act_instr->src);
+        X64__emit_instr_idiv_m(&proc_state->instrs, size, op_addr);
+        break;
+    }
+    // Sign-extend _ax into _dx
+    case X64_InstrSExtAxToDx_KIND: {
+        X64_InstrSExtAxToDx* act_instr = (X64_InstrSExtAxToDx*)instr;
+        X64__emit_instr_sext_ax_into_dx(&proc_state->instrs, act_instr->size);
         break;
     }
     // MOV
