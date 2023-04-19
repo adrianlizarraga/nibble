@@ -193,7 +193,7 @@ static char* X64_nasm_print_imm(Allocator* arena, u64 imm, u8 size)
         ftprint_char_array(&dstr, false, "0x%lX", imm);
         break;
     default:
-        assert(0);
+        NIBBLE_FATAL_EXIT("X64_nasm_print_imm(): invalid size %d for imm %llu", size, imm);
         break;
     }
 
@@ -531,49 +531,14 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
         X64__Instr* instr = &instrs[i];
 
         // Print label for instruction (needed for jumps)
-        X64_NASM_PRINT_F(proc_str, "  %s:", X64_nasm_get_label(tmp_mem, proc_id, i));
+        if (instr->kind != X64_Instr_Kind_NOOP) {
+            X64_NASM_PRINT_F(proc_str, "  %s:", X64_nasm_get_label(tmp_mem, proc_id, i));
+        }
 
         switch (instr->kind) {
         case X64_Instr_Kind_NOOP: {
             // No-Op. Do nothing.
         } break;
-        case X64_Instr_Kind_RET: {
-            X64_NASM_PRINT_TL(proc_str, "ret");
-        } break;
-        case X64_Instr_Kind_JMP_TO_RET:
-        case X64_Instr_Kind_JMP: {
-            X64_NASM_PRINT_FTL(proc_str, "jmp %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-        } break;
-        case X64_Instr_Kind_JMP_B:
-            X64_NASM_PRINT_FTL(proc_str, "jb %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_L:
-            X64_NASM_PRINT_FTL(proc_str, "jl %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_BE:
-            X64_NASM_PRINT_FTL(proc_str, "jbe %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_LE:
-            X64_NASM_PRINT_FTL(proc_str, "jle %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_A:
-            X64_NASM_PRINT_FTL(proc_str, "ja %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_G:
-            X64_NASM_PRINT_FTL(proc_str, "jg %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_AE:
-            X64_NASM_PRINT_FTL(proc_str, "jae %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_GE:
-            X64_NASM_PRINT_FTL(proc_str, "jge %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_E:
-            X64_NASM_PRINT_FTL(proc_str, "je %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_NE:
-            X64_NASM_PRINT_FTL(proc_str, "jne %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
         case X64_Instr_Kind_PUSH: {
             X64_NASM_PRINT_FTL(proc_str, "push %s", x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE][instr->push.reg]);
         } break;
@@ -724,6 +689,11 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->not_m.dst, instr->not_m.size);
             X64_NASM_PRINT_FTL(proc_str, "not %s", dst_mem);
         } break;
+        // SAR
+        case X64_Instr_Kind_SAR_RI: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->sar_ri.size][instr->sar_ri.dst];
+            X64_NASM_PRINT_FTL(proc_str, "sar %s, 0x%X", dst_reg, instr->sar_ri.imm);
+        } break;
         // DIV
         case X64_Instr_Kind_DIV_R: {
             const char* src_reg = x64_nasm_int_reg_names[instr->div_r.size][instr->div_r.src];
@@ -812,6 +782,11 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             X64_NASM_PRINT_FTL(proc_str, "movzx %s, %s", dst_reg, src_mem);
         } break;
         // MOVSS
+        case X64_Instr_Kind_MOVSS_RR: {
+            const char* dst_reg = x64_flt_reg_names[instr->movss_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->movss_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "movss %s, %s", dst_reg, src_reg);
+        } break;
         case X64_Instr_Kind_MOVSS_MR: {
             const u8 size = float_kind_sizes[FLOAT_F32];
             const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movss_mr.dst, size);
@@ -823,6 +798,12 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* dst_reg = x64_flt_reg_names[instr->movss_rm.dst];
             const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movss_rm.src, size);
             X64_NASM_PRINT_FTL(proc_str, "movss %s, %s", dst_reg, src_mem);
+        } break;
+        // MOVSD
+        case X64_Instr_Kind_MOVSD_RR: {
+            const char* dst_reg = x64_flt_reg_names[instr->movsd_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->movsd_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "movsd %s, %s", dst_reg, src_reg);
         } break;
         case X64_Instr_Kind_MOVSD_MR: {
             const u8 size = float_kind_sizes[FLOAT_F64];
@@ -890,6 +871,54 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
         } break;
         case X64_Instr_Kind_SYSCALL: {
             X64_NASM_PRINT_TL(proc_str, "syscall");
+        } break;
+        case X64_Instr_Kind_JMP_TO_RET:
+        case X64_Instr_Kind_JMP: {
+            X64_NASM_PRINT_FTL(proc_str, "jmp %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+        } break;
+        case X64_Instr_Kind_JMP_B:
+            X64_NASM_PRINT_FTL(proc_str, "jb %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_L:
+            X64_NASM_PRINT_FTL(proc_str, "jl %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_BE:
+            X64_NASM_PRINT_FTL(proc_str, "jbe %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_LE:
+            X64_NASM_PRINT_FTL(proc_str, "jle %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_A:
+            X64_NASM_PRINT_FTL(proc_str, "ja %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_G:
+            X64_NASM_PRINT_FTL(proc_str, "jg %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_AE:
+            X64_NASM_PRINT_FTL(proc_str, "jae %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_GE:
+            X64_NASM_PRINT_FTL(proc_str, "jge %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_E:
+            X64_NASM_PRINT_FTL(proc_str, "je %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_JMP_NE:
+            X64_NASM_PRINT_FTL(proc_str, "jne %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+            break;
+        case X64_Instr_Kind_RET: {
+            X64_NASM_PRINT_TL(proc_str, "ret");
+        } break;
+        case X64_Instr_Kind_CALL:
+            X64_NASM_PRINT_FTL(proc_str, "call %s", symbol_mangled_name(tmp_mem, instr->call.proc_sym));
+            break;
+        case X64_Instr_Kind_CALL_R: {
+            const char* reg_with_proc_addr = x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE][instr->call_r.reg];
+            X64_NASM_PRINT_FTL(proc_str, "call %s", reg_with_proc_addr);
+        } break;
+        case X64_Instr_Kind_CALL_M: {
+            const char* mem_with_proc_addr = X64_nasm_print_sibd_addr(tmp_mem, &instr->call_m.mem, X64_MAX_INT_REG_SIZE);
+            X64_NASM_PRINT_FTL(proc_str, "call %s", mem_with_proc_addr);
         } break;
         default:
             NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", instr->kind);

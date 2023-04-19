@@ -31,19 +31,6 @@ typedef struct X64_SIBD_Addr {
 
 typedef enum X64_Instr_Kind {
     X64_Instr_Kind_NOOP = 0,
-    X64_Instr_Kind_RET,
-    X64_Instr_Kind_JMP,
-    X64_Instr_Kind_JMP_TO_RET, // Doesn't correspond to an actual X64 instruction. Jumps to ret label.
-    X64_Instr_Kind_JMP_B,
-    X64_Instr_Kind_JMP_L,
-    X64_Instr_Kind_JMP_BE,
-    X64_Instr_Kind_JMP_LE,
-    X64_Instr_Kind_JMP_A,
-    X64_Instr_Kind_JMP_G,
-    X64_Instr_Kind_JMP_AE,
-    X64_Instr_Kind_JMP_GE,
-    X64_Instr_Kind_JMP_E,
-    X64_Instr_Kind_JMP_NE,
     X64_Instr_Kind_PUSH,
     X64_Instr_Kind_POP,
     X64_Instr_Kind_ADD_RR,
@@ -80,6 +67,7 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_NEG_M,
     X64_Instr_Kind_NOT_R,
     X64_Instr_Kind_NOT_M,
+    X64_Instr_Kind_SAR_RI,
     X64_Instr_Kind_DIV_R,
     X64_Instr_Kind_DIV_M,
     X64_Instr_Kind_IDIV_R,
@@ -98,8 +86,10 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_MOVSXD_RM,
     X64_Instr_Kind_MOVZX_RR,
     X64_Instr_Kind_MOVZX_RM,
+    X64_Instr_Kind_MOVSS_RR,
     X64_Instr_Kind_MOVSS_MR,
     X64_Instr_Kind_MOVSS_RM,
+    X64_Instr_Kind_MOVSD_RR,
     X64_Instr_Kind_MOVSD_MR,
     X64_Instr_Kind_MOVSD_RM,
     X64_Instr_Kind_MOVDQU_MR,
@@ -113,6 +103,22 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_REP_MOVSB,
     X64_Instr_Kind_REP_STOSB,
     X64_Instr_Kind_SYSCALL,
+    X64_Instr_Kind_JMP,
+    X64_Instr_Kind_JMP_TO_RET, // Doesn't correspond to an actual X64 instruction. Jumps to ret label.
+    X64_Instr_Kind_JMP_B,
+    X64_Instr_Kind_JMP_L,
+    X64_Instr_Kind_JMP_BE,
+    X64_Instr_Kind_JMP_LE,
+    X64_Instr_Kind_JMP_A,
+    X64_Instr_Kind_JMP_G,
+    X64_Instr_Kind_JMP_AE,
+    X64_Instr_Kind_JMP_GE,
+    X64_Instr_Kind_JMP_E,
+    X64_Instr_Kind_JMP_NE,
+    X64_Instr_Kind_RET,
+    X64_Instr_Kind_CALL,
+    X64_Instr_Kind_CALL_R,
+    X64_Instr_Kind_CALL_M,
 
     X64_Instr_Kind_COUNT
 } X64_Instr_Kind;
@@ -335,6 +341,12 @@ typedef struct X64__Instr {
 
         struct {
             u8 size;
+            u8 dst;
+            u8 imm;
+        } sar_ri;
+
+        struct {
+            u8 size;
             u8 src;
         } div_r;
 
@@ -426,6 +438,11 @@ typedef struct X64__Instr {
         } movzx_rm;
 
         struct {
+            u8 dst;
+            u8 src;
+        } movss_rr;
+
+        struct {
             X64_SIBD_Addr dst;
             u8 src;
         } movss_mr;
@@ -434,6 +451,11 @@ typedef struct X64__Instr {
             u8 dst;
             X64_SIBD_Addr src;
         } movss_rm;
+
+        struct {
+            u8 dst;
+            u8 src;
+        } movsd_rr;
 
         struct {
             X64_SIBD_Addr dst;
@@ -490,6 +512,17 @@ typedef struct X64__Instr {
             X64_SIBD_Addr src;
         } lea;
 
+        struct {
+            const Symbol* proc_sym;
+        } call;
+
+        struct {
+            u8 reg;
+        } call_r;
+
+        struct {
+            X64_SIBD_Addr mem;
+        } call_m;
     };
 } X64__Instr;
 

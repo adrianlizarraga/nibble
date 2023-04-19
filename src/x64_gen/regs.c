@@ -122,7 +122,7 @@ bool X64_is_arg_reg(X64_Reg reg)
     return u32_is_bit_set(x64_target.arg_reg_mask, reg);
 }
 
-X64_RegClass X64_obj_reg_class(Type* type)
+X64_RegClass X64_obj_reg_class(const Type* type)
 {
     return type_agg_has_non_float(type) ? X64_REG_CLASS_INT : X64_REG_CLASS_FLOAT;
 }

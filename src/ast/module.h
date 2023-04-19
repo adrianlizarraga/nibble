@@ -846,7 +846,7 @@ bool type_is_int_scalar(const Type* type);
 bool type_is_ptr_like(const Type* type);
 bool type_is_aggregate(const Type* type);
 bool type_is_obj_like(const Type* type);
-bool type_agg_has_non_float(Type* type);
+bool type_agg_has_non_float(const Type* type);
 bool type_is_slice(const Type* type);
 bool slice_and_array_compatible(Type* array_type, Type* slice_type);
 bool type_is_incomplete_array(Type* type);
@@ -1035,7 +1035,7 @@ Symbol* new_symbol(Allocator* allocator, SymbolKind kind, SymbolStatus status, I
 Symbol* new_symbol_decl(Allocator* allocator, Decl* decl, Module* home_mod);
 Symbol* new_symbol_builtin_type(Allocator* allocator, Identifier* name, Type* type, Module* home_mod);
 Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, Module* home_mod);
-char* symbol_mangled_name(Allocator* allocator, Symbol* sym);
+char* symbol_mangled_name(Allocator* allocator, const Symbol* sym);
 
 ///////////////////////////////
 //       Scope

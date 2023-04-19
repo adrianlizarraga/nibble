@@ -984,7 +984,7 @@ bool types_are_compatible(Type* t, Type* u)
     return false;
 }
 
-bool type_agg_has_non_float(Type* type)
+bool type_agg_has_non_float(const Type* type)
 {
     if (type->kind == TYPE_FLOAT) {
         return false;
@@ -994,7 +994,7 @@ bool type_agg_has_non_float(Type* type)
         return type_agg_has_non_float(type->as_array.base);
     }
 
-    TypeAggregateBody* agg_body = NULL;
+    const TypeAggregateBody* agg_body = NULL;
 
     if (type->kind == TYPE_STRUCT) {
         agg_body = &type->as_struct.body;
@@ -1005,7 +1005,7 @@ bool type_agg_has_non_float(Type* type)
 
     if (agg_body) {
         for (size_t i = 0; i < agg_body->num_fields; i++) {
-            TypeAggregateField* field = agg_body->fields + i;
+            const TypeAggregateField* field = agg_body->fields + i;
 
             if (type_agg_has_non_float(field->type)) {
                 return true;
@@ -1558,7 +1558,7 @@ Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, M
     return sym;
 }
 
-char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
+char* symbol_mangled_name(Allocator* allocator, const Symbol* sym)
 {
     char* dstr = array_create(allocator, char, 32);
 

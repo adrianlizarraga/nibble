@@ -85,7 +85,7 @@ bool X64_is_callee_saved_reg(X64_Reg reg);
 bool X64_is_arg_reg(X64_Reg reg);
 
 #define X64_is_obj_retarg_large(s) ((s) > (X64_MAX_INT_REG_SIZE << 1))
-X64_RegClass X64_obj_reg_class(Type* type);
+X64_RegClass X64_obj_reg_class(const Type* type);
 
 // Data structures used to track the "location" of a virtual IR register.
 // A virtual register could be assigned to a physical register, or could be assigned
