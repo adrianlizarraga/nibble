@@ -125,6 +125,7 @@ typedef enum X64_Instr_Kind {
 
 typedef struct X64__Instr {
     X64_Instr_Kind kind;
+    bool is_jmp_target;
 
     union {
         struct {

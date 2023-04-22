@@ -531,10 +531,10 @@ size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list ar
 
             // Print a string
             case 's': {
-                const char* value = va_arg(args, char*);
+                const char* value = va_arg(args, const char*);
                 bool is_null = !value;
                 const char null_str[] = "(null)";
-                unsigned str_len;
+                unsigned str_len = 0;
 
                 if (is_null) {
                     str_len = 0;
@@ -559,7 +559,7 @@ size_t ftprintv(PutCharFunc* put_char, void* arg, const char* format, va_list ar
                     value = (cstr_len(null_str) > precision) && (flags & FORMAT_FLAG_PRECISION) ? "" : null_str;
                 }
 
-                while (*value && (!(flags & FORMAT_FLAG_PRECISION) || (precision > 0))) {
+                while ((!(flags & FORMAT_FLAG_PRECISION) || (precision > 0)) && *value) {
                     put_char_wrapper(&state, *value++);
                     --precision;
                 }

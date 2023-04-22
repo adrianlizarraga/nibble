@@ -68,6 +68,9 @@ void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, Al
         new_hdr = mem_allocate(allocator, alloc_size, align, false);
         new_hdr->allocator = allocator;
         new_hdr->len = 0;
+        new_hdr->data[0] = '\0'; // Initialize first byte so that *arr does not use uninitialized memory
+                                 // in case this is a char array. This shouldn't be needed, but is a precaution
+                                 // for sloppy code that incorrectly assumes this is a c-string and does not check length first.
     }
 
     new_hdr->cap = new_cap;

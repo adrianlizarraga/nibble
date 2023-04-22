@@ -2671,7 +2671,6 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     AllocatorState gen_mem_state = allocator_get_state(generator->gen_mem);
 
     const char* proc_mangled = symbol_mangled_name(generator->tmp_mem, sym);
-    X64_emit_text(generator, "");
     X64_emit_text(generator, "%s:", proc_mangled);
 
     X64_emit_text(generator, "  push rbp");
@@ -2725,7 +2724,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     }
 #endif
     if (stack_size) {
-        X64_insert_text(generator, sub_rsp_prev, "  sub rsp, %u", stack_size);
+        X64_insert_text(generator, sub_rsp_prev, "  sub rsp, 0x%X", stack_size);
     }
 
     ListNode* save_regs_loc = generator->curr_proc.text_lines.prev;
@@ -2781,7 +2780,7 @@ static void X64_gen_proc(X64_Generator* generator, u32 proc_id, Symbol* sym)
     // Postamble
     X64_emit_text(generator, "  mov rsp, rbp");
     X64_emit_text(generator, "  pop rbp");
-    X64_emit_text(generator, "  ret");
+    X64_emit_text(generator, "  ret\n");
 
     // Write instruction text to file.
     X64_output_asm_lines(generator->out_fd, &generator->curr_proc.text_lines);

@@ -1632,6 +1632,9 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
             assert(instr_index != NULL);
             assert(*instr_index < num_instrs);
             instr->jmp.target = *instr_index;
+
+            // Mark the jmp target instruction.
+            instrs[*instr_index].is_jmp_target = true;
         } break;
         case X64_Instr_Kind_JMP_TO_RET:
             // Jump after the last instruction (to post-amble).
@@ -2777,7 +2780,12 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
     }
 
     // Patch jmp (to block, to ret label) instructions.
-    X64__patch_jmp_instrs(state.instrs, array_len(state.instrs), &bblock_instr_starts);
+    const size_t num_instrs_before_postamble = array_len(state.instrs);
+    X64__patch_jmp_instrs(state.instrs, num_instrs_before_postamble, &bblock_instr_starts);
+
+    //
+    // Postamble.
+    //
 
     // Restore callee-saved registers.
     // NOTE: Iterating in the reverse order as the corresponding pushes.
@@ -2792,10 +2800,13 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
         }
     }
 
-    // Postamble.
+    // Clean up stack and return to caller.
     X64__emit_instr_mov_rr(&state.instrs, X64_MAX_INT_REG_SIZE, X64_RSP, X64_RBP);
     X64__emit_instr_pop(&state.instrs, X64_RBP);
     X64__emit_instr_ret(&state.instrs);
+
+    // Mark the first instruction of the postamble as a jump target (for 'return' instructions).
+    state.instrs[num_instrs_before_postamble].is_jmp_target = true;
 
     //////////////////////////////////////////////////////////////////////////////////////////
     allocator_restore_state(tmp_mem_state);

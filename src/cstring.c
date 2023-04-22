@@ -85,7 +85,7 @@ size_t cstr_nlen(const char* str, size_t max_len)
     const char* s = str;
     size_t len = 0;
 
-    while (*s && (len < max_len)) {
+    while ((len < max_len) && *s) {
         s += 1;
         len += 1;
     }

@@ -530,9 +530,9 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
     for (size_t i = 0; i < num_instrs; i += 1) {
         X64__Instr* instr = &instrs[i];
 
-        // Print label for instruction (needed for jumps)
-        if (instr->kind != X64_Instr_Kind_NOOP) {
-            X64_NASM_PRINT_F(proc_str, "  %s:", X64_nasm_get_label(tmp_mem, proc_id, i));
+        // Print label for instructions that are 'jumped' to.
+        if (instr->is_jmp_target) {
+            X64_NASM_PRINT_FL(proc_str, "  %s:", X64_nasm_get_label(tmp_mem, proc_id, i));
         }
 
         switch (instr->kind) {
@@ -926,7 +926,7 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
         }
     }
 
-    array_push(proc_str, '\0');
+    array_push(proc_str, '\n');
 
     allocator_restore_state(tmp_mem_state);
     return proc_str;
