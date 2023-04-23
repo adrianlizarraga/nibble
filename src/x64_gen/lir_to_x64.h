@@ -107,6 +107,8 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_JMP,
     X64_Instr_Kind_JMP_TO_RET, // Doesn't correspond to an actual X64 instruction. Jumps to ret label.
     X64_Instr_Kind_JMPCC,
+    X64_Instr_Kind_SETCC_R,
+    X64_Instr_Kind_SETCC_M,
     X64_Instr_Kind_RET,
     X64_Instr_Kind_CALL,
     X64_Instr_Kind_CALL_R,
@@ -139,6 +141,16 @@ typedef struct X64__Instr {
             u32 target;
             ConditionKind cond;
         } jmpcc; // For jb, jl, je, ...
+
+        struct {
+            ConditionKind cond;
+            u8 dst;
+        } setcc_r;
+
+        struct {
+            ConditionKind cond;
+            X64_SIBD_Addr dst;
+        } setcc_m;
 
         struct {
             u8 size;

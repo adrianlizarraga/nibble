@@ -81,6 +81,18 @@ static void X64__emit_instr_jmpcc(Array(X64__Instr)* instrs, ConditionKind cond_
     array_push(*instrs, instr);
 }
 
+static void X64__emit_instr_setcc_r(Array(X64__Instr)* instrs, ConditionKind cond_kind, u8 dst)
+{
+    X64__Instr instr = {.flags = X64_Instr_Kind_SETCC_R, .setcc_r.cond = cond_kind, .setcc_r.dst = dst};
+    array_push(*instrs, instr);
+}
+
+static void X64__emit_instr_setcc_m(Array(X64__Instr)* instrs, ConditionKind cond_kind, X64_SIBD_Addr dst)
+{
+    X64__Instr instr = {.flags = X64_Instr_Kind_SETCC_M, .setcc_m.cond = cond_kind, .setcc_m.dst = dst};
+    array_push(*instrs, instr);
+}
+
 static void X64__emit_instr_push(Array(X64__Instr) * instrs, X64_Reg reg)
 {
     assert(x64_reg_classes[reg] == X64_REG_CLASS_INT);
@@ -2445,6 +2457,18 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
     case X64_InstrJmpCC_KIND: {
         const X64_InstrJmpCC* act_instr = (const X64_InstrJmpCC*)instr;
         X64__emit_instr_jmpcc(&proc_state->instrs, act_instr->cond, s64_to_u32(act_instr->true_bb->id));
+        break;
+    }
+    case X64_InstrSetCC_KIND: {
+        X64_InstrSetCC* act_instr = (X64_InstrSetCC*)instr;
+        X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+
+        if (IS_LREG_IN_REG(dst_loc.kind)) {
+            X64__emit_instr_setcc_r(&proc_state->instrs, act_instr->cond, dst_loc.reg);
+        } else {
+            assert(IS_LREG_IN_STACK(dst_loc.kind));
+            X64__emit_instr_setcc_m(&proc_state->instrs, act_instr->cond, X64__get_rbp_offset_addr(dst_loc.offset));
+        }
         break;
     }
     case X64_InstrRet_KIND: {

@@ -883,6 +883,14 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             X64_NASM_PRINT_FTL(proc_str, "j%s %s", x64_condition_codes[instr->jmpcc.cond],
                                X64_nasm_get_label(tmp_mem, proc_id, instr->jmpcc.target));
             break;
+        case X64_Instr_Kind_SETCC_R: {
+            const char* dst_reg = x64_nasm_int_reg_names[1][instr->setcc_r.dst];
+            X64_NASM_PRINT_FTL(proc_str, "set%s %s", x64_condition_codes[instr->setcc_r.cond], dst_reg);
+        } break;
+        case X64_Instr_Kind_SETCC_M: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->setcc_m.dst, 1);
+            X64_NASM_PRINT_FTL(proc_str, "set%s %s", x64_condition_codes[instr->setcc_m.cond], dst_mem);
+        } break;
         case X64_Instr_Kind_RET: {
             X64_NASM_PRINT_TL(proc_str, "ret");
         } break;
