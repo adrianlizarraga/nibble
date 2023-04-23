@@ -123,9 +123,12 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_COUNT
 } X64_Instr_Kind;
 
+#define X64_INSTR_KIND_MASK ((1 << 9) - 1)
+#define X64_INSTR_IS_JMP_TARGET_MASK 0x80000000
+static_assert(X64_Instr_Kind_COUNT <= X64_INSTR_KIND_MASK + 1, "Must have at most 512 X64_Instr_Kinds");
+
 typedef struct X64__Instr {
-    X64_Instr_Kind kind;
-    bool is_jmp_target;
+    u32 flags; // [31] : is_jmp_target; [8:0]: kind
 
     union {
         struct {
@@ -526,6 +529,22 @@ typedef struct X64__Instr {
         } call_m;
     };
 } X64__Instr;
+
+static inline X64_Instr_Kind X64__get_instr_kind(X64__Instr* instr) {
+    return (X64_Instr_Kind)(instr->flags & X64_INSTR_KIND_MASK);
+}
+
+static inline void X64__set_instr_kind(X64__Instr* instr, X64_Instr_Kind kind) {
+    instr->flags |= (kind & X64_INSTR_KIND_MASK);
+}
+
+static inline bool X64__is_instr_jmp_target(X64__Instr* instr) {
+    return instr->flags & X64_INSTR_IS_JMP_TARGET_MASK;
+}
+
+static inline void X64__mark_instr_as_jmp_target(X64__Instr* instr) {
+    instr->flags |= X64_INSTR_IS_JMP_TARGET_MASK;
+}
 
 Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym);
 

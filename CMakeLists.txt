@@ -43,6 +43,7 @@ set(NIBBLE_X64_SRCS src/x64_gen/module.c
     src/x64_gen/data.c
     src/x64_gen/text.c
     src/x64_gen/elf_writer.c
+    src/x64_gen/lir_to_x64.h
     src/x64_gen/lir_to_x64.c
     src/x64_gen/nasm_gen.c)
 

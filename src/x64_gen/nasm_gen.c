@@ -530,12 +530,15 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
     for (size_t i = 0; i < num_instrs; i += 1) {
         X64__Instr* instr = &instrs[i];
 
+        const bool is_jmp_target = X64__is_instr_jmp_target(instr);
+        const X64_Instr_Kind kind = X64__get_instr_kind(instr);
+
         // Print label for instructions that are 'jumped' to.
-        if (instr->is_jmp_target) {
+        if (is_jmp_target) {
             X64_NASM_PRINT_FL(proc_str, "  %s:", X64_nasm_get_label(tmp_mem, proc_id, i));
         }
 
-        switch (instr->kind) {
+        switch (kind) {
         case X64_Instr_Kind_NOOP: {
             // No-Op. Do nothing.
         } break;
@@ -921,7 +924,7 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             X64_NASM_PRINT_FTL(proc_str, "call %s", mem_with_proc_addr);
         } break;
         default:
-            NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", instr->kind);
+            NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
             break;
         }
     }

@@ -41,37 +41,37 @@ static inline X64_SIBD_Addr X64__get_rsp_offset_addr(s32 offset)
 
 static void X64__emit_instr_ret(Array(X64__Instr) * instrs)
 {
-    X64__Instr ret_instr = {.kind = X64_Instr_Kind_RET};
+    X64__Instr ret_instr = {.flags = X64_Instr_Kind_RET};
     array_push(*instrs, ret_instr);
 }
 
 static void X64__emit_instr_call(Array(X64__Instr)* instrs, const Symbol* proc_sym)
 {
-    X64__Instr call_instr = {.kind = X64_Instr_Kind_CALL, .call.proc_sym = proc_sym};
+    X64__Instr call_instr = {.flags = X64_Instr_Kind_CALL, .call.proc_sym = proc_sym};
     array_push(*instrs, call_instr);
 }
 
 static void X64__emit_instr_call_r(Array(X64__Instr)* instrs, u8 reg)
 {
-    X64__Instr call_instr = {.kind = X64_Instr_Kind_CALL_R, .call_r.reg = reg};
+    X64__Instr call_instr = {.flags = X64_Instr_Kind_CALL_R, .call_r.reg = reg};
     array_push(*instrs, call_instr);
 }
 
 static void X64__emit_instr_call_m(Array(X64__Instr)* instrs, X64_SIBD_Addr mem)
 {
-    X64__Instr call_instr = {.kind = X64_Instr_Kind_CALL_M, .call_m.mem = mem};
+    X64__Instr call_instr = {.flags = X64_Instr_Kind_CALL_M, .call_m.mem = mem};
     array_push(*instrs, call_instr);
 }
 
 static void X64__emit_instr_jmp(Array(X64__Instr)* instrs, size_t target)
 {
-    X64__Instr instr = {.kind = X64_Instr_Kind_JMP, .jmp.target = target};
+    X64__Instr instr = {.flags = X64_Instr_Kind_JMP, .jmp.target = target};
     array_push(*instrs, instr);
 }
 
 static void X64__emit_instr_jmp_to_ret(Array(X64__Instr)* instrs)
 {
-    X64__Instr instr = {.kind = X64_Instr_Kind_JMP_TO_RET, .jmp.target = X64_REG_COUNT};
+    X64__Instr instr = {.flags = X64_Instr_Kind_JMP_TO_RET, .jmp.target = X64_REG_COUNT};
     array_push(*instrs, instr);
 }
 
@@ -115,7 +115,7 @@ static void X64__emit_instr_jmpcc(Array(X64__Instr)* instrs, ConditionKind cond_
             break;
     }
 
-    X64__Instr instr = {.kind = kind, .jmp.target = target};
+    X64__Instr instr = {.flags = kind, .jmp.target = target};
     array_push(*instrs, instr);
 }
 
@@ -123,7 +123,7 @@ static void X64__emit_instr_push(Array(X64__Instr) * instrs, X64_Reg reg)
 {
     assert(x64_reg_classes[reg] == X64_REG_CLASS_INT);
     X64__Instr push_instr = {
-        .kind = X64_Instr_Kind_PUSH,
+        .flags = X64_Instr_Kind_PUSH,
         .push.reg = reg,
     };
 
@@ -134,7 +134,7 @@ static void X64__emit_instr_pop(Array(X64__Instr) * instrs, X64_Reg reg)
 {
     assert(x64_reg_classes[reg] == X64_REG_CLASS_INT);
     X64__Instr pop_instr = {
-        .kind = X64_Instr_Kind_POP,
+        .flags = X64_Instr_Kind_POP,
         .pop.reg = reg,
     };
 
@@ -144,7 +144,7 @@ static void X64__emit_instr_pop(Array(X64__Instr) * instrs, X64_Reg reg)
 static void X64__emit_instr_add_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr add_rr_instr = {
-        .kind = X64_Instr_Kind_ADD_RR,
+        .flags = X64_Instr_Kind_ADD_RR,
         .add_rr.size = size,
         .add_rr.dst = dst,
         .add_rr.src = src,
@@ -156,7 +156,7 @@ static void X64__emit_instr_add_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_add_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr add_rm_instr = {
-        .kind = X64_Instr_Kind_ADD_RM,
+        .flags = X64_Instr_Kind_ADD_RM,
         .add_rm.size = size,
         .add_rm.dst = dst,
         .add_rm.src = src,
@@ -168,7 +168,7 @@ static void X64__emit_instr_add_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_add_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr add_mr_instr = {
-        .kind = X64_Instr_Kind_ADD_MR,
+        .flags = X64_Instr_Kind_ADD_MR,
         .add_mr.size = size,
         .add_mr.dst = dst,
         .add_mr.src = src,
@@ -180,7 +180,7 @@ static void X64__emit_instr_add_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_add_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
 {
     X64__Instr add_ri_instr = {
-        .kind = X64_Instr_Kind_ADD_RI,
+        .flags = X64_Instr_Kind_ADD_RI,
         .add_ri.size = size,
         .add_ri.dst = dst,
         .add_ri.imm = imm,
@@ -192,7 +192,7 @@ static void X64__emit_instr_add_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_add_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
 {
     X64__Instr add_mi_instr = {
-        .kind = X64_Instr_Kind_ADD_MI,
+        .flags = X64_Instr_Kind_ADD_MI,
         .add_mi.size = size,
         .add_mi.dst = dst,
         .add_mi.imm = imm,
@@ -204,7 +204,7 @@ static void X64__emit_instr_add_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_sub_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr sub_rr_instr = {
-        .kind = X64_Instr_Kind_SUB_RR,
+        .flags = X64_Instr_Kind_SUB_RR,
         .sub_rr.size = size,
         .sub_rr.dst = dst,
         .sub_rr.src = src,
@@ -216,7 +216,7 @@ static void X64__emit_instr_sub_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_sub_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr sub_rm_instr = {
-        .kind = X64_Instr_Kind_SUB_RM,
+        .flags = X64_Instr_Kind_SUB_RM,
         .sub_rm.size = size,
         .sub_rm.dst = dst,
         .sub_rm.src = src,
@@ -228,7 +228,7 @@ static void X64__emit_instr_sub_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_sub_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr sub_mr_instr = {
-        .kind = X64_Instr_Kind_SUB_MR,
+        .flags = X64_Instr_Kind_SUB_MR,
         .sub_mr.size = size,
         .sub_mr.dst = dst,
         .sub_mr.src = src,
@@ -240,7 +240,7 @@ static void X64__emit_instr_sub_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_sub_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
 {
     X64__Instr sub_ri_instr = {
-        .kind = X64_Instr_Kind_SUB_RI,
+        .flags = X64_Instr_Kind_SUB_RI,
         .sub_ri.size = size,
         .sub_ri.dst = dst,
         .sub_ri.imm = imm,
@@ -252,7 +252,7 @@ static void X64__emit_instr_sub_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_sub_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
 {
     X64__Instr sub_mi_instr = {
-        .kind = X64_Instr_Kind_SUB_MI,
+        .flags = X64_Instr_Kind_SUB_MI,
         .sub_mi.size = size,
         .sub_mi.dst = dst,
         .sub_mi.imm = imm,
@@ -264,7 +264,7 @@ static void X64__emit_instr_sub_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_imul_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr imul_rr_instr = {
-        .kind = X64_Instr_Kind_IMUL_RR,
+        .flags = X64_Instr_Kind_IMUL_RR,
         .imul_rr.size = size,
         .imul_rr.dst = dst,
         .imul_rr.src = src,
@@ -276,7 +276,7 @@ static void X64__emit_instr_imul_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg
 static void X64__emit_instr_imul_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr imul_rm_instr = {
-        .kind = X64_Instr_Kind_IMUL_RM,
+        .flags = X64_Instr_Kind_IMUL_RM,
         .imul_rm.size = size,
         .imul_rm.dst = dst,
         .imul_rm.src = src,
@@ -288,7 +288,7 @@ static void X64__emit_instr_imul_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg
 static void X64__emit_instr_imul_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr imul_mr_instr = {
-        .kind = X64_Instr_Kind_IMUL_MR,
+        .flags = X64_Instr_Kind_IMUL_MR,
         .imul_mr.size = size,
         .imul_mr.dst = dst,
         .imul_mr.src = src,
@@ -300,7 +300,7 @@ static void X64__emit_instr_imul_mr(Array(X64__Instr) * instrs, u8 size, X64_SIB
 static void X64__emit_instr_imul_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
 {
     X64__Instr imul_ri_instr = {
-        .kind = X64_Instr_Kind_IMUL_RI,
+        .flags = X64_Instr_Kind_IMUL_RI,
         .imul_ri.size = size,
         .imul_ri.dst = dst,
         .imul_ri.imm = imm,
@@ -312,7 +312,7 @@ static void X64__emit_instr_imul_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg
 static void X64__emit_instr_imul_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
 {
     X64__Instr imul_mi_instr = {
-        .kind = X64_Instr_Kind_IMUL_MI,
+        .flags = X64_Instr_Kind_IMUL_MI,
         .imul_mi.size = size,
         .imul_mi.dst = dst,
         .imul_mi.imm = imm,
@@ -324,7 +324,7 @@ static void X64__emit_instr_imul_mi(Array(X64__Instr) * instrs, u8 size, X64_SIB
 static void X64__emit_instr_and_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr and_rr_instr = {
-        .kind = X64_Instr_Kind_AND_RR,
+        .flags = X64_Instr_Kind_AND_RR,
         .and_rr.size = size,
         .and_rr.dst = dst,
         .and_rr.src = src,
@@ -336,7 +336,7 @@ static void X64__emit_instr_and_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_and_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr and_rm_instr = {
-        .kind = X64_Instr_Kind_AND_RM,
+        .flags = X64_Instr_Kind_AND_RM,
         .and_rm.size = size,
         .and_rm.dst = dst,
         .and_rm.src = src,
@@ -348,7 +348,7 @@ static void X64__emit_instr_and_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_and_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr and_mr_instr = {
-        .kind = X64_Instr_Kind_AND_MR,
+        .flags = X64_Instr_Kind_AND_MR,
         .and_mr.size = size,
         .and_mr.dst = dst,
         .and_mr.src = src,
@@ -360,7 +360,7 @@ static void X64__emit_instr_and_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_and_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
 {
     X64__Instr and_ri_instr = {
-        .kind = X64_Instr_Kind_AND_RI,
+        .flags = X64_Instr_Kind_AND_RI,
         .and_ri.size = size,
         .and_ri.dst = dst,
         .and_ri.imm = imm,
@@ -372,7 +372,7 @@ static void X64__emit_instr_and_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_and_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
 {
     X64__Instr and_mi_instr = {
-        .kind = X64_Instr_Kind_AND_MI,
+        .flags = X64_Instr_Kind_AND_MI,
         .and_mi.size = size,
         .and_mi.dst = dst,
         .and_mi.imm = imm,
@@ -384,7 +384,7 @@ static void X64__emit_instr_and_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_or_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr or_rr_instr = {
-        .kind = X64_Instr_Kind_OR_RR,
+        .flags = X64_Instr_Kind_OR_RR,
         .or_rr.size = size,
         .or_rr.dst = dst,
         .or_rr.src = src,
@@ -396,7 +396,7 @@ static void X64__emit_instr_or_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg d
 static void X64__emit_instr_or_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr or_rm_instr = {
-        .kind = X64_Instr_Kind_OR_RM,
+        .flags = X64_Instr_Kind_OR_RM,
         .or_rm.size = size,
         .or_rm.dst = dst,
         .or_rm.src = src,
@@ -408,7 +408,7 @@ static void X64__emit_instr_or_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg d
 static void X64__emit_instr_or_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr or_mr_instr = {
-        .kind = X64_Instr_Kind_OR_MR,
+        .flags = X64_Instr_Kind_OR_MR,
         .or_mr.size = size,
         .or_mr.dst = dst,
         .or_mr.src = src,
@@ -420,7 +420,7 @@ static void X64__emit_instr_or_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_
 static void X64__emit_instr_or_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
 {
     X64__Instr or_ri_instr = {
-        .kind = X64_Instr_Kind_OR_RI,
+        .flags = X64_Instr_Kind_OR_RI,
         .or_ri.size = size,
         .or_ri.dst = dst,
         .or_ri.imm = imm,
@@ -432,7 +432,7 @@ static void X64__emit_instr_or_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg d
 static void X64__emit_instr_or_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
 {
     X64__Instr or_mi_instr = {
-        .kind = X64_Instr_Kind_OR_MI,
+        .flags = X64_Instr_Kind_OR_MI,
         .or_mi.size = size,
         .or_mi.dst = dst,
         .or_mi.imm = imm,
@@ -444,7 +444,7 @@ static void X64__emit_instr_or_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_
 static void X64__emit_instr_xor_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr xor_rr_instr = {
-        .kind = X64_Instr_Kind_XOR_RR,
+        .flags = X64_Instr_Kind_XOR_RR,
         .xor_rr.size = size,
         .xor_rr.dst = dst,
         .xor_rr.src = src,
@@ -456,7 +456,7 @@ static void X64__emit_instr_xor_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_xor_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr xor_rm_instr = {
-        .kind = X64_Instr_Kind_XOR_RM,
+        .flags = X64_Instr_Kind_XOR_RM,
         .xor_rm.size = size,
         .xor_rm.dst = dst,
         .xor_rm.src = src,
@@ -468,7 +468,7 @@ static void X64__emit_instr_xor_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_xor_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr xor_mr_instr = {
-        .kind = X64_Instr_Kind_XOR_MR,
+        .flags = X64_Instr_Kind_XOR_MR,
         .xor_mr.size = size,
         .xor_mr.dst = dst,
         .xor_mr.src = src,
@@ -480,7 +480,7 @@ static void X64__emit_instr_xor_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_xor_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
 {
     X64__Instr xor_ri_instr = {
-        .kind = X64_Instr_Kind_XOR_RI,
+        .flags = X64_Instr_Kind_XOR_RI,
         .xor_ri.size = size,
         .xor_ri.dst = dst,
         .xor_ri.imm = imm,
@@ -492,7 +492,7 @@ static void X64__emit_instr_xor_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_xor_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
 {
     X64__Instr xor_mi_instr = {
-        .kind = X64_Instr_Kind_XOR_MI,
+        .flags = X64_Instr_Kind_XOR_MI,
         .xor_mi.size = size,
         .xor_mi.dst = dst,
         .xor_mi.imm = imm,
@@ -504,7 +504,7 @@ static void X64__emit_instr_xor_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_neg_r(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
 {
     X64__Instr neg_r_instr = {
-        .kind = X64_Instr_Kind_NEG_R,
+        .flags = X64_Instr_Kind_NEG_R,
         .neg_r.size = size,
         .neg_r.dst = dst,
     };
@@ -515,7 +515,7 @@ static void X64__emit_instr_neg_r(Array(X64__Instr) * instrs, u8 size, X64_Reg d
 static void X64__emit_instr_neg_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst)
 {
     X64__Instr neg_m_instr = {
-        .kind = X64_Instr_Kind_NEG_M,
+        .flags = X64_Instr_Kind_NEG_M,
         .neg_m.size = size,
         .neg_m.dst = dst,
     };
@@ -526,7 +526,7 @@ static void X64__emit_instr_neg_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_
 static void X64__emit_instr_not_r(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
 {
     X64__Instr not_r_instr = {
-        .kind = X64_Instr_Kind_NOT_R,
+        .flags = X64_Instr_Kind_NOT_R,
         .not_r.size = size,
         .not_r.dst = dst,
     };
@@ -537,7 +537,7 @@ static void X64__emit_instr_not_r(Array(X64__Instr) * instrs, u8 size, X64_Reg d
 static void X64__emit_instr_not_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst)
 {
     X64__Instr not_m_instr = {
-        .kind = X64_Instr_Kind_NOT_M,
+        .flags = X64_Instr_Kind_NOT_M,
         .not_m.size = size,
         .not_m.dst = dst,
     };
@@ -548,7 +548,7 @@ static void X64__emit_instr_not_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_
 static void X64__emit_instr_sar_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u8 imm)
 {
     X64__Instr sar_ri_instr = {
-        .kind = X64_Instr_Kind_SAR_RI,
+        .flags = X64_Instr_Kind_SAR_RI,
         .sar_ri.size = size,
         .sar_ri.dst = dst,
         .sar_ri.imm = imm,
@@ -560,7 +560,7 @@ static void X64__emit_instr_sar_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_div_r(Array(X64__Instr) * instrs, u8 size, X64_Reg src)
 {
     X64__Instr div_r_instr = {
-        .kind = X64_Instr_Kind_DIV_R,
+        .flags = X64_Instr_Kind_DIV_R,
         .div_r.size = size,
         .div_r.src = src,
     };
@@ -571,7 +571,7 @@ static void X64__emit_instr_div_r(Array(X64__Instr) * instrs, u8 size, X64_Reg s
 static void X64__emit_instr_div_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr src)
 {
     X64__Instr div_m_instr = {
-        .kind = X64_Instr_Kind_DIV_M,
+        .flags = X64_Instr_Kind_DIV_M,
         .div_m.size = size,
         .div_m.src = src,
     };
@@ -582,7 +582,7 @@ static void X64__emit_instr_div_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_
 static void X64__emit_instr_idiv_r(Array(X64__Instr) * instrs, u8 size, X64_Reg src)
 {
     X64__Instr idiv_r_instr = {
-        .kind = X64_Instr_Kind_IDIV_R,
+        .flags = X64_Instr_Kind_IDIV_R,
         .idiv_r.size = size,
         .idiv_r.src = src,
     };
@@ -593,7 +593,7 @@ static void X64__emit_instr_idiv_r(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_idiv_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr src)
 {
     X64__Instr idiv_m_instr = {
-        .kind = X64_Instr_Kind_IDIV_M,
+        .flags = X64_Instr_Kind_IDIV_M,
         .idiv_m.size = size,
         .idiv_m.src = src,
     };
@@ -620,14 +620,14 @@ static void X64__emit_instr_sext_ax_into_dx(Array(X64__Instr)* instrs, u8 size)
         break;
     }
 
-    X64__Instr instr = {.kind = kind};
+    X64__Instr instr = {.flags = kind};
     array_push(*instrs, instr);
 }
 
 static void X64__emit_instr_mov_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr mov_rr_instr = {
-        .kind = X64_Instr_Kind_MOV_RR,
+        .flags = X64_Instr_Kind_MOV_RR,
         .mov_rr.size = size,
         .mov_rr.dst = dst,
         .mov_rr.src = src,
@@ -639,7 +639,7 @@ static void X64__emit_instr_mov_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_mov_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr mov_rm_instr = {
-        .kind = X64_Instr_Kind_MOV_RM,
+        .flags = X64_Instr_Kind_MOV_RM,
         .mov_rm.size = size,
         .mov_rm.dst = dst,
         .mov_rm.src = src,
@@ -651,7 +651,7 @@ static void X64__emit_instr_mov_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_mov_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr mov_mr_instr = {
-        .kind = X64_Instr_Kind_MOV_MR,
+        .flags = X64_Instr_Kind_MOV_MR,
         .mov_mr.size = size,
         .mov_mr.dst = dst,
         .mov_mr.src = src,
@@ -663,7 +663,7 @@ static void X64__emit_instr_mov_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_mov_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u64 imm)
 {
     X64__Instr mov_ri_instr = {
-        .kind = X64_Instr_Kind_MOV_RI,
+        .flags = X64_Instr_Kind_MOV_RI,
         .mov_ri.size = size,
         .mov_ri.dst = dst,
         .mov_ri.imm = imm,
@@ -675,7 +675,7 @@ static void X64__emit_instr_mov_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_mov_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
 {
     X64__Instr mov_mi_instr = {
-        .kind = X64_Instr_Kind_MOV_MI,
+        .flags = X64_Instr_Kind_MOV_MI,
         .mov_mi.size = size,
         .mov_mi.dst = dst,
         .mov_mi.imm = imm,
@@ -687,7 +687,7 @@ static void X64__emit_instr_mov_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_movsx_rr(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
 {
     X64__Instr movsx_rr_instr = {
-        .kind = X64_Instr_Kind_MOVSX_RR,
+        .flags = X64_Instr_Kind_MOVSX_RR,
         .movsx_rr.dst_size = dst_size,
         .movsx_rr.src_size = src_size,
         .movsx_rr.dst = dst,
@@ -700,7 +700,7 @@ static void X64__emit_instr_movsx_rr(Array(X64__Instr) * instrs, u8 dst_size, X6
 static void X64__emit_instr_movsx_rm(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
 {
     X64__Instr movsx_rm_instr = {
-        .kind = X64_Instr_Kind_MOVSX_RM,
+        .flags = X64_Instr_Kind_MOVSX_RM,
         .movsx_rm.dst_size = dst_size,
         .movsx_rm.src_size = src_size,
         .movsx_rm.dst = dst,
@@ -713,7 +713,7 @@ static void X64__emit_instr_movsx_rm(Array(X64__Instr) * instrs, u8 dst_size, X6
 static void X64__emit_instr_movsxd_rr(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
 {
     X64__Instr movsxd_rr_instr = {
-        .kind = X64_Instr_Kind_MOVSXD_RR,
+        .flags = X64_Instr_Kind_MOVSXD_RR,
         .movsxd_rr.dst_size = dst_size,
         .movsxd_rr.src_size = src_size,
         .movsxd_rr.dst = dst,
@@ -726,7 +726,7 @@ static void X64__emit_instr_movsxd_rr(Array(X64__Instr) * instrs, u8 dst_size, X
 static void X64__emit_instr_movsxd_rm(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
 {
     X64__Instr movsxd_rm_instr = {
-        .kind = X64_Instr_Kind_MOVSXD_RM,
+        .flags = X64_Instr_Kind_MOVSXD_RM,
         .movsxd_rm.dst_size = dst_size,
         .movsxd_rm.src_size = src_size,
         .movsxd_rm.dst = dst,
@@ -739,7 +739,7 @@ static void X64__emit_instr_movsxd_rm(Array(X64__Instr) * instrs, u8 dst_size, X
 static void X64__emit_instr_movzx_rr(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
 {
     X64__Instr movzx_rr_instr = {
-        .kind = X64_Instr_Kind_MOVZX_RR,
+        .flags = X64_Instr_Kind_MOVZX_RR,
         .movzx_rr.dst_size = dst_size,
         .movzx_rr.src_size = src_size,
         .movzx_rr.dst = dst,
@@ -752,7 +752,7 @@ static void X64__emit_instr_movzx_rr(Array(X64__Instr) * instrs, u8 dst_size, X6
 static void X64__emit_instr_movzx_rm(Array(X64__Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
 {
     X64__Instr movzx_rm_instr = {
-        .kind = X64_Instr_Kind_MOVZX_RM,
+        .flags = X64_Instr_Kind_MOVZX_RM,
         .movzx_rm.dst_size = dst_size,
         .movzx_rm.src_size = src_size,
         .movzx_rm.dst = dst,
@@ -765,7 +765,7 @@ static void X64__emit_instr_movzx_rm(Array(X64__Instr) * instrs, u8 dst_size, X6
 static void X64__emit_instr_movss_rr(Array(X64__Instr) * instrs, X64_Reg dst, X64_Reg src)
 {
     X64__Instr movss_rr_instr = {
-        .kind = X64_Instr_Kind_MOVSS_RR,
+        .flags = X64_Instr_Kind_MOVSS_RR,
         .movss_rr.dst = dst,
         .movss_rr.src = src,
     };
@@ -776,7 +776,7 @@ static void X64__emit_instr_movss_rr(Array(X64__Instr) * instrs, X64_Reg dst, X6
 static void X64__emit_instr_movss_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr movss_mr_instr = {
-        .kind = X64_Instr_Kind_MOVSS_MR,
+        .flags = X64_Instr_Kind_MOVSS_MR,
         .movss_mr.dst = dst,
         .movss_mr.src = src,
     };
@@ -787,7 +787,7 @@ static void X64__emit_instr_movss_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr d
 static void X64__emit_instr_movss_rm(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr movss_rm_instr = {
-        .kind = X64_Instr_Kind_MOVSS_RM,
+        .flags = X64_Instr_Kind_MOVSS_RM,
         .movss_rm.dst = dst,
         .movss_rm.src = src,
     };
@@ -798,7 +798,7 @@ static void X64__emit_instr_movss_rm(Array(X64__Instr) * instrs, X64_Reg dst, X6
 static void X64__emit_instr_movsd_rr(Array(X64__Instr) * instrs, X64_Reg dst, X64_Reg src)
 {
     X64__Instr movsd_rr_instr = {
-        .kind = X64_Instr_Kind_MOVSD_RR,
+        .flags = X64_Instr_Kind_MOVSD_RR,
         .movsd_rr.dst = dst,
         .movsd_rr.src = src,
     };
@@ -809,7 +809,7 @@ static void X64__emit_instr_movsd_rr(Array(X64__Instr) * instrs, X64_Reg dst, X6
 static void X64__emit_instr_movsd_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr movsd_mr_instr = {
-        .kind = X64_Instr_Kind_MOVSD_MR,
+        .flags = X64_Instr_Kind_MOVSD_MR,
         .movsd_mr.dst = dst,
         .movsd_mr.src = src,
     };
@@ -820,7 +820,7 @@ static void X64__emit_instr_movsd_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr d
 static void X64__emit_instr_movsd_rm(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr movsd_rm_instr = {
-        .kind = X64_Instr_Kind_MOVSD_RM,
+        .flags = X64_Instr_Kind_MOVSD_RM,
         .movsd_rm.dst = dst,
         .movsd_rm.src = src,
     };
@@ -832,7 +832,7 @@ static void X64__emit_instr_movdqu_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr 
 {
     assert(x64_reg_classes[src] == X64_REG_CLASS_FLOAT);
     X64__Instr movdqu_mr_instr = {
-        .kind = X64_Instr_Kind_MOVDQU_MR,
+        .flags = X64_Instr_Kind_MOVDQU_MR,
         .movdqu_mr.dst = dst,
         .movdqu_mr.src = src,
     };
@@ -844,7 +844,7 @@ static void X64__emit_instr_movdqu_rm(Array(X64__Instr) * instrs, X64_Reg dst, X
 {
     assert(x64_reg_classes[dst] == X64_REG_CLASS_FLOAT);
     X64__Instr movdqu_rm_instr = {
-        .kind = X64_Instr_Kind_MOVDQU_RM,
+        .flags = X64_Instr_Kind_MOVDQU_RM,
         .movdqu_rm.dst = dst,
         .movdqu_rm.src = src,
     };
@@ -855,7 +855,7 @@ static void X64__emit_instr_movdqu_rm(Array(X64__Instr) * instrs, X64_Reg dst, X
 static void X64__emit_instr_cmp_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
 {
     X64__Instr cmp_rr_instr = {
-        .kind = X64_Instr_Kind_CMP_RR,
+        .flags = X64_Instr_Kind_CMP_RR,
         .cmp_rr.size = size,
         .cmp_rr.dst = dst,
         .cmp_rr.src = src,
@@ -867,7 +867,7 @@ static void X64__emit_instr_cmp_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_cmp_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr cmp_rm_instr = {
-        .kind = X64_Instr_Kind_CMP_RM,
+        .flags = X64_Instr_Kind_CMP_RM,
         .cmp_rm.size = size,
         .cmp_rm.dst = dst,
         .cmp_rm.src = src,
@@ -879,7 +879,7 @@ static void X64__emit_instr_cmp_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_cmp_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     X64__Instr cmp_mr_instr = {
-        .kind = X64_Instr_Kind_CMP_MR,
+        .flags = X64_Instr_Kind_CMP_MR,
         .cmp_mr.size = size,
         .cmp_mr.dst = dst,
         .cmp_mr.src = src,
@@ -891,7 +891,7 @@ static void X64__emit_instr_cmp_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_cmp_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
 {
     X64__Instr cmp_ri_instr = {
-        .kind = X64_Instr_Kind_CMP_RI,
+        .flags = X64_Instr_Kind_CMP_RI,
         .cmp_ri.size = size,
         .cmp_ri.dst = dst,
         .cmp_ri.imm = imm,
@@ -903,7 +903,7 @@ static void X64__emit_instr_cmp_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
 static void X64__emit_instr_cmp_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
 {
     X64__Instr cmp_mi_instr = {
-        .kind = X64_Instr_Kind_CMP_MI,
+        .flags = X64_Instr_Kind_CMP_MI,
         .cmp_mi.size = size,
         .cmp_mi.dst = dst,
         .cmp_mi.imm = imm,
@@ -915,7 +915,7 @@ static void X64__emit_instr_cmp_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD
 static void X64__emit_instr_lea(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr lea_instr = {
-        .kind = X64_Instr_Kind_LEA,
+        .flags = X64_Instr_Kind_LEA,
         .lea.dst = dst,
         .lea.src = src,
     };
@@ -925,25 +925,25 @@ static void X64__emit_instr_lea(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIB
 
 static void X64__emit_instr_rep_movsb(Array(X64__Instr)* instrs)
 {
-    X64__Instr instr = {.kind = X64_Instr_Kind_REP_MOVSB};
+    X64__Instr instr = {.flags = X64_Instr_Kind_REP_MOVSB};
     array_push(*instrs, instr);
 }
 
 static void X64__emit_instr_rep_stosb(Array(X64__Instr)* instrs)
 {
-    X64__Instr instr = {.kind = X64_Instr_Kind_REP_STOSB};
+    X64__Instr instr = {.flags = X64_Instr_Kind_REP_STOSB};
     array_push(*instrs, instr);
 }
 
 static void X64__emit_instr_syscall(Array(X64__Instr)* instrs)
 {
-    X64__Instr instr = {.kind = X64_Instr_Kind_SYSCALL};
+    X64__Instr instr = {.flags = X64_Instr_Kind_SYSCALL};
     array_push(*instrs, instr);
 }
 
 static size_t X64__emit_instr_placeholder(Array(X64__Instr) * instrs, X64_Instr_Kind kind)
 {
-    X64__Instr instr = {.kind = kind};
+    X64__Instr instr = {.flags = kind};
     array_push(*instrs, instr);
     return array_len(*instrs) - 1;
 }
@@ -955,9 +955,7 @@ static void X64__push_reg_to_stack(Array(X64__Instr)* instrs, X64_Reg reg)
     }
     else {
         X64__emit_instr_sub_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
-
-        X64_SIBD_Addr dst = {.kind = X64__SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.index_reg = X64_REG_COUNT};
-        X64__emit_instr_movdqu_mr(instrs, dst, reg); // movdqu oword [rsp], reg
+        X64__emit_instr_movdqu_mr(instrs, X64__get_rsp_offset_addr(0), reg); // movdqu oword [rsp], reg
     }
 }
 
@@ -967,9 +965,7 @@ static void X64__pop_reg_from_stack(Array(X64__Instr)* instrs, X64_Reg reg)
         X64__emit_instr_pop(instrs, reg);
     }
     else {
-        X64_SIBD_Addr src = {.kind = X64__SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.index_reg = X64_REG_COUNT};
-        X64__emit_instr_movdqu_rm(instrs, reg, src); // movdqu reg, oword [rsp]
-
+        X64__emit_instr_movdqu_rm(instrs, reg, X64__get_rsp_offset_addr(0)); // movdqu reg, oword [rsp]
         X64__emit_instr_add_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
     }
 }
@@ -1296,9 +1292,7 @@ static s32 X64__spill_reg(Array(X64__Instr) * instrs, X64_Stack_Spill_State* sta
     state->stack_spill_size = ALIGN_UP(state->stack_spill_size, align);
     s32 offset = -state->stack_spill_size;
 
-    X64_SIBD_Addr dst_addr = {.kind = X64__SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.index_reg = X64_REG_COUNT, .local.disp = offset};
-
-    X64__save_prim_to_mem(instrs, size, dst_addr, preg);
+    X64__save_prim_to_mem(instrs, size, X64__get_rbp_offset_addr(offset), preg);
 
     return offset;
 }
@@ -1613,8 +1607,9 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
 {
     for (size_t i = 0; i < num_instrs; ++i) {
         X64__Instr* instr = &instrs[i];
+        X64_Instr_Kind kind = X64__get_instr_kind(instr);
 
-        switch (instr->kind) {
+        switch (kind) {
         case X64_Instr_Kind_JMP_B:
         case X64_Instr_Kind_JMP_L:
         case X64_Instr_Kind_JMP_BE:
@@ -1634,7 +1629,7 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
             instr->jmp.target = *instr_index;
 
             // Mark the jmp target instruction.
-            instrs[*instr_index].is_jmp_target = true;
+            X64__mark_instr_as_jmp_target(&instrs[*instr_index]);
         } break;
         case X64_Instr_Kind_JMP_TO_RET:
             // Jump after the last instruction (to post-amble).
@@ -2591,7 +2586,7 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
             align_stack_size = X64_STACK_WORD_SIZE;
 
             X64__Instr* rsp_align_instr = &proc_state->instrs[rsp_align_instr_idx];
-            rsp_align_instr->kind = X64_Instr_Kind_SUB_RI;
+            X64__set_instr_kind(rsp_align_instr, X64_Instr_Kind_SUB_RI);
             rsp_align_instr->sub_ri.size = X64_MAX_INT_REG_SIZE;
             rsp_align_instr->sub_ri.dst = X64_RSP;
             rsp_align_instr->sub_ri.imm = align_stack_size;
@@ -2743,7 +2738,7 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
     // Fill in sub rsp, <stack_size>
     if (stack_size) {
         X64__Instr* sub_rsp_instr = &state.instrs[sub_rsp_idx];
-        sub_rsp_instr->kind = X64_Instr_Kind_SUB_RI;
+        X64__set_instr_kind(sub_rsp_instr, X64_Instr_Kind_SUB_RI);
         sub_rsp_instr->sub_ri.size = X64_MAX_INT_REG_SIZE;
         sub_rsp_instr->sub_ri.dst = X64_RSP;
         sub_rsp_instr->sub_ri.imm = stack_size;
@@ -2806,7 +2801,7 @@ Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, S
     X64__emit_instr_ret(&state.instrs);
 
     // Mark the first instruction of the postamble as a jump target (for 'return' instructions).
-    state.instrs[num_instrs_before_postamble].is_jmp_target = true;
+    X64__mark_instr_as_jmp_target(&state.instrs[num_instrs_before_postamble]);
 
     //////////////////////////////////////////////////////////////////////////////////////////
     allocator_restore_state(tmp_mem_state);
