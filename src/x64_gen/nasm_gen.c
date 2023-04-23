@@ -879,35 +879,9 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
         case X64_Instr_Kind_JMP: {
             X64_NASM_PRINT_FTL(proc_str, "jmp %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
         } break;
-        case X64_Instr_Kind_JMP_B:
-            X64_NASM_PRINT_FTL(proc_str, "jb %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_L:
-            X64_NASM_PRINT_FTL(proc_str, "jl %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_BE:
-            X64_NASM_PRINT_FTL(proc_str, "jbe %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_LE:
-            X64_NASM_PRINT_FTL(proc_str, "jle %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_A:
-            X64_NASM_PRINT_FTL(proc_str, "ja %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_G:
-            X64_NASM_PRINT_FTL(proc_str, "jg %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_AE:
-            X64_NASM_PRINT_FTL(proc_str, "jae %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_GE:
-            X64_NASM_PRINT_FTL(proc_str, "jge %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_E:
-            X64_NASM_PRINT_FTL(proc_str, "je %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
-            break;
-        case X64_Instr_Kind_JMP_NE:
-            X64_NASM_PRINT_FTL(proc_str, "jne %s", X64_nasm_get_label(tmp_mem, proc_id, instr->jmp.target));
+        case X64_Instr_Kind_JMPCC:
+            X64_NASM_PRINT_FTL(proc_str, "j%s %s", x64_condition_codes[instr->jmpcc.cond],
+                               X64_nasm_get_label(tmp_mem, proc_id, instr->jmpcc.target));
             break;
         case X64_Instr_Kind_RET: {
             X64_NASM_PRINT_TL(proc_str, "ret");

@@ -77,45 +77,7 @@ static void X64__emit_instr_jmp_to_ret(Array(X64__Instr)* instrs)
 
 static void X64__emit_instr_jmpcc(Array(X64__Instr)* instrs, ConditionKind cond_kind, u32 target)
 {
-    X64_Instr_Kind kind = X64_Instr_Kind_NOOP;
-
-    switch (cond_kind) {
-        case COND_U_LT:
-            kind = X64_Instr_Kind_JMP_B;
-            break;
-        case COND_S_LT:
-            kind = X64_Instr_Kind_JMP_L;
-            break;
-        case COND_U_LTEQ:
-            kind = X64_Instr_Kind_JMP_BE;
-            break;
-        case COND_S_LTEQ:
-            kind = X64_Instr_Kind_JMP_LE;
-            break;
-        case COND_U_GT:
-            kind = X64_Instr_Kind_JMP_A;
-            break;
-        case COND_S_GT:
-            kind = X64_Instr_Kind_JMP_G;
-            break;
-        case COND_U_GTEQ:
-            kind = X64_Instr_Kind_JMP_AE;
-            break;
-        case COND_S_GTEQ:
-            kind = X64_Instr_Kind_JMP_GE;
-            break;
-        case COND_EQ:
-            kind = X64_Instr_Kind_JMP_E;
-            break;
-        case COND_NEQ:
-            kind = X64_Instr_Kind_JMP_NE;
-            break;
-        default:
-            NIBBLE_FATAL_EXIT("Unhandled ConditionKind %d in X64__emit_instr_jmpcc", cond_kind);
-            break;
-    }
-
-    X64__Instr instr = {.flags = kind, .jmp.target = target};
+    X64__Instr instr = {.flags = X64_Instr_Kind_JMPCC, .jmpcc.target = target, .jmpcc.cond = cond_kind};
     array_push(*instrs, instr);
 }
 
@@ -1610,16 +1572,6 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
         X64_Instr_Kind kind = X64__get_instr_kind(instr);
 
         switch (kind) {
-        case X64_Instr_Kind_JMP_B:
-        case X64_Instr_Kind_JMP_L:
-        case X64_Instr_Kind_JMP_BE:
-        case X64_Instr_Kind_JMP_LE:
-        case X64_Instr_Kind_JMP_A:
-        case X64_Instr_Kind_JMP_G:
-        case X64_Instr_Kind_JMP_AE:
-        case X64_Instr_Kind_JMP_GE:
-        case X64_Instr_Kind_JMP_E:
-        case X64_Instr_Kind_JMP_NE:
         case X64_Instr_Kind_JMP: {
             // jmp.target initially contains the target bblock ID.
             // Use the map to get the bblock's starting instruction index.
@@ -1627,6 +1579,17 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
             assert(instr_index != NULL);
             assert(*instr_index < num_instrs);
             instr->jmp.target = u64_to_u32(*instr_index);
+
+            // Mark the jmp target instruction.
+            X64__mark_instr_as_jmp_target(&instrs[*instr_index]);
+        } break;
+        case X64_Instr_Kind_JMPCC: {
+            // jmpcc.target initially contains the target bblock ID.
+            // Use the map to get the bblock's starting instruction index.
+            size_t* instr_index = hmap_get(bblock_instr_starts, instr->jmpcc.target + 1); // The key is offset by 1 (can't have a 0 key)
+            assert(instr_index != NULL);
+            assert(*instr_index < num_instrs);
+            instr->jmpcc.target = u64_to_u32(*instr_index);
 
             // Mark the jmp target instruction.
             X64__mark_instr_as_jmp_target(&instrs[*instr_index]);

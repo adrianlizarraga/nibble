@@ -1,6 +1,7 @@
 #ifndef NIBBLE_X64_GEN_LIR_TO_X64_H
 #define NIBBLE_X64_GEN_LIR_TO_X64_H
 
+#include "bytecode/module.h"
 #include "nibble.h"
 #include "allocator.h"
 #include "array.h"
@@ -105,16 +106,7 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_SYSCALL,
     X64_Instr_Kind_JMP,
     X64_Instr_Kind_JMP_TO_RET, // Doesn't correspond to an actual X64 instruction. Jumps to ret label.
-    X64_Instr_Kind_JMP_B,
-    X64_Instr_Kind_JMP_L,
-    X64_Instr_Kind_JMP_BE,
-    X64_Instr_Kind_JMP_LE,
-    X64_Instr_Kind_JMP_A,
-    X64_Instr_Kind_JMP_G,
-    X64_Instr_Kind_JMP_AE,
-    X64_Instr_Kind_JMP_GE,
-    X64_Instr_Kind_JMP_E,
-    X64_Instr_Kind_JMP_NE,
+    X64_Instr_Kind_JMPCC,
     X64_Instr_Kind_RET,
     X64_Instr_Kind_CALL,
     X64_Instr_Kind_CALL_R,
@@ -141,7 +133,12 @@ typedef struct X64__Instr {
 
         struct {
             u32 target;
-        } jmp; // Also for JMP_TO_RET, jb, jl, je, ...
+        } jmp; // For _JMP and _JMP_TO_RET
+
+        struct {
+            u32 target;
+            ConditionKind cond;
+        } jmpcc; // For jb, jl, je, ...
 
         struct {
             u8 size;
