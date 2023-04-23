@@ -693,9 +693,23 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             X64_NASM_PRINT_FTL(proc_str, "not %s", dst_mem);
         } break;
         // SAR
+        case X64_Instr_Kind_SAR_RR: {
+            const char* dst_reg = x64_nasm_int_reg_names[instr->sar_rr.size][instr->sar_rr.dst];
+            const char* src_reg = x64_nasm_int_reg_names[1][X64_RCX];
+            X64_NASM_PRINT_FTL(proc_str, "sar %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_SAR_MR: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->sar_mr.dst, instr->sar_mr.size);
+            const char* src_reg = x64_nasm_int_reg_names[1][X64_RCX];
+            X64_NASM_PRINT_FTL(proc_str, "sar %s, %s", dst_mem, src_reg);
+        } break;
         case X64_Instr_Kind_SAR_RI: {
             const char* dst_reg = x64_nasm_int_reg_names[instr->sar_ri.size][instr->sar_ri.dst];
             X64_NASM_PRINT_FTL(proc_str, "sar %s, 0x%X", dst_reg, instr->sar_ri.imm);
+        } break;
+        case X64_Instr_Kind_SAR_MI: {
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->sar_mi.dst, instr->sar_mi.size);
+            X64_NASM_PRINT_FTL(proc_str, "sar %s, 0x%X", dst_mem, instr->sar_mi.imm);
         } break;
         // DIV
         case X64_Instr_Kind_DIV_R: {

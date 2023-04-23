@@ -519,6 +519,28 @@ static void X64__emit_instr_not_m(Array(X64__Instr) * instrs, u8 size, X64_SIBD_
     array_push(*instrs, not_m_instr);
 }
 
+static void X64__emit_instr_sar_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
+{
+    X64__Instr instr = {
+        .flags = X64_Instr_Kind_SAR_RR,
+        .sar_rr.size = size,
+        .sar_rr.dst = dst,
+    };
+
+    array_push(*instrs, instr);
+}
+
+static void X64__emit_instr_sar_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst)
+{
+    X64__Instr instr = {
+        .flags = X64_Instr_Kind_SAR_MR,
+        .sar_mr.size = size,
+        .sar_mr.dst = dst,
+    };
+
+    array_push(*instrs, instr);
+}
+
 static void X64__emit_instr_sar_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u8 imm)
 {
     X64__Instr sar_ri_instr = {
@@ -529,6 +551,18 @@ static void X64__emit_instr_sar_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     };
 
     array_push(*instrs, sar_ri_instr);
+}
+
+static void X64__emit_instr_sar_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u8 imm)
+{
+    X64__Instr sar_mi_instr = {
+        .flags = X64_Instr_Kind_SAR_MI,
+        .sar_mi.size = size,
+        .sar_mi.dst = dst,
+        .sar_mi.imm = imm,
+    };
+
+    array_push(*instrs, sar_mi_instr);
 }
 
 static void X64__emit_instr_div_r(Array(X64__Instr) * instrs, u8 size, X64_Reg src)
@@ -2265,6 +2299,35 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         X64__emit_instr_sext_ax_into_dx(&proc_state->instrs, act_instr->size);
         break;
     }
+    // SAR
+    case X64_InstrSar_R_R_KIND: {
+        const X64_InstrSar_R_R* act_instr = (const X64_InstrSar_R_R*)instr;
+        const u8 dst_size = act_instr->size;
+        const X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+        const X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+
+        assert(IS_LREG_IN_REG(src_loc.kind) && src_loc.reg == X64_RCX);
+
+        if (IS_LREG_IN_REG(dst_loc.kind)) {
+            X64__emit_instr_sar_rr(&proc_state->instrs, dst_size, dst_loc.reg);
+        } else {
+            X64__emit_instr_sar_mr(&proc_state->instrs, dst_size, X64__get_rbp_offset_addr(dst_loc.offset));
+        }
+        break;
+    }
+    case X64_InstrSar_R_I_KIND: {
+        const X64_InstrSar_R_I* act_instr = (const X64_InstrSar_R_I*)instr;
+        const u8 dst_size = act_instr->size;
+        const X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+
+        if (IS_LREG_IN_REG(dst_loc.kind)) {
+            X64__emit_instr_sar_ri(&proc_state->instrs, dst_size, dst_loc.reg, act_instr->src.as_int._u8);
+        } else {
+            X64__emit_instr_sar_mi(&proc_state->instrs, dst_size, X64__get_rbp_offset_addr(dst_loc.offset),
+                                   act_instr->src.as_int._u8);
+        }
+        break;
+    }
     // MOV
     case X64_InstrMov_R_R_KIND: {
         const X64_InstrMov_R_R* act_instr = (const X64_InstrMov_R_R*)instr;
@@ -2460,7 +2523,7 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         break;
     }
     case X64_InstrSetCC_KIND: {
-        X64_InstrSetCC* act_instr = (X64_InstrSetCC*)instr;
+        const X64_InstrSetCC* act_instr = (const X64_InstrSetCC*)instr;
         X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
