@@ -276,12 +276,12 @@ void error_stream_free(ErrorStream* stream);
 void error_stream_add(ErrorStream* stream, ProgRange range, const char* buf, size_t size);
 
 static inline u32 s64_to_u32(s64 x) {
-    assert(x < 0x00000000FFFFFFFFL);
+    assert(x < (s64)int_kind_max[INTEGER_U32]);
     return (u32)x;
 }
 
 static inline u32 u64_to_u32(u64 x) {
-    assert(x < 0x00000000FFFFFFFFUL);
+    assert(x < int_kind_max[INTEGER_U32]);
     return (u32)x;
 }
 
