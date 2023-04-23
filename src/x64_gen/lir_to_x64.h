@@ -140,7 +140,7 @@ typedef struct X64__Instr {
         } pop;
 
         struct {
-            size_t target;
+            u32 target;
         } jmp; // Also for JMP_TO_RET, jb, jl, je, ...
 
         struct {

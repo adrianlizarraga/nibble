@@ -63,7 +63,7 @@ static void X64__emit_instr_call_m(Array(X64__Instr)* instrs, X64_SIBD_Addr mem)
     array_push(*instrs, call_instr);
 }
 
-static void X64__emit_instr_jmp(Array(X64__Instr)* instrs, size_t target)
+static void X64__emit_instr_jmp(Array(X64__Instr)* instrs, u32 target)
 {
     X64__Instr instr = {.flags = X64_Instr_Kind_JMP, .jmp.target = target};
     array_push(*instrs, instr);
@@ -75,7 +75,7 @@ static void X64__emit_instr_jmp_to_ret(Array(X64__Instr)* instrs)
     array_push(*instrs, instr);
 }
 
-static void X64__emit_instr_jmpcc(Array(X64__Instr)* instrs, ConditionKind cond_kind, size_t target)
+static void X64__emit_instr_jmpcc(Array(X64__Instr)* instrs, ConditionKind cond_kind, u32 target)
 {
     X64_Instr_Kind kind = X64_Instr_Kind_NOOP;
 
@@ -1626,14 +1626,14 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
             size_t* instr_index = hmap_get(bblock_instr_starts, instr->jmp.target + 1); // The key is offset by 1 (can't have a 0 key)
             assert(instr_index != NULL);
             assert(*instr_index < num_instrs);
-            instr->jmp.target = *instr_index;
+            instr->jmp.target = u64_to_u32(*instr_index);
 
             // Mark the jmp target instruction.
             X64__mark_instr_as_jmp_target(&instrs[*instr_index]);
         } break;
         case X64_Instr_Kind_JMP_TO_RET:
             // Jump after the last instruction (to post-amble).
-            instr->jmp.target = num_instrs;
+            instr->jmp.target = u64_to_u32(num_instrs);
             break;
         default:
             break;
@@ -2475,13 +2475,13 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
 
         if (target_id != bblock_id + 1) {
             assert(target_id >= 0);
-            X64__emit_instr_jmp(&proc_state->instrs, (size_t)target_id);
+            X64__emit_instr_jmp(&proc_state->instrs, s64_to_u32(target_id));
         }
         break;
     }
     case X64_InstrJmpCC_KIND: {
         const X64_InstrJmpCC* act_instr = (const X64_InstrJmpCC*)instr;
-        X64__emit_instr_jmpcc(&proc_state->instrs, act_instr->cond, (size_t)act_instr->true_bb->id);
+        X64__emit_instr_jmpcc(&proc_state->instrs, act_instr->cond, s64_to_u32(act_instr->true_bb->id));
         break;
     }
     case X64_InstrRet_KIND: {

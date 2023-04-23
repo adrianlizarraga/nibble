@@ -111,10 +111,10 @@ static const char* X64_nasm_float_lit_mangled_name(Allocator* alloc, FloatLit* f
     return dstr;
 }
 
-static char* X64_nasm_get_label(Allocator* mem, size_t proc_id, size_t instr_num)
+static char* X64_nasm_get_label(Allocator* mem, size_t proc_id, u32 instr_num)
 {
     char* dstr = array_create(mem, char, 8);
-    ftprint_char_array(&dstr, true, "L.%llu.%llu", proc_id, instr_num);
+    ftprint_char_array(&dstr, true, "L.%llu.%u", proc_id, instr_num);
 
     return dstr;
 }
