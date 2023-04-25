@@ -565,6 +565,52 @@ static void X64__emit_instr_sar_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD
     array_push(*instrs, sar_mi_instr);
 }
 
+static void X64__emit_instr_shl_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
+{
+    X64__Instr instr = {
+        .flags = X64_Instr_Kind_SHL_RR,
+        .shl_rr.size = size,
+        .shl_rr.dst = dst,
+    };
+
+    array_push(*instrs, instr);
+}
+
+static void X64__emit_instr_shl_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst)
+{
+    X64__Instr instr = {
+        .flags = X64_Instr_Kind_SHL_MR,
+        .shl_mr.size = size,
+        .shl_mr.dst = dst,
+    };
+
+    array_push(*instrs, instr);
+}
+
+static void X64__emit_instr_shl_ri(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, u8 imm)
+{
+    X64__Instr shl_ri_instr = {
+        .flags = X64_Instr_Kind_SHL_RI,
+        .shl_ri.size = size,
+        .shl_ri.dst = dst,
+        .shl_ri.imm = imm,
+    };
+
+    array_push(*instrs, shl_ri_instr);
+}
+
+static void X64__emit_instr_shl_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD_Addr dst, u8 imm)
+{
+    X64__Instr shl_mi_instr = {
+        .flags = X64_Instr_Kind_SHL_MI,
+        .shl_mi.size = size,
+        .shl_mi.dst = dst,
+        .shl_mi.imm = imm,
+    };
+
+    array_push(*instrs, shl_mi_instr);
+}
+
 static void X64__emit_instr_div_r(Array(X64__Instr) * instrs, u8 size, X64_Reg src)
 {
     X64__Instr div_r_instr = {
@@ -2324,6 +2370,35 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
             X64__emit_instr_sar_ri(&proc_state->instrs, dst_size, dst_loc.reg, act_instr->src.as_int._u8);
         } else {
             X64__emit_instr_sar_mi(&proc_state->instrs, dst_size, X64__get_rbp_offset_addr(dst_loc.offset),
+                                   act_instr->src.as_int._u8);
+        }
+        break;
+    }
+    // SHL
+    case X64_InstrShl_R_R_KIND: {
+        const X64_InstrShl_R_R* act_instr = (const X64_InstrShl_R_R*)instr;
+        const u8 dst_size = act_instr->size;
+        const X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+        const X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+
+        assert(IS_LREG_IN_REG(src_loc.kind) && src_loc.reg == X64_RCX);
+
+        if (IS_LREG_IN_REG(dst_loc.kind)) {
+            X64__emit_instr_shl_rr(&proc_state->instrs, dst_size, dst_loc.reg);
+        } else {
+            X64__emit_instr_shl_mr(&proc_state->instrs, dst_size, X64__get_rbp_offset_addr(dst_loc.offset));
+        }
+        break;
+    }
+    case X64_InstrShl_R_I_KIND: {
+        const X64_InstrShl_R_I* act_instr = (const X64_InstrShl_R_I*)instr;
+        const u8 dst_size = act_instr->size;
+        const X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+
+        if (IS_LREG_IN_REG(dst_loc.kind)) {
+            X64__emit_instr_shl_ri(&proc_state->instrs, dst_size, dst_loc.reg, act_instr->src.as_int._u8);
+        } else {
+            X64__emit_instr_shl_mi(&proc_state->instrs, dst_size, X64__get_rbp_offset_addr(dst_loc.offset),
                                    act_instr->src.as_int._u8);
         }
         break;
