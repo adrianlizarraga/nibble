@@ -64,6 +64,9 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_XOR_MR,
     X64_Instr_Kind_XOR_RI,
     X64_Instr_Kind_XOR_MI,
+    X64_Instr_Kind_ADD_FLT_RR,
+    X64_Instr_Kind_ADD_FLT_RM,
+    X64_Instr_Kind_ADD_FLT_MR,
     X64_Instr_Kind_NEG_R,
     X64_Instr_Kind_NEG_M,
     X64_Instr_Kind_NOT_R,
@@ -339,6 +342,24 @@ typedef struct X64__Instr {
             X64_SIBD_Addr dst;
             u32 imm;
         } xor_mi;
+
+        struct {
+            FloatKind kind;
+            u8 dst;
+            u8 src;
+        } add_flt_rr;
+
+        struct {
+            FloatKind kind;
+            u8 dst;
+            X64_SIBD_Addr src;
+        } add_flt_rm;
+
+        struct {
+            FloatKind kind;
+            X64_SIBD_Addr dst;
+            u8 src;
+        } add_flt_mr;
 
         struct {
             u8 size;

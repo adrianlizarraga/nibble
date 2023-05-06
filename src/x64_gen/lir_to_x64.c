@@ -475,6 +475,42 @@ static void X64__emit_instr_xor_mi(Array(X64__Instr) * instrs, u8 size, X64_SIBD
     array_push(*instrs, xor_mi_instr);
 }
 
+static void X64__emit_instr_add_flt_rr(Array(X64__Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr add_flt_rr_instr = {
+        .flags = X64_Instr_Kind_ADD_FLT_RR,
+        .add_flt_rr.kind = kind,
+        .add_flt_rr.dst = dst,
+        .add_flt_rr.src = src,
+    };
+
+    array_push(*instrs, add_flt_rr_instr);
+}
+
+static void X64__emit_instr_add_flt_rm(Array(X64__Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr add_flt_rm_instr = {
+        .flags = X64_Instr_Kind_ADD_FLT_RM,
+        .add_flt_rm.kind = kind,
+        .add_flt_rm.dst = dst,
+        .add_flt_rm.src = src,
+    };
+
+    array_push(*instrs, add_flt_rm_instr);
+}
+
+static void X64__emit_instr_add_flt_mr(Array(X64__Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
+{
+    X64__Instr add_flt_mr_instr = {
+        .flags = X64_Instr_Kind_ADD_FLT_MR,
+        .add_flt_mr.kind = kind,
+        .add_flt_mr.dst = dst,
+        .add_flt_mr.src = src,
+    };
+
+    array_push(*instrs, add_flt_mr_instr);
+}
+
 static void X64__emit_instr_neg_r(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
 {
     X64__Instr neg_r_instr = {
@@ -1194,6 +1230,40 @@ static inline X64_Emit_Mov_Ext_RM_Func* x64_mov_ext_rm_emit_funcs(X64_Instr_Kind
     }
 }
 
+typedef void X64_Emit_Bin_Flt_RR_Func (Array(X64__Instr)* instrs, FloatKind kind, X64_Reg dst, X64_Reg src);
+typedef void X64_Emit_Bin_Flt_RM_Func (Array(X64__Instr)* instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Flt_MR_Func (Array(X64__Instr)* instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src);
+
+static inline X64_Emit_Bin_Flt_RR_Func* x64_bin_flt_rr_emit_funcs(X64_Instr_Kind kind)
+{
+    switch (kind) {
+    case X64_Instr_Kind_ADD_FLT_RR: return X64__emit_instr_add_flt_rr;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_rr_emit_funcs()", kind);
+        return NULL;
+    }
+}
+
+static inline X64_Emit_Bin_Flt_RM_Func* x64_bin_flt_rm_emit_funcs(X64_Instr_Kind kind)
+{
+    switch (kind) {
+    case X64_Instr_Kind_ADD_FLT_RM: return X64__emit_instr_add_flt_rm;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_rm_emit_funcs()", kind);
+        return NULL;
+    }
+}
+
+static inline X64_Emit_Bin_Flt_MR_Func* x64_bin_flt_mr_emit_funcs(X64_Instr_Kind kind)
+{
+    switch (kind) {
+    case X64_Instr_Kind_ADD_FLT_MR: return X64__emit_instr_add_flt_mr;
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_mr_emit_funcs()", kind);
+        return NULL;
+    }
+}
+
 typedef struct X64_Proc_State {
     Allocator* gen_mem;
     Allocator* tmp_mem;
@@ -1771,6 +1841,83 @@ static void X64__emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
 
             // Restore the contents of the temporary register.
             X64__emit_instr_pop(&proc_state->instrs, tmp_reg);
+            break;
+        }
+        default:
+            assert(0);
+            break;
+        }
+        break;
+    }
+    default:
+        assert(0);
+        break;
+    }
+}
+
+static void X64__emit_bin_flt_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, FloatKind flt_kind,
+                                       u32 op1_lreg, u32 op2_lreg)
+{
+    X64_LRegLoc op1_loc = X64__lreg_loc(proc_state, op1_lreg);
+    X64_LRegLoc op2_loc = X64__lreg_loc(proc_state, op2_lreg);
+
+    switch (op1_loc.kind) {
+    case X64_LREG_LOC_REG: {
+        switch (op2_loc.kind) {
+        case X64_LREG_LOC_REG: {
+            x64_bin_flt_rr_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, op1_loc.reg, op2_loc.reg);
+            break;
+        }
+        case X64_LREG_LOC_STACK: {
+            x64_bin_flt_rm_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, op1_loc.reg, X64__get_rbp_offset_addr(op2_loc.offset));
+            break;
+        }
+        default:
+            assert(0);
+            break;
+        }
+        break;
+    }
+    case X64_LREG_LOC_STACK: {
+        switch (op2_loc.kind) {
+        case X64_LREG_LOC_REG: {
+            x64_bin_flt_mr_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, X64__get_rbp_offset_addr(op1_loc.offset), op2_loc.reg);
+            break;
+        }
+        case X64_LREG_LOC_STACK: {
+            const X64_SIBD_Addr op1_addr = X64__get_rbp_offset_addr(op1_loc.offset);
+            const X64_SIBD_Addr op2_addr = X64__get_rbp_offset_addr(op2_loc.offset);
+
+            const X64_Reg tmp_reg = X64_XMM0;
+
+            // Save the contents of a temporary register into the stack.
+            X64__emit_instr_sub_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
+            X64__emit_instr_movdqu_mr(&proc_state->instrs, X64__get_rsp_offset_addr(0), tmp_reg); // movdqu oword [rsp], tmp_reg
+
+            // Load dst (currently spilled) into the temporary register,
+            if (flt_kind == FLOAT_F64) {
+                X64__emit_instr_movsd_rm(&proc_state->instrs, tmp_reg, op1_addr);
+            } else {
+                assert(flt_kind == FLOAT_F32);
+                X64__emit_instr_movss_rm(&proc_state->instrs, tmp_reg, op1_addr);
+            }
+
+            // Execute the instruction using the temporary register as the destination.
+            x64_bin_flt_rm_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, tmp_reg, op2_addr);
+
+            // Store the result of the instruction (contents of temporary register) into dst.
+            if (writes_op1) {
+                if (flt_kind == FLOAT_F64) {
+                    X64__emit_instr_movsd_mr(&proc_state->instrs, op1_addr, tmp_reg);
+                } else {
+                    assert(flt_kind == FLOAT_F32);
+                    X64__emit_instr_movss_mr(&proc_state->instrs, op1_addr, tmp_reg);
+                }
+            }
+
+            // Restore the contents of the temporary register.
+            X64__emit_instr_movdqu_rm(&proc_state->instrs, tmp_reg, X64__get_rsp_offset_addr(0)); // movdqu reg, oword [rsp]
+            X64__emit_instr_add_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
             break;
         }
         default:
