@@ -826,41 +826,28 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movzx_rm.src, instr->movzx_rm.src_size);
             X64_NASM_PRINT_FTL(proc_str, "movzx %s, %s", dst_reg, src_mem);
         } break;
-        // MOVSS
-        case X64_Instr_Kind_MOVSS_RR: {
-            const char* dst_reg = x64_flt_reg_names[instr->movss_rr.dst];
-            const char* src_reg = x64_flt_reg_names[instr->movss_rr.src];
-            X64_NASM_PRINT_FTL(proc_str, "movss %s, %s", dst_reg, src_reg);
+        // MOVSS and MOVSD
+        case X64_Instr_Kind_MOV_FLT_RR: {
+            const char* dst_reg = x64_flt_reg_names[instr->mov_flt_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->mov_flt_rr.src];
+            const char* mov_flt_op = instr->mov_flt_rr.kind == FLOAT_F64 ? "movsd" : "movss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", mov_flt_op, dst_reg, src_reg);
         } break;
-        case X64_Instr_Kind_MOVSS_MR: {
-            const u8 size = float_kind_sizes[FLOAT_F32];
-            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movss_mr.dst, size);
-            const char* src_reg = x64_flt_reg_names[instr->movss_mr.src];
-            X64_NASM_PRINT_FTL(proc_str, "movss %s, %s", dst_mem, src_reg);
+        case X64_Instr_Kind_MOV_FLT_MR: {
+            const FloatKind flt_kind = instr->mov_flt_mr.kind;
+            const u8 size = float_kind_sizes[flt_kind];
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->mov_flt_mr.dst, size);
+            const char* src_reg = x64_flt_reg_names[instr->mov_flt_mr.src];
+            const char* mov_flt_op = flt_kind == FLOAT_F64 ? "movsd" : "movss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", mov_flt_op, dst_mem, src_reg);
         } break;
-        case X64_Instr_Kind_MOVSS_RM: {
-            const u8 size = float_kind_sizes[FLOAT_F32];
-            const char* dst_reg = x64_flt_reg_names[instr->movss_rm.dst];
-            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movss_rm.src, size);
-            X64_NASM_PRINT_FTL(proc_str, "movss %s, %s", dst_reg, src_mem);
-        } break;
-        // MOVSD
-        case X64_Instr_Kind_MOVSD_RR: {
-            const char* dst_reg = x64_flt_reg_names[instr->movsd_rr.dst];
-            const char* src_reg = x64_flt_reg_names[instr->movsd_rr.src];
-            X64_NASM_PRINT_FTL(proc_str, "movsd %s, %s", dst_reg, src_reg);
-        } break;
-        case X64_Instr_Kind_MOVSD_MR: {
-            const u8 size = float_kind_sizes[FLOAT_F64];
-            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movsd_mr.dst, size);
-            const char* src_reg = x64_flt_reg_names[instr->movsd_mr.src];
-            X64_NASM_PRINT_FTL(proc_str, "movsd %s, %s", dst_mem, src_reg);
-        } break;
-        case X64_Instr_Kind_MOVSD_RM: {
-            const u8 size = float_kind_sizes[FLOAT_F64];
-            const char* dst_reg = x64_flt_reg_names[instr->movsd_rm.dst];
-            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->movsd_rm.src, size);
-            X64_NASM_PRINT_FTL(proc_str, "movsd %s, %s", dst_reg, src_mem);
+        case X64_Instr_Kind_MOV_FLT_RM: {
+            const FloatKind flt_kind = instr->mov_flt_rm.kind;
+            const u8 size = float_kind_sizes[flt_kind];
+            const char* dst_reg = x64_flt_reg_names[instr->mov_flt_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->mov_flt_rm.src, size);
+            const char* mov_flt_op = flt_kind == FLOAT_F64 ? "movsd" : "movss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", mov_flt_op, dst_reg, src_mem);
         } break;
         case X64_Instr_Kind_MOVDQU_MR: {
             const u8 size = 16; // xmm 128 bit = 16 bytes

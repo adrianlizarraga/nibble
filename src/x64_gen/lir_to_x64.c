@@ -876,70 +876,40 @@ static void X64__emit_instr_movzx_rm(Array(X64__Instr) * instrs, u8 dst_size, X6
     array_push(*instrs, movzx_rm_instr);
 }
 
-static void X64__emit_instr_movss_rr(Array(X64__Instr) * instrs, X64_Reg dst, X64_Reg src)
+static void X64__emit_instr_mov_flt_rr(Array(X64__Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
 {
-    X64__Instr movss_rr_instr = {
-        .flags = X64_Instr_Kind_MOVSS_RR,
-        .movss_rr.dst = dst,
-        .movss_rr.src = src,
+    X64__Instr mov_flt_rr_instr = {
+        .flags = X64_Instr_Kind_MOV_FLT_RR,
+        .mov_flt_rr.kind = kind,
+        .mov_flt_rr.dst = dst,
+        .mov_flt_rr.src = src,
     };
 
-    array_push(*instrs, movss_rr_instr);
+    array_push(*instrs, mov_flt_rr_instr);
 }
 
-static void X64__emit_instr_movss_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
+static void X64__emit_instr_mov_flt_mr(Array(X64__Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
 {
-    X64__Instr movss_mr_instr = {
-        .flags = X64_Instr_Kind_MOVSS_MR,
-        .movss_mr.dst = dst,
-        .movss_mr.src = src,
+    X64__Instr mov_flt_mr_instr = {
+        .flags = X64_Instr_Kind_MOV_FLT_MR,
+        .mov_flt_mr.kind = kind,
+        .mov_flt_mr.dst = dst,
+        .mov_flt_mr.src = src,
     };
 
-    array_push(*instrs, movss_mr_instr);
+    array_push(*instrs, mov_flt_mr_instr);
 }
 
-static void X64__emit_instr_movss_rm(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+static void X64__emit_instr_mov_flt_rm(Array(X64__Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
 {
-    X64__Instr movss_rm_instr = {
-        .flags = X64_Instr_Kind_MOVSS_RM,
-        .movss_rm.dst = dst,
-        .movss_rm.src = src,
+    X64__Instr mov_flt_rm_instr = {
+        .flags = X64_Instr_Kind_MOV_FLT_RM,
+        .mov_flt_rm.kind = kind,
+        .mov_flt_rm.dst = dst,
+        .mov_flt_rm.src = src,
     };
 
-    array_push(*instrs, movss_rm_instr);
-}
-
-static void X64__emit_instr_movsd_rr(Array(X64__Instr) * instrs, X64_Reg dst, X64_Reg src)
-{
-    X64__Instr movsd_rr_instr = {
-        .flags = X64_Instr_Kind_MOVSD_RR,
-        .movsd_rr.dst = dst,
-        .movsd_rr.src = src,
-    };
-
-    array_push(*instrs, movsd_rr_instr);
-}
-
-static void X64__emit_instr_movsd_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64__Instr movsd_mr_instr = {
-        .flags = X64_Instr_Kind_MOVSD_MR,
-        .movsd_mr.dst = dst,
-        .movsd_mr.src = src,
-    };
-
-    array_push(*instrs, movsd_mr_instr);
-}
-
-static void X64__emit_instr_movsd_rm(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64__Instr movsd_rm_instr = {
-        .flags = X64_Instr_Kind_MOVSD_RM,
-        .movsd_rm.dst = dst,
-        .movsd_rm.src = src,
-    };
-
-    array_push(*instrs, movsd_rm_instr);
+    array_push(*instrs, mov_flt_rm_instr);
 }
 
 static void X64__emit_instr_movdqu_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
@@ -1091,12 +1061,9 @@ static void X64__load_prim_from_mem(Array(X64__Instr)* instrs, u8 size, X64_Reg 
     if (reg_class == X64_REG_CLASS_INT) {
         X64__emit_instr_mov_rm(instrs, size, dst, src);
     }
-    else if ((reg_class == X64_REG_CLASS_FLOAT) && (size == float_kind_sizes[FLOAT_F64])) {
-        X64__emit_instr_movsd_rm(instrs, dst, src);
-    }
     else {
-        assert(reg_class == X64_REG_CLASS_FLOAT && (size == float_kind_sizes[FLOAT_F32]));
-        X64__emit_instr_movss_rm(instrs, dst, src);
+        assert(reg_class == X64_REG_CLASS_FLOAT);
+        X64__emit_instr_mov_flt_rm(instrs, size == 8 ? FLOAT_F64 : FLOAT_F32, dst, src);
     }
 }
 
@@ -1106,12 +1073,9 @@ static void X64__save_prim_to_mem(Array(X64__Instr)* instrs, u8 size, X64_SIBD_A
     if (reg_class == X64_REG_CLASS_INT) {
         X64__emit_instr_mov_mr(instrs, size, dst, src);
     }
-    else if ((reg_class == X64_REG_CLASS_FLOAT) && (size == float_kind_sizes[FLOAT_F64])) {
-        X64__emit_instr_movsd_mr(instrs, dst, src);
-    }
     else {
-        assert(reg_class == X64_REG_CLASS_FLOAT && (size == float_kind_sizes[FLOAT_F32]));
-        X64__emit_instr_movss_mr(instrs, dst, src);
+        assert(reg_class == X64_REG_CLASS_FLOAT);
+        X64__emit_instr_mov_flt_mr(instrs, size == 8 ? FLOAT_F64 : FLOAT_F32, dst, src);
     }
 }
 
@@ -1895,24 +1859,14 @@ static void X64__emit_bin_flt_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
             X64__emit_instr_movdqu_mr(&proc_state->instrs, X64__get_rsp_offset_addr(0), tmp_reg); // movdqu oword [rsp], tmp_reg
 
             // Load dst (currently spilled) into the temporary register,
-            if (flt_kind == FLOAT_F64) {
-                X64__emit_instr_movsd_rm(&proc_state->instrs, tmp_reg, op1_addr);
-            } else {
-                assert(flt_kind == FLOAT_F32);
-                X64__emit_instr_movss_rm(&proc_state->instrs, tmp_reg, op1_addr);
-            }
+            X64__emit_instr_mov_flt_rm(&proc_state->instrs, flt_kind, tmp_reg, op1_addr);
 
             // Execute the instruction using the temporary register as the destination.
             x64_bin_flt_rm_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, tmp_reg, op2_addr);
 
             // Store the result of the instruction (contents of temporary register) into dst.
             if (writes_op1) {
-                if (flt_kind == FLOAT_F64) {
-                    X64__emit_instr_movsd_mr(&proc_state->instrs, op1_addr, tmp_reg);
-                } else {
-                    assert(flt_kind == FLOAT_F32);
-                    X64__emit_instr_movss_mr(&proc_state->instrs, op1_addr, tmp_reg);
-                }
+                X64__emit_instr_mov_flt_mr(&proc_state->instrs, flt_kind, op1_addr, tmp_reg);
             }
 
             // Restore the contents of the temporary register.
@@ -2065,7 +2019,7 @@ static void X64__place_args_in_regs(X64_Proc_State* proc_state, u32 num_args, co
                     }
                     else {
                         assert(reg_class == X64_REG_CLASS_FLOAT);
-                        X64__emit_instr_movsd_rm(&proc_state->instrs, slot->pregs[ii], addr);
+                        X64__emit_instr_mov_flt_rm(&proc_state->instrs, FLOAT_F64, slot->pregs[ii], addr);
                     }
 
                     addr.local.disp += X64_MAX_INT_REG_SIZE;
@@ -2091,13 +2045,7 @@ static void X64__place_args_in_regs(X64_Proc_State* proc_state, u32 num_args, co
                 else {
                     assert(reg_class == X64_REG_CLASS_FLOAT);
                     X64_SIBD_Addr src_mem = X64__get_rbp_offset_addr(loc.offset);
-
-                    if (arg_size == float_kind_sizes[FLOAT_F64]) {
-                        X64__emit_instr_movsd_rm(&proc_state->instrs, slot->preg, src_mem);
-                    } else {
-                        assert(arg_size == float_kind_sizes[FLOAT_F32]);
-                        X64__emit_instr_movss_rm(&proc_state->instrs, slot->preg, src_mem);
-                    }
+                    X64__emit_instr_mov_flt_rm(&proc_state->instrs, arg_size == 8 ? FLOAT_F64 : FLOAT_F32, slot->preg, src_mem);
                 }
             }
             else {
@@ -2184,12 +2132,8 @@ static void X64__place_args_in_stack(X64_Proc_State* proc_state, u32 num_args, c
                 }
                 else {
                     assert(reg_class == X64_REG_CLASS_FLOAT);
-                    if (arg_size == float_kind_sizes[FLOAT_F64]) {
-                        X64__emit_instr_movsd_mr(&proc_state->instrs, X64__get_rsp_offset_addr(slot->sp_offset), loc.reg);
-                    } else {
-                        assert(arg_size == float_kind_sizes[FLOAT_F32]);
-                        X64__emit_instr_movss_mr(&proc_state->instrs, X64__get_rsp_offset_addr(slot->sp_offset), loc.reg);
-                    }
+                    X64__emit_instr_mov_flt_mr(&proc_state->instrs, arg_size == 8 ? FLOAT_F64 : FLOAT_F32,
+                                               X64__get_rsp_offset_addr(slot->sp_offset), loc.reg);
                 }
             }
         }
@@ -2234,7 +2178,7 @@ static size_t X64__fill_mem_from_reg(X64_Proc_State* proc_state, X64_SIBD_Addr* 
     // If need to copy 8 or more bytes, just copy entire register into memory, and then return.
     if (rem_amnt >= X64_MAX_INT_REG_SIZE) {
         if (src_reg_class == X64_REG_CLASS_FLOAT) {
-            X64__emit_instr_movsd_mr(&proc_state->instrs, *dst, src);
+            X64__emit_instr_mov_flt_mr(&proc_state->instrs, FLOAT_F64, *dst, src);
         } else {
             assert(src_reg_class == X64_REG_CLASS_INT);
             X64__emit_instr_mov_mr(&proc_state->instrs, X64_MAX_INT_REG_SIZE, *dst, src);
@@ -2273,7 +2217,7 @@ static size_t X64__fill_mem_from_reg(X64_Proc_State* proc_state, X64_SIBD_Addr* 
         assert(src_reg_class == X64_REG_CLASS_FLOAT);
 
         if (rem_amnt == float_kind_sizes[FLOAT_F32]) {
-            X64__emit_instr_movss_mr(&proc_state->instrs, *dst, src);
+            X64__emit_instr_mov_flt_mr(&proc_state->instrs, FLOAT_F32, *dst, src);
             rem_amnt = 0;
         }
         else {
@@ -2943,19 +2887,12 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
                     if (IS_LREG_IN_STACK(dst_loc.kind)) {
                         // Move result (in XMM0) to stack offset.
                         // Ex: movsd [rbp + x], xmm0
-                        if (ret_type->as_float.kind == FLOAT_F64) {
-                            X64__emit_instr_movsd_mr(&proc_state->instrs, X64__get_rbp_offset_addr(dst_loc.offset), ret_reg);
-                        } else {
-                            X64__emit_instr_movss_mr(&proc_state->instrs, X64__get_rbp_offset_addr(dst_loc.offset), ret_reg);
-                        }
+                        X64__emit_instr_mov_flt_mr(&proc_state->instrs, ret_type->as_float.kind,
+                                                   X64__get_rbp_offset_addr(dst_loc.offset), ret_reg);
                     } else if (dst_loc.reg != ret_reg) {
                         // Move result (in XMM0) to allocated result register.
                         assert(IS_LREG_IN_REG(dst_loc.kind));
-                        if (ret_type->as_float.kind == FLOAT_F64) {
-                            X64__emit_instr_movsd_rr(&proc_state->instrs, dst_loc.reg, ret_reg);
-                        } else {
-                            X64__emit_instr_movss_rr(&proc_state->instrs, dst_loc.reg, ret_reg);
-                        }
+                        X64__emit_instr_mov_flt_rr(&proc_state->instrs, ret_type->as_float.kind, dst_loc.reg, ret_reg);
                     }
                 }
                 else {

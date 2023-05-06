@@ -97,12 +97,9 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_MOVSXD_RM,
     X64_Instr_Kind_MOVZX_RR,
     X64_Instr_Kind_MOVZX_RM,
-    X64_Instr_Kind_MOVSS_RR,
-    X64_Instr_Kind_MOVSS_MR,
-    X64_Instr_Kind_MOVSS_RM,
-    X64_Instr_Kind_MOVSD_RR,
-    X64_Instr_Kind_MOVSD_MR,
-    X64_Instr_Kind_MOVSD_RM,
+    X64_Instr_Kind_MOV_FLT_RR,
+    X64_Instr_Kind_MOV_FLT_MR,
+    X64_Instr_Kind_MOV_FLT_RM,
     X64_Instr_Kind_MOVDQU_MR,
     X64_Instr_Kind_MOVDQU_RM,
     X64_Instr_Kind_CMP_RR,
@@ -522,34 +519,22 @@ typedef struct X64__Instr {
         } movzx_rm;
 
         struct {
+            FloatKind kind;
             u8 dst;
             u8 src;
-        } movss_rr;
+        } mov_flt_rr;
 
         struct {
+            FloatKind kind;
             X64_SIBD_Addr dst;
             u8 src;
-        } movss_mr;
+        } mov_flt_mr;
 
         struct {
+            FloatKind kind;
             u8 dst;
             X64_SIBD_Addr src;
-        } movss_rm;
-
-        struct {
-            u8 dst;
-            u8 src;
-        } movsd_rr;
-
-        struct {
-            X64_SIBD_Addr dst;
-            u8 src;
-        } movsd_mr;
-
-        struct {
-            u8 dst;
-            X64_SIBD_Addr src;
-        } movsd_rm;
+        } mov_flt_rm;
 
         struct {
             X64_SIBD_Addr dst;
