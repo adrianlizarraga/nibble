@@ -125,11 +125,12 @@ typedef enum X64_Instr_Kind {
 } X64_Instr_Kind;
 
 #define X64_INSTR_KIND_MASK ((1 << 9) - 1)
+#define X64_INSTR_MOV_SRC_RH_MASK (1 << 9)
 #define X64_INSTR_IS_JMP_TARGET_MASK 0x80000000
 static_assert(X64_Instr_Kind_COUNT <= X64_INSTR_KIND_MASK + 1, "Must have at most 512 X64_Instr_Kinds");
 
 typedef struct X64__Instr {
-    u32 flags; // [31] : is_jmp_target; [8:0]: kind
+    u32 flags; // [31] : is_jmp_target; [30:9] instr-specific flags; [8:0]: kind
 
     union {
         struct {

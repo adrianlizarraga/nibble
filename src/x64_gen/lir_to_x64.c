@@ -690,6 +690,18 @@ static void X64__emit_instr_mov_rr(Array(X64__Instr) * instrs, u8 size, X64_Reg 
     array_push(*instrs, mov_rr_instr);
 }
 
+static void X64__emit_instr_mov_rrh(Array(X64__Instr) * instrs, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr mov_rr_instr = {
+        .flags = X64_INSTR_MOV_SRC_RH_MASK | (X64_Instr_Kind_MOV_RR & X64_INSTR_KIND_MASK),
+        .mov_rr.size = 1,
+        .mov_rr.dst = dst,
+        .mov_rr.src = src,
+    };
+
+    array_push(*instrs, mov_rr_instr);
+}
+
 static void X64__emit_instr_mov_rm(Array(X64__Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     X64__Instr mov_rm_instr = {
@@ -707,6 +719,18 @@ static void X64__emit_instr_mov_mr(Array(X64__Instr) * instrs, u8 size, X64_SIBD
     X64__Instr mov_mr_instr = {
         .flags = X64_Instr_Kind_MOV_MR,
         .mov_mr.size = size,
+        .mov_mr.dst = dst,
+        .mov_mr.src = src,
+    };
+
+    array_push(*instrs, mov_mr_instr);
+}
+
+static void X64__emit_instr_mov_mrh(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
+{
+    X64__Instr mov_mr_instr = {
+        .flags = X64_INSTR_MOV_SRC_RH_MASK | (X64_Instr_Kind_MOV_MR & X64_INSTR_KIND_MASK),
+        .mov_mr.size = 1,
         .mov_mr.dst = dst,
         .mov_mr.src = src,
     };
@@ -2417,6 +2441,22 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         if (!same_ops) {
             X64__emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_MOV_RR, true, size, act_instr->dst, act_instr->src);
         }
+        break;
+    }
+    case X64_InstrMov_R_RH_KIND: {
+        X64_InstrMov_R_RH* act_instr = (X64_InstrMov_R_RH*)instr;
+        X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+        X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+
+        assert(IS_LREG_IN_REG(src_loc.kind));
+
+        if (IS_LREG_IN_REG(dst_loc.kind)) {
+            X64__emit_instr_mov_rrh(&proc_state->instrs, dst_loc.reg, src_loc.reg);
+        } else {
+            assert(dst_loc.kind == X64_LREG_LOC_STACK);
+            X64__emit_instr_mov_mrh(&proc_state->instrs, X64__get_rbp_offset_addr(dst_loc.offset), src_loc.reg);
+        }
+
         break;
     }
     case X64_InstrMov_R_M_KIND: {

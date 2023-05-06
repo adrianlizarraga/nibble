@@ -24,6 +24,7 @@
 // Print formatted tabbed line
 #define X64_NASM_PRINT_FTL(str_builder, fmt, ...) ftprint_char_array(&(str_builder), false, "  " fmt "\n", __VA_ARGS__)
 
+static const char* x64_nasm_reg_h_names[X64_REG_COUNT] = {[X64_RAX] = "ah", [X64_RCX] = "ch", [X64_RDX] = "dh", [X64_RBX] = "bh"};
 static const char* x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUNT] = {
     [1] =
         {
@@ -761,7 +762,11 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
         // MOV
         case X64_Instr_Kind_MOV_RR: {
             const char* r1 = x64_nasm_int_reg_names[instr->mov_rr.size][instr->mov_rr.dst];
-            const char* r2 = x64_nasm_int_reg_names[instr->mov_rr.size][instr->mov_rr.src];
+
+            const u8 src_reg = instr->mov_rr.src;
+            const bool is_r2_h = instr->mov_rr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
+            const char* r2 = is_r2_h ? x64_nasm_reg_h_names[src_reg] : x64_nasm_int_reg_names[instr->mov_rr.size][src_reg];
+
             X64_NASM_PRINT_FTL(proc_str, "mov %s, %s", r1, r2);
         } break;
         case X64_Instr_Kind_MOV_RM: {
@@ -771,7 +776,11 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
         } break;
         case X64_Instr_Kind_MOV_MR: {
             const char* mem_op = X64_nasm_print_sibd_addr(tmp_mem, &instr->mov_mr.dst, instr->mov_mr.size);
-            const char* reg_op = x64_nasm_int_reg_names[instr->mov_mr.size][instr->mov_mr.src];
+
+            const u8 src_reg = instr->mov_mr.src;
+            const bool is_r2_h = instr->mov_mr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
+            const char* reg_op = is_r2_h ? x64_nasm_reg_h_names[src_reg] : x64_nasm_int_reg_names[instr->mov_mr.size][src_reg];
+
             X64_NASM_PRINT_FTL(proc_str, "mov %s, %s", mem_op, reg_op);
         } break;
         case X64_Instr_Kind_MOV_RI: {
