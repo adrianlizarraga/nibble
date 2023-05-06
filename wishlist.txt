@@ -1,0 +1,16 @@
+- Language support for tagged unions (similar to Rust)
+
+variant Token {
+    Identifier{ name : []u8 },
+    Integer{ value : u64 },
+    // ...
+}
+
+var token : Token = {
+
+- Compile-time execution of **compiled** programs
+
+var book_names : [10][]u8 = #run get_book_names();
+
+- Detect when vars are used before initialization (Herb Sutter initialization safety)
+  - No need to init to zero in this case.
