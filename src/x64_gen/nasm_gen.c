@@ -738,6 +738,27 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* mul_op = flt_kind == FLOAT_F64 ? "mulsd" : "mulss";
             X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", mul_op, dst_mem, src_reg);
         } break;
+        // DIVSS and DIVSD
+        case X64_Instr_Kind_DIV_FLT_RR: {
+            const char* dst_reg = x64_flt_reg_names[instr->div_flt_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->div_flt_rr.src];
+            const char* div_op = instr->div_flt_rr.kind == FLOAT_F64 ? "divsd" : "divss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", div_op, dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_DIV_FLT_RM: {
+            const FloatKind flt_kind = instr->div_flt_rm.kind;
+            const char* dst_reg = x64_flt_reg_names[instr->div_flt_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->div_flt_rm.src, float_kind_sizes[flt_kind]);
+            const char* div_op = flt_kind == FLOAT_F64 ? "divsd" : "divss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", div_op, dst_reg, src_mem);
+        } break;
+        case X64_Instr_Kind_DIV_FLT_MR: {
+            const FloatKind flt_kind = instr->div_flt_mr.kind;
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->div_flt_mr.dst, float_kind_sizes[flt_kind]);
+            const char* src_reg = x64_flt_reg_names[instr->div_flt_mr.src];
+            const char* div_op = flt_kind == FLOAT_F64 ? "divsd" : "divss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", div_op, dst_mem, src_reg);
+        } break;
         // NEG
         case X64_Instr_Kind_NEG_R: {
             const char* dst_reg = x64_nasm_int_reg_names[instr->neg_r.size][instr->neg_r.dst];

@@ -589,6 +589,42 @@ static void X64__emit_instr_mul_flt_mr(Array(X64__Instr) * instrs, FloatKind kin
     array_push(*instrs, mul_flt_mr_instr);
 }
 
+static void X64__emit_instr_div_flt_rr(Array(X64__Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr div_flt_rr_instr = {
+        .flags = X64_Instr_Kind_DIV_FLT_RR,
+        .div_flt_rr.kind = kind,
+        .div_flt_rr.dst = dst,
+        .div_flt_rr.src = src,
+    };
+
+    array_push(*instrs, div_flt_rr_instr);
+}
+
+static void X64__emit_instr_div_flt_rm(Array(X64__Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr div_flt_rm_instr = {
+        .flags = X64_Instr_Kind_DIV_FLT_RM,
+        .div_flt_rm.kind = kind,
+        .div_flt_rm.dst = dst,
+        .div_flt_rm.src = src,
+    };
+
+    array_push(*instrs, div_flt_rm_instr);
+}
+
+static void X64__emit_instr_div_flt_mr(Array(X64__Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
+{
+    X64__Instr div_flt_mr_instr = {
+        .flags = X64_Instr_Kind_DIV_FLT_MR,
+        .div_flt_mr.kind = kind,
+        .div_flt_mr.dst = dst,
+        .div_flt_mr.src = src,
+    };
+
+    array_push(*instrs, div_flt_mr_instr);
+}
+
 static void X64__emit_instr_neg_r(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
 {
     X64__Instr neg_r_instr = {
@@ -1282,6 +1318,7 @@ static inline X64_Emit_Bin_Flt_RR_Func* x64_bin_flt_rr_emit_funcs(X64_Instr_Kind
     case X64_Instr_Kind_ADD_FLT_RR: return X64__emit_instr_add_flt_rr;
     case X64_Instr_Kind_SUB_FLT_RR: return X64__emit_instr_sub_flt_rr;
     case X64_Instr_Kind_MUL_FLT_RR: return X64__emit_instr_mul_flt_rr;
+    case X64_Instr_Kind_DIV_FLT_RR: return X64__emit_instr_div_flt_rr;
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_rr_emit_funcs()", kind);
         return NULL;
@@ -1294,6 +1331,7 @@ static inline X64_Emit_Bin_Flt_RM_Func* x64_bin_flt_rm_emit_funcs(X64_Instr_Kind
     case X64_Instr_Kind_ADD_FLT_RM: return X64__emit_instr_add_flt_rm;
     case X64_Instr_Kind_SUB_FLT_RM: return X64__emit_instr_sub_flt_rm;
     case X64_Instr_Kind_MUL_FLT_RM: return X64__emit_instr_mul_flt_rm;
+    case X64_Instr_Kind_DIV_FLT_RM: return X64__emit_instr_div_flt_rm;
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_rm_emit_funcs()", kind);
         return NULL;
@@ -1306,6 +1344,7 @@ static inline X64_Emit_Bin_Flt_MR_Func* x64_bin_flt_mr_emit_funcs(X64_Instr_Kind
     case X64_Instr_Kind_ADD_FLT_MR: return X64__emit_instr_add_flt_mr;
     case X64_Instr_Kind_SUB_FLT_MR: return X64__emit_instr_sub_flt_mr;
     case X64_Instr_Kind_MUL_FLT_MR: return X64__emit_instr_mul_flt_mr;
+    case X64_Instr_Kind_DIV_FLT_MR: return X64__emit_instr_div_flt_mr;
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_mr_emit_funcs()", kind);
         return NULL;
@@ -2545,6 +2584,28 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
     case X64_InstrMulSD_R_M_KIND: {
         const X64_InstrMulSD_R_M* act_instr = (const X64_InstrMulSD_R_M*)instr;
         X64__emit_bin_flt_rm_instr(proc_state, X64_Instr_Kind_MUL_FLT_RM, true, FLOAT_F64, act_instr->dst, &act_instr->src);
+        break;
+    }
+    // DIVSS
+    case X64_InstrDivSS_R_R_KIND: {
+        const X64_InstrDivSS_R_R* act_instr = (const X64_InstrDivSS_R_R*)instr;
+        X64__emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_DIV_FLT_RR, true, FLOAT_F32, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrDivSS_R_M_KIND: {
+        const X64_InstrDivSS_R_M* act_instr = (const X64_InstrDivSS_R_M*)instr;
+        X64__emit_bin_flt_rm_instr(proc_state, X64_Instr_Kind_DIV_FLT_RM, true, FLOAT_F32, act_instr->dst, &act_instr->src);
+        break;
+    }
+    // DIVSD
+    case X64_InstrDivSD_R_R_KIND: {
+        const X64_InstrDivSD_R_R* act_instr = (const X64_InstrDivSD_R_R*)instr;
+        X64__emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_DIV_FLT_RR, true, FLOAT_F64, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrDivSD_R_M_KIND: {
+        const X64_InstrDivSD_R_M* act_instr = (const X64_InstrDivSD_R_M*)instr;
+        X64__emit_bin_flt_rm_instr(proc_state, X64_Instr_Kind_DIV_FLT_RM, true, FLOAT_F64, act_instr->dst, &act_instr->src);
         break;
     }
     // NEG
