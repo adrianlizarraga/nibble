@@ -675,6 +675,48 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->xor_ri.imm, instr->xor_ri.size);
             X64_NASM_PRINT_FTL(proc_str, "xor %s, %s", dst_reg, src_imm);
         } break;
+        // ADDSS and ADDSD
+        case X64_Instr_Kind_ADD_FLT_RR: {
+            const char* dst_reg = x64_flt_reg_names[instr->add_flt_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->add_flt_rr.src];
+            const char* add_op = instr->add_flt_rr.kind == FLOAT_F64 ? "addsd" : "addss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", add_op, dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_ADD_FLT_RM: {
+            const FloatKind flt_kind = instr->add_flt_rm.kind;
+            const char* dst_reg = x64_flt_reg_names[instr->add_flt_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->add_flt_rm.src, float_kind_sizes[flt_kind]);
+            const char* add_op = flt_kind == FLOAT_F64 ? "addsd" : "addss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", add_op, dst_reg, src_mem);
+        } break;
+        case X64_Instr_Kind_ADD_FLT_MR: {
+            const FloatKind flt_kind = instr->add_flt_mr.kind;
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->add_flt_mr.dst, float_kind_sizes[flt_kind]);
+            const char* src_reg = x64_flt_reg_names[instr->add_flt_mr.src];
+            const char* add_op = flt_kind == FLOAT_F64 ? "addsd" : "addss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", add_op, dst_mem, src_reg);
+        } break;
+        // SUBSS and SUBSD
+        case X64_Instr_Kind_SUB_FLT_RR: {
+            const char* dst_reg = x64_flt_reg_names[instr->sub_flt_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->sub_flt_rr.src];
+            const char* sub_op = instr->sub_flt_rr.kind == FLOAT_F64 ? "subsd" : "subss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", sub_op, dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_SUB_FLT_RM: {
+            const FloatKind flt_kind = instr->sub_flt_rm.kind;
+            const char* dst_reg = x64_flt_reg_names[instr->sub_flt_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->sub_flt_rm.src, float_kind_sizes[flt_kind]);
+            const char* sub_op = flt_kind == FLOAT_F64 ? "subsd" : "subss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", sub_op, dst_reg, src_mem);
+        } break;
+        case X64_Instr_Kind_SUB_FLT_MR: {
+            const FloatKind flt_kind = instr->sub_flt_mr.kind;
+            const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->sub_flt_mr.dst, float_kind_sizes[flt_kind]);
+            const char* src_reg = x64_flt_reg_names[instr->sub_flt_mr.src];
+            const char* sub_op = flt_kind == FLOAT_F64 ? "subsd" : "subss";
+            X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", sub_op, dst_mem, src_reg);
+        } break;
         // NEG
         case X64_Instr_Kind_NEG_R: {
             const char* dst_reg = x64_nasm_int_reg_names[instr->neg_r.size][instr->neg_r.dst];

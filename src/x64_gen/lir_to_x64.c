@@ -39,6 +39,12 @@ static inline X64_SIBD_Addr X64__get_rsp_offset_addr(s32 offset)
     return addr;
 }
 
+static inline FloatKind X64_flt_kind_from_size(u8 size)
+{
+    assert(size == float_kind_sizes[FLOAT_F64] || size == float_kind_sizes[FLOAT_F32]);
+    return size == float_kind_sizes[FLOAT_F64] ? FLOAT_F64 : FLOAT_F32;
+}
+
 static void X64__emit_instr_ret(Array(X64__Instr) * instrs)
 {
     X64__Instr ret_instr = {.flags = X64_Instr_Kind_RET};
@@ -509,6 +515,42 @@ static void X64__emit_instr_add_flt_mr(Array(X64__Instr) * instrs, FloatKind kin
     };
 
     array_push(*instrs, add_flt_mr_instr);
+}
+
+static void X64__emit_instr_sub_flt_rr(Array(X64__Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr sub_flt_rr_instr = {
+        .flags = X64_Instr_Kind_SUB_FLT_RR,
+        .sub_flt_rr.kind = kind,
+        .sub_flt_rr.dst = dst,
+        .sub_flt_rr.src = src,
+    };
+
+    array_push(*instrs, sub_flt_rr_instr);
+}
+
+static void X64__emit_instr_sub_flt_rm(Array(X64__Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr sub_flt_rm_instr = {
+        .flags = X64_Instr_Kind_SUB_FLT_RM,
+        .sub_flt_rm.kind = kind,
+        .sub_flt_rm.dst = dst,
+        .sub_flt_rm.src = src,
+    };
+
+    array_push(*instrs, sub_flt_rm_instr);
+}
+
+static void X64__emit_instr_sub_flt_mr(Array(X64__Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
+{
+    X64__Instr sub_flt_mr_instr = {
+        .flags = X64_Instr_Kind_SUB_FLT_MR,
+        .sub_flt_mr.kind = kind,
+        .sub_flt_mr.dst = dst,
+        .sub_flt_mr.src = src,
+    };
+
+    array_push(*instrs, sub_flt_mr_instr);
 }
 
 static void X64__emit_instr_neg_r(Array(X64__Instr) * instrs, u8 size, X64_Reg dst)
@@ -1063,7 +1105,7 @@ static void X64__load_prim_from_mem(Array(X64__Instr)* instrs, u8 size, X64_Reg 
     }
     else {
         assert(reg_class == X64_REG_CLASS_FLOAT);
-        X64__emit_instr_mov_flt_rm(instrs, size == 8 ? FLOAT_F64 : FLOAT_F32, dst, src);
+        X64__emit_instr_mov_flt_rm(instrs, X64_flt_kind_from_size(size), dst, src);
     }
 }
 
@@ -1075,7 +1117,7 @@ static void X64__save_prim_to_mem(Array(X64__Instr)* instrs, u8 size, X64_SIBD_A
     }
     else {
         assert(reg_class == X64_REG_CLASS_FLOAT);
-        X64__emit_instr_mov_flt_mr(instrs, size == 8 ? FLOAT_F64 : FLOAT_F32, dst, src);
+        X64__emit_instr_mov_flt_mr(instrs, X64_flt_kind_from_size(size), dst, src);
     }
 }
 
@@ -1202,6 +1244,7 @@ static inline X64_Emit_Bin_Flt_RR_Func* x64_bin_flt_rr_emit_funcs(X64_Instr_Kind
 {
     switch (kind) {
     case X64_Instr_Kind_ADD_FLT_RR: return X64__emit_instr_add_flt_rr;
+    case X64_Instr_Kind_SUB_FLT_RR: return X64__emit_instr_sub_flt_rr;
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_rr_emit_funcs()", kind);
         return NULL;
@@ -1212,6 +1255,7 @@ static inline X64_Emit_Bin_Flt_RM_Func* x64_bin_flt_rm_emit_funcs(X64_Instr_Kind
 {
     switch (kind) {
     case X64_Instr_Kind_ADD_FLT_RM: return X64__emit_instr_add_flt_rm;
+    case X64_Instr_Kind_SUB_FLT_RM: return X64__emit_instr_sub_flt_rm;
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_rm_emit_funcs()", kind);
         return NULL;
@@ -1222,6 +1266,7 @@ static inline X64_Emit_Bin_Flt_MR_Func* x64_bin_flt_mr_emit_funcs(X64_Instr_Kind
 {
     switch (kind) {
     case X64_Instr_Kind_ADD_FLT_MR: return X64__emit_instr_add_flt_mr;
+    case X64_Instr_Kind_SUB_FLT_MR: return X64__emit_instr_sub_flt_mr;
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_mr_emit_funcs()", kind);
         return NULL;
@@ -1942,6 +1987,19 @@ static void X64__emit_bin_int_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kin
     X64__end_reg_group(&tmp_group);
 }
 
+static void X64__emit_bin_flt_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, FloatKind flt_kind,
+                                       u32 op1_lreg, const X64_MemAddr* op2_vaddr)
+{
+    X64_SIBD_Addr op2_addr = {0};
+    u32 pinned_regs = X64__get_sibd_addr(proc_state, &op2_addr, op2_vaddr);
+
+    X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+    X64_Reg op1_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, op1_lreg, float_kind_sizes[flt_kind], writes_op1, pinned_regs);
+
+    x64_bin_flt_rm_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, op1_reg, op2_addr);
+    X64__end_reg_group(&tmp_group);
+}
+
 static void X64__emit_bin_int_mr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, u32 op_size,
                                        const X64_MemAddr* op1_vaddr, u32 op2_lreg)
 {
@@ -2045,7 +2103,7 @@ static void X64__place_args_in_regs(X64_Proc_State* proc_state, u32 num_args, co
                 else {
                     assert(reg_class == X64_REG_CLASS_FLOAT);
                     X64_SIBD_Addr src_mem = X64__get_rbp_offset_addr(loc.offset);
-                    X64__emit_instr_mov_flt_rm(&proc_state->instrs, arg_size == 8 ? FLOAT_F64 : FLOAT_F32, slot->preg, src_mem);
+                    X64__emit_instr_mov_flt_rm(&proc_state->instrs, X64_flt_kind_from_size(arg_size), slot->preg, src_mem);
                 }
             }
             else {
@@ -2132,7 +2190,7 @@ static void X64__place_args_in_stack(X64_Proc_State* proc_state, u32 num_args, c
                 }
                 else {
                     assert(reg_class == X64_REG_CLASS_FLOAT);
-                    X64__emit_instr_mov_flt_mr(&proc_state->instrs, arg_size == 8 ? FLOAT_F64 : FLOAT_F32,
+                    X64__emit_instr_mov_flt_mr(&proc_state->instrs, X64_flt_kind_from_size(arg_size),
                                                X64__get_rsp_offset_addr(slot->sp_offset), loc.reg);
                 }
             }
@@ -2382,6 +2440,50 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         u8 size = act_instr->size;
 
         X64__emit_bin_int_ri_instr(proc_state, X64_Instr_Kind_XOR_RI, size, act_instr->dst, act_instr->src);
+        break;
+    }
+    // ADDSS
+    case X64_InstrAddSS_R_R_KIND: {
+        const X64_InstrAddSS_R_R* act_instr = (const X64_InstrAddSS_R_R*)instr;
+        X64__emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_ADD_FLT_RR, true, FLOAT_F32, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrAddSS_R_M_KIND: {
+        const X64_InstrAddSS_R_M* act_instr = (const X64_InstrAddSS_R_M*)instr;
+        X64__emit_bin_flt_rm_instr(proc_state, X64_Instr_Kind_ADD_FLT_RM, true, FLOAT_F32, act_instr->dst, &act_instr->src);
+        break;
+    }
+    // ADDSD
+    case X64_InstrAddSD_R_R_KIND: {
+        const X64_InstrAddSD_R_R* act_instr = (const X64_InstrAddSD_R_R*)instr;
+        X64__emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_ADD_FLT_RR, true, FLOAT_F64, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrAddSD_R_M_KIND: {
+        const X64_InstrAddSD_R_M* act_instr = (const X64_InstrAddSD_R_M*)instr;
+        X64__emit_bin_flt_rm_instr(proc_state, X64_Instr_Kind_ADD_FLT_RM, true, FLOAT_F64, act_instr->dst, &act_instr->src);
+        break;
+    }
+    // SUBSS
+    case X64_InstrSubSS_R_R_KIND: {
+        const X64_InstrSubSS_R_R* act_instr = (const X64_InstrSubSS_R_R*)instr;
+        X64__emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_SUB_FLT_RR, true, FLOAT_F32, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrSubSS_R_M_KIND: {
+        const X64_InstrSubSS_R_M* act_instr = (const X64_InstrSubSS_R_M*)instr;
+        X64__emit_bin_flt_rm_instr(proc_state, X64_Instr_Kind_SUB_FLT_RM, true, FLOAT_F32, act_instr->dst, &act_instr->src);
+        break;
+    }
+    // SUBSD
+    case X64_InstrSubSD_R_R_KIND: {
+        const X64_InstrSubSD_R_R* act_instr = (const X64_InstrSubSD_R_R*)instr;
+        X64__emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_SUB_FLT_RR, true, FLOAT_F64, act_instr->dst, act_instr->src);
+        break;
+    }
+    case X64_InstrSubSD_R_M_KIND: {
+        const X64_InstrSubSD_R_M* act_instr = (const X64_InstrSubSD_R_M*)instr;
+        X64__emit_bin_flt_rm_instr(proc_state, X64_Instr_Kind_SUB_FLT_RM, true, FLOAT_F64, act_instr->dst, &act_instr->src);
         break;
     }
     // NEG
