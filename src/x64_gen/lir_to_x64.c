@@ -1319,6 +1319,7 @@ static inline X64_Emit_Bin_Flt_RR_Func* x64_bin_flt_rr_emit_funcs(X64_Instr_Kind
     case X64_Instr_Kind_SUB_FLT_RR: return X64__emit_instr_sub_flt_rr;
     case X64_Instr_Kind_MUL_FLT_RR: return X64__emit_instr_mul_flt_rr;
     case X64_Instr_Kind_DIV_FLT_RR: return X64__emit_instr_div_flt_rr;
+    case X64_Instr_Kind_MOV_FLT_RR: return X64__emit_instr_mov_flt_rr;
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_rr_emit_funcs()", kind);
         return NULL;
@@ -1332,6 +1333,7 @@ static inline X64_Emit_Bin_Flt_RM_Func* x64_bin_flt_rm_emit_funcs(X64_Instr_Kind
     case X64_Instr_Kind_SUB_FLT_RM: return X64__emit_instr_sub_flt_rm;
     case X64_Instr_Kind_MUL_FLT_RM: return X64__emit_instr_mul_flt_rm;
     case X64_Instr_Kind_DIV_FLT_RM: return X64__emit_instr_div_flt_rm;
+    case X64_Instr_Kind_MOV_FLT_RM: return X64__emit_instr_mov_flt_rm;
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_rm_emit_funcs()", kind);
         return NULL;
@@ -1345,6 +1347,7 @@ static inline X64_Emit_Bin_Flt_MR_Func* x64_bin_flt_mr_emit_funcs(X64_Instr_Kind
     case X64_Instr_Kind_SUB_FLT_MR: return X64__emit_instr_sub_flt_mr;
     case X64_Instr_Kind_MUL_FLT_MR: return X64__emit_instr_mul_flt_mr;
     case X64_Instr_Kind_DIV_FLT_MR: return X64__emit_instr_div_flt_mr;
+    case X64_Instr_Kind_MOV_FLT_MR: return X64__emit_instr_mov_flt_mr;
     default:
         NIBBLE_FATAL_EXIT("Unexpected X64_Instr_Kind %d in x64_bin_flt_mr_emit_funcs()", kind);
         return NULL;
@@ -2089,6 +2092,19 @@ static void X64__emit_bin_int_mr_instr(X64_Proc_State* proc_state, X64_Instr_Kin
     assert(op_size <= 8 && IS_POW2(op_size));
 
     x64_bin_int_mr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_addr, op2_reg);
+    X64__end_reg_group(&tmp_group);
+}
+
+static void X64__emit_bin_flt_mr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, FloatKind flt_kind,
+                                       const X64_MemAddr* op1_vaddr, u32 op2_lreg)
+{
+    X64_SIBD_Addr op1_addr = {0};
+    u32 pinned_regs = X64__get_sibd_addr(proc_state, &op1_addr, op1_vaddr);
+
+    X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+    X64_Reg op2_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, op2_lreg, float_kind_sizes[flt_kind], false, pinned_regs);
+
+    x64_bin_flt_mr_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, op1_addr, op2_reg);
     X64__end_reg_group(&tmp_group);
 }
 
@@ -2871,6 +2887,54 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
             // rx is NOT "zxt".
             X64__emit_bin_int_rm_instr(proc_state, X64_Instr_Kind_MOV_RM, true, src_size, act_instr->dst, &act_instr->src);
         }
+        break;
+    }
+    // MOVSS
+    case X64_InstrMovSS_R_R_KIND: {
+        const X64_InstrMovSS_R_R* act_instr = (const X64_InstrMovSS_R_R*)instr;
+        X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+        X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+
+        bool same_ops = (dst_loc.kind == src_loc.kind) && ((IS_LREG_IN_REG(dst_loc.kind) && (dst_loc.reg == src_loc.reg)) ||
+                                                           (IS_LREG_IN_STACK(dst_loc.kind) && (dst_loc.offset == src_loc.offset)));
+
+        if (!same_ops) {
+            X64__emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MOV_FLT_RR, true, FLOAT_F32, act_instr->dst, act_instr->src);
+        }
+        break;
+    }
+    case X64_InstrMovSS_R_M_KIND: {
+        const X64_InstrMovSS_R_M* act_instr = (const X64_InstrMovSS_R_M*)instr;
+        X64__emit_bin_flt_rm_instr(proc_state, X64_Instr_Kind_MOV_FLT_RM, true, FLOAT_F32, act_instr->dst, &act_instr->src);
+        break;
+    }
+    case X64_InstrMovSS_M_R_KIND: {
+        X64_InstrMovSS_M_R* act_instr = (X64_InstrMovSS_M_R*)instr;
+        X64__emit_bin_flt_mr_instr(proc_state, X64_Instr_Kind_MOV_FLT_MR, FLOAT_F32, &act_instr->dst, act_instr->src);
+        break;
+    }
+    // MOVSD
+    case X64_InstrMovSD_R_R_KIND: {
+        const X64_InstrMovSD_R_R* act_instr = (const X64_InstrMovSD_R_R*)instr;
+        X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+        X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+
+        bool same_ops = (dst_loc.kind == src_loc.kind) && ((IS_LREG_IN_REG(dst_loc.kind) && (dst_loc.reg == src_loc.reg)) ||
+                                                           (IS_LREG_IN_STACK(dst_loc.kind) && (dst_loc.offset == src_loc.offset)));
+
+        if (!same_ops) {
+            X64__emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MOV_FLT_RR, true, FLOAT_F64, act_instr->dst, act_instr->src);
+        }
+        break;
+    }
+    case X64_InstrMovSD_R_M_KIND: {
+        const X64_InstrMovSD_R_M* act_instr = (const X64_InstrMovSD_R_M*)instr;
+        X64__emit_bin_flt_rm_instr(proc_state, X64_Instr_Kind_MOV_FLT_RM, true, FLOAT_F64, act_instr->dst, &act_instr->src);
+        break;
+    }
+    case X64_InstrMovSD_M_R_KIND: {
+        X64_InstrMovSD_M_R* act_instr = (X64_InstrMovSD_M_R*)instr;
+        X64__emit_bin_flt_mr_instr(proc_state, X64_Instr_Kind_MOV_FLT_MR, FLOAT_F64, &act_instr->dst, act_instr->src);
         break;
     }
     // CMP
