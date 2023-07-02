@@ -1026,6 +1026,50 @@ static void X64__emit_instr_mov_flt_rm(Array(X64__Instr) * instrs, FloatKind kin
     array_push(*instrs, mov_flt_rm_instr);
 }
 
+static void X64__emit_instr_cvtss2sd_rr(Array(X64__Instr) * instrs, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr cvtss2sd_rr_instr = {
+        .flags = X64_Instr_Kind_CVTSS2SD_RR,
+        .cvtss2sd_rr.dst = dst,
+        .cvtss2sd_rr.src = src,
+    };
+
+    array_push(*instrs, cvtss2sd_rr_instr);
+}
+
+static void X64__emit_instr_cvtss2sd_rm(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr cvtss2sd_rm_instr = {
+        .flags = X64_Instr_Kind_CVTSS2SD_RM,
+        .cvtss2sd_rm.dst = dst,
+        .cvtss2sd_rm.src = src,
+    };
+
+    array_push(*instrs, cvtss2sd_rm_instr);
+}
+
+static void X64__emit_instr_cvtsd2ss_rr(Array(X64__Instr) * instrs, X64_Reg dst, X64_Reg src)
+{
+    X64__Instr cvtsd2ss_rr_instr = {
+        .flags = X64_Instr_Kind_CVTSD2SS_RR,
+        .cvtsd2ss_rr.dst = dst,
+        .cvtsd2ss_rr.src = src,
+    };
+
+    array_push(*instrs, cvtsd2ss_rr_instr);
+}
+
+static void X64__emit_instr_cvtsd2ss_rm(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64__Instr cvtsd2ss_rm_instr = {
+        .flags = X64_Instr_Kind_CVTSD2SS_RM,
+        .cvtsd2ss_rm.dst = dst,
+        .cvtsd2ss_rm.src = src,
+    };
+
+    array_push(*instrs, cvtsd2ss_rm_instr);
+}
+
 static void X64__emit_instr_movdqu_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
 {
     assert(x64_reg_classes[src] == X64_REG_CLASS_FLOAT);
@@ -2909,7 +2953,7 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         break;
     }
     case X64_InstrMovSS_M_R_KIND: {
-        X64_InstrMovSS_M_R* act_instr = (X64_InstrMovSS_M_R*)instr;
+        const X64_InstrMovSS_M_R* act_instr = (const X64_InstrMovSS_M_R*)instr;
         X64__emit_bin_flt_mr_instr(proc_state, X64_Instr_Kind_MOV_FLT_MR, FLOAT_F32, &act_instr->dst, act_instr->src);
         break;
     }
@@ -2933,8 +2977,64 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         break;
     }
     case X64_InstrMovSD_M_R_KIND: {
-        X64_InstrMovSD_M_R* act_instr = (X64_InstrMovSD_M_R*)instr;
+        const X64_InstrMovSD_M_R* act_instr = (const X64_InstrMovSD_M_R*)instr;
         X64__emit_bin_flt_mr_instr(proc_state, X64_Instr_Kind_MOV_FLT_MR, FLOAT_F64, &act_instr->dst, act_instr->src);
+        break;
+    }
+    // CVTSS2SD
+    case X64_InstrCvtSS2SD_R_R_KIND: { // f32 to f64
+        const X64_InstrCvtSS2SD_R_R* act_instr = (const X64_InstrCvtSS2SD_R_R*)instr;
+
+	X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+	X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+
+	if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
+            X64__emit_instr_cvtss2sd_rr(&proc_state->instrs, dst_loc.reg, src_loc.reg);
+	}
+	else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
+            X64__emit_instr_cvtss2sd_rm(&proc_state->instrs, dst_loc.reg, X64__get_rbp_offset_addr(src_loc.offset));
+	}
+	else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
+            X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state); 
+	    X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F64], true, (1 << src_loc.reg));
+	    X64__emit_instr_cvtss2sd_rr(&proc_state->instrs, dst_reg, src_loc.reg);
+	    X64__end_reg_group(&tmp_group);
+	}
+	else {
+            assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
+            X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state); 
+	    X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F64], true, 0);
+	    X64__emit_instr_cvtss2sd_rm(&proc_state->instrs, dst_reg, X64__get_rbp_offset_addr(src_loc.offset));
+	    X64__end_reg_group(&tmp_group);
+	}
+        break;
+    }
+    // CVTSD2SS
+    case X64_InstrCvtSD2SS_R_R_KIND: { // f64 to f32
+        const X64_InstrCvtSD2SS_R_R* act_instr = (const X64_InstrCvtSD2SS_R_R*)instr;
+
+	X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+	X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+
+	if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
+            X64__emit_instr_cvtsd2ss_rr(&proc_state->instrs, dst_loc.reg, src_loc.reg);
+	}
+	else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
+            X64__emit_instr_cvtsd2ss_rm(&proc_state->instrs, dst_loc.reg, X64__get_rbp_offset_addr(src_loc.offset));
+	}
+	else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
+            X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state); 
+	    X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F32], true, (1 << src_loc.reg));
+	    X64__emit_instr_cvtsd2ss_rr(&proc_state->instrs, dst_reg, src_loc.reg);
+	    X64__end_reg_group(&tmp_group);
+	}
+	else {
+            assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
+            X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state); 
+	    X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F32], true, 0);
+	    X64__emit_instr_cvtsd2ss_rm(&proc_state->instrs, dst_reg, X64__get_rbp_offset_addr(src_loc.offset));
+	    X64__end_reg_group(&tmp_group);
+	}
         break;
     }
     // CMP
