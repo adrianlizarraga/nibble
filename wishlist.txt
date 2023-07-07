@@ -8,6 +8,12 @@ variant Token {
 
 var token : Token = {
 
+- defer statment
+var file_handle := open("file.txt");
+defer close(file_handle);
+
+- declare procedures inside other procedures.
+
 - Compile-time execution of **compiled** programs
 
 var book_names : [10][]u8 = #run get_book_names();
