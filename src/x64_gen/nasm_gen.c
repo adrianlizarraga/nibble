@@ -955,6 +955,32 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cvtsd2ss_rm.src, float_kind_sizes[FLOAT_F64]);
             X64_NASM_PRINT_FTL(proc_str, "cvtsd2ss %s, %s", dst_reg, src_mem);
         } break;
+        // CVTSS2SI
+        case X64_Instr_Kind_CVTSS2SI_RR: {
+	    const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
+            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvtss2si_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->cvtss2si_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "cvtss2si %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_CVTSS2SI_RM: {
+	    const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
+            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvtss2si_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cvtss2si_rm.src, float_kind_sizes[FLOAT_F32]);
+            X64_NASM_PRINT_FTL(proc_str, "cvtss2si %s, %s", dst_reg, src_mem);
+        } break;
+        // CVTSD2SI
+        case X64_Instr_Kind_CVTSD2SI_RR: {
+	    const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
+            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvtsd2si_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->cvtsd2si_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "cvtsd2si %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_CVTSD2SI_RM: {
+	    const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
+            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvtsd2si_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cvtsd2si_rm.src, float_kind_sizes[FLOAT_F64]);
+            X64_NASM_PRINT_FTL(proc_str, "cvtsd2si %s, %s", dst_reg, src_mem);
+        } break;
         // MOVDQU
         case X64_Instr_Kind_MOVDQU_MR: {
             const u8 size = 16; // xmm 128 bit = 16 bytes
