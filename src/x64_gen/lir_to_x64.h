@@ -109,10 +109,14 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_MOV_FLT_RR,
     X64_Instr_Kind_MOV_FLT_MR,
     X64_Instr_Kind_MOV_FLT_RM,
-    X64_Instr_Kind_CVTSS2SD_RR,
-    X64_Instr_Kind_CVTSS2SD_RM,
-    X64_Instr_Kind_CVTSD2SS_RR,
-    X64_Instr_Kind_CVTSD2SS_RM,
+    X64_Instr_Kind_CVTSS2SD_RR, // f32 to f64
+    X64_Instr_Kind_CVTSS2SD_RM, // f32 (M) to f64
+    X64_Instr_Kind_CVTSD2SS_RR, // f64 to f32
+    X64_Instr_Kind_CVTSD2SS_RM, // f64 (M) to f32
+    X64_Instr_Kind_CVTSS2SI_RR, // f32 to int
+    X64_Instr_Kind_CVTSS2SI_RM, // f32 (M) to int
+    X64_Instr_Kind_CVTSD2SI_RR, // f64 to int
+    X64_Instr_Kind_CVTSD2SI_RM, // f64 (M) to int
     X64_Instr_Kind_MOVDQU_MR,
     X64_Instr_Kind_MOVDQU_RM,
     X64_Instr_Kind_CMP_RR,
@@ -139,6 +143,7 @@ typedef enum X64_Instr_Kind {
 
 #define X64_INSTR_KIND_MASK ((1 << 9) - 1)
 #define X64_INSTR_MOV_SRC_RH_MASK (1 << 9)
+#define X64_INSTR_CVT_FLT_SI_INT64_MASK (1 << 9)
 #define X64_INSTR_IS_JMP_TARGET_MASK 0x80000000
 static_assert(X64_Instr_Kind_COUNT <= X64_INSTR_KIND_MASK + 1, "Must have at most 512 X64_Instr_Kinds");
 
@@ -622,6 +627,26 @@ typedef struct X64__Instr {
             u8 dst;
             X64_SIBD_Addr src;
         } cvtsd2ss_rm;
+
+        struct {
+            u8 dst; // flag [9] is 1 if dst is 8-byte int (else 4-byte)
+            u8 src;
+        } cvtss2si_rr;
+
+        struct {
+            u8 dst; // flag [9] is 1 if dst is 8-byte int (else 4-byte)
+            X64_SIBD_Addr src;
+        } cvtss2si_rm;
+
+        struct {
+            u8 dst; // flag [9] is 1 if dst is 8-byte int (else 4-byte)
+            u8 src;
+        } cvtsd2si_rr;
+
+        struct {
+            u8 dst; // flag [9] is 1 if dst is 8-byte int (else 4-byte)
+            X64_SIBD_Addr src;
+        } cvtsd2si_rm;
 
         struct {
             X64_SIBD_Addr dst;

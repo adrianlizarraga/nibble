@@ -1056,6 +1056,72 @@ static void X64__emit_instr_cvtsd2ss_rm(Array(X64__Instr) * instrs, X64_Reg dst,
     array_push(*instrs, cvtsd2ss_rm_instr);
 }
 
+// f32 to int
+static void X64__emit_instr_cvtss2si_rr(Array(X64__Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_Reg src)
+{
+    u32 flags = X64_Instr_Kind_CVTSS2SI_RR;
+    if (dst_8bytes) {
+        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+    }
+
+    X64__Instr cvtss2si_rr_instr = {
+        .flags = flags,
+        .cvtss2si_rr.dst = dst,
+        .cvtss2si_rr.src = src,
+    };
+
+    array_push(*instrs, cvtss2si_rr_instr);
+}
+
+static void X64__emit_instr_cvtss2si_rm(Array(X64__Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_SIBD_Addr src)
+{
+    u32 flags = X64_Instr_Kind_CVTSS2SI_RM;
+    if (dst_8bytes) {
+        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+    }
+
+    X64__Instr cvtss2si_rm_instr = {
+        .flags = flags,
+        .cvtss2si_rm.dst = dst,
+        .cvtss2si_rm.src = src,
+    };
+
+    array_push(*instrs, cvtss2si_rm_instr);
+}
+
+// f64 to int
+static void X64__emit_instr_cvtsd2si_rr(Array(X64__Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_Reg src)
+{
+    u32 flags = X64_Instr_Kind_CVTSD2SI_RR;
+    if (dst_8bytes) {
+        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+    }
+
+    X64__Instr cvtsd2si_rr_instr = {
+        .flags = flags,
+        .cvtsd2si_rr.dst = dst,
+        .cvtsd2si_rr.src = src,
+    };
+
+    array_push(*instrs, cvtsd2si_rr_instr);
+}
+
+static void X64__emit_instr_cvtsd2si_rm(Array(X64__Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_SIBD_Addr src)
+{
+    u32 flags = X64_Instr_Kind_CVTSD2SI_RM;
+    if (dst_8bytes) {
+        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+    }
+
+    X64__Instr cvtsd2si_rm_instr = {
+        .flags = flags,
+        .cvtsd2si_rm.dst = dst,
+        .cvtsd2si_rm.src = src,
+    };
+
+    array_push(*instrs, cvtsd2si_rm_instr);
+}
+
 static void X64__emit_instr_movdqu_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
 {
     assert(x64_reg_classes[src] == X64_REG_CLASS_FLOAT);
@@ -3121,6 +3187,14 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         
         X64__emit_instr_cvtsd2ss_rm(&proc_state->instrs, dst_reg, src_addr);
         X64__end_reg_group(&tmp_group);
+        break;
+    }
+    // CVTSS2SI
+    case X64_InstrCvtSS2SI_R_R_KIND: { // f32 to integer
+        const X64_InstrCvtSS2SI_R_R* act_instr = (const X64_InstrCvtSS2SI_R_R*)instr;
+
+        //X64_emit_flt2int_rr_instr(generator, "cvttss2si", float_kind_sizes[FLOAT_F32], act_instr->dst_size, act_instr->src,
+                                  //act_instr->dst);
         break;
     }
     // CMP
