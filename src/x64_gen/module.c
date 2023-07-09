@@ -2852,7 +2852,6 @@ static void X64_gen_global_vars(X64_Generator* generator, GlobalData* vars, Glob
 bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
                     GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
-#if 0
     FILE* out_fd = fopen(output_file, "w");
     if (!out_fd) {
         ftprint_err("Failed to open output file `%s`\n", output_file);
@@ -2900,7 +2899,7 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bu
 
     fclose(out_fd);
 
-#else
+#if 1
     bool ret = X64_nasm_gen_module(gen_mem, tmp_mem, vars, procs, str_lits, float_lits, foreign_procs, output_file);
     if (!ret) {
         NIBBLE_FATAL_EXIT("X64_nasm_gen_module failed!!!!");
