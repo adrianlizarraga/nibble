@@ -65,8 +65,16 @@ static char* IR_print_mem(Allocator* arena, MemAddr* addr)
             }
 
             if (mem_obj->kind == MEM_OBJ_SYM) {
-                ftprint_char_array(&dstr, false, "%s %s", (mem_obj->sym->is_local ? "local" : "global"),
-                                   symbol_mangled_name(arena, mem_obj->sym));
+                const bool is_local = mem_obj->sym->is_local;
+                const char* locality = "local";
+                const char* sym_name = mem_obj->sym->name->str;
+
+                if (!is_local) {
+                    locality = "global";
+                    sym_name = symbol_mangled_name(arena, mem_obj->sym);
+                }
+
+                ftprint_char_array(&dstr, false, "%s %s", locality, sym_name);
             }
             else if (mem_obj->kind == MEM_OBJ_ANON_OBJ) {
                 ftprint_char_array(&dstr, false, "obj %d", mem_obj->anon_obj->id);
@@ -590,4 +598,3 @@ void IR_dump_proc_dot(Allocator* arena, Symbol* sym)
     allocator_restore_state(mem_state);
     ftprint_out("}\n");
 }
-
