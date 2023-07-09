@@ -113,10 +113,10 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_CVTSS2SD_RM, // f32 (M) to f64
     X64_Instr_Kind_CVTSD2SS_RR, // f64 to f32
     X64_Instr_Kind_CVTSD2SS_RM, // f64 (M) to f32
-    X64_Instr_Kind_CVTSS2SI_RR, // f32 to int
-    X64_Instr_Kind_CVTSS2SI_RM, // f32 (M) to int
-    X64_Instr_Kind_CVTSD2SI_RR, // f64 to int
-    X64_Instr_Kind_CVTSD2SI_RM, // f64 (M) to int
+    X64_Instr_Kind_CVTTSS2SI_RR, // f32 to int
+    X64_Instr_Kind_CVTTSS2SI_RM, // f32 (M) to int
+    X64_Instr_Kind_CVTTSD2SI_RR, // f64 to int
+    X64_Instr_Kind_CVTTSD2SI_RM, // f64 (M) to int
     X64_Instr_Kind_CVTSI2SS_RR, // int to f32
     X64_Instr_Kind_CVTSI2SS_RM, // int (M) to f32
     X64_Instr_Kind_CVTSI2SD_RR, // int to f64
@@ -128,6 +128,10 @@ typedef enum X64_Instr_Kind {
     X64_Instr_Kind_CMP_MR,
     X64_Instr_Kind_CMP_RI,
     X64_Instr_Kind_CMP_MI,
+    X64_Instr_Kind_UCOMISS_RR, // cmp f32s
+    X64_Instr_Kind_UCOMISS_RM, // cmp f32s (src in mem)
+    X64_Instr_Kind_UCOMISD_RR, // cmp f64s
+    X64_Instr_Kind_UCOMISD_RM, // cmp f64s (src in mem)
     X64_Instr_Kind_LEA,
     X64_Instr_Kind_REP_MOVSB,
     X64_Instr_Kind_REP_STOSB,
@@ -543,7 +547,7 @@ typedef struct X64__Instr {
         struct {
             u8 size;
             u8 dst;
-            u64 imm;  // Only mov can load a 64-bit immediate into an integer register.
+            u64 imm; // Only mov can load a 64-bit immediate into an integer register.
         } mov_ri;
 
         struct {
@@ -635,22 +639,22 @@ typedef struct X64__Instr {
         struct {
             u8 dst; // flag [9] is 1 if dst is 8-byte int (else 4-byte)
             u8 src;
-        } cvtss2si_rr;
+        } cvttss2si_rr;
 
         struct {
             u8 dst; // flag [9] is 1 if dst is 8-byte int (else 4-byte)
             X64_SIBD_Addr src;
-        } cvtss2si_rm;
+        } cvttss2si_rm;
 
         struct {
             u8 dst; // flag [9] is 1 if dst is 8-byte int (else 4-byte)
             u8 src;
-        } cvtsd2si_rr;
+        } cvttsd2si_rr;
 
         struct {
             u8 dst; // flag [9] is 1 if dst is 8-byte int (else 4-byte)
             X64_SIBD_Addr src;
-        } cvtsd2si_rm;
+        } cvttsd2si_rm;
 
         struct {
             u8 dst;
@@ -714,6 +718,26 @@ typedef struct X64__Instr {
 
         struct {
             u8 dst;
+            u8 src;
+        } ucomiss_rr;
+
+        struct {
+            u8 dst;
+            X64_SIBD_Addr src;
+        } ucomiss_rm;
+
+        struct {
+            u8 dst;
+            u8 src;
+        } ucomisd_rr;
+
+        struct {
+            u8 dst;
+            X64_SIBD_Addr src;
+        } ucomisd_rm;
+
+        struct {
+            u8 dst;
             X64_SIBD_Addr src;
         } lea;
 
@@ -731,19 +755,23 @@ typedef struct X64__Instr {
     };
 } X64__Instr;
 
-static inline X64_Instr_Kind X64__get_instr_kind(X64__Instr* instr) {
+static inline X64_Instr_Kind X64__get_instr_kind(X64__Instr* instr)
+{
     return (X64_Instr_Kind)(instr->flags & X64_INSTR_KIND_MASK);
 }
 
-static inline void X64__set_instr_kind(X64__Instr* instr, X64_Instr_Kind kind) {
+static inline void X64__set_instr_kind(X64__Instr* instr, X64_Instr_Kind kind)
+{
     instr->flags |= (kind & X64_INSTR_KIND_MASK);
 }
 
-static inline bool X64__is_instr_jmp_target(X64__Instr* instr) {
+static inline bool X64__is_instr_jmp_target(X64__Instr* instr)
+{
     return instr->flags & X64_INSTR_IS_JMP_TARGET_MASK;
 }
 
-static inline void X64__mark_instr_as_jmp_target(X64__Instr* instr) {
+static inline void X64__mark_instr_as_jmp_target(X64__Instr* instr)
+{
     instr->flags |= X64_INSTR_IS_JMP_TARGET_MASK;
 }
 

@@ -956,31 +956,31 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cvtsd2ss_rm.src, float_kind_sizes[FLOAT_F64]);
             X64_NASM_PRINT_FTL(proc_str, "cvtsd2ss %s, %s", dst_reg, src_mem);
         } break;
-        // CVTSS2SI
-        case X64_Instr_Kind_CVTSS2SI_RR: {
+        // CVTTSS2SI
+        case X64_Instr_Kind_CVTTSS2SI_RR: {
             const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
-            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvtss2si_rr.dst];
-            const char* src_reg = x64_flt_reg_names[instr->cvtss2si_rr.src];
-            X64_NASM_PRINT_FTL(proc_str, "cvtss2si %s, %s", dst_reg, src_reg);
+            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvttss2si_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->cvttss2si_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "cvttss2si %s, %s", dst_reg, src_reg);
         } break;
-        case X64_Instr_Kind_CVTSS2SI_RM: {
+        case X64_Instr_Kind_CVTTSS2SI_RM: {
             const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
-            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvtss2si_rm.dst];
-            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cvtss2si_rm.src, float_kind_sizes[FLOAT_F32]);
-            X64_NASM_PRINT_FTL(proc_str, "cvtss2si %s, %s", dst_reg, src_mem);
+            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvttss2si_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cvttss2si_rm.src, float_kind_sizes[FLOAT_F32]);
+            X64_NASM_PRINT_FTL(proc_str, "cvttss2si %s, %s", dst_reg, src_mem);
         } break;
-        // CVTSD2SI
-        case X64_Instr_Kind_CVTSD2SI_RR: {
+        // CVTTSD2SI
+        case X64_Instr_Kind_CVTTSD2SI_RR: {
             const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
-            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvtsd2si_rr.dst];
-            const char* src_reg = x64_flt_reg_names[instr->cvtsd2si_rr.src];
-            X64_NASM_PRINT_FTL(proc_str, "cvtsd2si %s, %s", dst_reg, src_reg);
+            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvttsd2si_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->cvttsd2si_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "cvttsd2si %s, %s", dst_reg, src_reg);
         } break;
-        case X64_Instr_Kind_CVTSD2SI_RM: {
+        case X64_Instr_Kind_CVTTSD2SI_RM: {
             const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
-            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvtsd2si_rm.dst];
-            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cvtsd2si_rm.src, float_kind_sizes[FLOAT_F64]);
-            X64_NASM_PRINT_FTL(proc_str, "cvtsd2si %s, %s", dst_reg, src_mem);
+            const char* dst_reg = x64_nasm_int_reg_names[dst_is_8byte ? 8 : 4][instr->cvttsd2si_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cvttsd2si_rm.src, float_kind_sizes[FLOAT_F64]);
+            X64_NASM_PRINT_FTL(proc_str, "cvttsd2si %s, %s", dst_reg, src_mem);
         } break;
         // CVTSI2SS
         case X64_Instr_Kind_CVTSI2SS_RR: {
@@ -1046,6 +1046,28 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
             const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->cmp_mi.dst, instr->cmp_mi.size);
             const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->cmp_mi.imm, instr->cmp_mi.size);
             X64_NASM_PRINT_FTL(proc_str, "cmp %s, %s", dst_mem, src_imm);
+        } break;
+        // UCOMISS
+        case X64_Instr_Kind_UCOMISS_RR: {
+            const char* dst_reg = x64_flt_reg_names[instr->ucomiss_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->ucomiss_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "ucomiss %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_UCOMISS_RM: {
+            const char* dst_reg = x64_flt_reg_names[instr->ucomiss_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->ucomiss_rm.src, float_kind_sizes[FLOAT_F32]);
+            X64_NASM_PRINT_FTL(proc_str, "ucomiss %s, %s", dst_reg, src_mem);
+        } break;
+        // UCOMISD
+        case X64_Instr_Kind_UCOMISD_RR: {
+            const char* dst_reg = x64_flt_reg_names[instr->ucomisd_rr.dst];
+            const char* src_reg = x64_flt_reg_names[instr->ucomisd_rr.src];
+            X64_NASM_PRINT_FTL(proc_str, "ucomisd %s, %s", dst_reg, src_reg);
+        } break;
+        case X64_Instr_Kind_UCOMISD_RM: {
+            const char* dst_reg = x64_flt_reg_names[instr->ucomisd_rm.dst];
+            const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->ucomisd_rm.src, float_kind_sizes[FLOAT_F64]);
+            X64_NASM_PRINT_FTL(proc_str, "ucomisd %s, %s", dst_reg, src_mem);
         } break;
         // LEA
         case X64_Instr_Kind_LEA: {
