@@ -1247,7 +1247,16 @@ static bool X64_convert_int_cmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 
         // cmp r, imm
         if (ir_b.kind == OP_RIA_IMM) {
-            X64_emit_instr_cmp_r_i(builder, xbblock, size, a, ir_b.imm);
+            const bool fits_in_4bytes = X64_imm_fits_4bytes(ir_b.imm, size);
+
+            if (fits_in_4bytes) {
+                X64_emit_instr_cmp_r_i(builder, xbblock, size, a, ir_b.imm);
+            }
+            else {
+                u32 imm_reg = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
+                X64_emit_instr_mov_r_i(builder, xbblock, size, imm_reg, ir_b.imm);
+                X64_emit_instr_cmp_r_r(builder, xbblock, size, a, imm_reg);
+            }
         }
         // cmp r, r
         else if (ir_b.kind == OP_RIA_REG) {
@@ -1269,7 +1278,16 @@ static bool X64_convert_int_cmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 
         // cmp m, imm
         if (ir_b.kind == OP_RIA_IMM) {
-            X64_emit_instr_cmp_m_i(builder, xbblock, size, a, ir_b.imm);
+            const bool fits_in_4bytes = X64_imm_fits_4bytes(ir_b.imm, size);
+
+            if (fits_in_4bytes) {
+                X64_emit_instr_cmp_m_i(builder, xbblock, size, a, ir_b.imm);
+            }
+            else {
+                u32 imm_reg = X64_next_lir_reg(builder, X64_REG_CLASS_INT);
+                X64_emit_instr_mov_r_i(builder, xbblock, size, imm_reg, ir_b.imm);
+                X64_emit_instr_cmp_m_r(builder, xbblock, size, a, imm_reg);
+            }
         }
         // cmp m, r
         else if (ir_b.kind == OP_RIA_REG) {

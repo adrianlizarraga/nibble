@@ -1569,7 +1569,6 @@ char* symbol_mangled_name(Allocator* allocator, const Symbol* sym)
         ftprint_char_array(&dstr, true, "%s", sym->name->str);
     }
     else {
-        assert(!sym->is_local);
         Module* mod = sym->home;
         ftprint_char_array(&dstr, true, "module%u_%s", mod->id, sym->name->str);
     }

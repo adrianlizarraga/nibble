@@ -2122,11 +2122,15 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
             // Use the map to get the bblock's starting instruction index.
             size_t* instr_index = hmap_get(bblock_instr_starts, instr->jmp.target + 1); // The key is offset by 1 (can't have a 0 key)
             assert(instr_index != NULL);
-            assert(*instr_index < num_instrs);
+            assert(*instr_index <= num_instrs);
             instr->jmp.target = u64_to_u32(*instr_index);
 
             // Mark the jmp target instruction.
-            X64__mark_instr_as_jmp_target(&instrs[*instr_index]);
+            if (*instr_index <
+                num_instrs) { // Empty final basic block will cause *instr_index == num_instrs
+                              // This happens when instructions are optimized out in final block (mov with same ops, ret as last instr)
+                X64__mark_instr_as_jmp_target(&instrs[*instr_index]);
+            }
         } break;
         case X64_Instr_Kind_JMPCC: {
             // jmpcc.target initially contains the target bblock ID.
@@ -2134,11 +2138,13 @@ static void X64__patch_jmp_instrs(X64__Instr* instrs, size_t num_instrs, const H
             size_t* instr_index =
                 hmap_get(bblock_instr_starts, instr->jmpcc.target + 1); // The key is offset by 1 (can't have a 0 key)
             assert(instr_index != NULL);
-            assert(*instr_index < num_instrs);
+            assert(*instr_index <= num_instrs);
             instr->jmpcc.target = u64_to_u32(*instr_index);
 
             // Mark the jmp target instruction.
-            X64__mark_instr_as_jmp_target(&instrs[*instr_index]);
+            if (*instr_index < num_instrs) { // Empty final basic block will cause *instr_index == num_instrs
+                X64__mark_instr_as_jmp_target(&instrs[*instr_index]);
+            }
         } break;
         case X64_Instr_Kind_JMP_TO_RET:
             // Jump after the last instruction (to post-amble).

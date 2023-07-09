@@ -1131,7 +1131,6 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
 bool X64_nasm_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
                          GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
-    (void)output_file;
     AllocatorState gen_mem_state = allocator_get_state(gen_mem);
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
 
@@ -1154,7 +1153,7 @@ bool X64_nasm_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* var
     // Write out file.
     //
 
-    FILE* out_fd = fopen("_nasm_out.s", "w");
+    FILE* out_fd = fopen(output_file, "w");
     if (!out_fd) {
         ftprint_err("Failed to open output file `_nasm_out.s`\n");
         return false;
