@@ -5,7 +5,8 @@ proc main() => int {
 
     var a2 : u8 = 16;
     var b2 : u8 = 12;
+    var c2 : u8 = a2 % b2;
 
     // 3 + 4 + 3 = 10
-    return a % b + (a2 % b2) + (a % b % b2);
+    return a % b + c2 + (a % b % b2);
 }

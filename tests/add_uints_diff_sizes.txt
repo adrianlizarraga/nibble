@@ -1,0 +1,8 @@
+:argc 0
+:stdin 0
+
+:stdout 0
+
+:stderr 0
+
+:returncode 11

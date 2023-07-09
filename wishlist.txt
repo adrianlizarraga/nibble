@@ -1,0 +1,32 @@
+- Language support for tagged unions (similar to Rust)
+
+variant Token {
+    Identifier{ name : []u8 },
+    Integer{ value : u64 },
+    // ...
+}
+
+var token : Token = {
+
+- defer statment
+var file_handle := open("file.txt");
+defer close(file_handle);
+
+- declare procedures inside other procedures.
+
+- Detect when vars are used before initialization (Herb Sutter initialization safety)
+  - No need to init to zero in this case.
+  - Procedure parameters marked as in (default), out (must be initialized by proc), or inout (anything goes).
+
+- const types by default! (best with in, out, inout proc params as proposed by Herb Sutter)
+  let x : int; // Is const once initialized.
+  x = 2; // cannot be updated after this
+
+  let x : mut int = 10; // Mutable int
+  x = 2;
+  x = 4;
+
+- Compile-time execution of **compiled** programs
+
+var book_names : [10][]u8 = #run get_book_names();
+

@@ -1,0 +1,12 @@
+
+proc main() => int {
+    var a : int = 1;
+    var b : int = 16;
+
+    var c := a << 3; // 8
+    var d := b >> 3; // 2
+    var e := c >> d; // 8 >> 2 = 2
+    var f := c << d; // 8 << 2 = 32
+
+    return f - c - d - e; // 32 - 8 - 2 - 2 = 20
+}

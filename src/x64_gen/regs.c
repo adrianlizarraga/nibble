@@ -71,7 +71,7 @@ const char* x64_flt_reg_names[X64_REG_COUNT] = {
     [X64_XMM4] = "xmm4",   [X64_XMM5] = "xmm5",   [X64_XMM6] = "xmm6",   [X64_XMM7] = "xmm7",
     [X64_XMM8] = "xmm8",   [X64_XMM9] = "xmm9",   [X64_XMM10] = "xmm10", [X64_XMM11] = "xmm11",
     [X64_XMM12] = "xmm12", [X64_XMM13] = "xmm13", [X64_XMM14] = "xmm14", [X64_XMM15] = "xmm15"};
-const char* x64_mem_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword"};
+const char* x64_mem_size_label[X64_MAX_MEM_LABEL_SIZE + 1] = {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword", [16] = "oword"};
 const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "db", [2] = "dw", [4] = "dd", [8] = "dq"};
 
 const char* x64_condition_codes[] = {
@@ -122,7 +122,7 @@ bool X64_is_arg_reg(X64_Reg reg)
     return u32_is_bit_set(x64_target.arg_reg_mask, reg);
 }
 
-X64_RegClass X64_obj_reg_class(Type* type)
+X64_RegClass X64_obj_reg_class(const Type* type)
 {
     return type_agg_has_non_float(type) ? X64_REG_CLASS_INT : X64_REG_CLASS_FLOAT;
 }

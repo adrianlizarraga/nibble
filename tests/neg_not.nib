@@ -1,0 +1,7 @@
+proc main() => int {
+    var a : int = 10;
+
+    var c := ~(-a); 
+
+    return c; // 9
+}

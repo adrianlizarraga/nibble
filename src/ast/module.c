@@ -763,7 +763,7 @@ static const char* type_float_names[] = {
 
 static size_t next_type_id = 1;
 
-const char* type_name(Type* type)
+const char* type_name(const Type* type)
 {
     if (!type)
         return "null";
@@ -778,19 +778,19 @@ const char* type_name(Type* type)
     }
 }
 
-bool type_is_integer_like(Type* type)
+bool type_is_integer_like(const Type* type)
 {
     TypeKind kind = type->kind;
 
     return (kind == TYPE_INTEGER) || (kind == TYPE_ENUM);
 }
 
-bool type_is_bool(Type* type)
+bool type_is_bool(const Type* type)
 {
     return (type->kind == TYPE_INTEGER) && (type->as_integer.kind == INTEGER_BOOL);
 }
 
-bool type_is_signed(Type* type)
+bool type_is_signed(const Type* type)
 {
     IntegerKind ikind;
 
@@ -808,45 +808,45 @@ bool type_is_signed(Type* type)
     return int_kind_signed[ikind];
 }
 
-bool type_is_arithmetic(Type* type)
+bool type_is_arithmetic(const Type* type)
 {
     TypeKind kind = type->kind;
 
     return (kind == TYPE_INTEGER) || (kind == TYPE_FLOAT) || (kind == TYPE_ENUM);
 }
 
-bool type_is_scalar(Type* type)
+bool type_is_scalar(const Type* type)
 {
     TypeKind kind = type->kind;
 
     return type_is_arithmetic(type) || (kind == TYPE_PTR) || (kind == TYPE_PROC);
 }
 
-bool type_is_int_scalar(Type* type)
+bool type_is_int_scalar(const Type* type)
 {
     return type_is_integer_like(type) || type_is_ptr_like(type);
 }
 
-bool type_is_ptr_like(Type* type)
+bool type_is_ptr_like(const Type* type)
 {
     TypeKind kind = type->kind;
 
     return (kind == TYPE_PTR) || (kind == TYPE_PROC);
 }
 
-bool type_is_aggregate(Type* type)
+bool type_is_aggregate(const Type* type)
 {
     TypeKind kind = type->kind;
 
     return (kind == TYPE_STRUCT) || (kind == TYPE_UNION);
 }
 
-bool type_is_obj_like(Type* type)
+bool type_is_obj_like(const Type* type)
 {
     return (type->kind == TYPE_ARRAY) || type_is_aggregate(type);
 }
 
-bool type_is_slice(Type* type)
+bool type_is_slice(const Type* type)
 {
     return (type->kind == TYPE_STRUCT) && (type->as_struct.wrapper_kind == TYPE_STRUCT_IS_SLICE_WRAPPER);
 }
@@ -984,7 +984,7 @@ bool types_are_compatible(Type* t, Type* u)
     return false;
 }
 
-bool type_agg_has_non_float(Type* type)
+bool type_agg_has_non_float(const Type* type)
 {
     if (type->kind == TYPE_FLOAT) {
         return false;
@@ -994,7 +994,7 @@ bool type_agg_has_non_float(Type* type)
         return type_agg_has_non_float(type->as_array.base);
     }
 
-    TypeAggregateBody* agg_body = NULL;
+    const TypeAggregateBody* agg_body = NULL;
 
     if (type->kind == TYPE_STRUCT) {
         agg_body = &type->as_struct.body;
@@ -1005,7 +1005,7 @@ bool type_agg_has_non_float(Type* type)
 
     if (agg_body) {
         for (size_t i = 0; i < agg_body->num_fields; i++) {
-            TypeAggregateField* field = agg_body->fields + i;
+            const TypeAggregateField* field = agg_body->fields + i;
 
             if (type_agg_has_non_float(field->type)) {
                 return true;
@@ -1558,7 +1558,7 @@ Symbol* new_symbol_mod(Allocator* alloc, StmtImport* stmt, Module* import_mod, M
     return sym;
 }
 
-char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
+char* symbol_mangled_name(Allocator* allocator, const Symbol* sym)
 {
     char* dstr = array_create(allocator, char, 32);
 
@@ -1569,7 +1569,6 @@ char* symbol_mangled_name(Allocator* allocator, Symbol* sym)
         ftprint_char_array(&dstr, true, "%s", sym->name->str);
     }
     else {
-        assert(!sym->is_local);
         Module* mod = sym->home;
         ftprint_char_array(&dstr, true, "module%u_%s", mod->id, sym->name->str);
     }
