@@ -1122,6 +1122,72 @@ static void X64__emit_instr_cvtsd2si_rm(Array(X64__Instr) * instrs, X64_Reg dst,
     array_push(*instrs, cvtsd2si_rm_instr);
 }
 
+// int to f32
+static void X64__emit_instr_cvtsi2ss_rr(Array(X64__Instr) * instrs, X64_Reg dst, X64_Reg src, bool src_8bytes)
+{
+    u32 flags = X64_Instr_Kind_CVTSI2SS_RR;
+    if (src_8bytes) {
+        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+    }
+
+    X64__Instr cvtsi2ss_rr_instr = {
+        .flags = flags,
+        .cvtsi2ss_rr.dst = dst,
+        .cvtsi2ss_rr.src = src,
+    };
+
+    array_push(*instrs, cvtsi2ss_rr_instr);
+}
+
+static void X64__emit_instr_cvtsi2ss_rm(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src, bool src_8bytes)
+{
+    u32 flags = X64_Instr_Kind_CVTSI2SS_RM;
+    if (src_8bytes) {
+        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+    }
+
+    X64__Instr cvtsi2ss_rm_instr = {
+        .flags = flags,
+        .cvtsi2ss_rm.dst = dst,
+        .cvtsi2ss_rm.src = src,
+    };
+
+    array_push(*instrs, cvtsi2ss_rm_instr);
+}
+
+// int to f64
+static void X64__emit_instr_cvtsi2sd_rr(Array(X64__Instr) * instrs, X64_Reg dst, X64_Reg src, bool src_8bytes)
+{
+    u32 flags = X64_Instr_Kind_CVTSI2SD_RR;
+    if (src_8bytes) {
+        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+    }
+
+    X64__Instr cvtsi2sd_rr_instr = {
+        .flags = flags,
+        .cvtsi2sd_rr.dst = dst,
+        .cvtsi2sd_rr.src = src,
+    };
+
+    array_push(*instrs, cvtsi2sd_rr_instr);
+}
+
+static void X64__emit_instr_cvtsi2sd_rm(Array(X64__Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src, bool src_8bytes)
+{
+    u32 flags = X64_Instr_Kind_CVTSI2SD_RM;
+    if (src_8bytes) {
+        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+    }
+
+    X64__Instr cvtsi2sd_rm_instr = {
+        .flags = flags,
+        .cvtsi2sd_rm.dst = dst,
+        .cvtsi2sd_rm.src = src,
+    };
+
+    array_push(*instrs, cvtsi2sd_rm_instr);
+}
+
 static void X64__emit_instr_movdqu_mr(Array(X64__Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
 {
     assert(x64_reg_classes[src] == X64_REG_CLASS_FLOAT);
@@ -3272,6 +3338,106 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, act_instr->dst_size, true, used_regs);
 
         X64__emit_instr_cvtsd2si_rm(&proc_state->instrs, dst_reg, act_instr->dst_size == 8, src_addr);
+        X64__end_reg_group(&tmp_group);
+        break;
+    }
+    // CVTSI2SS
+    case X64_InstrCvtSI2SS_R_R_KIND: { // integer -> f32
+        const X64_InstrCvtSI2SS_R_R* act_instr = (const X64_InstrCvtSI2SS_R_R*)instr;
+
+        assert(act_instr->src_size >= 4);
+        const bool src_is_8bytes = act_instr->src_size == 8;
+        const u8 dst_size = float_kind_sizes[FLOAT_F32];
+
+        X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+        X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+
+        if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
+            X64__emit_instr_cvtsi2ss_rr(&proc_state->instrs, dst_loc.reg, dst_loc.reg, src_is_8bytes);
+        }
+        else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
+            X64__emit_instr_cvtsi2ss_rm(&proc_state->instrs, dst_loc.reg, X64__get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
+        }
+        else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
+            X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+            X64_Reg dst_reg =
+                X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, (1 << src_loc.reg));
+            X64__emit_instr_cvtsi2ss_rr(&proc_state->instrs, dst_reg, src_loc.reg, src_is_8bytes);
+            X64__end_reg_group(&tmp_group);
+        }
+        else {
+            assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
+            X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+            X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, 0);
+            X64__emit_instr_cvtsi2ss_rm(&proc_state->instrs, dst_reg, X64__get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
+            X64__end_reg_group(&tmp_group);
+        }
+        break;
+    }
+    case X64_InstrCvtSI2SS_R_M_KIND: { // integer (in memory) -> f32
+        const X64_InstrCvtSI2SS_R_M* act_instr = (const X64_InstrCvtSI2SS_R_M*)instr;
+
+        assert(act_instr->src_size >= 4);
+        const u8 dst_size = float_kind_sizes[FLOAT_F32];
+        const bool src_is_8bytes = act_instr->src_size == 8;
+
+        X64_SIBD_Addr src_addr = {0};
+        const u32 used_regs = X64__get_sibd_addr(proc_state, &src_addr, &act_instr->src);
+
+        X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+        X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, used_regs);
+
+        X64__emit_instr_cvtsi2ss_rm(&proc_state->instrs, dst_reg, src_addr, src_is_8bytes);
+        X64__end_reg_group(&tmp_group);
+        break;
+    }
+    // CVTSI2SD
+    case X64_InstrCvtSI2SD_R_R_KIND: { // integer -> f64
+        const X64_InstrCvtSI2SD_R_R* act_instr = (const X64_InstrCvtSI2SD_R_R*)instr;
+
+        assert(act_instr->src_size >= 4);
+        const bool src_is_8bytes = act_instr->src_size == 8;
+        const u8 dst_size = float_kind_sizes[FLOAT_F64];
+
+        X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
+        X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
+
+        if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
+            X64__emit_instr_cvtsi2sd_rr(&proc_state->instrs, dst_loc.reg, dst_loc.reg, src_is_8bytes);
+        }
+        else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
+            X64__emit_instr_cvtsi2sd_rm(&proc_state->instrs, dst_loc.reg, X64__get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
+        }
+        else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
+            X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+            X64_Reg dst_reg =
+                X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, (1 << src_loc.reg));
+            X64__emit_instr_cvtsi2sd_rr(&proc_state->instrs, dst_reg, src_loc.reg, src_is_8bytes);
+            X64__end_reg_group(&tmp_group);
+        }
+        else {
+            assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
+            X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+            X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, 0);
+            X64__emit_instr_cvtsi2sd_rm(&proc_state->instrs, dst_reg, X64__get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
+            X64__end_reg_group(&tmp_group);
+        }
+        break;
+    }
+    case X64_InstrCvtSI2SD_R_M_KIND: { // integer (in memory) -> f64
+        const X64_InstrCvtSI2SD_R_M* act_instr = (const X64_InstrCvtSI2SD_R_M*)instr;
+
+        assert(act_instr->src_size >= 4);
+        const u8 dst_size = float_kind_sizes[FLOAT_F64];
+        const bool src_is_8bytes = act_instr->src_size == 8;
+
+        X64_SIBD_Addr src_addr = {0};
+        const u32 used_regs = X64__get_sibd_addr(proc_state, &src_addr, &act_instr->src);
+
+        X64_Reg_Group tmp_group = X64__begin_reg_group(proc_state);
+        X64_Reg dst_reg = X64__get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, used_regs);
+
+        X64__emit_instr_cvtsi2sd_rm(&proc_state->instrs, dst_reg, src_addr, src_is_8bytes);
         X64__end_reg_group(&tmp_group);
         break;
     }
