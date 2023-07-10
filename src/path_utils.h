@@ -75,7 +75,7 @@ bool path_real(Path* dst, const Path* path);
 bool path_isabs(const Path* path);
 bool path_str_isabs(const char* path);
 
-const char* path_basename_ptr(const Path* path);
+const char* path_basename_ptr(const char* path, u32 len);
 const char* path_ext_ptr(const char* path, u32 len);
 Path path_dirname(Allocator* allctr, const Path* path);
 

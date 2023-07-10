@@ -202,18 +202,15 @@ Path* path_join(Path* dst, const char* b, u32 b_len)
     return dst;
 }
 
-const char* path_basename_ptr(const Path* path)
+const char* path_basename_ptr(const char* path, u32 len)
 {
-    ASSERT_PATH_INIT(path);
-    u32 len = path_len(path);
-
-    for (const char* p = path->str + len; p != path->str; p -= 1) {
+    for (const char* p = path + len; p != path; p -= 1) {
         if (p[-1] == OS_PATH_SEP) {
             return p;
         }
     }
 
-    return path->str;
+    return path;
 }
 
 const char* path_ext_ptr(const char* path, u32 len)
@@ -231,7 +228,7 @@ Path path_dirname(Allocator* allctr, const Path* path)
 {
     ASSERT_PATH_INIT(path);
 
-    const char* basename_ptr = path_basename_ptr(path);
+    const char* basename_ptr = path_basename_ptr(PATH_AS_ARGS(path));
 
     if (basename_ptr == path->str) {
         return (Path){.str = array_create(allctr, char, 32)}; // Return empty path.

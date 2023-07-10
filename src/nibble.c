@@ -397,7 +397,7 @@ static NibblePathErr get_import_abspath(Path* result, const StrLit* import_path_
         return NIB_PATH_OK;
     case PATH_REL_CURR: { // Import path is relative to importer.
         const char* dir_begp = importer_ospath->str;
-        const char* dir_endp = path_basename_ptr(importer_ospath) - 1;
+        const char* dir_endp = path_basename_ptr(PATH_AS_ARGS(importer_ospath)) - 1;
 
         path_init(result, alloc, dir_begp, (dir_endp - dir_begp));
         path_norm(path_join(result, import_path_str->str, import_path_str->len));
