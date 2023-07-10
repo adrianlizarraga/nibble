@@ -18,13 +18,15 @@ TEST_CASE_EXT = ".txt"
 
 @dataclass
 class TestCase:
+    include_paths: List[str]
+    lib_paths: List[str]
     argv: List[str]
     stdin: bytes
     stdout: bytes
     stderr: bytes
     returncode: int
 
-DEFAULT_TEST_CASE=TestCase(argv=[], stdin=bytes(), stdout=bytes(), stderr=bytes(), returncode=0)
+DEFAULT_TEST_CASE=TestCase(include_paths=[], lib_paths=[], argv=[], stdin=bytes(), stdout=bytes(), stderr=bytes(), returncode=0)
 
 def print_usage(prog_name: str):
     print(f"Usage: {prog_name} [CMD] [Additional Nibble compiler args]")
@@ -44,14 +46,6 @@ def read_int(fhandle: BinaryIO, name: bytes) -> bytes:
     
     return int(line[len(prefix) : -1])
 
-def write_int(fhandle: BinaryIO, name: bytes, value: int):
-    fhandle.write(b":%s %d\n" % (name, value))
-
-def write_bytes(fhandle: BinaryIO, name: bytes, blob: bytes):
-    fhandle.write(b":%s %d\n" % (name, len(blob)))
-    fhandle.write(blob)
-    fhandle.write(b"\n")
-
 def read_bytes(fhandle: BinaryIO, name: bytes) -> bytes:
     line = fhandle.readline()
     prefix = b":" + name + b" "
@@ -67,9 +61,38 @@ def read_bytes(fhandle: BinaryIO, name: bytes) -> bytes:
 
     return blob
 
+def read_paths(fhandle: BinaryIO, name: bytes) -> List[str]:
+    line = fhandle.readline()
+    prefix = b":" + name
+
+    if not line.startswith(prefix):
+        raise Exception(f"Failed to parse field '{name}': invalid prefix '{prefix}'.")
+
+    paths_str = line[len(prefix) + 1 : -1].decode("utf-8")
+    return paths_str.split(" ") if paths_str else []
+
+def write_int(fhandle: BinaryIO, name: bytes, value: int):
+    fhandle.write(b":%s %d\n" % (name, value))
+
+def write_bytes(fhandle: BinaryIO, name: bytes, blob: bytes):
+    fhandle.write(b":%s %d\n" % (name, len(blob)))
+    fhandle.write(blob)
+    fhandle.write(b"\n")
+
+def write_paths(fhandle: BinaryIO, name: bytes, paths: List[str]):
+    paths_bytes = " ".join(paths).encode("utf-8")
+    fhandle.write(b":%s" % (name,))
+
+    if path_bytes:
+        fhandle.write(b" %s\n" % (path_bytes,))
+    else:
+        fhandle.write(b"\n")
+
 def load_test_case(test_case_path: str) -> tuple[Optional[TestCase], Optional[str]]:
     try:
         with open(test_case_path, "rb") as fhandle:
+            include_paths = read_paths(fhandle, b"include_paths")
+            lib_paths = read_paths(fhandle, b"lib_paths")
             argv = []
             argc = read_int(fhandle, b"argc")
 
@@ -81,12 +104,15 @@ def load_test_case(test_case_path: str) -> tuple[Optional[TestCase], Optional[st
             stderr = read_bytes(fhandle, b"stderr")
             returncode = read_int(fhandle, b"returncode")
 
-            return (TestCase(argv, stdin, stdout, stderr, returncode), None)
+            return (TestCase(include_paths, lib_paths, argv, stdin, stdout, stderr, returncode), None)
     except Exception as e:
         return (None, str(e))
 
-def save_test_case(test_case_path: str, argv: List[str], stdin: bytes, stdout: bytes, stderr: bytes, returncode: int):
+def save_test_case(test_case_path: str, include_paths: List[str], lib_paths: List[str], argv: List[str],
+                   stdin: bytes, stdout: bytes, stderr: bytes, returncode: int):
     with open(test_case_path, "wb") as fhandle:
+        write_paths(fhandle, b"include_paths", include_paths)
+        write_paths(fhandle, b"lib_paths", lib_paths)
         write_int(fhandle, b"argc", len(argv))
 
         for i, arg in enumerate(argv):
@@ -120,20 +146,41 @@ def check_test_case(cmd_ret: subprocess.CompletedProcess, test_case: TestCase) -
 
     return err
 
+def get_test_case_compiler_args(test_case: TestCase, test_file_dir: str, nibble_additional_args: List[str]) -> List[str]:
+    compiler_args = []
+
+    if nibble_additional_args:
+        compiler_args.extend(nibble_additional_args)
+
+    if test_case:
+        # Add program-specific include paths.
+        for fp in test_case.include_paths:
+            full_path = path.realpath(path.join(test_file_dir, fp))
+            compiler_args.extend(["-I", full_path])
+
+        # Add program-specific library paths.
+        for fp in test_case.lib_paths:
+            full_path = path.realpath(path.join(test_file_dir, fp))
+            compiler_args.extend(["-L", full_path])
+
+    return compiler_args
+
+
 def run_file_test(file_path: str, stats: RunStats, nibble_prog: str, nibble_additional_args: List[str]):
     test_case_path = file_path[:-len(NIBBLE_EXT)] + TEST_CASE_EXT
     test_case, err = load_test_case(test_case_path)
+    file_dir = path.dirname(path.realpath(file_path))
 
     if test_case is not None:
         # Compile nibble program first.
-        cmd_ret = run_cmd([nibble_prog, *nibble_additional_args, file_path], capture_output=True)
+        compiler_args = get_test_case_compiler_args(test_case, file_dir, nibble_additional_args)
+        cmd_ret = run_cmd([nibble_prog, *compiler_args, file_path], capture_output=True)
 
         # Run nibble program if it compiled.
         if cmd_ret.returncode == 0:
             saved_cwd = os.getcwd() # Save current working directory.
             prog_exec = path.join(saved_cwd, "out") # Path of the program's executable.
 
-            file_dir = path.dirname(path.realpath(file_path))
             os.chdir(file_dir) # Change to the file's directory in case it loads any files with relative paths.
 
             cmd_ret = run_cmd([prog_exec, *test_case.argv], input=test_case.stdin, capture_output=True) # Run test program.
@@ -163,26 +210,29 @@ def run_dir_tests(folder: str, stats: RunStats, nibble_prog: str, nibble_additio
 def update_file_output(file_path: str, nibble_prog: str, nibble_additional_args: List[str]):
     test_case_path = file_path[:-len(NIBBLE_EXT)] + TEST_CASE_EXT
     test_case, err = load_test_case(test_case_path)
+    file_dir = path.dirname(path.realpath(file_path))
 
     if err is not None:
         test_case = DEFAULT_TEST_CASE
 
-    compile_ret = run_cmd([nibble_prog, *nibble_additional_args, file_path], capture_output=True)
+    compiler_args = get_test_case_compiler_args(test_case, file_dir, nibble_additional_args)
+    compile_ret = run_cmd([nibble_prog, *compiler_args, file_path], capture_output=True)
 
     print(f"[INFO] Saving output to {test_case_path}")
 
     if compile_ret.returncode != 0: # Save compiler error
-        save_test_case(test_case_path, test_case.argv, test_case.stdin, compile_ret.stdout, compile_ret.stderr, compile_ret.returncode)
+        save_test_case(test_case_path, test_case.include_paths, test_case.lib_paths, test_case.argv,
+                       test_case.stdin, compile_ret.stdout, compile_ret.stderr, compile_ret.returncode)
     else:
         saved_cwd = os.getcwd() # Save current working directory.
         prog_exec = path.join(saved_cwd, "out") # Path of the program's executable.
 
-        file_dir = path.dirname(path.realpath(file_path))
         os.chdir(file_dir) # Change to the file's directory in case it loads any files with relative paths.
 
         run_ret = run_cmd([prog_exec, *test_case.argv], input=test_case.stdin, capture_output=True)
         os.chdir(saved_cwd) # Restore cwd.
-        save_test_case(test_case_path, test_case.argv, test_case.stdin, run_ret.stdout, run_ret.stderr, run_ret.returncode)
+        save_test_case(test_case_path, test_case.include_paths, test_case.lib_paths, test_case.argv,
+                       test_case.stdin, run_ret.stdout, run_ret.stderr, run_ret.returncode)
 
 def update_dir_outputs(folder: str, nibble_prog: str, nibble_additional_args: List[str]):
     for e in os.scandir(folder):

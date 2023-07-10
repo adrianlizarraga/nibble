@@ -1,3 +1,5 @@
+:include_paths ../
+:lib_paths
 :argc 1
 :arg0 7
 cat.nib
