@@ -214,7 +214,7 @@ def main():
                 sys.exit(1)
 
             nibble_prog, argv = consume_arg(argv)
-        if arg == "--update_tests":
+        elif arg == "--update_tests":
             update_tests = True
         elif arg == "--test_target":
             if not argv:
