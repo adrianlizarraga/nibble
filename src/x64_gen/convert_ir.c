@@ -235,9 +235,7 @@ static void X64_hint_phys_reg(X64_LIRBuilder* builder, u32 lreg, X64_Reg phys_re
 
 static u32 X64_lea_sib(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 index_reg, s8 scale, u32 base_reg)
 {
-    bool has_index = scale != 0 && (index_reg != (u32)-1);
-
-    assert(has_index);
+    assert(scale != 0 && (index_reg != (u32)-1)); // Must have an index.
 
     // mul index_reg, <scale>
     Scalar scale_imm = {.as_int._u64 = scale};
@@ -997,9 +995,8 @@ static bool X64_convert_flt2flt_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 
     IR_InstrFlt2Flt* ir_flt2flt = (IR_InstrFlt2Flt*)ir_instr;
 
-    FloatKind src_kind = ir_flt2flt->src_kind;
-    FloatKind dst_kind = ir_flt2flt->dst_kind;
-    assert(src_kind != dst_kind);
+    const FloatKind src_kind = ir_flt2flt->src_kind;
+    assert(src_kind != ir_flt2flt->dst_kind); // src_kind != dst_kind
 
     OpRA ir_a = ir_flt2flt->src;
 
@@ -1390,10 +1387,11 @@ static bool X64_convert_flt_cmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblo
 
 static bool X64_convert_jmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
-    (void)ir_instr;
     assert(ir_instr->kind == IR_InstrJmp_KIND);
+    (void)ir_instr;
 
     assert(!next_ir_instr);
+    (void)next_ir_instr;
     X64_emit_instr_jmp(builder, xbblock, NULL);
 
     return false;
@@ -1402,6 +1400,7 @@ static bool X64_convert_jmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, 
 static bool X64_convert_cond_jmp_instr(X64_LIRBuilder* builder, X64_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     assert(!next_ir_instr);
+    (void)next_ir_instr;
     assert(ir_instr->kind == IR_InstrCondJmp_KIND);
 
     // EX: cond_jmp a, <target>

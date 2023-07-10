@@ -1,0 +1,45 @@
+name: test_nibble_programs
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.8
+
+    - name: Install NASM
+      run: sudo apt install nasm
+
+    - name: Build test C libs
+      run: cd ${{github.workspace}}/tests/libs && ./build.sh
+
+    - name: Configure CMake
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}}
+
+    - name: Build
+      # Build your program with the given configuration
+      run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+    - name: Print build dir
+      run: ls -al ${{github.workspace}}/build
+
+    - name: Test
+      working-directory: ${{github.workspace}}/build
+      run: python3 ${{github.workspace}}/run_tests.py --test_target ${{github.workspace}}/tests
+

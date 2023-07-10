@@ -5,11 +5,11 @@
 
 :stdout 0
 
-:stderr 145
+:stderr 108
 
 1 errors:
 
-/home/adrianlm/projects/nibble/tests/included_utils.nib:1:1: [Error]: Program entry file must define a main() procedure.
+included_utils.nib:1:1: [Error]: Program entry file must define a main() procedure.
 
      1 | 
 
