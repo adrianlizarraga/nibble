@@ -88,7 +88,7 @@ def write_paths(fhandle: BinaryIO, name: bytes, paths: List[str]):
     else:
         fhandle.write(b"\n")
 
-def load_test_case(test_case_path: str) -> tuple[Optional[TestCase], Optional[str]]:
+def load_test_case(test_case_path: str) -> Tuple[Optional[TestCase], Optional[str]]:
     try:
         with open(test_case_path, "rb") as fhandle:
             include_paths = read_paths(fhandle, b"include_paths")
@@ -125,8 +125,8 @@ def save_test_case(test_case_path: str, include_paths: List[str], lib_paths: Lis
 
 @dataclass
 class RunStats:
-    compile_failed: List[tuple[str, str]] = field(default_factory=list)
-    test_failed: List[tuple[str, str]] = field(default_factory=list)
+    compile_failed: List[Tuple[str, str]] = field(default_factory=list)
+    test_failed: List[Tuple[str, str]] = field(default_factory=list)
     only_compiled: List[str] = field(default_factory=list)
     num_tests: int = 0
 
@@ -239,7 +239,7 @@ def update_dir_outputs(folder: str, nibble_prog: str, nibble_additional_args: Li
         if e.is_file() and e.path.endswith(NIBBLE_EXT):
             update_file_output(e.path, nibble_prog, nibble_additional_args)
 
-def consume_arg(argv: List[str]) -> tuple[Optional[str], List[str]]:
+def consume_arg(argv: List[str]) -> Tuple[Optional[str], List[str]]:
     if not len(argv):
         return (None, argv)
 
