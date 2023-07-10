@@ -83,8 +83,8 @@ def write_paths(fhandle: BinaryIO, name: bytes, paths: List[str]):
     paths_bytes = " ".join(paths).encode("utf-8")
     fhandle.write(b":%s" % (name,))
 
-    if path_bytes:
-        fhandle.write(b" %s\n" % (path_bytes,))
+    if paths_bytes:
+        fhandle.write(b" %s\n" % (paths_bytes,))
     else:
         fhandle.write(b"\n")
 
