@@ -1,6 +1,6 @@
 :argc 1
-:arg0 13
-tests/cat.nib
+:arg0 7
+cat.nib
 :stdin 0
 
 :stdout 960

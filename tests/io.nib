@@ -17,7 +17,7 @@ proc cstr_len(s : ^char) => usize
 
 proc main(argc : int, argv : ^^char) => int
 {
-    var i := 0;
+    var i := 1;
     var ln : char = '\n';
 
     while (i < argc) {

@@ -26,10 +26,13 @@ class TestCase:
 
 DEFAULT_TEST_CASE=TestCase(argv=[], stdin=bytes(), stdout=bytes(), stderr=bytes(), returncode=0)
 
-def print_usage(exe_name: str):
-    print(f"Usage: {exe_name} [CMD]")
+def print_usage(prog_name: str):
+    print(f"Usage: {prog_name} [CMD] [Additional Nibble compiler args]")
     print("CMD:")
-    print("    run [test_target]         Run tests in a directory (default ./tests/) or for a single nibble file.")
+    print("    --help                    Print this help message.")
+    print("    --nibble_prog <path>      Path to the Nibble compiler program.")
+    print("    --update_tests            Update expected test results.")
+    print("    --test_target <path>      Directory containing tests to run or update. Can also be a single nibble file.")
     print("")
 
 def read_int(fhandle: BinaryIO, name: bytes) -> bytes:
@@ -117,19 +120,25 @@ def check_test_case(cmd_ret: subprocess.CompletedProcess, test_case: TestCase) -
 
     return err
 
-COMMON_NIBBLE_ARGS = ["-s", "-L", "./tests/libs"]
-
-def run_file_test(file_path: str, stats: RunStats = RunStats()):
+def run_file_test(file_path: str, stats: RunStats, nibble_prog: str, nibble_additional_args: List[str]):
     test_case_path = file_path[:-len(NIBBLE_EXT)] + TEST_CASE_EXT
     test_case, err = load_test_case(test_case_path)
 
     if test_case is not None:
         # Compile nibble program first.
-        cmd_ret = run_cmd(["./nibble", *COMMON_NIBBLE_ARGS, file_path], capture_output=True)
+        cmd_ret = run_cmd([nibble_prog, *nibble_additional_args, file_path], capture_output=True)
 
         # Run nibble program if it compiled.
         if cmd_ret.returncode == 0:
-            cmd_ret = run_cmd(["./out", *test_case.argv], input=test_case.stdin, capture_output=True)
+            saved_cwd = os.getcwd() # Save current working directory.
+            prog_exec = path.join(saved_cwd, "out") # Path of the program's executable.
+
+            file_dir = path.dirname(path.realpath(file_path))
+            os.chdir(file_dir) # Change to the file's directory in case it loads any files with relative paths.
+
+            cmd_ret = run_cmd([prog_exec, *test_case.argv], input=test_case.stdin, capture_output=True) # Run test program.
+
+            os.chdir(saved_cwd) # Restore cwd.
 
         err = check_test_case(cmd_ret, test_case)
 
@@ -137,7 +146,7 @@ def run_file_test(file_path: str, stats: RunStats = RunStats()):
             stats.test_failed.append((file_path, err))
     else:
         print(f"[WARNING] Failed to load test case file for {file_path}: {err}", file=sys.stderr)
-        compile_ret = run_cmd(["./nibble", *COMMON_NIBBLE_ARGS, file_path], capture_output=True)
+        compile_ret = run_cmd([nibble_prog, *nibble_additional_args, file_path], capture_output=True)
 
         if compile_ret.returncode != 0:
             stats.compile_failed.append((file_path, compile_ret.stderr.decode("utf-8")))
@@ -146,55 +155,103 @@ def run_file_test(file_path: str, stats: RunStats = RunStats()):
 
     stats.num_tests += 1
 
-def run_dir_tests(folder: str, stats: RunStats):
+def run_dir_tests(folder: str, stats: RunStats, nibble_prog: str, nibble_additional_args: List[str]):
     for e in os.scandir(folder):
         if e.is_file() and e.path.endswith(NIBBLE_EXT):
-            run_file_test(e.path, stats)
+            run_file_test(e.path, stats, nibble_prog, nibble_additional_args)
 
-def update_file_output(file_path: str):
+def update_file_output(file_path: str, nibble_prog: str, nibble_additional_args: List[str]):
     test_case_path = file_path[:-len(NIBBLE_EXT)] + TEST_CASE_EXT
     test_case, err = load_test_case(test_case_path)
 
     if err is not None:
         test_case = DEFAULT_TEST_CASE
 
-    compile_ret = run_cmd(["./nibble", *COMMON_NIBBLE_ARGS, file_path], capture_output=True)
+    compile_ret = run_cmd([nibble_prog, *nibble_additional_args, file_path], capture_output=True)
 
     print(f"[INFO] Saving output to {test_case_path}")
 
     if compile_ret.returncode != 0: # Save compiler error
         save_test_case(test_case_path, test_case.argv, test_case.stdin, compile_ret.stdout, compile_ret.stderr, compile_ret.returncode)
     else:
-        run_ret = run_cmd(["./out", *test_case.argv], input=test_case.stdin, capture_output=True)
+        saved_cwd = os.getcwd() # Save current working directory.
+        prog_exec = path.join(saved_cwd, "out") # Path of the program's executable.
+
+        file_dir = path.dirname(path.realpath(file_path))
+        os.chdir(file_dir) # Change to the file's directory in case it loads any files with relative paths.
+
+        run_ret = run_cmd([prog_exec, *test_case.argv], input=test_case.stdin, capture_output=True)
+        os.chdir(saved_cwd) # Restore cwd.
         save_test_case(test_case_path, test_case.argv, test_case.stdin, run_ret.stdout, run_ret.stderr, run_ret.returncode)
 
-def update_dir_outputs(folder: str):
+def update_dir_outputs(folder: str, nibble_prog: str, nibble_additional_args: List[str]):
     for e in os.scandir(folder):
         if e.is_file() and e.path.endswith(NIBBLE_EXT):
-            update_file_output(e.path)
+            update_file_output(e.path, nibble_prog, nibble_additional_args)
+
+def consume_arg(argv: List[str]) -> tuple[Optional[str], List[str]]:
+    if not len(argv):
+        return (None, argv)
+
+    arg, *new_argv = argv
+    return (arg, new_argv)
 
 def main():
-    exe_name, *argv = sys.argv
+    prog_name, argv = consume_arg(sys.argv)
+    nibble_prog = "./nibble"
+    update_tests = False
+    test_target = "./tests/"
+    nibble_additional_args = ["-s"]
 
-    cmd = "run"
+    # Parse command-line arguments
+    while argv:
+        arg, argv = consume_arg(argv)
 
-    if len(argv) > 0:
-        cmd, *argv = argv
+        if arg == "--nibble_prog":
+            if not argv:
+                print("[ERROR] Must provide location of Nibble compiler executable file.", file=sys.stderr)
+                print_usage(prog_name)
+                sys.exit(1)
 
-    if cmd == "run":
-        test_target = "./tests/"
+            nibble_prog, argv = consume_arg(argv)
+        if arg == "--update_tests":
+            update_tests = True
+        elif arg == "--test_target":
+            if not argv:
+                print("[ERROR] Must provide test directory or file", file=sys.stderr)
+                print_usage(prog_name)
+                sys.exit(1)
 
-        if len(argv) > 0:
-            test_target, *argv = argv
+            test_target, argv = consume_arg(argv)
+        elif arg == "--help":
+            print_usage(prog_name)
+            sys.exit(0)
+        else:
+            nibble_additional_args.append(arg)
 
+    # Validate path for Nibble executable.
+    if not path.exists(nibble_prog):
+        print(f"[ERROR] Invalid Nibble executable file: {nibble_prog}", file=sys.stderr)
+        os.exit(1)
+    else:
+        nibble_prog = path.realpath(nibble_prog)
+
+    # Validate path for test_target
+    if not path.exists(test_target):
+        print(f"[ERROR] Invalid test_target filepath: {test_target}", file=sys.stderr)
+        os.exit(1)
+    else:
+        test_target = path.realpath(test_target)
+
+    if not update_tests: # Run test(s)
         stats = RunStats()
 
         if path.isdir(test_target):
-            run_dir_tests(test_target, stats)
+            run_dir_tests(test_target, stats, nibble_prog, nibble_additional_args)
         elif path.isfile(test_target):
-            run_file_test(test_target, stats)
+            run_file_test(test_target, stats, nibble_prog, nibble_additional_args)
         else:
-            print_usage(exe_name)
+            print_usage(prog_name)
             print(f"[ERROR] Invalid test target '{test_target}'", file=sys.stderr)
             exit(1)
 
@@ -220,28 +277,18 @@ def main():
                     print(f"[{i+1}/{num_tests_failed}]: {f[0]}:", file=sys.stderr)
                     print(f"{f[1]}\n", file=sys.stderr)
 
-            exit(1)
+            sys.exit(1)
         else:
             print(f"\n[INFO] All {stats.num_tests} tests passed")
-    elif cmd == "update_out":
-        test_target = "./tests/"
-
-        if len(argv) > 0:
-            test_target, *argv = argv
-
+    else: # Update tests
         if path.isdir(test_target):
-            update_dir_outputs(test_target)
+            update_dir_outputs(test_target, nibble_prog, nibble_additional_args)
         elif path.isfile(test_target):
-            update_file_output(test_target)
+            update_file_output(test_target, nibble_prog, nibble_additional_args)
         else:
-            print_usage(exe_name)
+            print_usage(prog_name)
             print(f"[ERROR] Invalid test target '{test_target}'", file=sys.stderr)
             exit(1)
-    else:
-        print_usage(exe_name)
-        print(f"[ERROR] Unknown command '{cmd}'", file=sys.stderr)
-        exit(1)
-
 
 
 if __name__ == "__main__":
