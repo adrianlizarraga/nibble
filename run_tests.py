@@ -282,14 +282,14 @@ def main():
     # Validate path for Nibble executable.
     if not path.exists(nibble_prog):
         print(f"[ERROR] Invalid Nibble executable file: {nibble_prog}", file=sys.stderr)
-        os.exit(1)
+        sys.exit(1)
     else:
         nibble_prog = path.realpath(nibble_prog)
 
     # Validate path for test_target
     if not path.exists(test_target):
         print(f"[ERROR] Invalid test_target filepath: {test_target}", file=sys.stderr)
-        os.exit(1)
+        sys.exit(1)
     else:
         test_target = path.realpath(test_target)
 
