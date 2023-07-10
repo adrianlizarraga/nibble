@@ -154,8 +154,8 @@ static void IR_emit_global_expr_binary(IR_VarBuilder* builder, ExprBinary* expr_
     IR_emit_global_expr(builder, expr_binary->left, &left);
     IR_emit_global_expr(builder, expr_binary->right, &right);
 
-    bool left_is_ptr = left.type->kind == TYPE_PTR;
-    bool right_is_ptr = right.type->kind == TYPE_PTR;
+    const bool left_is_ptr = left.type->kind == TYPE_PTR;
+    const bool right_is_ptr = right.type->kind == TYPE_PTR;
 
     switch (expr_binary->op) {
     case TKN_PLUS: {
@@ -163,10 +163,12 @@ static void IR_emit_global_expr_binary(IR_VarBuilder* builder, ExprBinary* expr_
             assert(result_type == left.type);
             IR_emit_global_ptr_int_add(dst, &left, &right, true);
         }
-        else {
+        else if (right_is_ptr) {
             assert(result_type == right.type);
-            assert(right_is_ptr);
             IR_emit_global_ptr_int_add(dst, &right, &left, true);
+        }
+        else {
+            NIBBLE_FATAL_EXIT("Expected one of the operands in global expression to be a pointer.");
         }
         break;
     }
@@ -177,9 +179,10 @@ static void IR_emit_global_expr_binary(IR_VarBuilder* builder, ExprBinary* expr_
         break;
     }
     default:
-        assert(0);
+        NIBBLE_FATAL_EXIT("Unexpected binary global expression kind: %d", expr_binary->op);
         break;
     }
+    (void)result_type; // Not used in release.
 }
 
 static void IR_emit_global_expr_array_lit(IR_VarBuilder* builder, ExprCompoundLit* expr, ConstExpr* dst)
@@ -409,7 +412,7 @@ void IR_build_vars(Allocator* arena, Allocator* tmp_arena, GlobalData* vars, Glo
 {
     IR_VarBuilder builder = {.arena = arena,
                              .tmp_arena = tmp_arena,
-                             .str_lits = str_lits, 
+                             .str_lits = str_lits,
                              .float_lits = float_lits,
                              .type_cache = type_cache,
                              .float_lit_map = float_lit_map,

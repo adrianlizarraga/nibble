@@ -30,6 +30,9 @@ jobs:
       # Build your program with the given configuration
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
 
+    - name: Print build dir
+      run: ls -al ${{github.workspace}}/build
+
     - name: Test
       working-directory: ${{github.workspace}}/build
       run: python3 ${{github.workspace}}/run_tests.py --test_target ${{github.workspace}}/tests

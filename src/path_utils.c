@@ -61,7 +61,7 @@ typedef struct PComp {
 // Modified version of gist authored by GitHub user starwing: https://gist.github.com/starwing/2761647
 Path* path_norm(Path* path)
 {
-    u32 len = path_len(path);
+    const u32 len = path_len(path);
 
     assert(path->str[len] == '\0'); // Parsing depends on the input being null-terminated.
     array_reserve(path->str, 2); // Need enough space for '.'
@@ -153,6 +153,7 @@ Path* path_norm(Path* path)
     num_bytes = out - path->str;
 
     assert(num_bytes - 1 <= len + 1);
+    (void)len; // Unused in release
     array_set_len(path->str, num_bytes);
 
     return path;

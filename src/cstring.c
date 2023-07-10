@@ -222,6 +222,7 @@ static BitArrayLoc bit_arr_loc(BitArray* barr, size_t index)
 
     BitArrayLoc loc = {.i = index / elem_bits, .j = index % elem_bits};
     assert(loc.i < barr->len);
+    (void)barr; // Unused in release
 
     return loc;
 }

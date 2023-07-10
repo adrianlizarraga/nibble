@@ -2991,7 +2991,9 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         const X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
         const X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
 
-        assert(IS_LREG_IN_REG(src_loc.kind) && src_loc.reg == X64_RCX);
+        if (!(IS_LREG_IN_REG(src_loc.kind) && src_loc.reg == X64_RCX)) {
+            NIBBLE_FATAL_EXIT("Source operator for x64 sar instruction must be RCX");
+        }
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
             X64__emit_instr_sar_rr(&proc_state->instrs, dst_size, dst_loc.reg);
@@ -3021,7 +3023,9 @@ static void X64__gen_instr(X64_Proc_State* proc_state, const X64_Instr* instr, b
         const X64_LRegLoc dst_loc = X64__lreg_loc(proc_state, act_instr->dst);
         const X64_LRegLoc src_loc = X64__lreg_loc(proc_state, act_instr->src);
 
-        assert(IS_LREG_IN_REG(src_loc.kind) && src_loc.reg == X64_RCX);
+        if (!(IS_LREG_IN_REG(src_loc.kind) && src_loc.reg == X64_RCX)) {
+            NIBBLE_FATAL_EXIT("Source operator for x64 shl instruction must be RCX");
+        }
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
             X64__emit_instr_shl_rr(&proc_state->instrs, dst_size, dst_loc.reg);

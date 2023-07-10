@@ -228,6 +228,7 @@ static BBlock* IR_alloc_bblock(IR_ProcBuilder* builder)
 
 static void IR_try_push_bblock_elem(BBlock*** p_array, BBlock* bblock)
 {
+#ifdef DEBUG
     bool found = false;
     size_t len = array_len(*p_array);
 
@@ -239,6 +240,7 @@ static void IR_try_push_bblock_elem(BBlock*** p_array, BBlock* bblock)
     }
 
     assert(!found);
+#endif
 
     array_push(*p_array, bblock);
 }
