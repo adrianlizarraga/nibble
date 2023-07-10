@@ -251,14 +251,22 @@ static LineCol get_src_linecol(SourceFile* src_file, ProgPos pos)
 #define RED_COLOR_CODE "\x1B[31m"
 #define RESET_COLOR_CODE "\x1B[0m"
 
-static void print_error(BucketList* src_files, Error* error, bool use_colors)
+static void print_error(BucketList* src_files, Error* error, bool use_colors, bool test_mode_paths)
 {
     SourceFile* src_file = get_src_file(src_files, error->range.start);
     assert(src_file);
 
     LineCol linecol_s = get_src_linecol(src_file, error->range.start);
 
-    ftprint_err("%.*s:%u:%u: [Error]: %s\n\n", src_file->abs_path_len, src_file->abs_path, linecol_s.line, linecol_s.col, error->msg);
+    const char* src_file_path = src_file->abs_path;
+    size_t src_file_path_len = src_file->abs_path_len;
+
+    if (test_mode_paths) {
+        src_file_path = path_basename_ptr(src_file_path, (u32)src_file_path_len);
+        src_file_path_len = src_file->abs_path_len - (src_file_path - src_file->abs_path);
+    }
+
+    ftprint_err("%.*s:%u:%u: [Error]: %s\n\n", src_file_path_len, src_file_path, linecol_s.line, linecol_s.col, error->msg);
 
     unsigned line = linecol_s.line;
 
@@ -319,13 +327,14 @@ static void print_errors(NibbleCtx* nib_ctx)
     ErrorStream* errors = &nib_ctx->errors;
 
     if (errors->count > 0) {
-        bool use_colors = is_stderr_atty();
+        const bool use_colors = is_stderr_atty();
+        const bool test_mode_paths = nib_ctx->test_mode_paths;
 
         ftprint_err("\n%u errors:\n\n", errors->count);
         Error* err = errors->first;
 
         while (err) {
-            print_error(&nib_ctx->src_files, err, use_colors);
+            print_error(&nib_ctx->src_files, err, use_colors, test_mode_paths);
             err = err->next;
         }
     }
@@ -677,9 +686,9 @@ static bool init_keywords(HMap* ident_map)
     return true;
 }
 
-NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent, const Path* working_dir,
-                       const Path* prog_entry_dir, const StringView* module_paths, u32 num_module_paths, const StringView* lib_paths,
-                       u32 num_lib_paths)
+NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent, bool test_mode_paths,
+                       const Path* working_dir, const Path* prog_entry_dir, const StringView* module_paths, u32 num_module_paths,
+                       const StringView* lib_paths, u32 num_lib_paths)
 {
     static NibbleCtx* nib_ctx;
     static const char main_name[] = "main";
@@ -698,6 +707,7 @@ NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, boo
     nib_ctx = alloc_type(mem_arena, NibbleCtx, true);
 
     nib_ctx->silent = silent;
+    nib_ctx->test_mode_paths = test_mode_paths;
     nib_ctx->target_os = target_os;
     nib_ctx->target_arch = target_arch;
     nib_ctx->gen_mem = mem_arena;

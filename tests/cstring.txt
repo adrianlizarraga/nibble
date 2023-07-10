@@ -5,11 +5,11 @@
 
 :stdout 0
 
-:stderr 167
+:stderr 130
 
 1 errors:
 
-/home/adrianlm/projects/nibble/tests/cstring.nib:1:1: [Error]: Program entry file must define a main() procedure.
+cstring.nib:1:1: [Error]: Program entry file must define a main() procedure.
 
      1 | import "./nested_module.nib";
 

@@ -66,6 +66,7 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "OPTIONS:\n");
     ftprint_file(fd, true, "    -h                              Print this help message\n");
     ftprint_file(fd, true, "    -s                              Silent mode (no output to stdout)\n");
+    ftprint_file(fd, true, "    -test_mode_paths                Enable to avoid printing absolute paths while testing\n");
     ftprint_file(fd, true, "    -os   [linux | win32 | osx]     Target OS\n");
     ftprint_file(fd, true, "    -arch [x64 | x86]               Target architecture\n");
     ftprint_file(fd, true, "    -I    <module_search_path>      Add module (import/include) search path\n");
@@ -144,8 +145,8 @@ Arch get_target_arch(int* argc, char*** argv, const char* program_name)
 void check_input_filepath(StringView path, const char* program_name)
 {
     if (path.len > MAX_INPUT_PATH_LEN) {
-        ftprint_err("ERROR: input (%.*s...) is too long (maximum of %u characters)\n",
-                    MAX_INPUT_PATH_LEN >> 5, path.str, MAX_INPUT_PATH_LEN);
+        ftprint_err("ERROR: input (%.*s...) is too long (maximum of %u characters)\n", MAX_INPUT_PATH_LEN >> 5, path.str,
+                    MAX_INPUT_PATH_LEN);
         print_usage(stderr, program_name);
         exit(1);
     }
@@ -179,6 +180,7 @@ int main(int argc, char* argv[])
     StringView out_file = string_view_lit("out");
 
     bool silent = false;
+    bool test_mode_paths = false;
 
     // Set default target os/arch.
 #if defined(NIBBLE_HOST_LINUX)
@@ -198,6 +200,9 @@ int main(int argc, char* argv[])
         }
         else if (cstr_cmp(arg, "-s") == 0) {
             silent = true;
+        }
+        else if (cstr_cmp(arg, "-test_mode_paths") == 0) {
+            test_mode_paths = true;
         }
         else if (cstr_cmp(arg, "-os") == 0) {
             target_os = get_target_os(&argc, &argv, program_name);
@@ -282,9 +287,8 @@ int main(int argc, char* argv[])
     add_search_path(module_paths, &num_module_paths, ARRAY_LEN(module_paths), ".", program_name, "module");
     add_search_path(lib_paths, &num_lib_paths, ARRAY_LEN(lib_paths), out_dir_path.str, program_name, "library");
 
-    NibbleCtx* nib_ctx = nibble_init(&arena, target_os, target_arch, silent,
-                                     &working_dir, &prog_entry_dir,
-                                     module_paths, num_module_paths, lib_paths, num_lib_paths);
+    NibbleCtx* nib_ctx = nibble_init(&arena, target_os, target_arch, silent, test_mode_paths, &working_dir, &prog_entry_dir, module_paths,
+                                     num_module_paths, lib_paths, num_lib_paths);
 
     if (!nib_ctx) {
         ftprint_err("[ERROR]: Failed to initialize compiler.\n");

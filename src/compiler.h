@@ -43,6 +43,11 @@ typedef struct NibbleCtx {
     // Set with '-s' compiler flag.
     bool silent;
 
+    // True if compiler should not print absolute paths when reporting errors.
+    // Typically used during testing, so that the error messages are generic.
+    // Set with '-test_mode_paths' compiler flag.
+    bool test_mode_paths;
+
     const Path* working_dir; // The path from which the compiler is called.
     const Path* prog_entry_dir; // The directory containing the program entry file (i.e., main())
 
@@ -86,9 +91,8 @@ typedef struct NibbleCtx {
     GlobalData float_lits;
 } NibbleCtx;
 
-NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent,
-                       const Path* working_dir, const Path* prog_entry_dir,
-                       const StringView* module_paths, u32 num_module_paths,
+NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent, bool test_mode_paths,
+                       const Path* working_dir, const Path* prog_entry_dir, const StringView* module_paths, u32 num_module_paths,
                        const StringView* lib_paths, u32 num_lib_paths);
 bool nibble_compile(NibbleCtx* nibble, const Path* main_path, const Path* out_path);
 void nibble_cleanup(NibbleCtx* nibble);

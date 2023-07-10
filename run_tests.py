@@ -251,7 +251,7 @@ def main():
     nibble_prog = "./nibble"
     update_tests = False
     test_target = "./tests/"
-    nibble_additional_args = ["-s"]
+    nibble_additional_args = ["-s", "-test_mode_paths"]
 
     # Parse command-line arguments
     while argv:

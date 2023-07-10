@@ -5,11 +5,11 @@
 
 :stdout 0
 
-:stderr 153
+:stderr 116
 
 1 errors:
 
-/home/adrianlm/projects/nibble/tests/nested_module.nib:1:1: [Error]: Program entry file must define a main() procedure.
+nested_module.nib:1:1: [Error]: Program entry file must define a main() procedure.
 
      1 | @exported
 
