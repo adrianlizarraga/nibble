@@ -1,7 +1,7 @@
 **THIS PROGRAMMING LANGUAGE IS A WORK IN PROGRESS. ANYTHING CAN CHANGE AT ANY MOMENT. USE AT YOUR OWN RISK!**
 # Nibble
 
-[![Unit Tests](https://github.com/nibble-language/nibble/actions/workflows/test_nibble_programs.yml/badge.svg)](https://github.com/nibble-language/nibble/actions/workflows/test.yml)
+[![Unit Tests](https://github.com/nibble-language/nibble/actions/workflows/test_nibble_programs.yml/badge.svg)](https://github.com/nibble-language/nibble/actions/workflows/test_nibble_programs.yml)
 
 This is an experimental programming language based on C. The goal is to create a compiled, statically-typed programming language that adds the following features to C:
 
