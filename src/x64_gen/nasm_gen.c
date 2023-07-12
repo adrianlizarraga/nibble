@@ -1155,7 +1155,7 @@ bool X64_nasm_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* var
 
     FILE* out_fd = fopen(output_file, "w");
     if (!out_fd) {
-        ftprint_err("Failed to open output file `_nasm_out.s`\n");
+        ftprint_err("Failed to open output file `%s`\n", output_file);
         return false;
     }
 

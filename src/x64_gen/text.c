@@ -1,6 +1,76 @@
 #include <string.h>
 #include "x64_gen/text.h"
+#include "x64_gen/regs.h"
 #include "array.h"
+
+static const u8 x64_reg_val[X64_REG_COUNT] = {
+    [X64_RAX] = 0,
+    [X64_RCX] = 1,
+    [X64_RDX] = 2,
+    [X64_RBX] = 3,
+    [X64_RSP] = 4,
+    [X64_RBP] = 5,
+    [X64_RSI] = 6,
+    [X64_RDI] = 7,
+    [X64_R8] = 8,
+    [X64_R9] = 9,
+    [X64_R10] = 10,
+    [X64_R11] = 11,
+    [X64_R12] = 12,
+    [X64_R13] = 13,
+    [X64_R14] = 14,
+    [X64_R15] = 15,
+    [X64_XMM0] = 0,
+    [X64_XMM1] = 1,
+    [X64_XMM2] = 2,
+    [X64_XMM3] = 3,
+    [X64_XMM4] = 4,
+    [X64_XMM5] = 5,
+    [X64_XMM6] = 6,
+    [X64_XMM7] = 7,
+    [X64_XMM8] = 8,
+    [X64_XMM9] = 9,
+    [X64_XMM10] = 10,
+    [X64_XMM11] = 11,
+    [X64_XMM12] = 12,
+    [X64_XMM13] = 13,
+    [X64_XMM14] = 14,
+    [X64_XMM15] = 15,
+};
+
+static inline u8 X64_modrm_byte(u8 mod, u8 reg, u8 rm)
+{
+    return (rm & 0x7) | ((reg & 0x7) << 3) | ((mod & 0x3) << 6);
+}
+
+// REX PREFIX: 0100WRXB
+// W - 1 is 64-bit operand
+// R - Extension of the ModR/M reg field
+// X - Extension of the SIB index field
+// B - Extension of the ModR/M r/m field, SIB base field, or Opcode reg field
+static inline u8 X64_rex_prefix(u8 w, u8 r, u8 x, u8 b)
+{
+    return 0x40 | ((w & 0x1) << 3) | ((r & 0x1) << 2) | ((x & 0x1) << 1) | (b & 0x1);
+}
+
+// REX prefix for memory (or direct reg to reg) addressing without a SIB byte; REX.X not used.
+static inline u8 X64_rex_nosib(u8 w, u8 reg, u8 rm)
+{
+    return X64_rex_prefix(w, reg >> 3, 0, rm >> 3);
+}
+
+// REX prefix for memory addressing (mod != 11) with a SIB byte.
+static inline u8 X64_rex_sib(u8 w, u8 reg, u8 index, u8 base)
+{
+    return X64_rex_prefix(w, reg >> 3, index >> 3, base >> 3);
+}
+
+// REX prefix for register operand code in last 3 bits of opcode (e.g., push).
+// If need extended registers, then REX.B is used as the most-significant bit.
+static inline u8 X64_rex_opcode_reg(u8 w, u8 reg)
+{
+    return X64_rex_prefix(w, 0, 0, reg >> 3);
+}
 
 /*
 $ xxd -g 1 -s $((0x180)) -l $((0x41)) out.o
