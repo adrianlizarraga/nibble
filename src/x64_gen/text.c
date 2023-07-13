@@ -1,8 +1,10 @@
 #include <string.h>
+#include "array.h"
+#include "hash_map.h"
 #include "stream.h"
 #include "x64_gen/text.h"
+#include "x64_gen/lir_to_x64.h"
 #include "x64_gen/regs.h"
-#include "array.h"
 
 static const u8 x64_reg_val[X64_REG_COUNT] = {
     [X64_RAX] = 0,
@@ -37,6 +39,13 @@ static const u8 x64_reg_val[X64_REG_COUNT] = {
     [X64_XMM13] = 13,
     [X64_XMM14] = 14,
     [X64_XMM15] = 15,
+};
+
+enum X64_ModMode {
+    X64_MOD_INDIRECT = 0,
+    X64_MOD_INDIRECT_DISP_U8 = 1,
+    X64_MOD_INDIRECT_DISP_U32 = 2,
+    X64_MOD_DIRECT = 3
 };
 
 static inline u8 X64_modrm_byte(u8 mod, u8 reg, u8 rm)
@@ -116,8 +125,112 @@ static const u8 startup_code[] = {
 static const u8 main_code[] = {0x55, 0x48, 0x89, 0xe5, 0x48, 0x83, 0xec, 0x10, 0xc7, 0x45, 0xfc, 0x0a, 0x00, 0x00, 0x00, 0xc7,
 	                      0x45, 0xf8, 0x01, 0x00, 0x00, 0x00, 0x8b, 0x45, 0xfc, 0x03, 0x45, 0xf8, 0x48, 0x89, 0xec, 0x5d, 0xc3};
 
-void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, const BucketList* procs)
+typedef struct X64_TextGenState {
+    Allocator* gen_mem;
+    Allocator* tmp_mem;
+    Array(u8) buffer;
+    HMap proc_offsets; // Symbol* -> starting offset in buffer
+} X64_TextGenState;
+
+static inline void X64_set_proc_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
 {
+    hmap_put(&gen_state->proc_offsets, PTR_UINT(proc_sym), array_len(gen_state->buffer));
+}
+
+static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
+{
+    const DeclProc* decl = (const DeclProc*)proc_sym->decl;
+    if (decl->is_incomplete) {
+        return;
+    }
+
+    AllocatorState tmp_mem_state = allocator_get_state(gen_state->tmp_mem);
+
+    // Save this proc's offset in the buffer for use by call instructions.
+    X64_set_proc_offset(gen_state, proc_sym);
+
+    Array(X64__Instr) instrs = X64__gen_proc_instrs(gen_state->gen_mem, gen_state->tmp_mem, proc_sym);
+    const size_t num_instrs = array_len(instrs);
+
+    // Loop throught X64 instructions and write out machine code to buffer.
+    for (size_t i = 0; i < num_instrs; i += 1) {
+        X64__Instr* instr = &instrs[i];
+
+        //const bool is_jmp_target = X64__is_instr_jmp_target(instr);
+        const X64_Instr_Kind kind = X64__get_instr_kind(instr);
+
+        switch (kind) {
+        case X64_Instr_Kind_NOOP: {
+            // No-Op. Do nothing.
+        } break;
+        // PUSH
+        case X64_Instr_Kind_PUSH: {
+            // We only push r64, which has opcode 0x50 + REG_VAL[2:0]. If reg is >= R8, set REX.B.
+            const u8 reg_val = x64_reg_val[instr->push.reg];
+            const u8 opcode = 0x50 + (reg_val & 0x7);
+            const bool use_ext_regs = reg_val > 7;
+
+            if (use_ext_regs) {
+                array_push(gen_state->buffer, X64_rex_opcode_reg(0, reg_val)); // REX.B
+            }
+
+            array_push(gen_state->buffer, opcode);
+        } break;
+        // MOV
+        case X64_Instr_Kind_MOV_RR: {
+            const u8 size = instr->mov_rr.size;
+            const u8 src_reg = x64_reg_val[instr->mov_rr.src];
+            const u8 dst_reg = x64_reg_val[instr->mov_rr.dst];
+            const bool src_is_ext = src_reg > 7;
+            const bool dst_is_ext = dst_reg > 7;
+
+            // 88 /r => mov r/m8, r8
+            if (size == 1) {
+                if (src_is_ext || dst_is_ext) {
+                    array_push(gen_state->buffer, X64_rex_nosib(0, src_reg, dst_reg)); // REX.RB for ext regs
+                }
+                array_push(gen_state->buffer, 0x88); // opcode
+                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
+            }
+            // 0x66 + 89 /r => mov r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+            else if (size == 2) {
+                array_push(gen_state->buffer, 0x66); // 0x66 for 16-bit operands
+                if (src_is_ext || dst_is_ext) {
+                    array_push(gen_state->buffer, X64_rex_nosib(0, src_reg, dst_reg)); // REX.RB for ext regs
+                }
+                array_push(gen_state->buffer, 0x89); // opcode
+                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
+            }
+            // 89 /r => mov r/m32, r32
+            else if (size == 4) {
+                if (src_is_ext || dst_is_ext) {
+                    array_push(gen_state->buffer, X64_rex_nosib(0, src_reg, dst_reg)); // REX.RB for ext regs
+                }
+                array_push(gen_state->buffer, 0x89); // opcode
+                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
+            }
+            // REX.W + 89 /r => mov r/m64, r64
+            else {
+                assert(size == 8);
+                array_push(gen_state->buffer, X64_rex_nosib(1, src_reg, dst_reg)); // REX.W for 64-bit, REX.RB for ext regs
+                array_push(gen_state->buffer, 0x89); // opcode
+                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
+            }
+        } break;
+        default:
+            NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+            break;
+        }
+    }
+
+
+    allocator_restore_state(tmp_mem_state);
+}
+
+void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, BucketList* procs)
+{
+    AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
+
 #if 0
     const size_t startup_code_size = sizeof(startup_code);
     const size_t main_code_size = sizeof(main_code);
@@ -134,16 +247,30 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     text_sec->align = 0x10;
 #else
     const size_t startup_code_size = sizeof(startup_code);
-
-    Array(u8) buffer = array_create(gen_mem, u8, startup_code_size);
-    array_push_elems(buffer, startup_code, startup_code_size); // Add _start code.
-
     const size_t num_procs = procs->num_elems;
+
+    X64_TextGenState gen_state = {
+        .gen_mem = gen_mem,
+        .tmp_mem = tmp_mem,
+        .buffer = array_create(gen_mem, u8, startup_code_size << 2),
+        .proc_offsets = hmap(clp2(num_procs), tmp_mem)
+    };
+
+    array_push_elems(gen_state.buffer, startup_code, startup_code_size); // Add _start code.
+
     for (size_t i = 0; i < num_procs; i += 1) {
         void** sym_ptr = bucket_list_get_elem_packed(procs, i);
         assert(sym_ptr);
-        const Symbol* sym = (const Symbol*)(*sym_ptr);
+        Symbol* proc_sym = (Symbol*)(*sym_ptr);
+
+        X64_elf_gen_proc_text(&gen_state, proc_sym);
     }
+
+    text_sec->buf = gen_state.buffer;
+    text_sec->size = array_len(gen_state.buffer);
+    text_sec->align = 0x10;
+
+    allocator_restore_state(tmp_mem_state);
 #endif
 }
 
