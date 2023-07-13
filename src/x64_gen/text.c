@@ -1,4 +1,5 @@
 #include <string.h>
+#include "stream.h"
 #include "x64_gen/text.h"
 #include "x64_gen/regs.h"
 #include "array.h"
@@ -115,13 +116,14 @@ static const u8 startup_code[] = {
 static const u8 main_code[] = {0x55, 0x48, 0x89, 0xe5, 0x48, 0x83, 0xec, 0x10, 0xc7, 0x45, 0xfc, 0x0a, 0x00, 0x00, 0x00, 0xc7,
 	                      0x45, 0xf8, 0x01, 0x00, 0x00, 0x00, 0x8b, 0x45, 0xfc, 0x03, 0x45, 0xf8, 0x48, 0x89, 0xec, 0x5d, 0xc3};
 
-void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem)
+void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, const BucketList* procs)
 {
+#if 0
     const size_t startup_code_size = sizeof(startup_code);
     const size_t main_code_size = sizeof(main_code);
     const size_t total_code_size = startup_code_size + main_code_size;
 
-    u8* buffer = array_create(gen_mem, u8, total_code_size);
+    Array(u8) buffer = array_create(gen_mem, u8, total_code_size);
 
     array_push_elems(buffer, startup_code, startup_code_size);
     array_push_elems(buffer, main_code, main_code_size);
@@ -130,5 +132,18 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem)
     text_sec->buf = buffer;
     text_sec->size = array_len(buffer);
     text_sec->align = 0x10;
+#else
+    const size_t startup_code_size = sizeof(startup_code);
+
+    Array(u8) buffer = array_create(gen_mem, u8, startup_code_size);
+    array_push_elems(buffer, startup_code, startup_code_size); // Add _start code.
+
+    const size_t num_procs = procs->num_elems;
+    for (size_t i = 0; i < num_procs; i += 1) {
+        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
+        assert(sym_ptr);
+        const Symbol* sym = (const Symbol*)(*sym_ptr);
+    }
+#endif
 }
 

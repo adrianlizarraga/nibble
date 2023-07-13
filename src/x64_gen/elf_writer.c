@@ -553,7 +553,7 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
 
     // .text
     X64_TextSection text_sec = {0};
-    X64_init_text_section(&text_sec, gen_mem);
+    X64_init_text_section(&text_sec, gen_mem, tmp_mem, procs);
 
     bool success = x64_write_elf(gen_mem, tmp_mem, &rodata_sec, &data_sec, &text_sec, foreign_procs, output_file);
 
