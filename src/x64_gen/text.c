@@ -162,6 +162,10 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
 
             array_push(gen_state->buffer, opcode);
         } break;
+        // RET
+        case X64_Instr_Kind_RET: {
+            array_push(gen_state->buffer, 0xc3); // opcode is 0xc3 for near return to calling proc.
+        } break;
         // SUB
         case X64_Instr_Kind_SUB_RI: {
             const u8 size = instr->sub_ri.size;
