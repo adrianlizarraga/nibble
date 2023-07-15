@@ -57,6 +57,63 @@ static inline u8 X64_rex_opcode_reg(u8 w, u8 reg)
     return X64_rex_prefix(w, 0, 0, reg >> 3);
 }
 
+typedef struct X64_AddrBytes {
+    u8 mod; // top 2 bits from ModRM byte.
+    u8 rm;  // bottom 3 bits from ModRM byte.
+    u8 sib_byte;
+    s32 disp;
+    bool rex_b; // w/o SIB byte: extends r/m in ModRM byte. w/ SIB byte: extends base in SIB byte.
+    bool rex_x; // Extends index in SIB byte.
+    bool has_disp; // Emit disp bytes even if 0 (e.g., for [rbp]).
+    bool has_sib_byte;
+} X64_AddrBytes;
+
+// Converts a high-level X64 SIBD address to specific ModRM and SIB byte information.
+static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
+{
+    X64_AddrBytes addr_bytes = {0};
+
+    if (addr->kind != X64__SIBD_ADDR_LOCAL) {
+        NIBBLE_FATAL_EXIT("Does not yet support non-local addresses in x64 ELF text generator."); // TODO: Fix.
+    }
+
+    const bool has_index = addr->local.index_reg != (u8)-1 && addr->local.scale != 0;
+    const bool has_base = addr->local.base_reg != (u8)-1;
+    const bool disp_is_imm8 = (addr->local.disp <= 127) && (addr->local.disp >= -128);
+
+    addr_bytes.has_disp = addr->local.disp != 0 || (addr->local.base_reg == X64_RBP);
+    addr_bytes.disp = addr->local.disp;
+
+    if (has_base && !addr_bytes.has_disp && !has_index) {
+        const u8 base_reg = x64_reg_val[addr->local.base_reg];
+        addr_bytes.mod = X64_MOD_INDIRECT;
+        addr_bytes.rm = base_reg & 0x7;
+        addr_bytes.rex_b = base_reg > 7;
+    }
+    else if (has_base && addr_bytes.has_disp && !has_index) {
+        const u8 base_reg = x64_reg_val[addr->local.base_reg];
+        addr_bytes.mod = disp_is_imm8 ? X64_MOD_INDIRECT_DISP_U8 : X64_MOD_INDIRECT_DISP_U32;
+        addr_bytes.rm = base_reg & 0x7;
+        addr_bytes.rex_b = base_reg > 7;
+    }
+    else if (has_base && has_index) {
+        const u8 base_reg = x64_reg_val[addr->local.base_reg];
+        const u8 index_reg = x64_reg_val[addr->local.index_reg];
+        addr_bytes.mod = !addr_bytes.has_disp ? X64_MOD_INDIRECT : (disp_is_imm8 ? X64_MOD_INDIRECT_DISP_U8 : X64_MOD_INDIRECT_DISP_U32);
+        addr_bytes.rm = 0x4; // Indicates a SIB byte is necessary.
+        addr_bytes.rex_b = base_reg > 7;
+        addr_bytes.rex_x = index_reg > 7;
+        addr_bytes.has_sib_byte = true;
+        addr_bytes.sib_byte = X64_modrm_byte(addr->local.scale, index_reg & 0x7, base_reg & 0x7); // SIB byte is computed the same way as ModRM
+    }
+    else {
+        NIBBLE_FATAL_EXIT("Does not support local address with has_base=%d, has_disp=%d, has_index=%d in ELF text generator.",
+                          has_base, addr_bytes.has_disp, has_index); // TODO: Fix.
+    }
+
+    return addr_bytes;
+}
+
 /*
 $ xxd -g 1 -s $((0x180)) -l $((0x41)) out.o
 00000180: 48 31 ed 8b 3c 24 48 8d 74 24 08 48 8d 54 fc 10  H1..<$H.t$.H.T..
@@ -109,6 +166,20 @@ typedef struct X64_TextGenState {
 static inline void X64_set_proc_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
 {
     hmap_put(&gen_state->proc_offsets, PTR_UINT(proc_sym), array_len(gen_state->buffer));
+}
+
+static inline void X64_write_imm32_bytes(X64_TextGenState* gen_state, u32 val)
+{
+    array_push(gen_state->buffer, val & 0xFF); // byte 1
+    array_push(gen_state->buffer, (val >> 8) & 0xFF); // byte 2
+    array_push(gen_state->buffer, (val >> 16) & 0xFF); // byte 3
+    array_push(gen_state->buffer, (val >> 24) & 0xFF); // byte 4
+}
+
+static inline void X64_write_imm16_bytes(X64_TextGenState* gen_state, u16 val)
+{
+    array_push(gen_state->buffer, val & 0xFF); // byte 1
+    array_push(gen_state->buffer, (val >> 8) & 0xFF); // byte 2
 }
 
 static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
@@ -217,10 +288,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                     array_push(gen_state->buffer, imm); // imm8
                 }
                 else {
-                    array_push(gen_state->buffer, imm & 0xFF); // byte 1
-                    array_push(gen_state->buffer, (imm >> 8) & 0xFF); // byte 2
-                    array_push(gen_state->buffer, (imm >> 16) & 0xFF); // byte 3
-                    array_push(gen_state->buffer, (imm >> 24) & 0xFF); // byte 4
+                    X64_write_imm32_bytes(gen_state, imm);
                 }
             }
             // REX.W + 83 /5 ib => sub r/m64, imm8
@@ -235,10 +303,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                     array_push(gen_state->buffer, imm); // imm8
                 }
                 else {
-                    array_push(gen_state->buffer, imm & 0xFF); // byte 1
-                    array_push(gen_state->buffer, (imm >> 8) & 0xFF); // byte 2
-                    array_push(gen_state->buffer, (imm >> 16) & 0xFF); // byte 3
-                    array_push(gen_state->buffer, (imm >> 24) & 0xFF); // byte 4
+                    X64_write_imm32_bytes(gen_state, imm);
                 }
             }
         } break;
@@ -281,6 +346,109 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                 array_push(gen_state->buffer, X64_rex_nosib(1, src_reg, dst_reg)); // REX.W for 64-bit, REX.RB for ext regs
                 array_push(gen_state->buffer, 0x89); // opcode
                 array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
+            }
+        } break;
+        case X64_Instr_Kind_MOV_MI: {
+            const u8 size = instr->mov_mi.size;
+            const X64_AddrBytes addr_bytes = X64_get_addr_bytes(&instr->mov_mi.dst);
+            const bool use_ext_regs = addr_bytes.rex_b || addr_bytes.rex_x;
+
+            // C6 /0 ib => mov r/m8, imm8
+            if (size == 1) {
+                if (use_ext_regs) {
+                    array_push(gen_state->buffer, X64_rex_prefix(0, 0, addr_bytes.rex_x, addr_bytes.rex_b));
+                }
+                array_push(gen_state->buffer, 0xC6); // opcode
+                array_push(gen_state->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+
+                if (addr_bytes.has_sib_byte) {
+                    array_push(gen_state->buffer, addr_bytes.sib_byte);
+                }
+
+                if (addr_bytes.has_disp) {
+                    if (addr_bytes.mod == X64_MOD_INDIRECT_DISP_U8) {
+                        array_push(gen_state->buffer, (u8)addr_bytes.disp);
+                    }
+                    else {
+                        assert(addr_bytes.mod == X64_MOD_INDIRECT_DISP_U32);
+                        X64_write_imm32_bytes(gen_state, addr_bytes.disp);
+                    }
+                }
+
+                array_push(gen_state->buffer, (u8)instr->mov_mi.imm);
+            }
+            // 66 C7 /0 iw => mov r/m16, imm16
+            else if (size == 2) {
+                array_push(gen_state->buffer, 0x66); // 0x66 for 16-bit operands
+
+                if (use_ext_regs) {
+                    array_push(gen_state->buffer, X64_rex_prefix(0, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX prefix
+                }
+                array_push(gen_state->buffer, 0xC7); // opcode
+                array_push(gen_state->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+
+                if (addr_bytes.has_sib_byte) {
+                    array_push(gen_state->buffer, addr_bytes.sib_byte);
+                }
+
+                if (addr_bytes.has_disp) {
+                    if (addr_bytes.mod == X64_MOD_INDIRECT_DISP_U8) {
+                        array_push(gen_state->buffer, (u8)addr_bytes.disp);
+                    }
+                    else {
+                        assert(addr_bytes.mod == X64_MOD_INDIRECT_DISP_U32);
+                        X64_write_imm32_bytes(gen_state, addr_bytes.disp);
+                    }
+                }
+
+                X64_write_imm16_bytes(gen_state, instr->mov_mi.imm);
+            }
+            // C7 /0 id => mov r/m32, imm32
+            else if (size == 4) {
+                if (use_ext_regs) {
+                    array_push(gen_state->buffer, X64_rex_prefix(0, 0, addr_bytes.rex_x, addr_bytes.rex_b));
+                }
+                array_push(gen_state->buffer, 0xC7); // opcode
+                array_push(gen_state->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+
+                if (addr_bytes.has_sib_byte) {
+                    array_push(gen_state->buffer, addr_bytes.sib_byte);
+                }
+
+                if (addr_bytes.has_disp) {
+                    if (addr_bytes.mod == X64_MOD_INDIRECT_DISP_U8) {
+                        array_push(gen_state->buffer, (u8)addr_bytes.disp);
+                    }
+                    else {
+                        assert(addr_bytes.mod == X64_MOD_INDIRECT_DISP_U32);
+                        X64_write_imm32_bytes(gen_state, addr_bytes.disp);
+                    }
+                }
+
+                X64_write_imm32_bytes(gen_state, instr->mov_mi.imm);
+            }
+            // REX.W + C7 /0 id => mov r/m64, imm32
+            else {
+                assert(size == 8);
+                array_push(gen_state->buffer, X64_rex_prefix(1, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX.W and other reg extensions.
+                array_push(gen_state->buffer, 0xC7); // opcode
+                array_push(gen_state->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+
+                if (addr_bytes.has_sib_byte) {
+                    array_push(gen_state->buffer, addr_bytes.sib_byte);
+                }
+
+                if (addr_bytes.has_disp) {
+                    if (addr_bytes.mod == X64_MOD_INDIRECT_DISP_U8) {
+                        array_push(gen_state->buffer, (u8)addr_bytes.disp);
+                    }
+                    else {
+                        assert(addr_bytes.mod == X64_MOD_INDIRECT_DISP_U32);
+                        X64_write_imm32_bytes(gen_state, addr_bytes.disp);
+                    }
+                }
+
+                X64_write_imm32_bytes(gen_state, instr->mov_mi.imm);
             }
         } break;
         default:
