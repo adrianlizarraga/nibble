@@ -150,6 +150,18 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
 
             array_push(gen_state->buffer, opcode);
         } break;
+        case X64_Instr_Kind_POP: {
+            // We only pop r64, which has opcode 0x58 + REG_VAL[2:0]. If reg is >= R8, set REX.B.
+            const u8 reg_val = x64_reg_val[instr->pop.reg];
+            const u8 opcode = 0x58 + (reg_val & 0x7);
+            const bool use_ext_regs = reg_val > 7;
+
+            if (use_ext_regs) {
+                array_push(gen_state->buffer, X64_rex_opcode_reg(0, reg_val)); // REX.B
+            }
+
+            array_push(gen_state->buffer, opcode);
+        } break;
         // SUB
         case X64_Instr_Kind_SUB_RI: {
             const u8 size = instr->sub_ri.size;
