@@ -59,7 +59,7 @@ static inline u8 X64_rex_opcode_reg(u8 w, u8 reg)
 
 typedef struct X64_AddrBytes {
     u8 mod; // top 2 bits from ModRM byte.
-    u8 rm;  // bottom 3 bits from ModRM byte.
+    u8 rm; // bottom 3 bits from ModRM byte.
     u8 sib_byte;
     s32 disp;
     bool rex_b; // w/o SIB byte: extends r/m in ModRM byte. w/ SIB byte: extends base in SIB byte.
@@ -99,12 +99,14 @@ static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
     else if (has_base && has_index) {
         const u8 base_reg = x64_reg_val[addr->local.base_reg];
         const u8 index_reg = x64_reg_val[addr->local.index_reg];
-        addr_bytes.mod = !addr_bytes.has_disp ? X64_MOD_INDIRECT : (disp_is_imm8 ? X64_MOD_INDIRECT_DISP_U8 : X64_MOD_INDIRECT_DISP_U32);
+        addr_bytes.mod =
+            !addr_bytes.has_disp ? X64_MOD_INDIRECT : (disp_is_imm8 ? X64_MOD_INDIRECT_DISP_U8 : X64_MOD_INDIRECT_DISP_U32);
         addr_bytes.rm = 0x4; // Indicates a SIB byte is necessary.
         addr_bytes.rex_b = base_reg > 7;
         addr_bytes.rex_x = index_reg > 7;
         addr_bytes.has_sib_byte = true;
-        addr_bytes.sib_byte = X64_modrm_byte(addr->local.scale, index_reg & 0x7, base_reg & 0x7); // SIB byte is computed the same way as ModRM
+        addr_bytes.sib_byte =
+            X64_modrm_byte(addr->local.scale, index_reg & 0x7, base_reg & 0x7); // SIB byte is computed the same way as ModRM
     }
     else {
         NIBBLE_FATAL_EXIT("Does not support local address with has_base=%d, has_disp=%d, has_index=%d in ELF text generator.",
@@ -348,6 +350,46 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                 array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
             }
         } break;
+        case X64_Instr_Kind_MOV_RM: {
+            // 8A /r => mov r8, r/m8
+            // 66 8B /r => mov r16, r/m16
+            // 8B /r => mov r32, r/m32
+            // REX.W + 8B /r => mov r64, r/m64
+            const u8 size = instr->mov_rm.size;
+            const u8 dst_reg = x64_reg_val[instr->mov_rm.dst];
+            const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->mov_rm.src);
+            const bool dst_is_ext = dst_reg > 7;
+            const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+            const bool is_64_bit = size == 8;
+            const u8 opcode = size == 1 ? 0x8A : 0x8B;
+
+            // 0x66 prefix for 16-bit operands.
+            if (size == 2) {
+                array_push(gen_state->buffer, 0x66);
+            }
+
+            // REX prefix.
+            if (use_ext_regs || is_64_bit) {
+                array_push(gen_state->buffer, X64_rex_prefix(is_64_bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+            }
+
+            array_push(gen_state->buffer, opcode); // opcode
+            array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg & 0x7, src_addr.rm)); // ModRM byte.
+
+            if (src_addr.has_sib_byte) {
+                array_push(gen_state->buffer, src_addr.sib_byte);
+            }
+
+            if (src_addr.has_disp) {
+                if (src_addr.mod == X64_MOD_INDIRECT_DISP_U8) {
+                    array_push(gen_state->buffer, (u8)src_addr.disp);
+                }
+                else {
+                    assert(src_addr.mod == X64_MOD_INDIRECT_DISP_U32);
+                    X64_write_imm32_bytes(gen_state, src_addr.disp);
+                }
+            }
+        } break;
         case X64_Instr_Kind_MOV_MI: {
             const u8 size = instr->mov_mi.size;
             const X64_AddrBytes addr_bytes = X64_get_addr_bytes(&instr->mov_mi.dst);
@@ -359,7 +401,8 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                     array_push(gen_state->buffer, X64_rex_prefix(0, 0, addr_bytes.rex_x, addr_bytes.rex_b));
                 }
                 array_push(gen_state->buffer, 0xC6); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+                array_push(gen_state->buffer,
+                           X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
 
                 if (addr_bytes.has_sib_byte) {
                     array_push(gen_state->buffer, addr_bytes.sib_byte);
@@ -385,7 +428,8 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                     array_push(gen_state->buffer, X64_rex_prefix(0, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX prefix
                 }
                 array_push(gen_state->buffer, 0xC7); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+                array_push(gen_state->buffer,
+                           X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
 
                 if (addr_bytes.has_sib_byte) {
                     array_push(gen_state->buffer, addr_bytes.sib_byte);
@@ -409,7 +453,8 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                     array_push(gen_state->buffer, X64_rex_prefix(0, 0, addr_bytes.rex_x, addr_bytes.rex_b));
                 }
                 array_push(gen_state->buffer, 0xC7); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+                array_push(gen_state->buffer,
+                           X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
 
                 if (addr_bytes.has_sib_byte) {
                     array_push(gen_state->buffer, addr_bytes.sib_byte);
@@ -430,9 +475,11 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             // REX.W + C7 /0 id => mov r/m64, imm32
             else {
                 assert(size == 8);
-                array_push(gen_state->buffer, X64_rex_prefix(1, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX.W and other reg extensions.
+                array_push(gen_state->buffer,
+                           X64_rex_prefix(1, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX.W and other reg extensions.
                 array_push(gen_state->buffer, 0xC7); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+                array_push(gen_state->buffer,
+                           X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
 
                 if (addr_bytes.has_sib_byte) {
                     array_push(gen_state->buffer, addr_bytes.sib_byte);
