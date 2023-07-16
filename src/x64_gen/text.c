@@ -239,6 +239,47 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
         case X64_Instr_Kind_RET: {
             array_push(gen_state->buffer, 0xc3); // opcode is 0xc3 for near return to calling proc.
         } break;
+        // ADD
+        case X64_Instr_Kind_ADD_RM: {
+            // 02 /r => add r8, r/m8
+            // 66 03 /r => add r16, r/m16
+            // 03 /r => add r32, r/m32
+            // REX.W + 03 /r => add r64, r/m64
+            const u8 size = instr->add_rm.size;
+            const u8 dst_reg = x64_reg_val[instr->add_rm.dst];
+            const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->add_rm.src);
+            const bool dst_is_ext = dst_reg > 7;
+            const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+            const bool is_64_bit = size == 8;
+            const u8 opcode = size == 1 ? 0x02 : 0x03;
+
+            // 0x66 prefix for 16-bit operands.
+            if (size == 2) {
+                array_push(gen_state->buffer, 0x66);
+            }
+
+            // REX prefix.
+            if (use_ext_regs || is_64_bit) {
+                array_push(gen_state->buffer, X64_rex_prefix(is_64_bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+            }
+
+            array_push(gen_state->buffer, opcode); // opcode
+            array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg & 0x7, src_addr.rm)); // ModRM byte.
+
+            if (src_addr.has_sib_byte) {
+                array_push(gen_state->buffer, src_addr.sib_byte);
+            }
+
+            if (src_addr.has_disp) {
+                if (src_addr.mod == X64_MOD_INDIRECT_DISP_U8) {
+                    array_push(gen_state->buffer, (u8)src_addr.disp);
+                }
+                else {
+                    assert(src_addr.mod == X64_MOD_INDIRECT_DISP_U32);
+                    X64_write_imm32_bytes(gen_state, src_addr.disp);
+                }
+            }
+        } break;
         // SUB
         case X64_Instr_Kind_SUB_RI: {
             const u8 size = instr->sub_ri.size;
