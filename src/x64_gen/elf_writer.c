@@ -440,6 +440,7 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
     }
 
     // .text symbol
+    u32 text_sym_idx = sym_idx;
     symtab->symtab.syms[sym_idx++] = (Elf64_Sym){.st_name = 0,
                                                  .st_info = ELF_ST_INFO(ELF_STB_LOCAL, ELF_STT_SECTION),
                                                  .st_other = ELF_STV_DEFAULT,
@@ -481,12 +482,23 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
             }
             else if (reloc_info->ref_addr.kind == CONST_ADDR_SYM) {
                 const Symbol* sym = reloc_info->ref_addr.sym;
-                u64* sym_off_ptr = hmap_get(&data_sec->var_offs, PTR_UINT(sym));
 
-                assert(sym_off_ptr != NULL);
+                if (sym->kind == SYMBOL_VAR) {
+                    u64* sym_off_ptr = hmap_get(&data_sec->var_offs, PTR_UINT(sym));
+                    assert(sym_off_ptr != NULL);
 
-                reloc->r_info = ((u64)(data_sym_idx) << 32) + (u64)(ELF_R_X86_64_64);
-                reloc->r_addend = *sym_off_ptr + reloc_info->ref_addr.disp;
+                    reloc->r_info = ((u64)(data_sym_idx) << 32) + (u64)(ELF_R_X86_64_64);
+                    reloc->r_addend = *sym_off_ptr + reloc_info->ref_addr.disp;
+                }
+                else {
+                    assert(sym->kind == SYMBOL_PROC);
+                    u64* sym_off_ptr = hmap_get(&text_sec->proc_offs, PTR_UINT(sym));
+                    assert(sym_off_ptr != NULL);
+
+                    reloc->r_info = ((u64)(text_sym_idx) << 32) + (u64)(ELF_R_X86_64_64);
+                    reloc->r_addend = *sym_off_ptr;
+                    assert(reloc_info->ref_addr.disp == 0);
+                }
             }
             else {
                 NIBBLE_FATAL_EXIT("Only support string lits and vars for rela.data relocations");
@@ -529,7 +541,7 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
     return true;
 }
 
-bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
+bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, const Symbol* main_proc, GlobalData* str_lits,
                  GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
     NIBBLE_UNUSED_VAR(procs); // TODO: Remove
@@ -553,7 +565,7 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
 
     // .text
     X64_TextSection text_sec = {0};
-    X64_init_text_section(&text_sec, gen_mem, tmp_mem, procs);
+    X64_init_text_section(&text_sec, gen_mem, tmp_mem, procs, main_proc);
 
     bool success = x64_write_elf(gen_mem, tmp_mem, &rodata_sec, &data_sec, &text_sec, foreign_procs, output_file);
 

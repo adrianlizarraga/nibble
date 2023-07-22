@@ -25,7 +25,6 @@ typedef struct X64_RODataSection {
     HMap str_offs; // StrLit* -> size_t (offset in buf)
 } X64_RODataSection;
 
-void X64_add_reloc_use(Array(X64_DataReloc)* relocs, u64 usage_off, const ConstAddr* ref_addr);
 void X64_init_rodata_section(X64_RODataSection* rodata, Allocator* gen_mem, Allocator* tmp_mem, GlobalData* floats,
                              GlobalData* strs);
 void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars);

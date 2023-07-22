@@ -155,6 +155,7 @@ objdump -M intel -d out.o
 static const u8 startup_code[] = {0x48, 0x31, 0xed, 0x8b, 0x3c, 0x24, 0x48, 0x8d, 0x74, 0x24, 0x08, 0x48, 0x8d, 0x54, 0xfc, 0x10,
                                   0x31, 0xc0, 0xe8, 0x09, 0x00, 0x00, 0x00, 0x89, 0xc7, 0xb8, 0x3c, 0x00, 0x00, 0x00, 0x0f, 0x05};
 static size_t startup_code_main_offset_loc = 0x13; // The location in the startup code to patch the relative offset of the main proc.
+static size_t startup_code_next_ip_after_call = 0x17; // The operand to call is relative from the next instruction pointer.
 
 static const u8 main_code[] = {0x55, 0x48, 0x89, 0xe5, 0x48, 0x83, 0xec, 0x10, 0xc7, 0x45, 0xfc, 0x0a, 0x00, 0x00, 0x00, 0xc7, 0x45,
                                0xf8, 0x01, 0x00, 0x00, 0x00, 0x8b, 0x45, 0xfc, 0x03, 0x45, 0xf8, 0x48, 0x89, 0xec, 0x5d, 0xc3};
@@ -549,32 +550,17 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
     allocator_restore_state(tmp_mem_state);
 }
 
-void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, BucketList* procs)
+void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, BucketList* procs, const Symbol* main_proc)
 {
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
 
-#if 0
-    const size_t startup_code_size = sizeof(startup_code);
-    const size_t main_code_size = sizeof(main_code);
-    const size_t total_code_size = startup_code_size + main_code_size;
-
-    Array(u8) buffer = array_create(gen_mem, u8, total_code_size);
-
-    array_push_elems(buffer, startup_code, startup_code_size);
-    array_push_elems(buffer, main_code, main_code_size);
-    assert(array_len(buffer) == total_code_size);
-
-    text_sec->buf = buffer;
-    text_sec->size = array_len(buffer);
-    text_sec->align = 0x10;
-#else
     const size_t startup_code_size = sizeof(startup_code);
     const size_t num_procs = procs->num_elems;
 
     X64_TextGenState gen_state = {.gen_mem = gen_mem,
                                   .tmp_mem = tmp_mem,
                                   .buffer = array_create(gen_mem, u8, startup_code_size << 2),
-                                  .proc_offsets = hmap(clp2(num_procs), tmp_mem)};
+                                  .proc_offsets = hmap(clp2(num_procs), gen_mem)};
 
     array_push_elems(gen_state.buffer, startup_code, startup_code_size); // Add _start code.
 
@@ -587,13 +573,15 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     }
 
     // Patch the location of the main proc.
-    //void* main_offset_ptr = 
-    //*((u32*)(&gen_state.buffer[startup_code_main_offset_loc])) = ;
-
+    {
+        u64* offset_ptr = hmap_get(&gen_state.proc_offsets, PTR_UINT(main_proc));
+        assert(offset_ptr);
+        *((u32*)(&gen_state.buffer[startup_code_main_offset_loc])) = (u32)*offset_ptr - (u32)startup_code_next_ip_after_call;
+    }
     text_sec->buf = gen_state.buffer;
     text_sec->size = array_len(gen_state.buffer);
     text_sec->align = 0x10;
+    text_sec->proc_offs = gen_state.proc_offsets;
 
     allocator_restore_state(tmp_mem_state);
-#endif
 }

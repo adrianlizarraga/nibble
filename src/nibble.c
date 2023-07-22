@@ -1360,7 +1360,7 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
 
     print_info(nib_ctx, "Generating NASM assembly output: %s ...", nasm_fname.str);
     x64_init_target(nib_ctx->target_os);
-    x64_gen_module(nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, &nib_ctx->str_lits, &nib_ctx->float_lits,
+    x64_gen_module(nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, main_sym, &nib_ctx->str_lits, &nib_ctx->float_lits,
                    &nib_ctx->foreign_procs, nasm_fname.str);
 
     //////////////////////////////////////////

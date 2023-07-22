@@ -1,8 +1,8 @@
 #include "x64_gen/data.h"
 
-inline void X64_add_reloc_use(Array(X64_DataReloc) * relocs, u64 usage_off, const ConstAddr* ref_addr)
+static inline void X64_add_reloc_use(Array(X64_DataReloc) * relocs, u64 usage_off, ConstAddr ref_addr)
 {
-    X64_DataReloc r = {.ref_addr = *ref_addr, .usage_off = usage_off};
+    X64_DataReloc r = {.ref_addr = ref_addr, .usage_off = usage_off};
     array_push(*relocs, r);
 }
 
@@ -130,7 +130,7 @@ static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr*
         assert(relocs != NULL);
 
         // Handles relocations for address of symbols and string literals.
-        X64_add_reloc_use(relocs, array_len(*buf), &const_expr->addr);
+        X64_add_reloc_use(relocs, array_len(*buf), const_expr->addr);
 
         // Fill with zeros. Linker will fill-in the actual address
         // using the relacation information we generate.
@@ -158,8 +158,13 @@ static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr*
         break;
     }
     case CONST_EXPR_PROC: {
-        // TODO: Need relocations for procedure addresses.
-        NIBBLE_FATAL_EXIT("Unhandled ConstExprKind `%d`\n", const_expr->kind);
+        assert(relocs != NULL);
+
+        X64_add_reloc_use(relocs, array_len(*buf), (ConstAddr){.kind = CONST_ADDR_SYM, .sym = const_expr->sym});
+
+        // Fill with zeros. Linker will fill-in the actual address
+        // using the relocation information we generate.
+        X64_data_fill_zeros(buf, const_expr->type->size);
         break;
     }
     case CONST_EXPR_ARRAY_INIT: {
