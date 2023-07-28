@@ -73,6 +73,21 @@ static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
 {
     X64_AddrBytes addr_bytes = {0};
 
+    if (addr->kind == X64__SIBD_ADDR_GLOBAL) {
+        const Symbol* sym = addr->global;
+
+        if (sym->kind == SYMBOL_PROC) {
+            addr_bytes.has_disp = true;
+            addr_bytes.disp = 0; // Must be patched by compiler to relative offset of proc
+            addr_bytes.mod = X64_MOD_INDIRECT; // indicates rip + disp32
+            addr_bytes.rm = 0x5; // b101 indicates rip + disp32
+        }
+        else {
+            assert(sym->kind == SYMBOL_VAR);
+            NIBBLE_FATAL_EXIT("Does not yet support global var addresses in x64 ELF text generator."); // TODO: Fix.
+        }
+    }
+
     if (addr->kind != X64__SIBD_ADDR_LOCAL) {
         NIBBLE_FATAL_EXIT("Does not yet support non-local addresses in x64 ELF text generator."); // TODO: Fix.
     }
