@@ -66,31 +66,40 @@ typedef struct X64_AddrBytes {
     bool rex_x; // Extends index in SIB byte.
     bool has_disp; // Emit disp bytes even if 0 (e.g., for [rbp]).
     bool has_sib_byte;
+    const Symbol* patch_sym; // Symbol addr that needs to be patched for RIP + disp32
 } X64_AddrBytes;
+
+static X64_AddrBytes X64_get_global_addr(const Symbol* global_sym)
+{
+    X64_AddrBytes addr_bytes = {0};
+
+    if (global_sym->kind == SYMBOL_PROC) {
+        addr_bytes.has_disp = true;
+        addr_bytes.patch_sym = global_sym;
+        addr_bytes.disp = 0; // Must be patched by compiler to relative offset of proc
+
+        // The following mod/rm values indicate RIP + disp32
+        addr_bytes.mod = X64_MOD_INDIRECT;
+        addr_bytes.rm = 0x5;
+    }
+    else {
+        assert(global_sym->kind == SYMBOL_VAR);
+        NIBBLE_FATAL_EXIT("Does not yet support global var addresses in x64 ELF text generator."); // TODO: Fix.
+    }
+
+    return addr_bytes;
+}
 
 // Converts a high-level X64 SIBD address to specific ModRM and SIB byte information.
 static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
 {
-    X64_AddrBytes addr_bytes = {0};
-
     if (addr->kind == X64__SIBD_ADDR_GLOBAL) {
-        const Symbol* sym = addr->global;
-
-        if (sym->kind == SYMBOL_PROC) {
-            addr_bytes.has_disp = true;
-            addr_bytes.disp = 0; // Must be patched by compiler to relative offset of proc
-            addr_bytes.mod = X64_MOD_INDIRECT; // indicates rip + disp32
-            addr_bytes.rm = 0x5; // b101 indicates rip + disp32
-        }
-        else {
-            assert(sym->kind == SYMBOL_VAR);
-            NIBBLE_FATAL_EXIT("Does not yet support global var addresses in x64 ELF text generator."); // TODO: Fix.
-        }
+        return X64_get_global_addr(addr->global);
     }
 
-    if (addr->kind != X64__SIBD_ADDR_LOCAL) {
-        NIBBLE_FATAL_EXIT("Does not yet support non-local addresses in x64 ELF text generator."); // TODO: Fix.
-    }
+    assert(addr->kind == X64__SIBD_ADDR_LOCAL);
+
+    X64_AddrBytes addr_bytes = {0};
 
     const bool has_index = addr->local.index_reg != (u8)-1 && addr->local.scale != 0;
     const bool has_base = addr->local.base_reg != (u8)-1;
@@ -201,6 +210,25 @@ static inline void X64_write_imm16_bytes(X64_TextGenState* gen_state, u16 val)
     array_push(gen_state->buffer, (val >> 8) & 0xFF); // byte 2
 }
 
+static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes* addr)
+{
+    if (!addr->has_disp) {
+        return;
+    }
+
+    if (addr->patch_sym) {
+        // TODO: Add patch info to gen_state (or get actual disp if we can).
+        X64_write_imm32_bytes(gen_state, addr->disp);
+    }
+    else if (addr->mod == X64_MOD_INDIRECT_DISP_U8) {
+        array_push(gen_state->buffer, (u8)addr->disp);
+    }
+    else {
+        assert(addr->mod == X64_MOD_INDIRECT_DISP_U32);
+        X64_write_imm32_bytes(gen_state, addr->disp);
+    }
+}
+
 static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
 {
     const DeclProc* decl = (const DeclProc*)proc_sym->decl;
@@ -287,15 +315,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                 array_push(gen_state->buffer, src_addr.sib_byte);
             }
 
-            if (src_addr.has_disp) {
-                if (src_addr.mod == X64_MOD_INDIRECT_DISP_U8) {
-                    array_push(gen_state->buffer, (u8)src_addr.disp);
-                }
-                else {
-                    assert(src_addr.mod == X64_MOD_INDIRECT_DISP_U32);
-                    X64_write_imm32_bytes(gen_state, src_addr.disp);
-                }
-            }
+            X64_write_addr_disp(gen_state, &src_addr);
         } break;
         // SUB
         case X64_Instr_Kind_SUB_RI: {
@@ -438,15 +458,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                 array_push(gen_state->buffer, src_addr.sib_byte);
             }
 
-            if (src_addr.has_disp) {
-                if (src_addr.mod == X64_MOD_INDIRECT_DISP_U8) {
-                    array_push(gen_state->buffer, (u8)src_addr.disp);
-                }
-                else {
-                    assert(src_addr.mod == X64_MOD_INDIRECT_DISP_U32);
-                    X64_write_imm32_bytes(gen_state, src_addr.disp);
-                }
-            }
+            X64_write_addr_disp(gen_state, &src_addr);
         } break;
         case X64_Instr_Kind_MOV_MI: {
             const u8 size = instr->mov_mi.size;
@@ -466,16 +478,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                     array_push(gen_state->buffer, addr_bytes.sib_byte);
                 }
 
-                if (addr_bytes.has_disp) {
-                    if (addr_bytes.mod == X64_MOD_INDIRECT_DISP_U8) {
-                        array_push(gen_state->buffer, (u8)addr_bytes.disp);
-                    }
-                    else {
-                        assert(addr_bytes.mod == X64_MOD_INDIRECT_DISP_U32);
-                        X64_write_imm32_bytes(gen_state, addr_bytes.disp);
-                    }
-                }
-
+                X64_write_addr_disp(gen_state, &addr_bytes);
                 array_push(gen_state->buffer, (u8)instr->mov_mi.imm);
             }
             // 66 C7 /0 iw => mov r/m16, imm16
@@ -493,16 +496,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                     array_push(gen_state->buffer, addr_bytes.sib_byte);
                 }
 
-                if (addr_bytes.has_disp) {
-                    if (addr_bytes.mod == X64_MOD_INDIRECT_DISP_U8) {
-                        array_push(gen_state->buffer, (u8)addr_bytes.disp);
-                    }
-                    else {
-                        assert(addr_bytes.mod == X64_MOD_INDIRECT_DISP_U32);
-                        X64_write_imm32_bytes(gen_state, addr_bytes.disp);
-                    }
-                }
-
+                X64_write_addr_disp(gen_state, &addr_bytes);
                 X64_write_imm16_bytes(gen_state, instr->mov_mi.imm);
             }
             // C7 /0 id => mov r/m32, imm32
@@ -518,16 +512,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                     array_push(gen_state->buffer, addr_bytes.sib_byte);
                 }
 
-                if (addr_bytes.has_disp) {
-                    if (addr_bytes.mod == X64_MOD_INDIRECT_DISP_U8) {
-                        array_push(gen_state->buffer, (u8)addr_bytes.disp);
-                    }
-                    else {
-                        assert(addr_bytes.mod == X64_MOD_INDIRECT_DISP_U32);
-                        X64_write_imm32_bytes(gen_state, addr_bytes.disp);
-                    }
-                }
-
+                X64_write_addr_disp(gen_state, &addr_bytes);
                 X64_write_imm32_bytes(gen_state, instr->mov_mi.imm);
             }
             // REX.W + C7 /0 id => mov r/m64, imm32
@@ -543,16 +528,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                     array_push(gen_state->buffer, addr_bytes.sib_byte);
                 }
 
-                if (addr_bytes.has_disp) {
-                    if (addr_bytes.mod == X64_MOD_INDIRECT_DISP_U8) {
-                        array_push(gen_state->buffer, (u8)addr_bytes.disp);
-                    }
-                    else {
-                        assert(addr_bytes.mod == X64_MOD_INDIRECT_DISP_U32);
-                        X64_write_imm32_bytes(gen_state, addr_bytes.disp);
-                    }
-                }
-
+                X64_write_addr_disp(gen_state, &addr_bytes);
                 X64_write_imm32_bytes(gen_state, instr->mov_mi.imm);
             }
         } break;
@@ -565,7 +541,8 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
     allocator_restore_state(tmp_mem_state);
 }
 
-void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, BucketList* procs, const Symbol* main_proc)
+void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, BucketList* procs,
+                           const Symbol* main_proc)
 {
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
 
