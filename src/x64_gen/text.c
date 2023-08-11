@@ -184,11 +184,17 @@ static size_t startup_code_next_ip_after_call = 0x17; // The operand to call is 
 static const u8 main_code[] = {0x55, 0x48, 0x89, 0xe5, 0x48, 0x83, 0xec, 0x10, 0xc7, 0x45, 0xfc, 0x0a, 0x00, 0x00, 0x00, 0xc7, 0x45,
                                0xf8, 0x01, 0x00, 0x00, 0x00, 0x8b, 0x45, 0xfc, 0x03, 0x45, 0xf8, 0x48, 0x89, 0xec, 0x5d, 0xc3};
 
+typedef struct X64_ProcRelOffPatch {
+    s64 buffer_loc; // Location into which to write the proc's relative offset.
+    const Symbol* proc_sym; // Procedure who's relative offset we need to patch.
+} X64_ProcRelOffPatch;
+
 typedef struct X64_TextGenState {
     Allocator* gen_mem;
     Allocator* tmp_mem;
     Array(u8) buffer;
     HMap proc_offsets; // Symbol* -> starting offset in buffer
+    Array(X64_ProcRelOffPatch) proc_off_patches;
 } X64_TextGenState;
 
 static inline void X64_set_proc_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
@@ -210,6 +216,23 @@ static inline void X64_write_imm16_bytes(X64_TextGenState* gen_state, u16 val)
     array_push(gen_state->buffer, (val >> 8) & 0xFF); // byte 2
 }
 
+static s32 X64_try_get_proc_rel_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
+{
+    const s64* proc_offset_ptr = (const s64*)hmap_get(&gen_state->proc_offsets, PTR_UINT(proc_sym));
+    const s64 curr_loc = array_len(gen_state->buffer);
+
+    // Do not yet have the offset of this procedure recorded.
+    // Must record patching information and return 0.
+    if (!proc_offset_ptr) {
+        // Record patch info.
+        array_push(gen_state->proc_off_patches, (X64_ProcRelOffPatch){.buffer_loc = curr_loc, .proc_sym = proc_sym});
+        return 0;
+    }
+
+    const s64 next_ip = curr_loc + 4; // Assume disp is 4 bytes long.
+    return (s32)(*proc_offset_ptr - next_ip);
+}
+
 static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes* addr)
 {
     if (!addr->has_disp) {
@@ -217,8 +240,9 @@ static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes
     }
 
     if (addr->patch_sym) {
-        // TODO: Add patch info to gen_state (or get actual disp if we can).
-        X64_write_imm32_bytes(gen_state, addr->disp);
+        // Get the relative offset to the procedure (or record patch info if proc's offset is unavailable).
+        s32 proc_rel_off = X64_try_get_proc_rel_offset(gen_state, addr->patch_sym);
+        X64_write_imm32_bytes(gen_state, (u32)proc_rel_off);
     }
     else if (addr->mod == X64_MOD_INDIRECT_DISP_U8) {
         array_push(gen_state->buffer, (u8)addr->disp);
@@ -283,6 +307,22 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
         // RET
         case X64_Instr_Kind_RET: {
             array_push(gen_state->buffer, 0xc3); // opcode is 0xc3 for near return to calling proc.
+        } break;
+        // LEA
+        case X64_Instr_Kind_LEA: {
+            // REX.W + 8D /r => lea r64, m
+            const u8 dst_reg = x64_reg_val[instr->lea.dst];
+            const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->lea.src);
+
+            array_push(gen_state->buffer, X64_rex_prefix(1, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b)); // REX
+            array_push(gen_state->buffer, 0x8D); // opcode
+            array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg & 0x7, src_addr.rm)); // ModRM byte.
+
+            if (src_addr.has_sib_byte) {
+                array_push(gen_state->buffer, src_addr.sib_byte);
+            }
+
+            X64_write_addr_disp(gen_state, &src_addr);
         } break;
         // ADD
         case X64_Instr_Kind_ADD_RM: {
@@ -552,7 +592,8 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     X64_TextGenState gen_state = {.gen_mem = gen_mem,
                                   .tmp_mem = tmp_mem,
                                   .buffer = array_create(gen_mem, u8, startup_code_size << 2),
-                                  .proc_offsets = hmap(clp2(num_procs), gen_mem)};
+                                  .proc_offsets = hmap(clp2(num_procs), gen_mem),
+                                  .proc_off_patches = array_create(gen_mem, X64_ProcRelOffPatch, num_procs)};
 
     array_push_elems(gen_state.buffer, startup_code, startup_code_size); // Add _start code.
 
@@ -570,6 +611,16 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
         assert(offset_ptr);
         *((u32*)(&gen_state.buffer[startup_code_main_offset_loc])) = (u32)*offset_ptr - (u32)startup_code_next_ip_after_call;
     }
+
+    // Patch relative offsets to other procs.
+    const u32 num_proc_patches = array_len(gen_state.proc_off_patches);
+    for (size_t i = 0; i < num_proc_patches; i++) {
+        const X64_ProcRelOffPatch* patch_info = &gen_state.proc_off_patches[i];
+        const s64* proc_offset_ptr = (const s64*)hmap_get(&gen_state.proc_offsets, PTR_UINT(patch_info->proc_sym));
+        assert(proc_offset_ptr);
+        *((s32*)(&gen_state.buffer[patch_info->buffer_loc])) = (s32)(*proc_offset_ptr - patch_info->buffer_loc - 4);
+    }
+
     text_sec->buf = gen_state.buffer;
     text_sec->size = array_len(gen_state.buffer);
     text_sec->align = 0x10;
