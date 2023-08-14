@@ -181,9 +181,6 @@ static const u8 startup_code[] = {0x48, 0x31, 0xed, 0x8b, 0x3c, 0x24, 0x48, 0x8d
 static size_t startup_code_main_offset_loc = 0x13; // The location in the startup code to patch the relative offset of the main proc.
 static size_t startup_code_next_ip_after_call = 0x17; // The operand to call is relative from the next instruction pointer.
 
-static const u8 main_code[] = {0x55, 0x48, 0x89, 0xe5, 0x48, 0x83, 0xec, 0x10, 0xc7, 0x45, 0xfc, 0x0a, 0x00, 0x00, 0x00, 0xc7, 0x45,
-                               0xf8, 0x01, 0x00, 0x00, 0x00, 0x8b, 0x45, 0xfc, 0x03, 0x45, 0xf8, 0x48, 0x89, 0xec, 0x5d, 0xc3};
-
 typedef struct X64_ProcRelOffPatch {
     s64 buffer_loc; // Location into which to write the proc's relative offset.
     const Symbol* proc_sym; // Procedure who's relative offset we need to patch.
@@ -192,7 +189,7 @@ typedef struct X64_ProcRelOffPatch {
 typedef struct X64_TextGenState {
     Allocator* gen_mem;
     Allocator* tmp_mem;
-    Array(u8) buffer;
+    Array(u8) buffer; // TODO: Use a U8_BucketList instead.
     HMap proc_offsets; // Symbol* -> starting offset in buffer
     Array(X64_ProcRelOffPatch) proc_off_patches;
 } X64_TextGenState;
