@@ -182,8 +182,8 @@ typedef struct X64_TextGenState {
     Allocator* tmp_mem;
     Array(u8) buffer; // TODO: Use a U8_BucketList instead.
     HMap proc_offsets; // Symbol* -> starting offset in buffer
-    Array(X64_SymRelOffPatch) proc_off_patches;
-    Array(X64_SymRelOffPatch) var_off_patches;
+    Array(X64_SymRelOffPatch) proc_off_patches; // Usage of non-foreign procs (patched by compiler).
+    Array(X64_SymRelOffPatch) relocs; // Relocations for usage of global variables or foreign procedures.
 } X64_TextGenState;
 
 static inline void X64_set_proc_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
@@ -209,14 +209,25 @@ static s32 X64_try_get_sym_rel_offset(X64_TextGenState* gen_state, const Symbol*
 {
     const s64 curr_loc = array_len(gen_state->buffer);
 
+    // Record relocation for usage of global variable. Linker will use to patch.
     if (sym->kind == SYMBOL_VAR) {
-        // Record relocation. Linker will use to patch.
-        array_push(gen_state->var_off_patches,
+        array_push(gen_state->relocs,
                    (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
         return 0;
     }
 
+    // Record relocation for usage of foreign procedure. Linker will use this info to patch.
+    if (sym->kind == SYMBOL_PROC && (sym->decl->flags & DECL_IS_FOREIGN)) {
+        array_push(gen_state->relocs,
+                   (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
+        return 0;
+    }
+
+    //
+    // This is a non-foreign procedure.
+    //
     assert(sym->kind == SYMBOL_PROC);
+
     const s64* proc_offset_ptr = (const s64*)hmap_get(&gen_state->proc_offsets, PTR_UINT(sym));
 
     // Do not yet have the offset of this procedure recorded.
@@ -593,7 +604,7 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
                                   .buffer = array_create(gen_mem, u8, startup_code_size << 2),
                                   .proc_offsets = hmap(clp2(num_procs), gen_mem),
                                   .proc_off_patches = array_create(gen_mem, X64_SymRelOffPatch, num_procs),
-                                  .var_off_patches = array_create(gen_mem, X64_SymRelOffPatch, 8)};
+                                  .relocs = array_create(gen_mem, X64_SymRelOffPatch, 32)};
 
     array_push_elems(gen_state.buffer, startup_code, startup_code_size); // Add _start code.
 
@@ -626,7 +637,7 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     text_sec->size = array_len(gen_state.buffer);
     text_sec->align = 0x10;
     text_sec->proc_offs = gen_state.proc_offsets;
-    text_sec->relocs = gen_state.var_off_patches;
+    text_sec->relocs = gen_state.relocs;
 
     allocator_restore_state(tmp_mem_state);
 }

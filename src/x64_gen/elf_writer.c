@@ -486,9 +486,12 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
 
     // Add foreign procs as symbols.
     const u32 num_foreign_procs = foreign_procs->num_elems;
+    HMap foreign_proc_sym_idxs = hmap(clp2(num_foreign_procs), gen_mem);
 
     for (u32 i = 0; i < num_foreign_procs; i += 1) {
         Symbol* proc_sym = (Symbol*)(*bucket_list_get_elem_packed(foreign_procs, i));
+
+        hmap_put(&foreign_proc_sym_idxs, PTR_UINT(proc_sym), sym_idx); // Track the symbol index for each foreign proc
         symtab->symtab.syms[sym_idx++] = (Elf64_Sym){.st_name = Elf_strtab_add(&strtab->strtab,
                                                                                proc_sym->as_proc.foreign_name->str),
                                                      .st_info = ELF_ST_INFO(ELF_STB_GLOBAL, ELF_STT_NOTYPE),
@@ -561,14 +564,22 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
             const X64_SymRelOffPatch* reloc_info = &relocs_info[i];
             Elf64_Rela* reloc = &rela_text->rela_text.relocs[i];
 
-            // TODO: Handle foreign procs.
+            if (reloc_info->sym->kind == SYMBOL_VAR) { // Global var used in code.
+                u64* sym_off_ptr = hmap_get(&data_sec->var_offs, PTR_UINT(reloc_info->sym));
+                assert(sym_off_ptr != NULL);
 
-            u64* sym_off_ptr = hmap_get(&data_sec->var_offs, PTR_UINT(reloc_info->sym));
-            assert(sym_off_ptr != NULL);
+                reloc->r_offset = reloc_info->buffer_loc;
+                reloc->r_info = ((u64)(data_sym_idx) << 32) + (u64)(ELF_R_X86_64_PC32);
+                reloc->r_addend = *sym_off_ptr - reloc_info->bytes_to_next_ip;
+            }
+            else if (reloc_info->sym->kind == SYMBOL_PROC) { // Foreign procedure used in code.
+                u64* foreign_proc_sym_idx_ptr = hmap_get(&foreign_proc_sym_idxs, PTR_UINT(reloc_info->sym));
+                assert(foreign_proc_sym_idx_ptr != NULL);
 
-            reloc->r_offset = reloc_info->buffer_loc;
-            reloc->r_info = ((u64)(data_sym_idx) << 32) + (u64)(ELF_R_X86_64_PC32);
-            reloc->r_addend = *sym_off_ptr - reloc_info->bytes_to_next_ip;
+                reloc->r_offset = reloc_info->buffer_loc;
+                reloc->r_info = (*foreign_proc_sym_idx_ptr << 32) + (u64)(ELF_R_X86_64_PLT32);
+                reloc->r_addend = -(reloc_info->bytes_to_next_ip);
+            }
         }
     }
 
@@ -610,9 +621,8 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
 bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, const Symbol* main_proc, GlobalData* str_lits,
                  GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
-    NIBBLE_UNUSED_VAR(procs); // TODO: Remove
-
     AllocatorState gen_mem_state = allocator_get_state(gen_mem);
+    AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
 
     const bool has_rodata_sec = (str_lits->list.num_elems > 0) || (float_lits->list.num_elems > 0);
     const bool has_data_sec = vars->list.num_elems > 0;
@@ -635,6 +645,7 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
 
     bool success = x64_write_elf(gen_mem, tmp_mem, &rodata_sec, &data_sec, &text_sec, foreign_procs, output_file);
 
+    allocator_restore_state(tmp_mem_state);
     allocator_restore_state(gen_mem_state);
 
     return success;
