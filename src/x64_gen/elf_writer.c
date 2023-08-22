@@ -484,6 +484,20 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
                                                  .st_value = 0,
                                                  .st_size = 0};
 
+    // Add foreign procs as symbols.
+    const u32 num_foreign_procs = foreign_procs->num_elems;
+
+    for (u32 i = 0; i < num_foreign_procs; i += 1) {
+        Symbol* proc_sym = (Symbol*)(*bucket_list_get_elem_packed(foreign_procs, i));
+        symtab->symtab.syms[sym_idx++] = (Elf64_Sym){.st_name = Elf_strtab_add(&strtab->strtab,
+                                                                               proc_sym->as_proc.foreign_name->str),
+                                                     .st_info = ELF_ST_INFO(ELF_STB_GLOBAL, ELF_STT_NOTYPE),
+                                                     .st_other = ELF_STV_DEFAULT,
+                                                     .st_shndx = 0,
+                                                     .st_value = 0,
+                                                     .st_size = 0};
+    }
+
     // .rela.data
     if (has_rela_data_sec) {
         Array(const X64_DataReloc) relocs_info = data_sec->relocs;
@@ -546,6 +560,8 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
         for (size_t i = 0; i < num_relocs; ++i) {
             const X64_SymRelOffPatch* reloc_info = &relocs_info[i];
             Elf64_Rela* reloc = &rela_text->rela_text.relocs[i];
+
+            // TODO: Handle foreign procs.
 
             u64* sym_off_ptr = hmap_get(&data_sec->var_offs, PTR_UINT(reloc_info->sym));
             assert(sym_off_ptr != NULL);
