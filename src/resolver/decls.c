@@ -400,8 +400,6 @@ bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
             arg_index += 1;
         }
 
-        bucket_list_add_elem(&resolver->ctx->foreign_procs, sym);
-
         if (!nibble_add_foreign_lib(resolver->ctx, foreign_lib_arg->str_lit)) {
             resolver_on_error(resolver, foreign_lib_arg->super.range, "Unsupported library type for `%s`", foreign_lib_arg->str_lit->str);
             return false;

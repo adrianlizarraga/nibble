@@ -510,13 +510,14 @@ static Array(char) X64_nasm_gen_data(Allocator* gen_mem, Allocator* tmp_mem, con
     return str_builder;
 }
 
-static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, size_t proc_id, Symbol* proc_sym)
+static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym)
 {
     const DeclProc* decl = (const DeclProc*)proc_sym->decl;
     if (decl->is_incomplete) {
         return NULL;
     }
 
+    size_t proc_id = proc_sym->as_proc.index;
     Array(char) proc_str = array_create(gen_mem, char, 256);
 
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
@@ -1146,7 +1147,7 @@ bool X64_nasm_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* var
         assert(sym_ptr);
         Symbol* sym = (Symbol*)(*sym_ptr);
 
-        proc_strs[i] = X64_nasm_gen_proc(gen_mem, tmp_mem, i, sym);
+        proc_strs[i] = X64_nasm_gen_proc(gen_mem, tmp_mem, sym);
     }
 
     //

@@ -983,6 +983,8 @@ struct SymbolEnum {
 };
 
 struct SymbolProc {
+    size_t index; // Index of this symbol in bucket list container.
+                  // Used as index for proc metadata in parallel arrays (avoids need for HMap)
     struct BBlock** bblocks; // Stretchy buffer of basic blocks
     size_t num_instrs;
 
@@ -993,7 +995,7 @@ struct SymbolProc {
     size_t num_tmp_objs;
 
     // For procs in foreign libs
-    // Check decl->flags first.
+    // Check (sym->decl->flags & DECL_IS_FOREIGN) first.
     StrLit* foreign_name;
 };
 
