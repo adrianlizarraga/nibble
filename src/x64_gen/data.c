@@ -208,7 +208,7 @@ void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem, Alloca
     // Set the initial capacity to twice the combined size of all variables to avoid reallocation
     // due to additional alignment buf.
     data_sec->buf = array_create(gen_mem, char, vars->size << 1);
-    data_sec->var_offs = hmap(clp2(num_vars), gen_mem); // TODO: Make a flat parallel array
+    data_sec->var_offs = alloc_array(gen_mem, u64, num_vars, false);
     data_sec->relocs = array_create(gen_mem, X64_DataReloc, num_vars);
 
     // Get the .data section's required alignment from the first variable.
@@ -221,9 +221,9 @@ void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem, Alloca
     for (Bucket* bucket = vars->list.first; bucket; bucket = bucket->next) {
         for (size_t i = 0; i < bucket->count; i += 1) {
             Symbol* sym = bucket->elems[i];
-            size_t offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr, &data_sec->relocs);
+            const u64 offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr, &data_sec->relocs);
 
-            hmap_put(&data_sec->var_offs, PTR_UINT(sym), offset); // Record offset.
+            data_sec->var_offs[sym->as_var.index] = offset; // Record offset.
         }
     }
 }
@@ -244,37 +244,38 @@ void X64_init_rodata_section(X64_RODataSection* rodata, Allocator* gen_mem, Allo
 
     // Serialize all floats.
     if (num_floats) {
-        rodata->float_offs = hmap(clp2(num_floats), gen_mem); // TODO: Make a flat parallel array
+        rodata->float_offs = alloc_array(gen_mem, u64, num_floats, false);
 
         for (Bucket* bucket = floats->list.first; bucket; bucket = bucket->next) {
             for (size_t i = 0; i < bucket->count; i += 1) {
                 FloatLit* float_lit = bucket->elems[i];
-                Type* type = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
+                Type* type = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type
+                                                          : builtin_types[BUILTIN_TYPE_F32].type;
                 ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = type, .float_lit = float_lit};
-                size_t offset = X64_add_data_item(&rodata->buf, tmp_mem, &const_expr, NULL);
+                const u64 offset = X64_add_data_item(&rodata->buf, tmp_mem, &const_expr, NULL);
 
-                hmap_put(&rodata->float_offs, PTR_UINT(float_lit), offset);
+                rodata->float_offs[float_lit->index] = offset;
             }
         }
     }
 
     // Serialize all strings.
     if (num_strs) {
-        rodata->str_offs = hmap(clp2(num_strs), gen_mem); // TODO: Make a flat parallel array
+        rodata->str_offs = alloc_array(gen_mem, u64, num_strs, false);
 
         for (Bucket* bucket = strs->list.first; bucket; bucket = bucket->next) {
             for (size_t i = 0; i < bucket->count; i += 1) {
                 StrLit* str_lit = bucket->elems[i];
                 size_t len = str_lit->len;
                 const char* str = str_lit->str;
-                size_t offset = array_len(rodata->buf);
+                const u64 offset = array_len(rodata->buf);
 
                 for (size_t i = 0; i < len; i += 1) {
                     array_push(rodata->buf, str[i]);
                 }
 
                 array_push(rodata->buf, '\0');
-                hmap_put(&rodata->str_offs, PTR_UINT(str_lit), offset);
+                rodata->str_offs[str_lit->index] = offset;
             }
         }
     }

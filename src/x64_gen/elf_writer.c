@@ -519,22 +519,19 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
 
             if (reloc_info->ref_addr.kind == CONST_ADDR_STR_LIT) {
                 const StrLit* str_lit = reloc_info->ref_addr.str_lit;
-                u64* str_off_ptr = hmap_get(&rodata_sec->str_offs, PTR_UINT(str_lit));
-
-                assert(str_off_ptr != NULL);
+                const u64 str_offset = rodata_sec->str_offs[str_lit->index];
 
                 reloc->r_info = ((u64)(rodata_sym_idx) << 32) + (u64)(ELF_R_X86_64_64);
-                reloc->r_addend = *str_off_ptr + reloc_info->ref_addr.disp;
+                reloc->r_addend = str_offset + reloc_info->ref_addr.disp;
             }
             else if (reloc_info->ref_addr.kind == CONST_ADDR_SYM) {
                 const Symbol* sym = reloc_info->ref_addr.sym;
 
                 if (sym->kind == SYMBOL_VAR) {
-                    u64* sym_off_ptr = hmap_get(&data_sec->var_offs, PTR_UINT(sym));
-                    assert(sym_off_ptr != NULL);
+                    const u64 sym_offset = data_sec->var_offs[sym->as_var.index];
 
                     reloc->r_info = ((u64)(data_sym_idx) << 32) + (u64)(ELF_R_X86_64_64);
-                    reloc->r_addend = *sym_off_ptr + reloc_info->ref_addr.disp;
+                    reloc->r_addend = sym_offset + reloc_info->ref_addr.disp;
                 }
                 else {
                     assert(sym->kind == SYMBOL_PROC);
@@ -566,12 +563,11 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
             Elf64_Rela* reloc = &rela_text->rela_text.relocs[i];
 
             if (reloc_info->sym->kind == SYMBOL_VAR) { // Global var used in code.
-                u64* sym_off_ptr = hmap_get(&data_sec->var_offs, PTR_UINT(reloc_info->sym));
-                assert(sym_off_ptr != NULL);
+                const u64 sym_offset = data_sec->var_offs[reloc_info->sym->as_var.index];
 
                 reloc->r_offset = reloc_info->buffer_loc;
                 reloc->r_info = ((u64)(data_sym_idx) << 32) + (u64)(ELF_R_X86_64_PC32);
-                reloc->r_addend = *sym_off_ptr - reloc_info->bytes_to_next_ip;
+                reloc->r_addend = sym_offset - reloc_info->bytes_to_next_ip;
             }
             else if (reloc_info->sym->kind == SYMBOL_PROC) { // Foreign procedure used in code.
                 u64* foreign_proc_sym_idx_ptr = hmap_get(&foreign_proc_sym_idxs, PTR_UINT(reloc_info->sym));

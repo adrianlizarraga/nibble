@@ -14,15 +14,15 @@ typedef struct X64_DataReloc {
 typedef struct X64_DataSection {
     Array(char) buf;
     u32 align;
-    HMap var_offs; // Symbol* -> size_t (offset in buf)
+    u64* var_offs; // Symbol::index -> u64 (offset in buf)
     Array(X64_DataReloc) relocs;
 } X64_DataSection;
 
 typedef struct X64_RODataSection {
     Array(char) buf;
     u32 align;
-    HMap float_offs; // FloatLit* -> size_t (offset in buf)
-    HMap str_offs; // StrLit* -> size_t (offset in buf)
+    u64* float_offs; // FloatLit::index -> u64 (offset in buf)
+    u64* str_offs;   // StrLit::index -> u64 (offset in buf)
 } X64_RODataSection;
 
 void X64_init_rodata_section(X64_RODataSection* rodata, Allocator* gen_mem, Allocator* tmp_mem, GlobalData* floats,
