@@ -484,14 +484,13 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
 
     // Add foreign procs as symbols.
     const u32 num_foreign_procs = foreign_procs->num_elems;
-    HMap foreign_proc_sym_idxs = hmap(clp2(num_foreign_procs), gen_mem);
+    u32* foreign_proc_sym_idxs = alloc_array(gen_mem, u32, num_foreign_procs, false);
 
     for (Bucket* bucket = foreign_procs->first; bucket; bucket = bucket->next) {
         for (u32 i = 0; i < bucket->count; i += 1) {
             Symbol* proc_sym = bucket->elems[i];
 
-            hmap_put(&foreign_proc_sym_idxs, PTR_UINT(proc_sym), sym_idx); // Track the symbol index for each foreign proc
-                                                                           // TODO: Use flat parallel array!
+            foreign_proc_sym_idxs[proc_sym->as_proc.index] = sym_idx;
             symtab->symtab.syms[sym_idx++] =
                 (Elf64_Sym){.st_name = Elf_strtab_add(&strtab->strtab, proc_sym->as_proc.foreign_name->str),
                             .st_info = ELF_ST_INFO(ELF_STB_GLOBAL, ELF_STT_NOTYPE),
@@ -569,11 +568,10 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
                 reloc->r_addend = sym_offset - reloc_info->bytes_to_next_ip;
             }
             else if (reloc_info->sym->kind == SYMBOL_PROC) { // Foreign procedure used in code.
-                u64* foreign_proc_sym_idx_ptr = hmap_get(&foreign_proc_sym_idxs, PTR_UINT(reloc_info->sym));
-                assert(foreign_proc_sym_idx_ptr != NULL);
+                u64 foreign_proc_sym_idx = foreign_proc_sym_idxs[reloc_info->sym->as_proc.index];
 
                 reloc->r_offset = reloc_info->buffer_loc;
-                reloc->r_info = (*foreign_proc_sym_idx_ptr << 32) + (u64)(ELF_R_X86_64_PLT32);
+                reloc->r_info = (foreign_proc_sym_idx << 32) + (u64)(ELF_R_X86_64_PLT32);
                 reloc->r_addend = -(reloc_info->bytes_to_next_ip);
             }
         }
