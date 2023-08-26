@@ -340,6 +340,7 @@ static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* d
 
             if (!float_lit->used) {
                 float_lit->used = true;
+                float_lit->index = builder->float_lits->list.num_elems;
                 add_global_data(builder->float_lits, float_lit, float_kind_sizes[float_lit->kind]);
             }
         }
@@ -382,6 +383,7 @@ static void IR_emit_global_expr(IR_VarBuilder* builder, Expr* expr, ConstExpr* d
 
         if (!str_lit->used) {
             str_lit->used = true;
+            str_lit->index = builder->str_lits->list.num_elems;
             add_global_data(builder->str_lits, str_lit, str_lit->len + 1);
         }
 

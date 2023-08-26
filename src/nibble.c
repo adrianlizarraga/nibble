@@ -1496,7 +1496,6 @@ FloatLit* intern_float_lit(HMap* float_lit_map, FloatKind kind, Float value)
     }
 
     new_intern->next = intern; // Chain to colliding literal (if any)
-    new_intern->id = float_lit_map->len;
     new_intern->kind = kind;
     new_intern->value = value;
 
@@ -1531,7 +1530,6 @@ StrLit* intern_str_lit(HMap* strmap, const char* str, size_t len)
     }
 
     new_intern->next = intern; // Record collision. If a collision did _NOT_ occur, this will be null.
-    new_intern->id = strmap->len;
     new_intern->len = len;
 
     memcpy(new_intern->str, str, len);

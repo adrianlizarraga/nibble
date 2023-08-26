@@ -107,7 +107,7 @@ static const char* x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUN
 static const char* X64_nasm_float_lit_mangled_name(Allocator* alloc, FloatLit* float_lit)
 {
     char* dstr = array_create(alloc, char, 16);
-    ftprint_char_array(&dstr, true, "%s_%llu", X64_NASM_FLOAT_LIT_PRE, float_lit->id);
+    ftprint_char_array(&dstr, true, "%s_%llu", X64_NASM_FLOAT_LIT_PRE, float_lit->index);
 
     return dstr;
 }
@@ -127,10 +127,10 @@ static char* X64_nasm_print_sibd_addr(Allocator* allocator, X64_SIBD_Addr* addr,
     const char* mem_label = mem_label_size ? x64_mem_size_label[mem_label_size] : "";
 
     if (addr->kind == X64__SIBD_ADDR_STR_LIT) {
-        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_STR_LIT_PRE, addr->str_lit->id);
+        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_STR_LIT_PRE, addr->str_lit->index);
     }
     else if (addr->kind == X64__SIBD_ADDR_FLOAT_LIT) {
-        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_FLOAT_LIT_PRE, addr->float_lit->id);
+        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_FLOAT_LIT_PRE, addr->float_lit->index);
     }
     else if (addr->kind == X64__SIBD_ADDR_GLOBAL) {
         ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, symbol_mangled_name(allocator, addr->global));
@@ -357,7 +357,7 @@ static void X64_nasm_print_global_val(Allocator* allocator, const ConstExpr* con
         else {
             assert(addr->kind == CONST_ADDR_STR_LIT);
             ftprint_char_array(line, false, "%s %s_%llu", x64_data_size_label[const_expr->type->size], X64_NASM_STR_LIT_PRE,
-                               addr->str_lit->id);
+                               addr->str_lit->index);
         }
 
         if (addr->disp) {
@@ -455,7 +455,7 @@ static Array(char)
 
             const char* escaped_str = cstr_escape(tmp_mem, str_lit->str, str_lit->len, '`'); // TODO: Just print bytes.
 
-            X64_NASM_PRINT_FL(str_builder, "%s_%llu: ", X64_NASM_STR_LIT_PRE, str_lit->id);
+            X64_NASM_PRINT_FL(str_builder, "%s_%llu: ", X64_NASM_STR_LIT_PRE, str_lit->index);
             X64_NASM_PRINT_FL(str_builder, "db `%s\\0`", escaped_str);
         }
 

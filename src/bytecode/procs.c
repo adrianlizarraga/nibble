@@ -3425,6 +3425,7 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
 
             if (!float_lit->used) {
                 float_lit->used = true;
+                float_lit->index = builder->float_lits->list.num_elems;
                 add_global_data(builder->float_lits, float_lit, float_kind_sizes[float_lit->kind]);
             }
         }
@@ -3472,6 +3473,7 @@ static BBlock* IR_emit_expr(IR_ProcBuilder* builder, BBlock* bblock, Expr* expr,
 
         if (!str_lit->used) {
             str_lit->used = true;
+            str_lit->index = builder->str_lits->list.num_elems;
             add_global_data(builder->str_lits, str_lit, str_lit->len + 1);
         }
 
