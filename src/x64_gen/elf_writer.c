@@ -535,11 +535,10 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
                 }
                 else {
                     assert(sym->kind == SYMBOL_PROC);
-                    u64* sym_off_ptr = hmap_get(&text_sec->proc_offs, PTR_UINT(sym));
-                    assert(sym_off_ptr != NULL);
+                    const u64 proc_offset = text_sec->proc_offs[sym->as_proc.index];
 
                     reloc->r_info = ((u64)(text_sym_idx) << 32) + (u64)(ELF_R_X86_64_64);
-                    reloc->r_addend = *sym_off_ptr;
+                    reloc->r_addend = proc_offset;
                     assert(reloc_info->ref_addr.disp == 0);
                 }
             }

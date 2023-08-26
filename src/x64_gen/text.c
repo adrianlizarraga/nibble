@@ -181,14 +181,19 @@ typedef struct X64_TextGenState {
     Allocator* gen_mem;
     Allocator* tmp_mem;
     Array(u8) buffer; // TODO: Use a U8_BucketList instead.
-    HMap proc_offsets; // Symbol* -> starting offset in buffer
+    u64* proc_offsets; // Symbol::index -> starting offset in buffer
     Array(X64_SymRelOffPatch) proc_off_patches; // Usage of non-foreign procs (patched by compiler).
     Array(X64_SymRelOffPatch) relocs; // Relocations for usage of global variables or foreign procedures.
 } X64_TextGenState;
 
 static inline void X64_set_proc_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
 {
-    hmap_put(&gen_state->proc_offsets, PTR_UINT(proc_sym), array_len(gen_state->buffer));
+    gen_state->proc_offsets[proc_sym->as_proc.index] = array_len(gen_state->buffer);
+}
+
+static inline u64 X64_get_proc_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
+{
+    return gen_state->proc_offsets[proc_sym->as_proc.index];
 }
 
 static inline void X64_write_imm32_bytes(X64_TextGenState* gen_state, u32 val)
@@ -211,15 +216,13 @@ static s32 X64_try_get_sym_rel_offset(X64_TextGenState* gen_state, const Symbol*
 
     // Record relocation for usage of global variable. Linker will use to patch.
     if (sym->kind == SYMBOL_VAR) {
-        array_push(gen_state->relocs,
-                   (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
+        array_push(gen_state->relocs, (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
         return 0;
     }
 
     // Record relocation for usage of foreign procedure. Linker will use this info to patch.
     if (sym->kind == SYMBOL_PROC && (sym->decl->flags & DECL_IS_FOREIGN)) {
-        array_push(gen_state->relocs,
-                   (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
+        array_push(gen_state->relocs, (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
         return 0;
     }
 
@@ -228,19 +231,19 @@ static s32 X64_try_get_sym_rel_offset(X64_TextGenState* gen_state, const Symbol*
     //
     assert(sym->kind == SYMBOL_PROC);
 
-    const s64* proc_offset_ptr = (const s64*)hmap_get(&gen_state->proc_offsets, PTR_UINT(sym));
+    const s64 proc_offset = (s64)X64_get_proc_offset(gen_state, sym);
 
-    // Do not yet have the offset of this procedure recorded.
+    // No normal proc will have an offset of 0 (_start is at 0).
+    // If 0, we do not yet have the offset of this procedure recorded.
     // Must record patching information and return 0.
-    if (!proc_offset_ptr) {
+    if (!proc_offset) {
         // Record patch info.
-        array_push(gen_state->proc_off_patches,
-                   (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
+        array_push(gen_state->proc_off_patches, (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
         return 0;
     }
 
     const s64 next_ip = curr_loc + 4; // Assume disp is 4 bytes long.
-    return (s32)(*proc_offset_ptr - next_ip);
+    return (s32)(proc_offset - next_ip);
 }
 
 static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes* addr)
@@ -602,7 +605,7 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     X64_TextGenState gen_state = {.gen_mem = gen_mem,
                                   .tmp_mem = tmp_mem,
                                   .buffer = array_create(gen_mem, u8, startup_code_size << 2),
-                                  .proc_offsets = hmap(clp2(num_procs), gen_mem), // TODO: Use flat parallel array
+                                  .proc_offsets = alloc_array(gen_mem, u64, num_procs, true),
                                   .proc_off_patches = array_create(gen_mem, X64_SymRelOffPatch, num_procs),
                                   .relocs = array_create(gen_mem, X64_SymRelOffPatch, 32)};
 
@@ -618,19 +621,17 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
 
     // Patch the location of the main proc.
     {
-        u64* offset_ptr = hmap_get(&gen_state.proc_offsets, PTR_UINT(main_proc));
-        assert(offset_ptr);
-        *((u32*)(&gen_state.buffer[startup_code_main_offset_loc])) = (u32)*offset_ptr - (u32)startup_code_next_ip_after_call;
+        const u64 main_offset = X64_get_proc_offset(&gen_state, main_proc);
+        *((u32*)(&gen_state.buffer[startup_code_main_offset_loc])) = (u32)main_offset - (u32)startup_code_next_ip_after_call;
     }
 
     // Patch relative offsets to other procs.
     const u32 num_proc_patches = array_len(gen_state.proc_off_patches);
     for (size_t i = 0; i < num_proc_patches; i++) {
         const X64_SymRelOffPatch* patch_info = &gen_state.proc_off_patches[i];
-        const s64* proc_offset_ptr = (const s64*)hmap_get(&gen_state.proc_offsets, PTR_UINT(patch_info->sym));
-        assert(proc_offset_ptr);
+        const s64 proc_offset = (s64)X64_get_proc_offset(&gen_state, patch_info->sym);
         *((s32*)(&gen_state.buffer[patch_info->buffer_loc])) =
-            (s32)(*proc_offset_ptr - (patch_info->buffer_loc + patch_info->bytes_to_next_ip));
+            (s32)(proc_offset - (patch_info->buffer_loc + patch_info->bytes_to_next_ip));
     }
 
     text_sec->buf = gen_state.buffer;

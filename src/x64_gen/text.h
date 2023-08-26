@@ -13,7 +13,7 @@ typedef struct X64_TextSection {
     const u8* buf;
     size_t size;
     u32 align;
-    HMap proc_offs; // Symbol* -> size_t (offset in buf)
+    u64* proc_offs; // Symbol::index -> u64 (offset in buf)
     Array(X64_SymRelOffPatch) relocs;
 } X64_TextSection;
 
