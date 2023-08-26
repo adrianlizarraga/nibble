@@ -602,18 +602,18 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     X64_TextGenState gen_state = {.gen_mem = gen_mem,
                                   .tmp_mem = tmp_mem,
                                   .buffer = array_create(gen_mem, u8, startup_code_size << 2),
-                                  .proc_offsets = hmap(clp2(num_procs), gen_mem),
+                                  .proc_offsets = hmap(clp2(num_procs), gen_mem), // TODO: Use flat parallel array
                                   .proc_off_patches = array_create(gen_mem, X64_SymRelOffPatch, num_procs),
                                   .relocs = array_create(gen_mem, X64_SymRelOffPatch, 32)};
 
     array_push_elems(gen_state.buffer, startup_code, startup_code_size); // Add _start code.
 
-    for (size_t i = 0; i < num_procs; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
-        assert(sym_ptr);
-        Symbol* proc_sym = (Symbol*)(*sym_ptr);
+    for (Bucket* bucket = procs->first; bucket; bucket = bucket->next) {
+        for (size_t i = 0; i < bucket->count; i += 1) {
+            Symbol* proc_sym = bucket->elems[i];
 
-        X64_elf_gen_proc_text(&gen_state, proc_sym);
+            X64_elf_gen_proc_text(&gen_state, proc_sym);
+        }
     }
 
     // Patch the location of the main proc.

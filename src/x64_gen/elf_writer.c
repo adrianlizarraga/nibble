@@ -3,7 +3,6 @@
 #include "x64_gen/data.h"
 #include "x64_gen/text.h"
 
-
 static u32 write_bin(FILE* fd, const void* bin, u32 size, u32 tgt_offset, u32 curr_offset)
 {
     u32 offset = curr_offset;
@@ -190,7 +189,7 @@ static inline void x64_init_elf_prog(X64_ElfProg* elf_prog, Allocator* gen_mem, 
     const bool has_rela_text_sec = array_len(text_sec->relocs) > 0;
 
     // .rodata?, .data?, .text, .shstrtab, .symtab, .strtab, .rela.text?, .rela.data?
-    elf_prog->num_sections = 4 + has_rodata_sec + has_data_sec +  has_rela_data_sec + has_rela_text_sec;
+    elf_prog->num_sections = 4 + has_rodata_sec + has_data_sec + has_rela_data_sec + has_rela_text_sec;
 
     u32 sh_idx = 1;
 
@@ -410,7 +409,6 @@ static void x64_prog_write_sections(const X64_ElfProg* prog, FILE* out_fd, u32 i
 static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODataSection* rodata_sec, const X64_DataSection* data_sec,
                           const X64_TextSection* text_sec, const BucketList* foreign_procs, const char* output_file)
 {
-    // TODO: Actually use vars.
     NIBBLE_UNUSED_VAR(tmp_mem);
     NIBBLE_UNUSED_VAR(output_file);
 
@@ -488,17 +486,20 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
     const u32 num_foreign_procs = foreign_procs->num_elems;
     HMap foreign_proc_sym_idxs = hmap(clp2(num_foreign_procs), gen_mem);
 
-    for (u32 i = 0; i < num_foreign_procs; i += 1) {
-        Symbol* proc_sym = (Symbol*)(*bucket_list_get_elem_packed(foreign_procs, i));
+    for (Bucket* bucket = foreign_procs->first; bucket; bucket = bucket->next) {
+        for (u32 i = 0; i < bucket->count; i += 1) {
+            Symbol* proc_sym = bucket->elems[i];
 
-        hmap_put(&foreign_proc_sym_idxs, PTR_UINT(proc_sym), sym_idx); // Track the symbol index for each foreign proc
-        symtab->symtab.syms[sym_idx++] = (Elf64_Sym){.st_name = Elf_strtab_add(&strtab->strtab,
-                                                                               proc_sym->as_proc.foreign_name->str),
-                                                     .st_info = ELF_ST_INFO(ELF_STB_GLOBAL, ELF_STT_NOTYPE),
-                                                     .st_other = ELF_STV_DEFAULT,
-                                                     .st_shndx = 0,
-                                                     .st_value = 0,
-                                                     .st_size = 0};
+            hmap_put(&foreign_proc_sym_idxs, PTR_UINT(proc_sym), sym_idx); // Track the symbol index for each foreign proc
+                                                                           // TODO: Use flat parallel array!
+            symtab->symtab.syms[sym_idx++] =
+                (Elf64_Sym){.st_name = Elf_strtab_add(&strtab->strtab, proc_sym->as_proc.foreign_name->str),
+                            .st_info = ELF_ST_INFO(ELF_STB_GLOBAL, ELF_STT_NOTYPE),
+                            .st_other = ELF_STV_DEFAULT,
+                            .st_shndx = 0,
+                            .st_value = 0,
+                            .st_size = 0};
+        }
     }
 
     // .rela.data
@@ -618,8 +619,8 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
     return true;
 }
 
-bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, const Symbol* main_proc, GlobalData* str_lits,
-                 GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
+bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, const Symbol* main_proc,
+                 GlobalData* str_lits, GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
     AllocatorState gen_mem_state = allocator_get_state(gen_mem);
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
@@ -650,4 +651,3 @@ bool x64_gen_elf(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bucke
 
     return success;
 }
-

@@ -113,6 +113,7 @@ bool resolve_symbol(Resolver* resolver, Symbol* sym)
         success = resolve_decl_var(resolver, sym);
 
         if (is_global) {
+            sym->as_var.index = resolver->ctx->vars.list.num_elems;
             add_global_data(&resolver->ctx->vars, sym, sym->type->size);
         }
         break;

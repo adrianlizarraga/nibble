@@ -15,54 +15,54 @@ ExecCmd get_linker_cmd(Allocator* arena, const BucketList* foreign_libs, const S
     bool has_shared_lib = false;
     bool has_static_lib = false;
 
-    u32 num_foreign_libs = foreign_libs->num_elems;
-
     // Process foreign code: shared libs, static libs, and object files.
-    for (u32 i = 0; i < num_foreign_libs; i++) {
-        ForeignLib* lib = (void*)(*bucket_list_get_elem_packed(foreign_libs, i));
+    for (Bucket* bucket = foreign_libs->first; bucket; bucket = bucket->next) {
+        for (size_t i = 0; i < bucket->count; i++) {
+            ForeignLib* lib = bucket->elems[i];
 
-        bool is_shared_lib = lib->kind == FOREIGN_LIB_SHARED;
-        bool is_static_lib = lib->kind == FOREIGN_LIB_STATIC;
+            bool is_shared_lib = lib->kind == FOREIGN_LIB_SHARED;
+            bool is_static_lib = lib->kind == FOREIGN_LIB_STATIC;
 
-        if (is_shared_lib || is_static_lib) {
-            // Add library as ld argument. Ex: ld -l :libmycode.a -l :libc.so ....
-            char* libname_arg = alloc_array(arena, char, lib->name->len + 2, false);
+            if (is_shared_lib || is_static_lib) {
+                // Add library as ld argument. Ex: ld -l :libmycode.a -l :libc.so ....
+                char* libname_arg = alloc_array(arena, char, lib->name->len + 2, false);
 
-            libname_arg[0] = ':';
-            memcpy(&libname_arg[1], lib->name->str, lib->name->len);
-            libname_arg[lib->name->len + 1] = '\0';
+                libname_arg[0] = ':';
+                memcpy(&libname_arg[1], lib->name->str, lib->name->len);
+                libname_arg[lib->name->len + 1] = '\0';
 
-            array_push(ld_cmd.argv, "-l");
-            array_push(ld_cmd.argv, libname_arg);
-        }
-        else {
-            // Find the filepath of the object file and add it as an `ld` argument.
-            // Ex: ld /<some_path/obj.o .....
-            assert(lib->kind == FOREIGN_LIB_OBJ);
-            Path obj_path = path_create(arena, NULL, 0);
-            FileKind obj_file_kind = FILE_NONE;
+                array_push(ld_cmd.argv, "-l");
+                array_push(ld_cmd.argv, libname_arg);
+            }
+            else {
+                // Find the filepath of the object file and add it as an `ld` argument.
+                // Ex: ld /<some_path/obj.o .....
+                assert(lib->kind == FOREIGN_LIB_OBJ);
+                Path obj_path = path_create(arena, NULL, 0);
+                FileKind obj_file_kind = FILE_NONE;
 
-            for (u32 j = 0; j < num_lib_paths; j += 1) {
-                path_set(&obj_path, lib_paths[j].str, lib_paths[j].len); // Init to search path.
-                path_abs(path_join(&obj_path, lib->name->str, lib->name->len), PATH_AS_ARGS(working_dir));
+                for (u32 j = 0; j < num_lib_paths; j += 1) {
+                    path_set(&obj_path, lib_paths[j].str, lib_paths[j].len); // Init to search path.
+                    path_abs(path_join(&obj_path, lib->name->str, lib->name->len), PATH_AS_ARGS(working_dir));
 
-                obj_file_kind = path_kind(&obj_path);
+                    obj_file_kind = path_kind(&obj_path);
 
-                if (obj_file_kind == FILE_REG) {
-                    break;
+                    if (obj_file_kind == FILE_REG) {
+                        break;
+                    }
                 }
+
+                if (obj_file_kind != FILE_REG) {
+                    ftprint_err("[ERROR]: Cannot find foreign object file %s\n", lib->name->str);
+                    return (ExecCmd){0};
+                }
+
+                array_push(ld_cmd.argv, obj_path.str);
             }
 
-            if (obj_file_kind != FILE_REG) {
-                ftprint_err("[ERROR]: Cannot find foreign object file %s\n", lib->name->str);
-                return (ExecCmd){0};
-            }
-
-            array_push(ld_cmd.argv, obj_path.str);
+            has_shared_lib = has_shared_lib || is_shared_lib;
+            has_static_lib = has_static_lib || is_static_lib;
         }
-
-        has_shared_lib = has_shared_lib || is_shared_lib;
-        has_static_lib = has_static_lib || is_static_lib;
     }
 
     if (has_shared_lib) {
@@ -88,4 +88,3 @@ ExecCmd get_linker_cmd(Allocator* arena, const BucketList* foreign_libs, const S
 
     return ld_cmd;
 }
-

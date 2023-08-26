@@ -4260,15 +4260,13 @@ void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, G
                               .curr_scope = NULL};
 
     // Iterate through all procedures and generate IR instructions.
-    size_t num_procs = procs->num_elems;
+    for (Bucket* bucket = procs->first; bucket; bucket = bucket->next) {
+        for (size_t i = 0; i < bucket->count; i++) {
+            Symbol* sym = (Symbol*)(bucket->elems[i]);
+            assert(sym->kind == SYMBOL_PROC);
 
-    for (size_t i = 0; i < num_procs; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
-        assert(sym_ptr);
-        Symbol* sym = (Symbol*)(*sym_ptr);
-        assert(sym->kind == SYMBOL_PROC);
-
-        IR_build_proc(&builder, sym);
+            IR_build_proc(&builder, sym);
+        }
     }
 }
 

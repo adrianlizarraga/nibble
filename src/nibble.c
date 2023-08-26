@@ -200,16 +200,13 @@ static SourceFile* add_src_file(BucketList* src_files, const char* abs_path, siz
 
 static SourceFile* get_src_file(BucketList* src_files, ProgPos pos)
 {
-    size_t num_files = src_files->num_elems;
+    for (Bucket* bucket = src_files->first; bucket; bucket = bucket->next) {
+        for (size_t i = 0; i < bucket->count; i += 1) {
+            SourceFile* src_file = bucket->elems[i];
 
-    for (size_t i = 0; i < num_files; i += 1) {
-        void** elem_ptr = bucket_list_get_elem_packed(src_files, i);
-        assert(elem_ptr);
-
-        SourceFile* src_file = (SourceFile*)*elem_ptr;
-
-        if (pos < src_file->range.end) {
-            return src_file;
+            if (pos < src_file->range.end) {
+                return src_file;
+            }
         }
     }
 
@@ -1360,8 +1357,8 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
 
     print_info(nib_ctx, "Generating NASM assembly output: %s ...", nasm_fname.str);
     x64_init_target(nib_ctx->target_os);
-    x64_gen_module(nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, main_sym, &nib_ctx->str_lits, &nib_ctx->float_lits,
-                   &nib_ctx->foreign_procs, nasm_fname.str);
+    x64_gen_module(nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, main_sym, &nib_ctx->str_lits,
+                   &nib_ctx->float_lits, &nib_ctx->foreign_procs, nasm_fname.str);
 
     //////////////////////////////////////////
     //          Run NASM assembler

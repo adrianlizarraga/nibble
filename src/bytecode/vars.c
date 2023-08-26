@@ -423,15 +423,13 @@ void IR_build_vars(Allocator* arena, Allocator* tmp_arena, GlobalData* vars, Glo
     AllocatorState tmp_mem_state = allocator_get_state(builder.tmp_arena);
 
     // Iterate through all global variables and generate operands.
-    size_t num_vars = vars->list.num_elems;
+    for (Bucket* bucket = vars->list.first; bucket; bucket = bucket->next) {
+        for (size_t i = 0; i < bucket->count; i++) {
+            Symbol* sym = (Symbol*)(bucket->elems[i]);
+            assert(sym->kind == SYMBOL_VAR);
 
-    for (size_t i = 0; i < num_vars; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(&vars->list, i);
-        assert(sym_ptr);
-        Symbol* sym = (Symbol*)(*sym_ptr);
-        assert(sym->kind == SYMBOL_VAR);
-
-        IR_build_var(&builder, sym);
+            IR_build_var(&builder, sym);
+        }
     }
 
     allocator_restore_state(tmp_mem_state);
