@@ -67,30 +67,44 @@ typedef struct X64_AddrBytes {
     bool rex_x; // Extends index in SIB byte.
     bool has_disp; // Emit disp bytes even if 0 (e.g., for [rbp]).
     bool has_sib_byte;
-    const Symbol* patch_sym; // Symbol addr that needs to be patched for RIP + disp32
+    ConstAddr patch_entity; // Symbol (or string/float literal) addr that needs to be patched for RIP + disp32
 } X64_AddrBytes;
-
-static X64_AddrBytes X64_get_global_addr(const Symbol* global_sym)
-{
-    X64_AddrBytes addr_bytes = {.has_disp = true,
-                                .patch_sym = global_sym,
-
-                                // If this is a procedure, disp will be patched by the compiler to relative offset of proc.
-                                // If this is a global variable, the linker will patch it. The compiler will write the 0.
-                                .disp = 0,
-
-                                // The following mod/rm values indicate RIP + disp32
-                                .mod = X64_MOD_INDIRECT,
-                                .rm = 0x5};
-
-    return addr_bytes;
-}
 
 // Converts a high-level X64 SIBD address to specific ModRM and SIB byte information.
 static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
 {
     if (addr->kind == X64__SIBD_ADDR_GLOBAL) {
-        return X64_get_global_addr(addr->global);
+        return (X64_AddrBytes){.has_disp = true,
+                               .patch_entity = {.kind = CONST_ADDR_SYM, .sym = addr->global},
+                               // If this is a procedure, disp will be patched by the compiler to relative offset of proc.
+                               // If this is a global variable, the linker will patch it. The compiler will write the 0.
+                               .disp = 0,
+
+                               // The following mod/rm values indicate RIP + disp32
+                               .mod = X64_MOD_INDIRECT,
+                               .rm = 0x5};
+    }
+
+    if (addr->kind == X64__SIBD_ADDR_STR_LIT) {
+        return (X64_AddrBytes){.has_disp = true,
+                               .patch_entity = {.kind = CONST_ADDR_STR_LIT, .str_lit = addr->str_lit},
+                               // Compiler will write a displacement of 0, but linker will patch using reloc info.
+                               .disp = 0,
+
+                               // The following mod/rm values indicate RIP + disp32
+                               .mod = X64_MOD_INDIRECT,
+                               .rm = 0x5};
+    }
+
+    if (addr->kind == X64__SIBD_ADDR_FLOAT_LIT) {
+        return (X64_AddrBytes){.has_disp = true,
+                               .patch_entity = {.kind = CONST_ADDR_FLOAT_LIT, .float_lit = addr->float_lit},
+                               // Compiler will write a displacement of 0, but linker will patch using reloc info.
+                               .disp = 0,
+
+                               // The following mod/rm values indicate RIP + disp32
+                               .mod = X64_MOD_INDIRECT,
+                               .rm = 0x5};
     }
 
     assert(addr->kind == X64__SIBD_ADDR_LOCAL);
@@ -182,8 +196,8 @@ typedef struct X64_TextGenState {
     Allocator* tmp_mem;
     Array(u8) buffer; // TODO: Use a U8_BucketList instead.
     u64* proc_offsets; // Symbol::index -> starting offset in buffer
-    Array(X64_SymRelOffPatch) proc_off_patches; // Usage of non-foreign procs (patched by compiler).
-    Array(X64_SymRelOffPatch) relocs; // Relocations for usage of global variables or foreign procedures.
+    Array(X64_TextReloc) proc_off_patches; // Usage of non-foreign procs (patched by compiler).
+    Array(X64_TextReloc) relocs; // Relocations for usage of global variables or foreign procedures.
 } X64_TextGenState;
 
 static inline void X64_set_proc_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
@@ -210,40 +224,54 @@ static inline void X64_write_imm16_bytes(X64_TextGenState* gen_state, u16 val)
     array_push(gen_state->buffer, (val >> 8) & 0xFF); // byte 2
 }
 
-static s32 X64_try_get_sym_rel_offset(X64_TextGenState* gen_state, const Symbol* sym)
+static s32 X64_try_get_global_entity_rel_offset(X64_TextGenState* gen_state, ConstAddr entity)
 {
     const s64 curr_loc = array_len(gen_state->buffer);
 
-    // Record relocation for usage of global variable. Linker will use to patch.
-    if (sym->kind == SYMBOL_VAR) {
-        array_push(gen_state->relocs, (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
+    switch (entity.kind) {
+    case CONST_ADDR_STR_LIT:
+    case CONST_ADDR_FLOAT_LIT:
+        array_push(gen_state->relocs, (X64_TextReloc){.usage_off = curr_loc, .bytes_to_next_ip = 4, .ref_addr = entity});
         return 0;
+    case CONST_ADDR_SYM: {
+        const Symbol* sym = entity.sym;
+
+        // Record relocation for usage of global variable. Linker will use to patch.
+        if (sym->kind == SYMBOL_VAR) {
+            array_push(gen_state->relocs, (X64_TextReloc){.usage_off = curr_loc, .bytes_to_next_ip = 4, .ref_addr = entity});
+            return 0;
+        }
+
+        // Record relocation for usage of foreign procedure. Linker will use this info to patch.
+        if (sym->kind == SYMBOL_PROC && (sym->decl->flags & DECL_IS_FOREIGN)) {
+            array_push(gen_state->relocs, (X64_TextReloc){.usage_off = curr_loc, .bytes_to_next_ip = 4, .ref_addr = entity});
+            return 0;
+        }
+
+        //
+        // This is a non-foreign procedure.
+        //
+        assert(sym->kind == SYMBOL_PROC);
+
+        const s64 proc_offset = (s64)X64_get_proc_offset(gen_state, sym);
+
+        // No normal proc will have an offset of 0 (_start is at 0).
+        // If 0, we do not yet have the offset of this procedure recorded.
+        // Must record patching information and return 0.
+        if (!proc_offset) {
+            // Record patch info.
+            array_push(gen_state->proc_off_patches, (X64_TextReloc){.usage_off = curr_loc, .bytes_to_next_ip = 4, .ref_addr = entity});
+            return 0;
+        }
+
+        const s64 next_ip = curr_loc + 4; // Assume disp is 4 bytes long.
+        return (s32)(proc_offset - next_ip);
+    }
     }
 
-    // Record relocation for usage of foreign procedure. Linker will use this info to patch.
-    if (sym->kind == SYMBOL_PROC && (sym->decl->flags & DECL_IS_FOREIGN)) {
-        array_push(gen_state->relocs, (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
-        return 0;
-    }
+    NIBBLE_FATAL_EXIT("Unexpected global entity kind %d in x64 text relocation creation", entity.kind);
+    return 0;
 
-    //
-    // This is a non-foreign procedure.
-    //
-    assert(sym->kind == SYMBOL_PROC);
-
-    const s64 proc_offset = (s64)X64_get_proc_offset(gen_state, sym);
-
-    // No normal proc will have an offset of 0 (_start is at 0).
-    // If 0, we do not yet have the offset of this procedure recorded.
-    // Must record patching information and return 0.
-    if (!proc_offset) {
-        // Record patch info.
-        array_push(gen_state->proc_off_patches, (X64_SymRelOffPatch){.buffer_loc = curr_loc, .bytes_to_next_ip = 4, .sym = sym});
-        return 0;
-    }
-
-    const s64 next_ip = curr_loc + 4; // Assume disp is 4 bytes long.
-    return (s32)(proc_offset - next_ip);
 }
 
 static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes* addr)
@@ -252,9 +280,9 @@ static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes
         return;
     }
 
-    if (addr->patch_sym) {
-        // Get the relative offset to the symbol (or record patch info).
-        s32 rel_off = X64_try_get_sym_rel_offset(gen_state, addr->patch_sym);
+    if (addr->mod == X64_MOD_INDIRECT && addr->rm == 0x5) { // RIP + disp32 for reference to global entity.
+        // Get the relative offset to the symbol/literal (or record patch info).
+        s32 rel_off = X64_try_get_global_entity_rel_offset(gen_state, addr->patch_entity);
         X64_write_imm32_bytes(gen_state, (u32)rel_off);
     }
     else if (addr->mod == X64_MOD_INDIRECT_DISP_U8) {
@@ -606,8 +634,8 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
                                   .tmp_mem = tmp_mem,
                                   .buffer = array_create(gen_mem, u8, startup_code_size << 2),
                                   .proc_offsets = alloc_array(gen_mem, u64, num_procs, true),
-                                  .proc_off_patches = array_create(gen_mem, X64_SymRelOffPatch, num_procs),
-                                  .relocs = array_create(gen_mem, X64_SymRelOffPatch, 32)};
+                                  .proc_off_patches = array_create(gen_mem, X64_TextReloc, num_procs),
+                                  .relocs = array_create(gen_mem, X64_TextReloc, 32)};
 
     array_push_elems(gen_state.buffer, startup_code, startup_code_size); // Add _start code.
 
@@ -628,10 +656,13 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     // Patch relative offsets to other procs.
     const u32 num_proc_patches = array_len(gen_state.proc_off_patches);
     for (size_t i = 0; i < num_proc_patches; i++) {
-        const X64_SymRelOffPatch* patch_info = &gen_state.proc_off_patches[i];
-        const s64 proc_offset = (s64)X64_get_proc_offset(&gen_state, patch_info->sym);
-        *((s32*)(&gen_state.buffer[patch_info->buffer_loc])) =
-            (s32)(proc_offset - (patch_info->buffer_loc + patch_info->bytes_to_next_ip));
+        const X64_TextReloc* patch_info = &gen_state.proc_off_patches[i];
+        assert(patch_info->ref_addr.kind ==  CONST_ADDR_SYM); // Should be a proc symbol
+
+        const Symbol* proc_sym = patch_info->ref_addr.sym;
+        const s64 proc_offset = (s64)X64_get_proc_offset(&gen_state, proc_sym);
+        *((s32*)(&gen_state.buffer[patch_info->usage_off])) =
+            (s32)(proc_offset - (patch_info->usage_off + patch_info->bytes_to_next_ip));
     }
 
     text_sec->buf = gen_state.buffer;

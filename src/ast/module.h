@@ -913,14 +913,19 @@ typedef enum ConstExprKind {
 typedef enum ConstAddrKind {
     CONST_ADDR_SYM,
     CONST_ADDR_STR_LIT,
+    CONST_ADDR_FLOAT_LIT,
 } ConstAddrKind;
 
+// The address of symbols or string literals are "constexprs" that can be assigned to global
+// variables. This struct represents a symbol or string literal address with an optional displacement.
 struct ConstAddr {
     ConstAddrKind kind;
 
     union {
-        Symbol* sym;
-        StrLit* str_lit;
+        const Symbol* sym;
+        const StrLit* str_lit;
+        const FloatLit* float_lit; // Not really used by front-end since global float var decls just copy the float
+                                   // literal at compile-time. However, this is handy to have here for x64 relocations.
     };
 
     u32 disp;

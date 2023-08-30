@@ -549,7 +549,7 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
 
     // .rela.text
     if (has_rela_text_sec) {
-        Array(const X64_SymRelOffPatch) relocs_info = text_sec->relocs;
+        Array(const X64_TextReloc) relocs_info = text_sec->relocs;
         const u32 num_relocs = array_len(relocs_info);
 
         X64_Section* rela_text = &elf_prog.sections[X64_ELF_SECTION_RELA_TEXT];
@@ -557,22 +557,46 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
         rela_text->rela_text.relocs = alloc_array(gen_mem, Elf64_Rela, num_relocs, true);
 
         for (size_t i = 0; i < num_relocs; ++i) {
-            const X64_SymRelOffPatch* reloc_info = &relocs_info[i];
+            const X64_TextReloc* reloc_info = &relocs_info[i];
             Elf64_Rela* reloc = &rela_text->rela_text.relocs[i];
 
-            if (reloc_info->sym->kind == SYMBOL_VAR) { // Global var used in code.
-                const u64 sym_offset = data_sec->var_offs[reloc_info->sym->as_var.index];
+            if (reloc_info->ref_addr.kind == CONST_ADDR_STR_LIT) {
+                const StrLit* str_lit = reloc_info->ref_addr.str_lit;
+                const u64 str_offset = rodata_sec->str_offs[str_lit->index];
 
-                reloc->r_offset = reloc_info->buffer_loc;
-                reloc->r_info = ((u64)(data_sym_idx) << 32) + (u64)(ELF_R_X86_64_PC32);
-                reloc->r_addend = sym_offset - reloc_info->bytes_to_next_ip;
+                reloc->r_offset = reloc_info->usage_off;
+                reloc->r_info = ((u64)(rodata_sym_idx) << 32) + (u64)(ELF_R_X86_64_PC32);
+                reloc->r_addend = str_offset + reloc_info->ref_addr.disp - reloc_info->bytes_to_next_ip;
+            } else if (reloc_info->ref_addr.kind == CONST_ADDR_FLOAT_LIT) {
+                const FloatLit* float_lit = reloc_info->ref_addr.float_lit;
+                const u64 float_offset = rodata_sec->float_offs[float_lit->index];
+
+                reloc->r_offset = reloc_info->usage_off;
+                reloc->r_info = ((u64)(rodata_sym_idx) << 32) + (u64)(ELF_R_X86_64_PC32);
+                reloc->r_addend = float_offset - reloc_info->bytes_to_next_ip;
+            } else if (reloc_info->ref_addr.kind == CONST_ADDR_SYM) {
+                const Symbol* sym = reloc_info->ref_addr.sym;
+
+                // Global variable used in code.
+                if (sym->kind == SYMBOL_VAR) {
+                    const u64 sym_offset = data_sec->var_offs[sym->as_var.index];
+
+                    reloc->r_offset = reloc_info->usage_off;
+                    reloc->r_info = ((u64)(data_sym_idx) << 32) + (u64)(ELF_R_X86_64_PC32);
+                    reloc->r_addend = sym_offset - reloc_info->bytes_to_next_ip;
+                }
+                // Foregin procedure used in code.
+                else if (sym->kind == SYMBOL_PROC) {
+                    u64 foreign_proc_sym_idx = foreign_proc_sym_idxs[sym->as_proc.index];
+
+                    reloc->r_offset = reloc_info->usage_off;
+                    reloc->r_info = (foreign_proc_sym_idx << 32) + (u64)(ELF_R_X86_64_PLT32);
+                    reloc->r_addend = -(reloc_info->bytes_to_next_ip);
+                }
             }
-            else if (reloc_info->sym->kind == SYMBOL_PROC) { // Foreign procedure used in code.
-                u64 foreign_proc_sym_idx = foreign_proc_sym_idxs[reloc_info->sym->as_proc.index];
-
-                reloc->r_offset = reloc_info->buffer_loc;
-                reloc->r_info = (foreign_proc_sym_idx << 32) + (u64)(ELF_R_X86_64_PLT32);
-                reloc->r_addend = -(reloc_info->bytes_to_next_ip);
+            else {
+                NIBBLE_FATAL_EXIT("Unexpected rela.text ConstAddr kind (%d) for relocation entity",
+                                  reloc_info->ref_addr.kind);
             }
         }
     }
