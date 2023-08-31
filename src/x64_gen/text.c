@@ -224,6 +224,20 @@ static inline void X64_write_imm16_bytes(X64_TextGenState* gen_state, u16 val)
     array_push(gen_state->buffer, (val >> 8) & 0xFF); // byte 2
 }
 
+static inline void X64_write_imm_bytes(X64_TextGenState* gen_state, u32 val, u8 num_bytes)
+{
+    if (num_bytes == 1) {
+        array_push(gen_state->buffer, (u8)val);
+    }
+    else if (num_bytes == 2) {
+        X64_write_imm16_bytes(gen_state, (u16)val);
+    }
+    else {
+        assert(num_bytes == 4);
+        X64_write_imm32_bytes(gen_state, val);
+    }
+}
+
 static s32 X64_try_get_global_entity_rel_offset(X64_TextGenState* gen_state, ConstAddr entity)
 {
     const s64 curr_loc = array_len(gen_state->buffer);
@@ -470,44 +484,28 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
         } break;
         // MOV
         case X64_Instr_Kind_MOV_RR: {
+            // 88 /r => mov r/m8, r8
+            // 0x66 + 89 /r => mov r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+            // 89 /r => mov r/m32, r32
+            // REX.W + 89 /r => mov r/m64, r64
             const u8 size = instr->mov_rr.size;
             const u8 src_reg = x64_reg_val[instr->mov_rr.src];
             const u8 dst_reg = x64_reg_val[instr->mov_rr.dst];
             const bool src_is_ext = src_reg > 7;
             const bool dst_is_ext = dst_reg > 7;
+            const bool is_64_bit = size == 8;
+            const u8 opcode = size == 1 ? 0x88 : 0x89;
 
-            // 88 /r => mov r/m8, r8
-            if (size == 1) {
-                if (src_is_ext || dst_is_ext) {
-                    array_push(gen_state->buffer, X64_rex_nosib(0, src_reg, dst_reg)); // REX.RB for ext regs
-                }
-                array_push(gen_state->buffer, 0x88); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
-            }
-            // 0x66 + 89 /r => mov r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
-            else if (size == 2) {
+            if (size == 2) {
                 array_push(gen_state->buffer, 0x66); // 0x66 for 16-bit operands
-                if (src_is_ext || dst_is_ext) {
-                    array_push(gen_state->buffer, X64_rex_nosib(0, src_reg, dst_reg)); // REX.RB for ext regs
-                }
-                array_push(gen_state->buffer, 0x89); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
             }
-            // 89 /r => mov r/m32, r32
-            else if (size == 4) {
-                if (src_is_ext || dst_is_ext) {
-                    array_push(gen_state->buffer, X64_rex_nosib(0, src_reg, dst_reg)); // REX.RB for ext regs
-                }
-                array_push(gen_state->buffer, 0x89); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
+
+            if (is_64_bit || src_is_ext || dst_is_ext) {
+                array_push(gen_state->buffer, X64_rex_nosib(is_64_bit, src_reg, dst_reg)); // REX.RB for ext regs
             }
-            // REX.W + 89 /r => mov r/m64, r64
-            else {
-                assert(size == 8);
-                array_push(gen_state->buffer, X64_rex_nosib(1, src_reg, dst_reg)); // REX.W for 64-bit, REX.RB for ext regs
-                array_push(gen_state->buffer, 0x89); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
-            }
+
+            array_push(gen_state->buffer, opcode);
+            array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
         } break;
         case X64_Instr_Kind_MOV_RM: {
             // 8A /r => mov r8, r/m8
@@ -542,79 +540,37 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_addr_disp(gen_state, &src_addr);
         } break;
         case X64_Instr_Kind_MOV_MI: {
+            // C6 /0 ib => mov r/m8, imm8
+            // 66 C7 /0 iw => mov r/m16, imm16
+            // C7 /0 id => mov r/m32, imm32
+            // REX.W + C7 /0 id => mov r/m64, imm32
             const u8 size = instr->mov_mi.size;
             const X64_AddrBytes addr_bytes = X64_get_addr_bytes(&instr->mov_mi.dst);
             const bool use_ext_regs = addr_bytes.rex_b || addr_bytes.rex_x;
+            const bool is_64_bit = size == 8;
+            const u8 opcode = size == 1 ? 0xC6 : 0xC7;
 
-            // C6 /0 ib => mov r/m8, imm8
-            if (size == 1) {
-                if (use_ext_regs) {
-                    array_push(gen_state->buffer, X64_rex_prefix(0, 0, addr_bytes.rex_x, addr_bytes.rex_b));
-                }
-                array_push(gen_state->buffer, 0xC6); // opcode
-                array_push(gen_state->buffer,
-                           X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
-
-                if (addr_bytes.has_sib_byte) {
-                    array_push(gen_state->buffer, addr_bytes.sib_byte);
-                }
-
-                X64_write_addr_disp(gen_state, &addr_bytes);
-                array_push(gen_state->buffer, (u8)instr->mov_mi.imm);
-            }
-            // 66 C7 /0 iw => mov r/m16, imm16
-            else if (size == 2) {
+            if (size == 2) {
                 array_push(gen_state->buffer, 0x66); // 0x66 for 16-bit operands
-
-                if (use_ext_regs) {
-                    array_push(gen_state->buffer, X64_rex_prefix(0, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX prefix
-                }
-                array_push(gen_state->buffer, 0xC7); // opcode
-                array_push(gen_state->buffer,
-                           X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
-
-                if (addr_bytes.has_sib_byte) {
-                    array_push(gen_state->buffer, addr_bytes.sib_byte);
-                }
-
-                X64_write_addr_disp(gen_state, &addr_bytes);
-                X64_write_imm16_bytes(gen_state, instr->mov_mi.imm);
             }
-            // C7 /0 id => mov r/m32, imm32
-            else if (size == 4) {
-                if (use_ext_regs) {
-                    array_push(gen_state->buffer, X64_rex_prefix(0, 0, addr_bytes.rex_x, addr_bytes.rex_b));
-                }
-                array_push(gen_state->buffer, 0xC7); // opcode
-                array_push(gen_state->buffer,
-                           X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
 
-                if (addr_bytes.has_sib_byte) {
-                    array_push(gen_state->buffer, addr_bytes.sib_byte);
-                }
-
-                X64_write_addr_disp(gen_state, &addr_bytes);
-                X64_write_imm32_bytes(gen_state, instr->mov_mi.imm);
+            if (is_64_bit || use_ext_regs) {
+                array_push(gen_state->buffer, X64_rex_prefix(is_64_bit, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX prefix
             }
-            // REX.W + C7 /0 id => mov r/m64, imm32
-            else {
-                assert(size == 8);
-                array_push(gen_state->buffer,
-                           X64_rex_prefix(1, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX.W and other reg extensions.
-                array_push(gen_state->buffer, 0xC7); // opcode
-                array_push(gen_state->buffer,
-                           X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
 
-                if (addr_bytes.has_sib_byte) {
-                    array_push(gen_state->buffer, addr_bytes.sib_byte);
-                }
+            array_push(gen_state->buffer, opcode); // opcode
+            array_push(gen_state->buffer,
+                       X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
 
-                X64_write_addr_disp(gen_state, &addr_bytes);
-                X64_write_imm32_bytes(gen_state, instr->mov_mi.imm);
+            if (addr_bytes.has_sib_byte) {
+                array_push(gen_state->buffer, addr_bytes.sib_byte);
             }
+
+            X64_write_addr_disp(gen_state, &addr_bytes);
+            X64_write_imm_bytes(gen_state, instr->mov_mi.imm, size);
         } break;
         default:
-            // NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+            //NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
             break;
         }
     }
