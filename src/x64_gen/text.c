@@ -308,6 +308,11 @@ static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes
     }
 }
 
+//
+// TODO(adrian): IMPORTANT(adrian): Change instruciton kinds to include operator size.
+// For example, X64_Instr_Kind_MOV_RR_4, X64_Instr_Kind_MOV_RR_8, etc.
+// This will remove all the branching on 'size' within each switch case.
+//
 static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
 {
     const DeclProc* decl = (const DeclProc*)proc_sym->decl;
@@ -404,7 +409,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             }
 
             array_push(gen_state->buffer, opcode); // opcode
-            array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg & 0x7, src_addr.rm)); // ModRM byte.
+            array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM byte.
 
             if (src_addr.has_sib_byte) {
                 array_push(gen_state->buffer, src_addr.sib_byte);
@@ -500,7 +505,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             }
 
             array_push(gen_state->buffer, opcode); // opcode
-            array_push(gen_state->buffer, X64_modrm_byte(dst_addr.mod, src_reg & 0x7, dst_addr.rm)); // ModRM byte.
+            array_push(gen_state->buffer, X64_modrm_byte(dst_addr.mod, src_reg, dst_addr.rm)); // ModRM byte.
 
             if (dst_addr.has_sib_byte) {
                 array_push(gen_state->buffer, dst_addr.sib_byte);
@@ -536,7 +541,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             }
 
             array_push(gen_state->buffer, opcode); // opcode
-            array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg & 0x7, src_addr.rm)); // ModRM byte.
+            array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM byte.
 
             if (src_addr.has_sib_byte) {
                 array_push(gen_state->buffer, src_addr.sib_byte);
