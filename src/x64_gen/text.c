@@ -471,6 +471,46 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
 
             array_push(gen_state->buffer, opcode);
             array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
+
+            // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
+            // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
+            // const bool is_r2_h = instr->mov_rr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
+        } break;
+        case X64_Instr_Kind_MOV_MR: {
+            // 88 /r => mov r/m8, r8
+            // 0x66 + 89 /r => mov r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+            // 89 /r => mov r/m32, r32
+            // REX.W + 89 /r => mov r/m64, r64
+            const u8 size = instr->mov_mr.size;
+            const u8 src_reg = x64_reg_val[instr->mov_mr.src];
+            const X64_AddrBytes dst_addr = X64_get_addr_bytes(&instr->mov_mr.dst);
+            const bool src_is_ext = src_reg > 7;
+            const bool use_ext_regs = src_is_ext || dst_addr.rex_b || dst_addr.rex_x;
+            const bool is_64_bit = size == 8;
+            const u8 opcode = size == 1 ? 0x88 : 0x89;
+
+            // 0x66 prefix for 16-bit operands.
+            if (size == 2) {
+                array_push(gen_state->buffer, 0x66);
+            }
+
+            // REX prefix.
+            if (use_ext_regs || is_64_bit) {
+                array_push(gen_state->buffer, X64_rex_prefix(is_64_bit, src_reg >> 3, dst_addr.rex_x, dst_addr.rex_b));
+            }
+
+            array_push(gen_state->buffer, opcode); // opcode
+            array_push(gen_state->buffer, X64_modrm_byte(dst_addr.mod, src_reg & 0x7, dst_addr.rm)); // ModRM byte.
+
+            if (dst_addr.has_sib_byte) {
+                array_push(gen_state->buffer, dst_addr.sib_byte);
+            }
+
+            X64_write_addr_disp(gen_state, &dst_addr);
+
+            // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
+            // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
+            // const bool is_r2_h = instr->mov_mr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
         } break;
         case X64_Instr_Kind_MOV_RM: {
             // 8A /r => mov r8, r/m8
