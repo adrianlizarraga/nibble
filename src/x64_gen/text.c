@@ -414,72 +414,37 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
         } break;
         // SUB
         case X64_Instr_Kind_SUB_RI: {
+            // 80 /5 ib => sub r/m8, imm8
+            // 66 83 /5 ib => sub r/m16, imm8
+            // 66 81 /5 iw => sub r/m16, imm16
+            // 83 /5 ib => sub r/m32, imm8
+            // 81 /5 id => sub r/m32, imm32
+            // REX.W + 83 /5 ib => sub r/m64, imm8
+            // REX.W + 81 /5 id => sub r/m64, imm32
             const u8 size = instr->sub_ri.size;
+            const bool is_64_bit = size == 8;
             const u8 dst_reg = x64_reg_val[instr->sub_ri.dst];
             const u32 imm = instr->sub_ri.imm;
             const bool imm_is_byte = imm <= 255;
             const bool reg_is_ext = dst_reg > 7;
+            const u8 opcode = (size == 1) ? 0x80 : (imm_is_byte ? 0x83 : 0x81);
 
-            // 80 /5 ib => sub r/m8, imm8
-            if (size == 1) {
-                if (reg_is_ext) {
-                    array_push(gen_state->buffer, X64_rex_nosib(0, 0, dst_reg)); // REX.B for ext regs
-                }
-                array_push(gen_state->buffer, 0x80); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, 5, dst_reg)); // 5 is opcode ext in reg, rm for dst_reg
-                array_push(gen_state->buffer, instr->sub_ri.imm); // imm8
-            }
-            // 66 83 /5 ib => sub r/m16, imm8
-            // 66 81 /5 iw => sub r/m16, imm16
-            else if (size == 2) {
+            if (size == 2) {
                 array_push(gen_state->buffer, 0x66); // 0x66 for 16-bit operands
-
-                if (reg_is_ext) {
-                    array_push(gen_state->buffer, X64_rex_nosib(0, 0, dst_reg)); // REX.B for ext regs
-                }
-
-                array_push(gen_state->buffer, imm_is_byte ? 0x83 : 0x81); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, 5, dst_reg)); // 5 is opcode ext in reg, rm for dst_reg
-
-                if (imm_is_byte) {
-                    array_push(gen_state->buffer, imm); // imm8
-                }
-                else {
-                    array_push(gen_state->buffer, imm & 0xFF); // Lower byte
-                    array_push(gen_state->buffer, (imm >> 8) & 0xFF); // Upper byte
-                }
             }
-            // 83 /5 ib => sub r/m32, imm8
-            // 81 /5 id => sub r/m32, imm32
-            else if (size == 4) {
-                if (reg_is_ext) {
-                    array_push(gen_state->buffer, X64_rex_nosib(0, 0, dst_reg)); // REX.B for ext regs
-                }
 
-                array_push(gen_state->buffer, imm_is_byte ? 0x83 : 0x81); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, 5, dst_reg)); // 5 is opcode ext in reg, rm for dst_reg
-
-                if (imm_is_byte) {
-                    array_push(gen_state->buffer, imm); // imm8
-                }
-                else {
-                    X64_write_imm32_bytes(gen_state, imm);
-                }
+            if (is_64_bit || reg_is_ext) {
+                array_push(gen_state->buffer, X64_rex_nosib(is_64_bit, 0, dst_reg)); // REX.B for ext regs
             }
-            // REX.W + 83 /5 ib => sub r/m64, imm8
-            // REX.W + 81 /5 id => sub r/m64, imm32
+
+            array_push(gen_state->buffer, opcode);
+            array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, 5, dst_reg)); // 5 is opcode ext in reg, rm for dst_reg
+
+            if (imm_is_byte) {
+                array_push(gen_state->buffer, imm); // imm8
+            }
             else {
-                assert(size == 8);
-                array_push(gen_state->buffer, X64_rex_nosib(1, 0, dst_reg)); // REX.W for 64-bit, REX.B for ext regs
-                array_push(gen_state->buffer, imm_is_byte ? 0x83 : 0x81); // opcode
-                array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, 5, dst_reg)); // 5 is opcode ext in reg, rm for dst_reg
-
-                if (imm_is_byte) {
-                    array_push(gen_state->buffer, imm); // imm8
-                }
-                else {
-                    X64_write_imm32_bytes(gen_state, imm);
-                }
+                X64_write_imm_bytes(gen_state, imm, size);
             }
         } break;
         // MOV
