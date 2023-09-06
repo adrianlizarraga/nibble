@@ -285,7 +285,6 @@ static s32 X64_try_get_global_entity_rel_offset(X64_TextGenState* gen_state, Con
 
     NIBBLE_FATAL_EXIT("Unexpected global entity kind %d in x64 text relocation creation", entity.kind);
     return 0;
-
 }
 
 static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes* addr)
@@ -306,6 +305,41 @@ static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes
         assert(addr->mod == X64_MOD_INDIRECT_DISP_U32);
         X64_write_imm32_bytes(gen_state, addr->disp);
     }
+}
+
+static inline void X64_write_elf_binary_instr_rm(X64_TextGenState* gen_state, u8 opcode_1byte, u8 opcode_large, u8 size, u8 dst,
+                                                 const X64_SIBD_Addr* src)
+{
+    // Example:
+    // 02 /r => add r8, r/m8
+    // 66 03 /r => add r16, r/m16
+    // 03 /r => add r32, r/m32
+    // REX.W + 03 /r => add r64, r/m64
+    const u8 dst_reg = x64_reg_val[dst];
+    const X64_AddrBytes src_addr = X64_get_addr_bytes(src);
+    const bool dst_is_ext = dst_reg > 7;
+    const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+    const bool is_64_bit = size == 8;
+    const u8 opcode = size == 1 ? opcode_1byte : opcode_large;
+
+    // 0x66 prefix for 16-bit operands.
+    if (size == 2) {
+        array_push(gen_state->buffer, 0x66);
+    }
+
+    // REX prefix.
+    if (use_ext_regs || is_64_bit) {
+        array_push(gen_state->buffer, X64_rex_prefix(is_64_bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+    }
+
+    array_push(gen_state->buffer, opcode);
+    array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM byte.
+
+    if (src_addr.has_sib_byte) {
+        array_push(gen_state->buffer, src_addr.sib_byte);
+    }
+
+    X64_write_addr_disp(gen_state, &src_addr);
 }
 
 //
@@ -390,34 +424,18 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             // 66 03 /r => add r16, r/m16
             // 03 /r => add r32, r/m32
             // REX.W + 03 /r => add r64, r/m64
-            const u8 size = instr->add_rm.size;
-            const u8 dst_reg = x64_reg_val[instr->add_rm.dst];
-            const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->add_rm.src);
-            const bool dst_is_ext = dst_reg > 7;
-            const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
-            const bool is_64_bit = size == 8;
-            const u8 opcode = size == 1 ? 0x02 : 0x03;
-
-            // 0x66 prefix for 16-bit operands.
-            if (size == 2) {
-                array_push(gen_state->buffer, 0x66);
-            }
-
-            // REX prefix.
-            if (use_ext_regs || is_64_bit) {
-                array_push(gen_state->buffer, X64_rex_prefix(is_64_bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
-            }
-
-            array_push(gen_state->buffer, opcode); // opcode
-            array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM byte.
-
-            if (src_addr.has_sib_byte) {
-                array_push(gen_state->buffer, src_addr.sib_byte);
-            }
-
-            X64_write_addr_disp(gen_state, &src_addr);
+            X64_write_elf_binary_instr_rm(gen_state, 0x02, 0x03, instr->add_rm.size, instr->add_rm.dst,
+                                          &instr->add_rm.src);
         } break;
         // SUB
+        case X64_Instr_Kind_SUB_RM: {
+            // 2A /r => sub r8, r/m8
+            // 66 2B /r => sub r16, r/m16
+            // 2B /r => sub r32, r/m32
+            // REX.W + 2B /r => sub r64, r/m64
+            X64_write_elf_binary_instr_rm(gen_state, 0x2A, 0x2B, instr->sub_rm.size, instr->sub_rm.dst,
+                                          &instr->sub_rm.src);
+        } break;
         case X64_Instr_Kind_SUB_RI: {
             // 80 /5 ib => sub r/m8, imm8
             // 66 83 /5 ib => sub r/m16, imm8
@@ -569,8 +587,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             }
 
             array_push(gen_state->buffer, opcode); // opcode
-            array_push(gen_state->buffer,
-                       X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+            array_push(gen_state->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
 
             if (addr_bytes.has_sib_byte) {
                 array_push(gen_state->buffer, addr_bytes.sib_byte);
@@ -580,7 +597,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_imm_bytes(gen_state, instr->mov_mi.imm, size);
         } break;
         default:
-            //NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+            // NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
             break;
         }
     }
@@ -623,7 +640,7 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     const u32 num_proc_patches = array_len(gen_state.proc_off_patches);
     for (size_t i = 0; i < num_proc_patches; i++) {
         const X64_TextReloc* patch_info = &gen_state.proc_off_patches[i];
-        assert(patch_info->ref_addr.kind ==  CONST_ADDR_SYM); // Should be a proc symbol
+        assert(patch_info->ref_addr.kind == CONST_ADDR_SYM); // Should be a proc symbol
 
         const Symbol* proc_sym = patch_info->ref_addr.sym;
         const s64 proc_offset = (s64)X64_get_proc_offset(&gen_state, proc_sym);
