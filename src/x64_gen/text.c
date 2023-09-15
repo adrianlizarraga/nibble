@@ -342,8 +342,8 @@ static inline void X64_write_elf_binary_instr_rm(X64_TextGenState* gen_state, u8
     X64_write_addr_disp(gen_state, &src_addr);
 }
 
-static void X64_write_elf_binary_instr_ri(X64_TextGenState* gen_state, u8 opcode_instr_1byte, u8 opcode_imm_1byte,
-                                          u8 opcode_imm_same_size, u8 opcode_ext, u8 dst_size, u8 dst, u32 imm)
+static inline void X64_write_elf_binary_instr_ri(X64_TextGenState* gen_state, u8 opcode_instr_1byte, u8 opcode_imm_1byte,
+                                                 u8 opcode_imm_same_size, u8 opcode_ext, u8 dst_size, u8 dst, u32 imm)
 {
     const bool is_64_bit = dst_size == 8;
     const u8 dst_reg = x64_reg_val[dst];
@@ -368,6 +368,28 @@ static void X64_write_elf_binary_instr_ri(X64_TextGenState* gen_state, u8 opcode
     else {
         X64_write_imm_bytes(gen_state, imm, dst_size);
     }
+}
+
+static inline void X64_write_elf_binary_instr_rr(X64_TextGenState* gen_state, u8 opcode_1byte, u8 opcode_multi_byte, u8 size, u8 dst,
+                                                 u8 src)
+{
+    const u8 src_reg = x64_reg_val[src];
+    const u8 dst_reg = x64_reg_val[dst];
+    const bool src_is_ext = src_reg > 7;
+    const bool dst_is_ext = dst_reg > 7;
+    const bool is_64_bit = size == 8;
+    const u8 opcode = size == 1 ? opcode_1byte : opcode_multi_byte;
+
+    if (size == 2) {
+        array_push(gen_state->buffer, 0x66); // 0x66 for 16-bit operands
+    }
+
+    if (is_64_bit || src_is_ext || dst_is_ext) {
+        array_push(gen_state->buffer, X64_rex_nosib(is_64_bit, src_reg, dst_reg)); // REX.RB for ext regs
+    }
+
+    array_push(gen_state->buffer, opcode);
+    array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
 }
 
 //
@@ -447,13 +469,22 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_addr_disp(gen_state, &src_addr);
         } break;
         // ADD
+        case X64_Instr_Kind_ADD_RR: {
+            // 00 /r => add r/m8, r8
+            // 0x66 + 01 /r => add r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+            // 01 /r => add r/m32, r32
+            // REX.W + 01 /r => add r/m64, r64
+            X64_write_elf_binary_instr_rr(gen_state,
+                                          0x00, // opcode for add r8, r8
+                                          0x01, // opcode for other adds (> 1 byte)
+                                          instr->add_rr.size, instr->add_rr.dst, instr->add_rr.src);
+        } break;
         case X64_Instr_Kind_ADD_RM: {
             // 02 /r => add r8, r/m8
             // 66 03 /r => add r16, r/m16
             // 03 /r => add r32, r/m32
             // REX.W + 03 /r => add r64, r/m64
-            X64_write_elf_binary_instr_rm(gen_state, 0x02, 0x03, instr->add_rm.size, instr->add_rm.dst,
-                                          &instr->add_rm.src);
+            X64_write_elf_binary_instr_rm(gen_state, 0x02, 0x03, instr->add_rm.size, instr->add_rm.dst, &instr->add_rm.src);
         } break;
         case X64_Instr_Kind_ADD_RI: {
             // 80 /0 ib => add r/m8, imm8
@@ -471,13 +502,22 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
                                           instr->add_ri.size, instr->add_ri.dst, instr->add_ri.imm);
         } break;
         // SUB
+        case X64_Instr_Kind_SUB_RR: {
+            // 28 /r => sub r/m8, r8
+            // 0x66 + 29 /r => sub r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+            // 29 /r => sub r/m32, r32
+            // REX.W + 29 /r => sub r/m64, r64
+            X64_write_elf_binary_instr_rr(gen_state,
+                                          0x28, // opcode for sub r8, r8
+                                          0x29, // opcode for other subs (> 1 byte)
+                                          instr->sub_rr.size, instr->sub_rr.dst, instr->sub_rr.src);
+        } break;
         case X64_Instr_Kind_SUB_RM: {
             // 2A /r => sub r8, r/m8
             // 66 2B /r => sub r16, r/m16
             // 2B /r => sub r32, r/m32
             // REX.W + 2B /r => sub r64, r/m64
-            X64_write_elf_binary_instr_rm(gen_state, 0x2A, 0x2B, instr->sub_rm.size, instr->sub_rm.dst,
-                                          &instr->sub_rm.src);
+            X64_write_elf_binary_instr_rm(gen_state, 0x2A, 0x2B, instr->sub_rm.size, instr->sub_rm.dst, &instr->sub_rm.src);
         } break;
         case X64_Instr_Kind_SUB_RI: {
             // 80 /5 ib => sub r/m8, imm8
@@ -621,7 +661,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_imm_bytes(gen_state, instr->mov_mi.imm, size);
         } break;
         default:
-            //NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+            // NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
             break;
         }
     }
