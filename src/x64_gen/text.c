@@ -634,32 +634,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             // 66 8B /r => mov r16, r/m16
             // 8B /r => mov r32, r/m32
             // REX.W + 8B /r => mov r64, r/m64
-            const u8 size = instr->mov_rm.size;
-            const u8 dst_reg = x64_reg_val[instr->mov_rm.dst];
-            const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->mov_rm.src);
-            const bool dst_is_ext = dst_reg > 7;
-            const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
-            const bool is_64_bit = size == 8;
-            const u8 opcode = size == 1 ? 0x8A : 0x8B;
-
-            // 0x66 prefix for 16-bit operands.
-            if (size == 2) {
-                array_push(gen_state->buffer, 0x66);
-            }
-
-            // REX prefix.
-            if (use_ext_regs || is_64_bit) {
-                array_push(gen_state->buffer, X64_rex_prefix(is_64_bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
-            }
-
-            array_push(gen_state->buffer, opcode); // opcode
-            array_push(gen_state->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM byte.
-
-            if (src_addr.has_sib_byte) {
-                array_push(gen_state->buffer, src_addr.sib_byte);
-            }
-
-            X64_write_addr_disp(gen_state, &src_addr);
+            X64_write_elf_binary_instr_rm(gen_state, 0x8A, 0x8B, instr->mov_rm.size, instr->mov_rm.dst, &instr->mov_rm.src);
         } break;
         case X64_Instr_Kind_MOV_MI: {
             // C6 /0 ib => mov r/m8, imm8
