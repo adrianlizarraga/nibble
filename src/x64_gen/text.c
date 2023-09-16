@@ -210,6 +210,17 @@ static inline u64 X64_get_proc_offset(X64_TextGenState* gen_state, const Symbol*
     return gen_state->proc_offsets[proc_sym->as_proc.index];
 }
 
+static inline void X64_write_imm64_bytes(X64_TextGenState* gen_state, u64 val)
+{
+    // Increase the length of the byte buffer at once.
+    const size_t init_len = array_len(gen_state->buffer);
+    array_set_len(gen_state->buffer, init_len + sizeof(val));
+
+    // Write the 64-bit value directly in (we know this is little-endian)
+    u64* write_loc = (u64*)&gen_state->buffer[init_len];
+    *write_loc = val;
+}
+
 static inline void X64_write_imm32_bytes(X64_TextGenState* gen_state, u32 val)
 {
     array_push(gen_state->buffer, val & 0xFF); // byte 1
@@ -224,7 +235,7 @@ static inline void X64_write_imm16_bytes(X64_TextGenState* gen_state, u16 val)
     array_push(gen_state->buffer, (val >> 8) & 0xFF); // byte 2
 }
 
-static inline void X64_write_imm_bytes(X64_TextGenState* gen_state, u32 val, u8 num_bytes)
+static inline void X64_write_imm_bytes(X64_TextGenState* gen_state, u64 val, u8 num_bytes)
 {
     if (num_bytes == 1) {
         array_push(gen_state->buffer, (u8)val);
@@ -232,9 +243,12 @@ static inline void X64_write_imm_bytes(X64_TextGenState* gen_state, u32 val, u8 
     else if (num_bytes == 2) {
         X64_write_imm16_bytes(gen_state, (u16)val);
     }
+    else if (num_bytes == 4) {
+        X64_write_imm32_bytes(gen_state, (u32)val);
+    }
     else {
-        assert(num_bytes == 4);
-        X64_write_imm32_bytes(gen_state, val);
+        assert(num_bytes == 8);
+        X64_write_imm64_bytes(gen_state, val);
     }
 }
 
@@ -664,6 +678,33 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
 
             X64_write_addr_disp(gen_state, &addr_bytes);
             X64_write_imm_bytes(gen_state, instr->mov_mi.imm, is_64_bit ? 4 : size);
+        } break;
+        case X64_Instr_Kind_MOV_RI: {
+            // NOTE: This is the only instruction that can load a 64-bit immediate.
+            // Does not use a modR/M byte. Instead, REX.B and the lower 3 bits of the opcode represent the
+            // destination register.
+            //
+            // B0+rb ib => mov r8, imm8
+            // 66 + B8+rw iw => mov r16, imm16
+            // B8+rd id => mov r32, imm32
+            // REX.W + B8+rd io => mov r64, imm64
+            const u8 size = instr->mov_ri.size;
+            const u8 dst_reg = x64_reg_val[instr->mov_ri.dst];
+            const bool use_ext_regs = dst_reg > 7; // Need REX.B?
+            const bool is_64_bit = size == 8;
+            const u8 base_opcode = (size == 1) ? 0xB0 : 0xB8;
+
+            if (size == 2) {
+                array_push(gen_state->buffer, 0x66); // 0x66 prefix for 16-bit operands
+            }
+
+            if (is_64_bit || use_ext_regs) {
+                array_push(gen_state->buffer, X64_rex_opcode_reg(is_64_bit, dst_reg));
+            }
+
+            array_push(gen_state->buffer, base_opcode + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
+
+            X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
         } break;
         default:
             //NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
