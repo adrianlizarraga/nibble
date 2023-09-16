@@ -1,0 +1,6 @@
+proc main() => int {
+    var a : u64 = 9; // only uses mov_mi because the 9 fits in an imm32
+    var b : u64 = (1 :> u64) << 63; // load imm64 with mov_ri and then uses mov_mr
+
+    return a + (b - 0x7FFFFFFFFFFFFFFF); // 9 + 1 = 10
+}
