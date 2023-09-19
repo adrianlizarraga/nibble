@@ -628,6 +628,50 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_mi.size, &instr->sub_mi.dst,
                                           instr->sub_mi.imm);
         } break;
+        // CMP
+        case X64_Instr_Kind_CMP_RR: {
+            // 38 /r => cmp r/m8, r8
+            // 0x66 + 39 /r => cmp r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+            // 39 /r => cmp r/m32, r32
+            // REX.W + 39 /r => cmp r/m64, r64
+            X64_write_elf_binary_instr_rr(gen_state, 0x38, 0x39, instr->cmp_rr.size, instr->cmp_rr.dst, instr->cmp_rr.src);
+        } break;
+        case X64_Instr_Kind_CMP_RM: {
+            // 3A /r => cmp r8, r/m8
+            // 66 3B /r => cmp r16, r/m16
+            // 3B /r => cmp r32, r/m32
+            // REX.W + 3B /r => cmp r64, r/m64
+            X64_write_elf_binary_instr_rm(gen_state, 0x3A, 0x3B, instr->cmp_rm.size, instr->cmp_rm.dst, &instr->cmp_rm.src);
+        } break;
+        case X64_Instr_Kind_CMP_MR: {
+            // 38 /r => cmp r/m8, r8
+            // 0x66 + 39 /r => cmp r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+            // 39 /r => cmp r/m32, r32
+            // REX.W + 39 /r => cmp r/m64, r64
+            X64_write_elf_binary_instr_mr(gen_state, 0x38, 0x39, instr->cmp_mr.size, &instr->cmp_mr.dst, instr->cmp_mr.src);
+        } break;
+        case X64_Instr_Kind_CMP_RI: {
+            // 80 /7 ib => cmp r/m8, imm8
+            // 66 83 /7 ib => cmp r/m16, imm8
+            // 66 81 /7 iw => cmp r/m16, imm16
+            // 83 /7 ib => cmp r/m32, imm8
+            // 81 /7 id => cmp r/m32, imm32
+            // REX.W + 83 /7 ib => cmp r/m64, imm8
+            // REX.W + 81 /7 id => cmp r/m64, imm32
+            X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_ri.size, instr->cmp_ri.dst,
+                                          instr->cmp_ri.imm);
+        } break;
+        case X64_Instr_Kind_CMP_MI: {
+            // 80 /7 ib => cmp r/m8, imm8
+            // 66 83 /7 ib => cmp r/m16, imm8
+            // 66 81 /7 iw => cmp r/m16, imm16
+            // 83 /7 ib => cmp r/m32, imm8
+            // 81 /7 id => cmp r/m32, imm32
+            // REX.W + 83 /7 ib => cmp r/m64, imm8
+            // REX.W + 81 /7 id => cmp r/m64, imm32
+            X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_mi.size, &instr->cmp_mi.dst,
+                                          instr->cmp_mi.imm);
+        } break;
         // MOV
         case X64_Instr_Kind_MOV_RR: {
             // 88 /r => mov r/m8, r8
@@ -757,7 +801,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
         } break;
         default:
-            // NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+            //NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
             break;
         }
     }
