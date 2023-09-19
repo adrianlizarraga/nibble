@@ -15,6 +15,11 @@ static const u8 x64_reg_val[X64_REG_COUNT] = {
     [X64_XMM12] = 12, [X64_XMM13] = 13, [X64_XMM14] = 14, [X64_XMM15] = 15,
 };
 
+static u16 x64_setcc_condition_opcodes[] = {
+    [COND_U_LT] = 0x920F, [COND_S_LT] = 0x9C0F,   [COND_U_LTEQ] = 0x960F, [COND_S_LTEQ] = 0x9E0F, [COND_U_GT] = 0x970F,
+    [COND_S_GT] = 0x9F0F, [COND_U_GTEQ] = 0x930F, [COND_S_GTEQ] = 0x9D0F, [COND_EQ] = 0x940F,     [COND_NEQ] = 0x950F,
+};
+
 enum X64_ModMode {
     X64_MOD_INDIRECT = 0,
     X64_MOD_INDIRECT_DISP_U8 = 1,
@@ -381,7 +386,13 @@ static inline void X64_write_elf_binary_instr_mi(X64_TextGenState* gen_state, u8
     }
 
     X64_write_addr_disp(gen_state, &dst_addr);
-    X64_write_imm_bytes(gen_state, imm, is_64_bit ? 4 : dst_size);
+
+    if (imm_is_byte) {
+        array_push(gen_state->buffer, imm); // imm8
+    }
+    else {
+        X64_write_imm_bytes(gen_state, imm, is_64_bit ? 4 : dst_size);
+    }
 }
 
 static inline void X64_write_elf_binary_instr_ri(X64_TextGenState* gen_state, u8 opcode_instr_1byte, u8 opcode_imm_1byte,
@@ -672,6 +683,21 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_mi.size, &instr->cmp_mi.dst,
                                           instr->cmp_mi.imm);
         } break;
+        // SETcc
+        case X64_Instr_Kind_SETCC_R: {
+            const u8 dst_reg = x64_reg_val[instr->setcc_r.dst];
+            const bool dst_is_ext = dst_reg > 7;
+            const u16 opcode = x64_setcc_condition_opcodes[instr->setcc_r.cond];
+
+            if (dst_is_ext) {
+                u8 rex_pre = X64_rex_nosib(0, 0, dst_reg);
+                array_push(gen_state->buffer, rex_pre);  // use ModRM:r/m field
+            }
+
+            array_push(gen_state->buffer, opcode & 0x00FF); // lower opcode byte
+            array_push(gen_state->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
+            array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, 0, dst_reg)); // ModRM
+        } break;
         // MOV
         case X64_Instr_Kind_MOV_RR: {
             // 88 /r => mov r/m8, r8
@@ -801,7 +827,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
         } break;
         default:
-            //NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+            // NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
             break;
         }
     }
