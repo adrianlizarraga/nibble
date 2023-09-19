@@ -690,13 +690,31 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             const u16 opcode = x64_setcc_condition_opcodes[instr->setcc_r.cond];
 
             if (dst_is_ext) {
-                u8 rex_pre = X64_rex_nosib(0, 0, dst_reg);
-                array_push(gen_state->buffer, rex_pre);  // use ModRM:r/m field
+                array_push(gen_state->buffer, X64_rex_nosib(0, 0, dst_reg));
             }
 
             array_push(gen_state->buffer, opcode & 0x00FF); // lower opcode byte
             array_push(gen_state->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
             array_push(gen_state->buffer, X64_modrm_byte(X64_MOD_DIRECT, 0, dst_reg)); // ModRM
+        } break;
+        case X64_Instr_Kind_SETCC_M: {
+            const X64_AddrBytes dst_addr = X64_get_addr_bytes(&instr->setcc_m.dst);
+            const bool use_ext_regs = dst_addr.rex_b || dst_addr.rex_x;
+            const u16 opcode = x64_setcc_condition_opcodes[instr->setcc_r.cond];
+
+            if (use_ext_regs) {
+                array_push(gen_state->buffer, X64_rex_prefix(0, 0, dst_addr.rex_x, dst_addr.rex_b));
+            }
+
+            array_push(gen_state->buffer, opcode & 0x00FF); // lower opcode byte
+            array_push(gen_state->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
+            array_push(gen_state->buffer, X64_modrm_byte(dst_addr.mod, 0, dst_addr.rm)); // ModRM byte.
+
+            if (dst_addr.has_sib_byte) {
+                array_push(gen_state->buffer, dst_addr.sib_byte);
+            }
+
+            X64_write_addr_disp(gen_state, &dst_addr);
         } break;
         // MOV
         case X64_Instr_Kind_MOV_RR: {
