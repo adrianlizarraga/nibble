@@ -196,6 +196,12 @@ static const u8 startup_code[] = {0x48, 0x31, 0xed, 0x8b, 0x3c, 0x24, 0x48, 0x8d
 static size_t startup_code_main_offset_loc = 0x13; // The location in the startup code to patch the relative offset of the main proc.
 static size_t startup_code_next_ip_after_call = 0x17; // The operand to call is relative from the next instruction pointer.
 
+typedef struct X64_JmpPatch {
+    s64 usage_off; // Location (in buffer) into which to patch the target instruction's relative offset
+    s64 bytes_to_next_ip; // TODO: This should be offset_field_size (can be either 1 byte or 4 bytes!!)
+    u64 target_instr_index; // The index of the target instruction to jump to
+} X64_JmpPatch;
+
 typedef struct X64_TextGenState {
     Allocator* gen_mem;
     Allocator* tmp_mem;
@@ -495,12 +501,19 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
     Array(X64__Instr) instrs = X64__gen_proc_instrs(gen_state->gen_mem, gen_state->tmp_mem, proc_sym);
     const size_t num_instrs = array_len(instrs);
 
+    HMap instr_offsets = hmap(5, gen_state->tmp_mem); // Instr index => byte offset in buffer. Used for jmp targets.
+    X64_JmpPatch* jmp_patches = array_create(gen_state->tmp_mem, X64_JmpPatch, 8);
+
     // Loop throught X64 instructions and write out machine code to buffer.
     for (size_t i = 0; i < num_instrs; i += 1) {
         X64__Instr* instr = &instrs[i];
 
-        // const bool is_jmp_target = X64__is_instr_jmp_target(instr);
         const X64_Instr_Kind kind = X64__get_instr_kind(instr);
+
+        // This instruction is a jmp target. Save its offset in the instructions buffer.
+        if (X64__is_instr_jmp_target(instr)) {
+            hmap_put(&instr_offsets, i, array_len(gen_state->buffer));
+        }
 
         switch (kind) {
         case X64_Instr_Kind_NOOP: {
@@ -975,9 +988,21 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
         } break;
         default:
-            NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+            //NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
             break;
         }
+    }
+
+    // Patch jmp instructions.
+    const size_t num_patches = array_len(jmp_patches);
+    for (size_t i = 0; i < num_patches; i++) {
+        const X64_JmpPatch* patch_info = &jmp_patches[i];
+        const s64* target_offset_ptr = (const s64*)hmap_get(&instr_offsets, patch_info->target_instr_index);
+        assert(target_offset_ptr);
+
+        *((s32*)(&gen_state->buffer[patch_info->usage_off])) =
+            (s32)(*target_offset_ptr - (patch_info->usage_off + patch_info->bytes_to_next_ip));
+
     }
 
     allocator_restore_state(tmp_mem_state);
