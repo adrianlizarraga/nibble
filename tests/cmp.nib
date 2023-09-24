@@ -1,0 +1,7 @@
+proc main() => int {
+    var a : s8 = 9;
+    var b : bool = a < 10;  // tests cmp, setb, movzx, movsx
+    var c : u64 = a < 11;
+
+    return b + c;
+}
