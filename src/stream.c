@@ -129,3 +129,96 @@ void bucket_list_init(BucketList* bucket_list, Allocator* arena, size_t bucket_c
 
     bucket_list_add_bucket(bucket_list);
 }
+
+//
+// U8_BucketList
+//
+
+static U8_Bucket* u8_bucket_list_add_bucket(U8_BucketList* bucket_list)
+{
+    size_t alloc_size = offsetof(U8_Bucket, elems) + (bucket_list->bucket_cap * sizeof(uint8_t));
+    U8_Bucket* bucket = mem_allocate(bucket_list->alloc, alloc_size, DEFAULT_ALIGN, false);
+
+    bucket->count = 0;
+    bucket->next = NULL;
+
+    if (bucket_list->first)
+        bucket_list->last->next = bucket;
+    else
+        bucket_list->first = bucket;
+
+    bucket_list->last = bucket;
+
+    return bucket;
+}
+
+U8_BucketList* new_u8_bucket_list(Allocator* alloc, uint32_t bucket_cap)
+{
+    U8_BucketList* bucket_list = alloc_type(alloc, U8_BucketList, false);
+
+    u8_bucket_list_init(bucket_list, alloc, bucket_cap);
+
+    return bucket_list;
+}
+
+void u8_bucket_list_init(U8_BucketList* bucket_list, Allocator* alloc, uint32_t bucket_cap)
+{
+    bucket_list->bucket_cap = bucket_cap;
+    bucket_list->num_elems = 0;
+    bucket_list->alloc = alloc;
+    bucket_list->first = NULL;
+    bucket_list->last = NULL;
+
+    u8_bucket_list_add_bucket(bucket_list);
+}
+
+void u8_bucket_list_push(U8_BucketList* bucket_list, uint8_t elem)
+{
+    U8_Bucket* bucket = bucket_list->last;
+
+    if (bucket->count == bucket_list->bucket_cap)
+        bucket = u8_bucket_list_add_bucket(bucket_list);
+
+    bucket->elems[bucket->count] = elem;
+    bucket->count += 1;
+    bucket_list->num_elems += 1;
+}
+
+uint8_t* u8_bucket_list_get(U8_BucketList* bucket_list, uint32_t index)
+{
+    if (index >= bucket_list->num_elems)
+        return NULL;
+
+    const uint32_t elems_per_bucket = bucket_list->bucket_cap;
+    const uint32_t bucket_index = index / elems_per_bucket;
+    U8_Bucket* bucket = bucket_list->first;
+
+    for (uint32_t i = 0; i < bucket_index; i += 1) {
+        index -= elems_per_bucket;
+        bucket = bucket->next;
+    }
+
+    assert(index < bucket->count);
+
+    return bucket->elems + index;
+}
+
+const uint8_t* u8_bucket_list_get_const(const U8_BucketList* bucket_list, uint32_t index)
+{
+    if (index >= bucket_list->num_elems)
+        return NULL;
+
+    const uint32_t elems_per_bucket = bucket_list->bucket_cap;
+    const uint32_t bucket_index = index / elems_per_bucket;
+    const U8_Bucket* bucket = bucket_list->first;
+
+    for (uint32_t i = 0; i < bucket_index; i += 1) {
+        index -= elems_per_bucket;
+        bucket = bucket->next;
+    }
+
+    assert(index < bucket->count);
+
+    return bucket->elems + index;
+}
+

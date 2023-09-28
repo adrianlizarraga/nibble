@@ -113,6 +113,7 @@ bool resolve_symbol(Resolver* resolver, Symbol* sym)
         success = resolve_decl_var(resolver, sym);
 
         if (is_global) {
+            sym->as_var.index = resolver->ctx->vars.list.num_elems;
             add_global_data(&resolver->ctx->vars, sym, sym->type->size);
         }
         break;
@@ -124,7 +125,11 @@ bool resolve_symbol(Resolver* resolver, Symbol* sym)
         success = resolve_decl_proc(resolver, sym);
 
         if (is_global) {
-            bucket_list_add_elem(&resolver->ctx->procs, sym);
+            const bool is_foreign = sym->decl->flags & DECL_IS_FOREIGN;
+            BucketList* proc_container = is_foreign ? &resolver->ctx->foreign_procs : &resolver->ctx->procs;
+
+            sym->as_proc.index = proc_container->num_elems; // Assign index to proc symbol.
+            bucket_list_add_elem(proc_container, sym);
         }
         break;
     case SYMBOL_TYPE: {

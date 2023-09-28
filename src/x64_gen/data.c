@@ -1,8 +1,8 @@
 #include "x64_gen/data.h"
 
-inline void X64_add_reloc_use(Array(X64_DataReloc) * relocs, u64 usage_off, const ConstAddr* ref_addr)
+static inline void X64_add_reloc_use(Array(X64_DataReloc) * relocs, u64 usage_off, ConstAddr ref_addr)
 {
-    X64_DataReloc r = {.ref_addr = *ref_addr, .usage_off = usage_off};
+    X64_DataReloc r = {.ref_addr = ref_addr, .usage_off = usage_off};
     array_push(*relocs, r);
 }
 
@@ -130,7 +130,7 @@ static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr*
         assert(relocs != NULL);
 
         // Handles relocations for address of symbols and string literals.
-        X64_add_reloc_use(relocs, array_len(*buf), &const_expr->addr);
+        X64_add_reloc_use(relocs, array_len(*buf), const_expr->addr);
 
         // Fill with zeros. Linker will fill-in the actual address
         // using the relacation information we generate.
@@ -158,8 +158,13 @@ static void X64_data_serialize(Array(char) * buf, Allocator* tmp_mem, ConstExpr*
         break;
     }
     case CONST_EXPR_PROC: {
-        // TODO: Need relocations for procedure addresses.
-        NIBBLE_FATAL_EXIT("Unhandled ConstExprKind `%d`\n", const_expr->kind);
+        assert(relocs != NULL);
+
+        X64_add_reloc_use(relocs, array_len(*buf), (ConstAddr){.kind = CONST_ADDR_SYM, .sym = const_expr->sym});
+
+        // Fill with zeros. Linker will fill-in the actual address
+        // using the relocation information we generate.
+        X64_data_fill_zeros(buf, const_expr->type->size);
         break;
     }
     case CONST_EXPR_ARRAY_INIT: {
@@ -194,7 +199,7 @@ static size_t X64_add_data_item(Array(char) * buf, Allocator* tmp_mem, ConstExpr
 
 void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars)
 {
-    size_t num_vars = vars->list.num_elems;
+    const size_t num_vars = vars->list.num_elems;
 
     if (!num_vars) {
         return;
@@ -203,25 +208,23 @@ void X64_init_data_section(X64_DataSection* data_sec, Allocator* gen_mem, Alloca
     // Set the initial capacity to twice the combined size of all variables to avoid reallocation
     // due to additional alignment buf.
     data_sec->buf = array_create(gen_mem, char, vars->size << 1);
-    data_sec->var_offs = hmap(clp2(num_vars), gen_mem);
-    data_sec->relocs = array_create(gen_mem, X64_DataReloc, vars->size);
+    data_sec->var_offs = alloc_array(gen_mem, u64, num_vars, false);
+    data_sec->relocs = array_create(gen_mem, X64_DataReloc, num_vars);
 
-    // Serialize the first variable separately to get its required alignment (w/o a branch in the loop).
+    // Get the .data section's required alignment from the first variable.
     {
-        Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, 0));
-        size_t offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr, &data_sec->relocs);
-
-        hmap_put(&data_sec->var_offs, PTR_UINT(sym), offset); // Record offset.
-
+        Symbol* sym = vars->list.first->elems[0];
         data_sec->align = sym->type->align;
     }
 
-    // Serialize all other variables.
-    for (size_t i = 1; i < num_vars; i += 1) {
-        Symbol* sym = (Symbol*)(*bucket_list_get_elem_packed(&vars->list, i));
-        size_t offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr, &data_sec->relocs);
+    // Serialize all variables.
+    for (Bucket* bucket = vars->list.first; bucket; bucket = bucket->next) {
+        for (size_t i = 0; i < bucket->count; i += 1) {
+            Symbol* sym = bucket->elems[i];
+            const u64 offset = X64_add_data_item(&data_sec->buf, tmp_mem, &sym->as_var.const_expr, &data_sec->relocs);
 
-        hmap_put(&data_sec->var_offs, PTR_UINT(sym), offset); // Record offset.
+            data_sec->var_offs[sym->as_var.index] = offset; // Record offset.
+        }
     }
 }
 
@@ -230,8 +233,8 @@ void X64_init_rodata_section(X64_RODataSection* rodata, Allocator* gen_mem, Allo
 {
     rodata->align = 0x10;
 
-    size_t num_floats = floats->list.num_elems;
-    size_t num_strs = strs->list.num_elems;
+    const size_t num_floats = floats->list.num_elems;
+    const size_t num_strs = strs->list.num_elems;
 
     if (!num_floats && !num_strs) {
         return;
@@ -241,34 +244,39 @@ void X64_init_rodata_section(X64_RODataSection* rodata, Allocator* gen_mem, Allo
 
     // Serialize all floats.
     if (num_floats) {
-        rodata->float_offs = hmap(clp2(num_floats), gen_mem);
+        rodata->float_offs = alloc_array(gen_mem, u64, num_floats, false);
 
-        for (size_t i = 0; i < num_floats; i += 1) {
-            FloatLit* float_lit = (FloatLit*)(*bucket_list_get_elem_packed(&floats->list, i));
-            Type* type = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
-            ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = type, .float_lit = float_lit};
-            size_t offset = X64_add_data_item(&rodata->buf, tmp_mem, &const_expr, NULL);
+        for (Bucket* bucket = floats->list.first; bucket; bucket = bucket->next) {
+            for (size_t i = 0; i < bucket->count; i += 1) {
+                FloatLit* float_lit = bucket->elems[i];
+                Type* type = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type
+                                                          : builtin_types[BUILTIN_TYPE_F32].type;
+                ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = type, .float_lit = float_lit};
+                const u64 offset = X64_add_data_item(&rodata->buf, tmp_mem, &const_expr, NULL);
 
-            hmap_put(&rodata->float_offs, PTR_UINT(float_lit), offset);
+                rodata->float_offs[float_lit->index] = offset;
+            }
         }
     }
 
     // Serialize all strings.
     if (num_strs) {
-        rodata->str_offs = hmap(clp2(num_strs), gen_mem);
+        rodata->str_offs = alloc_array(gen_mem, u64, num_strs, false);
 
-        for (size_t i = 0; i < num_strs; i += 1) {
-            StrLit* str_lit = (StrLit*)(*bucket_list_get_elem_packed(&strs->list, i));
-            size_t len = str_lit->len;
-            const char* str = str_lit->str;
-            size_t offset = array_len(rodata->buf);
+        for (Bucket* bucket = strs->list.first; bucket; bucket = bucket->next) {
+            for (size_t i = 0; i < bucket->count; i += 1) {
+                StrLit* str_lit = bucket->elems[i];
+                size_t len = str_lit->len;
+                const char* str = str_lit->str;
+                const u64 offset = array_len(rodata->buf);
 
-            for (size_t i = 0; i < len; i += 1) {
-                array_push(rodata->buf, str[i]);
+                for (size_t i = 0; i < len; i += 1) {
+                    array_push(rodata->buf, str[i]);
+                }
+
+                array_push(rodata->buf, '\0');
+                rodata->str_offs[str_lit->index] = offset;
             }
-
-            array_push(rodata->buf, '\0');
-            hmap_put(&rodata->str_offs, PTR_UINT(str_lit), offset);
         }
     }
 

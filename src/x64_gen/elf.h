@@ -47,6 +47,7 @@
 #define ELF_R_X86_64_NONE 0 // None
 #define ELF_R_X86_64_64 1 // Direct: S + A
 #define ELF_R_X86_64_PC32 2 // PC relative: S + A - P
+#define ELF_R_X86_64_PLT32 4 // 32-bit PLT address: L + A - P
 
 typedef struct Elf64_Hdr {
     u8 e_ident[16]; // Magic number + stuff

@@ -913,14 +913,19 @@ typedef enum ConstExprKind {
 typedef enum ConstAddrKind {
     CONST_ADDR_SYM,
     CONST_ADDR_STR_LIT,
+    CONST_ADDR_FLOAT_LIT,
 } ConstAddrKind;
 
+// The address of symbols or string literals are "constexprs" that can be assigned to global
+// variables. This struct represents a symbol or string literal address with an optional displacement.
 struct ConstAddr {
     ConstAddrKind kind;
 
     union {
-        Symbol* sym;
-        StrLit* str_lit;
+        const Symbol* sym;
+        const StrLit* str_lit;
+        const FloatLit* float_lit; // Not really used by front-end since global float var decls just copy the float
+                                   // literal at compile-time. However, this is handy to have here for x64 relocations.
     };
 
     u32 disp;
@@ -963,9 +968,11 @@ struct ConstArrayMemberInitzer {
 };
 
 struct SymbolVar {
+    size_t index; // Index in container
+
     union {
         // Used by backends to store this var's
-        // location in the stack (if local) or offset from .data segment (if global)
+        // location in the stack (if local)
         s32 offset;
 
         // Used to describe initial value (constexpr) for global variable
@@ -983,6 +990,8 @@ struct SymbolEnum {
 };
 
 struct SymbolProc {
+    size_t index; // Index of this symbol in bucket list container.
+                  // Used as index for proc metadata in parallel arrays (avoids need for HMap)
     struct BBlock** bblocks; // Stretchy buffer of basic blocks
     size_t num_instrs;
 
@@ -993,7 +1002,7 @@ struct SymbolProc {
     size_t num_tmp_objs;
 
     // For procs in foreign libs
-    // Check decl->flags first.
+    // Check (sym->decl->flags & DECL_IS_FOREIGN) first.
     StrLit* foreign_name;
 };
 

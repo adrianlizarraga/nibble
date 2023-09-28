@@ -46,16 +46,16 @@
 // X86_64 backend
 #include "x64_gen/module.c"
 #include "x64_gen/regs.c"
-#include "x64_gen/lir.c"
-#include "x64_gen/convert_ir.c"
+#include "x64_gen/xir.c"
+#include "x64_gen/ir_to_xir.c"
 #include "x64_gen/livevar.c"
 #include "x64_gen/reg_alloc.c"
-#include "x64_gen/print_lir.c"
+#include "x64_gen/print_xir.c"
 #include "x64_gen/elf.c"
 #include "x64_gen/data.c"
 #include "x64_gen/text.c"
 #include "x64_gen/elf_writer.c"
-#include "x64_gen/lir_to_x64.c"
+#include "x64_gen/xir_to_x64.c"
 #include "x64_gen/nasm_gen.c"
 
 // Compiler main logic

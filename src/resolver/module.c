@@ -42,29 +42,28 @@ bool resolve_reachable_sym_defs(Resolver* resolver)
     // NOTE: The procs bucket-list may grow during iteration if new proc symbols are encountered
     // while resolving proc/struct/union bodies.
     //
-    // Therefore, _DO NOT CACHE_ procs->num_elems into a local variable.
-    for (size_t i = 0; i < procs->num_elems; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
-        assert(sym_ptr);
-        Symbol* sym = (Symbol*)(*sym_ptr);
-        assert(sym->kind == SYMBOL_PROC);
+    // Therefore, _DO NOT CACHE_ bucket->count into a local variable.
+    for (Bucket* bucket = procs->first; bucket; bucket = bucket->next) {
+        for (size_t i = 0; i < bucket->count; i += 1) {
+            Symbol* sym = bucket->elems[i];
+            assert(sym->kind == SYMBOL_PROC);
 
-        if (!resolve_global_proc_body(resolver, sym)) {
-            return false;
+            if (!resolve_global_proc_body(resolver, sym)) {
+                return false;
+            }
         }
     }
 
-    for (size_t i = 0; i < aggregate_types->num_elems; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(aggregate_types, i);
-        assert(sym_ptr);
-        Symbol* sym = (Symbol*)(*sym_ptr);
-        assert(sym->kind == SYMBOL_TYPE);
+    for (Bucket* bucket = aggregate_types->first; bucket; bucket = bucket->next) {
+        for (size_t i = 0; i < bucket->count; i += 1) {
+            Symbol* sym = bucket->elems[i];
+            assert(sym->kind == SYMBOL_TYPE);
 
-        if (!try_complete_aggregate_type(resolver, sym->type)) {
-            return false;
+            if (!try_complete_aggregate_type(resolver, sym->type)) {
+                return false;
+            }
         }
     }
 
     return true;
 }
-

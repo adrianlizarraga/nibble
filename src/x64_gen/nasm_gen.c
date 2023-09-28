@@ -3,7 +3,7 @@
 #include "ast/module.h"
 #include "cstring.h"
 #include "nibble.h"
-#include "x64_gen/lir_to_x64.h"
+#include "x64_gen/xir_to_x64.h"
 #include "x64_gen/regs.h"
 
 #define X64_NASM_STR_LIT_PRE "__nibble_str_lit_"
@@ -24,6 +24,15 @@
 // Print formatted tabbed line
 #define X64_NASM_PRINT_FTL(str_builder, fmt, ...) ftprint_char_array(&(str_builder), false, "  " fmt "\n", __VA_ARGS__)
 
+const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
+const char* x64_condition_codes[] = {
+    [COND_U_LT] = "b", [COND_S_LT] = "l",    [COND_U_LTEQ] = "be", [COND_S_LTEQ] = "le", [COND_U_GT] = "a",
+    [COND_S_GT] = "g", [COND_U_GTEQ] = "ae", [COND_S_GTEQ] = "ge", [COND_EQ] = "e",      [COND_NEQ] = "ne",
+};
+
+static const char* x64_mem_size_label[X64_MAX_MEM_LABEL_SIZE + 1] =
+    {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword", [16] = "oword"};
+static const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "db", [2] = "dw", [4] = "dd", [8] = "dq"};
 static const char* x64_nasm_reg_h_names[X64_REG_COUNT] = {[X64_RAX] = "ah", [X64_RCX] = "ch", [X64_RDX] = "dh", [X64_RBX] = "bh"};
 static const char* x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUNT] = {
     [1] =
@@ -104,10 +113,16 @@ static const char* x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUN
         },
 };
 
+static const char* x64_flt_reg_names[X64_REG_COUNT] = {
+    [X64_XMM0] = "xmm0",   [X64_XMM1] = "xmm1",   [X64_XMM2] = "xmm2",   [X64_XMM3] = "xmm3",
+    [X64_XMM4] = "xmm4",   [X64_XMM5] = "xmm5",   [X64_XMM6] = "xmm6",   [X64_XMM7] = "xmm7",
+    [X64_XMM8] = "xmm8",   [X64_XMM9] = "xmm9",   [X64_XMM10] = "xmm10", [X64_XMM11] = "xmm11",
+    [X64_XMM12] = "xmm12", [X64_XMM13] = "xmm13", [X64_XMM14] = "xmm14", [X64_XMM15] = "xmm15"};
+
 static const char* X64_nasm_float_lit_mangled_name(Allocator* alloc, FloatLit* float_lit)
 {
     char* dstr = array_create(alloc, char, 16);
-    ftprint_char_array(&dstr, true, "%s_%llu", X64_NASM_FLOAT_LIT_PRE, float_lit->id);
+    ftprint_char_array(&dstr, true, "%s_%llu", X64_NASM_FLOAT_LIT_PRE, float_lit->index);
 
     return dstr;
 }
@@ -126,17 +141,17 @@ static char* X64_nasm_print_sibd_addr(Allocator* allocator, X64_SIBD_Addr* addr,
     char* dstr = array_create(allocator, char, 16);
     const char* mem_label = mem_label_size ? x64_mem_size_label[mem_label_size] : "";
 
-    if (addr->kind == X64__SIBD_ADDR_STR_LIT) {
-        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_STR_LIT_PRE, addr->str_lit->id);
+    if (addr->kind == X64_SIBD_ADDR_STR_LIT) {
+        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_STR_LIT_PRE, addr->str_lit->index);
     }
-    else if (addr->kind == X64__SIBD_ADDR_FLOAT_LIT) {
-        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_FLOAT_LIT_PRE, addr->float_lit->id);
+    else if (addr->kind == X64_SIBD_ADDR_FLOAT_LIT) {
+        ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_FLOAT_LIT_PRE, addr->float_lit->index);
     }
-    else if (addr->kind == X64__SIBD_ADDR_GLOBAL) {
+    else if (addr->kind == X64_SIBD_ADDR_GLOBAL) {
         ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, symbol_mangled_name(allocator, addr->global));
     }
     else {
-        assert(addr->kind == X64__SIBD_ADDR_LOCAL);
+        assert(addr->kind == X64_SIBD_ADDR_LOCAL);
         bool has_base = addr->local.base_reg < X64_REG_COUNT;
         bool has_index = addr->local.scale && (addr->local.index_reg < X64_REG_COUNT);
         bool has_disp = addr->local.disp != 0;
@@ -357,7 +372,7 @@ static void X64_nasm_print_global_val(Allocator* allocator, const ConstExpr* con
         else {
             assert(addr->kind == CONST_ADDR_STR_LIT);
             ftprint_char_array(line, false, "%s %s_%llu", x64_data_size_label[const_expr->type->size], X64_NASM_STR_LIT_PRE,
-                               addr->str_lit->id);
+                               addr->str_lit->index);
         }
 
         if (addr->disp) {
@@ -445,33 +460,32 @@ static Array(char)
         X64_NASM_PRINT_L(str_builder, "SECTION .rodata\n");
 
         // Emit static/const string literals
-        for (size_t i = 0; i < num_str_lits; i++) {
-            void** str_lit_ptr = bucket_list_get_elem_packed(&str_lits->list, i);
-            assert(str_lit_ptr);
+        for (Bucket* bucket = str_lits->list.first; bucket; bucket = bucket->next) {
+            for (size_t i = 0; i < bucket->count; i++) {
+                StrLit* str_lit = bucket->elems[i];
 
-            StrLit* str_lit = (StrLit*)(*str_lit_ptr);
+                assert(str_lit->used);
 
-            assert(str_lit->used);
+                const char* escaped_str = cstr_escape(tmp_mem, str_lit->str, str_lit->len, '`'); // TODO: Just print bytes.
 
-            const char* escaped_str = cstr_escape(tmp_mem, str_lit->str, str_lit->len, '`'); // TODO: Just print bytes.
-
-            X64_NASM_PRINT_FL(str_builder, "%s_%llu: ", X64_NASM_STR_LIT_PRE, str_lit->id);
-            X64_NASM_PRINT_FL(str_builder, "db `%s\\0`", escaped_str);
+                X64_NASM_PRINT_FL(str_builder, "%s_%llu: ", X64_NASM_STR_LIT_PRE, str_lit->index);
+                X64_NASM_PRINT_FL(str_builder, "db `%s\\0`", escaped_str);
+            }
         }
 
         // Emit static/const float literals
-        for (size_t i = 0; i < num_float_lits; i++) {
-            void** float_lit_ptr = bucket_list_get_elem_packed(&float_lits->list, i);
-            assert(float_lit_ptr);
+        for (Bucket* bucket = float_lits->list.first; bucket; bucket = bucket->next) {
+            for (size_t i = 0; i < bucket->count; i++) {
+                FloatLit* float_lit = bucket->elems[i];
 
-            FloatLit* float_lit = (FloatLit*)(*float_lit_ptr);
+                assert(float_lit->used);
 
-            assert(float_lit->used);
+                Type* ftype =
+                    float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
+                ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = ftype, .float_lit = float_lit};
 
-            Type* ftype = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
-            ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = ftype, .float_lit = float_lit};
-
-            X64_nasm_emit_global_data(tmp_mem, &str_builder, X64_nasm_float_lit_mangled_name(tmp_mem, float_lit), &const_expr);
+                X64_nasm_emit_global_data(tmp_mem, &str_builder, X64_nasm_float_lit_mangled_name(tmp_mem, float_lit), &const_expr);
+            }
         }
     }
     allocator_restore_state(mem_state);
@@ -495,12 +509,13 @@ static Array(char) X64_nasm_gen_data(Allocator* gen_mem, Allocator* tmp_mem, con
     {
         X64_NASM_PRINT_L(str_builder, "\nSECTION .data\n");
 
-        for (u32 i = 0; i < num_vars; i += 1) {
-            void** sym_ptr = bucket_list_get_elem_packed(&vars->list, i);
-            assert(sym_ptr);
-            Symbol* sym = (Symbol*)(*sym_ptr);
+        for (Bucket* bucket = vars->list.first; bucket; bucket = bucket->next) {
+            for (size_t i = 0; i < bucket->count; i++) {
+                Symbol* sym = (Symbol*)(bucket->elems[i]);
+                assert(sym->kind == SYMBOL_VAR);
 
-            X64_nasm_emit_global_data(tmp_mem, &str_builder, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
+                X64_nasm_emit_global_data(tmp_mem, &str_builder, symbol_mangled_name(tmp_mem, sym), &sym->as_var.const_expr);
+            }
         }
     }
     allocator_restore_state(mem_state);
@@ -510,13 +525,14 @@ static Array(char) X64_nasm_gen_data(Allocator* gen_mem, Allocator* tmp_mem, con
     return str_builder;
 }
 
-static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, size_t proc_id, Symbol* proc_sym)
+static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym)
 {
     const DeclProc* decl = (const DeclProc*)proc_sym->decl;
     if (decl->is_incomplete) {
         return NULL;
     }
 
+    size_t proc_id = proc_sym->as_proc.index;
     Array(char) proc_str = array_create(gen_mem, char, 256);
 
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
@@ -525,15 +541,15 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, siz
     const char* proc_mangled = symbol_mangled_name(tmp_mem, proc_sym);
     X64_NASM_PRINT_FL(proc_str, "%s:", proc_mangled);
 
-    Array(X64__Instr) instrs = X64__gen_proc_instrs(gen_mem, tmp_mem, proc_sym);
+    Array(X64_Instr) instrs = X64_gen_proc_instrs(gen_mem, tmp_mem, proc_sym);
     const size_t num_instrs = array_len(instrs);
 
     // Print instructions.
     for (size_t i = 0; i < num_instrs; i += 1) {
-        X64__Instr* instr = &instrs[i];
+        X64_Instr* instr = &instrs[i];
 
-        const bool is_jmp_target = X64__is_instr_jmp_target(instr);
-        const X64_Instr_Kind kind = X64__get_instr_kind(instr);
+        const bool is_jmp_target = X64_is_instr_jmp_target(instr);
+        const X64_Instr_Kind kind = X64_get_instr_kind(instr);
 
         // Print label for instructions that are 'jumped' to.
         if (is_jmp_target) {
@@ -1141,12 +1157,13 @@ bool X64_nasm_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* var
     const size_t num_procs = procs->num_elems;
     Array(char)* proc_strs = alloc_array(gen_mem, Array(char), num_procs, true);
 
-    for (size_t i = 0; i < num_procs; i += 1) {
-        void** sym_ptr = bucket_list_get_elem_packed(procs, i);
-        assert(sym_ptr);
-        Symbol* sym = (Symbol*)(*sym_ptr);
+    for (Bucket* bucket = procs->first; bucket; bucket = bucket->next) {
+        for (size_t i = 0; i < bucket->count; i += 1) {
+            Symbol* sym = bucket->elems[i];
+            assert(sym->kind == SYMBOL_PROC);
 
-        proc_strs[i] = X64_nasm_gen_proc(gen_mem, tmp_mem, i, sym);
+            proc_strs[sym->as_proc.index] = X64_nasm_gen_proc(gen_mem, tmp_mem, sym);
+        }
     }
 
     //
@@ -1155,7 +1172,7 @@ bool X64_nasm_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* var
 
     FILE* out_fd = fopen(output_file, "w");
     if (!out_fd) {
-        ftprint_err("Failed to open output file `_nasm_out.s`\n");
+        ftprint_err("Failed to open output file `%s`\n", output_file);
         return false;
     }
 
@@ -1163,11 +1180,13 @@ bool X64_nasm_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* var
     ftprint_file(out_fd, false, "; Generated by the Nibble compiler.\ndefault rel\n");
 
     // Write extern procs.
-    u32 num_foreign_procs = foreign_procs->num_elems;
+    for (Bucket* bucket = foreign_procs->first; bucket; bucket = bucket->next) {
+        for (u32 i = 0; i < bucket->count; i += 1) {
+            Symbol* proc_sym = bucket->elems[i];
+            assert(proc_sym->kind == SYMBOL_PROC);
 
-    for (u32 i = 0; i < num_foreign_procs; i += 1) {
-        Symbol* proc_sym = (Symbol*)(*bucket_list_get_elem_packed(foreign_procs, i));
-        ftprint_file(out_fd, false, "extern %s\n", proc_sym->as_proc.foreign_name->str);
+            ftprint_file(out_fd, false, "extern %s\n", proc_sym->as_proc.foreign_name->str);
+        }
     }
 
     // Write out .rodata section.

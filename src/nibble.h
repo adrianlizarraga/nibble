@@ -96,7 +96,7 @@ static inline bool float_eq(FloatKind kind, Float a, Float b)
 typedef struct FloatLit {
     struct FloatLit* next;
     bool used;
-    size_t id;
+    size_t index;
     FloatKind kind;
     Float value;
 } FloatLit;
@@ -220,7 +220,7 @@ typedef enum BuiltinStructField {
 typedef struct StrLit {
     struct StrLit* next;
     bool used;
-    size_t id;
+    size_t index;
     size_t len;
     char str[];
 } StrLit;
