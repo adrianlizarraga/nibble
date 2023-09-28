@@ -2,7 +2,7 @@
 #include "stream.h"
 #include "x64_gen/module.h"
 #include "x64_gen/nasm_gen.h"
-#include "x64_gen/print_lir.h"
+#include "x64_gen/print_xir.h"
 
 bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, const Symbol* main_proc, GlobalData* str_lits,
                     GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)

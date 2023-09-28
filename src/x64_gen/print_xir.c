@@ -1,4 +1,4 @@
-#include "x64_gen/print_lir.h"
+#include "x64_gen/print_xir.h"
 #include "x64_gen/regs.h"
 #include "x64_gen/nasm_gen.h"
 

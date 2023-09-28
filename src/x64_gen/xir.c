@@ -1,4 +1,4 @@
-#include "x64_gen/lir.h"
+#include "x64_gen/xir.h"
 
 static void XIR_bblock_add_instr(XIR_BBlock* bblock, XIR_Instr* instr)
 {

@@ -1,5 +1,5 @@
-#ifndef NIBBLE_XIR_LIR_H
-#define NIBBLE_XIR_LIR_H
+#ifndef NIBBLE_XIR_H
+#define NIBBLE_XIR_H
 #include "allocator.h"
 #include "hash_map.h"
 #include "bytecode/module.h"

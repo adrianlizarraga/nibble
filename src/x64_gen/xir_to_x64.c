@@ -1,4 +1,4 @@
-#include "x64_gen/lir_to_x64.h"
+#include "x64_gen/xir_to_x64.h"
 #include "allocator.h"
 #include "array.h"
 #include "ast/module.h"
@@ -7,9 +7,9 @@
 #include "nibble.h"
 #include "stream.h"
 #include "x64_gen/regs.h"
-#include "x64_gen/lir.h"
+#include "x64_gen/xir.h"
 #include "x64_gen/reg_alloc.h"
-#include "x64_gen/print_lir.h"
+#include "x64_gen/print_xir.h"
 
 static inline X64_SIBD_Addr X64_get_rbp_offset_addr(s32 offset)
 {

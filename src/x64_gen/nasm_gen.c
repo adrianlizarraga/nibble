@@ -3,7 +3,7 @@
 #include "ast/module.h"
 #include "cstring.h"
 #include "nibble.h"
-#include "x64_gen/lir_to_x64.h"
+#include "x64_gen/xir_to_x64.h"
 #include "x64_gen/regs.h"
 
 #define X64_NASM_STR_LIT_PRE "__nibble_str_lit_"

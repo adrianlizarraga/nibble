@@ -1,5 +1,5 @@
 #include "bytecode/module.h"
-#include "x64_gen/lir.h"
+#include "x64_gen/xir.h"
 
 // Indexed on the source kind!!
 static const XIR_EmitInstrFlt2Flt_R_R_Func x64_flt2flt_r_r_funcs[] =

@@ -1,7 +1,7 @@
 #ifndef NIBBLE_X64_REG_ALLOC_H
 #define NIBBLE_X64_REG_ALLOC_H
 #include "x64_gen/regs.h"
-#include "x64_gen/lir.h"
+#include "x64_gen/xir.h"
 
 typedef struct X64_RegAllocResult {
     u32 stack_offset; // In bytes

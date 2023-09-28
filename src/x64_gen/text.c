@@ -4,7 +4,7 @@
 #include "hash_map.h"
 #include "stream.h"
 #include "x64_gen/text.h"
-#include "x64_gen/lir_to_x64.h"
+#include "x64_gen/xir_to_x64.h"
 #include "x64_gen/regs.h"
 
 static const u8 x64_reg_val[X64_REG_COUNT] = {

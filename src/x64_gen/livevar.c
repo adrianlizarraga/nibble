@@ -1,4 +1,4 @@
-#include "x64_gen/lir.h"
+#include "x64_gen/xir.h"
 
 static void XIR_touch_lreg(XIR_Builder* builder, u32 lreg, long ino)
 {
