@@ -24,6 +24,15 @@
 // Print formatted tabbed line
 #define X64_NASM_PRINT_FTL(str_builder, fmt, ...) ftprint_char_array(&(str_builder), false, "  " fmt "\n", __VA_ARGS__)
 
+const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
+const char* x64_condition_codes[] = {
+    [COND_U_LT] = "b", [COND_S_LT] = "l",    [COND_U_LTEQ] = "be", [COND_S_LTEQ] = "le", [COND_U_GT] = "a",
+    [COND_S_GT] = "g", [COND_U_GTEQ] = "ae", [COND_S_GTEQ] = "ge", [COND_EQ] = "e",      [COND_NEQ] = "ne",
+};
+
+static const char* x64_mem_size_label[X64_MAX_MEM_LABEL_SIZE + 1] =
+    {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword", [16] = "oword"};
+static const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "db", [2] = "dw", [4] = "dd", [8] = "dq"};
 static const char* x64_nasm_reg_h_names[X64_REG_COUNT] = {[X64_RAX] = "ah", [X64_RCX] = "ch", [X64_RDX] = "dh", [X64_RBX] = "bh"};
 static const char* x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUNT] = {
     [1] =
@@ -104,6 +113,12 @@ static const char* x64_nasm_int_reg_names[X64_MAX_INT_REG_SIZE + 1][X64_REG_COUN
         },
 };
 
+static const char* x64_flt_reg_names[X64_REG_COUNT] = {
+    [X64_XMM0] = "xmm0",   [X64_XMM1] = "xmm1",   [X64_XMM2] = "xmm2",   [X64_XMM3] = "xmm3",
+    [X64_XMM4] = "xmm4",   [X64_XMM5] = "xmm5",   [X64_XMM6] = "xmm6",   [X64_XMM7] = "xmm7",
+    [X64_XMM8] = "xmm8",   [X64_XMM9] = "xmm9",   [X64_XMM10] = "xmm10", [X64_XMM11] = "xmm11",
+    [X64_XMM12] = "xmm12", [X64_XMM13] = "xmm13", [X64_XMM14] = "xmm14", [X64_XMM15] = "xmm15"};
+
 static const char* X64_nasm_float_lit_mangled_name(Allocator* alloc, FloatLit* float_lit)
 {
     char* dstr = array_create(alloc, char, 16);
@@ -126,17 +141,17 @@ static char* X64_nasm_print_sibd_addr(Allocator* allocator, X64_SIBD_Addr* addr,
     char* dstr = array_create(allocator, char, 16);
     const char* mem_label = mem_label_size ? x64_mem_size_label[mem_label_size] : "";
 
-    if (addr->kind == X64__SIBD_ADDR_STR_LIT) {
+    if (addr->kind == X64_SIBD_ADDR_STR_LIT) {
         ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_STR_LIT_PRE, addr->str_lit->index);
     }
-    else if (addr->kind == X64__SIBD_ADDR_FLOAT_LIT) {
+    else if (addr->kind == X64_SIBD_ADDR_FLOAT_LIT) {
         ftprint_char_array(&dstr, true, "[rel %s_%llu]", X64_NASM_FLOAT_LIT_PRE, addr->float_lit->index);
     }
-    else if (addr->kind == X64__SIBD_ADDR_GLOBAL) {
+    else if (addr->kind == X64_SIBD_ADDR_GLOBAL) {
         ftprint_char_array(&dstr, true, "%s [rel %s]", mem_label, symbol_mangled_name(allocator, addr->global));
     }
     else {
-        assert(addr->kind == X64__SIBD_ADDR_LOCAL);
+        assert(addr->kind == X64_SIBD_ADDR_LOCAL);
         bool has_base = addr->local.base_reg < X64_REG_COUNT;
         bool has_index = addr->local.scale && (addr->local.index_reg < X64_REG_COUNT);
         bool has_disp = addr->local.disp != 0;
@@ -465,8 +480,8 @@ static Array(char)
 
                 assert(float_lit->used);
 
-                Type* ftype = float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type
-                                                           : builtin_types[BUILTIN_TYPE_F32].type;
+                Type* ftype =
+                    float_lit->kind == FLOAT_F64 ? builtin_types[BUILTIN_TYPE_F64].type : builtin_types[BUILTIN_TYPE_F32].type;
                 ConstExpr const_expr = {.kind = CONST_EXPR_FLOAT_LIT, .type = ftype, .float_lit = float_lit};
 
                 X64_nasm_emit_global_data(tmp_mem, &str_builder, X64_nasm_float_lit_mangled_name(tmp_mem, float_lit), &const_expr);
@@ -526,15 +541,15 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, Sym
     const char* proc_mangled = symbol_mangled_name(tmp_mem, proc_sym);
     X64_NASM_PRINT_FL(proc_str, "%s:", proc_mangled);
 
-    Array(X64__Instr) instrs = X64__gen_proc_instrs(gen_mem, tmp_mem, proc_sym);
+    Array(X64_Instr) instrs = X64_gen_proc_instrs(gen_mem, tmp_mem, proc_sym);
     const size_t num_instrs = array_len(instrs);
 
     // Print instructions.
     for (size_t i = 0; i < num_instrs; i += 1) {
-        X64__Instr* instr = &instrs[i];
+        X64_Instr* instr = &instrs[i];
 
-        const bool is_jmp_target = X64__is_instr_jmp_target(instr);
-        const X64_Instr_Kind kind = X64__get_instr_kind(instr);
+        const bool is_jmp_target = X64_is_instr_jmp_target(instr);
+        const X64_Instr_Kind kind = X64_get_instr_kind(instr);
 
         // Print label for instructions that are 'jumped' to.
         if (is_jmp_target) {

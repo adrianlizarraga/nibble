@@ -54,7 +54,6 @@ typedef enum X64_RegClass {
 } X64_RegClass;
 
 extern const X64_RegClass x64_reg_classes[X64_REG_COUNT];
-extern const char* x64_flt_reg_names[X64_REG_COUNT];
 
 typedef struct X64_ScratchRegs {
     unsigned num_regs;
@@ -87,62 +86,9 @@ bool X64_is_arg_reg(X64_Reg reg);
 #define X64_is_obj_retarg_large(s) ((s) > (X64_MAX_INT_REG_SIZE << 1))
 X64_RegClass X64_obj_reg_class(const Type* type);
 
-// Data structures used to track the "location" of a virtual IR register.
-// A virtual register could be assigned to a physical register, or could be assigned
-// to a stack offset.
-typedef enum X64_LRegLocKind {
-    X64_LREG_LOC_UNASSIGNED = 0,
-    X64_LREG_LOC_REG,
-    X64_LREG_LOC_STACK,
-} X64_LRegLocKind;
-
-typedef struct X64_LRegLoc {
-    X64_LRegLocKind kind;
-
-    union {
-        X64_Reg reg;
-        s32 offset;
-    };
-} X64_LRegLoc;
-
-typedef struct X64_LRegRangeList {
-    List ranges;
-    ListNode lnode;
-} X64_LRegRangeList;
-
-typedef enum X64_RegAllocControlKind {
-    X64_REG_ALLOC_CTRL_NONE = 0,
-    X64_REG_ALLOC_CTRL_FORCE_REG, // Used for required operand registers (e.g., rcx for shift) and SIBD addr registers
-    X64_REG_ALLOC_CTRL_FORCE_ANY_REG,
-    X64_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL, // Used for procedure arguments
-    X64_REG_ALLOC_CTRL_HINT_LIR_REG, // Used for register to register moves
-    X64_REG_ALLOC_CTRL_HINT_PHYS_REG, // Used for register to register moves
-} X64_RegAllocControlKind;
-
-typedef struct X64_LRegRange {
-    u32 lreg;
-    long start;
-    long end;
-
-    X64_RegClass reg_class;
-    X64_RegAllocControlKind ra_ctrl_kind;
-    union {
-        X64_Reg preg;
-        u32 lreg;
-        u32 preg_mask;
-    } ra_ctrl;
-
-    X64_LRegLoc loc;
-    ListNode lnode;
-} X64_LRegRange;
-
 typedef struct X64_StackArgsInfo {
     u64 size;
     u64 offset;
 } X64_StackArgsInfo;
 
-extern const char* x64_mem_size_label[X64_MAX_MEM_LABEL_SIZE + 1];
-extern const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1];
-extern const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1];
-extern const char* x64_condition_codes[];
 #endif

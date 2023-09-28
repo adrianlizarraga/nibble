@@ -78,7 +78,7 @@ typedef struct X64_AddrBytes {
 // Converts a high-level X64 SIBD address to specific ModRM and SIB byte information.
 static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
 {
-    if (addr->kind == X64__SIBD_ADDR_GLOBAL) {
+    if (addr->kind == X64_SIBD_ADDR_GLOBAL) {
         return (X64_AddrBytes){.has_disp = true,
                                .patch_entity = {.kind = CONST_ADDR_SYM, .sym = addr->global},
                                // If this is a procedure, disp will be patched by the compiler to relative offset of proc.
@@ -90,7 +90,7 @@ static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
                                .rm = 0x5};
     }
 
-    if (addr->kind == X64__SIBD_ADDR_STR_LIT) {
+    if (addr->kind == X64_SIBD_ADDR_STR_LIT) {
         return (X64_AddrBytes){.has_disp = true,
                                .patch_entity = {.kind = CONST_ADDR_STR_LIT, .str_lit = addr->str_lit},
                                // Compiler will write a displacement of 0, but linker will patch using reloc info.
@@ -101,7 +101,7 @@ static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
                                .rm = 0x5};
     }
 
-    if (addr->kind == X64__SIBD_ADDR_FLOAT_LIT) {
+    if (addr->kind == X64_SIBD_ADDR_FLOAT_LIT) {
         return (X64_AddrBytes){.has_disp = true,
                                .patch_entity = {.kind = CONST_ADDR_FLOAT_LIT, .float_lit = addr->float_lit},
                                // Compiler will write a displacement of 0, but linker will patch using reloc info.
@@ -112,7 +112,7 @@ static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
                                .rm = 0x5};
     }
 
-    assert(addr->kind == X64__SIBD_ADDR_LOCAL);
+    assert(addr->kind == X64_SIBD_ADDR_LOCAL);
 
     X64_AddrBytes addr_bytes = {0};
 
@@ -498,7 +498,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
     // Save this proc's offset in the buffer for use by call instructions.
     X64_set_proc_offset(gen_state, proc_sym);
 
-    Array(X64__Instr) instrs = X64__gen_proc_instrs(gen_state->gen_mem, gen_state->tmp_mem, proc_sym);
+    Array(X64_Instr) instrs = X64_gen_proc_instrs(gen_state->gen_mem, gen_state->tmp_mem, proc_sym);
     const size_t num_instrs = array_len(instrs);
 
     HMap instr_offsets = hmap(5, gen_state->tmp_mem); // Instr index => byte offset in buffer. Used for jmp targets.
@@ -506,12 +506,12 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
 
     // Loop throught X64 instructions and write out machine code to buffer.
     for (size_t i = 0; i < num_instrs; i += 1) {
-        X64__Instr* instr = &instrs[i];
+        X64_Instr* instr = &instrs[i];
 
-        const X64_Instr_Kind kind = X64__get_instr_kind(instr);
+        const X64_Instr_Kind kind = X64_get_instr_kind(instr);
 
         // This instruction is a jmp target. Save its offset in the instructions buffer.
-        if (X64__is_instr_jmp_target(instr)) {
+        if (X64_is_instr_jmp_target(instr)) {
             hmap_put(&instr_offsets, i, array_len(gen_state->buffer));
         }
 
@@ -988,7 +988,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
             X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
         } break;
         default:
-            //NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+            // NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
             break;
         }
     }
@@ -1002,7 +1002,6 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
 
         *((s32*)(&gen_state->buffer[patch_info->usage_off])) =
             (s32)(*target_offset_ptr - (patch_info->usage_off + patch_info->bytes_to_next_ip));
-
     }
 
     allocator_restore_state(tmp_mem_state);

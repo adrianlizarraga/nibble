@@ -1,5 +1,5 @@
-#ifndef NIBBLE_X64_GEN_LIR_TO_X64_H
-#define NIBBLE_X64_GEN_LIR_TO_X64_H
+#ifndef NIBBLE_X64_GEN_XIR_TO_X64_H
+#define NIBBLE_X64_GEN_XIR_TO_X64_H
 
 #include "bytecode/module.h"
 #include "nibble.h"
@@ -8,10 +8,10 @@
 #include "ast/module.h"
 
 typedef enum X64_SIBD_Addr_Kind {
-    X64__SIBD_ADDR_GLOBAL,
-    X64__SIBD_ADDR_LOCAL,
-    X64__SIBD_ADDR_STR_LIT,
-    X64__SIBD_ADDR_FLOAT_LIT,
+    X64_SIBD_ADDR_GLOBAL,
+    X64_SIBD_ADDR_LOCAL,
+    X64_SIBD_ADDR_STR_LIT,
+    X64_SIBD_ADDR_FLOAT_LIT,
 } X64_SIBD_Addr_Kind;
 
 typedef struct X64_SIBD_Addr {
@@ -155,7 +155,7 @@ typedef enum X64_Instr_Kind {
 #define X64_INSTR_IS_JMP_TARGET_MASK 0x80000000
 static_assert(X64_Instr_Kind_COUNT <= X64_INSTR_KIND_MASK + 1, "Must have at most 512 X64_Instr_Kinds");
 
-typedef struct X64__Instr {
+typedef struct X64_Instr {
     u32 flags; // [31] : is_jmp_target; [30:9] instr-specific flags; [8:0]: kind
 
     union {
@@ -753,28 +753,28 @@ typedef struct X64__Instr {
             X64_SIBD_Addr mem;
         } call_m;
     };
-} X64__Instr;
+} X64_Instr;
 
-static inline X64_Instr_Kind X64__get_instr_kind(X64__Instr* instr)
+static inline X64_Instr_Kind X64_get_instr_kind(X64_Instr* instr)
 {
     return (X64_Instr_Kind)(instr->flags & X64_INSTR_KIND_MASK);
 }
 
-static inline void X64__set_instr_kind(X64__Instr* instr, X64_Instr_Kind kind)
+static inline void X64_set_instr_kind(X64_Instr* instr, X64_Instr_Kind kind)
 {
     instr->flags |= (kind & X64_INSTR_KIND_MASK);
 }
 
-static inline bool X64__is_instr_jmp_target(X64__Instr* instr)
+static inline bool X64_is_instr_jmp_target(X64_Instr* instr)
 {
     return instr->flags & X64_INSTR_IS_JMP_TARGET_MASK;
 }
 
-static inline void X64__mark_instr_as_jmp_target(X64__Instr* instr)
+static inline void X64_mark_instr_as_jmp_target(X64_Instr* instr)
 {
     instr->flags |= X64_INSTR_IS_JMP_TARGET_MASK;
 }
 
-Array(X64__Instr) X64__gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym);
+Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym);
 
-#endif // defined(NIBBLE_X64_GEN_LIR_TO_X64_H)
+#endif // defined(NIBBLE_X64_GEN_XIR_TO_X64_H)

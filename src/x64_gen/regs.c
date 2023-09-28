@@ -66,21 +66,6 @@ const X64_RegClass x64_reg_classes[X64_REG_COUNT] = {
     [X64_XMM14] = X64_REG_CLASS_FLOAT, [X64_XMM15] = X64_REG_CLASS_FLOAT,
 };
 
-const char* x64_flt_reg_names[X64_REG_COUNT] = {
-    [X64_XMM0] = "xmm0",   [X64_XMM1] = "xmm1",   [X64_XMM2] = "xmm2",   [X64_XMM3] = "xmm3",
-    [X64_XMM4] = "xmm4",   [X64_XMM5] = "xmm5",   [X64_XMM6] = "xmm6",   [X64_XMM7] = "xmm7",
-    [X64_XMM8] = "xmm8",   [X64_XMM9] = "xmm9",   [X64_XMM10] = "xmm10", [X64_XMM11] = "xmm11",
-    [X64_XMM12] = "xmm12", [X64_XMM13] = "xmm13", [X64_XMM14] = "xmm14", [X64_XMM15] = "xmm15"};
-const char* x64_mem_size_label[X64_MAX_MEM_LABEL_SIZE + 1] = {[1] = "byte", [2] = "word", [4] = "dword", [8] = "qword", [16] = "oword"};
-const char* x64_data_size_label[X64_MAX_INT_REG_SIZE + 1] = {[1] = "db", [2] = "dw", [4] = "dd", [8] = "dq"};
-
-const char* x64_condition_codes[] = {
-    [COND_U_LT] = "b", [COND_S_LT] = "l",    [COND_U_LTEQ] = "be", [COND_S_LTEQ] = "le", [COND_U_GT] = "a",
-    [COND_S_GT] = "g", [COND_U_GTEQ] = "ae", [COND_S_GTEQ] = "ge", [COND_EQ] = "e",      [COND_NEQ] = "ne",
-};
-
-const char* x64_sext_ax_into_dx[X64_MAX_INT_REG_SIZE + 1] = {[2] = "cwd", [4] = "cdq", [8] = "cqo"};
-
 void x64_init_target(OS target_os)
 {
     x64_target.os = target_os;

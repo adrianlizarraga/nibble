@@ -1,205 +1,208 @@
-#ifndef NIBBLE_X64_LIR_H
-#define NIBBLE_X64_LIR_H
+#ifndef NIBBLE_XIR_LIR_H
+#define NIBBLE_XIR_LIR_H
 #include "allocator.h"
 #include "hash_map.h"
 #include "bytecode/module.h"
 #include "x64_gen/regs.h"
 
-#define X64_LIR_REG_COUNT 0xFFFFFFFF
+#define XIR_REG_COUNT 0xFFFFFFFF
 
-typedef struct X64_BBlock X64_BBlock;
-typedef struct X64_Instr X64_Instr;
+typedef struct XIR_BBlock XIR_BBlock;
+typedef struct XIR_Instr XIR_Instr;
+typedef struct XIR_RegLoc XIR_RegLoc;
+typedef struct XIR_RegRangeList XIR_RegRangeList;
+typedef struct XIR_RegRange XIR_RegRange;
 
-typedef enum X64_InstrKind {
-    X64_INSTR_KIND_NONE = 0,
+typedef enum XIR_InstrKind {
+    XIR_INSTR_KIND_NONE = 0,
 
     // Addition
-    X64_InstrAdd_R_R_KIND,
-    X64_InstrAdd_R_I_KIND,
-    X64_InstrAdd_R_M_KIND,
+    XIR_InstrAdd_R_R_KIND,
+    XIR_InstrAdd_R_I_KIND,
+    XIR_InstrAdd_R_M_KIND,
 
     // f32 add
-    X64_InstrAddSS_R_R_KIND,
-    X64_InstrAddSS_R_M_KIND,
+    XIR_InstrAddSS_R_R_KIND,
+    XIR_InstrAddSS_R_M_KIND,
 
     // f64 add
-    X64_InstrAddSD_R_R_KIND,
-    X64_InstrAddSD_R_M_KIND,
+    XIR_InstrAddSD_R_R_KIND,
+    XIR_InstrAddSD_R_M_KIND,
 
     // Subtraction
-    X64_InstrSub_R_R_KIND,
-    X64_InstrSub_R_I_KIND,
-    X64_InstrSub_R_M_KIND,
+    XIR_InstrSub_R_R_KIND,
+    XIR_InstrSub_R_I_KIND,
+    XIR_InstrSub_R_M_KIND,
 
     // f32 sub
-    X64_InstrSubSS_R_R_KIND,
-    X64_InstrSubSS_R_M_KIND,
+    XIR_InstrSubSS_R_R_KIND,
+    XIR_InstrSubSS_R_M_KIND,
 
     // f64 sub
-    X64_InstrSubSD_R_R_KIND,
-    X64_InstrSubSD_R_M_KIND,
+    XIR_InstrSubSD_R_R_KIND,
+    XIR_InstrSubSD_R_M_KIND,
 
     // Multiplication
-    X64_InstrIMul_R_R_KIND,
-    X64_InstrIMul_R_I_KIND,
-    X64_InstrIMul_R_M_KIND,
+    XIR_InstrIMul_R_R_KIND,
+    XIR_InstrIMul_R_I_KIND,
+    XIR_InstrIMul_R_M_KIND,
 
     // f32 mul
-    X64_InstrMulSS_R_R_KIND,
-    X64_InstrMulSS_R_M_KIND,
+    XIR_InstrMulSS_R_R_KIND,
+    XIR_InstrMulSS_R_M_KIND,
 
     // f64 mul
-    X64_InstrMulSD_R_R_KIND,
-    X64_InstrMulSD_R_M_KIND,
+    XIR_InstrMulSD_R_R_KIND,
+    XIR_InstrMulSD_R_M_KIND,
 
     // Unsigned division
-    X64_InstrDiv_R_KIND,
-    X64_InstrDiv_M_KIND,
+    XIR_InstrDiv_R_KIND,
+    XIR_InstrDiv_M_KIND,
 
     // Signed division
-    X64_InstrIDiv_R_KIND,
-    X64_InstrIDiv_M_KIND,
+    XIR_InstrIDiv_R_KIND,
+    XIR_InstrIDiv_M_KIND,
 
     // f32 div
-    X64_InstrDivSS_R_R_KIND,
-    X64_InstrDivSS_R_M_KIND,
+    XIR_InstrDivSS_R_R_KIND,
+    XIR_InstrDivSS_R_M_KIND,
 
     // f64 div
-    X64_InstrDivSD_R_R_KIND,
-    X64_InstrDivSD_R_M_KIND,
+    XIR_InstrDivSD_R_R_KIND,
+    XIR_InstrDivSD_R_M_KIND,
 
     // Bitwise AND
-    X64_InstrAnd_R_R_KIND,
-    X64_InstrAnd_R_I_KIND,
-    X64_InstrAnd_R_M_KIND,
+    XIR_InstrAnd_R_R_KIND,
+    XIR_InstrAnd_R_I_KIND,
+    XIR_InstrAnd_R_M_KIND,
 
     // Bitwise OR
-    X64_InstrOr_R_R_KIND,
-    X64_InstrOr_R_I_KIND,
-    X64_InstrOr_R_M_KIND,
+    XIR_InstrOr_R_R_KIND,
+    XIR_InstrOr_R_I_KIND,
+    XIR_InstrOr_R_M_KIND,
 
     // Bitwise XOR
-    X64_InstrXor_R_R_KIND,
-    X64_InstrXor_R_I_KIND,
-    X64_InstrXor_R_M_KIND,
+    XIR_InstrXor_R_R_KIND,
+    XIR_InstrXor_R_I_KIND,
+    XIR_InstrXor_R_M_KIND,
 
     // Arithmetic shift right
-    X64_InstrSar_R_R_KIND,
-    X64_InstrSar_R_I_KIND,
+    XIR_InstrSar_R_R_KIND,
+    XIR_InstrSar_R_I_KIND,
 
     // Shift left
-    X64_InstrShl_R_R_KIND,
-    X64_InstrShl_R_I_KIND,
+    XIR_InstrShl_R_R_KIND,
+    XIR_InstrShl_R_I_KIND,
 
     // Bitwise NOT
-    X64_InstrNot_KIND,
+    XIR_InstrNot_KIND,
 
     // Two's complement negation.
-    X64_InstrNeg_KIND,
+    XIR_InstrNeg_KIND,
 
-    X64_InstrMov_R_R_KIND, // Register copy
-    X64_InstrMov_R_I_KIND, // Load imm
-    X64_InstrMov_R_M_KIND, // Load memory
+    XIR_InstrMov_R_R_KIND, // Register copy
+    XIR_InstrMov_R_I_KIND, // Load imm
+    XIR_InstrMov_R_M_KIND, // Load memory
 
-    X64_InstrMov_R_RH_KIND, // Copy high byte of register to another register.
+    XIR_InstrMov_R_RH_KIND, // Copy high byte of register to another register.
 
     // Store into memory.
-    X64_InstrMov_M_R_KIND,
-    X64_InstrMov_M_I_KIND,
+    XIR_InstrMov_M_R_KIND,
+    XIR_InstrMov_M_I_KIND,
 
     // Zero-extend
-    X64_InstrMovZX_R_R_KIND,
-    X64_InstrMovZX_R_M_KIND,
+    XIR_InstrMovZX_R_R_KIND,
+    XIR_InstrMovZX_R_M_KIND,
 
     // Sign-extend
-    X64_InstrMovSX_R_R_KIND,
-    X64_InstrMovSX_R_M_KIND,
-    X64_InstrSExtAxToDx_KIND,
+    XIR_InstrMovSX_R_R_KIND,
+    XIR_InstrMovSX_R_M_KIND,
+    XIR_InstrSExtAxToDx_KIND,
 
     // f32 mov
-    X64_InstrMovSS_R_R_KIND,
-    X64_InstrMovSS_R_M_KIND,
-    X64_InstrMovSS_M_R_KIND,
+    XIR_InstrMovSS_R_R_KIND,
+    XIR_InstrMovSS_R_M_KIND,
+    XIR_InstrMovSS_M_R_KIND,
 
     // f64 mov
-    X64_InstrMovSD_R_R_KIND,
-    X64_InstrMovSD_R_M_KIND,
-    X64_InstrMovSD_M_R_KIND,
+    XIR_InstrMovSD_R_R_KIND,
+    XIR_InstrMovSD_R_M_KIND,
+    XIR_InstrMovSD_M_R_KIND,
 
     // Flt to Flt
-    X64_InstrCvtSS2SD_R_R_KIND,
-    X64_InstrCvtSS2SD_R_M_KIND,
-    X64_InstrCvtSD2SS_R_R_KIND,
-    X64_InstrCvtSD2SS_R_M_KIND,
+    XIR_InstrCvtSS2SD_R_R_KIND,
+    XIR_InstrCvtSS2SD_R_M_KIND,
+    XIR_InstrCvtSD2SS_R_R_KIND,
+    XIR_InstrCvtSD2SS_R_M_KIND,
 
     // Flt to Int
-    X64_InstrCvtSS2SI_R_R_KIND,
-    X64_InstrCvtSS2SI_R_M_KIND,
-    X64_InstrCvtSD2SI_R_R_KIND,
-    X64_InstrCvtSD2SI_R_M_KIND,
+    XIR_InstrCvtSS2SI_R_R_KIND,
+    XIR_InstrCvtSS2SI_R_M_KIND,
+    XIR_InstrCvtSD2SI_R_R_KIND,
+    XIR_InstrCvtSD2SI_R_M_KIND,
 
     // Int to Flt
-    X64_InstrCvtSI2SS_R_R_KIND,
-    X64_InstrCvtSI2SS_R_M_KIND,
-    X64_InstrCvtSI2SD_R_R_KIND,
-    X64_InstrCvtSI2SD_R_M_KIND,
+    XIR_InstrCvtSI2SS_R_R_KIND,
+    XIR_InstrCvtSI2SS_R_M_KIND,
+    XIR_InstrCvtSI2SD_R_R_KIND,
+    XIR_InstrCvtSI2SD_R_M_KIND,
 
     // Load an address computation into a register.
-    X64_InstrLEA_KIND,
+    XIR_InstrLEA_KIND,
 
     // Compare two values and set condition flags
-    X64_InstrCmp_R_R_KIND,
-    X64_InstrCmp_R_I_KIND,
-    X64_InstrCmp_R_M_KIND,
-    X64_InstrCmp_M_R_KIND,
-    X64_InstrCmp_M_I_KIND,
+    XIR_InstrCmp_R_R_KIND,
+    XIR_InstrCmp_R_I_KIND,
+    XIR_InstrCmp_R_M_KIND,
+    XIR_InstrCmp_M_R_KIND,
+    XIR_InstrCmp_M_I_KIND,
 
     // Compare floating-point values and set condition flags.
-    X64_InstrUComiSS_R_R_KIND,
-    X64_InstrUComiSS_R_M_KIND,
-    X64_InstrUComiSD_R_R_KIND,
-    X64_InstrUComiSD_R_M_KIND,
+    XIR_InstrUComiSS_R_R_KIND,
+    XIR_InstrUComiSS_R_M_KIND,
+    XIR_InstrUComiSD_R_R_KIND,
+    XIR_InstrUComiSD_R_M_KIND,
 
     // Jump to instruction index
-    X64_InstrJmp_KIND,
+    XIR_InstrJmp_KIND,
 
     // Jump to instruction index based on condition
-    X64_InstrJmpCC_KIND,
+    XIR_InstrJmpCC_KIND,
 
     // Set a byte (0 or 1) based on condition
-    X64_InstrSetCC_KIND,
+    XIR_InstrSetCC_KIND,
 
-    X64_InstrRepMovsb_KIND,
-    X64_InstrRepStosb_KIND,
-    X64_InstrSyscall_KIND,
+    XIR_InstrRepMovsb_KIND,
+    XIR_InstrRepStosb_KIND,
+    XIR_InstrSyscall_KIND,
 
     // Return value in specifed register
-    X64_InstrRet_KIND,
+    XIR_InstrRet_KIND,
 
     // Call a procedure directly
-    X64_InstrCall_KIND,
+    XIR_InstrCall_KIND,
 
     // Call a procedure indirectly (register has procedure address)
-    X64_InstrCall_R_KIND,
+    XIR_InstrCall_R_KIND,
 
-} X64_InstrKind;
+} XIR_InstrKind;
 
 // TODO: Look into removing link-list support and storing instrs in an array (reduce memory costs).
-struct X64_Instr {
-    X64_InstrKind kind;
+struct XIR_Instr {
+    XIR_InstrKind kind;
     u32 ino;
-    X64_Instr* next;
+    XIR_Instr* next;
 };
 
-typedef enum X64_MemAddrKind {
-    X64_ADDR_GLOBAL_SYM,
-    X64_ADDR_SIBD,
-    X64_ADDR_STR_LIT,
-    X64_ADDR_FLOAT_LIT,
-} X64_MemAddrKind;
+typedef enum XIR_MemAddrKind {
+    XIR_ADDR_GLOBAL_SYM,
+    XIR_ADDR_SIBD,
+    XIR_ADDR_STR_LIT,
+    XIR_ADDR_FLOAT_LIT,
+} XIR_MemAddrKind;
 
-typedef struct X64_MemAddr {
-    X64_MemAddrKind kind;
+typedef struct XIR_MemAddr {
+    XIR_MemAddrKind kind;
 
     union {
         Symbol* global; // TODO: Should be able to add disp to global.
@@ -212,395 +215,395 @@ typedef struct X64_MemAddr {
         StrLit* str_lit;
         FloatLit* float_lit;
     };
-} X64_MemAddr;
+} XIR_MemAddr;
 
-typedef struct X64_InstrBinary_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrBinary_R_R {
+    XIR_Instr super;
     u8 size;
     u32 dst;
     u32 src;
-} X64_InstrBinary_R_R;
+} XIR_InstrBinary_R_R;
 
-typedef X64_InstrBinary_R_R X64_InstrAdd_R_R;
-typedef X64_InstrBinary_R_R X64_InstrSub_R_R;
-typedef X64_InstrBinary_R_R X64_InstrIMul_R_R;
-typedef X64_InstrBinary_R_R X64_InstrAnd_R_R;
-typedef X64_InstrBinary_R_R X64_InstrOr_R_R;
-typedef X64_InstrBinary_R_R X64_InstrXor_R_R;
+typedef XIR_InstrBinary_R_R XIR_InstrAdd_R_R;
+typedef XIR_InstrBinary_R_R XIR_InstrSub_R_R;
+typedef XIR_InstrBinary_R_R XIR_InstrIMul_R_R;
+typedef XIR_InstrBinary_R_R XIR_InstrAnd_R_R;
+typedef XIR_InstrBinary_R_R XIR_InstrOr_R_R;
+typedef XIR_InstrBinary_R_R XIR_InstrXor_R_R;
 
-typedef struct X64_InstrBinary_R_I {
-    X64_Instr super;
+typedef struct XIR_InstrBinary_R_I {
+    XIR_Instr super;
     u8 size;
     u32 dst;
     Scalar src;
-} X64_InstrBinary_R_I;
+} XIR_InstrBinary_R_I;
 
-typedef X64_InstrBinary_R_I X64_InstrAdd_R_I;
-typedef X64_InstrBinary_R_I X64_InstrSub_R_I;
-typedef X64_InstrBinary_R_I X64_InstrIMul_R_I;
-typedef X64_InstrBinary_R_I X64_InstrAnd_R_I;
-typedef X64_InstrBinary_R_I X64_InstrOr_R_I;
-typedef X64_InstrBinary_R_I X64_InstrXor_R_I;
+typedef XIR_InstrBinary_R_I XIR_InstrAdd_R_I;
+typedef XIR_InstrBinary_R_I XIR_InstrSub_R_I;
+typedef XIR_InstrBinary_R_I XIR_InstrIMul_R_I;
+typedef XIR_InstrBinary_R_I XIR_InstrAnd_R_I;
+typedef XIR_InstrBinary_R_I XIR_InstrOr_R_I;
+typedef XIR_InstrBinary_R_I XIR_InstrXor_R_I;
 
-typedef struct X64_InstrBinary_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrBinary_R_M {
+    XIR_Instr super;
     u8 size;
     u32 dst;
-    X64_MemAddr src;
-} X64_InstrBinary_R_M;
+    XIR_MemAddr src;
+} XIR_InstrBinary_R_M;
 
-typedef X64_InstrBinary_R_M X64_InstrAdd_R_M;
-typedef X64_InstrBinary_R_M X64_InstrSub_R_M;
-typedef X64_InstrBinary_R_M X64_InstrIMul_R_M;
-typedef X64_InstrBinary_R_M X64_InstrAnd_R_M;
-typedef X64_InstrBinary_R_M X64_InstrOr_R_M;
-typedef X64_InstrBinary_R_M X64_InstrXor_R_M;
+typedef XIR_InstrBinary_R_M XIR_InstrAdd_R_M;
+typedef XIR_InstrBinary_R_M XIR_InstrSub_R_M;
+typedef XIR_InstrBinary_R_M XIR_InstrIMul_R_M;
+typedef XIR_InstrBinary_R_M XIR_InstrAnd_R_M;
+typedef XIR_InstrBinary_R_M XIR_InstrOr_R_M;
+typedef XIR_InstrBinary_R_M XIR_InstrXor_R_M;
 
-typedef struct X64_InstrBinaryFlt_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrBinaryFlt_R_R {
+    XIR_Instr super;
     u32 dst;
     u32 src;
-} X64_InstrBinaryFlt_R_R;
+} XIR_InstrBinaryFlt_R_R;
 
-typedef X64_InstrBinaryFlt_R_R X64_InstrAddSS_R_R;
-typedef X64_InstrBinaryFlt_R_R X64_InstrAddSD_R_R;
-typedef X64_InstrBinaryFlt_R_R X64_InstrSubSS_R_R;
-typedef X64_InstrBinaryFlt_R_R X64_InstrSubSD_R_R;
-typedef X64_InstrBinaryFlt_R_R X64_InstrMulSS_R_R;
-typedef X64_InstrBinaryFlt_R_R X64_InstrMulSD_R_R;
-typedef X64_InstrBinaryFlt_R_R X64_InstrDivSS_R_R;
-typedef X64_InstrBinaryFlt_R_R X64_InstrDivSD_R_R;
+typedef XIR_InstrBinaryFlt_R_R XIR_InstrAddSS_R_R;
+typedef XIR_InstrBinaryFlt_R_R XIR_InstrAddSD_R_R;
+typedef XIR_InstrBinaryFlt_R_R XIR_InstrSubSS_R_R;
+typedef XIR_InstrBinaryFlt_R_R XIR_InstrSubSD_R_R;
+typedef XIR_InstrBinaryFlt_R_R XIR_InstrMulSS_R_R;
+typedef XIR_InstrBinaryFlt_R_R XIR_InstrMulSD_R_R;
+typedef XIR_InstrBinaryFlt_R_R XIR_InstrDivSS_R_R;
+typedef XIR_InstrBinaryFlt_R_R XIR_InstrDivSD_R_R;
 
-typedef struct X64_InstrBinaryFlt_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrBinaryFlt_R_M {
+    XIR_Instr super;
     u32 dst;
-    X64_MemAddr src;
-} X64_InstrBinaryFlt_R_M;
+    XIR_MemAddr src;
+} XIR_InstrBinaryFlt_R_M;
 
-typedef X64_InstrBinaryFlt_R_M X64_InstrAddSS_R_M;
-typedef X64_InstrBinaryFlt_R_M X64_InstrAddSD_R_M;
-typedef X64_InstrBinaryFlt_R_M X64_InstrSubSS_R_M;
-typedef X64_InstrBinaryFlt_R_M X64_InstrSubSD_R_M;
-typedef X64_InstrBinaryFlt_R_M X64_InstrMulSS_R_M;
-typedef X64_InstrBinaryFlt_R_M X64_InstrMulSD_R_M;
-typedef X64_InstrBinaryFlt_R_M X64_InstrDivSS_R_M;
-typedef X64_InstrBinaryFlt_R_M X64_InstrDivSD_R_M;
+typedef XIR_InstrBinaryFlt_R_M XIR_InstrAddSS_R_M;
+typedef XIR_InstrBinaryFlt_R_M XIR_InstrAddSD_R_M;
+typedef XIR_InstrBinaryFlt_R_M XIR_InstrSubSS_R_M;
+typedef XIR_InstrBinaryFlt_R_M XIR_InstrSubSD_R_M;
+typedef XIR_InstrBinaryFlt_R_M XIR_InstrMulSS_R_M;
+typedef XIR_InstrBinaryFlt_R_M XIR_InstrMulSD_R_M;
+typedef XIR_InstrBinaryFlt_R_M XIR_InstrDivSS_R_M;
+typedef XIR_InstrBinaryFlt_R_M XIR_InstrDivSD_R_M;
 
-typedef struct X64_InstrBaseDiv_R {
-    X64_Instr super;
+typedef struct XIR_InstrBaseDiv_R {
+    XIR_Instr super;
     u8 size;
     u32 rdx;
     u32 rax;
     u32 src;
-} X64_InstrBaseDiv_R;
+} XIR_InstrBaseDiv_R;
 
-typedef X64_InstrBaseDiv_R X64_InstrDiv_R;
-typedef X64_InstrBaseDiv_R X64_InstrIDiv_R;
+typedef XIR_InstrBaseDiv_R XIR_InstrDiv_R;
+typedef XIR_InstrBaseDiv_R XIR_InstrIDiv_R;
 
-typedef struct X64_InstrBaseDiv_M {
-    X64_Instr super;
+typedef struct XIR_InstrBaseDiv_M {
+    XIR_Instr super;
     u8 size;
     u32 rdx;
     u32 rax;
-    X64_MemAddr src;
-} X64_InstrBaseDiv_M;
+    XIR_MemAddr src;
+} XIR_InstrBaseDiv_M;
 
-typedef X64_InstrBaseDiv_M X64_InstrDiv_M;
-typedef X64_InstrBaseDiv_M X64_InstrIDiv_M;
+typedef XIR_InstrBaseDiv_M XIR_InstrDiv_M;
+typedef XIR_InstrBaseDiv_M XIR_InstrIDiv_M;
 
-typedef struct X64_InstrShift_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrShift_R_R {
+    XIR_Instr super;
     u8 size;
     u32 dst;
     u32 src;
-} X64_InstrShift_R_R;
+} XIR_InstrShift_R_R;
 
-typedef X64_InstrShift_R_R X64_InstrSar_R_R;
-typedef X64_InstrShift_R_R X64_InstrShl_R_R;
+typedef XIR_InstrShift_R_R XIR_InstrSar_R_R;
+typedef XIR_InstrShift_R_R XIR_InstrShl_R_R;
 
-typedef struct X64_InstrShift_R_I {
-    X64_Instr super;
+typedef struct XIR_InstrShift_R_I {
+    XIR_Instr super;
     u8 size;
     u32 dst;
     Scalar src;
-} X64_InstrShift_R_I;
+} XIR_InstrShift_R_I;
 
-typedef X64_InstrShift_R_I X64_InstrSar_R_I;
-typedef X64_InstrShift_R_I X64_InstrShl_R_I;
+typedef XIR_InstrShift_R_I XIR_InstrSar_R_I;
+typedef XIR_InstrShift_R_I XIR_InstrShl_R_I;
 
-typedef struct X64_InstrUnary {
-    X64_Instr super;
+typedef struct XIR_InstrUnary {
+    XIR_Instr super;
     u8 size;
     u32 dst;
-} X64_InstrUnary;
+} XIR_InstrUnary;
 
-typedef X64_InstrUnary X64_InstrNot;
-typedef X64_InstrUnary X64_InstrNeg;
+typedef XIR_InstrUnary XIR_InstrNot;
+typedef XIR_InstrUnary XIR_InstrNeg;
 
-typedef struct X64_InstrMov_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrMov_R_R {
+    XIR_Instr super;
     u8 size;
     u32 dst;
     u32 src;
-} X64_InstrMov_R_R;
+} XIR_InstrMov_R_R;
 
-typedef struct X64_InstrMov_R_I {
-    X64_Instr super;
+typedef struct XIR_InstrMov_R_I {
+    XIR_Instr super;
     u8 size;
     u32 dst;
     Scalar src;
-} X64_InstrMov_R_I;
+} XIR_InstrMov_R_I;
 
-typedef struct X64_InstrMov_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrMov_R_M {
+    XIR_Instr super;
     u8 size;
     u32 dst;
-    X64_MemAddr src;
-} X64_InstrMov_R_M;
+    XIR_MemAddr src;
+} XIR_InstrMov_R_M;
 
-typedef struct X64_InstrMov_R_RH {
-    X64_Instr super;
+typedef struct XIR_InstrMov_R_RH {
+    XIR_Instr super;
     u32 dst;
     u32 src;
-} X64_InstrMov_R_RH;
+} XIR_InstrMov_R_RH;
 
-typedef struct X64_InstrMov_M_R {
-    X64_Instr super;
+typedef struct XIR_InstrMov_M_R {
+    XIR_Instr super;
     u8 size;
-    X64_MemAddr dst;
+    XIR_MemAddr dst;
     u32 src;
-} X64_InstrMov_M_R;
+} XIR_InstrMov_M_R;
 
-typedef struct X64_InstrMov_M_I {
-    X64_Instr super;
+typedef struct XIR_InstrMov_M_I {
+    XIR_Instr super;
     u8 size;
-    X64_MemAddr dst;
+    XIR_MemAddr dst;
     Scalar src;
-} X64_InstrMov_M_I;
+} XIR_InstrMov_M_I;
 
-typedef struct X64_InstrConvert_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrConvert_R_R {
+    XIR_Instr super;
     u8 dst_size;
     u8 src_size;
     u32 dst;
     u32 src;
-} X64_InstrConvert_R_R;
+} XIR_InstrConvert_R_R;
 
-typedef X64_InstrConvert_R_R X64_InstrMovZX_R_R;
-typedef X64_InstrConvert_R_R X64_InstrMovSX_R_R;
+typedef XIR_InstrConvert_R_R XIR_InstrMovZX_R_R;
+typedef XIR_InstrConvert_R_R XIR_InstrMovSX_R_R;
 
-typedef struct X64_InstrConvert_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrConvert_R_M {
+    XIR_Instr super;
     u8 dst_size;
     u8 src_size;
     u32 dst;
-    X64_MemAddr src;
-} X64_InstrConvert_R_M;
+    XIR_MemAddr src;
+} XIR_InstrConvert_R_M;
 
-typedef X64_InstrConvert_R_M X64_InstrMovZX_R_M;
-typedef X64_InstrConvert_R_M X64_InstrMovSX_R_M;
+typedef XIR_InstrConvert_R_M XIR_InstrMovZX_R_M;
+typedef XIR_InstrConvert_R_M XIR_InstrMovSX_R_M;
 
-typedef struct X64_InstrSExtAxToDx {
-    X64_Instr super;
+typedef struct XIR_InstrSExtAxToDx {
+    XIR_Instr super;
     u8 size;
     u32 rdx;
     u32 rax;
-} X64_InstrSExtAxToDx;
+} XIR_InstrSExtAxToDx;
 
-typedef struct X64_InstrMovFlt_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrMovFlt_R_R {
+    XIR_Instr super;
     u32 dst;
     u32 src;
-} X64_InstrMovFlt_R_R;
+} XIR_InstrMovFlt_R_R;
 
-typedef X64_InstrMovFlt_R_R X64_InstrMovSS_R_R;
-typedef X64_InstrMovFlt_R_R X64_InstrMovSD_R_R;
+typedef XIR_InstrMovFlt_R_R XIR_InstrMovSS_R_R;
+typedef XIR_InstrMovFlt_R_R XIR_InstrMovSD_R_R;
 
-typedef struct X64_InstrMovFlt_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrMovFlt_R_M {
+    XIR_Instr super;
     u32 dst;
-    X64_MemAddr src;
-} X64_InstrMovFlt_R_M;
+    XIR_MemAddr src;
+} XIR_InstrMovFlt_R_M;
 
-typedef X64_InstrMovFlt_R_M X64_InstrMovSS_R_M;
-typedef X64_InstrMovFlt_R_M X64_InstrMovSD_R_M;
+typedef XIR_InstrMovFlt_R_M XIR_InstrMovSS_R_M;
+typedef XIR_InstrMovFlt_R_M XIR_InstrMovSD_R_M;
 
-typedef struct X64_InstrMovFlt_M_R {
-    X64_Instr super;
-    X64_MemAddr dst;
+typedef struct XIR_InstrMovFlt_M_R {
+    XIR_Instr super;
+    XIR_MemAddr dst;
     u32 src;
-} X64_InstrMovFlt_M_R;
+} XIR_InstrMovFlt_M_R;
 
-typedef X64_InstrMovFlt_M_R X64_InstrMovSS_M_R;
-typedef X64_InstrMovFlt_M_R X64_InstrMovSD_M_R;
+typedef XIR_InstrMovFlt_M_R XIR_InstrMovSS_M_R;
+typedef XIR_InstrMovFlt_M_R XIR_InstrMovSD_M_R;
 
-typedef struct X64_InstrFlt2Flt_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrFlt2Flt_R_R {
+    XIR_Instr super;
     u32 dst;
     u32 src;
-} X64_InstrFlt2Flt_R_R;
+} XIR_InstrFlt2Flt_R_R;
 
-typedef X64_InstrFlt2Flt_R_R X64_InstrCvtSS2SD_R_R;
-typedef X64_InstrFlt2Flt_R_R X64_InstrCvtSD2SS_R_R;
+typedef XIR_InstrFlt2Flt_R_R XIR_InstrCvtSS2SD_R_R;
+typedef XIR_InstrFlt2Flt_R_R XIR_InstrCvtSD2SS_R_R;
 
-typedef struct X64_InstrFlt2Flt_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrFlt2Flt_R_M {
+    XIR_Instr super;
     u32 dst;
-    X64_MemAddr src;
-} X64_InstrFlt2Flt_R_M;
+    XIR_MemAddr src;
+} XIR_InstrFlt2Flt_R_M;
 
-typedef X64_InstrFlt2Flt_R_M X64_InstrCvtSS2SD_R_M;
-typedef X64_InstrFlt2Flt_R_M X64_InstrCvtSD2SS_R_M;
+typedef XIR_InstrFlt2Flt_R_M XIR_InstrCvtSS2SD_R_M;
+typedef XIR_InstrFlt2Flt_R_M XIR_InstrCvtSD2SS_R_M;
 
-typedef struct X64_InstrFlt2Int_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrFlt2Int_R_R {
+    XIR_Instr super;
     u8 dst_size;
     u32 dst;
     u32 src;
-} X64_InstrFlt2Int_R_R;
+} XIR_InstrFlt2Int_R_R;
 
-typedef X64_InstrFlt2Int_R_R X64_InstrCvtSS2SI_R_R;
-typedef X64_InstrFlt2Int_R_R X64_InstrCvtSD2SI_R_R;
+typedef XIR_InstrFlt2Int_R_R XIR_InstrCvtSS2SI_R_R;
+typedef XIR_InstrFlt2Int_R_R XIR_InstrCvtSD2SI_R_R;
 
-typedef struct X64_InstrFlt2Int_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrFlt2Int_R_M {
+    XIR_Instr super;
     u8 dst_size;
     u32 dst;
-    X64_MemAddr src;
-} X64_InstrFlt2Int_R_M;
+    XIR_MemAddr src;
+} XIR_InstrFlt2Int_R_M;
 
-typedef X64_InstrFlt2Int_R_M X64_InstrCvtSS2SI_R_M;
-typedef X64_InstrFlt2Int_R_M X64_InstrCvtSD2SI_R_M;
+typedef XIR_InstrFlt2Int_R_M XIR_InstrCvtSS2SI_R_M;
+typedef XIR_InstrFlt2Int_R_M XIR_InstrCvtSD2SI_R_M;
 
-typedef struct X64_InstrInt2Flt_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrInt2Flt_R_R {
+    XIR_Instr super;
     u8 src_size;
     u32 dst;
     u32 src;
-} X64_InstrInt2Flt_R_R;
+} XIR_InstrInt2Flt_R_R;
 
-typedef X64_InstrInt2Flt_R_R X64_InstrCvtSI2SS_R_R;
-typedef X64_InstrInt2Flt_R_R X64_InstrCvtSI2SD_R_R;
+typedef XIR_InstrInt2Flt_R_R XIR_InstrCvtSI2SS_R_R;
+typedef XIR_InstrInt2Flt_R_R XIR_InstrCvtSI2SD_R_R;
 
-typedef struct X64_InstrInt2Flt_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrInt2Flt_R_M {
+    XIR_Instr super;
     u8 src_size;
     u32 dst;
-    X64_MemAddr src;
-} X64_InstrInt2Flt_R_M;
+    XIR_MemAddr src;
+} XIR_InstrInt2Flt_R_M;
 
-typedef X64_InstrInt2Flt_R_M X64_InstrCvtSI2SS_R_M;
-typedef X64_InstrInt2Flt_R_M X64_InstrCvtSI2SD_R_M;
+typedef XIR_InstrInt2Flt_R_M XIR_InstrCvtSI2SS_R_M;
+typedef XIR_InstrInt2Flt_R_M XIR_InstrCvtSI2SD_R_M;
 
-typedef struct X64_InstrRepMovsb {
-    X64_Instr super;
+typedef struct XIR_InstrRepMovsb {
+    XIR_Instr super;
     u32 rdi;
     u32 rsi;
     u32 rcx;
-} X64_InstrRepMovsb;
+} XIR_InstrRepMovsb;
 
-typedef struct X64_InstrRepStosb {
-    X64_Instr super;
+typedef struct XIR_InstrRepStosb {
+    XIR_Instr super;
     u32 rdi;
     u32 rax;
     u32 rcx;
-} X64_InstrRepStosb;
+} XIR_InstrRepStosb;
 
-typedef struct X64_InstrLEA {
-    X64_Instr super;
+typedef struct XIR_InstrLEA {
+    XIR_Instr super;
     u32 dst;
-    X64_MemAddr mem;
-} X64_InstrLEA;
+    XIR_MemAddr mem;
+} XIR_InstrLEA;
 
-typedef struct X64_InstrCmp_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrCmp_R_R {
+    XIR_Instr super;
     u8 size;
     u32 op1;
     u32 op2;
-} X64_InstrCmp_R_R;
+} XIR_InstrCmp_R_R;
 
-typedef struct X64_InstrCmp_R_I {
-    X64_Instr super;
+typedef struct XIR_InstrCmp_R_I {
+    XIR_Instr super;
     u8 size;
     u32 op1;
     Scalar op2;
-} X64_InstrCmp_R_I;
+} XIR_InstrCmp_R_I;
 
-typedef struct X64_InstrCmp_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrCmp_R_M {
+    XIR_Instr super;
     u8 size;
     u32 op1;
-    X64_MemAddr op2;
-} X64_InstrCmp_R_M;
+    XIR_MemAddr op2;
+} XIR_InstrCmp_R_M;
 
-typedef struct X64_InstrCmp_M_R {
-    X64_Instr super;
+typedef struct XIR_InstrCmp_M_R {
+    XIR_Instr super;
     u8 size;
-    X64_MemAddr op1;
+    XIR_MemAddr op1;
     u32 op2;
-} X64_InstrCmp_M_R;
+} XIR_InstrCmp_M_R;
 
-typedef struct X64_InstrCmp_M_I {
-    X64_Instr super;
+typedef struct XIR_InstrCmp_M_I {
+    XIR_Instr super;
     u8 size;
-    X64_MemAddr op1;
+    XIR_MemAddr op1;
     Scalar op2;
-} X64_InstrCmp_M_I;
+} XIR_InstrCmp_M_I;
 
-typedef struct X64_InstrCmpFlt_R_R {
-    X64_Instr super;
+typedef struct XIR_InstrCmpFlt_R_R {
+    XIR_Instr super;
     u32 op1;
     u32 op2;
-} X64_InstrCmpFlt_R_R;
+} XIR_InstrCmpFlt_R_R;
 
-typedef X64_InstrCmpFlt_R_R X64_InstrUComiSS_R_R;
-typedef X64_InstrCmpFlt_R_R X64_InstrUComiSD_R_R;
+typedef XIR_InstrCmpFlt_R_R XIR_InstrUComiSS_R_R;
+typedef XIR_InstrCmpFlt_R_R XIR_InstrUComiSD_R_R;
 
-typedef struct X64_InstrCmpFlt_R_M {
-    X64_Instr super;
+typedef struct XIR_InstrCmpFlt_R_M {
+    XIR_Instr super;
     u32 op1;
-    X64_MemAddr op2;
-} X64_InstrCmpFlt_R_M;
+    XIR_MemAddr op2;
+} XIR_InstrCmpFlt_R_M;
 
-typedef X64_InstrCmpFlt_R_M X64_InstrUComiSS_R_M;
-typedef X64_InstrCmpFlt_R_M X64_InstrUComiSD_R_M;
+typedef XIR_InstrCmpFlt_R_M XIR_InstrUComiSS_R_M;
+typedef XIR_InstrCmpFlt_R_M XIR_InstrUComiSD_R_M;
 
-typedef struct X64_InstrJmpCC {
-    X64_Instr super;
+typedef struct XIR_InstrJmpCC {
+    XIR_Instr super;
     ConditionKind cond;
-    X64_BBlock* from;
-    X64_BBlock* true_bb;
-    X64_BBlock* false_bb;
-} X64_InstrJmpCC;
+    XIR_BBlock* from;
+    XIR_BBlock* true_bb;
+    XIR_BBlock* false_bb;
+} XIR_InstrJmpCC;
 
-typedef struct X64_InstrJmp {
-    X64_Instr super;
-    X64_BBlock* from;
-    X64_BBlock* target;
-} X64_InstrJmp;
+typedef struct XIR_InstrJmp {
+    XIR_Instr super;
+    XIR_BBlock* from;
+    XIR_BBlock* target;
+} XIR_InstrJmp;
 
-typedef struct X64_InstrSetCC {
-    X64_Instr super;
+typedef struct XIR_InstrSetCC {
+    XIR_Instr super;
     ConditionKind cond;
     u32 dst;
-} X64_InstrSetCC;
+} XIR_InstrSetCC;
 
-typedef struct X64_InstrRet {
-    X64_Instr super;
+typedef struct XIR_InstrRet {
+    XIR_Instr super;
     u32 rax;
     u32 rdx;
-} X64_InstrRet;
+} XIR_InstrRet;
 
-typedef struct X64_PrimArgSlot {
+typedef struct XIR_PrimArgSlot {
     bool in_reg;
 
     union {
         u32 sp_offset;
         X64_Reg preg;
     };
-} X64_PrimArgSlot;
+} XIR_PrimArgSlot;
 
-typedef struct X64_ObjArgSlot {
+typedef struct XIR_ObjArgSlot {
     unsigned num_regs;
     union {
         u32 sp_offset;
@@ -610,75 +613,75 @@ typedef struct X64_ObjArgSlot {
     // NOTE: Only used for Windows calling convention.
     bool as_ptr;
     u32 ptr_sp_offset;
-} X64_ObjArgSlot;
+} XIR_ObjArgSlot;
 
-typedef union X64_CallValue {
+typedef union XIR_CallValue {
     u32 reg;
-    X64_MemAddr addr;
-} X64_CallValue;
+    XIR_MemAddr addr;
+} XIR_CallValue;
 
-typedef struct X64_InstrCallArg {
+typedef struct XIR_InstrCallArg {
     Type* type;
 
-    X64_CallValue val;
+    XIR_CallValue val;
 
     // Required location before call instruction
     union {
-        X64_PrimArgSlot prim;
-        X64_ObjArgSlot obj;
+        XIR_PrimArgSlot prim;
+        XIR_ObjArgSlot obj;
     } slot;
-} X64_InstrCallArg;
+} XIR_InstrCallArg;
 
-typedef struct X64_InstrCall {
-    X64_Instr super;
+typedef struct XIR_InstrCall {
+    XIR_Instr super;
     Symbol* sym;
-    X64_CallValue dst;
+    XIR_CallValue dst;
     u32 num_args;
-    X64_InstrCallArg* args;
+    XIR_InstrCallArg* args;
     X64_StackArgsInfo stack_info;
     unsigned save_reg_mask;
-} X64_InstrCall;
+} XIR_InstrCall;
 
-typedef struct X64_InstrCall_R {
-    X64_Instr super;
+typedef struct XIR_InstrCall_R {
+    XIR_Instr super;
     Type* proc_type;
     u32 proc_loc;
-    X64_CallValue dst;
+    XIR_CallValue dst;
     u32 num_args;
-    X64_InstrCallArg* args;
+    XIR_InstrCallArg* args;
     X64_StackArgsInfo stack_info;
     unsigned save_reg_mask;
-} X64_InstrCall_R;
+} XIR_InstrCall_R;
 
-typedef struct X64_InstrSyscall {
-    X64_Instr super;
+typedef struct XIR_InstrSyscall {
+    XIR_Instr super;
     u32 rax; // return
     u32 rcx; // clobbered
     u32 r11; // clobbered
     u8 num_args; // At most 6
     u32* args;
-} X64_InstrSyscall;
+} XIR_InstrSyscall;
 
-struct X64_BBlock {
+struct XIR_BBlock {
     long id;
     u32 flags;
 
     // Doubly-linked list of instructions.
     size_t num_instrs;
-    X64_Instr* first;
-    X64_Instr* last;
+    XIR_Instr* first;
+    XIR_Instr* last;
 };
 
-typedef struct X64_LIRBuilder {
+typedef struct XIR_Builder {
     Allocator* arena;
 
     u32 num_regs;
-    X64_LRegRange* lreg_ranges; // Stretchy buf
-    X64_Instr** call_sites; // Stretchy buf
+    XIR_RegRange* lreg_ranges; // Stretchy buf
+    XIR_Instr** call_sites; // Stretchy buf
 
     size_t num_instrs;
     size_t num_bblocks;
-    X64_BBlock** bblocks;
+    XIR_BBlock** bblocks;
 
     u32* reg_map; // Map IR reg -> LIR reg; size: num_iregs
     u32 lreg_rbp;
@@ -687,141 +690,190 @@ typedef struct X64_LIRBuilder {
     // Disjoint Set Union data structure for register renaming/aliasing.
     u32* lreg_aliases; // Root alias node for each lir reg. size: num_lirregs
     u32* lreg_sizes; // Size for each lir reg aliasing set. size: num_lirregs
-} X64_LIRBuilder;
+} XIR_Builder;
 
-u32 X64_find_alias_reg(X64_LIRBuilder* builder, u32 r);
-void X64_emit_lir_instrs(X64_LIRBuilder* builder, size_t num_iregs, size_t num_bblocks, BBlock** bblocks);
+// Data structures used to track the "location" of a virtual IR register.
+// A virtual register could be assigned to a physical register, or could be assigned
+// to a stack offset.
+typedef enum XIR_RegLocKind {
+    XIR_LREG_LOC_UNASSIGNED = 0,
+    XIR_LREG_LOC_REG,
+    XIR_LREG_LOC_STACK,
+} XIR_RegLocKind;
 
-void X64_emit_instr_add_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
-void X64_emit_instr_add_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);
-void X64_emit_instr_add_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, X64_MemAddr src);
+struct XIR_RegLoc {
+    XIR_RegLocKind kind;
 
-void X64_emit_instr_sub_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
-void X64_emit_instr_sub_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);
-void X64_emit_instr_sub_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, X64_MemAddr src);
+    union {
+        X64_Reg reg;
+        s32 offset;
+    };
+};
 
-void X64_emit_instr_imul_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
-void X64_emit_instr_imul_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);
-void X64_emit_instr_imul_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, X64_MemAddr src);
+struct XIR_RegRangeList {
+    List ranges;
+    ListNode lnode;
+};
 
-void X64_emit_instr_and_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
-void X64_emit_instr_and_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);
-void X64_emit_instr_and_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, X64_MemAddr src);
+typedef enum XIR_RegAllocControlKind {
+    XIR_REG_ALLOC_CTRL_NONE = 0,
+    XIR_REG_ALLOC_CTRL_FORCE_REG, // Used for required operand registers (e.g., rcx for shift) and SIBD addr registers
+    XIR_REG_ALLOC_CTRL_FORCE_ANY_REG,
+    XIR_REG_ALLOC_CTRL_FORCE_REG_OR_SPILL, // Used for procedure arguments
+    XIR_REG_ALLOC_CTRL_HINT_LIR_REG, // Used for register to register moves
+    XIR_REG_ALLOC_CTRL_HINT_PHYS_REG, // Used for register to register moves
+} XIR_RegAllocControlKind;
 
-void X64_emit_instr_or_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
-void X64_emit_instr_or_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);
-void X64_emit_instr_or_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, X64_MemAddr src);
+struct XIR_RegRange {
+    u32 lreg;
+    long start;
+    long end;
 
-void X64_emit_instr_xor_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
-void X64_emit_instr_xor_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);
-void X64_emit_instr_xor_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, X64_MemAddr src);
+    X64_RegClass reg_class;
+    XIR_RegAllocControlKind ra_ctrl_kind;
+    union {
+        X64_Reg preg;
+        u32 lreg;
+        u32 preg_mask;
+    } ra_ctrl;
 
-void X64_emit_instr_addss_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_addss_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
-void X64_emit_instr_addsd_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_addsd_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
+    XIR_RegLoc loc;
+    ListNode lnode;
+};
 
-void X64_emit_instr_subss_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_subss_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
-void X64_emit_instr_subsd_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_subsd_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
+u32 XIR_find_alias_reg(XIR_Builder* builder, u32 r);
+void XIR_emit_instrs(XIR_Builder* builder, size_t num_iregs, size_t num_bblocks, BBlock** bblocks);
 
-void X64_emit_instr_mulss_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_mulss_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
-void X64_emit_instr_mulsd_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_mulsd_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
+void XIR_emit_instr_add_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
+void XIR_emit_instr_add_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
+void XIR_emit_instr_add_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, XIR_MemAddr src);
 
-void X64_emit_instr_divss_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_divss_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
-void X64_emit_instr_divsd_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_divsd_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
+void XIR_emit_instr_sub_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
+void XIR_emit_instr_sub_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
+void XIR_emit_instr_sub_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, XIR_MemAddr src);
 
-void X64_emit_instr_sar_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
-void X64_emit_instr_sar_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);
-void X64_emit_instr_shl_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
-void X64_emit_instr_shl_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);
+void XIR_emit_instr_imul_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
+void XIR_emit_instr_imul_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
+void XIR_emit_instr_imul_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, XIR_MemAddr src);
 
-typedef void (*X64_EmitInstrIntDiv_R_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 rdx, u32 rax, u32 src);
-typedef void (*X64_EmitInstrIntDiv_M_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 rdx, u32 rax, X64_MemAddr src);
-void X64_emit_instr_div_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 rdx, u32 rax, u32 src);
-void X64_emit_instr_div_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 rdx, u32 rax, X64_MemAddr src);
-void X64_emit_instr_idiv_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 rdx, u32 rax, u32 src);
-void X64_emit_instr_idiv_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 rdx, u32 rax, X64_MemAddr src);
+void XIR_emit_instr_and_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
+void XIR_emit_instr_and_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
+void XIR_emit_instr_and_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, XIR_MemAddr src);
 
-void X64_emit_instr_neg(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst);
-void X64_emit_instr_not(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst);
+void XIR_emit_instr_or_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
+void XIR_emit_instr_or_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
+void XIR_emit_instr_or_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, XIR_MemAddr src);
 
-typedef void (*X64_EmitInstrMovXX_R_R_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, u32 src);
-typedef void (*X64_EmitInstrMovXX_R_M_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size,
-                                            X64_MemAddr src);
-void X64_emit_instr_movzx_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, u32 src);
-void X64_emit_instr_movzx_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, X64_MemAddr src);
-void X64_emit_instr_movsx_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, u32 src);
-void X64_emit_instr_movsx_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, X64_MemAddr src);
+void XIR_emit_instr_xor_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
+void XIR_emit_instr_xor_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
+void XIR_emit_instr_xor_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, XIR_MemAddr src);
 
-typedef void (*X64_EmitInstrFlt2Flt_R_R_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-typedef void (*X64_EmitInstrFlt2Flt_R_M_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
-void X64_emit_instr_cvtss2sd_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_cvtss2sd_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
-void X64_emit_instr_cvtsd2ss_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_cvtsd2ss_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
+void XIR_emit_instr_addss_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_addss_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_addsd_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_addsd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
 
-typedef void (*X64_EmitInstrFlt2Int_R_R_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, u32 src);
-typedef void (*X64_EmitInstrFlt2Int_R_M_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, X64_MemAddr src);
-void X64_emit_instr_cvtss2si_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, u32 src);
-void X64_emit_instr_cvtss2si_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, X64_MemAddr src);
-void X64_emit_instr_cvtsd2si_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, u32 src);
-void X64_emit_instr_cvtsd2si_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 dst_size, u32 dst, X64_MemAddr src);
+void XIR_emit_instr_subss_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_subss_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_subsd_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_subsd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
 
-typedef void (*X64_EmitInstrInt2Flt_R_R_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u8 src_size, u32 src);
-typedef void (*X64_EmitInstrInt2Flt_R_M_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u8 src_size, X64_MemAddr src);
-void X64_emit_instr_cvtsi2ss_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u8 src_size, u32 src);
-void X64_emit_instr_cvtsi2ss_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u8 src_size, X64_MemAddr src);
-void X64_emit_instr_cvtsi2sd_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u8 src_size, u32 src);
-void X64_emit_instr_cvtsi2sd_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u8 src_size, X64_MemAddr src);
+void XIR_emit_instr_mulss_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_mulss_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_mulsd_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_mulsd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
 
-void X64_emit_instr_mov_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, u32 src);
-void X64_emit_instr_mov_r_rh(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_mov_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, X64_MemAddr src);
-void X64_emit_instr_mov_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 dst, Scalar src);
-void X64_emit_instr_mov_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, X64_MemAddr dst, u32 src);
-void X64_emit_instr_mov_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, X64_MemAddr dst, Scalar src);
+void XIR_emit_instr_divss_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_divss_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_divsd_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_divsd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
 
-typedef void (*X64_EmitInstrMovFlt_R_R_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-typedef void (*X64_EmitInstrMovFlt_R_M_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
-typedef void (*X64_EmitInstrMovFlt_M_R_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, u32 src);
-void X64_emit_instr_movss_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_movss_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
-void X64_emit_instr_movss_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, u32 src);
-void X64_emit_instr_movsd_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, u32 src);
-void X64_emit_instr_movsd_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr src);
-void X64_emit_instr_movsd_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_MemAddr dst, u32 src);
+void XIR_emit_instr_sar_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
+void XIR_emit_instr_sar_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
+void XIR_emit_instr_shl_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
+void XIR_emit_instr_shl_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
 
-void X64_emit_instr_sext_ax_to_dx(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 rdx, u32 rax);
-void X64_emit_instr_lea(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 dst, X64_MemAddr mem);
+typedef void (*XIR_EmitInstrIntDiv_R_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, u32 src);
+typedef void (*XIR_EmitInstrIntDiv_M_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, XIR_MemAddr src);
+void XIR_emit_instr_div_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, u32 src);
+void XIR_emit_instr_div_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, XIR_MemAddr src);
+void XIR_emit_instr_idiv_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, u32 src);
+void XIR_emit_instr_idiv_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, XIR_MemAddr src);
 
-void X64_emit_instr_cmp_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 op1, u32 op2);
-void X64_emit_instr_cmp_r_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 op1, Scalar op2);
-void X64_emit_instr_cmp_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, u32 op1, X64_MemAddr op2);
-void X64_emit_instr_cmp_m_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, X64_MemAddr op1, u32 op2);
-void X64_emit_instr_cmp_m_i(X64_LIRBuilder* builder, X64_BBlock* xbblock, u8 size, X64_MemAddr op1, Scalar op2);
+void XIR_emit_instr_neg(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst);
+void XIR_emit_instr_not(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst);
 
-typedef void (*X64_EmitInstrFltCmp_R_R_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 op1, u32 op2);
-typedef void (*X64_EmitInstrFltCmp_R_M_Func)(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 op1, X64_MemAddr op2);
-void X64_emit_instr_ucomiss_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 op1, u32 op2);
-void X64_emit_instr_ucomiss_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 op1, X64_MemAddr op2);
-void X64_emit_instr_ucomisd_r_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 op1, u32 op2);
-void X64_emit_instr_ucomisd_r_m(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 op1, X64_MemAddr op2);
+typedef void (*XIR_EmitInstrMovXX_R_R_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, u32 src);
+typedef void (*XIR_EmitInstrMovXX_R_M_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size,
+                                            XIR_MemAddr src);
+void XIR_emit_instr_movzx_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, u32 src);
+void XIR_emit_instr_movzx_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, XIR_MemAddr src);
+void XIR_emit_instr_movsx_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, u32 src);
+void XIR_emit_instr_movsx_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, u8 src_size, XIR_MemAddr src);
 
-void X64_emit_instr_jmp(X64_LIRBuilder* builder, X64_BBlock* xbblock, X64_BBlock* target);
-void X64_emit_instr_jmpcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, X64_BBlock* true_bb, X64_BBlock* false_bb);
-void X64_emit_instr_setcc(X64_LIRBuilder* builder, X64_BBlock* xbblock, ConditionKind cond, u32 dst);
-void X64_emit_instr_rep_movsb(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rdi, u32 rsi, u32 rcx);
-void X64_emit_instr_rep_stosb(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rdi, u32 rax, u32 rcx);
-void X64_emit_instr_syscall(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u8 num_args, u32* args, u32 rcx, u32 r11);
-void X64_emit_instr_ret(X64_LIRBuilder* builder, X64_BBlock* xbblock, u32 rax, u32 rdx);
-X64_Instr* X64_emit_instr_call(X64_LIRBuilder* builder, X64_BBlock* xbblock, Symbol* sym, X64_CallValue dst, u32 num_args,
-                               X64_InstrCallArg* args, X64_StackArgsInfo stack_info);
-X64_Instr* X64_emit_instr_call_r(X64_LIRBuilder* builder, X64_BBlock* xbblock, Type* proc_type, u32 proc_loc, X64_CallValue dst,
-                                 u32 num_args, X64_InstrCallArg* args, X64_StackArgsInfo stack_info);
+typedef void (*XIR_EmitInstrFlt2Flt_R_R_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+typedef void (*XIR_EmitInstrFlt2Flt_R_M_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_cvtss2sd_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_cvtss2sd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_cvtsd2ss_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_cvtsd2ss_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+
+typedef void (*XIR_EmitInstrFlt2Int_R_R_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, u32 src);
+typedef void (*XIR_EmitInstrFlt2Int_R_M_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_cvtss2si_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, u32 src);
+void XIR_emit_instr_cvtss2si_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_cvtsd2si_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, u32 src);
+void XIR_emit_instr_cvtsd2si_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 dst_size, u32 dst, XIR_MemAddr src);
+
+typedef void (*XIR_EmitInstrInt2Flt_R_R_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u8 src_size, u32 src);
+typedef void (*XIR_EmitInstrInt2Flt_R_M_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u8 src_size, XIR_MemAddr src);
+void XIR_emit_instr_cvtsi2ss_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u8 src_size, u32 src);
+void XIR_emit_instr_cvtsi2ss_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u8 src_size, XIR_MemAddr src);
+void XIR_emit_instr_cvtsi2sd_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u8 src_size, u32 src);
+void XIR_emit_instr_cvtsi2sd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u8 src_size, XIR_MemAddr src);
+
+void XIR_emit_instr_mov_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
+void XIR_emit_instr_mov_r_rh(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_mov_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_mov_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
+void XIR_emit_instr_mov_m_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, XIR_MemAddr dst, u32 src);
+void XIR_emit_instr_mov_m_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, XIR_MemAddr dst, Scalar src);
+
+typedef void (*XIR_EmitInstrMovFlt_R_R_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+typedef void (*XIR_EmitInstrMovFlt_R_M_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+typedef void (*XIR_EmitInstrMovFlt_M_R_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, XIR_MemAddr dst, u32 src);
+void XIR_emit_instr_movss_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_movss_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_movss_m_r(XIR_Builder* builder, XIR_BBlock* xbblock, XIR_MemAddr dst, u32 src);
+void XIR_emit_instr_movsd_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, u32 src);
+void XIR_emit_instr_movsd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_movsd_m_r(XIR_Builder* builder, XIR_BBlock* xbblock, XIR_MemAddr dst, u32 src);
+
+void XIR_emit_instr_sext_ax_to_dx(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax);
+void XIR_emit_instr_lea(XIR_Builder* builder, XIR_BBlock* xbblock, u32 dst, XIR_MemAddr mem);
+
+void XIR_emit_instr_cmp_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 op1, u32 op2);
+void XIR_emit_instr_cmp_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 op1, Scalar op2);
+void XIR_emit_instr_cmp_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 op1, XIR_MemAddr op2);
+void XIR_emit_instr_cmp_m_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, XIR_MemAddr op1, u32 op2);
+void XIR_emit_instr_cmp_m_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, XIR_MemAddr op1, Scalar op2);
+
+typedef void (*XIR_EmitInstrFltCmp_R_R_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u32 op1, u32 op2);
+typedef void (*XIR_EmitInstrFltCmp_R_M_Func)(XIR_Builder* builder, XIR_BBlock* xbblock, u32 op1, XIR_MemAddr op2);
+void XIR_emit_instr_ucomiss_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 op1, u32 op2);
+void XIR_emit_instr_ucomiss_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 op1, XIR_MemAddr op2);
+void XIR_emit_instr_ucomisd_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 op1, u32 op2);
+void XIR_emit_instr_ucomisd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 op1, XIR_MemAddr op2);
+
+void XIR_emit_instr_jmp(XIR_Builder* builder, XIR_BBlock* xbblock, XIR_BBlock* target);
+void XIR_emit_instr_jmpcc(XIR_Builder* builder, XIR_BBlock* xbblock, ConditionKind cond, XIR_BBlock* true_bb, XIR_BBlock* false_bb);
+void XIR_emit_instr_setcc(XIR_Builder* builder, XIR_BBlock* xbblock, ConditionKind cond, u32 dst);
+void XIR_emit_instr_rep_movsb(XIR_Builder* builder, XIR_BBlock* xbblock, u32 rdi, u32 rsi, u32 rcx);
+void XIR_emit_instr_rep_stosb(XIR_Builder* builder, XIR_BBlock* xbblock, u32 rdi, u32 rax, u32 rcx);
+void XIR_emit_instr_syscall(XIR_Builder* builder, XIR_BBlock* xbblock, u32 rax, u8 num_args, u32* args, u32 rcx, u32 r11);
+void XIR_emit_instr_ret(XIR_Builder* builder, XIR_BBlock* xbblock, u32 rax, u32 rdx);
+XIR_Instr* XIR_emit_instr_call(XIR_Builder* builder, XIR_BBlock* xbblock, Symbol* sym, XIR_CallValue dst, u32 num_args,
+                               XIR_InstrCallArg* args, X64_StackArgsInfo stack_info);
+XIR_Instr* XIR_emit_instr_call_r(XIR_Builder* builder, XIR_BBlock* xbblock, Type* proc_type, u32 proc_loc, XIR_CallValue dst,
+                                 u32 num_args, XIR_InstrCallArg* args, X64_StackArgsInfo stack_info);
 #endif
