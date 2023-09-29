@@ -1627,7 +1627,7 @@ typedef struct X64_Proc_State {
     Allocator* gen_mem;
     Allocator* tmp_mem;
     Symbol* sym; // Procedure symbol.
-    XIR_Builder* builder;
+    XIR_Builder* xir_builder;
     X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT];
     Array(X64_Instr) instrs;
 } X64_Proc_State;
@@ -1636,8 +1636,8 @@ typedef struct X64_Proc_State {
 #define IS_LREG_IN_STACK(k) ((k) == XIR_LREG_LOC_STACK)
 static XIR_RegLoc X64_lreg_loc(X64_Proc_State* proc_state, u32 lreg)
 {
-    u32 rng_idx = XIR_find_alias_reg(proc_state->builder, lreg);
-    XIR_RegLoc reg_loc = proc_state->builder->lreg_ranges[rng_idx].loc;
+    u32 rng_idx = XIR_find_alias_reg(proc_state->xir_builder, lreg);
+    XIR_RegLoc reg_loc = proc_state->xir_builder->lreg_ranges[rng_idx].loc;
 
     assert(reg_loc.kind != XIR_LREG_LOC_UNASSIGNED);
 
@@ -3863,7 +3863,7 @@ Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Sym
 {
     const bool is_nonleaf = proc_sym->as_proc.is_nonleaf;
 
-    X64_Proc_State state = {
+    X64_Proc_State proc_state = {
         .gen_mem = gen_mem,
         .tmp_mem = tmp_mem,
         .sym = proc_sym,
@@ -3871,25 +3871,25 @@ Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Sym
         .scratch_regs = is_nonleaf ? x64_target.nonleaf_scratch_regs : x64_target.leaf_scratch_regs,
     };
 
-    AllocatorState tmp_mem_state = allocator_get_state(state.tmp_mem);
+    AllocatorState tmp_mem_state = allocator_get_state(proc_state.tmp_mem);
     //////////////////////////////////////////////////////////////////////////////////////////
 
-    X64_emit_instr_push(&state.instrs, X64_RBP);
-    X64_emit_instr_mov_rr(&state.instrs, X64_MAX_INT_REG_SIZE, X64_RBP, X64_RSP);
-    const size_t sub_rsp_idx = X64_emit_instr_placeholder(&state.instrs, X64_Instr_Kind_NOOP); // Placeholder sub rsp, <stack_size>
+    X64_emit_instr_push(&proc_state.instrs, X64_RBP);
+    X64_emit_instr_mov_rr(&proc_state.instrs, X64_MAX_INT_REG_SIZE, X64_RBP, X64_RSP);
+    const size_t sub_rsp_idx = X64_emit_instr_placeholder(&proc_state.instrs, X64_Instr_Kind_NOOP); // Placeholder sub rsp, <stack_size>
 
     // Calculate stack size from procedure arguments (spills) and local variables.
-    u32 stack_size = X64_assign_proc_stack_offsets(&state);
+    u32 stack_size = X64_assign_proc_stack_offsets(&proc_state);
 
     // Register allocation.
     BBlock** ir_bblocks = proc_sym->as_proc.bblocks;
     size_t num_ir_bblocks = array_len(ir_bblocks);
-    XIR_Builder builder = {.arena = tmp_mem};
+    XIR_Builder xir_builder = {.arena = tmp_mem};
 
-    XIR_emit_instrs(&builder, proc_sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks); // Generate LIR instructions.
-    XIR_compute_live_intervals(&builder); // Compute LIR register intervals.
+    XIR_emit_instrs(&xir_builder, proc_sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks); // Generate LIR instructions.
+    XIR_compute_live_intervals(&xir_builder); // Compute LIR register intervals.
     X64_RegAllocResult reg_alloc =
-        X64_linear_scan_reg_alloc(&builder, state.scratch_regs, stack_size); // May spill and increase stack_size.
+        X64_linear_scan_reg_alloc(&xir_builder, proc_state.scratch_regs, stack_size); // May spill and increase stack_size.
 
     if (!reg_alloc.success) {
         NIBBLE_FATAL_EXIT("Register allocation for procedure `%s` failed.", proc_sym->name->str);
@@ -3897,11 +3897,11 @@ Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Sym
     }
 
     stack_size = reg_alloc.stack_offset;
-    state.builder = &builder;
+    proc_state.xir_builder = &xir_builder;
 
     // Fill in sub rsp, <stack_size>
     if (stack_size) {
-        X64_Instr* sub_rsp_instr = &state.instrs[sub_rsp_idx];
+        X64_Instr* sub_rsp_instr = &proc_state.instrs[sub_rsp_idx];
         X64_set_instr_kind(sub_rsp_instr, X64_Instr_Kind_SUB_RI);
         sub_rsp_instr->sub_ri.size = X64_MAX_INT_REG_SIZE;
         sub_rsp_instr->sub_ri.dst = X64_RSP;
@@ -3918,29 +3918,29 @@ Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Sym
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64_push_reg_to_stack(&state.instrs, reg);
+            X64_push_reg_to_stack(&proc_state.instrs, reg);
         }
     }
 
     // Process procedure instructions.
     HMap bblock_instr_starts = hmap(clp2(num_ir_bblocks), tmp_mem);
 
-    for (size_t ii = 0; ii < builder.num_bblocks; ii++) {
-        XIR_BBlock* bb = builder.bblocks[ii];
-        bool last_bb = ii == builder.num_bblocks - 1;
+    for (size_t ii = 0; ii < xir_builder.num_bblocks; ii++) {
+        XIR_BBlock* bb = xir_builder.bblocks[ii];
+        bool last_bb = ii == xir_builder.num_bblocks - 1;
 
-        hmap_put(&bblock_instr_starts, bb->id + 1, array_len(state.instrs)); // The key is offset by 1 (can't have 0 key)
+        hmap_put(&bblock_instr_starts, bb->id + 1, array_len(proc_state.instrs)); // The key is offset by 1 (can't have 0 key)
 
         for (XIR_Instr* instr = bb->first; instr; instr = instr->next) {
             bool last_instr = last_bb && !instr->next;
 
-            X64_gen_instr(&state, instr, last_instr, bb->id);
+            X64_gen_instr(&proc_state, instr, last_instr, bb->id);
         }
     }
 
     // Patch jmp (to block, to ret label) instructions.
-    const size_t num_instrs_before_postamble = array_len(state.instrs);
-    X64_patch_jmp_instrs(state.instrs, num_instrs_before_postamble, &bblock_instr_starts);
+    const size_t num_instrs_before_postamble = array_len(proc_state.instrs);
+    X64_patch_jmp_instrs(proc_state.instrs, num_instrs_before_postamble, &bblock_instr_starts);
 
     //
     // Postamble.
@@ -3955,20 +3955,20 @@ Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Sym
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64_pop_reg_from_stack(&state.instrs, reg);
+            X64_pop_reg_from_stack(&proc_state.instrs, reg);
         }
     }
 
     // Clean up stack and return to caller.
-    X64_emit_instr_mov_rr(&state.instrs, X64_MAX_INT_REG_SIZE, X64_RSP, X64_RBP);
-    X64_emit_instr_pop(&state.instrs, X64_RBP);
-    X64_emit_instr_ret(&state.instrs);
+    X64_emit_instr_mov_rr(&proc_state.instrs, X64_MAX_INT_REG_SIZE, X64_RSP, X64_RBP);
+    X64_emit_instr_pop(&proc_state.instrs, X64_RBP);
+    X64_emit_instr_ret(&proc_state.instrs);
 
     // Mark the first instruction of the postamble as a jump target (for 'return' instructions).
-    X64_mark_instr_as_jmp_target(&state.instrs[num_instrs_before_postamble]);
+    X64_mark_instr_as_jmp_target(&proc_state.instrs[num_instrs_before_postamble]);
 
     //////////////////////////////////////////////////////////////////////////////////////////
     allocator_restore_state(tmp_mem_state);
 
-    return state.instrs;
+    return proc_state.instrs;
 }
