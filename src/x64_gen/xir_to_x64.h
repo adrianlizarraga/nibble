@@ -759,7 +759,8 @@ typedef struct X64_Instr {
 
 typedef struct X64_BBlock {
     u32 num_instrs;
-    X64_Instr* first_instr; // Linked-list of instructions
+    X64_Instr* head;
+    X64_Instr* tail;
 } X64_BBlock;
 
 typedef struct X64_Intrs {
@@ -791,6 +792,6 @@ static inline void X64_mark_instr_as_jmp_target(X64_Instr* instr)
     instr->flags |= X64_INSTR_IS_JMP_TARGET_MASK;
 }
 
-Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym);
+X64_Instrs X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym);
 
 #endif // defined(NIBBLE_X64_GEN_XIR_TO_X64_H)
