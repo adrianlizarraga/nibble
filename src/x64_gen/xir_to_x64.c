@@ -287,49 +287,31 @@ X64_DEF_EMIT_INSTR_FLT_BINARY_RR(div_flt_rr, X64_Instr_Kind_DIV_FLT_RR)
 X64_DEF_EMIT_INSTR_FLT_BINARY_RM(div_flt_rm, X64_Instr_Kind_DIV_FLT_RM)
 X64_DEF_EMIT_INSTR_FLT_BINARY_MR(div_flt_mr, X64_Instr_Kind_DIV_FLT_MR)
 
-static void X64_emit_instr_neg_r(Array(X64_Instr) * instrs, u8 size, X64_Reg dst)
-{
-    X64_Instr neg_r_instr = {
-        .flags = X64_Instr_Kind_NEG_R,
-        .neg_r.size = size,
-        .neg_r.dst = dst,
-    };
+#define X64_DEF_EMIT_INSTR_UNARY_R(f_d, k_d)                                           \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 size, X64_Reg dst) \
+    {                                                                                  \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                  \
+        instr->f_d.size = size;                                                        \
+        instr->f_d.dst = dst;                                                          \
+                                                                                       \
+        X64_push_instr(proc_state, instr);                                             \
+    }
 
-    array_push(*instrs, neg_r_instr);
-}
+#define X64_DEF_EMIT_INSTR_UNARY_M(f_d, k_d)                                                 \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 size, X64_SIBD_Addr dst) \
+    {                                                                                        \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                        \
+        instr->f_d.size = size;                                                              \
+        instr->f_d.dst = dst;                                                                \
+                                                                                             \
+        X64_push_instr(proc_state, instr);                                                   \
+    }
 
-static void X64_emit_instr_neg_m(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst)
-{
-    X64_Instr neg_m_instr = {
-        .flags = X64_Instr_Kind_NEG_M,
-        .neg_m.size = size,
-        .neg_m.dst = dst,
-    };
+X64_DEF_EMIT_INSTR_UNARY_R(neg_r, X64_Instr_Kind_NEG_R)
+X64_DEF_EMIT_INSTR_UNARY_M(neg_m, X64_Instr_Kind_NEG_M)
 
-    array_push(*instrs, neg_m_instr);
-}
-
-static void X64_emit_instr_not_r(Array(X64_Instr) * instrs, u8 size, X64_Reg dst)
-{
-    X64_Instr not_r_instr = {
-        .flags = X64_Instr_Kind_NOT_R,
-        .not_r.size = size,
-        .not_r.dst = dst,
-    };
-
-    array_push(*instrs, not_r_instr);
-}
-
-static void X64_emit_instr_not_m(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst)
-{
-    X64_Instr not_m_instr = {
-        .flags = X64_Instr_Kind_NOT_M,
-        .not_m.size = size,
-        .not_m.dst = dst,
-    };
-
-    array_push(*instrs, not_m_instr);
-}
+X64_DEF_EMIT_INSTR_UNARY_R(not_r, X64_Instr_Kind_NOT_R)
+X64_DEF_EMIT_INSTR_UNARY_M(not_m, X64_Instr_Kind_NOT_M)
 
 static void X64_emit_instr_sar_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst)
 {
