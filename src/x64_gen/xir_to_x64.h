@@ -765,10 +765,9 @@ typedef struct X64_BBlock {
 typedef struct X64_Intrs {
     u32 num_instrs; // Total number of instructions in all basic blocks.
 
-    // C-style array of basic blocks (end with a jump instruction)
+    // Stretchy array of basic blocks (end with a jump instruction)
     // Blocks are in final source-code order.
-    u32 num_bblocks;
-    X64_BBlock* bblocks;
+    Array(X64_BBlock) bblocks;
 } X64_Instrs;
 
 static inline X64_Instr_Kind X64_get_instr_kind(X64_Instr* instr)
