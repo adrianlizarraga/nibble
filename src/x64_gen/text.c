@@ -488,6 +488,7 @@ static inline void X64_write_elf_binary_instr_mr(X64_TextGenState* gen_state, u8
 //
 static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
 {
+#if 0
     const DeclProc* decl = (const DeclProc*)proc_sym->decl;
     if (decl->is_incomplete) {
         return;
@@ -498,7 +499,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
     // Save this proc's offset in the buffer for use by call instructions.
     X64_set_proc_offset(gen_state, proc_sym);
 
-    Array(X64_Instr) instrs = X64_gen_proc_instrs(gen_state->gen_mem, gen_state->tmp_mem, proc_sym);
+    X64_Instrs instrs = X64_gen_proc_instrs(gen_state->gen_mem, gen_state->tmp_mem, proc_sym);
     const size_t num_instrs = array_len(instrs);
 
     HMap instr_offsets = hmap(5, gen_state->tmp_mem); // Instr index => byte offset in buffer. Used for jmp targets.
@@ -1005,6 +1006,7 @@ static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
     }
 
     allocator_restore_state(tmp_mem_state);
+#endif
 }
 
 void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, BucketList* procs,

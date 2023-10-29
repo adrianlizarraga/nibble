@@ -19,7 +19,6 @@ typedef struct X64_Proc_State {
     X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT];
     X64_Instrs instrs;
     u32 curr_bblock;
-    u64 spill_stack_size;
 } X64_Proc_State;
 
 static inline X64_SIBD_Addr X64_get_rbp_offset_addr(s32 offset)
@@ -313,143 +312,85 @@ X64_DEF_EMIT_INSTR_UNARY_M(neg_m, X64_Instr_Kind_NEG_M)
 X64_DEF_EMIT_INSTR_UNARY_R(not_r, X64_Instr_Kind_NOT_R)
 X64_DEF_EMIT_INSTR_UNARY_M(not_m, X64_Instr_Kind_NOT_M)
 
-static void X64_emit_instr_sar_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst)
-{
-    X64_Instr instr = {
-        .flags = X64_Instr_Kind_SAR_RR,
-        .sar_rr.size = size,
-        .sar_rr.dst = dst,
-    };
+#define X64_DEF_EMIT_INSTR_SHIFT_RR(f_d, k_d)                                          \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 size, X64_Reg dst) \
+    {                                                                                  \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                  \
+        instr->f_d.size = size;                                                        \
+        instr->f_d.dst = dst;                                                          \
+                                                                                       \
+        X64_push_instr(proc_state, instr);                                             \
+    }
 
-    array_push(*instrs, instr);
-}
+#define X64_DEF_EMIT_INSTR_SHIFT_MR(f_d, k_d)                                                \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 size, X64_SIBD_Addr dst) \
+    {                                                                                        \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                        \
+        instr->f_d.size = size;                                                              \
+        instr->f_d.dst = dst;                                                                \
+                                                                                             \
+        X64_push_instr(proc_state, instr);                                                   \
+    }
 
-static void X64_emit_instr_sar_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst)
-{
-    X64_Instr instr = {
-        .flags = X64_Instr_Kind_SAR_MR,
-        .sar_mr.size = size,
-        .sar_mr.dst = dst,
-    };
+#define X64_DEF_EMIT_INSTR_SHIFT_RI(f_d, k_d)                                                  \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 size, X64_Reg dst, u8 imm) \
+    {                                                                                          \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                          \
+        instr->f_d.size = size;                                                                \
+        instr->f_d.dst = dst;                                                                  \
+        instr->f_d.imm = imm;                                                                  \
+                                                                                               \
+        X64_push_instr(proc_state, instr);                                                     \
+    }
 
-    array_push(*instrs, instr);
-}
+#define X64_DEF_EMIT_INSTR_SHIFT_MI(f_d, k_d)                                                        \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 size, X64_SIBD_Addr dst, u8 imm) \
+    {                                                                                                \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                                \
+        instr->f_d.size = size;                                                                      \
+        instr->f_d.dst = dst;                                                                        \
+        instr->f_d.imm = imm;                                                                        \
+                                                                                                     \
+        X64_push_instr(proc_state, instr);                                                           \
+    }
 
-static void X64_emit_instr_sar_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u8 imm)
-{
-    X64_Instr sar_ri_instr = {
-        .flags = X64_Instr_Kind_SAR_RI,
-        .sar_ri.size = size,
-        .sar_ri.dst = dst,
-        .sar_ri.imm = imm,
-    };
+X64_DEF_EMIT_INSTR_SHIFT_RR(sar_rr, X64_Instr_Kind_SAR_RR)
+X64_DEF_EMIT_INSTR_SHIFT_MR(sar_mr, X64_Instr_Kind_SAR_MR)
+X64_DEF_EMIT_INSTR_SHIFT_RI(sar_ri, X64_Instr_Kind_SAR_RI)
+X64_DEF_EMIT_INSTR_SHIFT_MI(sar_mi, X64_Instr_Kind_SAR_MI)
 
-    array_push(*instrs, sar_ri_instr);
-}
+X64_DEF_EMIT_INSTR_SHIFT_RR(shl_rr, X64_Instr_Kind_SHL_RR)
+X64_DEF_EMIT_INSTR_SHIFT_MR(shl_mr, X64_Instr_Kind_SHL_MR)
+X64_DEF_EMIT_INSTR_SHIFT_RI(shl_ri, X64_Instr_Kind_SHL_RI)
+X64_DEF_EMIT_INSTR_SHIFT_MI(shl_mi, X64_Instr_Kind_SHL_MI)
 
-static void X64_emit_instr_sar_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u8 imm)
-{
-    X64_Instr sar_mi_instr = {
-        .flags = X64_Instr_Kind_SAR_MI,
-        .sar_mi.size = size,
-        .sar_mi.dst = dst,
-        .sar_mi.imm = imm,
-    };
+#define X64_DEF_EMIT_INSTR_DIV_R(f_d, k_d)                                             \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 size, X64_Reg src) \
+    {                                                                                  \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                  \
+        instr->f_d.size = size;                                                        \
+        instr->f_d.src = src;                                                          \
+                                                                                       \
+        X64_push_instr(proc_state, instr);                                             \
+    }
 
-    array_push(*instrs, sar_mi_instr);
-}
+#define X64_DEF_EMIT_INSTR_DIV_M(f_d, k_d)                                                   \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 size, X64_SIBD_Addr src) \
+    {                                                                                        \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                        \
+        instr->f_d.size = size;                                                              \
+        instr->f_d.src = src;                                                                \
+                                                                                             \
+        X64_push_instr(proc_state, instr);                                                   \
+    }
 
-static void X64_emit_instr_shl_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst)
-{
-    X64_Instr instr = {
-        .flags = X64_Instr_Kind_SHL_RR,
-        .shl_rr.size = size,
-        .shl_rr.dst = dst,
-    };
+X64_DEF_EMIT_INSTR_DIV_R(div_r, X64_Instr_Kind_DIV_R)
+X64_DEF_EMIT_INSTR_DIV_M(div_m, X64_Instr_Kind_DIV_M)
 
-    array_push(*instrs, instr);
-}
+X64_DEF_EMIT_INSTR_DIV_R(idiv_r, X64_Instr_Kind_IDIV_R)
+X64_DEF_EMIT_INSTR_DIV_M(idiv_m, X64_Instr_Kind_IDIV_M)
 
-static void X64_emit_instr_shl_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst)
-{
-    X64_Instr instr = {
-        .flags = X64_Instr_Kind_SHL_MR,
-        .shl_mr.size = size,
-        .shl_mr.dst = dst,
-    };
-
-    array_push(*instrs, instr);
-}
-
-static void X64_emit_instr_shl_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u8 imm)
-{
-    X64_Instr shl_ri_instr = {
-        .flags = X64_Instr_Kind_SHL_RI,
-        .shl_ri.size = size,
-        .shl_ri.dst = dst,
-        .shl_ri.imm = imm,
-    };
-
-    array_push(*instrs, shl_ri_instr);
-}
-
-static void X64_emit_instr_shl_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u8 imm)
-{
-    X64_Instr shl_mi_instr = {
-        .flags = X64_Instr_Kind_SHL_MI,
-        .shl_mi.size = size,
-        .shl_mi.dst = dst,
-        .shl_mi.imm = imm,
-    };
-
-    array_push(*instrs, shl_mi_instr);
-}
-
-static void X64_emit_instr_div_r(Array(X64_Instr) * instrs, u8 size, X64_Reg src)
-{
-    X64_Instr div_r_instr = {
-        .flags = X64_Instr_Kind_DIV_R,
-        .div_r.size = size,
-        .div_r.src = src,
-    };
-
-    array_push(*instrs, div_r_instr);
-}
-
-static void X64_emit_instr_div_m(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr src)
-{
-    X64_Instr div_m_instr = {
-        .flags = X64_Instr_Kind_DIV_M,
-        .div_m.size = size,
-        .div_m.src = src,
-    };
-
-    array_push(*instrs, div_m_instr);
-}
-
-static void X64_emit_instr_idiv_r(Array(X64_Instr) * instrs, u8 size, X64_Reg src)
-{
-    X64_Instr idiv_r_instr = {
-        .flags = X64_Instr_Kind_IDIV_R,
-        .idiv_r.size = size,
-        .idiv_r.src = src,
-    };
-
-    array_push(*instrs, idiv_r_instr);
-}
-
-static void X64_emit_instr_idiv_m(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr src)
-{
-    X64_Instr idiv_m_instr = {
-        .flags = X64_Instr_Kind_IDIV_M,
-        .idiv_m.size = size,
-        .idiv_m.src = src,
-    };
-
-    array_push(*instrs, idiv_m_instr);
-}
-
-static void X64_emit_instr_sext_ax_into_dx(Array(X64_Instr) * instrs, u8 size)
+static void X64_emit_instr_sext_ax_into_dx(X64_Proc_State* proc_state, u8 size)
 {
     X64_Instr_Kind kind = X64_Instr_Kind_NOOP;
 
@@ -468,604 +409,325 @@ static void X64_emit_instr_sext_ax_into_dx(Array(X64_Instr) * instrs, u8 size)
         break;
     }
 
-    X64_Instr instr = {.flags = kind};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, kind);
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_mov_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
+X64_DEF_EMIT_INSTR_BINARY_RR(mov_rr, X64_Instr_Kind_MOV_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(mov_rm, X64_Instr_Kind_MOV_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(mov_mr, X64_Instr_Kind_MOV_MR)
+X64_DEF_EMIT_INSTR_BINARY_MI(mov_mi, X64_Instr_Kind_MOV_MI)
+
+// MOV_RI is the only instruction that can load an 8-byte immediate constant.
+static void X64_emit_instr_mov_ri(X64_Proc_State* proc_state, u8 size, X64_Reg dst, u64 imm)
 {
-    X64_Instr mov_rr_instr = {
-        .flags = X64_Instr_Kind_MOV_RR,
-        .mov_rr.size = size,
-        .mov_rr.dst = dst,
-        .mov_rr.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, X64_Instr_Kind_MOV_RI);
+    instr->mov_ri.size = size;
+    instr->mov_ri.dst = dst;
+    instr->mov_ri.imm = imm;
 
-    array_push(*instrs, mov_rr_instr);
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_mov_rrh(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
+static void X64_emit_instr_mov_rrh(X64_Proc_State* proc_state, X64_Reg dst, X64_Reg src)
 {
-    X64_Instr mov_rr_instr = {
-        .flags = X64_INSTR_MOV_SRC_RH_MASK | (X64_Instr_Kind_MOV_RR & X64_INSTR_KIND_MASK),
-        .mov_rr.size = 1,
-        .mov_rr.dst = dst,
-        .mov_rr.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, X64_Instr_Kind_MOV_RR);
+    instr->flags |= X64_INSTR_MOV_SRC_RH_MASK;
+    instr->mov_rr.size = 1;
+    instr->mov_rr.dst = dst;
+    instr->mov_rr.src = src;
 
-    array_push(*instrs, mov_rr_instr);
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_mov_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_emit_instr_mov_mrh(X64_Proc_State* proc_state, X64_SIBD_Addr dst, X64_Reg src)
 {
-    X64_Instr mov_rm_instr = {
-        .flags = X64_Instr_Kind_MOV_RM,
-        .mov_rm.size = size,
-        .mov_rm.dst = dst,
-        .mov_rm.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, X64_Instr_Kind_MOV_MR);
+    instr->flags |= X64_INSTR_MOV_SRC_RH_MASK;
+    instr->mov_mr.size = 1;
+    instr->mov_mr.dst = dst;
+    instr->mov_mr.src = src;
 
-    array_push(*instrs, mov_rm_instr);
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_mov_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr mov_mr_instr = {
-        .flags = X64_Instr_Kind_MOV_MR,
-        .mov_mr.size = size,
-        .mov_mr.dst = dst,
-        .mov_mr.src = src,
-    };
+#define X64_DEF_EMIT_INSTR_MOV_EXT_RR(f_d, k_d)                                                                      \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src) \
+    {                                                                                                                \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                                                \
+        instr->f_d.dst_size = dst_size;                                                                              \
+        instr->f_d.src_size = src_size;                                                                              \
+        instr->f_d.dst = dst;                                                                                        \
+        instr->f_d.src = src;                                                                                        \
+                                                                                                                     \
+        X64_push_instr(proc_state, instr);                                                                           \
+    }
 
-    array_push(*instrs, mov_mr_instr);
-}
+#define X64_DEF_EMIT_INSTR_MOV_EXT_RM(f_d, k_d)                                                                            \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src) \
+    {                                                                                                                      \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                                                      \
+        instr->f_d.dst_size = dst_size;                                                                                    \
+        instr->f_d.src_size = src_size;                                                                                    \
+        instr->f_d.dst = dst;                                                                                              \
+        instr->f_d.src = src;                                                                                              \
+                                                                                                                           \
+        X64_push_instr(proc_state, instr);                                                                                 \
+    }
 
-static void X64_emit_instr_mov_mrh(Array(X64_Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr mov_mr_instr = {
-        .flags = X64_INSTR_MOV_SRC_RH_MASK | (X64_Instr_Kind_MOV_MR & X64_INSTR_KIND_MASK),
-        .mov_mr.size = 1,
-        .mov_mr.dst = dst,
-        .mov_mr.src = src,
-    };
+X64_DEF_EMIT_INSTR_MOV_EXT_RR(movsx_rr, X64_Instr_Kind_MOVSX_RR)
+X64_DEF_EMIT_INSTR_MOV_EXT_RM(movsx_rm, X64_Instr_Kind_MOVSX_RM)
 
-    array_push(*instrs, mov_mr_instr);
-}
+X64_DEF_EMIT_INSTR_MOV_EXT_RR(movsxd_rr, X64_Instr_Kind_MOVSXD_RR)
+X64_DEF_EMIT_INSTR_MOV_EXT_RM(movsxd_rm, X64_Instr_Kind_MOVSXD_RM)
 
-static void X64_emit_instr_mov_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u64 imm)
-{
-    X64_Instr mov_ri_instr = {
-        .flags = X64_Instr_Kind_MOV_RI,
-        .mov_ri.size = size,
-        .mov_ri.dst = dst,
-        .mov_ri.imm = imm,
-    };
+X64_DEF_EMIT_INSTR_MOV_EXT_RR(movzx_rr, X64_Instr_Kind_MOVZX_RR)
+X64_DEF_EMIT_INSTR_MOV_EXT_RM(movzx_rm, X64_Instr_Kind_MOVZX_RM)
 
-    array_push(*instrs, mov_ri_instr);
-}
+X64_DEF_EMIT_INSTR_FLT_BINARY_RR(mov_flt_rr, X64_Instr_Kind_MOV_FLT_RR)
+X64_DEF_EMIT_INSTR_FLT_BINARY_RM(mov_flt_rm, X64_Instr_Kind_MOV_FLT_RM)
+X64_DEF_EMIT_INSTR_FLT_BINARY_MR(mov_flt_mr, X64_Instr_Kind_MOV_FLT_MR)
 
-static void X64_emit_instr_mov_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr mov_mi_instr = {
-        .flags = X64_Instr_Kind_MOV_MI,
-        .mov_mi.size = size,
-        .mov_mi.dst = dst,
-        .mov_mi.imm = imm,
-    };
+#define X64_DEF_EMIT_INSTR_CVT_FLT_RR(f_d, k_d)                                            \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, X64_Reg dst, X64_Reg src) \
+    {                                                                                      \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                      \
+        instr->f_d.dst = dst;                                                              \
+        instr->f_d.src = src;                                                              \
+                                                                                           \
+        X64_push_instr(proc_state, instr);                                                 \
+    }
 
-    array_push(*instrs, mov_mi_instr);
-}
+#define X64_DEF_EMIT_INSTR_CVT_FLT_RM(f_d, k_d)                                                  \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, X64_Reg dst, X64_SIBD_Addr src) \
+    {                                                                                            \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                            \
+        instr->f_d.dst = dst;                                                                    \
+        instr->f_d.src = src;                                                                    \
+                                                                                                 \
+        X64_push_instr(proc_state, instr);                                                       \
+    }
 
-static void X64_emit_instr_movsx_rr(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
-{
-    X64_Instr movsx_rr_instr = {
-        .flags = X64_Instr_Kind_MOVSX_RR,
-        .movsx_rr.dst_size = dst_size,
-        .movsx_rr.src_size = src_size,
-        .movsx_rr.dst = dst,
-        .movsx_rr.src = src,
-    };
+X64_DEF_EMIT_INSTR_CVT_FLT_RR(cvtss2sd_rr, X64_Instr_Kind_CVTSS2SD_RR)
+X64_DEF_EMIT_INSTR_CVT_FLT_RM(cvtss2sd_rm, X64_Instr_Kind_CVTSS2SD_RM)
 
-    array_push(*instrs, movsx_rr_instr);
-}
+X64_DEF_EMIT_INSTR_CVT_FLT_RR(cvtsd2ss_rr, X64_Instr_Kind_CVTSD2SS_RR)
+X64_DEF_EMIT_INSTR_CVT_FLT_RM(cvtsd2ss_rm, X64_Instr_Kind_CVTSD2SS_RM)
 
-static void X64_emit_instr_movsx_rm(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
-{
-    X64_Instr movsx_rm_instr = {
-        .flags = X64_Instr_Kind_MOVSX_RM,
-        .movsx_rm.dst_size = dst_size,
-        .movsx_rm.src_size = src_size,
-        .movsx_rm.dst = dst,
-        .movsx_rm.src = src,
-    };
+#define X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RR(f_d, k_d)                                                      \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, X64_Reg dst, bool dst_8bytes, X64_Reg src) \
+    {                                                                                                       \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                                       \
+        instr->f_d.dst = dst;                                                                               \
+        instr->f_d.src = src;                                                                               \
+                                                                                                            \
+        if (dst_8bytes) {                                                                                   \
+            instr->flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;                                                \
+        }                                                                                                   \
+                                                                                                            \
+        X64_push_instr(proc_state, instr);                                                                  \
+    }
 
-    array_push(*instrs, movsx_rm_instr);
-}
-
-static void X64_emit_instr_movsxd_rr(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
-{
-    X64_Instr movsxd_rr_instr = {
-        .flags = X64_Instr_Kind_MOVSXD_RR,
-        .movsxd_rr.dst_size = dst_size,
-        .movsxd_rr.src_size = src_size,
-        .movsxd_rr.dst = dst,
-        .movsxd_rr.src = src,
-    };
-
-    array_push(*instrs, movsxd_rr_instr);
-}
-
-static void X64_emit_instr_movsxd_rm(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
-{
-    X64_Instr movsxd_rm_instr = {
-        .flags = X64_Instr_Kind_MOVSXD_RM,
-        .movsxd_rm.dst_size = dst_size,
-        .movsxd_rm.src_size = src_size,
-        .movsxd_rm.dst = dst,
-        .movsxd_rm.src = src,
-    };
-
-    array_push(*instrs, movsxd_rm_instr);
-}
-
-static void X64_emit_instr_movzx_rr(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
-{
-    X64_Instr movzx_rr_instr = {
-        .flags = X64_Instr_Kind_MOVZX_RR,
-        .movzx_rr.dst_size = dst_size,
-        .movzx_rr.src_size = src_size,
-        .movzx_rr.dst = dst,
-        .movzx_rr.src = src,
-    };
-
-    array_push(*instrs, movzx_rr_instr);
-}
-
-static void X64_emit_instr_movzx_rm(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
-{
-    X64_Instr movzx_rm_instr = {
-        .flags = X64_Instr_Kind_MOVZX_RM,
-        .movzx_rm.dst_size = dst_size,
-        .movzx_rm.src_size = src_size,
-        .movzx_rm.dst = dst,
-        .movzx_rm.src = src,
-    };
-
-    array_push(*instrs, movzx_rm_instr);
-}
-
-static void X64_emit_instr_mov_flt_rr(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr mov_flt_rr_instr = {
-        .flags = X64_Instr_Kind_MOV_FLT_RR,
-        .mov_flt_rr.kind = kind,
-        .mov_flt_rr.dst = dst,
-        .mov_flt_rr.src = src,
-    };
-
-    array_push(*instrs, mov_flt_rr_instr);
-}
-
-static void X64_emit_instr_mov_flt_mr(Array(X64_Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr mov_flt_mr_instr = {
-        .flags = X64_Instr_Kind_MOV_FLT_MR,
-        .mov_flt_mr.kind = kind,
-        .mov_flt_mr.dst = dst,
-        .mov_flt_mr.src = src,
-    };
-
-    array_push(*instrs, mov_flt_mr_instr);
-}
-
-static void X64_emit_instr_mov_flt_rm(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr mov_flt_rm_instr = {
-        .flags = X64_Instr_Kind_MOV_FLT_RM,
-        .mov_flt_rm.kind = kind,
-        .mov_flt_rm.dst = dst,
-        .mov_flt_rm.src = src,
-    };
-
-    array_push(*instrs, mov_flt_rm_instr);
-}
-
-static void X64_emit_instr_cvtss2sd_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr cvtss2sd_rr_instr = {
-        .flags = X64_Instr_Kind_CVTSS2SD_RR,
-        .cvtss2sd_rr.dst = dst,
-        .cvtss2sd_rr.src = src,
-    };
-
-    array_push(*instrs, cvtss2sd_rr_instr);
-}
-
-static void X64_emit_instr_cvtss2sd_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr cvtss2sd_rm_instr = {
-        .flags = X64_Instr_Kind_CVTSS2SD_RM,
-        .cvtss2sd_rm.dst = dst,
-        .cvtss2sd_rm.src = src,
-    };
-
-    array_push(*instrs, cvtss2sd_rm_instr);
-}
-
-static void X64_emit_instr_cvtsd2ss_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr cvtsd2ss_rr_instr = {
-        .flags = X64_Instr_Kind_CVTSD2SS_RR,
-        .cvtsd2ss_rr.dst = dst,
-        .cvtsd2ss_rr.src = src,
-    };
-
-    array_push(*instrs, cvtsd2ss_rr_instr);
-}
-
-static void X64_emit_instr_cvtsd2ss_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr cvtsd2ss_rm_instr = {
-        .flags = X64_Instr_Kind_CVTSD2SS_RM,
-        .cvtsd2ss_rm.dst = dst,
-        .cvtsd2ss_rm.src = src,
-    };
-
-    array_push(*instrs, cvtsd2ss_rm_instr);
-}
+#define X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RM(f_d, k_d)                                                            \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, X64_Reg dst, bool dst_8bytes, X64_SIBD_Addr src) \
+    {                                                                                                             \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                                             \
+        instr->f_d.dst = dst;                                                                                     \
+        instr->f_d.src = src;                                                                                     \
+                                                                                                                  \
+        if (dst_8bytes) {                                                                                         \
+            instr->flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;                                                      \
+        }                                                                                                         \
+                                                                                                                  \
+        X64_push_instr(proc_state, instr);                                                                        \
+    }
 
 // f32 to int
-static void X64_emit_instr_cvttss2si_rr(Array(X64_Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_Reg src)
-{
-    u32 flags = X64_Instr_Kind_CVTTSS2SI_RR;
-    if (dst_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvttss2si_rr_instr = {
-        .flags = flags,
-        .cvttss2si_rr.dst = dst,
-        .cvttss2si_rr.src = src,
-    };
-
-    array_push(*instrs, cvttss2si_rr_instr);
-}
-
-static void X64_emit_instr_cvttss2si_rm(Array(X64_Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_SIBD_Addr src)
-{
-    u32 flags = X64_Instr_Kind_CVTTSS2SI_RM;
-    if (dst_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvttss2si_rm_instr = {
-        .flags = flags,
-        .cvttss2si_rm.dst = dst,
-        .cvttss2si_rm.src = src,
-    };
-
-    array_push(*instrs, cvttss2si_rm_instr);
-}
+X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RR(cvttss2si_rr, X64_Instr_Kind_CVTTSS2SI_RR)
+X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RM(cvttss2si_rm, X64_Instr_Kind_CVTTSS2SI_RM)
 
 // f64 to int
-static void X64_emit_instr_cvttsd2si_rr(Array(X64_Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_Reg src)
-{
-    u32 flags = X64_Instr_Kind_CVTTSD2SI_RR;
-    if (dst_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RR(cvttsd2si_rr, X64_Instr_Kind_CVTTSD2SI_RR)
+X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RM(cvttsd2si_rm, X64_Instr_Kind_CVTTSD2SI_RM)
+
+#define X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RR(f_d, k_d)                                                      \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, X64_Reg dst, X64_Reg src, bool src_8bytes) \
+    {                                                                                                       \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                                       \
+        instr->f_d.dst = dst;                                                                               \
+        instr->f_d.src = src;                                                                               \
+                                                                                                            \
+        if (src_8bytes) {                                                                                   \
+            instr->flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;                                                \
+        }                                                                                                   \
+                                                                                                            \
+        X64_push_instr(proc_state, instr);                                                                  \
     }
 
-    X64_Instr cvttsd2si_rr_instr = {
-        .flags = flags,
-        .cvttsd2si_rr.dst = dst,
-        .cvttsd2si_rr.src = src,
-    };
-
-    array_push(*instrs, cvttsd2si_rr_instr);
-}
-
-static void X64_emit_instr_cvttsd2si_rm(Array(X64_Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_SIBD_Addr src)
-{
-    u32 flags = X64_Instr_Kind_CVTTSD2SI_RM;
-    if (dst_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+#define X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RM(f_d, k_d)                                                            \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, X64_Reg dst, X64_SIBD_Addr src, bool src_8bytes) \
+    {                                                                                                             \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                                             \
+        instr->f_d.dst = dst;                                                                                     \
+        instr->f_d.src = src;                                                                                     \
+                                                                                                                  \
+        if (src_8bytes) {                                                                                         \
+            instr->flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;                                                      \
+        }                                                                                                         \
+                                                                                                                  \
+        X64_push_instr(proc_state, instr);                                                                        \
     }
-
-    X64_Instr cvttsd2si_rm_instr = {
-        .flags = flags,
-        .cvttsd2si_rm.dst = dst,
-        .cvttsd2si_rm.src = src,
-    };
-
-    array_push(*instrs, cvttsd2si_rm_instr);
-}
 
 // int to f32
-static void X64_emit_instr_cvtsi2ss_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src, bool src_8bytes)
-{
-    u32 flags = X64_Instr_Kind_CVTSI2SS_RR;
-    if (src_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvtsi2ss_rr_instr = {
-        .flags = flags,
-        .cvtsi2ss_rr.dst = dst,
-        .cvtsi2ss_rr.src = src,
-    };
-
-    array_push(*instrs, cvtsi2ss_rr_instr);
-}
-
-static void X64_emit_instr_cvtsi2ss_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src, bool src_8bytes)
-{
-    u32 flags = X64_Instr_Kind_CVTSI2SS_RM;
-    if (src_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvtsi2ss_rm_instr = {
-        .flags = flags,
-        .cvtsi2ss_rm.dst = dst,
-        .cvtsi2ss_rm.src = src,
-    };
-
-    array_push(*instrs, cvtsi2ss_rm_instr);
-}
+X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RR(cvtsi2ss_rr, X64_Instr_Kind_CVTSI2SS_RR)
+X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RM(cvtsi2ss_rm, X64_Instr_Kind_CVTSI2SS_RM)
 
 // int to f64
-static void X64_emit_instr_cvtsi2sd_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src, bool src_8bytes)
-{
-    u32 flags = X64_Instr_Kind_CVTSI2SD_RR;
-    if (src_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
+X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RR(cvtsi2sd_rr, X64_Instr_Kind_CVTSI2SD_RR)
+X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RM(cvtsi2sd_rm, X64_Instr_Kind_CVTSI2SD_RM)
 
-    X64_Instr cvtsi2sd_rr_instr = {
-        .flags = flags,
-        .cvtsi2sd_rr.dst = dst,
-        .cvtsi2sd_rr.src = src,
-    };
-
-    array_push(*instrs, cvtsi2sd_rr_instr);
-}
-
-static void X64_emit_instr_cvtsi2sd_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src, bool src_8bytes)
-{
-    u32 flags = X64_Instr_Kind_CVTSI2SD_RM;
-    if (src_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvtsi2sd_rm_instr = {
-        .flags = flags,
-        .cvtsi2sd_rm.dst = dst,
-        .cvtsi2sd_rm.src = src,
-    };
-
-    array_push(*instrs, cvtsi2sd_rm_instr);
-}
-
-static void X64_emit_instr_movdqu_mr(Array(X64_Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
+static void X64_emit_instr_movdqu_mr(X64_Proc_State* proc_state, X64_SIBD_Addr dst, X64_Reg src)
 {
     assert(x64_reg_classes[src] == X64_REG_CLASS_FLOAT);
-    X64_Instr movdqu_mr_instr = {
-        .flags = X64_Instr_Kind_MOVDQU_MR,
-        .movdqu_mr.dst = dst,
-        .movdqu_mr.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, X64_Instr_Kind_MOVDQU_MR);
+    instr->movdqu_mr.dst = dst;
+    instr->movdqu_mr.src = src;
 
-    array_push(*instrs, movdqu_mr_instr);
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_movdqu_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_emit_instr_movdqu_rm(X64_Proc_State* proc_state, X64_Reg dst, X64_SIBD_Addr src)
 {
     assert(x64_reg_classes[dst] == X64_REG_CLASS_FLOAT);
-    X64_Instr movdqu_rm_instr = {
-        .flags = X64_Instr_Kind_MOVDQU_RM,
-        .movdqu_rm.dst = dst,
-        .movdqu_rm.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, X64_Instr_Kind_MOVDQU_RM);
+    instr->movdqu_rm.dst = dst;
+    instr->movdqu_rm.src = src;
 
-    array_push(*instrs, movdqu_rm_instr);
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_cmp_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr cmp_rr_instr = {
-        .flags = X64_Instr_Kind_CMP_RR,
-        .cmp_rr.size = size,
-        .cmp_rr.dst = dst,
-        .cmp_rr.src = src,
-    };
+X64_DEF_EMIT_INSTR_BINARY_RR(cmp_rr, X64_Instr_Kind_CMP_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(cmp_rm, X64_Instr_Kind_CMP_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(cmp_mr, X64_Instr_Kind_CMP_MR)
+X64_DEF_EMIT_INSTR_BINARY_RI(cmp_ri, X64_Instr_Kind_CMP_RI)
+X64_DEF_EMIT_INSTR_BINARY_MI(cmp_mi, X64_Instr_Kind_CMP_MI)
 
-    array_push(*instrs, cmp_rr_instr);
-}
+#define X64_DEF_EMIT_INSTR_CMP_FLT_RR(f_d, k_d)                                            \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, X64_Reg dst, X64_Reg src) \
+    {                                                                                      \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                      \
+        instr->f_d.dst = dst;                                                              \
+        instr->f_d.src = src;                                                              \
+                                                                                           \
+        X64_push_instr(proc_state, instr);                                                 \
+    }
 
-static void X64_emit_instr_cmp_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr cmp_rm_instr = {
-        .flags = X64_Instr_Kind_CMP_RM,
-        .cmp_rm.size = size,
-        .cmp_rm.dst = dst,
-        .cmp_rm.src = src,
-    };
-
-    array_push(*instrs, cmp_rm_instr);
-}
-
-static void X64_emit_instr_cmp_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr cmp_mr_instr = {
-        .flags = X64_Instr_Kind_CMP_MR,
-        .cmp_mr.size = size,
-        .cmp_mr.dst = dst,
-        .cmp_mr.src = src,
-    };
-
-    array_push(*instrs, cmp_mr_instr);
-}
-
-static void X64_emit_instr_cmp_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
-{
-    X64_Instr cmp_ri_instr = {
-        .flags = X64_Instr_Kind_CMP_RI,
-        .cmp_ri.size = size,
-        .cmp_ri.dst = dst,
-        .cmp_ri.imm = imm,
-    };
-
-    array_push(*instrs, cmp_ri_instr);
-}
-
-static void X64_emit_instr_cmp_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr cmp_mi_instr = {
-        .flags = X64_Instr_Kind_CMP_MI,
-        .cmp_mi.size = size,
-        .cmp_mi.dst = dst,
-        .cmp_mi.imm = imm,
-    };
-
-    array_push(*instrs, cmp_mi_instr);
-}
+#define X64_DEF_EMIT_INSTR_CMP_FLT_RM(f_d, k_d)                                                  \
+    static void X64_emit_instr_##f_d(X64_Proc_State* proc_state, X64_Reg dst, X64_SIBD_Addr src) \
+    {                                                                                            \
+        X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, k_d);                            \
+        instr->f_d.dst = dst;                                                                    \
+        instr->f_d.src = src;                                                                    \
+                                                                                                 \
+        X64_push_instr(proc_state, instr);                                                       \
+    }
 
 // Compare f32s
-static void X64_emit_instr_ucomiss_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr ucomiss_rr_instr = {
-        .flags = X64_Instr_Kind_UCOMISS_RR,
-        .ucomiss_rr.dst = dst,
-        .ucomiss_rr.src = src,
-    };
-
-    array_push(*instrs, ucomiss_rr_instr);
-}
-
-static void X64_emit_instr_ucomiss_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr ucomiss_rm_instr = {
-        .flags = X64_Instr_Kind_UCOMISS_RM,
-        .ucomiss_rm.dst = dst,
-        .ucomiss_rm.src = src,
-    };
-
-    array_push(*instrs, ucomiss_rm_instr);
-}
+X64_DEF_EMIT_INSTR_CMP_FLT_RR(ucomiss_rr, X64_Instr_Kind_UCOMISS_RR)
+X64_DEF_EMIT_INSTR_CMP_FLT_RM(ucomiss_rm, X64_Instr_Kind_UCOMISS_RM)
 
 // Compare f64s
-static void X64_emit_instr_ucomisd_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr ucomisd_rr_instr = {
-        .flags = X64_Instr_Kind_UCOMISD_RR,
-        .ucomisd_rr.dst = dst,
-        .ucomisd_rr.src = src,
-    };
+X64_DEF_EMIT_INSTR_CMP_FLT_RR(ucomisd_rr, X64_Instr_Kind_UCOMISD_RR)
+X64_DEF_EMIT_INSTR_CMP_FLT_RM(ucomisd_rm, X64_Instr_Kind_UCOMISD_RM)
 
-    array_push(*instrs, ucomisd_rr_instr);
+static void X64_emit_instr_lea(X64_Proc_State* proc_state, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, X64_Instr_Kind_LEA);
+    instr->lea.dst = dst;
+    instr->lea.src = src;
+
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_ucomisd_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_emit_instr_rep_movsb(X64_Proc_State* proc_state)
 {
-    X64_Instr ucomisd_rm_instr = {
-        .flags = X64_Instr_Kind_UCOMISD_RM,
-        .ucomisd_rm.dst = dst,
-        .ucomisd_rm.src = src,
-    };
-
-    array_push(*instrs, ucomisd_rm_instr);
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, X64_Instr_Kind_REP_MOVSB);
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_lea(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_emit_instr_rep_stosb(X64_Proc_State* proc_state)
 {
-    X64_Instr lea_instr = {
-        .flags = X64_Instr_Kind_LEA,
-        .lea.dst = dst,
-        .lea.src = src,
-    };
-
-    array_push(*instrs, lea_instr);
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, X64_Instr_Kind_REP_STOSB);
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_rep_movsb(Array(X64_Instr) * instrs)
+static void X64_emit_instr_syscall(X64_Proc_State* proc_state)
 {
-    X64_Instr instr = {.flags = X64_Instr_Kind_REP_MOVSB};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, X64_Instr_Kind_SYSCALL);
+    X64_push_instr(proc_state, instr);
 }
 
-static void X64_emit_instr_rep_stosb(Array(X64_Instr) * instrs)
+static X64_Instr* X64_emit_instr_placeholder(X64_Proc_State* proc_state, X64_Instr_Kind kind)
 {
-    X64_Instr instr = {.flags = X64_Instr_Kind_REP_STOSB};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(proc_state->gen_mem, kind);
+    X64_push_instr(proc_state, instr);
+    return instr;
 }
 
-static void X64_emit_instr_syscall(Array(X64_Instr) * instrs)
-{
-    X64_Instr instr = {.flags = X64_Instr_Kind_SYSCALL};
-    array_push(*instrs, instr);
-}
-
-static size_t X64_emit_instr_placeholder(Array(X64_Instr) * instrs, X64_Instr_Kind kind)
-{
-    X64_Instr instr = {.flags = kind};
-    array_push(*instrs, instr);
-    return array_len(*instrs) - 1;
-}
-
-static void X64_push_reg_to_stack(Array(X64_Instr) * instrs, X64_Reg reg)
+static void X64_push_reg_to_stack(X64_Proc_State* proc_state, X64_Reg reg)
 {
     if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
-        X64_emit_instr_push(instrs, reg);
+        X64_emit_instr_push(proc_state, reg);
     }
     else {
-        X64_emit_instr_sub_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
-        X64_emit_instr_movdqu_mr(instrs, X64_get_rsp_offset_addr(0), reg); // movdqu oword [rsp], reg
+        X64_emit_instr_sub_ri(proc_state, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
+        X64_emit_instr_movdqu_mr(proc_state, X64_get_rsp_offset_addr(0), reg); // movdqu oword [rsp], reg
     }
 }
 
-static void X64_pop_reg_from_stack(Array(X64_Instr) * instrs, X64_Reg reg)
+static void X64_pop_reg_from_stack(X64_Proc_State* proc_state, X64_Reg reg)
 {
     if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
-        X64_emit_instr_pop(instrs, reg);
+        X64_emit_instr_pop(proc_state, reg);
     }
     else {
-        X64_emit_instr_movdqu_rm(instrs, reg, X64_get_rsp_offset_addr(0)); // movdqu reg, oword [rsp]
-        X64_emit_instr_add_ri(instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
+        X64_emit_instr_movdqu_rm(proc_state, reg, X64_get_rsp_offset_addr(0)); // movdqu reg, oword [rsp]
+        X64_emit_instr_add_ri(proc_state, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
     }
 }
 
-static void X64_load_prim_from_mem(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_load_prim_from_mem(X64_Proc_State* proc_state, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     const X64_RegClass reg_class = x64_reg_classes[dst];
 
     if (reg_class == X64_REG_CLASS_INT) {
-        X64_emit_instr_mov_rm(instrs, size, dst, src);
+        X64_emit_instr_mov_rm(proc_state, size, dst, src);
     }
     else {
         assert(reg_class == X64_REG_CLASS_FLOAT);
-        X64_emit_instr_mov_flt_rm(instrs, X64_flt_kind_from_size(size), dst, src);
+        X64_emit_instr_mov_flt_rm(proc_state, X64_flt_kind_from_size(size), dst, src);
     }
 }
 
-static void X64_save_prim_to_mem(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
+static void X64_save_prim_to_mem(X64_Proc_State* proc_state, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     const X64_RegClass reg_class = x64_reg_classes[src];
     if (reg_class == X64_REG_CLASS_INT) {
-        X64_emit_instr_mov_mr(instrs, size, dst, src);
+        X64_emit_instr_mov_mr(proc_state, size, dst, src);
     }
     else {
         assert(reg_class == X64_REG_CLASS_FLOAT);
-        X64_emit_instr_mov_flt_mr(instrs, X64_flt_kind_from_size(size), dst, src);
+        X64_emit_instr_mov_flt_mr(proc_state, X64_flt_kind_from_size(size), dst, src);
     }
 }
 
-typedef void X64_Emit_Bin_Int_RR_Func(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src);
-typedef void X64_Emit_Bin_Int_RM_Func(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src);
-typedef void X64_Emit_Bin_Int_RI_Func(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm);
-typedef void X64_Emit_Bin_Int_MR_Func(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
-typedef void X64_Emit_Bin_Int_MI_Func(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm);
-typedef void X64_Emit_Mov_Ext_RR_Func(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src);
-typedef void X64_Emit_Mov_Ext_RM_Func(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Int_RR_Func(X64_Proc_State* proc_state, u8 size, X64_Reg dst, X64_Reg src);
+typedef void X64_Emit_Bin_Int_RM_Func(X64_Proc_State* proc_state, u8 size, X64_Reg dst, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Int_RI_Func(X64_Proc_State* proc_state, u8 size, X64_Reg dst, u32 imm);
+typedef void X64_Emit_Bin_Int_MR_Func(X64_Proc_State* proc_state, u8 size, X64_SIBD_Addr dst, X64_Reg src);
+typedef void X64_Emit_Bin_Int_MI_Func(X64_Proc_State* proc_state, u8 size, X64_SIBD_Addr dst, u32 imm);
+typedef void X64_Emit_Mov_Ext_RR_Func(X64_Proc_State* proc_state, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src);
+typedef void X64_Emit_Mov_Ext_RM_Func(X64_Proc_State* proc_state, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src);
 
 static inline X64_Emit_Bin_Int_RR_Func* x64_bin_int_rr_emit_funcs(X64_Instr_Kind kind)
 {
@@ -1220,9 +882,9 @@ static inline X64_Emit_Mov_Ext_RM_Func* x64_mov_ext_rm_emit_funcs(X64_Instr_Kind
     }
 }
 
-typedef void X64_Emit_Bin_Flt_RR_Func(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src);
-typedef void X64_Emit_Bin_Flt_RM_Func(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src);
-typedef void X64_Emit_Bin_Flt_MR_Func(Array(X64_Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src);
+typedef void X64_Emit_Bin_Flt_RR_Func(X64_Proc_State* proc_state, FloatKind kind, X64_Reg dst, X64_Reg src);
+typedef void X64_Emit_Bin_Flt_RM_Func(X64_Proc_State* proc_state, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Flt_MR_Func(X64_Proc_State* proc_state, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src);
 
 static inline X64_Emit_Bin_Flt_RR_Func* x64_bin_flt_rr_emit_funcs(X64_Instr_Kind kind)
 {
@@ -1289,11 +951,6 @@ static XIR_RegLoc X64_lreg_loc(X64_Proc_State* proc_state, u32 lreg)
     XIR_RegLoc reg_loc = proc_state->xir_builder->lreg_ranges[rng_idx].loc;
 
     assert(reg_loc.kind != XIR_LREG_LOC_UNASSIGNED);
-
-    if (reg_loc.kind == XIR_LREG_LOC_STACK) {
-        ftprint_out("reg_loc.offset = %d, spill = %d\n", reg_loc.offset, proc_state->spill_stack_size);
-        reg_loc.offset -= (s32)proc_state->spill_stack_size;
-    }
 
     return reg_loc;
 }
@@ -1373,8 +1030,8 @@ static X64_Reg X64_get_reg(X64_Reg_Group* group, X64_RegClass reg_class, u32 lre
     tmp_reg->size = size;
     tmp_reg->store = store;
 
-    X64_push_reg_to_stack(&proc_state->instrs, tmp_reg->reg);
-    X64_load_prim_from_mem(&proc_state->instrs, size, tmp_reg->reg, X64_get_rbp_offset_addr(lreg_loc.offset));
+    X64_push_reg_to_stack(proc_state, tmp_reg->reg);
+    X64_load_prim_from_mem(proc_state, size, tmp_reg->reg, X64_get_rbp_offset_addr(lreg_loc.offset));
 
     // Add scratch register to the list (stack) of regs in group.
     tmp_reg->next = group->first_tmp_reg;
@@ -1393,7 +1050,7 @@ static void X64_save_reg_to_group(X64_Reg_Group* group, X64_Reg reg)
     X64_Tmp_Reg* tmp_reg = alloc_type(tmp_mem, X64_Tmp_Reg, true);
     tmp_reg->reg = reg;
 
-    X64_push_reg_to_stack(&group->proc_state->instrs, tmp_reg->reg);
+    X64_push_reg_to_stack(group->proc_state, tmp_reg->reg);
 
     // Add scratch register to the list (stack) of regs in group.
     tmp_reg->next = group->first_tmp_reg;
@@ -1417,11 +1074,11 @@ static void X64_end_reg_group(X64_Reg_Group* group)
     while (it) {
         if (it->store) {
             // Save to memory if the temporary register was holding a value for a variable that lives on the stack.
-            X64_save_prim_to_mem(&proc_state->instrs, it->size, X64_get_rbp_offset_addr(it->offset), it->reg);
+            X64_save_prim_to_mem(proc_state, it->size, X64_get_rbp_offset_addr(it->offset), it->reg);
         }
 
         // Restore temporary register's original value.
-        X64_pop_reg_from_stack(&proc_state->instrs, it->reg);
+        X64_pop_reg_from_stack(proc_state, it->reg);
         it = it->next;
     }
 }
@@ -1447,18 +1104,18 @@ static s32 X64_consume_stack_arg(u64* stack_arg_offset, u64 arg_size, u64 arg_al
     return offset;
 }
 
-static s32 X64_spill_reg(Array(X64_Instr) * instrs, X64_Stack_Spill_State* state, u64 size, u64 align, X64_Reg preg)
+static s32 X64_spill_reg(X64_Proc_State* proc_state, X64_Stack_Spill_State* state, u64 size, u64 align, X64_Reg preg)
 {
     state->stack_spill_size += size;
     state->stack_spill_size = ALIGN_UP(state->stack_spill_size, align);
     s32 offset = -state->stack_spill_size;
 
-    X64_save_prim_to_mem(instrs, size, X64_get_rbp_offset_addr(offset), preg);
+    X64_save_prim_to_mem(proc_state, size, X64_get_rbp_offset_addr(offset), preg);
 
     return offset;
 }
 
-static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbol* sproc, X64_Stack_Params_Info* stack_params_info)
+static void X64_assign_proc_param_offsets(X64_Proc_State* proc_state, const Symbol* sproc, X64_Stack_Params_Info* stack_params_info)
 {
     const DeclProc* dproc = (const DeclProc*)sproc->decl;
     const Type* ret_type = sproc->type->as_proc.ret;
@@ -1473,7 +1130,7 @@ static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbo
     if (type_is_obj_like(ret_type) && X64_is_obj_retarg_large(ret_type->size)) {
         X64_ScratchRegs arg_int_regs = (*x64_target.arg_regs)[X64_REG_CLASS_INT];
 
-        X64_spill_reg(instrs, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE,
+        X64_spill_reg(proc_state, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE,
                       arg_int_regs.regs[arg_reg_indices[X64_REG_CLASS_INT]]);
         arg_reg_indices[X64_REG_CLASS_INT] += 1;
     }
@@ -1507,7 +1164,7 @@ static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbo
                 X64_Reg arg_reg = arg_regs.regs[*arg_reg_index];
                 *arg_reg_index += 1;
 
-                sym->as_var.offset = X64_spill_reg(instrs, &state, X64_MAX_INT_REG_SIZE, arg_align, arg_reg);
+                sym->as_var.offset = X64_spill_reg(proc_state, &state, X64_MAX_INT_REG_SIZE, arg_align, arg_reg);
             }
             else if ((arg_size <= (X64_MAX_INT_REG_SIZE << 1)) && (rem_regs >= 2)) {
                 X64_Reg low_reg = arg_regs.regs[*arg_reg_index];
@@ -1515,8 +1172,8 @@ static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbo
                 X64_Reg high_reg = arg_regs.regs[*arg_reg_index];
                 *arg_reg_index += 1;
 
-                X64_spill_reg(instrs, &state, X64_MAX_INT_REG_SIZE, arg_align, high_reg);
-                sym->as_var.offset = X64_spill_reg(instrs, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
+                X64_spill_reg(proc_state, &state, X64_MAX_INT_REG_SIZE, arg_align, high_reg);
+                sym->as_var.offset = X64_spill_reg(proc_state, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
             }
             else {
                 sym->as_var.offset = X64_consume_stack_arg(&state.stack_arg_offset, arg_size, arg_align);
@@ -1532,7 +1189,7 @@ static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbo
                 X64_Reg arg_reg = arg_regs.regs[*arg_reg_index];
                 *arg_reg_index += 1;
 
-                sym->as_var.offset = X64_spill_reg(instrs, &state, arg_size, arg_align, arg_reg);
+                sym->as_var.offset = X64_spill_reg(proc_state, &state, arg_size, arg_align, arg_reg);
             }
             else {
                 sym->as_var.offset = X64_consume_stack_arg(&state.stack_arg_offset, arg_size, arg_align);
@@ -1622,7 +1279,7 @@ static u64 X64_assign_proc_stack_offsets(X64_Proc_State* proc_state)
     //
 
     X64_Stack_Params_Info stack_params_info = {0};
-    X64_assign_proc_param_offsets(&proc_state->instrs, sproc, &stack_params_info);
+    X64_assign_proc_param_offsets(proc_state, sproc, &stack_params_info);
 
     u64 stack_size = stack_params_info.stack_spill_size;
 
@@ -1642,7 +1299,6 @@ static u64 X64_assign_proc_stack_offsets(X64_Proc_State* proc_state)
                 stack_size += sym->type->size;
                 stack_size = ALIGN_UP(stack_size, sym->type->align);
                 sym->as_var.offset = -stack_size;
-                ftprint_out("local var offset = %d\n", sym->as_var.offset);
             }
 
             it = it->next;
@@ -1765,48 +1421,20 @@ static u32 X64_get_sibd_addr(X64_Proc_State* proc_state, X64_SIBD_Addr* sibd_add
     return used_regs;
 }
 
-static void X64_patch_jmp_instrs(X64_Instr* instrs, size_t num_instrs, const HMap* bblock_instr_starts)
+static void X64_patch_jmp_instrs(X64_Instrs* instrs, u32 ret_bblock_idx)
 {
-    for (size_t i = 0; i < num_instrs; ++i) {
-        X64_Instr* instr = &instrs[i];
-        X64_Instr_Kind kind = X64_get_instr_kind(instr);
+    for (u32 bb = 0; bb < instrs->num_bblocks; ++bb) {
+        X64_BBlock* bblock = &instrs->bblocks[bb];
+        X64_Instr* instr = bblock->head;
 
-        switch (kind) {
-        case X64_Instr_Kind_JMP: {
-            // jmp.target initially contains the target bblock ID.
-            // Use the map to get the bblock's starting instruction index.
-            size_t* instr_index = hmap_get(bblock_instr_starts, instr->jmp.target + 1); // The key is offset by 1 (can't have a 0 key)
-            assert(instr_index != NULL);
-            assert(*instr_index <= num_instrs);
-            instr->jmp.target = u64_to_u32(*instr_index);
+        while (instr) {
+            X64_Instr_Kind kind = X64_get_instr_kind(instr);
 
-            // Mark the jmp target instruction.
-            if (*instr_index <
-                num_instrs) { // Empty final basic block will cause *instr_index == num_instrs
-                              // This happens when instructions are optimized out in final block (mov with same ops, ret as last instr)
-                X64_mark_instr_as_jmp_target(&instrs[*instr_index]);
+            if (kind == X64_Instr_Kind_JMP_TO_RET) {
+                instr->jmp.target = ret_bblock_idx;
             }
-        } break;
-        case X64_Instr_Kind_JMPCC: {
-            // jmpcc.target initially contains the target bblock ID.
-            // Use the map to get the bblock's starting instruction index.
-            size_t* instr_index =
-                hmap_get(bblock_instr_starts, instr->jmpcc.target + 1); // The key is offset by 1 (can't have a 0 key)
-            assert(instr_index != NULL);
-            assert(*instr_index <= num_instrs);
-            instr->jmpcc.target = u64_to_u32(*instr_index);
 
-            // Mark the jmp target instruction.
-            if (*instr_index < num_instrs) { // Empty final basic block will cause *instr_index == num_instrs
-                X64_mark_instr_as_jmp_target(&instrs[*instr_index]);
-            }
-        } break;
-        case X64_Instr_Kind_JMP_TO_RET:
-            // Jump after the last instruction (to post-amble).
-            instr->jmp.target = u64_to_u32(num_instrs);
-            break;
-        default:
-            break;
+            instr = instr->next;
         }
     }
 }
@@ -1821,11 +1449,11 @@ static void X64_emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     case XIR_LREG_LOC_REG: {
         switch (op2_loc.kind) {
         case XIR_LREG_LOC_REG: {
-            x64_bin_int_rr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_loc.reg, op2_loc.reg);
+            x64_bin_int_rr_emit_funcs(instr_kind)(proc_state, op_size, op1_loc.reg, op2_loc.reg);
             break;
         }
         case XIR_LREG_LOC_STACK: {
-            x64_bin_int_rm_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_loc.reg, X64_get_rbp_offset_addr(op2_loc.offset));
+            x64_bin_int_rm_emit_funcs(instr_kind)(proc_state, op_size, op1_loc.reg, X64_get_rbp_offset_addr(op2_loc.offset));
             break;
         }
         default:
@@ -1837,7 +1465,7 @@ static void X64_emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     case XIR_LREG_LOC_STACK: {
         switch (op2_loc.kind) {
         case XIR_LREG_LOC_REG: {
-            x64_bin_int_mr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, X64_get_rbp_offset_addr(op1_loc.offset), op2_loc.reg);
+            x64_bin_int_mr_emit_funcs(instr_kind)(proc_state, op_size, X64_get_rbp_offset_addr(op1_loc.offset), op2_loc.reg);
             break;
         }
         case XIR_LREG_LOC_STACK: {
@@ -1847,21 +1475,21 @@ static void X64_emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
             const X64_Reg tmp_reg = X64_RAX;
 
             // Save the contents of a temporary register into the stack.
-            X64_emit_instr_push(&proc_state->instrs, tmp_reg);
+            X64_emit_instr_push(proc_state, tmp_reg);
 
             // Load dst (currently spilled) into the temporary register,
-            X64_emit_instr_mov_rm(&proc_state->instrs, op_size, tmp_reg, op1_addr);
+            X64_emit_instr_mov_rm(proc_state, op_size, tmp_reg, op1_addr);
 
             // Execute the instruction using the temporary register as the destination.
-            x64_bin_int_rm_emit_funcs(instr_kind)(&proc_state->instrs, op_size, tmp_reg, op2_addr);
+            x64_bin_int_rm_emit_funcs(instr_kind)(proc_state, op_size, tmp_reg, op2_addr);
 
             // Store the result of the instruction (contents of temporary register) into dst.
             if (writes_op1) {
-                X64_emit_instr_mov_mr(&proc_state->instrs, op_size, op1_addr, tmp_reg);
+                X64_emit_instr_mov_mr(proc_state, op_size, op1_addr, tmp_reg);
             }
 
             // Restore the contents of the temporary register.
-            X64_emit_instr_pop(&proc_state->instrs, tmp_reg);
+            X64_emit_instr_pop(proc_state, tmp_reg);
             break;
         }
         default:
@@ -1886,11 +1514,11 @@ static void X64_emit_bin_flt_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     case XIR_LREG_LOC_REG: {
         switch (op2_loc.kind) {
         case XIR_LREG_LOC_REG: {
-            x64_bin_flt_rr_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, op1_loc.reg, op2_loc.reg);
+            x64_bin_flt_rr_emit_funcs(instr_kind)(proc_state, flt_kind, op1_loc.reg, op2_loc.reg);
             break;
         }
         case XIR_LREG_LOC_STACK: {
-            x64_bin_flt_rm_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, op1_loc.reg, X64_get_rbp_offset_addr(op2_loc.offset));
+            x64_bin_flt_rm_emit_funcs(instr_kind)(proc_state, flt_kind, op1_loc.reg, X64_get_rbp_offset_addr(op2_loc.offset));
             break;
         }
         default:
@@ -1902,7 +1530,7 @@ static void X64_emit_bin_flt_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     case XIR_LREG_LOC_STACK: {
         switch (op2_loc.kind) {
         case XIR_LREG_LOC_REG: {
-            x64_bin_flt_mr_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, X64_get_rbp_offset_addr(op1_loc.offset), op2_loc.reg);
+            x64_bin_flt_mr_emit_funcs(instr_kind)(proc_state, flt_kind, X64_get_rbp_offset_addr(op1_loc.offset), op2_loc.reg);
             break;
         }
         case XIR_LREG_LOC_STACK: {
@@ -1912,23 +1540,23 @@ static void X64_emit_bin_flt_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
             const X64_Reg tmp_reg = X64_XMM0;
 
             // Save the contents of a temporary register into the stack.
-            X64_emit_instr_sub_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
-            X64_emit_instr_movdqu_mr(&proc_state->instrs, X64_get_rsp_offset_addr(0), tmp_reg); // movdqu oword [rsp], tmp_reg
+            X64_emit_instr_sub_ri(proc_state, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
+            X64_emit_instr_movdqu_mr(proc_state, X64_get_rsp_offset_addr(0), tmp_reg); // movdqu oword [rsp], tmp_reg
 
             // Load dst (currently spilled) into the temporary register,
-            X64_emit_instr_mov_flt_rm(&proc_state->instrs, flt_kind, tmp_reg, op1_addr);
+            X64_emit_instr_mov_flt_rm(proc_state, flt_kind, tmp_reg, op1_addr);
 
             // Execute the instruction using the temporary register as the destination.
-            x64_bin_flt_rm_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, tmp_reg, op2_addr);
+            x64_bin_flt_rm_emit_funcs(instr_kind)(proc_state, flt_kind, tmp_reg, op2_addr);
 
             // Store the result of the instruction (contents of temporary register) into dst.
             if (writes_op1) {
-                X64_emit_instr_mov_flt_mr(&proc_state->instrs, flt_kind, op1_addr, tmp_reg);
+                X64_emit_instr_mov_flt_mr(proc_state, flt_kind, op1_addr, tmp_reg);
             }
 
             // Restore the contents of the temporary register.
-            X64_emit_instr_movdqu_rm(&proc_state->instrs, tmp_reg, X64_get_rsp_offset_addr(0)); // movdqu reg, oword [rsp]
-            X64_emit_instr_add_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
+            X64_emit_instr_movdqu_rm(proc_state, tmp_reg, X64_get_rsp_offset_addr(0)); // movdqu reg, oword [rsp]
+            X64_emit_instr_add_ri(proc_state, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
             break;
         }
         default:
@@ -1956,12 +1584,11 @@ static void X64_emit_mov_ext_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
 
     switch (src_loc.kind) {
     case XIR_LREG_LOC_REG: {
-        x64_mov_ext_rr_emit_funcs(instr_kind)(&proc_state->instrs, dst_size, dst_reg, src_size, src_loc.reg);
+        x64_mov_ext_rr_emit_funcs(instr_kind)(proc_state, dst_size, dst_reg, src_size, src_loc.reg);
         break;
     }
     case XIR_LREG_LOC_STACK: {
-        x64_mov_ext_rm_emit_funcs(instr_kind)(&proc_state->instrs, dst_size, dst_reg, src_size,
-                                              X64_get_rbp_offset_addr(src_loc.offset));
+        x64_mov_ext_rm_emit_funcs(instr_kind)(proc_state, dst_size, dst_reg, src_size, X64_get_rbp_offset_addr(src_loc.offset));
         break;
     }
     default:
@@ -1981,7 +1608,7 @@ static void X64_emit_mov_ext_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
     X64_Reg dst_reg =
         X64_get_reg(&tmp_group, X64_REG_CLASS_INT, dst_lreg, dst_size, true, banned_tmp_regs); // Get actual reg or a tmp if spilled.
-    x64_mov_ext_rm_emit_funcs(movext_kind)(&proc_state->instrs, dst_size, dst_reg, src_size, src_addr);
+    x64_mov_ext_rm_emit_funcs(movext_kind)(proc_state, dst_size, dst_reg, src_size, src_addr);
     X64_end_reg_group(&tmp_group);
 }
 
@@ -1995,7 +1622,7 @@ static void X64_emit_bin_int_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     X64_Reg op1_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_INT, op1_lreg, op_size, writes_op1, pinned_regs);
     assert(op_size <= 8 && IS_POW2(op_size));
 
-    x64_bin_int_rm_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_reg, op2_addr);
+    x64_bin_int_rm_emit_funcs(instr_kind)(proc_state, op_size, op1_reg, op2_addr);
     X64_end_reg_group(&tmp_group);
 }
 
@@ -2008,7 +1635,7 @@ static void X64_emit_bin_flt_rm_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
     X64_Reg op1_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, op1_lreg, float_kind_sizes[flt_kind], writes_op1, pinned_regs);
 
-    x64_bin_flt_rm_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, op1_reg, op2_addr);
+    x64_bin_flt_rm_emit_funcs(instr_kind)(proc_state, flt_kind, op1_reg, op2_addr);
     X64_end_reg_group(&tmp_group);
 }
 
@@ -2022,7 +1649,7 @@ static void X64_emit_bin_int_mr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     X64_Reg op2_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_INT, op2_lreg, op_size, false, pinned_regs);
     assert(op_size <= 8 && IS_POW2(op_size));
 
-    x64_bin_int_mr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_addr, op2_reg);
+    x64_bin_int_mr_emit_funcs(instr_kind)(proc_state, op_size, op1_addr, op2_reg);
     X64_end_reg_group(&tmp_group);
 }
 
@@ -2035,7 +1662,7 @@ static void X64_emit_bin_flt_mr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
     X64_Reg op2_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, op2_lreg, float_kind_sizes[flt_kind], false, pinned_regs);
 
-    x64_bin_flt_mr_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, op1_addr, op2_reg);
+    x64_bin_flt_mr_emit_funcs(instr_kind)(proc_state, flt_kind, op1_addr, op2_reg);
     X64_end_reg_group(&tmp_group);
 }
 
@@ -2044,7 +1671,7 @@ static void X64_emit_bin_int_mi_instr(X64_Proc_State* proc_state, X64_Instr_Kind
 {
     X64_SIBD_Addr op1_addr = {0};
     X64_get_sibd_addr(proc_state, &op1_addr, op1_vaddr);
-    x64_bin_int_mi_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_addr, op2_imm.as_int._u32);
+    x64_bin_int_mi_emit_funcs(instr_kind)(proc_state, op_size, op1_addr, op2_imm.as_int._u32);
 }
 
 static void X64_emit_bin_int_ri_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, u32 op_size, u32 op1_lreg, Scalar op2_imm)
@@ -2053,12 +1680,12 @@ static void X64_emit_bin_int_ri_instr(X64_Proc_State* proc_state, X64_Instr_Kind
 
     switch (op1_loc.kind) {
     case XIR_LREG_LOC_REG: {
-        x64_bin_int_ri_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_loc.reg, op2_imm.as_int._u32);
+        x64_bin_int_ri_emit_funcs(instr_kind)(proc_state, op_size, op1_loc.reg, op2_imm.as_int._u32);
         break;
     }
     case XIR_LREG_LOC_STACK: {
         const X64_SIBD_Addr op1_addr = X64_get_rbp_offset_addr(op1_loc.offset);
-        x64_bin_int_mi_emit_funcs(instr_kind)(&proc_state->instrs, op_size, op1_addr, op2_imm.as_int._u32);
+        x64_bin_int_mi_emit_funcs(instr_kind)(proc_state, op_size, op1_addr, op2_imm.as_int._u32);
         break;
     }
     default:
@@ -2085,7 +1712,7 @@ static void X64_place_args_in_regs(X64_Proc_State* proc_state, u32 num_args, con
                 assert(slot->num_regs == 1);
                 assert(x64_reg_classes[slot->pregs[0]] == X64_REG_CLASS_INT);
 
-                X64_emit_instr_lea(&proc_state->instrs, slot->pregs[0], X64_get_rsp_offset_addr(slot->ptr_sp_offset));
+                X64_emit_instr_lea(proc_state, slot->pregs[0], X64_get_rsp_offset_addr(slot->ptr_sp_offset));
             }
             // Copy 64-bit chunks of the struct object into the appropriate argument registers.
             else {
@@ -2098,11 +1725,11 @@ static void X64_place_args_in_regs(X64_Proc_State* proc_state, u32 num_args, con
                     X64_RegClass reg_class = x64_reg_classes[slot->pregs[ii]];
 
                     if (reg_class == X64_REG_CLASS_INT) {
-                        X64_emit_instr_mov_rm(&proc_state->instrs, X64_MAX_INT_REG_SIZE, slot->pregs[ii], addr);
+                        X64_emit_instr_mov_rm(proc_state, X64_MAX_INT_REG_SIZE, slot->pregs[ii], addr);
                     }
                     else {
                         assert(reg_class == X64_REG_CLASS_FLOAT);
-                        X64_emit_instr_mov_flt_rm(&proc_state->instrs, FLOAT_F64, slot->pregs[ii], addr);
+                        X64_emit_instr_mov_flt_rm(proc_state, FLOAT_F64, slot->pregs[ii], addr);
                     }
 
                     addr.local.disp += X64_MAX_INT_REG_SIZE;
@@ -2123,12 +1750,12 @@ static void X64_place_args_in_regs(X64_Proc_State* proc_state, u32 num_args, con
                 X64_RegClass reg_class = x64_reg_classes[slot->preg];
 
                 if (reg_class == X64_REG_CLASS_INT) {
-                    X64_emit_instr_mov_rm(&proc_state->instrs, arg_size, slot->preg, X64_get_rbp_offset_addr(loc.offset));
+                    X64_emit_instr_mov_rm(proc_state, arg_size, slot->preg, X64_get_rbp_offset_addr(loc.offset));
                 }
                 else {
                     assert(reg_class == X64_REG_CLASS_FLOAT);
                     X64_SIBD_Addr src_mem = X64_get_rbp_offset_addr(loc.offset);
-                    X64_emit_instr_mov_flt_rm(&proc_state->instrs, X64_flt_kind_from_size(arg_size), slot->preg, src_mem);
+                    X64_emit_instr_mov_flt_rm(proc_state, X64_flt_kind_from_size(arg_size), slot->preg, src_mem);
                 }
             }
             else {
@@ -2159,9 +1786,9 @@ static void X64_place_struct_args_in_stack(X64_Proc_State* proc_state, u32 num_a
 
             // TODO: There's no need to push all (rdi, rsi, rcx) if not used.
             if (!pushed_cpy_state) {
-                X64_emit_instr_push(&proc_state->instrs, X64_RDI);
-                X64_emit_instr_push(&proc_state->instrs, X64_RSI);
-                X64_emit_instr_push(&proc_state->instrs, X64_RCX);
+                X64_emit_instr_push(proc_state, X64_RDI);
+                X64_emit_instr_push(proc_state, X64_RSI);
+                X64_emit_instr_push(proc_state, X64_RCX);
                 pushed_cpy_state = true;
             }
 
@@ -2172,17 +1799,17 @@ static void X64_place_struct_args_in_stack(X64_Proc_State* proc_state, u32 num_a
             X64_get_sibd_addr(proc_state, &src_addr, &arg->val.addr);
             assert(src_addr.kind == X64_SIBD_ADDR_LOCAL);
 
-            X64_emit_instr_lea(&proc_state->instrs, X64_RDI, X64_get_rsp_offset_addr(slot->sp_offset + sp_begin));
-            X64_emit_instr_lea(&proc_state->instrs, X64_RSI, src_addr);
-            X64_emit_instr_mov_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RCX, arg_size);
-            X64_emit_instr_rep_movsb(&proc_state->instrs);
+            X64_emit_instr_lea(proc_state, X64_RDI, X64_get_rsp_offset_addr(slot->sp_offset + sp_begin));
+            X64_emit_instr_lea(proc_state, X64_RSI, src_addr);
+            X64_emit_instr_mov_ri(proc_state, X64_MAX_INT_REG_SIZE, X64_RCX, arg_size);
+            X64_emit_instr_rep_movsb(proc_state);
         }
     }
 
     if (pushed_cpy_state) {
-        X64_emit_instr_pop(&proc_state->instrs, X64_RCX);
-        X64_emit_instr_pop(&proc_state->instrs, X64_RSI);
-        X64_emit_instr_pop(&proc_state->instrs, X64_RDI);
+        X64_emit_instr_pop(proc_state, X64_RCX);
+        X64_emit_instr_pop(proc_state, X64_RSI);
+        X64_emit_instr_pop(proc_state, X64_RDI);
     }
 }
 
@@ -2211,12 +1838,12 @@ static void X64_place_args_in_stack(X64_Proc_State* proc_state, u32 num_args, co
                 X64_RegClass reg_class = x64_reg_classes[loc.reg];
 
                 if (reg_class == X64_REG_CLASS_INT) {
-                    X64_emit_instr_mov_mr(&proc_state->instrs, arg_size, X64_get_rsp_offset_addr(slot->sp_offset), loc.reg);
+                    X64_emit_instr_mov_mr(proc_state, arg_size, X64_get_rsp_offset_addr(slot->sp_offset), loc.reg);
                 }
                 else {
                     assert(reg_class == X64_REG_CLASS_FLOAT);
-                    X64_emit_instr_mov_flt_mr(&proc_state->instrs, X64_flt_kind_from_size(arg_size),
-                                              X64_get_rsp_offset_addr(slot->sp_offset), loc.reg);
+                    X64_emit_instr_mov_flt_mr(proc_state, X64_flt_kind_from_size(arg_size), X64_get_rsp_offset_addr(slot->sp_offset),
+                                              loc.reg);
                 }
             }
         }
@@ -2241,10 +1868,10 @@ static void X64_place_args_in_stack(X64_Proc_State* proc_state, u32 num_args, co
 
         if (IS_LREG_IN_STACK(loc.kind)) {
             // Move into RAX.
-            X64_emit_instr_mov_rm(&proc_state->instrs, arg_size, X64_RAX, X64_get_rbp_offset_addr(loc.offset));
+            X64_emit_instr_mov_rm(proc_state, arg_size, X64_RAX, X64_get_rbp_offset_addr(loc.offset));
 
             // Move RAX into stack slot.
-            X64_emit_instr_mov_mr(&proc_state->instrs, arg_size, X64_get_rsp_offset_addr(slot->sp_offset), X64_RAX);
+            X64_emit_instr_mov_mr(proc_state, arg_size, X64_get_rsp_offset_addr(slot->sp_offset), X64_RAX);
         }
     }
 }
@@ -2261,11 +1888,11 @@ static size_t X64_fill_mem_from_reg(X64_Proc_State* proc_state, X64_SIBD_Addr* d
     // If need to copy 8 or more bytes, just copy entire register into memory, and then return.
     if (rem_amnt >= X64_MAX_INT_REG_SIZE) {
         if (src_reg_class == X64_REG_CLASS_FLOAT) {
-            X64_emit_instr_mov_flt_mr(&proc_state->instrs, FLOAT_F64, *dst, src);
+            X64_emit_instr_mov_flt_mr(proc_state, FLOAT_F64, *dst, src);
         }
         else {
             assert(src_reg_class == X64_REG_CLASS_INT);
-            X64_emit_instr_mov_mr(&proc_state->instrs, X64_MAX_INT_REG_SIZE, *dst, src);
+            X64_emit_instr_mov_mr(proc_state, X64_MAX_INT_REG_SIZE, *dst, src);
         }
 
         // Move dst addr forward.
@@ -2282,7 +1909,7 @@ static size_t X64_fill_mem_from_reg(X64_Proc_State* proc_state, X64_SIBD_Addr* d
             size_t n = pow2_sizes[rem_amnt];
 
             // Copy that amount into memory.
-            X64_emit_instr_mov_mr(&proc_state->instrs, n, *dst, src);
+            X64_emit_instr_mov_mr(proc_state, n, *dst, src);
 
             // Move dst addr forward.
             dst->local.disp += n;
@@ -2291,7 +1918,7 @@ static size_t X64_fill_mem_from_reg(X64_Proc_State* proc_state, X64_SIBD_Addr* d
 
             // Shift src register right to discard copied bits.
             if (new_rem_amnt) {
-                X64_emit_instr_sar_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, src, (u8)(n << 3));
+                X64_emit_instr_sar_ri(proc_state, X64_MAX_INT_REG_SIZE, src, (u8)(n << 3));
             }
 
             rem_amnt = new_rem_amnt;
@@ -2301,7 +1928,7 @@ static size_t X64_fill_mem_from_reg(X64_Proc_State* proc_state, X64_SIBD_Addr* d
         assert(src_reg_class == X64_REG_CLASS_FLOAT);
 
         if (rem_amnt == float_kind_sizes[FLOAT_F32]) {
-            X64_emit_instr_mov_flt_mr(&proc_state->instrs, FLOAT_F32, *dst, src);
+            X64_emit_instr_mov_flt_mr(proc_state, FLOAT_F32, *dst, src);
             rem_amnt = 0;
         }
         else {
@@ -2563,10 +2190,10 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         XIR_RegLoc dst_loc = X64_lreg_loc(proc_state, act_instr->dst);
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-            X64_emit_instr_neg_r(&proc_state->instrs, size, dst_loc.reg);
+            X64_emit_instr_neg_r(proc_state, size, dst_loc.reg);
         }
         else {
-            X64_emit_instr_neg_m(&proc_state->instrs, size, X64_get_rbp_offset_addr(dst_loc.offset));
+            X64_emit_instr_neg_m(proc_state, size, X64_get_rbp_offset_addr(dst_loc.offset));
         }
         break;
     }
@@ -2577,10 +2204,10 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         XIR_RegLoc dst_loc = X64_lreg_loc(proc_state, act_instr->dst);
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-            X64_emit_instr_not_r(&proc_state->instrs, size, dst_loc.reg);
+            X64_emit_instr_not_r(proc_state, size, dst_loc.reg);
         }
         else {
-            X64_emit_instr_not_m(&proc_state->instrs, size, X64_get_rbp_offset_addr(dst_loc.offset));
+            X64_emit_instr_not_m(proc_state, size, X64_get_rbp_offset_addr(dst_loc.offset));
         }
         break;
     }
@@ -2591,10 +2218,10 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
         XIR_RegLoc src_loc = X64_lreg_loc(proc_state, act_instr->src);
         if (IS_LREG_IN_REG(src_loc.kind)) {
-            X64_emit_instr_div_r(&proc_state->instrs, size, src_loc.reg);
+            X64_emit_instr_div_r(proc_state, size, src_loc.reg);
         }
         else {
-            X64_emit_instr_div_m(&proc_state->instrs, size, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_div_m(proc_state, size, X64_get_rbp_offset_addr(src_loc.offset));
         }
         break;
     }
@@ -2604,7 +2231,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_SIBD_Addr op_addr = {0};
 
         X64_get_sibd_addr(proc_state, &op_addr, &act_instr->src);
-        X64_emit_instr_div_m(&proc_state->instrs, size, op_addr);
+        X64_emit_instr_div_m(proc_state, size, op_addr);
         break;
     }
     // IDIV
@@ -2614,10 +2241,10 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
         XIR_RegLoc src_loc = X64_lreg_loc(proc_state, act_instr->src);
         if (IS_LREG_IN_REG(src_loc.kind)) {
-            X64_emit_instr_idiv_r(&proc_state->instrs, size, src_loc.reg);
+            X64_emit_instr_idiv_r(proc_state, size, src_loc.reg);
         }
         else {
-            X64_emit_instr_idiv_m(&proc_state->instrs, size, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_idiv_m(proc_state, size, X64_get_rbp_offset_addr(src_loc.offset));
         }
         break;
     }
@@ -2627,13 +2254,13 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_SIBD_Addr op_addr = {0};
 
         X64_get_sibd_addr(proc_state, &op_addr, &act_instr->src);
-        X64_emit_instr_idiv_m(&proc_state->instrs, size, op_addr);
+        X64_emit_instr_idiv_m(proc_state, size, op_addr);
         break;
     }
     // Sign-extend _ax into _dx
     case XIR_InstrSExtAxToDx_KIND: {
         const XIR_InstrSExtAxToDx* act_instr = (const XIR_InstrSExtAxToDx*)instr;
-        X64_emit_instr_sext_ax_into_dx(&proc_state->instrs, act_instr->size);
+        X64_emit_instr_sext_ax_into_dx(proc_state, act_instr->size);
         break;
     }
     // SAR
@@ -2648,10 +2275,10 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         }
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-            X64_emit_instr_sar_rr(&proc_state->instrs, dst_size, dst_loc.reg);
+            X64_emit_instr_sar_rr(proc_state, dst_size, dst_loc.reg);
         }
         else {
-            X64_emit_instr_sar_mr(&proc_state->instrs, dst_size, X64_get_rbp_offset_addr(dst_loc.offset));
+            X64_emit_instr_sar_mr(proc_state, dst_size, X64_get_rbp_offset_addr(dst_loc.offset));
         }
         break;
     }
@@ -2661,10 +2288,10 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         const XIR_RegLoc dst_loc = X64_lreg_loc(proc_state, act_instr->dst);
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-            X64_emit_instr_sar_ri(&proc_state->instrs, dst_size, dst_loc.reg, act_instr->src.as_int._u8);
+            X64_emit_instr_sar_ri(proc_state, dst_size, dst_loc.reg, act_instr->src.as_int._u8);
         }
         else {
-            X64_emit_instr_sar_mi(&proc_state->instrs, dst_size, X64_get_rbp_offset_addr(dst_loc.offset), act_instr->src.as_int._u8);
+            X64_emit_instr_sar_mi(proc_state, dst_size, X64_get_rbp_offset_addr(dst_loc.offset), act_instr->src.as_int._u8);
         }
         break;
     }
@@ -2680,10 +2307,10 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         }
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-            X64_emit_instr_shl_rr(&proc_state->instrs, dst_size, dst_loc.reg);
+            X64_emit_instr_shl_rr(proc_state, dst_size, dst_loc.reg);
         }
         else {
-            X64_emit_instr_shl_mr(&proc_state->instrs, dst_size, X64_get_rbp_offset_addr(dst_loc.offset));
+            X64_emit_instr_shl_mr(proc_state, dst_size, X64_get_rbp_offset_addr(dst_loc.offset));
         }
         break;
     }
@@ -2693,10 +2320,10 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         const XIR_RegLoc dst_loc = X64_lreg_loc(proc_state, act_instr->dst);
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-            X64_emit_instr_shl_ri(&proc_state->instrs, dst_size, dst_loc.reg, act_instr->src.as_int._u8);
+            X64_emit_instr_shl_ri(proc_state, dst_size, dst_loc.reg, act_instr->src.as_int._u8);
         }
         else {
-            X64_emit_instr_shl_mi(&proc_state->instrs, dst_size, X64_get_rbp_offset_addr(dst_loc.offset), act_instr->src.as_int._u8);
+            X64_emit_instr_shl_mi(proc_state, dst_size, X64_get_rbp_offset_addr(dst_loc.offset), act_instr->src.as_int._u8);
         }
         break;
     }
@@ -2724,11 +2351,11 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         assert(IS_LREG_IN_REG(src_loc.kind));
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-            X64_emit_instr_mov_rrh(&proc_state->instrs, dst_loc.reg, src_loc.reg);
+            X64_emit_instr_mov_rrh(proc_state, dst_loc.reg, src_loc.reg);
         }
         else {
             assert(dst_loc.kind == XIR_LREG_LOC_STACK);
-            X64_emit_instr_mov_mrh(&proc_state->instrs, X64_get_rbp_offset_addr(dst_loc.offset), src_loc.reg);
+            X64_emit_instr_mov_mrh(proc_state, X64_get_rbp_offset_addr(dst_loc.offset), src_loc.reg);
         }
 
         break;
@@ -2758,7 +2385,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
         X64_Reg dst_reg =
             X64_get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, size, true, 0); // Get actual reg or a tmp if spilled.
-        X64_emit_instr_mov_ri(&proc_state->instrs, size, dst_reg, act_instr->src.as_int._u64);
+        X64_emit_instr_mov_ri(proc_state, size, dst_reg, act_instr->src.as_int._u64);
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -2889,23 +2516,23 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         XIR_RegLoc src_loc = X64_lreg_loc(proc_state, act_instr->src);
 
         if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
-            X64_emit_instr_cvtss2sd_rr(&proc_state->instrs, dst_loc.reg, src_loc.reg);
+            X64_emit_instr_cvtss2sd_rr(proc_state, dst_loc.reg, src_loc.reg);
         }
         else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
-            X64_emit_instr_cvtss2sd_rm(&proc_state->instrs, dst_loc.reg, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_cvtss2sd_rm(proc_state, dst_loc.reg, X64_get_rbp_offset_addr(src_loc.offset));
         }
         else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg =
                 X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F64], true, (1 << src_loc.reg));
-            X64_emit_instr_cvtss2sd_rr(&proc_state->instrs, dst_reg, src_loc.reg);
+            X64_emit_instr_cvtss2sd_rr(proc_state, dst_reg, src_loc.reg);
             X64_end_reg_group(&tmp_group);
         }
         else {
             assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F64], true, 0);
-            X64_emit_instr_cvtss2sd_rm(&proc_state->instrs, dst_reg, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_cvtss2sd_rm(proc_state, dst_reg, X64_get_rbp_offset_addr(src_loc.offset));
             X64_end_reg_group(&tmp_group);
         }
         break;
@@ -2918,7 +2545,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
         X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F64], true, used_regs);
-        X64_emit_instr_cvtss2sd_rm(&proc_state->instrs, dst_reg, src_addr);
+        X64_emit_instr_cvtss2sd_rm(proc_state, dst_reg, src_addr);
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -2930,23 +2557,23 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         XIR_RegLoc src_loc = X64_lreg_loc(proc_state, act_instr->src);
 
         if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
-            X64_emit_instr_cvtsd2ss_rr(&proc_state->instrs, dst_loc.reg, src_loc.reg);
+            X64_emit_instr_cvtsd2ss_rr(proc_state, dst_loc.reg, src_loc.reg);
         }
         else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
-            X64_emit_instr_cvtsd2ss_rm(&proc_state->instrs, dst_loc.reg, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_cvtsd2ss_rm(proc_state, dst_loc.reg, X64_get_rbp_offset_addr(src_loc.offset));
         }
         else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg =
                 X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F32], true, (1 << src_loc.reg));
-            X64_emit_instr_cvtsd2ss_rr(&proc_state->instrs, dst_reg, src_loc.reg);
+            X64_emit_instr_cvtsd2ss_rr(proc_state, dst_reg, src_loc.reg);
             X64_end_reg_group(&tmp_group);
         }
         else {
             assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F32], true, 0);
-            X64_emit_instr_cvtsd2ss_rm(&proc_state->instrs, dst_reg, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_cvtsd2ss_rm(proc_state, dst_reg, X64_get_rbp_offset_addr(src_loc.offset));
             X64_end_reg_group(&tmp_group);
         }
         break;
@@ -2959,7 +2586,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, float_kind_sizes[FLOAT_F32], true, used_regs);
 
-        X64_emit_instr_cvtsd2ss_rm(&proc_state->instrs, dst_reg, src_addr);
+        X64_emit_instr_cvtsd2ss_rm(proc_state, dst_reg, src_addr);
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -2972,23 +2599,23 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         const bool dst_is_8byte = act_instr->dst_size == 8;
 
         if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
-            X64_emit_instr_cvttss2si_rr(&proc_state->instrs, dst_loc.reg, dst_is_8byte, src_loc.reg);
+            X64_emit_instr_cvttss2si_rr(proc_state, dst_loc.reg, dst_is_8byte, src_loc.reg);
         }
         else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
-            X64_emit_instr_cvttss2si_rm(&proc_state->instrs, dst_loc.reg, dst_is_8byte, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_cvttss2si_rm(proc_state, dst_loc.reg, dst_is_8byte, X64_get_rbp_offset_addr(src_loc.offset));
         }
         else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg =
                 X64_get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, dst_is_8byte ? 8 : 4, true, (1 << src_loc.reg));
-            X64_emit_instr_cvttss2si_rr(&proc_state->instrs, dst_reg, dst_is_8byte, src_loc.reg);
+            X64_emit_instr_cvttss2si_rr(proc_state, dst_reg, dst_is_8byte, src_loc.reg);
             X64_end_reg_group(&tmp_group);
         }
         else {
             assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, dst_is_8byte ? 8 : 4, true, 0);
-            X64_emit_instr_cvttss2si_rm(&proc_state->instrs, dst_reg, dst_is_8byte, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_cvttss2si_rm(proc_state, dst_reg, dst_is_8byte, X64_get_rbp_offset_addr(src_loc.offset));
             X64_end_reg_group(&tmp_group);
         }
         break;
@@ -3002,7 +2629,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, act_instr->dst_size, true, used_regs);
 
-        X64_emit_instr_cvttss2si_rm(&proc_state->instrs, dst_reg, act_instr->dst_size == 8, src_addr);
+        X64_emit_instr_cvttss2si_rm(proc_state, dst_reg, act_instr->dst_size == 8, src_addr);
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -3015,23 +2642,23 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         const bool dst_is_8byte = act_instr->dst_size == 8;
 
         if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
-            X64_emit_instr_cvttsd2si_rr(&proc_state->instrs, dst_loc.reg, dst_is_8byte, src_loc.reg);
+            X64_emit_instr_cvttsd2si_rr(proc_state, dst_loc.reg, dst_is_8byte, src_loc.reg);
         }
         else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
-            X64_emit_instr_cvttsd2si_rm(&proc_state->instrs, dst_loc.reg, dst_is_8byte, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_cvttsd2si_rm(proc_state, dst_loc.reg, dst_is_8byte, X64_get_rbp_offset_addr(src_loc.offset));
         }
         else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg =
                 X64_get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, dst_is_8byte ? 8 : 4, true, (1 << src_loc.reg));
-            X64_emit_instr_cvttsd2si_rr(&proc_state->instrs, dst_reg, dst_is_8byte, src_loc.reg);
+            X64_emit_instr_cvttsd2si_rr(proc_state, dst_reg, dst_is_8byte, src_loc.reg);
             X64_end_reg_group(&tmp_group);
         }
         else {
             assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, dst_is_8byte ? 8 : 4, true, 0);
-            X64_emit_instr_cvttsd2si_rm(&proc_state->instrs, dst_reg, dst_is_8byte, X64_get_rbp_offset_addr(src_loc.offset));
+            X64_emit_instr_cvttsd2si_rm(proc_state, dst_reg, dst_is_8byte, X64_get_rbp_offset_addr(src_loc.offset));
             X64_end_reg_group(&tmp_group);
         }
         break;
@@ -3045,7 +2672,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, act_instr->dst_size, true, used_regs);
 
-        X64_emit_instr_cvttsd2si_rm(&proc_state->instrs, dst_reg, act_instr->dst_size == 8, src_addr);
+        X64_emit_instr_cvttsd2si_rm(proc_state, dst_reg, act_instr->dst_size == 8, src_addr);
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -3061,22 +2688,22 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         XIR_RegLoc src_loc = X64_lreg_loc(proc_state, act_instr->src);
 
         if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
-            X64_emit_instr_cvtsi2ss_rr(&proc_state->instrs, dst_loc.reg, src_loc.reg, src_is_8bytes);
+            X64_emit_instr_cvtsi2ss_rr(proc_state, dst_loc.reg, src_loc.reg, src_is_8bytes);
         }
         else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
-            X64_emit_instr_cvtsi2ss_rm(&proc_state->instrs, dst_loc.reg, X64_get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
+            X64_emit_instr_cvtsi2ss_rm(proc_state, dst_loc.reg, X64_get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
         }
         else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, (1 << src_loc.reg));
-            X64_emit_instr_cvtsi2ss_rr(&proc_state->instrs, dst_reg, src_loc.reg, src_is_8bytes);
+            X64_emit_instr_cvtsi2ss_rr(proc_state, dst_reg, src_loc.reg, src_is_8bytes);
             X64_end_reg_group(&tmp_group);
         }
         else {
             assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, 0);
-            X64_emit_instr_cvtsi2ss_rm(&proc_state->instrs, dst_reg, X64_get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
+            X64_emit_instr_cvtsi2ss_rm(proc_state, dst_reg, X64_get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
             X64_end_reg_group(&tmp_group);
         }
         break;
@@ -3094,7 +2721,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, used_regs);
 
-        X64_emit_instr_cvtsi2ss_rm(&proc_state->instrs, dst_reg, src_addr, src_is_8bytes);
+        X64_emit_instr_cvtsi2ss_rm(proc_state, dst_reg, src_addr, src_is_8bytes);
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -3110,22 +2737,22 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         XIR_RegLoc src_loc = X64_lreg_loc(proc_state, act_instr->src);
 
         if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
-            X64_emit_instr_cvtsi2sd_rr(&proc_state->instrs, dst_loc.reg, src_loc.reg, src_is_8bytes);
+            X64_emit_instr_cvtsi2sd_rr(proc_state, dst_loc.reg, src_loc.reg, src_is_8bytes);
         }
         else if (IS_LREG_IN_REG(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind)) {
-            X64_emit_instr_cvtsi2sd_rm(&proc_state->instrs, dst_loc.reg, X64_get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
+            X64_emit_instr_cvtsi2sd_rm(proc_state, dst_loc.reg, X64_get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
         }
         else if (IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_REG(src_loc.kind)) {
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, (1 << src_loc.reg));
-            X64_emit_instr_cvtsi2sd_rr(&proc_state->instrs, dst_reg, src_loc.reg, src_is_8bytes);
+            X64_emit_instr_cvtsi2sd_rr(proc_state, dst_reg, src_loc.reg, src_is_8bytes);
             X64_end_reg_group(&tmp_group);
         }
         else {
             assert(IS_LREG_IN_STACK(dst_loc.kind) && IS_LREG_IN_STACK(src_loc.kind));
             X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
             X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, 0);
-            X64_emit_instr_cvtsi2sd_rm(&proc_state->instrs, dst_reg, X64_get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
+            X64_emit_instr_cvtsi2sd_rm(proc_state, dst_reg, X64_get_rbp_offset_addr(src_loc.offset), src_is_8bytes);
             X64_end_reg_group(&tmp_group);
         }
         break;
@@ -3143,7 +2770,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->dst, dst_size, true, used_regs);
 
-        X64_emit_instr_cvtsi2sd_rm(&proc_state->instrs, dst_reg, src_addr, src_is_8bytes);
+        X64_emit_instr_cvtsi2sd_rm(proc_state, dst_reg, src_addr, src_is_8bytes);
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -3193,12 +2820,12 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
         if (IS_LREG_IN_REG(op2_loc.kind)) {
             X64_Reg op1_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->op1, op_size, false, (1 << op2_loc.reg));
-            X64_emit_instr_ucomiss_rr(&proc_state->instrs, op1_reg, op2_loc.reg);
+            X64_emit_instr_ucomiss_rr(proc_state, op1_reg, op2_loc.reg);
         }
         else {
             assert(IS_LREG_IN_STACK(op2_loc.kind));
             X64_Reg op1_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->op1, op_size, false, 0);
-            X64_emit_instr_ucomiss_rm(&proc_state->instrs, op1_reg, X64_get_rbp_offset_addr(op2_loc.offset));
+            X64_emit_instr_ucomiss_rm(proc_state, op1_reg, X64_get_rbp_offset_addr(op2_loc.offset));
         }
         X64_end_reg_group(&tmp_group);
         break;
@@ -3212,7 +2839,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
         X64_Reg op1_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->op1, op_size, false, used_regs);
 
-        X64_emit_instr_ucomiss_rm(&proc_state->instrs, op1_reg, op2_addr);
+        X64_emit_instr_ucomiss_rm(proc_state, op1_reg, op2_addr);
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -3226,12 +2853,12 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
         if (IS_LREG_IN_REG(op2_loc.kind)) {
             X64_Reg op1_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->op1, op_size, false, (1 << op2_loc.reg));
-            X64_emit_instr_ucomisd_rr(&proc_state->instrs, op1_reg, op2_loc.reg);
+            X64_emit_instr_ucomisd_rr(proc_state, op1_reg, op2_loc.reg);
         }
         else {
             assert(IS_LREG_IN_STACK(op2_loc.kind));
             X64_Reg op1_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->op1, op_size, false, 0);
-            X64_emit_instr_ucomisd_rm(&proc_state->instrs, op1_reg, X64_get_rbp_offset_addr(op2_loc.offset));
+            X64_emit_instr_ucomisd_rm(proc_state, op1_reg, X64_get_rbp_offset_addr(op2_loc.offset));
         }
         X64_end_reg_group(&tmp_group);
         break;
@@ -3245,7 +2872,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_Reg_Group tmp_group = X64_begin_reg_group(proc_state);
         X64_Reg op1_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_FLOAT, act_instr->op1, op_size, false, used_regs);
 
-        X64_emit_instr_ucomisd_rm(&proc_state->instrs, op1_reg, op2_addr);
+        X64_emit_instr_ucomisd_rm(proc_state, op1_reg, op2_addr);
         X64_end_reg_group(&tmp_group);
         break;
     }
@@ -3261,20 +2888,20 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_Reg dst_reg = X64_get_reg(&tmp_group, X64_REG_CLASS_INT, act_instr->dst, size, true, pinned_regs);
         assert(size <= 8 && IS_POW2(size));
 
-        X64_emit_instr_lea(&proc_state->instrs, dst_reg, src_addr);
+        X64_emit_instr_lea(proc_state, dst_reg, src_addr);
         X64_end_reg_group(&tmp_group);
         break;
     }
     case XIR_InstrRepMovsb_KIND: {
-        X64_emit_instr_rep_movsb(&proc_state->instrs);
+        X64_emit_instr_rep_movsb(proc_state);
         break;
     }
     case XIR_InstrRepStosb_KIND: {
-        X64_emit_instr_rep_stosb(&proc_state->instrs);
+        X64_emit_instr_rep_stosb(proc_state);
         break;
     }
     case XIR_InstrSyscall_KIND: {
-        X64_emit_instr_syscall(&proc_state->instrs);
+        X64_emit_instr_syscall(proc_state);
         break;
     }
     case XIR_InstrJmp_KIND: {
@@ -3283,13 +2910,13 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
         if (target_id != bblock_id + 1) {
             assert(target_id >= 0);
-            X64_emit_instr_jmp(&proc_state->instrs, s64_to_u32(target_id));
+            X64_emit_instr_jmp(proc_state, s64_to_u32(target_id));
         }
         break;
     }
     case XIR_InstrJmpCC_KIND: {
         const XIR_InstrJmpCC* act_instr = (const XIR_InstrJmpCC*)instr;
-        X64_emit_instr_jmpcc(&proc_state->instrs, act_instr->cond, s64_to_u32(act_instr->true_bb->id));
+        X64_emit_instr_jmpcc(proc_state, act_instr->cond, s64_to_u32(act_instr->true_bb->id));
         break;
     }
     case XIR_InstrSetCC_KIND: {
@@ -3297,17 +2924,17 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         XIR_RegLoc dst_loc = X64_lreg_loc(proc_state, act_instr->dst);
 
         if (IS_LREG_IN_REG(dst_loc.kind)) {
-            X64_emit_instr_setcc_r(&proc_state->instrs, act_instr->cond, dst_loc.reg);
+            X64_emit_instr_setcc_r(proc_state, act_instr->cond, dst_loc.reg);
         }
         else {
             assert(IS_LREG_IN_STACK(dst_loc.kind));
-            X64_emit_instr_setcc_m(&proc_state->instrs, act_instr->cond, X64_get_rbp_offset_addr(dst_loc.offset));
+            X64_emit_instr_setcc_m(proc_state, act_instr->cond, X64_get_rbp_offset_addr(dst_loc.offset));
         }
         break;
     }
     case XIR_InstrRet_KIND: {
         if (!is_last_instr) {
-            X64_emit_instr_jmp_to_ret(&proc_state->instrs);
+            X64_emit_instr_jmp_to_ret(proc_state);
         }
 
         break;
@@ -3349,7 +2976,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         // See: https://godbolt.org/z/cM9Encdsc
         //
         // Placeholder instruction for sub rsp, <alignment>
-        const size_t rsp_align_instr_idx = X64_emit_instr_placeholder(&proc_state->instrs, X64_Instr_Kind_NOOP);
+        X64_Instr* rsp_align_instr = X64_emit_instr_placeholder(proc_state, X64_Instr_Kind_NOOP);
 
         // NOTE: No need to save caller-saved registers before call because the register allocator currently
         // spills any values needed across procedure calls.
@@ -3376,7 +3003,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
             X64_SIBD_Addr obj_addr = {0};
 
             X64_get_sibd_addr(proc_state, &obj_addr, &dst_val.addr);
-            X64_emit_instr_lea(&proc_state->instrs, dst_reg, obj_addr);
+            X64_emit_instr_lea(proc_state, dst_reg, obj_addr);
         }
 
         //
@@ -3385,7 +3012,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
         // Make room in the stack for arguments passed via the stack.
         if (stack_args_info.size) {
-            X64_emit_instr_sub_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, stack_args_info.size);
+            X64_emit_instr_sub_ri(proc_state, X64_MAX_INT_REG_SIZE, X64_RSP, stack_args_info.size);
         }
 
         // Place register args. It is expected that the register allocator either placed the arg in the correct register or spilled it.
@@ -3406,7 +3033,6 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         if (total_stack_size & (X64_STACK_ALIGN - 1)) {
             align_stack_size = X64_STACK_WORD_SIZE;
 
-            X64_Instr* rsp_align_instr = &proc_state->instrs[rsp_align_instr_idx];
             X64_set_instr_kind(rsp_align_instr, X64_Instr_Kind_SUB_RI);
             rsp_align_instr->sub_ri.size = X64_MAX_INT_REG_SIZE;
             rsp_align_instr->sub_ri.dst = X64_RSP;
@@ -3425,17 +3051,17 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         if (instr->kind == XIR_InstrCall_KIND) {
             const XIR_InstrCall* instr_call = (const XIR_InstrCall*)instr;
 
-            X64_emit_instr_call(&proc_state->instrs, instr_call->sym);
+            X64_emit_instr_call(proc_state, instr_call->sym);
         }
         else {
             const XIR_InstrCall_R* instr_call_r = (const XIR_InstrCall_R*)instr;
             XIR_RegLoc proc_reg_loc = X64_lreg_loc(proc_state, instr_call_r->proc_loc);
 
             if (IS_LREG_IN_REG(proc_reg_loc.kind)) {
-                X64_emit_instr_call_r(&proc_state->instrs, proc_reg_loc.reg);
+                X64_emit_instr_call_r(proc_state, proc_reg_loc.reg);
             }
             else {
-                X64_emit_instr_call_m(&proc_state->instrs, X64_get_rbp_offset_addr(proc_reg_loc.offset));
+                X64_emit_instr_call_m(proc_state, X64_get_rbp_offset_addr(proc_reg_loc.offset));
             }
         }
 
@@ -3453,13 +3079,13 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
                     if (IS_LREG_IN_STACK(dst_loc.kind)) {
                         // Move result (in XMM0) to stack offset.
                         // Ex: movsd [rbp + x], xmm0
-                        X64_emit_instr_mov_flt_mr(&proc_state->instrs, ret_type->as_float.kind,
-                                                  X64_get_rbp_offset_addr(dst_loc.offset), ret_reg);
+                        X64_emit_instr_mov_flt_mr(proc_state, ret_type->as_float.kind, X64_get_rbp_offset_addr(dst_loc.offset),
+                                                  ret_reg);
                     }
                     else if (dst_loc.reg != ret_reg) {
                         // Move result (in XMM0) to allocated result register.
                         assert(IS_LREG_IN_REG(dst_loc.kind));
-                        X64_emit_instr_mov_flt_rr(&proc_state->instrs, ret_type->as_float.kind, dst_loc.reg, ret_reg);
+                        X64_emit_instr_mov_flt_rr(proc_state, ret_type->as_float.kind, dst_loc.reg, ret_reg);
                     }
                 }
                 else {
@@ -3468,12 +3094,12 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
                     if (IS_LREG_IN_STACK(dst_loc.kind)) {
                         // Move result (in RAX) to stack offset.
                         // Ex: mov qword [rbp + x], rax
-                        X64_emit_instr_mov_mr(&proc_state->instrs, ret_type->size, X64_get_rbp_offset_addr(dst_loc.offset), ret_reg);
+                        X64_emit_instr_mov_mr(proc_state, ret_type->size, X64_get_rbp_offset_addr(dst_loc.offset), ret_reg);
                     }
                     else if (dst_loc.reg != ret_reg) {
                         // Move result (in RAX) to allocated result register.
                         assert(IS_LREG_IN_REG(dst_loc.kind));
-                        X64_emit_instr_mov_rr(&proc_state->instrs, ret_type->size, dst_loc.reg, ret_reg);
+                        X64_emit_instr_mov_rr(proc_state, ret_type->size, dst_loc.reg, ret_reg);
                     }
                 }
             }
@@ -3484,7 +3110,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
         if (group.num_tmp_regs) {
             if (stack_args_info.size) { // Clean up stack args.
-                X64_emit_instr_add_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, stack_args_info.size);
+                X64_emit_instr_add_ri(proc_state, X64_MAX_INT_REG_SIZE, X64_RSP, stack_args_info.size);
             }
 
             // Restore saved registers.
@@ -3492,7 +3118,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
             // Clean up any initial stack alignment
             if (align_stack_size) {
-                X64_emit_instr_add_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, align_stack_size);
+                X64_emit_instr_add_ri(proc_state, X64_MAX_INT_REG_SIZE, X64_RSP, align_stack_size);
             }
         }
         else {
@@ -3500,7 +3126,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
 
             if (cleanup_amount) {
                 // Clean up stack args + alignment
-                X64_emit_instr_add_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, cleanup_amount);
+                X64_emit_instr_add_ri(proc_state, X64_MAX_INT_REG_SIZE, X64_RSP, cleanup_amount);
             }
         }
 
@@ -3519,48 +3145,45 @@ X64_Instrs X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* p
     const bool is_nonleaf = proc_sym->as_proc.is_nonleaf;
     BBlock** ir_bblocks = proc_sym->as_proc.bblocks;
     size_t num_ir_bblocks = array_len(ir_bblocks);
+    const u32 num_x64_bblocks = num_ir_bblocks + 1;
     XIR_Builder xir_builder = {.arena = tmp_mem};
 
     X64_Proc_State proc_state = {
         .gen_mem = gen_mem,
         .tmp_mem = tmp_mem,
         .sym = proc_sym,
-        .instrs = {.num_bblocks = num_ir_bblocks, .bblocks = alloc_array(gen_mem, X64_BBlock, num_ir_bblocks, true)},
+        .instrs = {.num_bblocks = num_x64_bblocks, .bblocks = alloc_array(gen_mem, X64_BBlock, num_x64_bblocks, true)},
         .curr_bblock = 0,
         .scratch_regs = is_nonleaf ? x64_target.nonleaf_scratch_regs : x64_target.leaf_scratch_regs,
     };
 
     AllocatorState tmp_mem_state = allocator_get_state(proc_state.tmp_mem);
     //////////////////////////////////////////////////////////////////////////////////////////
-    X64_emit_instr_push(&proc_state.instrs, X64_RBP);
-    X64_emit_instr_mov_rr(&proc_state.instrs, X64_MAX_INT_REG_SIZE, X64_RBP, X64_RSP);
-    const size_t sub_rsp_idx =
-        X64_emit_instr_placeholder(&proc_state.instrs, X64_Instr_Kind_NOOP); // Placeholder sub rsp, <stack_size>
+    X64_emit_instr_push(&proc_state, X64_RBP);
+    X64_emit_instr_mov_rr(&proc_state, X64_MAX_INT_REG_SIZE, X64_RBP, X64_RSP);
+    X64_Instr* sub_rsp_instr = X64_emit_instr_placeholder(&proc_state, X64_Instr_Kind_NOOP); // Placeholder sub rsp, <stack_size>
 
     // Calculate stack size from procedure arguments (spills) and local variables.
-    const u32 spill_stack_size = X64_assign_proc_stack_offsets(&proc_state);
-    ftprint_out("spill_stack_size = %d\n", spill_stack_size);
+    u32 stack_size = X64_assign_proc_stack_offsets(&proc_state);
 
     // Register allocation.
     XIR_emit_instrs(&xir_builder, proc_sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks); // Generate LIR instructions.
     XIR_compute_live_intervals(&xir_builder); // Compute LIR register intervals.
+    assert(num_ir_bblocks == xir_builder.num_bblocks);
 
     X64_RegAllocResult reg_alloc =
-        X64_linear_scan_reg_alloc(&xir_builder, proc_state.scratch_regs, 0); // May spill and increase stack_size.
+        X64_linear_scan_reg_alloc(&xir_builder, proc_state.scratch_regs, stack_size); // May spill and increase stack_size.
 
     if (!reg_alloc.success) {
         NIBBLE_FATAL_EXIT("Register allocation for procedure `%s` failed.", proc_sym->name->str);
-        return NULL;
+        return proc_state.instrs;
     }
-    ftprint_out("reg_alloc.stack_offset = %d\n", reg_alloc.stack_offset);
 
-    const u32 stack_size = ALIGN_UP(spill_stack_size + reg_alloc.stack_offset, X64_STACK_ALIGN);
-    proc_state.spill_stack_size = spill_stack_size;
+    stack_size = reg_alloc.stack_offset;
     proc_state.xir_builder = &xir_builder;
 
     // Fill in sub rsp, <stack_size>
     if (stack_size) {
-        X64_Instr* sub_rsp_instr = &proc_state.instrs[sub_rsp_idx];
         X64_set_instr_kind(sub_rsp_instr, X64_Instr_Kind_SUB_RI);
         sub_rsp_instr->sub_ri.size = X64_MAX_INT_REG_SIZE;
         sub_rsp_instr->sub_ri.dst = X64_RSP;
@@ -3577,18 +3200,16 @@ X64_Instrs X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* p
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64_push_reg_to_stack(&proc_state.instrs, reg);
+            X64_push_reg_to_stack(&proc_state, reg);
         }
     }
 
     // Process procedure instructions.
-    HMap bblock_instr_starts = hmap(clp2(num_ir_bblocks), tmp_mem);
-
     for (size_t ii = 0; ii < xir_builder.num_bblocks; ii++) {
         XIR_BBlock* bb = xir_builder.bblocks[ii];
         bool last_bb = ii == xir_builder.num_bblocks - 1;
 
-        hmap_put(&bblock_instr_starts, bb->id + 1, array_len(proc_state.instrs)); // The key is offset by 1 (can't have 0 key)
+        proc_state.curr_bblock = ii;
 
         for (XIR_Instr* instr = bb->first; instr; instr = instr->next) {
             bool last_instr = last_bb && !instr->next;
@@ -3597,13 +3218,16 @@ X64_Instrs X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* p
         }
     }
 
-    // Patch jmp (to block, to ret label) instructions.
-    const size_t num_instrs_before_postamble = array_len(proc_state.instrs);
-    X64_patch_jmp_instrs(proc_state.instrs, num_instrs_before_postamble, &bblock_instr_starts);
+    const u32 postamble_bblock_idx = proc_state.instrs.num_bblocks - 1;
+
+    // Patch jmp "to ret label" instructions.
+    X64_patch_jmp_instrs(&proc_state.instrs, postamble_bblock_idx);
 
     //
     // Postamble.
     //
+
+    proc_state.curr_bblock = postamble_bblock_idx; // The last bblock is for postamble.
 
     // Restore callee-saved registers.
     // NOTE: Iterating in the reverse order as the corresponding pushes.
@@ -3614,17 +3238,14 @@ X64_Instrs X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* p
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64_pop_reg_from_stack(&proc_state.instrs, reg);
+            X64_pop_reg_from_stack(&proc_state, reg);
         }
     }
 
     // Clean up stack and return to caller.
-    X64_emit_instr_mov_rr(&proc_state.instrs, X64_MAX_INT_REG_SIZE, X64_RSP, X64_RBP);
-    X64_emit_instr_pop(&proc_state.instrs, X64_RBP);
-    X64_emit_instr_ret(&proc_state.instrs);
-
-    // Mark the first instruction of the postamble as a jump target (for 'return' instructions).
-    X64_mark_instr_as_jmp_target(&proc_state.instrs[num_instrs_before_postamble]);
+    X64_emit_instr_mov_rr(&proc_state, X64_MAX_INT_REG_SIZE, X64_RSP, X64_RBP);
+    X64_emit_instr_pop(&proc_state, X64_RBP);
+    X64_emit_instr_ret(&proc_state);
 
     //////////////////////////////////////////////////////////////////////////////////////////
     allocator_restore_state(tmp_mem_state);
