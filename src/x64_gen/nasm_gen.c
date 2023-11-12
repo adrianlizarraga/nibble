@@ -544,7 +544,7 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, Sym
     X64_Instrs instrs = X64_gen_proc_instrs(gen_mem, tmp_mem, proc_sym);
 
     // Print instructions.
-    u32 num_bblocks = array_len(instrs.bblocks);
+    const u32 num_bblocks = array_len(instrs.bblocks);
     for (u32 bb = 0; bb < num_bblocks; bb += 1) {
         X64_BBlock* bblock = &instrs.bblocks[bb];
 
