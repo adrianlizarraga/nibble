@@ -196,6 +196,13 @@ static const u8 startup_code[] = {0x48, 0x31, 0xed, 0x8b, 0x3c, 0x24, 0x48, 0x8d
 static size_t startup_code_main_offset_loc = 0x13; // The location in the startup code to patch the relative offset of the main proc.
 static size_t startup_code_next_ip_after_call = 0x17; // The operand to call is relative from the next instruction pointer.
 
+typedef struct X64_BlockText {
+    Array(u8) buffer;
+    u8 jmp_bytes[6]; // OPCODE (max 2 bytes) + offset (max 4 bytes)
+    u8 jmp_len;
+    X64_Instr* jmp_instr;
+} X64_BlockText;
+
 typedef struct X64_JmpPatch {
     s64 usage_off; // Location (in buffer) into which to patch the target instruction's relative offset
     s64 bytes_to_next_ip; // TODO: This should be offset_field_size (can be either 1 byte or 4 bytes!!)
