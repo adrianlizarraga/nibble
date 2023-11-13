@@ -238,24 +238,11 @@ typedef struct X64_InternalReloc {
 } X64_InternalReloc;
 
 typedef struct X64_TextGenState {
-    Allocator* gen_mem;
-    Allocator* tmp_mem;
-    Array(u8) base_buffer;
+    u64 curr_proc_offset;
     X64_TextBBlock* curr_bblock;
-    u64* proc_offsets; // Symbol::index -> starting offset in buffer
     Array(X64_InternalReloc) proc_off_patches; // Usage of non-foreign procs (patched by compiler).
     Array(X64_InternalReloc) relocs; // Relocations for usage of global variables or foreign procedures.
 } X64_TextGenState;
-
-static inline void X64_set_proc_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
-{
-    gen_state->proc_offsets[proc_sym->as_proc.index] = array_len(gen_state->base_buffer);
-}
-
-static inline u64 X64_get_proc_offset(X64_TextGenState* gen_state, const Symbol* proc_sym)
-{
-    return gen_state->proc_offsets[proc_sym->as_proc.index];
-}
 
 static inline void X64_write_imm64_bytes(X64_TextGenState* gen_state, u64 val)
 {
@@ -301,7 +288,7 @@ static inline void X64_write_imm_bytes(X64_TextGenState* gen_state, u64 val, u8 
 
 static s32 X64_try_get_global_entity_rel_offset(X64_TextGenState* gen_state, ConstAddr entity)
 {
-    const X64_UsageLoc curr_loc = {.proc_offset = array_len(gen_state->base_buffer),
+    const X64_UsageLoc curr_loc = {.proc_offset = gen_state->curr_proc_offset,
                                    .bblock_index = gen_state->curr_bblock->index,
                                    .bblock_offset = array_len(gen_state->curr_bblock->buffer)};
 
@@ -636,28 +623,26 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
 static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 proc_offset, Symbol* proc_sym,
                                   Array(X64_TextReloc)* relocs, Array(X64_TextReloc)* proc_off_patches)
 {
-#if 0
+#if 1
     const DeclProc* decl = (const DeclProc*)proc_sym->decl;
     if (decl->is_incomplete) {
         return;
     }
 
-    AllocatorState tmp_mem_state = allocator_get_state(gen_state->tmp_mem);
+    AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
 
-    // Save this proc's offset in the buffer for use by call instructions.
-    X64_set_proc_offset(gen_state, proc_sym);
-
-    X64_Instrs instrs = X64_gen_proc_instrs(gen_state->gen_mem, gen_state->tmp_mem, proc_sym);
+    X64_Instrs instrs = X64_gen_proc_instrs(gen_mem, tmp_mem, proc_sym);
+    const u32 num_bblocks = array_len(instrs.bblocks);
+    X64_TextBBlock* text_bblocks = alloc_array(tmp_mem, X64_TextBBlock, num_bblocks, true);
+    X64_TextGenState gen_state = {.curr_proc_offset = proc_offset, .relocs = array_create(tmp_mem, X64_InternalReloc, 8),
+                                  .proc_off_patches = array_create(tmp_mem, X64_InternalReloc, 8)};
 
     // Loop throught X64 instructions and write out machine code to buffer.
-    const u32 num_bblocks = array_len(instrs.bblocks);
-    X64_TextBBlock* text_bblocks = alloc_array(gen_state->tmp_mem, X64_TextBBlock, num_bblocks, true);
-
     for (u32 bb = 0; bb < num_bblocks; bb += 1) {
         X64_TextBBlock* bblock = &text_bblocks[bb];
         bblock->index = bb;
 
-        gen_state->curr_bblock = bblock;
+        gen_state.curr_bblock = bblock;
 
         for (X64_Instr* instr = instrs.bblocks[bb].head; instr; instr = instr->next) {
             const X64_Instr_Kind kind = X64_get_instr_kind(instr);
@@ -715,7 +700,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                     array_push(bblock->buffer, src_addr.sib_byte);
                 }
 
-                X64_write_addr_disp(gen_state, &src_addr);
+                X64_write_addr_disp(&gen_state, &src_addr);
             } break;
             // ADD
             case X64_Instr_Kind_ADD_RR: {
@@ -723,21 +708,21 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 0x66 + 01 /r => add r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
                 // 01 /r => add r/m32, r32
                 // REX.W + 01 /r => add r/m64, r64
-                X64_write_elf_binary_instr_rr(gen_state, 0x00, 0x01, instr->add_rr.size, instr->add_rr.dst, instr->add_rr.src);
+                X64_write_elf_binary_instr_rr(&gen_state, 0x00, 0x01, instr->add_rr.size, instr->add_rr.dst, instr->add_rr.src);
             } break;
             case X64_Instr_Kind_ADD_RM: {
                 // 02 /r => add r8, r/m8
                 // 66 03 /r => add r16, r/m16
                 // 03 /r => add r32, r/m32
                 // REX.W + 03 /r => add r64, r/m64
-                X64_write_elf_binary_instr_rm(gen_state, 0x02, 0x03, instr->add_rm.size, instr->add_rm.dst, &instr->add_rm.src);
+                X64_write_elf_binary_instr_rm(&gen_state, 0x02, 0x03, instr->add_rm.size, instr->add_rm.dst, &instr->add_rm.src);
             } break;
             case X64_Instr_Kind_ADD_MR: {
                 // 00 /r => add r/m8, r8
                 // 0x66 + 01 /r => add r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
                 // 01 /r => add r/m32, r32
                 // REX.W + 01 /r => add r/m64, r64
-                X64_write_elf_binary_instr_mr(gen_state, 0x00, 0x01, instr->add_mr.size, &instr->add_mr.dst, instr->add_mr.src);
+                X64_write_elf_binary_instr_mr(&gen_state, 0x00, 0x01, instr->add_mr.size, &instr->add_mr.dst, instr->add_mr.src);
             } break;
             case X64_Instr_Kind_ADD_RI: {
                 // 80 /0 ib => add r/m8, imm8
@@ -747,7 +732,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 81 /0 id => add r/m32, imm32
                 // REX.W + 83 /0 ib => add r/m64, imm8
                 // REX.W + 81 /0 id => add r/m64, imm32
-                X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 0 /*opcode ext*/, instr->add_ri.size, instr->add_ri.dst,
+                X64_write_elf_binary_instr_ri(&gen_state, 0x80, 0x83, 0x81, 0 /*opcode ext*/, instr->add_ri.size, instr->add_ri.dst,
                                               instr->add_ri.imm);
             } break;
             case X64_Instr_Kind_ADD_MI: {
@@ -758,7 +743,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 81 /0 id => add r/m32, imm32
                 // REX.W + 83 /0 ib => add r/m64, imm8
                 // REX.W + 81 /0 id => add r/m64, imm32
-                X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 0 /*opcode ext*/, instr->add_mi.size, &instr->add_mi.dst,
+                X64_write_elf_binary_instr_mi(&gen_state, 0x80, 0x83, 0x81, 0 /*opcode ext*/, instr->add_mi.size, &instr->add_mi.dst,
                                               instr->add_mi.imm);
             } break;
             // SUB
@@ -767,21 +752,21 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 0x66 + 29 /r => sub r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
                 // 29 /r => sub r/m32, r32
                 // REX.W + 29 /r => sub r/m64, r64
-                X64_write_elf_binary_instr_rr(gen_state, 0x28, 0x29, instr->sub_rr.size, instr->sub_rr.dst, instr->sub_rr.src);
+                X64_write_elf_binary_instr_rr(&gen_state, 0x28, 0x29, instr->sub_rr.size, instr->sub_rr.dst, instr->sub_rr.src);
             } break;
             case X64_Instr_Kind_SUB_RM: {
                 // 2A /r => sub r8, r/m8
                 // 66 2B /r => sub r16, r/m16
                 // 2B /r => sub r32, r/m32
                 // REX.W + 2B /r => sub r64, r/m64
-                X64_write_elf_binary_instr_rm(gen_state, 0x2A, 0x2B, instr->sub_rm.size, instr->sub_rm.dst, &instr->sub_rm.src);
+                X64_write_elf_binary_instr_rm(&gen_state, 0x2A, 0x2B, instr->sub_rm.size, instr->sub_rm.dst, &instr->sub_rm.src);
             } break;
             case X64_Instr_Kind_SUB_MR: {
                 // 28 /r => sub r/m8, r8
                 // 0x66 + 29 /r => sub r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
                 // 29 /r => sub r/m32, r32
                 // REX.W + 29 /r => sub r/m64, r64
-                X64_write_elf_binary_instr_mr(gen_state, 0x28, 0x29, instr->sub_mr.size, &instr->sub_mr.dst, instr->sub_mr.src);
+                X64_write_elf_binary_instr_mr(&gen_state, 0x28, 0x29, instr->sub_mr.size, &instr->sub_mr.dst, instr->sub_mr.src);
             } break;
             case X64_Instr_Kind_SUB_RI: {
                 // 80 /5 ib => sub r/m8, imm8
@@ -791,7 +776,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 81 /5 id => sub r/m32, imm32
                 // REX.W + 83 /5 ib => sub r/m64, imm8
                 // REX.W + 81 /5 id => sub r/m64, imm32
-                X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_ri.size, instr->sub_ri.dst,
+                X64_write_elf_binary_instr_ri(&gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_ri.size, instr->sub_ri.dst,
                                               instr->sub_ri.imm);
             } break;
             case X64_Instr_Kind_SUB_MI: {
@@ -802,7 +787,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 81 /5 id => sub r/m32, imm32
                 // REX.W + 83 /5 ib => sub r/m64, imm8
                 // REX.W + 81 /5 id => sub r/m64, imm32
-                X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_mi.size, &instr->sub_mi.dst,
+                X64_write_elf_binary_instr_mi(&gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_mi.size, &instr->sub_mi.dst,
                                               instr->sub_mi.imm);
             } break;
             // CMP
@@ -811,21 +796,21 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 0x66 + 39 /r => cmp r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
                 // 39 /r => cmp r/m32, r32
                 // REX.W + 39 /r => cmp r/m64, r64
-                X64_write_elf_binary_instr_rr(gen_state, 0x38, 0x39, instr->cmp_rr.size, instr->cmp_rr.dst, instr->cmp_rr.src);
+                X64_write_elf_binary_instr_rr(&gen_state, 0x38, 0x39, instr->cmp_rr.size, instr->cmp_rr.dst, instr->cmp_rr.src);
             } break;
             case X64_Instr_Kind_CMP_RM: {
                 // 3A /r => cmp r8, r/m8
                 // 66 3B /r => cmp r16, r/m16
                 // 3B /r => cmp r32, r/m32
                 // REX.W + 3B /r => cmp r64, r/m64
-                X64_write_elf_binary_instr_rm(gen_state, 0x3A, 0x3B, instr->cmp_rm.size, instr->cmp_rm.dst, &instr->cmp_rm.src);
+                X64_write_elf_binary_instr_rm(&gen_state, 0x3A, 0x3B, instr->cmp_rm.size, instr->cmp_rm.dst, &instr->cmp_rm.src);
             } break;
             case X64_Instr_Kind_CMP_MR: {
                 // 38 /r => cmp r/m8, r8
                 // 0x66 + 39 /r => cmp r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
                 // 39 /r => cmp r/m32, r32
                 // REX.W + 39 /r => cmp r/m64, r64
-                X64_write_elf_binary_instr_mr(gen_state, 0x38, 0x39, instr->cmp_mr.size, &instr->cmp_mr.dst, instr->cmp_mr.src);
+                X64_write_elf_binary_instr_mr(&gen_state, 0x38, 0x39, instr->cmp_mr.size, &instr->cmp_mr.dst, instr->cmp_mr.src);
             } break;
             case X64_Instr_Kind_CMP_RI: {
                 // 80 /7 ib => cmp r/m8, imm8
@@ -835,7 +820,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 81 /7 id => cmp r/m32, imm32
                 // REX.W + 83 /7 ib => cmp r/m64, imm8
                 // REX.W + 81 /7 id => cmp r/m64, imm32
-                X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_ri.size, instr->cmp_ri.dst,
+                X64_write_elf_binary_instr_ri(&gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_ri.size, instr->cmp_ri.dst,
                                               instr->cmp_ri.imm);
             } break;
             case X64_Instr_Kind_CMP_MI: {
@@ -846,7 +831,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 81 /7 id => cmp r/m32, imm32
                 // REX.W + 83 /7 ib => cmp r/m64, imm8
                 // REX.W + 81 /7 id => cmp r/m64, imm32
-                X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_mi.size, &instr->cmp_mi.dst,
+                X64_write_elf_binary_instr_mi(&gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_mi.size, &instr->cmp_mi.dst,
                                               instr->cmp_mi.imm);
             } break;
             // SETcc
@@ -880,7 +865,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                     array_push(bblock->buffer, dst_addr.sib_byte);
                 }
 
-                X64_write_addr_disp(gen_state, &dst_addr);
+                X64_write_addr_disp(&gen_state, &dst_addr);
             } break;
             // MOVSX
             case X64_Instr_Kind_MOVSX_RR: {
@@ -945,7 +930,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                     array_push(bblock->buffer, src_addr.sib_byte);
                 }
 
-                X64_write_addr_disp(gen_state, &src_addr);
+                X64_write_addr_disp(&gen_state, &src_addr);
             } break;
             // MOVZX
             case X64_Instr_Kind_MOVZX_RR: {
@@ -1010,7 +995,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                     array_push(bblock->buffer, src_addr.sib_byte);
                 }
 
-                X64_write_addr_disp(gen_state, &src_addr);
+                X64_write_addr_disp(&gen_state, &src_addr);
             } break;
             // MOV
             case X64_Instr_Kind_MOV_RR: {
@@ -1071,7 +1056,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                     array_push(bblock->buffer, dst_addr.sib_byte);
                 }
 
-                X64_write_addr_disp(gen_state, &dst_addr);
+                X64_write_addr_disp(&gen_state, &dst_addr);
 
                 // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
                 // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
@@ -1082,7 +1067,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                 // 66 8B /r => mov r16, r/m16
                 // 8B /r => mov r32, r/m32
                 // REX.W + 8B /r => mov r64, r/m64
-                X64_write_elf_binary_instr_rm(gen_state, 0x8A, 0x8B, instr->mov_rm.size, instr->mov_rm.dst, &instr->mov_rm.src);
+                X64_write_elf_binary_instr_rm(&gen_state, 0x8A, 0x8B, instr->mov_rm.size, instr->mov_rm.dst, &instr->mov_rm.src);
             } break;
             case X64_Instr_Kind_MOV_MI: {
                 // C6 /0 ib => mov r/m8, imm8
@@ -1110,8 +1095,8 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
                     array_push(bblock->buffer, addr_bytes.sib_byte);
                 }
 
-                X64_write_addr_disp(gen_state, &addr_bytes);
-                X64_write_imm_bytes(gen_state, instr->mov_mi.imm, is_64_bit ? 4 : size);
+                X64_write_addr_disp(&gen_state, &addr_bytes);
+                X64_write_imm_bytes(&gen_state, instr->mov_mi.imm, is_64_bit ? 4 : size);
             } break;
             case X64_Instr_Kind_MOV_RI: {
                 // NOTE: This is the only instruction that can load a 64-bit immediate.
@@ -1138,7 +1123,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
 
                 array_push(bblock->buffer, base_opcode + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
 
-                X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
+                X64_write_imm_bytes(&gen_state, instr->mov_ri.imm, size);
             } break;
             default:
                 // NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
@@ -1189,6 +1174,7 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
             Symbol* proc_sym = bucket->elems[i];
             const u64 proc_offset = array_len(buffer);
 
+            proc_offsets[proc_sym->as_proc.index] = proc_offset;
             X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_offset, proc_sym, &relocs, &proc_off_patches);
         }
     }
