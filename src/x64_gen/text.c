@@ -510,17 +510,17 @@ static inline void X64_write_elf_binary_instr_mr(X64_TextGenState* gen_state, u8
     X64_write_addr_disp(gen_state, &dst_addr);
 }
 
-static s32 X64_get_bblock_worst_case_size(X64_TextBBlock* bblock)
+static s32 X64_get_bblock_best_case_size(X64_TextBBlock* bblock)
 {
     assert(bblock);
     s32 base_size = array_len(bblock->buffer);
     s32 jmp_opcode_len = bblock->jmp_opcode_len;
     if (jmp_opcode_len == 0 && bblock->jmp_instr) {
-        jmp_opcode_len = X64_get_instr_kind(bblock->jmp_instr) == X64_Instr_Kind_JMPCC ? 2 : 1; // worst case
+        jmp_opcode_len = 1;
     }
     s32 jmp_offset_len = bblock->jmp_offset_len;
     if (jmp_offset_len == 0 && bblock->jmp_instr) {
-        jmp_offset_len = 4; // use worst case if we don't know
+        jmp_offset_len = 1;
     }
 
     return base_size + jmp_opcode_len + jmp_offset_len;
@@ -555,9 +555,9 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
 
     if (dst_index > src_index) {
         // Add size of bblocks between src and dst.
-        // If we don't know the size of the jmp instrs yet, assume worst case scenario.
+        // If we don't know the size of the jmp instrs yet, assume best case scenario.
         for (u32 bb = src_index + 1; bb < dst_index; bb += 1) {
-            offset += X64_get_bblock_worst_case_size(&bblocks[bb]);
+            offset += X64_get_bblock_best_case_size(&bblocks[bb]);
         }
 
         assert(offset >= 0);
@@ -572,7 +572,7 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
     }
     else if (src_index > dst_index) {
         for (u32 bb = dst_index; bb < src_index; bb += 1) {
-            offset -= X64_get_bblock_worst_case_size(&bblocks[bb]);
+            offset -= X64_get_bblock_best_case_size(&bblocks[bb]);
         }
 
         assert(offset <= 0);
@@ -594,17 +594,19 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
     bool changed_size = false;
 
     if (bblock->jmp_opcode_len == 0 || bblock->jmp_offset_len == 0 || bblock->jmp_offset._s32 != offset) {
-        const bool old_offset_fits_in_byte =
-            (bblock->jmp_offset_len != 0) && (bblock->jmp_offset._s32 >= -128 && bblock->jmp_offset._s32 <= 127);
+        // If this is the first time we're updating the offset (i.e., jmp_offset_len == 0), assume it fits in a byte.
+        const bool old_offset_fits_in_byte = bblock->jmp_offset_len <= 1;
+        assert(!old_offset_fits_in_byte || (bblock->jmp_offset._s32 >= -128 && bblock->jmp_offset._s32 <= 127));
+
         const bool new_offset_fits_in_byte = offset >= -128 && offset <= 127;
 
-        changed_size = !old_offset_fits_in_byte && new_offset_fits_in_byte;
+        changed_size = old_offset_fits_in_byte != new_offset_fits_in_byte;
 
         switch (kind) {
         case X64_Instr_Kind_JMP:
         case X64_Instr_Kind_JMP_TO_RET: {
             bblock->jmp_opcode_len = 1;
-            bblock->jmp_opcode._u16 = new_offset_fits_in_byte ? 0xEB : 0xE9; // Assumes compiling arch is little-endian
+            bblock->jmp_opcode._u16 = new_offset_fits_in_byte ? 0xEB : 0xE9;
             bblock->jmp_offset_len = new_offset_fits_in_byte ? 1 : 4;
             bblock->jmp_offset._s32 = offset;
         } break;
@@ -630,9 +632,11 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
 // For example, X64_Instr_Kind_MOV_RR_4, X64_Instr_Kind_MOV_RR_8, etc.
 // This will remove all the branching on 'size' within each switch case.
 //
-static void X64_elf_gen_proc_text(X64_TextGenState* gen_state, Symbol* proc_sym)
+//X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_offset, proc_sym, &relocs, &proc_off_patches);
+static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 proc_offset, Symbol* proc_sym,
+                                  Array(X64_TextReloc)* relocs, Array(X64_TextReloc)* proc_off_patches)
 {
-#if 1
+#if 0
     const DeclProc* decl = (const DeclProc*)proc_sym->decl;
     if (decl->is_incomplete) {
         return;
@@ -1172,46 +1176,46 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     const size_t startup_code_size = sizeof(startup_code);
     const size_t num_procs = procs->num_elems;
 
-    X64_TextGenState gen_state = {.gen_mem = gen_mem,
-                                  .tmp_mem = tmp_mem,
-                                  .buffer = array_create(gen_mem, u8, startup_code_size << 2),
-                                  .proc_offsets = alloc_array(gen_mem, u64, num_procs, true),
-                                  .proc_off_patches = array_create(gen_mem, X64_TextReloc, num_procs),
-                                  .relocs = array_create(gen_mem, X64_TextReloc, 32)};
+    Array(u8) buffer = array_create(gen_mem, u8, startup_code_size << 2);
+    u64* proc_offsets = alloc_array(gen_mem, u64, num_procs, true); // Symbol::index -> starting offset in buffer
 
-    array_push_elems(gen_state.buffer, startup_code, startup_code_size); // Add _start code.
+    Array(X64_TextReloc) relocs = array_create(gen_mem, X64_TextReloc, 32);
+    Array(X64_TextReloc) proc_off_patches = array_create(gen_mem, X64_TextReloc, num_procs);
+
+    array_push_elems(buffer, startup_code, startup_code_size); // Add _start code.
 
     for (Bucket* bucket = procs->first; bucket; bucket = bucket->next) {
         for (size_t i = 0; i < bucket->count; i += 1) {
             Symbol* proc_sym = bucket->elems[i];
+            const u64 proc_offset = array_len(buffer);
 
-            X64_elf_gen_proc_text(&gen_state, proc_sym);
+            X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_offset, proc_sym, &relocs, &proc_off_patches);
         }
     }
 
     // Patch the location of the main proc.
     {
-        const u64 main_offset = X64_get_proc_offset(&gen_state, main_proc);
-        *((u32*)(&gen_state.buffer[startup_code_main_offset_loc])) = (u32)main_offset - (u32)startup_code_next_ip_after_call;
+        const u64 main_offset = proc_offsets[main_proc->as_proc.index];
+        *((u32*)(&buffer[startup_code_main_offset_loc])) = (u32)main_offset - (u32)startup_code_next_ip_after_call;
     }
 
     // Patch relative offsets to other procs.
-    const u32 num_proc_patches = array_len(gen_state.proc_off_patches);
+    const u32 num_proc_patches = array_len(proc_off_patches);
     for (size_t i = 0; i < num_proc_patches; i++) {
-        const X64_TextReloc* patch_info = &gen_state.proc_off_patches[i];
+        const X64_TextReloc* patch_info = &proc_off_patches[i];
         assert(patch_info->ref_addr.kind == CONST_ADDR_SYM); // Should be a proc symbol
 
         const Symbol* proc_sym = patch_info->ref_addr.sym;
-        const s64 proc_offset = (s64)X64_get_proc_offset(&gen_state, proc_sym);
-        *((s32*)(&gen_state.buffer[patch_info->usage_off])) =
+        const s64 proc_offset = (s64)proc_offsets[proc_sym->as_proc.index];
+        *((s32*)(&buffer[patch_info->usage_off])) =
             (s32)(proc_offset - (patch_info->usage_off + patch_info->bytes_to_next_ip));
     }
 
-    text_sec->buf = gen_state.buffer;
-    text_sec->size = array_len(gen_state.buffer);
+    text_sec->buf = buffer;
+    text_sec->size = array_len(buffer);
     text_sec->align = 0x10;
-    text_sec->proc_offs = gen_state.proc_offsets;
-    text_sec->relocs = gen_state.relocs;
+    text_sec->proc_offs = proc_offsets;
+    text_sec->relocs = relocs;
 
     allocator_restore_state(tmp_mem_state);
 }
