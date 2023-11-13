@@ -621,7 +621,7 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
 //
 //X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_offset, proc_sym, &relocs, &proc_off_patches);
 static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 proc_offset, Symbol* proc_sym,
-                                  Array(X64_TextReloc)* relocs, Array(X64_TextReloc)* proc_off_patches)
+                                  Array(u8)* buffer, Array(X64_TextReloc)* relocs, Array(X64_TextReloc)* proc_off_patches)
 {
 #if 1
     const DeclProc* decl = (const DeclProc*)proc_sym->decl;
@@ -1132,7 +1132,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
         }
     }
 
-    // Process jumps
+    // Process jumps while they keep changing size (until reach steady-state)
     {
         bool update_jmps = true;
 
@@ -1175,7 +1175,7 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
             const u64 proc_offset = array_len(buffer);
 
             proc_offsets[proc_sym->as_proc.index] = proc_offset;
-            X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_offset, proc_sym, &relocs, &proc_off_patches);
+            X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_offset, proc_sym, &buffer, &relocs, &proc_off_patches);
         }
     }
 
