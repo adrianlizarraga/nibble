@@ -3216,7 +3216,9 @@ X64_Instrs X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* p
             X64_gen_instr(&proc_state, instr, last_instr, bb->id);
         }
 
-        array_push(proc_state.instrs.bblocks, (X64_BBlock){0});
+        if (!last_bb) {
+            array_push(proc_state.instrs.bblocks, (X64_BBlock){0});
+        }
     }
 
     //
@@ -3245,6 +3247,8 @@ X64_Instrs X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* p
     X64_emit_instr_mov_rr(&proc_state.instrs, X64_MAX_INT_REG_SIZE, X64_RSP, X64_RBP);
     X64_emit_instr_pop(&proc_state.instrs, X64_RBP);
     X64_emit_instr_ret(&proc_state.instrs);
+
+    assert(array_len(proc_state.instrs.bblocks) == num_x64_bblocks);
 
     //////////////////////////////////////////////////////////////////////////////////////////
     allocator_restore_state(tmp_mem_state);
