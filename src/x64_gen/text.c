@@ -285,7 +285,7 @@ static inline void X64_write_imm_bytes(X64_TextGenState* gen_state, u64 val, u8 
     }
 }
 
-static s32 X64_try_get_global_entity_rel_offset(X64_TextGenState* gen_state, ConstAddr entity)
+static void X64_record_global_entity_offset_usage(X64_TextGenState* gen_state, ConstAddr entity)
 {
     const X64_UsageLoc curr_loc = {.bblock_index = gen_state->curr_bblock->index,
                                    .bblock_offset = array_len(gen_state->curr_bblock->buffer)};
@@ -294,20 +294,20 @@ static s32 X64_try_get_global_entity_rel_offset(X64_TextGenState* gen_state, Con
     case CONST_ADDR_STR_LIT:
     case CONST_ADDR_FLOAT_LIT:
         array_push(gen_state->relocs, (X64_InternalReloc){.usage_loc = curr_loc, .bytes_to_next_ip = 4, .ref_addr = entity});
-        return 0;
+        break;
     case CONST_ADDR_SYM: {
         const Symbol* sym = entity.sym;
 
         // Record relocation for usage of global variable. Linker will use to patch.
         if (sym->kind == SYMBOL_VAR) {
             array_push(gen_state->relocs, (X64_InternalReloc){.usage_loc = curr_loc, .bytes_to_next_ip = 4, .ref_addr = entity});
-            return 0;
+            return;
         }
 
         // Record relocation for usage of foreign procedure. Linker will use this info to patch.
         if (sym->kind == SYMBOL_PROC && (sym->decl->flags & DECL_IS_FOREIGN)) {
             array_push(gen_state->relocs, (X64_InternalReloc){.usage_loc = curr_loc, .bytes_to_next_ip = 4, .ref_addr = entity});
-            return 0;
+            return;
         }
 
         //
@@ -317,12 +317,12 @@ static s32 X64_try_get_global_entity_rel_offset(X64_TextGenState* gen_state, Con
 
         // Record patch info.
         array_push(gen_state->proc_off_patches, (X64_InternalReloc){.usage_loc = curr_loc, .bytes_to_next_ip = 4, .ref_addr = entity});
-        return 0;
+        break;
     }
+    default:
+        NIBBLE_FATAL_EXIT("Unexpected global entity kind %d in x64 text relocation creation", entity.kind);
+        break;
     }
-
-    NIBBLE_FATAL_EXIT("Unexpected global entity kind %d in x64 text relocation creation", entity.kind);
-    return 0;
 }
 
 static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes* addr)
@@ -332,9 +332,8 @@ static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes
     }
 
     if (addr->mod == X64_MOD_INDIRECT && addr->rm == 0x5) { // RIP + disp32 for reference to global entity.
-        // Get the relative offset to the symbol/literal (or record patch info).
-        s32 rel_off = X64_try_get_global_entity_rel_offset(gen_state, addr->patch_entity);
-        X64_write_imm32_bytes(gen_state, (u32)rel_off);
+        X64_record_global_entity_offset_usage(gen_state, addr->patch_entity);
+        X64_write_imm32_bytes(gen_state, 0); // Write a dummy zero that will be patched.
     }
     else if (addr->mod == X64_MOD_INDIRECT_DISP_U8) {
         array_push(gen_state->curr_bblock->buffer, (u8)addr->disp);
@@ -654,6 +653,14 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     // RET
     case X64_Instr_Kind_RET: {
         array_push(bblock->buffer, 0xc3); // opcode is 0xc3 for near return to calling proc.
+    } break;
+    // CALL
+    case X64_Instr_Kind_CALL: {
+        const ConstAddr entity = {.kind = CONST_ADDR_SYM, .sym = instr->call.proc_sym};
+
+        array_push(bblock->buffer, 0xE8); // opcode
+        X64_record_global_entity_offset_usage(gen_state, entity);
+        X64_write_imm32_bytes(gen_state, 0); // Write a dummy zero that will be patched by compiler.
     } break;
     // LEA
     case X64_Instr_Kind_LEA: {
