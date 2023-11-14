@@ -11,6 +11,15 @@
 #include "x64_gen/reg_alloc.h"
 #include "x64_gen/print_xir.h"
 
+typedef struct X64_Proc_State {
+    Allocator* gen_mem;
+    Allocator* tmp_mem;
+    Symbol* sym; // Procedure symbol.
+    XIR_Builder* xir_builder;
+    X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT];
+    X64_Instrs instrs;
+} X64_Proc_State;
+
 static inline X64_SIBD_Addr X64_get_rbp_offset_addr(s32 offset)
 {
     X64_SIBD_Addr addr = {.kind = X64_SIBD_ADDR_LOCAL, .local = {.base_reg = X64_RBP, .index_reg = X64_REG_COUNT, .disp = offset}};
@@ -31,767 +40,353 @@ static inline FloatKind X64_flt_kind_from_size(u8 size)
     return size == float_kind_sizes[FLOAT_F64] ? FLOAT_F64 : FLOAT_F32;
 }
 
-static void X64_emit_instr_ret(Array(X64_Instr) * instrs)
+static void X64_push_instr(X64_Instrs* instrs, X64_Instr* instr)
 {
-    X64_Instr ret_instr = {.flags = X64_Instr_Kind_RET};
-    array_push(*instrs, ret_instr);
+    assert(array_len(instrs->bblocks) > 0);
+    X64_BBlock* bblock = &array_back(instrs->bblocks);
+
+    if (!bblock->tail) {
+        bblock->head = instr;
+    }
+    else {
+        bblock->tail->next = instr;
+    }
+
+    bblock->tail = instr;
+    bblock->num_instrs += 1;
+    instrs->num_instrs += 1;
 }
 
-static void X64_emit_instr_call(Array(X64_Instr) * instrs, const Symbol* proc_sym)
+static inline X64_Instr* X64_alloc_instr(Allocator* alloc, X64_Instr_Kind kind)
 {
-    X64_Instr call_instr = {.flags = X64_Instr_Kind_CALL, .call.proc_sym = proc_sym};
-    array_push(*instrs, call_instr);
+    X64_Instr* instr = alloc_type(alloc, X64_Instr, true);
+    instr->flags = (u32)kind;
+    return instr;
 }
 
-static void X64_emit_instr_call_r(Array(X64_Instr) * instrs, u8 reg)
+static void X64_emit_instr_ret(X64_Instrs* instrs)
 {
-    X64_Instr call_instr = {.flags = X64_Instr_Kind_CALL_R, .call_r.reg = reg};
-    array_push(*instrs, call_instr);
+    X64_push_instr(instrs, X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_RET));
 }
 
-static void X64_emit_instr_call_m(Array(X64_Instr) * instrs, X64_SIBD_Addr mem)
+static void X64_emit_instr_call(X64_Instrs* instrs, const Symbol* proc_sym)
 {
-    X64_Instr call_instr = {.flags = X64_Instr_Kind_CALL_M, .call_m.mem = mem};
-    array_push(*instrs, call_instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_CALL);
+    instr->call.proc_sym = proc_sym;
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_jmp(Array(X64_Instr) * instrs, u32 target)
+static void X64_emit_instr_call_r(X64_Instrs* instrs, u8 reg)
 {
-    X64_Instr instr = {.flags = X64_Instr_Kind_JMP, .jmp.target = target};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_CALL_R);
+    instr->call_r.reg = reg;
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_jmp_to_ret(Array(X64_Instr) * instrs)
+static void X64_emit_instr_call_m(X64_Instrs* instrs, X64_SIBD_Addr mem)
 {
-    X64_Instr instr = {.flags = X64_Instr_Kind_JMP_TO_RET, .jmp.target = X64_REG_COUNT};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_CALL_M);
+    instr->call_m.mem = mem;
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_jmpcc(Array(X64_Instr) * instrs, ConditionKind cond_kind, u32 target)
+static void X64_emit_instr_jmp(X64_Instrs* instrs, u32 target)
 {
-    X64_Instr instr = {.flags = X64_Instr_Kind_JMPCC, .jmpcc.target = target, .jmpcc.cond = cond_kind};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_JMP);
+    instr->jmp.target = target;
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_setcc_r(Array(X64_Instr) * instrs, ConditionKind cond_kind, u8 dst)
+static void X64_emit_instr_jmp_to_ret(X64_Instrs* instrs)
 {
-    X64_Instr instr = {.flags = X64_Instr_Kind_SETCC_R, .setcc_r.cond = cond_kind, .setcc_r.dst = dst};
-    array_push(*instrs, instr);
+    X64_push_instr(instrs, X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_JMP_TO_RET));
 }
 
-static void X64_emit_instr_setcc_m(Array(X64_Instr) * instrs, ConditionKind cond_kind, X64_SIBD_Addr dst)
+static void X64_emit_instr_jmpcc(X64_Instrs* instrs, ConditionKind cond_kind, u32 target)
 {
-    X64_Instr instr = {.flags = X64_Instr_Kind_SETCC_M, .setcc_m.cond = cond_kind, .setcc_m.dst = dst};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_JMPCC);
+    instr->jmpcc.target = target;
+    instr->jmpcc.cond = cond_kind;
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_push(Array(X64_Instr) * instrs, X64_Reg reg)
+static void X64_emit_instr_setcc_r(X64_Instrs* instrs, ConditionKind cond_kind, u8 dst)
+{
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_SETCC_R);
+    instr->setcc_r.cond = cond_kind;
+    instr->setcc_r.dst = dst;
+    X64_push_instr(instrs, instr);
+}
+
+static void X64_emit_instr_setcc_m(X64_Instrs* instrs, ConditionKind cond_kind, X64_SIBD_Addr dst)
+{
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_SETCC_M);
+    instr->setcc_m.cond = cond_kind;
+    instr->setcc_m.dst = dst;
+    X64_push_instr(instrs, instr);
+}
+
+static void X64_emit_instr_push(X64_Instrs* instrs, X64_Reg reg)
 {
     assert(x64_reg_classes[reg] == X64_REG_CLASS_INT);
-    X64_Instr push_instr = {
-        .flags = X64_Instr_Kind_PUSH,
-        .push.reg = reg,
-    };
-
-    array_push(*instrs, push_instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_PUSH);
+    instr->push.reg = reg;
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_pop(Array(X64_Instr) * instrs, X64_Reg reg)
+static void X64_emit_instr_pop(X64_Instrs* instrs, X64_Reg reg)
 {
     assert(x64_reg_classes[reg] == X64_REG_CLASS_INT);
-    X64_Instr pop_instr = {
-        .flags = X64_Instr_Kind_POP,
-        .pop.reg = reg,
-    };
-
-    array_push(*instrs, pop_instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_POP);
+    instr->pop.reg = reg;
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_add_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr add_rr_instr = {
-        .flags = X64_Instr_Kind_ADD_RR,
-        .add_rr.size = size,
-        .add_rr.dst = dst,
-        .add_rr.src = src,
-    };
-
-    array_push(*instrs, add_rr_instr);
-}
-
-static void X64_emit_instr_add_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr add_rm_instr = {
-        .flags = X64_Instr_Kind_ADD_RM,
-        .add_rm.size = size,
-        .add_rm.dst = dst,
-        .add_rm.src = src,
-    };
-
-    array_push(*instrs, add_rm_instr);
-}
-
-static void X64_emit_instr_add_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr add_mr_instr = {
-        .flags = X64_Instr_Kind_ADD_MR,
-        .add_mr.size = size,
-        .add_mr.dst = dst,
-        .add_mr.src = src,
-    };
-
-    array_push(*instrs, add_mr_instr);
-}
-
-static void X64_emit_instr_add_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
-{
-    X64_Instr add_ri_instr = {
-        .flags = X64_Instr_Kind_ADD_RI,
-        .add_ri.size = size,
-        .add_ri.dst = dst,
-        .add_ri.imm = imm,
-    };
-
-    array_push(*instrs, add_ri_instr);
-}
-
-static void X64_emit_instr_add_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr add_mi_instr = {
-        .flags = X64_Instr_Kind_ADD_MI,
-        .add_mi.size = size,
-        .add_mi.dst = dst,
-        .add_mi.imm = imm,
-    };
-
-    array_push(*instrs, add_mi_instr);
-}
-
-static void X64_emit_instr_sub_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr sub_rr_instr = {
-        .flags = X64_Instr_Kind_SUB_RR,
-        .sub_rr.size = size,
-        .sub_rr.dst = dst,
-        .sub_rr.src = src,
-    };
-
-    array_push(*instrs, sub_rr_instr);
-}
-
-static void X64_emit_instr_sub_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr sub_rm_instr = {
-        .flags = X64_Instr_Kind_SUB_RM,
-        .sub_rm.size = size,
-        .sub_rm.dst = dst,
-        .sub_rm.src = src,
-    };
-
-    array_push(*instrs, sub_rm_instr);
-}
-
-static void X64_emit_instr_sub_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr sub_mr_instr = {
-        .flags = X64_Instr_Kind_SUB_MR,
-        .sub_mr.size = size,
-        .sub_mr.dst = dst,
-        .sub_mr.src = src,
-    };
-
-    array_push(*instrs, sub_mr_instr);
-}
-
-static void X64_emit_instr_sub_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
-{
-    X64_Instr sub_ri_instr = {
-        .flags = X64_Instr_Kind_SUB_RI,
-        .sub_ri.size = size,
-        .sub_ri.dst = dst,
-        .sub_ri.imm = imm,
-    };
-
-    array_push(*instrs, sub_ri_instr);
-}
-
-static void X64_emit_instr_sub_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr sub_mi_instr = {
-        .flags = X64_Instr_Kind_SUB_MI,
-        .sub_mi.size = size,
-        .sub_mi.dst = dst,
-        .sub_mi.imm = imm,
-    };
-
-    array_push(*instrs, sub_mi_instr);
-}
-
-static void X64_emit_instr_imul_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr imul_rr_instr = {
-        .flags = X64_Instr_Kind_IMUL_RR,
-        .imul_rr.size = size,
-        .imul_rr.dst = dst,
-        .imul_rr.src = src,
-    };
-
-    array_push(*instrs, imul_rr_instr);
-}
-
-static void X64_emit_instr_imul_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr imul_rm_instr = {
-        .flags = X64_Instr_Kind_IMUL_RM,
-        .imul_rm.size = size,
-        .imul_rm.dst = dst,
-        .imul_rm.src = src,
-    };
-
-    array_push(*instrs, imul_rm_instr);
-}
-
-static void X64_emit_instr_imul_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr imul_mr_instr = {
-        .flags = X64_Instr_Kind_IMUL_MR,
-        .imul_mr.size = size,
-        .imul_mr.dst = dst,
-        .imul_mr.src = src,
-    };
-
-    array_push(*instrs, imul_mr_instr);
-}
-
-static void X64_emit_instr_imul_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
-{
-    X64_Instr imul_ri_instr = {
-        .flags = X64_Instr_Kind_IMUL_RI,
-        .imul_ri.size = size,
-        .imul_ri.dst = dst,
-        .imul_ri.imm = imm,
-    };
-
-    array_push(*instrs, imul_ri_instr);
-}
-
-static void X64_emit_instr_imul_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr imul_mi_instr = {
-        .flags = X64_Instr_Kind_IMUL_MI,
-        .imul_mi.size = size,
-        .imul_mi.dst = dst,
-        .imul_mi.imm = imm,
-    };
-
-    array_push(*instrs, imul_mi_instr);
-}
-
-static void X64_emit_instr_and_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr and_rr_instr = {
-        .flags = X64_Instr_Kind_AND_RR,
-        .and_rr.size = size,
-        .and_rr.dst = dst,
-        .and_rr.src = src,
-    };
-
-    array_push(*instrs, and_rr_instr);
-}
-
-static void X64_emit_instr_and_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr and_rm_instr = {
-        .flags = X64_Instr_Kind_AND_RM,
-        .and_rm.size = size,
-        .and_rm.dst = dst,
-        .and_rm.src = src,
-    };
-
-    array_push(*instrs, and_rm_instr);
-}
-
-static void X64_emit_instr_and_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr and_mr_instr = {
-        .flags = X64_Instr_Kind_AND_MR,
-        .and_mr.size = size,
-        .and_mr.dst = dst,
-        .and_mr.src = src,
-    };
-
-    array_push(*instrs, and_mr_instr);
-}
-
-static void X64_emit_instr_and_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
-{
-    X64_Instr and_ri_instr = {
-        .flags = X64_Instr_Kind_AND_RI,
-        .and_ri.size = size,
-        .and_ri.dst = dst,
-        .and_ri.imm = imm,
-    };
-
-    array_push(*instrs, and_ri_instr);
-}
-
-static void X64_emit_instr_and_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr and_mi_instr = {
-        .flags = X64_Instr_Kind_AND_MI,
-        .and_mi.size = size,
-        .and_mi.dst = dst,
-        .and_mi.imm = imm,
-    };
-
-    array_push(*instrs, and_mi_instr);
-}
-
-static void X64_emit_instr_or_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr or_rr_instr = {
-        .flags = X64_Instr_Kind_OR_RR,
-        .or_rr.size = size,
-        .or_rr.dst = dst,
-        .or_rr.src = src,
-    };
-
-    array_push(*instrs, or_rr_instr);
-}
-
-static void X64_emit_instr_or_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr or_rm_instr = {
-        .flags = X64_Instr_Kind_OR_RM,
-        .or_rm.size = size,
-        .or_rm.dst = dst,
-        .or_rm.src = src,
-    };
-
-    array_push(*instrs, or_rm_instr);
-}
-
-static void X64_emit_instr_or_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr or_mr_instr = {
-        .flags = X64_Instr_Kind_OR_MR,
-        .or_mr.size = size,
-        .or_mr.dst = dst,
-        .or_mr.src = src,
-    };
-
-    array_push(*instrs, or_mr_instr);
-}
-
-static void X64_emit_instr_or_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
-{
-    X64_Instr or_ri_instr = {
-        .flags = X64_Instr_Kind_OR_RI,
-        .or_ri.size = size,
-        .or_ri.dst = dst,
-        .or_ri.imm = imm,
-    };
-
-    array_push(*instrs, or_ri_instr);
-}
-
-static void X64_emit_instr_or_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr or_mi_instr = {
-        .flags = X64_Instr_Kind_OR_MI,
-        .or_mi.size = size,
-        .or_mi.dst = dst,
-        .or_mi.imm = imm,
-    };
-
-    array_push(*instrs, or_mi_instr);
-}
-
-static void X64_emit_instr_xor_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr xor_rr_instr = {
-        .flags = X64_Instr_Kind_XOR_RR,
-        .xor_rr.size = size,
-        .xor_rr.dst = dst,
-        .xor_rr.src = src,
-    };
-
-    array_push(*instrs, xor_rr_instr);
-}
-
-static void X64_emit_instr_xor_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr xor_rm_instr = {
-        .flags = X64_Instr_Kind_XOR_RM,
-        .xor_rm.size = size,
-        .xor_rm.dst = dst,
-        .xor_rm.src = src,
-    };
-
-    array_push(*instrs, xor_rm_instr);
-}
-
-static void X64_emit_instr_xor_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr xor_mr_instr = {
-        .flags = X64_Instr_Kind_XOR_MR,
-        .xor_mr.size = size,
-        .xor_mr.dst = dst,
-        .xor_mr.src = src,
-    };
-
-    array_push(*instrs, xor_mr_instr);
-}
-
-static void X64_emit_instr_xor_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
-{
-    X64_Instr xor_ri_instr = {
-        .flags = X64_Instr_Kind_XOR_RI,
-        .xor_ri.size = size,
-        .xor_ri.dst = dst,
-        .xor_ri.imm = imm,
-    };
-
-    array_push(*instrs, xor_ri_instr);
-}
-
-static void X64_emit_instr_xor_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr xor_mi_instr = {
-        .flags = X64_Instr_Kind_XOR_MI,
-        .xor_mi.size = size,
-        .xor_mi.dst = dst,
-        .xor_mi.imm = imm,
-    };
-
-    array_push(*instrs, xor_mi_instr);
-}
-
-static void X64_emit_instr_add_flt_rr(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr add_flt_rr_instr = {
-        .flags = X64_Instr_Kind_ADD_FLT_RR,
-        .add_flt_rr.kind = kind,
-        .add_flt_rr.dst = dst,
-        .add_flt_rr.src = src,
-    };
-
-    array_push(*instrs, add_flt_rr_instr);
-}
-
-static void X64_emit_instr_add_flt_rm(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr add_flt_rm_instr = {
-        .flags = X64_Instr_Kind_ADD_FLT_RM,
-        .add_flt_rm.kind = kind,
-        .add_flt_rm.dst = dst,
-        .add_flt_rm.src = src,
-    };
-
-    array_push(*instrs, add_flt_rm_instr);
-}
-
-static void X64_emit_instr_add_flt_mr(Array(X64_Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr add_flt_mr_instr = {
-        .flags = X64_Instr_Kind_ADD_FLT_MR,
-        .add_flt_mr.kind = kind,
-        .add_flt_mr.dst = dst,
-        .add_flt_mr.src = src,
-    };
-
-    array_push(*instrs, add_flt_mr_instr);
-}
-
-static void X64_emit_instr_sub_flt_rr(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr sub_flt_rr_instr = {
-        .flags = X64_Instr_Kind_SUB_FLT_RR,
-        .sub_flt_rr.kind = kind,
-        .sub_flt_rr.dst = dst,
-        .sub_flt_rr.src = src,
-    };
-
-    array_push(*instrs, sub_flt_rr_instr);
-}
-
-static void X64_emit_instr_sub_flt_rm(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr sub_flt_rm_instr = {
-        .flags = X64_Instr_Kind_SUB_FLT_RM,
-        .sub_flt_rm.kind = kind,
-        .sub_flt_rm.dst = dst,
-        .sub_flt_rm.src = src,
-    };
-
-    array_push(*instrs, sub_flt_rm_instr);
-}
-
-static void X64_emit_instr_sub_flt_mr(Array(X64_Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr sub_flt_mr_instr = {
-        .flags = X64_Instr_Kind_SUB_FLT_MR,
-        .sub_flt_mr.kind = kind,
-        .sub_flt_mr.dst = dst,
-        .sub_flt_mr.src = src,
-    };
-
-    array_push(*instrs, sub_flt_mr_instr);
-}
-
-static void X64_emit_instr_mul_flt_rr(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr mul_flt_rr_instr = {
-        .flags = X64_Instr_Kind_MUL_FLT_RR,
-        .mul_flt_rr.kind = kind,
-        .mul_flt_rr.dst = dst,
-        .mul_flt_rr.src = src,
-    };
-
-    array_push(*instrs, mul_flt_rr_instr);
-}
-
-static void X64_emit_instr_mul_flt_rm(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr mul_flt_rm_instr = {
-        .flags = X64_Instr_Kind_MUL_FLT_RM,
-        .mul_flt_rm.kind = kind,
-        .mul_flt_rm.dst = dst,
-        .mul_flt_rm.src = src,
-    };
-
-    array_push(*instrs, mul_flt_rm_instr);
-}
-
-static void X64_emit_instr_mul_flt_mr(Array(X64_Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr mul_flt_mr_instr = {
-        .flags = X64_Instr_Kind_MUL_FLT_MR,
-        .mul_flt_mr.kind = kind,
-        .mul_flt_mr.dst = dst,
-        .mul_flt_mr.src = src,
-    };
-
-    array_push(*instrs, mul_flt_mr_instr);
-}
-
-static void X64_emit_instr_div_flt_rr(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr div_flt_rr_instr = {
-        .flags = X64_Instr_Kind_DIV_FLT_RR,
-        .div_flt_rr.kind = kind,
-        .div_flt_rr.dst = dst,
-        .div_flt_rr.src = src,
-    };
-
-    array_push(*instrs, div_flt_rr_instr);
-}
-
-static void X64_emit_instr_div_flt_rm(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr div_flt_rm_instr = {
-        .flags = X64_Instr_Kind_DIV_FLT_RM,
-        .div_flt_rm.kind = kind,
-        .div_flt_rm.dst = dst,
-        .div_flt_rm.src = src,
-    };
-
-    array_push(*instrs, div_flt_rm_instr);
-}
-
-static void X64_emit_instr_div_flt_mr(Array(X64_Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr div_flt_mr_instr = {
-        .flags = X64_Instr_Kind_DIV_FLT_MR,
-        .div_flt_mr.kind = kind,
-        .div_flt_mr.dst = dst,
-        .div_flt_mr.src = src,
-    };
-
-    array_push(*instrs, div_flt_mr_instr);
-}
-
-static void X64_emit_instr_neg_r(Array(X64_Instr) * instrs, u8 size, X64_Reg dst)
-{
-    X64_Instr neg_r_instr = {
-        .flags = X64_Instr_Kind_NEG_R,
-        .neg_r.size = size,
-        .neg_r.dst = dst,
-    };
-
-    array_push(*instrs, neg_r_instr);
-}
-
-static void X64_emit_instr_neg_m(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst)
-{
-    X64_Instr neg_m_instr = {
-        .flags = X64_Instr_Kind_NEG_M,
-        .neg_m.size = size,
-        .neg_m.dst = dst,
-    };
-
-    array_push(*instrs, neg_m_instr);
-}
-
-static void X64_emit_instr_not_r(Array(X64_Instr) * instrs, u8 size, X64_Reg dst)
-{
-    X64_Instr not_r_instr = {
-        .flags = X64_Instr_Kind_NOT_R,
-        .not_r.size = size,
-        .not_r.dst = dst,
-    };
-
-    array_push(*instrs, not_r_instr);
-}
-
-static void X64_emit_instr_not_m(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst)
-{
-    X64_Instr not_m_instr = {
-        .flags = X64_Instr_Kind_NOT_M,
-        .not_m.size = size,
-        .not_m.dst = dst,
-    };
-
-    array_push(*instrs, not_m_instr);
-}
-
-static void X64_emit_instr_sar_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst)
-{
-    X64_Instr instr = {
-        .flags = X64_Instr_Kind_SAR_RR,
-        .sar_rr.size = size,
-        .sar_rr.dst = dst,
-    };
-
-    array_push(*instrs, instr);
-}
-
-static void X64_emit_instr_sar_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst)
-{
-    X64_Instr instr = {
-        .flags = X64_Instr_Kind_SAR_MR,
-        .sar_mr.size = size,
-        .sar_mr.dst = dst,
-    };
-
-    array_push(*instrs, instr);
-}
-
-static void X64_emit_instr_sar_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u8 imm)
-{
-    X64_Instr sar_ri_instr = {
-        .flags = X64_Instr_Kind_SAR_RI,
-        .sar_ri.size = size,
-        .sar_ri.dst = dst,
-        .sar_ri.imm = imm,
-    };
-
-    array_push(*instrs, sar_ri_instr);
-}
-
-static void X64_emit_instr_sar_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u8 imm)
-{
-    X64_Instr sar_mi_instr = {
-        .flags = X64_Instr_Kind_SAR_MI,
-        .sar_mi.size = size,
-        .sar_mi.dst = dst,
-        .sar_mi.imm = imm,
-    };
-
-    array_push(*instrs, sar_mi_instr);
-}
-
-static void X64_emit_instr_shl_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst)
-{
-    X64_Instr instr = {
-        .flags = X64_Instr_Kind_SHL_RR,
-        .shl_rr.size = size,
-        .shl_rr.dst = dst,
-    };
-
-    array_push(*instrs, instr);
-}
-
-static void X64_emit_instr_shl_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst)
-{
-    X64_Instr instr = {
-        .flags = X64_Instr_Kind_SHL_MR,
-        .shl_mr.size = size,
-        .shl_mr.dst = dst,
-    };
-
-    array_push(*instrs, instr);
-}
-
-static void X64_emit_instr_shl_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u8 imm)
-{
-    X64_Instr shl_ri_instr = {
-        .flags = X64_Instr_Kind_SHL_RI,
-        .shl_ri.size = size,
-        .shl_ri.dst = dst,
-        .shl_ri.imm = imm,
-    };
-
-    array_push(*instrs, shl_ri_instr);
-}
-
-static void X64_emit_instr_shl_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u8 imm)
-{
-    X64_Instr shl_mi_instr = {
-        .flags = X64_Instr_Kind_SHL_MI,
-        .shl_mi.size = size,
-        .shl_mi.dst = dst,
-        .shl_mi.imm = imm,
-    };
-
-    array_push(*instrs, shl_mi_instr);
-}
-
-static void X64_emit_instr_div_r(Array(X64_Instr) * instrs, u8 size, X64_Reg src)
-{
-    X64_Instr div_r_instr = {
-        .flags = X64_Instr_Kind_DIV_R,
-        .div_r.size = size,
-        .div_r.src = src,
-    };
-
-    array_push(*instrs, div_r_instr);
-}
-
-static void X64_emit_instr_div_m(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr src)
-{
-    X64_Instr div_m_instr = {
-        .flags = X64_Instr_Kind_DIV_M,
-        .div_m.size = size,
-        .div_m.src = src,
-    };
-
-    array_push(*instrs, div_m_instr);
-}
-
-static void X64_emit_instr_idiv_r(Array(X64_Instr) * instrs, u8 size, X64_Reg src)
-{
-    X64_Instr idiv_r_instr = {
-        .flags = X64_Instr_Kind_IDIV_R,
-        .idiv_r.size = size,
-        .idiv_r.src = src,
-    };
-
-    array_push(*instrs, idiv_r_instr);
-}
-
-static void X64_emit_instr_idiv_m(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr src)
-{
-    X64_Instr idiv_m_instr = {
-        .flags = X64_Instr_Kind_IDIV_M,
-        .idiv_m.size = size,
-        .idiv_m.src = src,
-    };
-
-    array_push(*instrs, idiv_m_instr);
-}
-
-static void X64_emit_instr_sext_ax_into_dx(Array(X64_Instr) * instrs, u8 size)
+#define X64_DEF_EMIT_INSTR_BINARY_RR(field, kind)                                             \
+    static void X64_emit_instr_##field(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_Reg src) \
+    {                                                                                         \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), kind);             \
+        instr->field.size = size;                                                             \
+        instr->field.dst = dst;                                                               \
+        instr->field.src = src;                                                               \
+                                                                                              \
+        X64_push_instr(instrs, instr);                                                        \
+    }
+
+#define X64_DEF_EMIT_INSTR_BINARY_RM(field, kind)                                                   \
+    static void X64_emit_instr_##field(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src) \
+    {                                                                                               \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), kind);                   \
+        instr->field.size = size;                                                                   \
+        instr->field.dst = dst;                                                                     \
+        instr->field.src = src;                                                                     \
+                                                                                                    \
+        X64_push_instr(instrs, instr);                                                              \
+    }
+
+#define X64_DEF_EMIT_INSTR_BINARY_MR(field, kind)                                                   \
+    static void X64_emit_instr_##field(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src) \
+    {                                                                                               \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), kind);                   \
+        instr->field.size = size;                                                                   \
+        instr->field.dst = dst;                                                                     \
+        instr->field.src = src;                                                                     \
+                                                                                                    \
+        X64_push_instr(instrs, instr);                                                              \
+    }
+
+#define X64_DEF_EMIT_INSTR_BINARY_RI(field, kind)                                         \
+    static void X64_emit_instr_##field(X64_Instrs* instrs, u8 size, X64_Reg dst, u32 imm) \
+    {                                                                                     \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), kind);         \
+        instr->field.size = size;                                                         \
+        instr->field.dst = dst;                                                           \
+        instr->field.imm = imm;                                                           \
+                                                                                          \
+        X64_push_instr(instrs, instr);                                                    \
+    }
+
+#define X64_DEF_EMIT_INSTR_BINARY_MI(field, kind)                                               \
+    static void X64_emit_instr_##field(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, u32 imm) \
+    {                                                                                           \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), kind);               \
+        instr->field.size = size;                                                               \
+        instr->field.dst = dst;                                                                 \
+        instr->field.imm = imm;                                                                 \
+                                                                                                \
+        X64_push_instr(instrs, instr);                                                          \
+    }
+
+X64_DEF_EMIT_INSTR_BINARY_RR(add_rr, X64_Instr_Kind_ADD_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(add_rm, X64_Instr_Kind_ADD_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(add_mr, X64_Instr_Kind_ADD_MR)
+X64_DEF_EMIT_INSTR_BINARY_RI(add_ri, X64_Instr_Kind_ADD_RI)
+X64_DEF_EMIT_INSTR_BINARY_MI(add_mi, X64_Instr_Kind_ADD_MI)
+
+X64_DEF_EMIT_INSTR_BINARY_RR(sub_rr, X64_Instr_Kind_SUB_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(sub_rm, X64_Instr_Kind_SUB_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(sub_mr, X64_Instr_Kind_SUB_MR)
+X64_DEF_EMIT_INSTR_BINARY_RI(sub_ri, X64_Instr_Kind_SUB_RI)
+X64_DEF_EMIT_INSTR_BINARY_MI(sub_mi, X64_Instr_Kind_SUB_MI)
+
+X64_DEF_EMIT_INSTR_BINARY_RR(imul_rr, X64_Instr_Kind_IMUL_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(imul_rm, X64_Instr_Kind_IMUL_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(imul_mr, X64_Instr_Kind_IMUL_MR)
+X64_DEF_EMIT_INSTR_BINARY_RI(imul_ri, X64_Instr_Kind_IMUL_RI)
+X64_DEF_EMIT_INSTR_BINARY_MI(imul_mi, X64_Instr_Kind_IMUL_MI)
+
+X64_DEF_EMIT_INSTR_BINARY_RR(and_rr, X64_Instr_Kind_AND_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(and_rm, X64_Instr_Kind_AND_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(and_mr, X64_Instr_Kind_AND_MR)
+X64_DEF_EMIT_INSTR_BINARY_RI(and_ri, X64_Instr_Kind_AND_RI)
+X64_DEF_EMIT_INSTR_BINARY_MI(and_mi, X64_Instr_Kind_AND_MI)
+
+X64_DEF_EMIT_INSTR_BINARY_RR(or_rr, X64_Instr_Kind_OR_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(or_rm, X64_Instr_Kind_OR_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(or_mr, X64_Instr_Kind_OR_MR)
+X64_DEF_EMIT_INSTR_BINARY_RI(or_ri, X64_Instr_Kind_OR_RI)
+X64_DEF_EMIT_INSTR_BINARY_MI(or_mi, X64_Instr_Kind_OR_MI)
+
+X64_DEF_EMIT_INSTR_BINARY_RR(xor_rr, X64_Instr_Kind_XOR_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(xor_rm, X64_Instr_Kind_XOR_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(xor_mr, X64_Instr_Kind_XOR_MR)
+X64_DEF_EMIT_INSTR_BINARY_RI(xor_ri, X64_Instr_Kind_XOR_RI)
+X64_DEF_EMIT_INSTR_BINARY_MI(xor_mi, X64_Instr_Kind_XOR_MI)
+
+#define X64_DEF_EMIT_INSTR_FLT_BINARY_RR(f_d, k_d)                                                 \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_Reg src) \
+    {                                                                                              \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);                   \
+        instr->f_d.kind = kind;                                                                    \
+        instr->f_d.dst = dst;                                                                      \
+        instr->f_d.src = src;                                                                      \
+                                                                                                   \
+        X64_push_instr(instrs, instr);                                                             \
+    }
+
+#define X64_DEF_EMIT_INSTR_FLT_BINARY_RM(f_d, k_d)                                                       \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src) \
+    {                                                                                                    \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);                         \
+        instr->f_d.kind = kind;                                                                          \
+        instr->f_d.dst = dst;                                                                            \
+        instr->f_d.src = src;                                                                            \
+                                                                                                         \
+        X64_push_instr(instrs, instr);                                                                   \
+    }
+
+#define X64_DEF_EMIT_INSTR_FLT_BINARY_MR(f_d, k_d)                                                       \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src) \
+    {                                                                                                    \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);                         \
+        instr->f_d.kind = kind;                                                                          \
+        instr->f_d.dst = dst;                                                                            \
+        instr->f_d.src = src;                                                                            \
+                                                                                                         \
+        X64_push_instr(instrs, instr);                                                                   \
+    }
+
+X64_DEF_EMIT_INSTR_FLT_BINARY_RR(add_flt_rr, X64_Instr_Kind_ADD_FLT_RR)
+X64_DEF_EMIT_INSTR_FLT_BINARY_RM(add_flt_rm, X64_Instr_Kind_ADD_FLT_RM)
+X64_DEF_EMIT_INSTR_FLT_BINARY_MR(add_flt_mr, X64_Instr_Kind_ADD_FLT_MR)
+
+X64_DEF_EMIT_INSTR_FLT_BINARY_RR(sub_flt_rr, X64_Instr_Kind_SUB_FLT_RR)
+X64_DEF_EMIT_INSTR_FLT_BINARY_RM(sub_flt_rm, X64_Instr_Kind_SUB_FLT_RM)
+X64_DEF_EMIT_INSTR_FLT_BINARY_MR(sub_flt_mr, X64_Instr_Kind_SUB_FLT_MR)
+
+X64_DEF_EMIT_INSTR_FLT_BINARY_RR(mul_flt_rr, X64_Instr_Kind_MUL_FLT_RR)
+X64_DEF_EMIT_INSTR_FLT_BINARY_RM(mul_flt_rm, X64_Instr_Kind_MUL_FLT_RM)
+X64_DEF_EMIT_INSTR_FLT_BINARY_MR(mul_flt_mr, X64_Instr_Kind_MUL_FLT_MR)
+
+X64_DEF_EMIT_INSTR_FLT_BINARY_RR(div_flt_rr, X64_Instr_Kind_DIV_FLT_RR)
+X64_DEF_EMIT_INSTR_FLT_BINARY_RM(div_flt_rm, X64_Instr_Kind_DIV_FLT_RM)
+X64_DEF_EMIT_INSTR_FLT_BINARY_MR(div_flt_mr, X64_Instr_Kind_DIV_FLT_MR)
+
+#define X64_DEF_EMIT_INSTR_UNARY_R(f_d, k_d)                                     \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_Reg dst)   \
+    {                                                                            \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d); \
+        instr->f_d.size = size;                                                  \
+        instr->f_d.dst = dst;                                                    \
+                                                                                 \
+        X64_push_instr(instrs, instr);                                           \
+    }
+
+#define X64_DEF_EMIT_INSTR_UNARY_M(f_d, k_d)                                         \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst) \
+    {                                                                                \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);     \
+        instr->f_d.size = size;                                                      \
+        instr->f_d.dst = dst;                                                        \
+                                                                                     \
+        X64_push_instr(instrs, instr);                                               \
+    }
+
+X64_DEF_EMIT_INSTR_UNARY_R(neg_r, X64_Instr_Kind_NEG_R)
+X64_DEF_EMIT_INSTR_UNARY_M(neg_m, X64_Instr_Kind_NEG_M)
+
+X64_DEF_EMIT_INSTR_UNARY_R(not_r, X64_Instr_Kind_NOT_R)
+X64_DEF_EMIT_INSTR_UNARY_M(not_m, X64_Instr_Kind_NOT_M)
+
+#define X64_DEF_EMIT_INSTR_SHIFT_RR(f_d, k_d)                                    \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_Reg dst)   \
+    {                                                                            \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d); \
+        instr->f_d.size = size;                                                  \
+        instr->f_d.dst = dst;                                                    \
+                                                                                 \
+        X64_push_instr(instrs, instr);                                           \
+    }
+
+#define X64_DEF_EMIT_INSTR_SHIFT_MR(f_d, k_d)                                        \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst) \
+    {                                                                                \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);     \
+        instr->f_d.size = size;                                                      \
+        instr->f_d.dst = dst;                                                        \
+                                                                                     \
+        X64_push_instr(instrs, instr);                                               \
+    }
+
+#define X64_DEF_EMIT_INSTR_SHIFT_RI(f_d, k_d)                                          \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_Reg dst, u8 imm) \
+    {                                                                                  \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);       \
+        instr->f_d.size = size;                                                        \
+        instr->f_d.dst = dst;                                                          \
+        instr->f_d.imm = imm;                                                          \
+                                                                                       \
+        X64_push_instr(instrs, instr);                                                 \
+    }
+
+#define X64_DEF_EMIT_INSTR_SHIFT_MI(f_d, k_d)                                                \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, u8 imm) \
+    {                                                                                        \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);             \
+        instr->f_d.size = size;                                                              \
+        instr->f_d.dst = dst;                                                                \
+        instr->f_d.imm = imm;                                                                \
+                                                                                             \
+        X64_push_instr(instrs, instr);                                                       \
+    }
+
+X64_DEF_EMIT_INSTR_SHIFT_RR(sar_rr, X64_Instr_Kind_SAR_RR)
+X64_DEF_EMIT_INSTR_SHIFT_MR(sar_mr, X64_Instr_Kind_SAR_MR)
+X64_DEF_EMIT_INSTR_SHIFT_RI(sar_ri, X64_Instr_Kind_SAR_RI)
+X64_DEF_EMIT_INSTR_SHIFT_MI(sar_mi, X64_Instr_Kind_SAR_MI)
+
+X64_DEF_EMIT_INSTR_SHIFT_RR(shl_rr, X64_Instr_Kind_SHL_RR)
+X64_DEF_EMIT_INSTR_SHIFT_MR(shl_mr, X64_Instr_Kind_SHL_MR)
+X64_DEF_EMIT_INSTR_SHIFT_RI(shl_ri, X64_Instr_Kind_SHL_RI)
+X64_DEF_EMIT_INSTR_SHIFT_MI(shl_mi, X64_Instr_Kind_SHL_MI)
+
+#define X64_DEF_EMIT_INSTR_DIV_R(f_d, k_d)                                       \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_Reg src)   \
+    {                                                                            \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d); \
+        instr->f_d.size = size;                                                  \
+        instr->f_d.src = src;                                                    \
+                                                                                 \
+        X64_push_instr(instrs, instr);                                           \
+    }
+
+#define X64_DEF_EMIT_INSTR_DIV_M(f_d, k_d)                                           \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_SIBD_Addr src) \
+    {                                                                                \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);     \
+        instr->f_d.size = size;                                                      \
+        instr->f_d.src = src;                                                        \
+                                                                                     \
+        X64_push_instr(instrs, instr);                                               \
+    }
+
+X64_DEF_EMIT_INSTR_DIV_R(div_r, X64_Instr_Kind_DIV_R)
+X64_DEF_EMIT_INSTR_DIV_M(div_m, X64_Instr_Kind_DIV_M)
+
+X64_DEF_EMIT_INSTR_DIV_R(idiv_r, X64_Instr_Kind_IDIV_R)
+X64_DEF_EMIT_INSTR_DIV_M(idiv_m, X64_Instr_Kind_IDIV_M)
+
+static void X64_emit_instr_sext_ax_into_dx(X64_Instrs* instrs, u8 size)
 {
     X64_Instr_Kind kind = X64_Instr_Kind_NOOP;
 
@@ -810,551 +405,272 @@ static void X64_emit_instr_sext_ax_into_dx(Array(X64_Instr) * instrs, u8 size)
         break;
     }
 
-    X64_Instr instr = {.flags = kind};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), kind);
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_mov_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
+X64_DEF_EMIT_INSTR_BINARY_RR(mov_rr, X64_Instr_Kind_MOV_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(mov_rm, X64_Instr_Kind_MOV_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(mov_mr, X64_Instr_Kind_MOV_MR)
+X64_DEF_EMIT_INSTR_BINARY_MI(mov_mi, X64_Instr_Kind_MOV_MI)
+
+// MOV_RI is the only instruction that can load an 8-byte immediate constant.
+static void X64_emit_instr_mov_ri(X64_Instrs* instrs, u8 size, X64_Reg dst, u64 imm)
 {
-    X64_Instr mov_rr_instr = {
-        .flags = X64_Instr_Kind_MOV_RR,
-        .mov_rr.size = size,
-        .mov_rr.dst = dst,
-        .mov_rr.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_MOV_RI);
+    instr->mov_ri.size = size;
+    instr->mov_ri.dst = dst;
+    instr->mov_ri.imm = imm;
 
-    array_push(*instrs, mov_rr_instr);
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_mov_rrh(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
+static void X64_emit_instr_mov_rrh(X64_Instrs* instrs, X64_Reg dst, X64_Reg src)
 {
-    X64_Instr mov_rr_instr = {
-        .flags = X64_INSTR_MOV_SRC_RH_MASK | (X64_Instr_Kind_MOV_RR & X64_INSTR_KIND_MASK),
-        .mov_rr.size = 1,
-        .mov_rr.dst = dst,
-        .mov_rr.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_MOV_RR);
+    instr->flags |= X64_INSTR_MOV_SRC_RH_MASK;
+    instr->mov_rr.size = 1;
+    instr->mov_rr.dst = dst;
+    instr->mov_rr.src = src;
 
-    array_push(*instrs, mov_rr_instr);
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_mov_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_emit_instr_mov_mrh(X64_Instrs* instrs, X64_SIBD_Addr dst, X64_Reg src)
 {
-    X64_Instr mov_rm_instr = {
-        .flags = X64_Instr_Kind_MOV_RM,
-        .mov_rm.size = size,
-        .mov_rm.dst = dst,
-        .mov_rm.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_MOV_MR);
+    instr->flags |= X64_INSTR_MOV_SRC_RH_MASK;
+    instr->mov_mr.size = 1;
+    instr->mov_mr.dst = dst;
+    instr->mov_mr.src = src;
 
-    array_push(*instrs, mov_rm_instr);
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_mov_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr mov_mr_instr = {
-        .flags = X64_Instr_Kind_MOV_MR,
-        .mov_mr.size = size,
-        .mov_mr.dst = dst,
-        .mov_mr.src = src,
-    };
+#define X64_DEF_EMIT_INSTR_MOV_EXT_RR(f_d, k_d)                                                              \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src) \
+    {                                                                                                        \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);                             \
+        instr->f_d.dst_size = dst_size;                                                                      \
+        instr->f_d.src_size = src_size;                                                                      \
+        instr->f_d.dst = dst;                                                                                \
+        instr->f_d.src = src;                                                                                \
+                                                                                                             \
+        X64_push_instr(instrs, instr);                                                                       \
+    }
 
-    array_push(*instrs, mov_mr_instr);
-}
+#define X64_DEF_EMIT_INSTR_MOV_EXT_RM(f_d, k_d)                                                                    \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src) \
+    {                                                                                                              \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);                                   \
+        instr->f_d.dst_size = dst_size;                                                                            \
+        instr->f_d.src_size = src_size;                                                                            \
+        instr->f_d.dst = dst;                                                                                      \
+        instr->f_d.src = src;                                                                                      \
+                                                                                                                   \
+        X64_push_instr(instrs, instr);                                                                             \
+    }
 
-static void X64_emit_instr_mov_mrh(Array(X64_Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr mov_mr_instr = {
-        .flags = X64_INSTR_MOV_SRC_RH_MASK | (X64_Instr_Kind_MOV_MR & X64_INSTR_KIND_MASK),
-        .mov_mr.size = 1,
-        .mov_mr.dst = dst,
-        .mov_mr.src = src,
-    };
+X64_DEF_EMIT_INSTR_MOV_EXT_RR(movsx_rr, X64_Instr_Kind_MOVSX_RR)
+X64_DEF_EMIT_INSTR_MOV_EXT_RM(movsx_rm, X64_Instr_Kind_MOVSX_RM)
 
-    array_push(*instrs, mov_mr_instr);
-}
+X64_DEF_EMIT_INSTR_MOV_EXT_RR(movsxd_rr, X64_Instr_Kind_MOVSXD_RR)
+X64_DEF_EMIT_INSTR_MOV_EXT_RM(movsxd_rm, X64_Instr_Kind_MOVSXD_RM)
 
-static void X64_emit_instr_mov_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u64 imm)
-{
-    X64_Instr mov_ri_instr = {
-        .flags = X64_Instr_Kind_MOV_RI,
-        .mov_ri.size = size,
-        .mov_ri.dst = dst,
-        .mov_ri.imm = imm,
-    };
+X64_DEF_EMIT_INSTR_MOV_EXT_RR(movzx_rr, X64_Instr_Kind_MOVZX_RR)
+X64_DEF_EMIT_INSTR_MOV_EXT_RM(movzx_rm, X64_Instr_Kind_MOVZX_RM)
 
-    array_push(*instrs, mov_ri_instr);
-}
+X64_DEF_EMIT_INSTR_FLT_BINARY_RR(mov_flt_rr, X64_Instr_Kind_MOV_FLT_RR)
+X64_DEF_EMIT_INSTR_FLT_BINARY_RM(mov_flt_rm, X64_Instr_Kind_MOV_FLT_RM)
+X64_DEF_EMIT_INSTR_FLT_BINARY_MR(mov_flt_mr, X64_Instr_Kind_MOV_FLT_MR)
 
-static void X64_emit_instr_mov_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr mov_mi_instr = {
-        .flags = X64_Instr_Kind_MOV_MI,
-        .mov_mi.size = size,
-        .mov_mi.dst = dst,
-        .mov_mi.imm = imm,
-    };
+#define X64_DEF_EMIT_INSTR_CVT_FLT_RR(f_d, k_d)                                    \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, X64_Reg dst, X64_Reg src) \
+    {                                                                              \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);   \
+        instr->f_d.dst = dst;                                                      \
+        instr->f_d.src = src;                                                      \
+                                                                                   \
+        X64_push_instr(instrs, instr);                                             \
+    }
 
-    array_push(*instrs, mov_mi_instr);
-}
+#define X64_DEF_EMIT_INSTR_CVT_FLT_RM(f_d, k_d)                                          \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, X64_Reg dst, X64_SIBD_Addr src) \
+    {                                                                                    \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);         \
+        instr->f_d.dst = dst;                                                            \
+        instr->f_d.src = src;                                                            \
+                                                                                         \
+        X64_push_instr(instrs, instr);                                                   \
+    }
 
-static void X64_emit_instr_movsx_rr(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
-{
-    X64_Instr movsx_rr_instr = {
-        .flags = X64_Instr_Kind_MOVSX_RR,
-        .movsx_rr.dst_size = dst_size,
-        .movsx_rr.src_size = src_size,
-        .movsx_rr.dst = dst,
-        .movsx_rr.src = src,
-    };
+X64_DEF_EMIT_INSTR_CVT_FLT_RR(cvtss2sd_rr, X64_Instr_Kind_CVTSS2SD_RR)
+X64_DEF_EMIT_INSTR_CVT_FLT_RM(cvtss2sd_rm, X64_Instr_Kind_CVTSS2SD_RM)
 
-    array_push(*instrs, movsx_rr_instr);
-}
+X64_DEF_EMIT_INSTR_CVT_FLT_RR(cvtsd2ss_rr, X64_Instr_Kind_CVTSD2SS_RR)
+X64_DEF_EMIT_INSTR_CVT_FLT_RM(cvtsd2ss_rm, X64_Instr_Kind_CVTSD2SS_RM)
 
-static void X64_emit_instr_movsx_rm(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
-{
-    X64_Instr movsx_rm_instr = {
-        .flags = X64_Instr_Kind_MOVSX_RM,
-        .movsx_rm.dst_size = dst_size,
-        .movsx_rm.src_size = src_size,
-        .movsx_rm.dst = dst,
-        .movsx_rm.src = src,
-    };
+#define X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RR(f_d, k_d)                                              \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, X64_Reg dst, bool dst_8bytes, X64_Reg src) \
+    {                                                                                               \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);                    \
+        instr->f_d.dst = dst;                                                                       \
+        instr->f_d.src = src;                                                                       \
+                                                                                                    \
+        if (dst_8bytes) {                                                                           \
+            instr->flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;                                        \
+        }                                                                                           \
+                                                                                                    \
+        X64_push_instr(instrs, instr);                                                              \
+    }
 
-    array_push(*instrs, movsx_rm_instr);
-}
-
-static void X64_emit_instr_movsxd_rr(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
-{
-    X64_Instr movsxd_rr_instr = {
-        .flags = X64_Instr_Kind_MOVSXD_RR,
-        .movsxd_rr.dst_size = dst_size,
-        .movsxd_rr.src_size = src_size,
-        .movsxd_rr.dst = dst,
-        .movsxd_rr.src = src,
-    };
-
-    array_push(*instrs, movsxd_rr_instr);
-}
-
-static void X64_emit_instr_movsxd_rm(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
-{
-    X64_Instr movsxd_rm_instr = {
-        .flags = X64_Instr_Kind_MOVSXD_RM,
-        .movsxd_rm.dst_size = dst_size,
-        .movsxd_rm.src_size = src_size,
-        .movsxd_rm.dst = dst,
-        .movsxd_rm.src = src,
-    };
-
-    array_push(*instrs, movsxd_rm_instr);
-}
-
-static void X64_emit_instr_movzx_rr(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src)
-{
-    X64_Instr movzx_rr_instr = {
-        .flags = X64_Instr_Kind_MOVZX_RR,
-        .movzx_rr.dst_size = dst_size,
-        .movzx_rr.src_size = src_size,
-        .movzx_rr.dst = dst,
-        .movzx_rr.src = src,
-    };
-
-    array_push(*instrs, movzx_rr_instr);
-}
-
-static void X64_emit_instr_movzx_rm(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src)
-{
-    X64_Instr movzx_rm_instr = {
-        .flags = X64_Instr_Kind_MOVZX_RM,
-        .movzx_rm.dst_size = dst_size,
-        .movzx_rm.src_size = src_size,
-        .movzx_rm.dst = dst,
-        .movzx_rm.src = src,
-    };
-
-    array_push(*instrs, movzx_rm_instr);
-}
-
-static void X64_emit_instr_mov_flt_rr(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr mov_flt_rr_instr = {
-        .flags = X64_Instr_Kind_MOV_FLT_RR,
-        .mov_flt_rr.kind = kind,
-        .mov_flt_rr.dst = dst,
-        .mov_flt_rr.src = src,
-    };
-
-    array_push(*instrs, mov_flt_rr_instr);
-}
-
-static void X64_emit_instr_mov_flt_mr(Array(X64_Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr mov_flt_mr_instr = {
-        .flags = X64_Instr_Kind_MOV_FLT_MR,
-        .mov_flt_mr.kind = kind,
-        .mov_flt_mr.dst = dst,
-        .mov_flt_mr.src = src,
-    };
-
-    array_push(*instrs, mov_flt_mr_instr);
-}
-
-static void X64_emit_instr_mov_flt_rm(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr mov_flt_rm_instr = {
-        .flags = X64_Instr_Kind_MOV_FLT_RM,
-        .mov_flt_rm.kind = kind,
-        .mov_flt_rm.dst = dst,
-        .mov_flt_rm.src = src,
-    };
-
-    array_push(*instrs, mov_flt_rm_instr);
-}
-
-static void X64_emit_instr_cvtss2sd_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr cvtss2sd_rr_instr = {
-        .flags = X64_Instr_Kind_CVTSS2SD_RR,
-        .cvtss2sd_rr.dst = dst,
-        .cvtss2sd_rr.src = src,
-    };
-
-    array_push(*instrs, cvtss2sd_rr_instr);
-}
-
-static void X64_emit_instr_cvtss2sd_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr cvtss2sd_rm_instr = {
-        .flags = X64_Instr_Kind_CVTSS2SD_RM,
-        .cvtss2sd_rm.dst = dst,
-        .cvtss2sd_rm.src = src,
-    };
-
-    array_push(*instrs, cvtss2sd_rm_instr);
-}
-
-static void X64_emit_instr_cvtsd2ss_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr cvtsd2ss_rr_instr = {
-        .flags = X64_Instr_Kind_CVTSD2SS_RR,
-        .cvtsd2ss_rr.dst = dst,
-        .cvtsd2ss_rr.src = src,
-    };
-
-    array_push(*instrs, cvtsd2ss_rr_instr);
-}
-
-static void X64_emit_instr_cvtsd2ss_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr cvtsd2ss_rm_instr = {
-        .flags = X64_Instr_Kind_CVTSD2SS_RM,
-        .cvtsd2ss_rm.dst = dst,
-        .cvtsd2ss_rm.src = src,
-    };
-
-    array_push(*instrs, cvtsd2ss_rm_instr);
-}
+#define X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RM(f_d, k_d)                                                    \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, X64_Reg dst, bool dst_8bytes, X64_SIBD_Addr src) \
+    {                                                                                                     \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);                          \
+        instr->f_d.dst = dst;                                                                             \
+        instr->f_d.src = src;                                                                             \
+                                                                                                          \
+        if (dst_8bytes) {                                                                                 \
+            instr->flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;                                              \
+        }                                                                                                 \
+                                                                                                          \
+        X64_push_instr(instrs, instr);                                                                    \
+    }
 
 // f32 to int
-static void X64_emit_instr_cvttss2si_rr(Array(X64_Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_Reg src)
-{
-    u32 flags = X64_Instr_Kind_CVTTSS2SI_RR;
-    if (dst_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvttss2si_rr_instr = {
-        .flags = flags,
-        .cvttss2si_rr.dst = dst,
-        .cvttss2si_rr.src = src,
-    };
-
-    array_push(*instrs, cvttss2si_rr_instr);
-}
-
-static void X64_emit_instr_cvttss2si_rm(Array(X64_Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_SIBD_Addr src)
-{
-    u32 flags = X64_Instr_Kind_CVTTSS2SI_RM;
-    if (dst_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvttss2si_rm_instr = {
-        .flags = flags,
-        .cvttss2si_rm.dst = dst,
-        .cvttss2si_rm.src = src,
-    };
-
-    array_push(*instrs, cvttss2si_rm_instr);
-}
+X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RR(cvttss2si_rr, X64_Instr_Kind_CVTTSS2SI_RR)
+X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RM(cvttss2si_rm, X64_Instr_Kind_CVTTSS2SI_RM)
 
 // f64 to int
-static void X64_emit_instr_cvttsd2si_rr(Array(X64_Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_Reg src)
-{
-    u32 flags = X64_Instr_Kind_CVTTSD2SI_RR;
-    if (dst_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RR(cvttsd2si_rr, X64_Instr_Kind_CVTTSD2SI_RR)
+X64_DEF_EMIT_INSTR_CVT_FLT_TO_INT_RM(cvttsd2si_rm, X64_Instr_Kind_CVTTSD2SI_RM)
+
+#define X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RR(f_d, k_d)                                              \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, X64_Reg dst, X64_Reg src, bool src_8bytes) \
+    {                                                                                               \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);                    \
+        instr->f_d.dst = dst;                                                                       \
+        instr->f_d.src = src;                                                                       \
+                                                                                                    \
+        if (src_8bytes) {                                                                           \
+            instr->flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;                                        \
+        }                                                                                           \
+                                                                                                    \
+        X64_push_instr(instrs, instr);                                                              \
     }
 
-    X64_Instr cvttsd2si_rr_instr = {
-        .flags = flags,
-        .cvttsd2si_rr.dst = dst,
-        .cvttsd2si_rr.src = src,
-    };
-
-    array_push(*instrs, cvttsd2si_rr_instr);
-}
-
-static void X64_emit_instr_cvttsd2si_rm(Array(X64_Instr) * instrs, X64_Reg dst, bool dst_8bytes, X64_SIBD_Addr src)
-{
-    u32 flags = X64_Instr_Kind_CVTTSD2SI_RM;
-    if (dst_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
+#define X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RM(f_d, k_d)                                                    \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, X64_Reg dst, X64_SIBD_Addr src, bool src_8bytes) \
+    {                                                                                                     \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);                          \
+        instr->f_d.dst = dst;                                                                             \
+        instr->f_d.src = src;                                                                             \
+                                                                                                          \
+        if (src_8bytes) {                                                                                 \
+            instr->flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;                                              \
+        }                                                                                                 \
+                                                                                                          \
+        X64_push_instr(instrs, instr);                                                                    \
     }
-
-    X64_Instr cvttsd2si_rm_instr = {
-        .flags = flags,
-        .cvttsd2si_rm.dst = dst,
-        .cvttsd2si_rm.src = src,
-    };
-
-    array_push(*instrs, cvttsd2si_rm_instr);
-}
 
 // int to f32
-static void X64_emit_instr_cvtsi2ss_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src, bool src_8bytes)
-{
-    u32 flags = X64_Instr_Kind_CVTSI2SS_RR;
-    if (src_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvtsi2ss_rr_instr = {
-        .flags = flags,
-        .cvtsi2ss_rr.dst = dst,
-        .cvtsi2ss_rr.src = src,
-    };
-
-    array_push(*instrs, cvtsi2ss_rr_instr);
-}
-
-static void X64_emit_instr_cvtsi2ss_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src, bool src_8bytes)
-{
-    u32 flags = X64_Instr_Kind_CVTSI2SS_RM;
-    if (src_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvtsi2ss_rm_instr = {
-        .flags = flags,
-        .cvtsi2ss_rm.dst = dst,
-        .cvtsi2ss_rm.src = src,
-    };
-
-    array_push(*instrs, cvtsi2ss_rm_instr);
-}
+X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RR(cvtsi2ss_rr, X64_Instr_Kind_CVTSI2SS_RR)
+X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RM(cvtsi2ss_rm, X64_Instr_Kind_CVTSI2SS_RM)
 
 // int to f64
-static void X64_emit_instr_cvtsi2sd_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src, bool src_8bytes)
-{
-    u32 flags = X64_Instr_Kind_CVTSI2SD_RR;
-    if (src_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
+X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RR(cvtsi2sd_rr, X64_Instr_Kind_CVTSI2SD_RR)
+X64_DEF_EMIT_INSTR_CVT_INT_TO_FLT_RM(cvtsi2sd_rm, X64_Instr_Kind_CVTSI2SD_RM)
 
-    X64_Instr cvtsi2sd_rr_instr = {
-        .flags = flags,
-        .cvtsi2sd_rr.dst = dst,
-        .cvtsi2sd_rr.src = src,
-    };
-
-    array_push(*instrs, cvtsi2sd_rr_instr);
-}
-
-static void X64_emit_instr_cvtsi2sd_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src, bool src_8bytes)
-{
-    u32 flags = X64_Instr_Kind_CVTSI2SD_RM;
-    if (src_8bytes) {
-        flags |= X64_INSTR_CVT_FLT_SI_INT64_MASK;
-    }
-
-    X64_Instr cvtsi2sd_rm_instr = {
-        .flags = flags,
-        .cvtsi2sd_rm.dst = dst,
-        .cvtsi2sd_rm.src = src,
-    };
-
-    array_push(*instrs, cvtsi2sd_rm_instr);
-}
-
-static void X64_emit_instr_movdqu_mr(Array(X64_Instr) * instrs, X64_SIBD_Addr dst, X64_Reg src)
+static void X64_emit_instr_movdqu_mr(X64_Instrs* instrs, X64_SIBD_Addr dst, X64_Reg src)
 {
     assert(x64_reg_classes[src] == X64_REG_CLASS_FLOAT);
-    X64_Instr movdqu_mr_instr = {
-        .flags = X64_Instr_Kind_MOVDQU_MR,
-        .movdqu_mr.dst = dst,
-        .movdqu_mr.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_MOVDQU_MR);
+    instr->movdqu_mr.dst = dst;
+    instr->movdqu_mr.src = src;
 
-    array_push(*instrs, movdqu_mr_instr);
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_movdqu_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_emit_instr_movdqu_rm(X64_Instrs* instrs, X64_Reg dst, X64_SIBD_Addr src)
 {
     assert(x64_reg_classes[dst] == X64_REG_CLASS_FLOAT);
-    X64_Instr movdqu_rm_instr = {
-        .flags = X64_Instr_Kind_MOVDQU_RM,
-        .movdqu_rm.dst = dst,
-        .movdqu_rm.src = src,
-    };
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_MOVDQU_RM);
+    instr->movdqu_rm.dst = dst;
+    instr->movdqu_rm.src = src;
 
-    array_push(*instrs, movdqu_rm_instr);
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_cmp_rr(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr cmp_rr_instr = {
-        .flags = X64_Instr_Kind_CMP_RR,
-        .cmp_rr.size = size,
-        .cmp_rr.dst = dst,
-        .cmp_rr.src = src,
-    };
+X64_DEF_EMIT_INSTR_BINARY_RR(cmp_rr, X64_Instr_Kind_CMP_RR)
+X64_DEF_EMIT_INSTR_BINARY_RM(cmp_rm, X64_Instr_Kind_CMP_RM)
+X64_DEF_EMIT_INSTR_BINARY_MR(cmp_mr, X64_Instr_Kind_CMP_MR)
+X64_DEF_EMIT_INSTR_BINARY_RI(cmp_ri, X64_Instr_Kind_CMP_RI)
+X64_DEF_EMIT_INSTR_BINARY_MI(cmp_mi, X64_Instr_Kind_CMP_MI)
 
-    array_push(*instrs, cmp_rr_instr);
-}
+#define X64_DEF_EMIT_INSTR_CMP_FLT_RR(f_d, k_d)                                    \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, X64_Reg dst, X64_Reg src) \
+    {                                                                              \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);   \
+        instr->f_d.dst = dst;                                                      \
+        instr->f_d.src = src;                                                      \
+                                                                                   \
+        X64_push_instr(instrs, instr);                                             \
+    }
 
-static void X64_emit_instr_cmp_rm(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr cmp_rm_instr = {
-        .flags = X64_Instr_Kind_CMP_RM,
-        .cmp_rm.size = size,
-        .cmp_rm.dst = dst,
-        .cmp_rm.src = src,
-    };
-
-    array_push(*instrs, cmp_rm_instr);
-}
-
-static void X64_emit_instr_cmp_mr(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
-{
-    X64_Instr cmp_mr_instr = {
-        .flags = X64_Instr_Kind_CMP_MR,
-        .cmp_mr.size = size,
-        .cmp_mr.dst = dst,
-        .cmp_mr.src = src,
-    };
-
-    array_push(*instrs, cmp_mr_instr);
-}
-
-static void X64_emit_instr_cmp_ri(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm)
-{
-    X64_Instr cmp_ri_instr = {
-        .flags = X64_Instr_Kind_CMP_RI,
-        .cmp_ri.size = size,
-        .cmp_ri.dst = dst,
-        .cmp_ri.imm = imm,
-    };
-
-    array_push(*instrs, cmp_ri_instr);
-}
-
-static void X64_emit_instr_cmp_mi(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm)
-{
-    X64_Instr cmp_mi_instr = {
-        .flags = X64_Instr_Kind_CMP_MI,
-        .cmp_mi.size = size,
-        .cmp_mi.dst = dst,
-        .cmp_mi.imm = imm,
-    };
-
-    array_push(*instrs, cmp_mi_instr);
-}
+#define X64_DEF_EMIT_INSTR_CMP_FLT_RM(f_d, k_d)                                          \
+    static void X64_emit_instr_##f_d(X64_Instrs* instrs, X64_Reg dst, X64_SIBD_Addr src) \
+    {                                                                                    \
+        X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);         \
+        instr->f_d.dst = dst;                                                            \
+        instr->f_d.src = src;                                                            \
+                                                                                         \
+        X64_push_instr(instrs, instr);                                                   \
+    }
 
 // Compare f32s
-static void X64_emit_instr_ucomiss_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr ucomiss_rr_instr = {
-        .flags = X64_Instr_Kind_UCOMISS_RR,
-        .ucomiss_rr.dst = dst,
-        .ucomiss_rr.src = src,
-    };
-
-    array_push(*instrs, ucomiss_rr_instr);
-}
-
-static void X64_emit_instr_ucomiss_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
-{
-    X64_Instr ucomiss_rm_instr = {
-        .flags = X64_Instr_Kind_UCOMISS_RM,
-        .ucomiss_rm.dst = dst,
-        .ucomiss_rm.src = src,
-    };
-
-    array_push(*instrs, ucomiss_rm_instr);
-}
+X64_DEF_EMIT_INSTR_CMP_FLT_RR(ucomiss_rr, X64_Instr_Kind_UCOMISS_RR)
+X64_DEF_EMIT_INSTR_CMP_FLT_RM(ucomiss_rm, X64_Instr_Kind_UCOMISS_RM)
 
 // Compare f64s
-static void X64_emit_instr_ucomisd_rr(Array(X64_Instr) * instrs, X64_Reg dst, X64_Reg src)
-{
-    X64_Instr ucomisd_rr_instr = {
-        .flags = X64_Instr_Kind_UCOMISD_RR,
-        .ucomisd_rr.dst = dst,
-        .ucomisd_rr.src = src,
-    };
+X64_DEF_EMIT_INSTR_CMP_FLT_RR(ucomisd_rr, X64_Instr_Kind_UCOMISD_RR)
+X64_DEF_EMIT_INSTR_CMP_FLT_RM(ucomisd_rm, X64_Instr_Kind_UCOMISD_RM)
 
-    array_push(*instrs, ucomisd_rr_instr);
+static void X64_emit_instr_lea(X64_Instrs* instrs, X64_Reg dst, X64_SIBD_Addr src)
+{
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_LEA);
+    instr->lea.dst = dst;
+    instr->lea.src = src;
+
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_ucomisd_rm(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_emit_instr_rep_movsb(X64_Instrs* instrs)
 {
-    X64_Instr ucomisd_rm_instr = {
-        .flags = X64_Instr_Kind_UCOMISD_RM,
-        .ucomisd_rm.dst = dst,
-        .ucomisd_rm.src = src,
-    };
-
-    array_push(*instrs, ucomisd_rm_instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_REP_MOVSB);
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_lea(Array(X64_Instr) * instrs, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_emit_instr_rep_stosb(X64_Instrs* instrs)
 {
-    X64_Instr lea_instr = {
-        .flags = X64_Instr_Kind_LEA,
-        .lea.dst = dst,
-        .lea.src = src,
-    };
-
-    array_push(*instrs, lea_instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_REP_STOSB);
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_rep_movsb(Array(X64_Instr) * instrs)
+static void X64_emit_instr_syscall(X64_Instrs* instrs)
 {
-    X64_Instr instr = {.flags = X64_Instr_Kind_REP_MOVSB};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), X64_Instr_Kind_SYSCALL);
+    X64_push_instr(instrs, instr);
 }
 
-static void X64_emit_instr_rep_stosb(Array(X64_Instr) * instrs)
+static X64_Instr* X64_emit_instr_placeholder(X64_Instrs* instrs, X64_Instr_Kind kind)
 {
-    X64_Instr instr = {.flags = X64_Instr_Kind_REP_STOSB};
-    array_push(*instrs, instr);
+    X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), kind);
+    X64_push_instr(instrs, instr);
+    return instr;
 }
 
-static void X64_emit_instr_syscall(Array(X64_Instr) * instrs)
-{
-    X64_Instr instr = {.flags = X64_Instr_Kind_SYSCALL};
-    array_push(*instrs, instr);
-}
-
-static size_t X64_emit_instr_placeholder(Array(X64_Instr) * instrs, X64_Instr_Kind kind)
-{
-    X64_Instr instr = {.flags = kind};
-    array_push(*instrs, instr);
-    return array_len(*instrs) - 1;
-}
-
-static void X64_push_reg_to_stack(Array(X64_Instr) * instrs, X64_Reg reg)
+static void X64_push_reg_to_stack(X64_Instrs* instrs, X64_Reg reg)
 {
     if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
         X64_emit_instr_push(instrs, reg);
@@ -1365,7 +681,7 @@ static void X64_push_reg_to_stack(Array(X64_Instr) * instrs, X64_Reg reg)
     }
 }
 
-static void X64_pop_reg_from_stack(Array(X64_Instr) * instrs, X64_Reg reg)
+static void X64_pop_reg_from_stack(X64_Instrs* instrs, X64_Reg reg)
 {
     if (x64_reg_classes[reg] == X64_REG_CLASS_INT) {
         X64_emit_instr_pop(instrs, reg);
@@ -1376,7 +692,7 @@ static void X64_pop_reg_from_stack(Array(X64_Instr) * instrs, X64_Reg reg)
     }
 }
 
-static void X64_load_prim_from_mem(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
+static void X64_load_prim_from_mem(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src)
 {
     const X64_RegClass reg_class = x64_reg_classes[dst];
 
@@ -1389,7 +705,7 @@ static void X64_load_prim_from_mem(Array(X64_Instr) * instrs, u8 size, X64_Reg d
     }
 }
 
-static void X64_save_prim_to_mem(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
+static void X64_save_prim_to_mem(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src)
 {
     const X64_RegClass reg_class = x64_reg_classes[src];
     if (reg_class == X64_REG_CLASS_INT) {
@@ -1401,13 +717,13 @@ static void X64_save_prim_to_mem(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Ad
     }
 }
 
-typedef void X64_Emit_Bin_Int_RR_Func(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_Reg src);
-typedef void X64_Emit_Bin_Int_RM_Func(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src);
-typedef void X64_Emit_Bin_Int_RI_Func(Array(X64_Instr) * instrs, u8 size, X64_Reg dst, u32 imm);
-typedef void X64_Emit_Bin_Int_MR_Func(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
-typedef void X64_Emit_Bin_Int_MI_Func(Array(X64_Instr) * instrs, u8 size, X64_SIBD_Addr dst, u32 imm);
-typedef void X64_Emit_Mov_Ext_RR_Func(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src);
-typedef void X64_Emit_Mov_Ext_RM_Func(Array(X64_Instr) * instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Int_RR_Func(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_Reg src);
+typedef void X64_Emit_Bin_Int_RM_Func(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Int_RI_Func(X64_Instrs* instrs, u8 size, X64_Reg dst, u32 imm);
+typedef void X64_Emit_Bin_Int_MR_Func(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
+typedef void X64_Emit_Bin_Int_MI_Func(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, u32 imm);
+typedef void X64_Emit_Mov_Ext_RR_Func(X64_Instrs* instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_Reg src);
+typedef void X64_Emit_Mov_Ext_RM_Func(X64_Instrs* instrs, u8 dst_size, X64_Reg dst, u8 src_size, X64_SIBD_Addr src);
 
 static inline X64_Emit_Bin_Int_RR_Func* x64_bin_int_rr_emit_funcs(X64_Instr_Kind kind)
 {
@@ -1562,9 +878,9 @@ static inline X64_Emit_Mov_Ext_RM_Func* x64_mov_ext_rm_emit_funcs(X64_Instr_Kind
     }
 }
 
-typedef void X64_Emit_Bin_Flt_RR_Func(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_Reg src);
-typedef void X64_Emit_Bin_Flt_RM_Func(Array(X64_Instr) * instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src);
-typedef void X64_Emit_Bin_Flt_MR_Func(Array(X64_Instr) * instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src);
+typedef void X64_Emit_Bin_Flt_RR_Func(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_Reg src);
+typedef void X64_Emit_Bin_Flt_RM_Func(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src);
+typedef void X64_Emit_Bin_Flt_MR_Func(X64_Instrs* instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src);
 
 static inline X64_Emit_Bin_Flt_RR_Func* x64_bin_flt_rr_emit_funcs(X64_Instr_Kind kind)
 {
@@ -1623,21 +939,12 @@ static inline X64_Emit_Bin_Flt_MR_Func* x64_bin_flt_mr_emit_funcs(X64_Instr_Kind
     }
 }
 
-typedef struct X64_Proc_State {
-    Allocator* gen_mem;
-    Allocator* tmp_mem;
-    Symbol* sym; // Procedure symbol.
-    XIR_Builder* builder;
-    X64_ScratchRegs (*scratch_regs)[X64_REG_CLASS_COUNT];
-    Array(X64_Instr) instrs;
-} X64_Proc_State;
-
 #define IS_LREG_IN_REG(k) ((k) == XIR_LREG_LOC_REG)
 #define IS_LREG_IN_STACK(k) ((k) == XIR_LREG_LOC_STACK)
 static XIR_RegLoc X64_lreg_loc(X64_Proc_State* proc_state, u32 lreg)
 {
-    u32 rng_idx = XIR_find_alias_reg(proc_state->builder, lreg);
-    XIR_RegLoc reg_loc = proc_state->builder->lreg_ranges[rng_idx].loc;
+    u32 rng_idx = XIR_find_alias_reg(proc_state->xir_builder, lreg);
+    XIR_RegLoc reg_loc = proc_state->xir_builder->lreg_ranges[rng_idx].loc;
 
     assert(reg_loc.kind != XIR_LREG_LOC_UNASSIGNED);
 
@@ -1793,18 +1100,18 @@ static s32 X64_consume_stack_arg(u64* stack_arg_offset, u64 arg_size, u64 arg_al
     return offset;
 }
 
-static s32 X64_spill_reg(Array(X64_Instr) * instrs, X64_Stack_Spill_State* state, u64 size, u64 align, X64_Reg preg)
+static s32 X64_spill_reg(X64_Proc_State* proc_state, X64_Stack_Spill_State* state, u64 size, u64 align, X64_Reg preg)
 {
     state->stack_spill_size += size;
     state->stack_spill_size = ALIGN_UP(state->stack_spill_size, align);
     s32 offset = -state->stack_spill_size;
 
-    X64_save_prim_to_mem(instrs, size, X64_get_rbp_offset_addr(offset), preg);
+    X64_save_prim_to_mem(&proc_state->instrs, size, X64_get_rbp_offset_addr(offset), preg);
 
     return offset;
 }
 
-static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbol* sproc, X64_Stack_Params_Info* stack_params_info)
+static void X64_assign_proc_param_offsets(X64_Proc_State* proc_state, const Symbol* sproc, X64_Stack_Params_Info* stack_params_info)
 {
     const DeclProc* dproc = (const DeclProc*)sproc->decl;
     const Type* ret_type = sproc->type->as_proc.ret;
@@ -1819,7 +1126,7 @@ static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbo
     if (type_is_obj_like(ret_type) && X64_is_obj_retarg_large(ret_type->size)) {
         X64_ScratchRegs arg_int_regs = (*x64_target.arg_regs)[X64_REG_CLASS_INT];
 
-        X64_spill_reg(instrs, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE,
+        X64_spill_reg(proc_state, &state, X64_MAX_INT_REG_SIZE, X64_MAX_INT_REG_SIZE,
                       arg_int_regs.regs[arg_reg_indices[X64_REG_CLASS_INT]]);
         arg_reg_indices[X64_REG_CLASS_INT] += 1;
     }
@@ -1853,7 +1160,7 @@ static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbo
                 X64_Reg arg_reg = arg_regs.regs[*arg_reg_index];
                 *arg_reg_index += 1;
 
-                sym->as_var.offset = X64_spill_reg(instrs, &state, X64_MAX_INT_REG_SIZE, arg_align, arg_reg);
+                sym->as_var.offset = X64_spill_reg(proc_state, &state, X64_MAX_INT_REG_SIZE, arg_align, arg_reg);
             }
             else if ((arg_size <= (X64_MAX_INT_REG_SIZE << 1)) && (rem_regs >= 2)) {
                 X64_Reg low_reg = arg_regs.regs[*arg_reg_index];
@@ -1861,8 +1168,8 @@ static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbo
                 X64_Reg high_reg = arg_regs.regs[*arg_reg_index];
                 *arg_reg_index += 1;
 
-                X64_spill_reg(instrs, &state, X64_MAX_INT_REG_SIZE, arg_align, high_reg);
-                sym->as_var.offset = X64_spill_reg(instrs, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
+                X64_spill_reg(proc_state, &state, X64_MAX_INT_REG_SIZE, arg_align, high_reg);
+                sym->as_var.offset = X64_spill_reg(proc_state, &state, X64_MAX_INT_REG_SIZE, arg_align, low_reg);
             }
             else {
                 sym->as_var.offset = X64_consume_stack_arg(&state.stack_arg_offset, arg_size, arg_align);
@@ -1878,7 +1185,7 @@ static void X64_assign_proc_param_offsets(Array(X64_Instr) * instrs, const Symbo
                 X64_Reg arg_reg = arg_regs.regs[*arg_reg_index];
                 *arg_reg_index += 1;
 
-                sym->as_var.offset = X64_spill_reg(instrs, &state, arg_size, arg_align, arg_reg);
+                sym->as_var.offset = X64_spill_reg(proc_state, &state, arg_size, arg_align, arg_reg);
             }
             else {
                 sym->as_var.offset = X64_consume_stack_arg(&state.stack_arg_offset, arg_size, arg_align);
@@ -1968,7 +1275,7 @@ static u64 X64_assign_proc_stack_offsets(X64_Proc_State* proc_state)
     //
 
     X64_Stack_Params_Info stack_params_info = {0};
-    X64_assign_proc_param_offsets(&proc_state->instrs, sproc, &stack_params_info);
+    X64_assign_proc_param_offsets(proc_state, sproc, &stack_params_info);
 
     u64 stack_size = stack_params_info.stack_spill_size;
 
@@ -2110,48 +1417,23 @@ static u32 X64_get_sibd_addr(X64_Proc_State* proc_state, X64_SIBD_Addr* sibd_add
     return used_regs;
 }
 
-static void X64_patch_jmp_instrs(X64_Instr* instrs, size_t num_instrs, const HMap* bblock_instr_starts)
+static void X64_patch_jmp_ret_instrs(X64_Instrs* instrs)
 {
-    for (size_t i = 0; i < num_instrs; ++i) {
-        X64_Instr* instr = &instrs[i];
-        X64_Instr_Kind kind = X64_get_instr_kind(instr);
+    u32 num_bblocks = array_len(instrs->bblocks);
+    assert(num_bblocks > 0);
 
-        switch (kind) {
-        case X64_Instr_Kind_JMP: {
-            // jmp.target initially contains the target bblock ID.
-            // Use the map to get the bblock's starting instruction index.
-            size_t* instr_index = hmap_get(bblock_instr_starts, instr->jmp.target + 1); // The key is offset by 1 (can't have a 0 key)
-            assert(instr_index != NULL);
-            assert(*instr_index <= num_instrs);
-            instr->jmp.target = u64_to_u32(*instr_index);
+    for (u32 bb = 0; bb < num_bblocks - 1; ++bb) {
+        X64_BBlock* bblock = &instrs->bblocks[bb];
+        X64_Instr* instr = bblock->head;
 
-            // Mark the jmp target instruction.
-            if (*instr_index <
-                num_instrs) { // Empty final basic block will cause *instr_index == num_instrs
-                              // This happens when instructions are optimized out in final block (mov with same ops, ret as last instr)
-                X64_mark_instr_as_jmp_target(&instrs[*instr_index]);
+        while (instr) {
+            X64_Instr_Kind kind = X64_get_instr_kind(instr);
+
+            if (kind == X64_Instr_Kind_JMP_TO_RET) {
+                instr->jmp.target = num_bblocks - 1;
             }
-        } break;
-        case X64_Instr_Kind_JMPCC: {
-            // jmpcc.target initially contains the target bblock ID.
-            // Use the map to get the bblock's starting instruction index.
-            size_t* instr_index =
-                hmap_get(bblock_instr_starts, instr->jmpcc.target + 1); // The key is offset by 1 (can't have a 0 key)
-            assert(instr_index != NULL);
-            assert(*instr_index <= num_instrs);
-            instr->jmpcc.target = u64_to_u32(*instr_index);
 
-            // Mark the jmp target instruction.
-            if (*instr_index < num_instrs) { // Empty final basic block will cause *instr_index == num_instrs
-                X64_mark_instr_as_jmp_target(&instrs[*instr_index]);
-            }
-        } break;
-        case X64_Instr_Kind_JMP_TO_RET:
-            // Jump after the last instruction (to post-amble).
-            instr->jmp.target = u64_to_u32(num_instrs);
-            break;
-        default:
-            break;
+            instr = instr->next;
         }
     }
 }
@@ -3694,7 +2976,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         // See: https://godbolt.org/z/cM9Encdsc
         //
         // Placeholder instruction for sub rsp, <alignment>
-        const size_t rsp_align_instr_idx = X64_emit_instr_placeholder(&proc_state->instrs, X64_Instr_Kind_NOOP);
+        X64_Instr* rsp_align_instr = X64_emit_instr_placeholder(&proc_state->instrs, X64_Instr_Kind_NOOP);
 
         // NOTE: No need to save caller-saved registers before call because the register allocator currently
         // spills any values needed across procedure calls.
@@ -3751,7 +3033,6 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         if (total_stack_size & (X64_STACK_ALIGN - 1)) {
             align_stack_size = X64_STACK_WORD_SIZE;
 
-            X64_Instr* rsp_align_instr = &proc_state->instrs[rsp_align_instr_idx];
             X64_set_instr_kind(rsp_align_instr, X64_Instr_Kind_SUB_RI);
             rsp_align_instr->sub_ri.size = X64_MAX_INT_REG_SIZE;
             rsp_align_instr->sub_ri.dst = X64_RSP;
@@ -3859,49 +3140,51 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     allocator_restore_state(mem_state);
 }
 
-Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym)
+X64_Instrs X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym)
 {
     const bool is_nonleaf = proc_sym->as_proc.is_nonleaf;
+    BBlock** ir_bblocks = proc_sym->as_proc.bblocks;
+    size_t num_ir_bblocks = array_len(ir_bblocks);
+    const u32 num_x64_bblocks = num_ir_bblocks + 1;
+    XIR_Builder xir_builder = {.arena = tmp_mem};
 
-    X64_Proc_State state = {
+    X64_Proc_State proc_state = {
         .gen_mem = gen_mem,
         .tmp_mem = tmp_mem,
         .sym = proc_sym,
-        .instrs = array_create(gen_mem, X64_Instr, 64),
+        .instrs = {.bblocks = array_create(gen_mem, X64_BBlock, num_x64_bblocks)},
         .scratch_regs = is_nonleaf ? x64_target.nonleaf_scratch_regs : x64_target.leaf_scratch_regs,
     };
 
-    AllocatorState tmp_mem_state = allocator_get_state(state.tmp_mem);
+    AllocatorState tmp_mem_state = allocator_get_state(proc_state.tmp_mem);
     //////////////////////////////////////////////////////////////////////////////////////////
-
-    X64_emit_instr_push(&state.instrs, X64_RBP);
-    X64_emit_instr_mov_rr(&state.instrs, X64_MAX_INT_REG_SIZE, X64_RBP, X64_RSP);
-    const size_t sub_rsp_idx = X64_emit_instr_placeholder(&state.instrs, X64_Instr_Kind_NOOP); // Placeholder sub rsp, <stack_size>
+    array_push(proc_state.instrs.bblocks, (X64_BBlock){0}); // Push first basic block
+    X64_emit_instr_push(&proc_state.instrs, X64_RBP);
+    X64_emit_instr_mov_rr(&proc_state.instrs, X64_MAX_INT_REG_SIZE, X64_RBP, X64_RSP);
+    X64_Instr* sub_rsp_instr =
+        X64_emit_instr_placeholder(&proc_state.instrs, X64_Instr_Kind_NOOP); // Placeholder sub rsp, <stack_size>
 
     // Calculate stack size from procedure arguments (spills) and local variables.
-    u32 stack_size = X64_assign_proc_stack_offsets(&state);
+    u32 stack_size = X64_assign_proc_stack_offsets(&proc_state);
 
     // Register allocation.
-    BBlock** ir_bblocks = proc_sym->as_proc.bblocks;
-    size_t num_ir_bblocks = array_len(ir_bblocks);
-    XIR_Builder builder = {.arena = tmp_mem};
+    XIR_emit_instrs(&xir_builder, proc_sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks); // Generate LIR instructions.
+    XIR_compute_live_intervals(&xir_builder); // Compute LIR register intervals.
+    assert(num_ir_bblocks == xir_builder.num_bblocks);
 
-    XIR_emit_instrs(&builder, proc_sym->as_proc.num_regs, num_ir_bblocks, ir_bblocks); // Generate LIR instructions.
-    XIR_compute_live_intervals(&builder); // Compute LIR register intervals.
     X64_RegAllocResult reg_alloc =
-        X64_linear_scan_reg_alloc(&builder, state.scratch_regs, stack_size); // May spill and increase stack_size.
+        X64_linear_scan_reg_alloc(&xir_builder, proc_state.scratch_regs, stack_size); // May spill and increase stack_size.
 
     if (!reg_alloc.success) {
         NIBBLE_FATAL_EXIT("Register allocation for procedure `%s` failed.", proc_sym->name->str);
-        return NULL;
+        return proc_state.instrs;
     }
 
     stack_size = reg_alloc.stack_offset;
-    state.builder = &builder;
+    proc_state.xir_builder = &xir_builder;
 
     // Fill in sub rsp, <stack_size>
     if (stack_size) {
-        X64_Instr* sub_rsp_instr = &state.instrs[sub_rsp_idx];
         X64_set_instr_kind(sub_rsp_instr, X64_Instr_Kind_SUB_RI);
         sub_rsp_instr->sub_ri.size = X64_MAX_INT_REG_SIZE;
         sub_rsp_instr->sub_ri.dst = X64_RSP;
@@ -3918,33 +3201,32 @@ Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Sym
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64_push_reg_to_stack(&state.instrs, reg);
+            X64_push_reg_to_stack(&proc_state.instrs, reg);
         }
     }
 
     // Process procedure instructions.
-    HMap bblock_instr_starts = hmap(clp2(num_ir_bblocks), tmp_mem);
-
-    for (size_t ii = 0; ii < builder.num_bblocks; ii++) {
-        XIR_BBlock* bb = builder.bblocks[ii];
-        bool last_bb = ii == builder.num_bblocks - 1;
-
-        hmap_put(&bblock_instr_starts, bb->id + 1, array_len(state.instrs)); // The key is offset by 1 (can't have 0 key)
+    for (size_t ii = 0; ii < xir_builder.num_bblocks; ii++) {
+        XIR_BBlock* bb = xir_builder.bblocks[ii];
+        bool last_bb = ii == xir_builder.num_bblocks - 1;
 
         for (XIR_Instr* instr = bb->first; instr; instr = instr->next) {
             bool last_instr = last_bb && !instr->next;
 
-            X64_gen_instr(&state, instr, last_instr, bb->id);
+            X64_gen_instr(&proc_state, instr, last_instr, bb->id);
         }
-    }
 
-    // Patch jmp (to block, to ret label) instructions.
-    const size_t num_instrs_before_postamble = array_len(state.instrs);
-    X64_patch_jmp_instrs(state.instrs, num_instrs_before_postamble, &bblock_instr_starts);
+        array_push(proc_state.instrs.bblocks, (X64_BBlock){0});
+    }
 
     //
     // Postamble.
     //
+
+    array_push(proc_state.instrs.bblocks, (X64_BBlock){0}); // Push postamble basic block.
+
+    // Patch jmp "to ret label" instructions to jump to the last bblock.
+    X64_patch_jmp_ret_instrs(&proc_state.instrs);
 
     // Restore callee-saved registers.
     // NOTE: Iterating in the reverse order as the corresponding pushes.
@@ -3955,20 +3237,17 @@ Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Sym
             continue;
 
         if (u32_is_bit_set(reg_alloc.used_callee_regs, reg)) {
-            X64_pop_reg_from_stack(&state.instrs, reg);
+            X64_pop_reg_from_stack(&proc_state.instrs, reg);
         }
     }
 
     // Clean up stack and return to caller.
-    X64_emit_instr_mov_rr(&state.instrs, X64_MAX_INT_REG_SIZE, X64_RSP, X64_RBP);
-    X64_emit_instr_pop(&state.instrs, X64_RBP);
-    X64_emit_instr_ret(&state.instrs);
-
-    // Mark the first instruction of the postamble as a jump target (for 'return' instructions).
-    X64_mark_instr_as_jmp_target(&state.instrs[num_instrs_before_postamble]);
+    X64_emit_instr_mov_rr(&proc_state.instrs, X64_MAX_INT_REG_SIZE, X64_RSP, X64_RBP);
+    X64_emit_instr_pop(&proc_state.instrs, X64_RBP);
+    X64_emit_instr_ret(&proc_state.instrs);
 
     //////////////////////////////////////////////////////////////////////////////////////////
     allocator_restore_state(tmp_mem_state);
 
-    return state.instrs;
+    return proc_state.instrs;
 }

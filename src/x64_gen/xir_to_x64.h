@@ -152,7 +152,6 @@ typedef enum X64_Instr_Kind {
 #define X64_INSTR_KIND_MASK ((1 << 9) - 1)
 #define X64_INSTR_MOV_SRC_RH_MASK (1 << 9)
 #define X64_INSTR_CVT_FLT_SI_INT64_MASK (1 << 9)
-#define X64_INSTR_IS_JMP_TARGET_MASK 0x80000000
 static_assert(X64_Instr_Kind_COUNT <= X64_INSTR_KIND_MASK + 1, "Must have at most 512 X64_Instr_Kinds");
 
 typedef struct X64_Instr {
@@ -753,7 +752,23 @@ typedef struct X64_Instr {
             X64_SIBD_Addr mem;
         } call_m;
     };
+
+    struct X64_Instr* next; // Next instruction in list
 } X64_Instr;
+
+typedef struct X64_BBlock {
+    u32 num_instrs;
+    X64_Instr* head;
+    X64_Instr* tail;
+} X64_BBlock;
+
+typedef struct X64_Intrs {
+    u32 num_instrs; // Total number of instructions in all basic blocks.
+
+    // Stretchy array of basic blocks (end with a jump instruction)
+    // Blocks are in final source-code order.
+    Array(X64_BBlock) bblocks;
+} X64_Instrs;
 
 static inline X64_Instr_Kind X64_get_instr_kind(X64_Instr* instr)
 {
@@ -765,16 +780,6 @@ static inline void X64_set_instr_kind(X64_Instr* instr, X64_Instr_Kind kind)
     instr->flags |= (kind & X64_INSTR_KIND_MASK);
 }
 
-static inline bool X64_is_instr_jmp_target(X64_Instr* instr)
-{
-    return instr->flags & X64_INSTR_IS_JMP_TARGET_MASK;
-}
-
-static inline void X64_mark_instr_as_jmp_target(X64_Instr* instr)
-{
-    instr->flags |= X64_INSTR_IS_JMP_TARGET_MASK;
-}
-
-Array(X64_Instr) X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym);
+X64_Instrs X64_gen_proc_instrs(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym);
 
 #endif // defined(NIBBLE_X64_GEN_XIR_TO_X64_H)
