@@ -208,6 +208,7 @@ static size_t startup_code_next_ip_after_call = 0x17; // The operand to call is 
 
 typedef struct X64_TextBBlock {
     u32 index;
+    s64 final_offset;
     Array(u8) buffer;
 
     union {
@@ -226,7 +227,6 @@ typedef struct X64_TextBBlock {
 } X64_TextBBlock;
 
 typedef struct X64_UsageLoc {
-    s64 proc_offset; // Byte offset of proc in the base_buffer
     u32 bblock_index;
     s32 bblock_offset;
 } X64_UsageLoc;
@@ -238,7 +238,6 @@ typedef struct X64_InternalReloc {
 } X64_InternalReloc;
 
 typedef struct X64_TextGenState {
-    u64 curr_proc_offset;
     X64_TextBBlock* curr_bblock;
     Array(X64_InternalReloc) proc_off_patches; // Usage of non-foreign procs (patched by compiler).
     Array(X64_InternalReloc) relocs; // Relocations for usage of global variables or foreign procedures.
@@ -288,8 +287,7 @@ static inline void X64_write_imm_bytes(X64_TextGenState* gen_state, u64 val, u8 
 
 static s32 X64_try_get_global_entity_rel_offset(X64_TextGenState* gen_state, ConstAddr entity)
 {
-    const X64_UsageLoc curr_loc = {.proc_offset = gen_state->curr_proc_offset,
-                                   .bblock_index = gen_state->curr_bblock->index,
+    const X64_UsageLoc curr_loc = {.bblock_index = gen_state->curr_bblock->index,
                                    .bblock_offset = array_len(gen_state->curr_bblock->buffer)};
 
     switch (entity.kind) {
@@ -546,21 +544,14 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
         for (u32 bb = src_index + 1; bb < dst_index; bb += 1) {
             offset += X64_get_bblock_best_case_size(&bblocks[bb]);
         }
-
-        assert(offset >= 0);
-
-        // Add in distance to next instruction after the jmp (1 or 4).
-        if (offset <= (127 - 1)) {
-            offset += 1; // offset fits in 1 byte
-        }
-        else {
-            offset += 4; // offset does not fit in 1 byte
-        }
     }
     else if (src_index > dst_index) {
         for (u32 bb = dst_index; bb < src_index; bb += 1) {
             offset -= X64_get_bblock_best_case_size(&bblocks[bb]);
         }
+
+        // Add in this block's other instructions
+        offset -= array_len(bblock->buffer);
 
         assert(offset <= 0);
 
@@ -619,11 +610,498 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
 // For example, X64_Instr_Kind_MOV_RR_4, X64_Instr_Kind_MOV_RR_8, etc.
 // This will remove all the branching on 'size' within each switch case.
 //
-//X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_offset, proc_sym, &relocs, &proc_off_patches);
-static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 proc_offset, Symbol* proc_sym,
-                                  Array(u8)* buffer, Array(X64_TextReloc)* relocs, Array(X64_TextReloc)* proc_off_patches)
+static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
 {
-#if 1
+    X64_TextBBlock* bblock = gen_state->curr_bblock;
+    const X64_Instr_Kind kind = X64_get_instr_kind(instr);
+
+    switch (kind) {
+    case X64_Instr_Kind_NOOP: {
+        // No-Op. Do nothing.
+    } break;
+    // PUSH
+    case X64_Instr_Kind_PUSH: {
+        // We only push r64, which has opcode 0x50 + REG_VAL[2:0]. If reg is >= R8, set REX.B.
+        const u8 reg_val = x64_reg_val[instr->push.reg];
+        const u8 opcode = 0x50 + (reg_val & 0x7);
+        const bool use_ext_regs = reg_val > 7;
+
+        if (use_ext_regs) {
+            array_push(bblock->buffer, X64_rex_opcode_reg(0, reg_val)); // REX.B
+        }
+
+        array_push(bblock->buffer, opcode);
+    } break;
+    case X64_Instr_Kind_POP: {
+        // We only pop r64, which has opcode 0x58 + REG_VAL[2:0]. If reg is >= R8, set REX.B.
+        const u8 reg_val = x64_reg_val[instr->pop.reg];
+        const u8 opcode = 0x58 + (reg_val & 0x7);
+        const bool use_ext_regs = reg_val > 7;
+
+        if (use_ext_regs) {
+            array_push(bblock->buffer, X64_rex_opcode_reg(0, reg_val)); // REX.B
+        }
+
+        array_push(bblock->buffer, opcode);
+    } break;
+    case X64_Instr_Kind_JMP_TO_RET:
+    case X64_Instr_Kind_JMPCC:
+    case X64_Instr_Kind_JMP: {
+        assert(!bblock->jmp_instr);
+        bblock->jmp_instr = instr;
+    } break;
+    // RET
+    case X64_Instr_Kind_RET: {
+        array_push(bblock->buffer, 0xc3); // opcode is 0xc3 for near return to calling proc.
+    } break;
+    // LEA
+    case X64_Instr_Kind_LEA: {
+        // REX.W + 8D /r => lea r64, m
+        const u8 dst_reg = x64_reg_val[instr->lea.dst];
+        const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->lea.src);
+
+        array_push(bblock->buffer, X64_rex_prefix(1, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b)); // REX
+        array_push(bblock->buffer, 0x8D); // opcode
+        array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg & 0x7, src_addr.rm)); // ModRM byte.
+
+        if (src_addr.has_sib_byte) {
+            array_push(bblock->buffer, src_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &src_addr);
+    } break;
+    // ADD
+    case X64_Instr_Kind_ADD_RR: {
+        // 00 /r => add r/m8, r8
+        // 0x66 + 01 /r => add r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 01 /r => add r/m32, r32
+        // REX.W + 01 /r => add r/m64, r64
+        X64_write_elf_binary_instr_rr(gen_state, 0x00, 0x01, instr->add_rr.size, instr->add_rr.dst, instr->add_rr.src);
+    } break;
+    case X64_Instr_Kind_ADD_RM: {
+        // 02 /r => add r8, r/m8
+        // 66 03 /r => add r16, r/m16
+        // 03 /r => add r32, r/m32
+        // REX.W + 03 /r => add r64, r/m64
+        X64_write_elf_binary_instr_rm(gen_state, 0x02, 0x03, instr->add_rm.size, instr->add_rm.dst, &instr->add_rm.src);
+    } break;
+    case X64_Instr_Kind_ADD_MR: {
+        // 00 /r => add r/m8, r8
+        // 0x66 + 01 /r => add r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 01 /r => add r/m32, r32
+        // REX.W + 01 /r => add r/m64, r64
+        X64_write_elf_binary_instr_mr(gen_state, 0x00, 0x01, instr->add_mr.size, &instr->add_mr.dst, instr->add_mr.src);
+    } break;
+    case X64_Instr_Kind_ADD_RI: {
+        // 80 /0 ib => add r/m8, imm8
+        // 66 83 /0 ib => add r/m16, imm8
+        // 66 81 /0 iw => add r/m16, imm16
+        // 83 /0 ib => add r/m32, imm8
+        // 81 /0 id => add r/m32, imm32
+        // REX.W + 83 /0 ib => add r/m64, imm8
+        // REX.W + 81 /0 id => add r/m64, imm32
+        X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 0 /*opcode ext*/, instr->add_ri.size, instr->add_ri.dst,
+                                      instr->add_ri.imm);
+    } break;
+    case X64_Instr_Kind_ADD_MI: {
+        // 80 /0 ib => add r/m8, imm8
+        // 66 83 /0 ib => add r/m16, imm8
+        // 66 81 /0 iw => add r/m16, imm16
+        // 83 /0 ib => add r/m32, imm8
+        // 81 /0 id => add r/m32, imm32
+        // REX.W + 83 /0 ib => add r/m64, imm8
+        // REX.W + 81 /0 id => add r/m64, imm32
+        X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 0 /*opcode ext*/, instr->add_mi.size, &instr->add_mi.dst,
+                                      instr->add_mi.imm);
+    } break;
+    // SUB
+    case X64_Instr_Kind_SUB_RR: {
+        // 28 /r => sub r/m8, r8
+        // 0x66 + 29 /r => sub r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 29 /r => sub r/m32, r32
+        // REX.W + 29 /r => sub r/m64, r64
+        X64_write_elf_binary_instr_rr(gen_state, 0x28, 0x29, instr->sub_rr.size, instr->sub_rr.dst, instr->sub_rr.src);
+    } break;
+    case X64_Instr_Kind_SUB_RM: {
+        // 2A /r => sub r8, r/m8
+        // 66 2B /r => sub r16, r/m16
+        // 2B /r => sub r32, r/m32
+        // REX.W + 2B /r => sub r64, r/m64
+        X64_write_elf_binary_instr_rm(gen_state, 0x2A, 0x2B, instr->sub_rm.size, instr->sub_rm.dst, &instr->sub_rm.src);
+    } break;
+    case X64_Instr_Kind_SUB_MR: {
+        // 28 /r => sub r/m8, r8
+        // 0x66 + 29 /r => sub r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 29 /r => sub r/m32, r32
+        // REX.W + 29 /r => sub r/m64, r64
+        X64_write_elf_binary_instr_mr(gen_state, 0x28, 0x29, instr->sub_mr.size, &instr->sub_mr.dst, instr->sub_mr.src);
+    } break;
+    case X64_Instr_Kind_SUB_RI: {
+        // 80 /5 ib => sub r/m8, imm8
+        // 66 83 /5 ib => sub r/m16, imm8
+        // 66 81 /5 iw => sub r/m16, imm16
+        // 83 /5 ib => sub r/m32, imm8
+        // 81 /5 id => sub r/m32, imm32
+        // REX.W + 83 /5 ib => sub r/m64, imm8
+        // REX.W + 81 /5 id => sub r/m64, imm32
+        X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_ri.size, instr->sub_ri.dst,
+                                      instr->sub_ri.imm);
+    } break;
+    case X64_Instr_Kind_SUB_MI: {
+        // 80 /5 ib => sub r/m8, imm8
+        // 66 83 /5 ib => sub r/m16, imm8
+        // 66 81 /5 iw => sub r/m16, imm16
+        // 83 /5 ib => sub r/m32, imm8
+        // 81 /5 id => sub r/m32, imm32
+        // REX.W + 83 /5 ib => sub r/m64, imm8
+        // REX.W + 81 /5 id => sub r/m64, imm32
+        X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_mi.size, &instr->sub_mi.dst,
+                                      instr->sub_mi.imm);
+    } break;
+    // CMP
+    case X64_Instr_Kind_CMP_RR: {
+        // 38 /r => cmp r/m8, r8
+        // 0x66 + 39 /r => cmp r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 39 /r => cmp r/m32, r32
+        // REX.W + 39 /r => cmp r/m64, r64
+        X64_write_elf_binary_instr_rr(gen_state, 0x38, 0x39, instr->cmp_rr.size, instr->cmp_rr.dst, instr->cmp_rr.src);
+    } break;
+    case X64_Instr_Kind_CMP_RM: {
+        // 3A /r => cmp r8, r/m8
+        // 66 3B /r => cmp r16, r/m16
+        // 3B /r => cmp r32, r/m32
+        // REX.W + 3B /r => cmp r64, r/m64
+        X64_write_elf_binary_instr_rm(gen_state, 0x3A, 0x3B, instr->cmp_rm.size, instr->cmp_rm.dst, &instr->cmp_rm.src);
+    } break;
+    case X64_Instr_Kind_CMP_MR: {
+        // 38 /r => cmp r/m8, r8
+        // 0x66 + 39 /r => cmp r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 39 /r => cmp r/m32, r32
+        // REX.W + 39 /r => cmp r/m64, r64
+        X64_write_elf_binary_instr_mr(gen_state, 0x38, 0x39, instr->cmp_mr.size, &instr->cmp_mr.dst, instr->cmp_mr.src);
+    } break;
+    case X64_Instr_Kind_CMP_RI: {
+        // 80 /7 ib => cmp r/m8, imm8
+        // 66 83 /7 ib => cmp r/m16, imm8
+        // 66 81 /7 iw => cmp r/m16, imm16
+        // 83 /7 ib => cmp r/m32, imm8
+        // 81 /7 id => cmp r/m32, imm32
+        // REX.W + 83 /7 ib => cmp r/m64, imm8
+        // REX.W + 81 /7 id => cmp r/m64, imm32
+        X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_ri.size, instr->cmp_ri.dst,
+                                      instr->cmp_ri.imm);
+    } break;
+    case X64_Instr_Kind_CMP_MI: {
+        // 80 /7 ib => cmp r/m8, imm8
+        // 66 83 /7 ib => cmp r/m16, imm8
+        // 66 81 /7 iw => cmp r/m16, imm16
+        // 83 /7 ib => cmp r/m32, imm8
+        // 81 /7 id => cmp r/m32, imm32
+        // REX.W + 83 /7 ib => cmp r/m64, imm8
+        // REX.W + 81 /7 id => cmp r/m64, imm32
+        X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_mi.size, &instr->cmp_mi.dst,
+                                      instr->cmp_mi.imm);
+    } break;
+    // SETcc
+    case X64_Instr_Kind_SETCC_R: {
+        const u8 dst_reg = x64_reg_val[instr->setcc_r.dst];
+        const bool dst_is_ext = dst_reg > 7;
+        const u16 opcode = x64_setcc_condition_opcodes[instr->setcc_r.cond];
+
+        if (dst_is_ext) {
+            array_push(bblock->buffer, X64_rex_nosib(0, 0, dst_reg));
+        }
+
+        array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
+        array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
+        array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, 0, dst_reg)); // ModRM
+    } break;
+    case X64_Instr_Kind_SETCC_M: {
+        const X64_AddrBytes dst_addr = X64_get_addr_bytes(&instr->setcc_m.dst);
+        const bool use_ext_regs = dst_addr.rex_b || dst_addr.rex_x;
+        const u16 opcode = x64_setcc_condition_opcodes[instr->setcc_r.cond];
+
+        if (use_ext_regs) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, dst_addr.rex_x, dst_addr.rex_b));
+        }
+
+        array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
+        array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
+        array_push(bblock->buffer, X64_modrm_byte(dst_addr.mod, 0, dst_addr.rm)); // ModRM byte.
+
+        if (dst_addr.has_sib_byte) {
+            array_push(bblock->buffer, dst_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &dst_addr);
+    } break;
+    // MOVSX
+    case X64_Instr_Kind_MOVSX_RR: {
+        // 0F BE /r => movsx r16, r/m8 (need 0x66 prefix for 16-bit dst)
+        // 0F BE /r => movsx r32, r/m8
+        // REX.W 0F BE /r => movsx r64, r/m8
+        // 0F BF /r => movsx r32, r/m16
+        // REX.W 0F BF /r => movsx r64, r/m16
+        //
+        // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
+        const u8 dst_size = instr->movsx_rr.dst_size;
+        const u8 src_size = instr->movsx_rr.src_size;
+        const u16 opcode = src_size == 1 ? 0xBE0F : 0xBF0F;
+        const bool need_rex_w = dst_size == 8;
+        const u8 dst_reg = x64_reg_val[instr->movsx_rr.dst];
+        const u8 src_reg = x64_reg_val[instr->movsx_rr.src];
+        const bool src_is_ext = src_reg > 7;
+        const bool dst_is_ext = dst_reg > 7;
+
+        if (dst_size == 2) {
+            array_push(bblock->buffer, 0x66); // 0x66 for 16-bit dst
+        }
+
+        if (need_rex_w || src_is_ext || dst_is_ext) {
+            array_push(bblock->buffer, X64_rex_nosib(need_rex_w, dst_reg, src_reg)); // REX.RB for ext regs
+        }
+
+        array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
+        array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
+        array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg)); // ModRM
+    } break;
+    case X64_Instr_Kind_MOVSX_RM: {
+        // 0F BE /r => movsx r16, r/m8 (need 0x66 prefix for 16-bit dst)
+        // 0F BE /r => movsx r32, r/m8
+        // REX.W 0F BE /r => movsx r64, r/m8
+        // 0F BF /r => movsx r32, r/m16
+        // REX.W 0F BF /r => movsx r64, r/m16
+        //
+        // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
+        const u8 dst_size = instr->movsx_rm.dst_size;
+        const u8 src_size = instr->movsx_rm.src_size;
+        const u16 opcode = src_size == 1 ? 0xBE0F : 0xBF0F;
+        const bool need_rex_w = dst_size == 8;
+        const u8 dst_reg = x64_reg_val[instr->movsx_rm.dst];
+        const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->movsx_rm.src);
+        const bool dst_is_ext = dst_reg > 7;
+        const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+
+        if (dst_size == 2) {
+            array_push(bblock->buffer, 0x66); // 0x66 for 16-bit dst
+        }
+
+        if (need_rex_w || use_ext_regs) {
+            array_push(bblock->buffer, X64_rex_prefix(need_rex_w, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+        }
+
+        array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
+        array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
+        array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM
+
+        if (src_addr.has_sib_byte) {
+            array_push(bblock->buffer, src_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &src_addr);
+    } break;
+    // MOVZX
+    case X64_Instr_Kind_MOVZX_RR: {
+        // 0F B6 /r => movzx r16, r/m8 (need 0x66 prefix for 16-bit dst)
+        // 0F B6 /r => movzx r32, r/m8
+        // REX.W 0F B6 /r => movzx r64, r/m8
+        // 0F B7 /r => movzx r32, r/m16
+        // REX.W 0F B7 /r => movzx r64, r/m16
+        //
+        // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
+        const u8 dst_size = instr->movzx_rr.dst_size;
+        const u8 src_size = instr->movzx_rr.src_size;
+        const u16 opcode = src_size == 1 ? 0xB60F : 0xB70F;
+        const bool need_rex_w = dst_size == 8;
+        const u8 dst_reg = x64_reg_val[instr->movzx_rr.dst];
+        const u8 src_reg = x64_reg_val[instr->movzx_rr.src];
+        const bool src_is_ext = src_reg > 7;
+        const bool dst_is_ext = dst_reg > 7;
+
+        if (dst_size == 2) {
+            array_push(bblock->buffer, 0x66); // 0x66 for 16-bit dst
+        }
+
+        if (need_rex_w || src_is_ext || dst_is_ext) {
+            array_push(bblock->buffer, X64_rex_nosib(need_rex_w, dst_reg, src_reg)); // REX.RB for ext regs
+        }
+
+        array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
+        array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
+        array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg)); // ModRM
+    } break;
+    case X64_Instr_Kind_MOVZX_RM: {
+        // 0F B6 /r => movzx r16, r/m8 (need 0x66 prefix for 16-bit dst)
+        // 0F B6 /r => movzx r32, r/m8
+        // REX.W 0F B6 /r => movzx r64, r/m8
+        // 0F B7 /r => movzx r32, r/m16
+        // REX.W 0F B7 /r => movzx r64, r/m16
+        //
+        // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
+        const u8 dst_size = instr->movzx_rm.dst_size;
+        const u8 src_size = instr->movzx_rm.src_size;
+        const u16 opcode = src_size == 1 ? 0xB60F : 0xB70F;
+        const bool need_rex_w = dst_size == 8;
+        const u8 dst_reg = x64_reg_val[instr->movzx_rm.dst];
+        const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->movzx_rm.src);
+        const bool dst_is_ext = dst_reg > 7;
+        const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+
+        if (dst_size == 2) {
+            array_push(bblock->buffer, 0x66); // 0x66 for 16-bit dst
+        }
+
+        if (need_rex_w || use_ext_regs) {
+            array_push(bblock->buffer, X64_rex_prefix(need_rex_w, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+        }
+
+        array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
+        array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
+        array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM
+
+        if (src_addr.has_sib_byte) {
+            array_push(bblock->buffer, src_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &src_addr);
+    } break;
+    // MOV
+    case X64_Instr_Kind_MOV_RR: {
+        // 88 /r => mov r/m8, r8
+        // 0x66 + 89 /r => mov r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 89 /r => mov r/m32, r32
+        // REX.W + 89 /r => mov r/m64, r64
+        const u8 size = instr->mov_rr.size;
+        const u8 src_reg = x64_reg_val[instr->mov_rr.src];
+        const u8 dst_reg = x64_reg_val[instr->mov_rr.dst];
+        const bool src_is_ext = src_reg > 7;
+        const bool dst_is_ext = dst_reg > 7;
+        const bool is_64_bit = size == 8;
+        const u8 opcode = size == 1 ? 0x88 : 0x89;
+
+        if (size == 2) {
+            array_push(bblock->buffer, 0x66); // 0x66 for 16-bit operands
+        }
+
+        if (is_64_bit || src_is_ext || dst_is_ext) {
+            array_push(bblock->buffer, X64_rex_nosib(is_64_bit, src_reg, dst_reg)); // REX.RB for ext regs
+        }
+
+        array_push(bblock->buffer, opcode);
+        array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
+
+        // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
+        // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
+        // const bool is_r2_h = instr->mov_rr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
+    } break;
+    case X64_Instr_Kind_MOV_MR: {
+        // 88 /r => mov r/m8, r8
+        // 0x66 + 89 /r => mov r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 89 /r => mov r/m32, r32
+        // REX.W + 89 /r => mov r/m64, r64
+        const u8 size = instr->mov_mr.size;
+        const u8 src_reg = x64_reg_val[instr->mov_mr.src];
+        const X64_AddrBytes dst_addr = X64_get_addr_bytes(&instr->mov_mr.dst);
+        const bool src_is_ext = src_reg > 7;
+        const bool use_ext_regs = src_is_ext || dst_addr.rex_b || dst_addr.rex_x;
+        const bool is_64_bit = size == 8;
+        const u8 opcode = size == 1 ? 0x88 : 0x89;
+
+        // 0x66 prefix for 16-bit operands.
+        if (size == 2) {
+            array_push(bblock->buffer, 0x66);
+        }
+
+        // REX prefix.
+        if (use_ext_regs || is_64_bit) {
+            array_push(bblock->buffer, X64_rex_prefix(is_64_bit, src_reg >> 3, dst_addr.rex_x, dst_addr.rex_b));
+        }
+
+        array_push(bblock->buffer, opcode); // opcode
+        array_push(bblock->buffer, X64_modrm_byte(dst_addr.mod, src_reg, dst_addr.rm)); // ModRM byte.
+
+        if (dst_addr.has_sib_byte) {
+            array_push(bblock->buffer, dst_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &dst_addr);
+
+        // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
+        // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
+        // const bool is_r2_h = instr->mov_mr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
+    } break;
+    case X64_Instr_Kind_MOV_RM: {
+        // 8A /r => mov r8, r/m8
+        // 66 8B /r => mov r16, r/m16
+        // 8B /r => mov r32, r/m32
+        // REX.W + 8B /r => mov r64, r/m64
+        X64_write_elf_binary_instr_rm(gen_state, 0x8A, 0x8B, instr->mov_rm.size, instr->mov_rm.dst, &instr->mov_rm.src);
+    } break;
+    case X64_Instr_Kind_MOV_MI: {
+        // C6 /0 ib => mov r/m8, imm8
+        // 66 C7 /0 iw => mov r/m16, imm16
+        // C7 /0 id => mov r/m32, imm32
+        // REX.W + C7 /0 id => mov r/m64, imm32
+        const u8 size = instr->mov_mi.size;
+        const X64_AddrBytes addr_bytes = X64_get_addr_bytes(&instr->mov_mi.dst);
+        const bool use_ext_regs = addr_bytes.rex_b || addr_bytes.rex_x;
+        const bool is_64_bit = size == 8;
+        const u8 opcode = size == 1 ? 0xC6 : 0xC7;
+
+        if (size == 2) {
+            array_push(bblock->buffer, 0x66); // 0x66 for 16-bit operands
+        }
+
+        if (is_64_bit || use_ext_regs) {
+            array_push(bblock->buffer, X64_rex_prefix(is_64_bit, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX prefix
+        }
+
+        array_push(bblock->buffer, opcode); // opcode
+        array_push(bblock->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
+
+        if (addr_bytes.has_sib_byte) {
+            array_push(bblock->buffer, addr_bytes.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &addr_bytes);
+        X64_write_imm_bytes(gen_state, instr->mov_mi.imm, is_64_bit ? 4 : size);
+    } break;
+    case X64_Instr_Kind_MOV_RI: {
+        // NOTE: This is the only instruction that can load a 64-bit immediate.
+        // Does not use a modR/M byte. Instead, REX.B and the lower 3 bits of the opcode represent the
+        // destination register.
+        //
+        // B0+rb ib => mov r8, imm8
+        // 66 + B8+rw iw => mov r16, imm16
+        // B8+rd id => mov r32, imm32
+        // REX.W + B8+rd io => mov r64, imm64
+        const u8 size = instr->mov_ri.size;
+        const u8 dst_reg = x64_reg_val[instr->mov_ri.dst];
+        const bool use_ext_regs = dst_reg > 7; // Need REX.B?
+        const bool is_64_bit = size == 8;
+        const u8 base_opcode = (size == 1) ? 0xB0 : 0xB8;
+
+        if (size == 2) {
+            array_push(bblock->buffer, 0x66); // 0x66 prefix for 16-bit operands
+        }
+
+        if (is_64_bit || use_ext_regs) {
+            array_push(bblock->buffer, X64_rex_opcode_reg(is_64_bit, dst_reg));
+        }
+
+        array_push(bblock->buffer, base_opcode + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
+
+        X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
+    } break;
+    default:
+        NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+        break;
+    }
+}
+
+static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym, Array(u8) * buffer,
+                                  Array(X64_TextReloc) * relocs, Array(X64_TextReloc) * proc_off_patches)
+{
     const DeclProc* decl = (const DeclProc*)proc_sym->decl;
     if (decl->is_incomplete) {
         return;
@@ -631,508 +1109,35 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
 
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
 
-    X64_Instrs instrs = X64_gen_proc_instrs(gen_mem, tmp_mem, proc_sym);
+    X64_Instrs instrs = X64_gen_proc_instrs(gen_mem, tmp_mem, proc_sym); // TODO: X64_gen_*(tmp_mem, new_tmp_arena, proc_sym)
     const u32 num_bblocks = array_len(instrs.bblocks);
     X64_TextBBlock* text_bblocks = alloc_array(tmp_mem, X64_TextBBlock, num_bblocks, true);
-    X64_TextGenState gen_state = {.curr_proc_offset = proc_offset, .relocs = array_create(tmp_mem, X64_InternalReloc, 8),
+    X64_TextGenState gen_state = {.relocs = array_create(tmp_mem, X64_InternalReloc, 8),
                                   .proc_off_patches = array_create(tmp_mem, X64_InternalReloc, 8)};
 
     // Loop throught X64 instructions and write out machine code to buffer.
     for (u32 bb = 0; bb < num_bblocks; bb += 1) {
         X64_TextBBlock* bblock = &text_bblocks[bb];
         bblock->index = bb;
+        bblock->buffer = array_create(tmp_mem, u8, 32);
 
         gen_state.curr_bblock = bblock;
 
         for (X64_Instr* instr = instrs.bblocks[bb].head; instr; instr = instr->next) {
-            const X64_Instr_Kind kind = X64_get_instr_kind(instr);
-
-            switch (kind) {
-            case X64_Instr_Kind_NOOP: {
-                // No-Op. Do nothing.
-            } break;
-            // PUSH
-            case X64_Instr_Kind_PUSH: {
-                // We only push r64, which has opcode 0x50 + REG_VAL[2:0]. If reg is >= R8, set REX.B.
-                const u8 reg_val = x64_reg_val[instr->push.reg];
-                const u8 opcode = 0x50 + (reg_val & 0x7);
-                const bool use_ext_regs = reg_val > 7;
-
-                if (use_ext_regs) {
-                    array_push(bblock->buffer, X64_rex_opcode_reg(0, reg_val)); // REX.B
-                }
-
-                array_push(bblock->buffer, opcode);
-            } break;
-            case X64_Instr_Kind_POP: {
-                // We only pop r64, which has opcode 0x58 + REG_VAL[2:0]. If reg is >= R8, set REX.B.
-                const u8 reg_val = x64_reg_val[instr->pop.reg];
-                const u8 opcode = 0x58 + (reg_val & 0x7);
-                const bool use_ext_regs = reg_val > 7;
-
-                if (use_ext_regs) {
-                    array_push(bblock->buffer, X64_rex_opcode_reg(0, reg_val)); // REX.B
-                }
-
-                array_push(bblock->buffer, opcode);
-            } break;
-            case X64_Instr_Kind_JMP_TO_RET:
-            case X64_Instr_Kind_JMPCC:
-            case X64_Instr_Kind_JMP: {
-                assert(!bblock->jmp_instr);
-                bblock->jmp_instr = instr;
-            } break;
-            // RET
-            case X64_Instr_Kind_RET: {
-                array_push(bblock->buffer, 0xc3); // opcode is 0xc3 for near return to calling proc.
-            } break;
-            // LEA
-            case X64_Instr_Kind_LEA: {
-                // REX.W + 8D /r => lea r64, m
-                const u8 dst_reg = x64_reg_val[instr->lea.dst];
-                const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->lea.src);
-
-                array_push(bblock->buffer, X64_rex_prefix(1, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b)); // REX
-                array_push(bblock->buffer, 0x8D); // opcode
-                array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg & 0x7, src_addr.rm)); // ModRM byte.
-
-                if (src_addr.has_sib_byte) {
-                    array_push(bblock->buffer, src_addr.sib_byte);
-                }
-
-                X64_write_addr_disp(&gen_state, &src_addr);
-            } break;
-            // ADD
-            case X64_Instr_Kind_ADD_RR: {
-                // 00 /r => add r/m8, r8
-                // 0x66 + 01 /r => add r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
-                // 01 /r => add r/m32, r32
-                // REX.W + 01 /r => add r/m64, r64
-                X64_write_elf_binary_instr_rr(&gen_state, 0x00, 0x01, instr->add_rr.size, instr->add_rr.dst, instr->add_rr.src);
-            } break;
-            case X64_Instr_Kind_ADD_RM: {
-                // 02 /r => add r8, r/m8
-                // 66 03 /r => add r16, r/m16
-                // 03 /r => add r32, r/m32
-                // REX.W + 03 /r => add r64, r/m64
-                X64_write_elf_binary_instr_rm(&gen_state, 0x02, 0x03, instr->add_rm.size, instr->add_rm.dst, &instr->add_rm.src);
-            } break;
-            case X64_Instr_Kind_ADD_MR: {
-                // 00 /r => add r/m8, r8
-                // 0x66 + 01 /r => add r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
-                // 01 /r => add r/m32, r32
-                // REX.W + 01 /r => add r/m64, r64
-                X64_write_elf_binary_instr_mr(&gen_state, 0x00, 0x01, instr->add_mr.size, &instr->add_mr.dst, instr->add_mr.src);
-            } break;
-            case X64_Instr_Kind_ADD_RI: {
-                // 80 /0 ib => add r/m8, imm8
-                // 66 83 /0 ib => add r/m16, imm8
-                // 66 81 /0 iw => add r/m16, imm16
-                // 83 /0 ib => add r/m32, imm8
-                // 81 /0 id => add r/m32, imm32
-                // REX.W + 83 /0 ib => add r/m64, imm8
-                // REX.W + 81 /0 id => add r/m64, imm32
-                X64_write_elf_binary_instr_ri(&gen_state, 0x80, 0x83, 0x81, 0 /*opcode ext*/, instr->add_ri.size, instr->add_ri.dst,
-                                              instr->add_ri.imm);
-            } break;
-            case X64_Instr_Kind_ADD_MI: {
-                // 80 /0 ib => add r/m8, imm8
-                // 66 83 /0 ib => add r/m16, imm8
-                // 66 81 /0 iw => add r/m16, imm16
-                // 83 /0 ib => add r/m32, imm8
-                // 81 /0 id => add r/m32, imm32
-                // REX.W + 83 /0 ib => add r/m64, imm8
-                // REX.W + 81 /0 id => add r/m64, imm32
-                X64_write_elf_binary_instr_mi(&gen_state, 0x80, 0x83, 0x81, 0 /*opcode ext*/, instr->add_mi.size, &instr->add_mi.dst,
-                                              instr->add_mi.imm);
-            } break;
-            // SUB
-            case X64_Instr_Kind_SUB_RR: {
-                // 28 /r => sub r/m8, r8
-                // 0x66 + 29 /r => sub r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
-                // 29 /r => sub r/m32, r32
-                // REX.W + 29 /r => sub r/m64, r64
-                X64_write_elf_binary_instr_rr(&gen_state, 0x28, 0x29, instr->sub_rr.size, instr->sub_rr.dst, instr->sub_rr.src);
-            } break;
-            case X64_Instr_Kind_SUB_RM: {
-                // 2A /r => sub r8, r/m8
-                // 66 2B /r => sub r16, r/m16
-                // 2B /r => sub r32, r/m32
-                // REX.W + 2B /r => sub r64, r/m64
-                X64_write_elf_binary_instr_rm(&gen_state, 0x2A, 0x2B, instr->sub_rm.size, instr->sub_rm.dst, &instr->sub_rm.src);
-            } break;
-            case X64_Instr_Kind_SUB_MR: {
-                // 28 /r => sub r/m8, r8
-                // 0x66 + 29 /r => sub r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
-                // 29 /r => sub r/m32, r32
-                // REX.W + 29 /r => sub r/m64, r64
-                X64_write_elf_binary_instr_mr(&gen_state, 0x28, 0x29, instr->sub_mr.size, &instr->sub_mr.dst, instr->sub_mr.src);
-            } break;
-            case X64_Instr_Kind_SUB_RI: {
-                // 80 /5 ib => sub r/m8, imm8
-                // 66 83 /5 ib => sub r/m16, imm8
-                // 66 81 /5 iw => sub r/m16, imm16
-                // 83 /5 ib => sub r/m32, imm8
-                // 81 /5 id => sub r/m32, imm32
-                // REX.W + 83 /5 ib => sub r/m64, imm8
-                // REX.W + 81 /5 id => sub r/m64, imm32
-                X64_write_elf_binary_instr_ri(&gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_ri.size, instr->sub_ri.dst,
-                                              instr->sub_ri.imm);
-            } break;
-            case X64_Instr_Kind_SUB_MI: {
-                // 80 /5 ib => sub r/m8, imm8
-                // 66 83 /5 ib => sub r/m16, imm8
-                // 66 81 /5 iw => sub r/m16, imm16
-                // 83 /5 ib => sub r/m32, imm8
-                // 81 /5 id => sub r/m32, imm32
-                // REX.W + 83 /5 ib => sub r/m64, imm8
-                // REX.W + 81 /5 id => sub r/m64, imm32
-                X64_write_elf_binary_instr_mi(&gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_mi.size, &instr->sub_mi.dst,
-                                              instr->sub_mi.imm);
-            } break;
-            // CMP
-            case X64_Instr_Kind_CMP_RR: {
-                // 38 /r => cmp r/m8, r8
-                // 0x66 + 39 /r => cmp r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
-                // 39 /r => cmp r/m32, r32
-                // REX.W + 39 /r => cmp r/m64, r64
-                X64_write_elf_binary_instr_rr(&gen_state, 0x38, 0x39, instr->cmp_rr.size, instr->cmp_rr.dst, instr->cmp_rr.src);
-            } break;
-            case X64_Instr_Kind_CMP_RM: {
-                // 3A /r => cmp r8, r/m8
-                // 66 3B /r => cmp r16, r/m16
-                // 3B /r => cmp r32, r/m32
-                // REX.W + 3B /r => cmp r64, r/m64
-                X64_write_elf_binary_instr_rm(&gen_state, 0x3A, 0x3B, instr->cmp_rm.size, instr->cmp_rm.dst, &instr->cmp_rm.src);
-            } break;
-            case X64_Instr_Kind_CMP_MR: {
-                // 38 /r => cmp r/m8, r8
-                // 0x66 + 39 /r => cmp r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
-                // 39 /r => cmp r/m32, r32
-                // REX.W + 39 /r => cmp r/m64, r64
-                X64_write_elf_binary_instr_mr(&gen_state, 0x38, 0x39, instr->cmp_mr.size, &instr->cmp_mr.dst, instr->cmp_mr.src);
-            } break;
-            case X64_Instr_Kind_CMP_RI: {
-                // 80 /7 ib => cmp r/m8, imm8
-                // 66 83 /7 ib => cmp r/m16, imm8
-                // 66 81 /7 iw => cmp r/m16, imm16
-                // 83 /7 ib => cmp r/m32, imm8
-                // 81 /7 id => cmp r/m32, imm32
-                // REX.W + 83 /7 ib => cmp r/m64, imm8
-                // REX.W + 81 /7 id => cmp r/m64, imm32
-                X64_write_elf_binary_instr_ri(&gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_ri.size, instr->cmp_ri.dst,
-                                              instr->cmp_ri.imm);
-            } break;
-            case X64_Instr_Kind_CMP_MI: {
-                // 80 /7 ib => cmp r/m8, imm8
-                // 66 83 /7 ib => cmp r/m16, imm8
-                // 66 81 /7 iw => cmp r/m16, imm16
-                // 83 /7 ib => cmp r/m32, imm8
-                // 81 /7 id => cmp r/m32, imm32
-                // REX.W + 83 /7 ib => cmp r/m64, imm8
-                // REX.W + 81 /7 id => cmp r/m64, imm32
-                X64_write_elf_binary_instr_mi(&gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_mi.size, &instr->cmp_mi.dst,
-                                              instr->cmp_mi.imm);
-            } break;
-            // SETcc
-            case X64_Instr_Kind_SETCC_R: {
-                const u8 dst_reg = x64_reg_val[instr->setcc_r.dst];
-                const bool dst_is_ext = dst_reg > 7;
-                const u16 opcode = x64_setcc_condition_opcodes[instr->setcc_r.cond];
-
-                if (dst_is_ext) {
-                    array_push(bblock->buffer, X64_rex_nosib(0, 0, dst_reg));
-                }
-
-                array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
-                array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
-                array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, 0, dst_reg)); // ModRM
-            } break;
-            case X64_Instr_Kind_SETCC_M: {
-                const X64_AddrBytes dst_addr = X64_get_addr_bytes(&instr->setcc_m.dst);
-                const bool use_ext_regs = dst_addr.rex_b || dst_addr.rex_x;
-                const u16 opcode = x64_setcc_condition_opcodes[instr->setcc_r.cond];
-
-                if (use_ext_regs) {
-                    array_push(bblock->buffer, X64_rex_prefix(0, 0, dst_addr.rex_x, dst_addr.rex_b));
-                }
-
-                array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
-                array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
-                array_push(bblock->buffer, X64_modrm_byte(dst_addr.mod, 0, dst_addr.rm)); // ModRM byte.
-
-                if (dst_addr.has_sib_byte) {
-                    array_push(bblock->buffer, dst_addr.sib_byte);
-                }
-
-                X64_write_addr_disp(&gen_state, &dst_addr);
-            } break;
-            // MOVSX
-            case X64_Instr_Kind_MOVSX_RR: {
-                // 0F BE /r => movsx r16, r/m8 (need 0x66 prefix for 16-bit dst)
-                // 0F BE /r => movsx r32, r/m8
-                // REX.W 0F BE /r => movsx r64, r/m8
-                // 0F BF /r => movsx r32, r/m16
-                // REX.W 0F BF /r => movsx r64, r/m16
-                //
-                // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
-                const u8 dst_size = instr->movsx_rr.dst_size;
-                const u8 src_size = instr->movsx_rr.src_size;
-                const u16 opcode = src_size == 1 ? 0xBE0F : 0xBF0F;
-                const bool need_rex_w = dst_size == 8;
-                const u8 dst_reg = x64_reg_val[instr->movsx_rr.dst];
-                const u8 src_reg = x64_reg_val[instr->movsx_rr.src];
-                const bool src_is_ext = src_reg > 7;
-                const bool dst_is_ext = dst_reg > 7;
-
-                if (dst_size == 2) {
-                    array_push(bblock->buffer, 0x66); // 0x66 for 16-bit dst
-                }
-
-                if (need_rex_w || src_is_ext || dst_is_ext) {
-                    array_push(bblock->buffer, X64_rex_nosib(need_rex_w, dst_reg, src_reg)); // REX.RB for ext regs
-                }
-
-                array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
-                array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
-                array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg)); // ModRM
-            } break;
-            case X64_Instr_Kind_MOVSX_RM: {
-                // 0F BE /r => movsx r16, r/m8 (need 0x66 prefix for 16-bit dst)
-                // 0F BE /r => movsx r32, r/m8
-                // REX.W 0F BE /r => movsx r64, r/m8
-                // 0F BF /r => movsx r32, r/m16
-                // REX.W 0F BF /r => movsx r64, r/m16
-                //
-                // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
-                const u8 dst_size = instr->movsx_rm.dst_size;
-                const u8 src_size = instr->movsx_rm.src_size;
-                const u16 opcode = src_size == 1 ? 0xBE0F : 0xBF0F;
-                const bool need_rex_w = dst_size == 8;
-                const u8 dst_reg = x64_reg_val[instr->movsx_rm.dst];
-                const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->movsx_rm.src);
-                const bool dst_is_ext = dst_reg > 7;
-                const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
-
-                if (dst_size == 2) {
-                    array_push(bblock->buffer, 0x66); // 0x66 for 16-bit dst
-                }
-
-                if (need_rex_w || use_ext_regs) {
-                    array_push(bblock->buffer, X64_rex_prefix(need_rex_w, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
-                }
-
-                array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
-                array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
-                array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM
-
-                if (src_addr.has_sib_byte) {
-                    array_push(bblock->buffer, src_addr.sib_byte);
-                }
-
-                X64_write_addr_disp(&gen_state, &src_addr);
-            } break;
-            // MOVZX
-            case X64_Instr_Kind_MOVZX_RR: {
-                // 0F B6 /r => movzx r16, r/m8 (need 0x66 prefix for 16-bit dst)
-                // 0F B6 /r => movzx r32, r/m8
-                // REX.W 0F B6 /r => movzx r64, r/m8
-                // 0F B7 /r => movzx r32, r/m16
-                // REX.W 0F B7 /r => movzx r64, r/m16
-                //
-                // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
-                const u8 dst_size = instr->movzx_rr.dst_size;
-                const u8 src_size = instr->movzx_rr.src_size;
-                const u16 opcode = src_size == 1 ? 0xB60F : 0xB70F;
-                const bool need_rex_w = dst_size == 8;
-                const u8 dst_reg = x64_reg_val[instr->movzx_rr.dst];
-                const u8 src_reg = x64_reg_val[instr->movzx_rr.src];
-                const bool src_is_ext = src_reg > 7;
-                const bool dst_is_ext = dst_reg > 7;
-
-                if (dst_size == 2) {
-                    array_push(bblock->buffer, 0x66); // 0x66 for 16-bit dst
-                }
-
-                if (need_rex_w || src_is_ext || dst_is_ext) {
-                    array_push(bblock->buffer, X64_rex_nosib(need_rex_w, dst_reg, src_reg)); // REX.RB for ext regs
-                }
-
-                array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
-                array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
-                array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg)); // ModRM
-            } break;
-            case X64_Instr_Kind_MOVZX_RM: {
-                // 0F B6 /r => movzx r16, r/m8 (need 0x66 prefix for 16-bit dst)
-                // 0F B6 /r => movzx r32, r/m8
-                // REX.W 0F B6 /r => movzx r64, r/m8
-                // 0F B7 /r => movzx r32, r/m16
-                // REX.W 0F B7 /r => movzx r64, r/m16
-                //
-                // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
-                const u8 dst_size = instr->movzx_rm.dst_size;
-                const u8 src_size = instr->movzx_rm.src_size;
-                const u16 opcode = src_size == 1 ? 0xB60F : 0xB70F;
-                const bool need_rex_w = dst_size == 8;
-                const u8 dst_reg = x64_reg_val[instr->movzx_rm.dst];
-                const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->movzx_rm.src);
-                const bool dst_is_ext = dst_reg > 7;
-                const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
-
-                if (dst_size == 2) {
-                    array_push(bblock->buffer, 0x66); // 0x66 for 16-bit dst
-                }
-
-                if (need_rex_w || use_ext_regs) {
-                    array_push(bblock->buffer, X64_rex_prefix(need_rex_w, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
-                }
-
-                array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
-                array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
-                array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM
-
-                if (src_addr.has_sib_byte) {
-                    array_push(bblock->buffer, src_addr.sib_byte);
-                }
-
-                X64_write_addr_disp(&gen_state, &src_addr);
-            } break;
-            // MOV
-            case X64_Instr_Kind_MOV_RR: {
-                // 88 /r => mov r/m8, r8
-                // 0x66 + 89 /r => mov r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
-                // 89 /r => mov r/m32, r32
-                // REX.W + 89 /r => mov r/m64, r64
-                const u8 size = instr->mov_rr.size;
-                const u8 src_reg = x64_reg_val[instr->mov_rr.src];
-                const u8 dst_reg = x64_reg_val[instr->mov_rr.dst];
-                const bool src_is_ext = src_reg > 7;
-                const bool dst_is_ext = dst_reg > 7;
-                const bool is_64_bit = size == 8;
-                const u8 opcode = size == 1 ? 0x88 : 0x89;
-
-                if (size == 2) {
-                    array_push(bblock->buffer, 0x66); // 0x66 for 16-bit operands
-                }
-
-                if (is_64_bit || src_is_ext || dst_is_ext) {
-                    array_push(bblock->buffer, X64_rex_nosib(is_64_bit, src_reg, dst_reg)); // REX.RB for ext regs
-                }
-
-                array_push(bblock->buffer, opcode);
-                array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
-
-                // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
-                // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
-                // const bool is_r2_h = instr->mov_rr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
-            } break;
-            case X64_Instr_Kind_MOV_MR: {
-                // 88 /r => mov r/m8, r8
-                // 0x66 + 89 /r => mov r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
-                // 89 /r => mov r/m32, r32
-                // REX.W + 89 /r => mov r/m64, r64
-                const u8 size = instr->mov_mr.size;
-                const u8 src_reg = x64_reg_val[instr->mov_mr.src];
-                const X64_AddrBytes dst_addr = X64_get_addr_bytes(&instr->mov_mr.dst);
-                const bool src_is_ext = src_reg > 7;
-                const bool use_ext_regs = src_is_ext || dst_addr.rex_b || dst_addr.rex_x;
-                const bool is_64_bit = size == 8;
-                const u8 opcode = size == 1 ? 0x88 : 0x89;
-
-                // 0x66 prefix for 16-bit operands.
-                if (size == 2) {
-                    array_push(bblock->buffer, 0x66);
-                }
-
-                // REX prefix.
-                if (use_ext_regs || is_64_bit) {
-                    array_push(bblock->buffer, X64_rex_prefix(is_64_bit, src_reg >> 3, dst_addr.rex_x, dst_addr.rex_b));
-                }
-
-                array_push(bblock->buffer, opcode); // opcode
-                array_push(bblock->buffer, X64_modrm_byte(dst_addr.mod, src_reg, dst_addr.rm)); // ModRM byte.
-
-                if (dst_addr.has_sib_byte) {
-                    array_push(bblock->buffer, dst_addr.sib_byte);
-                }
-
-                X64_write_addr_disp(&gen_state, &dst_addr);
-
-                // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
-                // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
-                // const bool is_r2_h = instr->mov_mr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
-            } break;
-            case X64_Instr_Kind_MOV_RM: {
-                // 8A /r => mov r8, r/m8
-                // 66 8B /r => mov r16, r/m16
-                // 8B /r => mov r32, r/m32
-                // REX.W + 8B /r => mov r64, r/m64
-                X64_write_elf_binary_instr_rm(&gen_state, 0x8A, 0x8B, instr->mov_rm.size, instr->mov_rm.dst, &instr->mov_rm.src);
-            } break;
-            case X64_Instr_Kind_MOV_MI: {
-                // C6 /0 ib => mov r/m8, imm8
-                // 66 C7 /0 iw => mov r/m16, imm16
-                // C7 /0 id => mov r/m32, imm32
-                // REX.W + C7 /0 id => mov r/m64, imm32
-                const u8 size = instr->mov_mi.size;
-                const X64_AddrBytes addr_bytes = X64_get_addr_bytes(&instr->mov_mi.dst);
-                const bool use_ext_regs = addr_bytes.rex_b || addr_bytes.rex_x;
-                const bool is_64_bit = size == 8;
-                const u8 opcode = size == 1 ? 0xC6 : 0xC7;
-
-                if (size == 2) {
-                    array_push(bblock->buffer, 0x66); // 0x66 for 16-bit operands
-                }
-
-                if (is_64_bit || use_ext_regs) {
-                    array_push(bblock->buffer, X64_rex_prefix(is_64_bit, 0, addr_bytes.rex_x, addr_bytes.rex_b)); // REX prefix
-                }
-
-                array_push(bblock->buffer, opcode); // opcode
-                array_push(bblock->buffer, X64_modrm_byte(addr_bytes.mod, 0, addr_bytes.rm)); // 0 is opcode extension (i.e., the /0)
-
-                if (addr_bytes.has_sib_byte) {
-                    array_push(bblock->buffer, addr_bytes.sib_byte);
-                }
-
-                X64_write_addr_disp(&gen_state, &addr_bytes);
-                X64_write_imm_bytes(&gen_state, instr->mov_mi.imm, is_64_bit ? 4 : size);
-            } break;
-            case X64_Instr_Kind_MOV_RI: {
-                // NOTE: This is the only instruction that can load a 64-bit immediate.
-                // Does not use a modR/M byte. Instead, REX.B and the lower 3 bits of the opcode represent the
-                // destination register.
-                //
-                // B0+rb ib => mov r8, imm8
-                // 66 + B8+rw iw => mov r16, imm16
-                // B8+rd id => mov r32, imm32
-                // REX.W + B8+rd io => mov r64, imm64
-                const u8 size = instr->mov_ri.size;
-                const u8 dst_reg = x64_reg_val[instr->mov_ri.dst];
-                const bool use_ext_regs = dst_reg > 7; // Need REX.B?
-                const bool is_64_bit = size == 8;
-                const u8 base_opcode = (size == 1) ? 0xB0 : 0xB8;
-
-                if (size == 2) {
-                    array_push(bblock->buffer, 0x66); // 0x66 prefix for 16-bit operands
-                }
-
-                if (is_64_bit || use_ext_regs) {
-                    array_push(bblock->buffer, X64_rex_opcode_reg(is_64_bit, dst_reg));
-                }
-
-                array_push(bblock->buffer, base_opcode + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
-
-                X64_write_imm_bytes(&gen_state, instr->mov_ri.imm, size);
-            } break;
-            default:
-                // NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
-                break;
-            }
+            X64_elf_gen_instr(&gen_state, instr);
         }
     }
 
     // Process jumps while they keep changing size (until reach steady-state)
+    //
+    // NOTE: Jump instructions in x64 can be encoded with a varying number of bytes, which depends on the
+    // byte-size of the target offset. If the offset fits in a byte, we can use the short version of the instruction.
+    // Otherwise, we must use the long version of the instruction. Importantly, changing the total byte-size of one jump
+    // instruction may require changing the size of another jump instruction, and so on...
+    //
+    // This iterative algorithm initially encodes jump instructions assuming that the offset will
+    // fit in a single byte. However, if this assumption is violated, the algorithm must iterate again until we reach
+    // a steady-state.
     {
         bool update_jmps = true;
 
@@ -1147,10 +1152,49 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, u64 pr
         }
     }
 
-    // TODO: Set bblock final offsets?
+    // Serialize bblocks into destination buffer and set bblock final offsets.
+    for (u32 bb = 0; bb < num_bblocks; bb += 1) {
+        X64_TextBBlock* bblock = &text_bblocks[bb];
+
+        bblock->final_offset = (s64)array_len(*buffer);
+
+        // Copy basic block's instruction bytes and final jump instruction into destination buffer.
+        array_push_elems(*buffer, bblock->buffer, array_len(bblock->buffer));
+
+        if (bblock->jmp_instr) {
+            assert(bblock->jmp_opcode_len > 0 && bblock->jmp_offset_len > 0);
+            array_push_elems(*buffer, bblock->jmp_opcode.bytes, bblock->jmp_opcode_len);
+            array_push_elems(*buffer, bblock->jmp_offset.bytes, bblock->jmp_offset_len);
+        }
+    }
+
+    // Add this proc's relocations (global vars/data, foreign procs) into destination array.
+    const size_t num_proc_relocs = array_len(gen_state.relocs);
+    for (size_t i = 0; i < num_proc_relocs; i++) {
+        X64_InternalReloc* internal_reloc = &gen_state.relocs[i];
+        X64_UsageLoc* usage_loc = &internal_reloc->usage_loc;
+        X64_TextBBlock* bblock = &text_bblocks[internal_reloc->usage_loc.bblock_index];
+
+        s64 usage_off = bblock->final_offset + usage_loc->bblock_offset;
+        array_push(*relocs, (X64_TextReloc){.usage_off = usage_off,
+                                            .bytes_to_next_ip = internal_reloc->bytes_to_next_ip,
+                                            .ref_addr = internal_reloc->ref_addr});
+    }
+
+    // Add this proc's patches (for usages of non-foreign procs) into destination array.
+    const size_t num_proc_off_patches = array_len(gen_state.proc_off_patches);
+    for (size_t i = 0; i < num_proc_off_patches; i++) {
+        X64_InternalReloc* internal_reloc = &gen_state.proc_off_patches[i];
+        X64_UsageLoc* usage_loc = &internal_reloc->usage_loc;
+        X64_TextBBlock* bblock = &text_bblocks[internal_reloc->usage_loc.bblock_index];
+
+        s64 usage_off = bblock->final_offset + usage_loc->bblock_offset;
+        array_push(*proc_off_patches, (X64_TextReloc){.usage_off = usage_off,
+                                                      .bytes_to_next_ip = internal_reloc->bytes_to_next_ip,
+                                                      .ref_addr = internal_reloc->ref_addr});
+    }
 
     allocator_restore_state(tmp_mem_state);
-#endif
 }
 
 void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, BucketList* procs,
@@ -1172,10 +1216,8 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     for (Bucket* bucket = procs->first; bucket; bucket = bucket->next) {
         for (size_t i = 0; i < bucket->count; i += 1) {
             Symbol* proc_sym = bucket->elems[i];
-            const u64 proc_offset = array_len(buffer);
-
-            proc_offsets[proc_sym->as_proc.index] = proc_offset;
-            X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_offset, proc_sym, &buffer, &relocs, &proc_off_patches);
+            proc_offsets[proc_sym->as_proc.index] = array_len(buffer);
+            X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_sym, &buffer, &relocs, &proc_off_patches);
         }
     }
 
@@ -1193,8 +1235,7 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
 
         const Symbol* proc_sym = patch_info->ref_addr.sym;
         const s64 proc_offset = (s64)proc_offsets[proc_sym->as_proc.index];
-        *((s32*)(&buffer[patch_info->usage_off])) =
-            (s32)(proc_offset - (patch_info->usage_off + patch_info->bytes_to_next_ip));
+        *((s32*)(&buffer[patch_info->usage_off])) = (s32)(proc_offset - (patch_info->usage_off + patch_info->bytes_to_next_ip));
     }
 
     text_sec->buf = buffer;
