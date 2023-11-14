@@ -648,7 +648,8 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     case X64_Instr_Kind_JMPCC:
     case X64_Instr_Kind_JMP: {
         assert(!bblock->jmp_instr);
-        bblock->jmp_instr = instr;
+        bblock->jmp_instr = instr; // NOTE: Iterative algorithm will encode jumps after
+                                   // other instructions in proc have been emitted.
     } break;
     // RET
     case X64_Instr_Kind_RET: {
