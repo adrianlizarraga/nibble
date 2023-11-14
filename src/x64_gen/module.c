@@ -12,8 +12,10 @@ bool x64_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, Bu
         NIBBLE_FATAL_EXIT("X64_nasm_gen_module failed!!!!");
     }
 
-#if 1
+#if 0
     x64_gen_elf(gen_mem, tmp_mem, vars, procs, main_proc, str_lits, float_lits, foreign_procs, output_file);
+#else
+    (void)main_proc; // Mark as unused for now.
 #endif
     return true;
 }
