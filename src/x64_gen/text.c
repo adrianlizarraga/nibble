@@ -37,6 +37,30 @@ enum X64_ModMode {
     X64_MOD_DIRECT = 3
 };
 
+enum X64_ScaleMode {
+    X64_SCALE_1 = 0,
+    X64_SCALE_2 = 1,
+    X64_SCALE_4 = 2,
+    X64_SCALE_8 = 3
+};
+
+static enum X64_ScaleMode X64_get_scale_mode(u8 scale)
+{
+    switch (scale) {
+    case 1:
+        return X64_SCALE_1;
+    case 2:
+        return X64_SCALE_2;
+    case 4:
+        return X64_SCALE_4;
+    case 8:
+        return X64_SCALE_8;
+    }
+
+    NIBBLE_FATAL_EXIT("X64 does not support an index scale of %d\n", scale);
+    return X64_SCALE_1;
+}
+
 // ModRM byte
 // mod[7:6], reg[5:3], rm[2:0]
 static inline u8 X64_modrm_byte(u8 mod, u8 reg, u8 rm)
@@ -154,8 +178,9 @@ static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
         addr_bytes.rex_b = base_reg > 7;
         addr_bytes.rex_x = index_reg > 7;
         addr_bytes.has_sib_byte = true;
-        addr_bytes.sib_byte =
-            X64_modrm_byte(addr->local.scale, index_reg & 0x7, base_reg & 0x7); // SIB byte is computed the same way as ModRM
+
+        // SIB byte is computed the same way as the ModRM byte.
+        addr_bytes.sib_byte = X64_modrm_byte(X64_get_scale_mode(addr->local.scale), index_reg & 0x7, base_reg & 0x7);
     }
     else {
         NIBBLE_FATAL_EXIT("Does not support local address with has_base=%d, has_disp=%d, has_index=%d in ELF text generator.",
@@ -690,6 +715,21 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
 
         X64_write_addr_disp(gen_state, &addr);
     } break;
+    // REP MOVSB
+    case X64_Instr_Kind_REP_MOVSB: {
+        array_push(bblock->buffer, 0xF3);
+        array_push(bblock->buffer, 0xA4);
+    } break;
+    // REP STOSB
+    case X64_Instr_Kind_REP_STOSB: {
+        array_push(bblock->buffer, 0xF3);
+        array_push(bblock->buffer, 0xAA);
+    } break;
+    // SYSCALL
+    case X64_Instr_Kind_SYSCALL: {
+        array_push(bblock->buffer, 0x0F);
+        array_push(bblock->buffer, 0x05);
+    } break;
     // LEA
     case X64_Instr_Kind_LEA: {
         // REX.W + 8D /r => lea r64, m
@@ -837,6 +877,46 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         // REX.W + 81 /7 id => cmp r/m64, imm32
         X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 7 /*opcode ext*/, instr->cmp_mi.size, &instr->cmp_mi.dst,
                                       instr->cmp_mi.imm);
+    } break;
+    // IMUL
+    case X64_Instr_Kind_IMUL_RI: {
+        // This is actually a 3 operand instruction: imul dst, src1, src_imm. Therefore, use the same register
+        // for both `dst` and `src1`.
+        //
+        // 66 6B /r ib    => imul r16, r/m16, imm8
+        // 6B /r ib       => imul r32, r/m32, imm8
+        // REX.W 6B /r ib => imul r64, r/m64, imm8
+        //
+        // 66 69 /r iw       => imul r16, r/m16, imm16
+        // 69 /r id          => imul r32, r/m32, imm32
+        // REX.W 69 /r id    => imul r64, r/m64, imm32
+        const u8 dst_size = instr->imul_ri.size;
+        assert(dst_size != 1); // TODO: Not supported by this instruction!!
+
+        const u8 dst_reg = x64_reg_val[instr->imul_ri.dst];
+        const u32 imm = instr->imul_ri.imm;
+        const bool is_64_bit = dst_size == 8;
+        const bool reg_is_ext = dst_reg > 7;
+        const bool imm_is_byte = imm <= 255;
+        const u8 opcode = imm_is_byte ? 0x6B : 0x69;
+
+        if (dst_size == 2) {
+            array_push(bblock->buffer, 0x66); // 0x66 for 16-bit operands
+        }
+
+        if (is_64_bit || reg_is_ext) {
+            array_push(bblock->buffer, X64_rex_nosib(is_64_bit, dst_reg, dst_reg));
+        }
+
+        array_push(bblock->buffer, opcode);
+        array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, dst_reg));
+
+        if (imm_is_byte) {
+            array_push(bblock->buffer, (u8)imm);
+        }
+        else {
+            X64_write_imm_bytes(gen_state, imm, is_64_bit ? 4 : dst_size);
+        }
     } break;
     // SETcc
     case X64_Instr_Kind_SETCC_R: {

@@ -118,6 +118,7 @@ extern const u8 int_kind_sizes[INTEGER_KIND_COUNT];
 extern const char* int_kind_names[INTEGER_KIND_COUNT];
 extern const bool int_kind_signed[INTEGER_KIND_COUNT];
 extern const u64 int_kind_max[INTEGER_KIND_COUNT];
+extern const u64 int_kind_min[INTEGER_KIND_COUNT];
 
 typedef struct Integer {
     union {

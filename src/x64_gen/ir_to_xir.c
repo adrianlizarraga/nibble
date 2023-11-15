@@ -61,6 +61,12 @@ static const ConditionKind flt_cond_map[] = {
     [COND_EQ] = COND_EQ,     [COND_NEQ] = COND_NEQ,
 };
 
+static inline bool XIR_imm_fits_4bytes(Scalar imm, size_t size)
+{
+    // Only consider positive values because an 8-byte -1 could cause problems if it is not meant to be signed.
+    return (size < X64_MAX_INT_REG_SIZE) || (imm.as_int._u64 <= (u64)int_kind_max[INTEGER_U32]);
+}
+
 static void XIR_merge_ranges(XIR_RegRange* dst_range, XIR_RegRange* src_range)
 {
     if (src_range->ra_ctrl_kind != XIR_REG_ALLOC_CTRL_NONE) {
@@ -360,6 +366,12 @@ static void XIR_get_addr(XIR_Builder* builder, XIR_BBlock* xbblock, XIR_MemAddr*
 static void XIR_load_op_ri(XIR_Builder* builder, XIR_BBlock* xbblock, u32 lreg, unsigned size, OpRI op_ri)
 {
     if (op_ri.is_imm) {
+        // Code size optimization: If instruction size is 8 bytes, but the immediate fits in a 32-bit value,
+        // use a size of 4 bytes instead.
+        if (size == X64_MAX_INT_REG_SIZE && XIR_imm_fits_4bytes(op_ri.imm, size)) {
+            size = 4;
+        }
+
         XIR_emit_instr_mov_r_i(builder, xbblock, size, lreg, op_ri.imm);
     }
     else {
@@ -373,6 +385,12 @@ static void XIR_load_op_ria(XIR_Builder* builder, XIR_BBlock* xbblock, size_t si
 {
     // mov dst, src
     if (src.kind == OP_RIA_IMM) {
+        // Code size optimization: If instruction size is 8 bytes, but the immediate fits in a 32-bit value,
+        // use a size of 4 bytes instead.
+        if (size == X64_MAX_INT_REG_SIZE && XIR_imm_fits_4bytes(src.imm, size)) {
+            size = 4;
+        }
+
         XIR_emit_instr_mov_r_i(builder, xbblock, size, dst, src.imm);
     }
     else if (src.kind == OP_RIA_REG) {
@@ -541,11 +559,6 @@ static u32 XIR_mov_flt_op_ra_into_reg(XIR_Builder* builder, XIR_BBlock* xbblock,
     return r;
 }
 
-static inline bool XIR_imm_fits_4bytes(Scalar imm, size_t size)
-{
-    return (size < X64_MAX_INT_REG_SIZE) || (imm.as_int._u64 < (u64)int_kind_max[INTEGER_U32]);
-}
-
 typedef bool (*XIR_LIRCreateFunc)(XIR_Builder* builder, XIR_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr);
 
 #define XIR_DEF_CONVERT_INT_BINARY_FUNC(f_n, ir_t, f_r_i, f_r_r, f_r_m)                                     \
@@ -592,6 +605,7 @@ XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_int_add_instr, IR_InstrIntAdd, XIR_e
                                 XIR_emit_instr_add_r_m)
 XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_int_sub_instr, IR_InstrIntSub, XIR_emit_instr_sub_r_i, XIR_emit_instr_sub_r_r,
                                 XIR_emit_instr_sub_r_m)
+// TODO: imul_r_r does not support 8-bit like add_r_r. It is more like regular mul, which uses rax implicitly.
 XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_int_mul_instr, IR_InstrIntMul, XIR_emit_instr_imul_r_i, XIR_emit_instr_imul_r_r,
                                 XIR_emit_instr_imul_r_m)
 XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_and_instr, IR_InstrAnd, XIR_emit_instr_and_r_i, XIR_emit_instr_and_r_r,
