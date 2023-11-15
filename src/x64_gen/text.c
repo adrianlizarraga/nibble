@@ -662,6 +662,34 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         X64_record_global_entity_offset_usage(gen_state, entity);
         X64_write_imm32_bytes(gen_state, 0); // Write a dummy zero that will be patched by compiler.
     } break;
+    case X64_Instr_Kind_CALL_R: {
+        const u8 arg_reg = x64_reg_val[instr->call_r.reg];
+        const bool reg_is_ext = arg_reg > 7;
+
+        if (reg_is_ext) {
+            array_push(bblock->buffer, X64_rex_nosib(0, 0, arg_reg));
+        }
+
+        array_push(bblock->buffer, 0xFF);
+        array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, 2, arg_reg)); // /2 is extension, arg_reg uses r/m.
+    } break;
+    case X64_Instr_Kind_CALL_M: {
+        const X64_AddrBytes addr = X64_get_addr_bytes(&instr->call_m.mem);
+        const bool use_ext_regs = addr.rex_b || addr.rex_x;
+
+        if (use_ext_regs) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, addr.rex_x, addr.rex_b));
+        }
+
+        array_push(bblock->buffer, 0xFF);
+        array_push(bblock->buffer, X64_modrm_byte(addr.mod, 2, addr.rm)); // /2 is extension, addr uses r/m
+
+        if (addr.has_sib_byte) {
+            array_push(bblock->buffer, addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &addr);
+    } break;
     // LEA
     case X64_Instr_Kind_LEA: {
         // REX.W + 8D /r => lea r64, m
