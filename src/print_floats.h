@@ -1,6 +1,6 @@
 #ifndef NIBBLE_PRINT_FLOATS_H
 #define NIBBLE_PRINT_FLOATS_H
-#include "nibble.h"
+#include "basics.h"
 
 #define F64_SIGN_MASK 0x8000000000000000ULL
 #define F64_EXP_MASK 0x7FF0000000000000ULL

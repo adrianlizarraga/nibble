@@ -55,9 +55,11 @@
 #include "x64_gen/data.c"
 #include "x64_gen/text.c"
 #include "x64_gen/elf_writer.c"
+#include "x64_gen/x64_instrs.c"
 #include "x64_gen/xir_to_x64.c"
 #include "x64_gen/nasm_gen.c"
 
 // Compiler main logic
 #include "nibble.c"
+#include "compiler.c"
 #endif

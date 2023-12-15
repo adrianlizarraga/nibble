@@ -5,7 +5,6 @@
 
 #include "path_utils.h"
 #include "cstring.h"
-#include "nibble.h"
 
 #define ASSERT_PATH_INIT(p) assert((p)->str&& array_cap((p)->str))
 

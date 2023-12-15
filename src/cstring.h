@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "nibble.h"
+#include "basics.h"
 #include "allocator.h"
 
 int cstr_cmp(const char* str1, const char* str2);
