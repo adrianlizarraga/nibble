@@ -4,6 +4,7 @@
 #include "allocator.h"
 #include "hash_map.h"
 #include "stream.h"
+#include <assert.h>
 
 typedef enum OS {
     OS_INVALID,
