@@ -51,6 +51,7 @@ else()
         src/x64_gen/text.c
         src/x64_gen/elf_writer.c
         src/x64_gen/x64_instrs.c
+        src/x64_gen/machine_code.c
         src/x64_gen/xir_to_x64.c
         src/x64_gen/nasm_gen.c)
 
@@ -80,5 +81,6 @@ target_include_directories(nibble PUBLIC "${PROJECT_SOURCE_DIR}/src")
 
 add_executable(elf_gen_test tests/elf_gen/main.c
                             src/x64_gen/x64_instrs.c
+                            src/x64_gen/machine_code.c
                             ${NIBBLE_UTIL_SRCS})
 target_include_directories(elf_gen_test PUBLIC "${PROJECT_SOURCE_DIR}/src")
