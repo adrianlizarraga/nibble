@@ -521,7 +521,7 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
             offset += X64_get_bblock_best_case_size(&bblocks[bb]);
         }
     }
-    else if (src_index > dst_index) {
+    else if (src_index >= dst_index) {
         for (u32 bb = dst_index; bb < src_index; bb += 1) {
             offset -= X64_get_bblock_best_case_size(&bblocks[bb]);
         }
@@ -540,9 +540,6 @@ static bool X64_update_jmp(X64_TextBBlock* bblock, X64_TextBBlock* bblocks)
             // jmp: 1 byte opcode + 4 byte offset
             offset -= (kind == X64_Instr_Kind_JMPCC ? 6 : 5);
         }
-    }
-    else {
-        NIBBLE_FATAL_EXIT("Unexpected jmp target == jmp source");
     }
 
     bool changed_size = false;

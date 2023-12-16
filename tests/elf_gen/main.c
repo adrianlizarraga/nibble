@@ -10,6 +10,7 @@ int main(int argc, char** argv) {
     array_push(x64_instrs.bblocks, (X64_BBlock){0}); // Push first basic block
 
     X64_emit_instr_add_ri(&x64_instrs, 4, X64_RAX, 10);
+    X64_emit_instr_jmp(&x64_instrs, 0);
     printf("Num bblocks = %lu, Num instrs = %d\n", array_len(x64_instrs.bblocks), x64_instrs.num_instrs);
 
     Array(u8) buffer = array_create(&alloc, u8, 64);
