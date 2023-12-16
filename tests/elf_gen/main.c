@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "x64_gen/xir_to_x64.h"
+#include "x64_gen/x64_instrs.h"
 #include "allocator.h"
 
 int main(int argc, char** argv) {
