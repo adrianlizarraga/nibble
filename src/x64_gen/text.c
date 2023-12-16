@@ -1,7 +1,6 @@
 #include <string.h>
 #include "array.h"
 #include "ast/module.h"
-#include "hash_map.h"
 #include "stream.h"
 #include "x64_gen/text.h"
 #include "x64_gen/xir_to_x64.h"
@@ -1215,18 +1214,12 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     }
 }
 
-static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, Symbol* proc_sym, Array(u8) * buffer,
-                                  Array(X64_TextReloc) * relocs, Array(X64_TextReloc) * proc_off_patches)
+static void X64_elf_gen_instrs(Allocator* tmp_mem, X64_Instrs* instrs, Array(u8) * buffer, Array(X64_TextReloc) * relocs,
+                               Array(X64_TextReloc) * proc_off_patches)
 {
-    const DeclProc* decl = (const DeclProc*)proc_sym->decl;
-    if (decl->is_incomplete) {
-        return;
-    }
-
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
 
-    X64_Instrs instrs = X64_gen_proc_instrs(gen_mem, tmp_mem, proc_sym); // TODO: X64_gen_*(tmp_mem, new_tmp_arena, proc_sym)
-    const u32 num_bblocks = array_len(instrs.bblocks);
+    const u32 num_bblocks = array_len(instrs->bblocks);
     X64_TextBBlock* text_bblocks = alloc_array(tmp_mem, X64_TextBBlock, num_bblocks, true);
     X64_TextGenState gen_state = {.relocs = array_create(tmp_mem, X64_InternalReloc, 8),
                                   .proc_off_patches = array_create(tmp_mem, X64_InternalReloc, 8)};
@@ -1239,7 +1232,7 @@ static void X64_elf_gen_proc_text(Allocator* gen_mem, Allocator* tmp_mem, Symbol
 
         gen_state.curr_bblock = bblock;
 
-        for (X64_Instr* instr = instrs.bblocks[bb].head; instr; instr = instr->next) {
+        for (X64_Instr* instr = instrs->bblocks[bb].head; instr; instr = instr->next) {
             X64_elf_gen_instr(&gen_state, instr);
         }
     }
@@ -1332,8 +1325,18 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     for (Bucket* bucket = procs->first; bucket; bucket = bucket->next) {
         for (size_t i = 0; i < bucket->count; i += 1) {
             Symbol* proc_sym = bucket->elems[i];
+            const DeclProc* decl = (const DeclProc*)proc_sym->decl;
+
+            if (decl->is_incomplete) {
+                continue;
+            }
+
             proc_offsets[proc_sym->as_proc.index] = array_len(buffer);
-            X64_elf_gen_proc_text(gen_mem, tmp_mem, proc_sym, &buffer, &relocs, &proc_off_patches);
+
+            AllocatorState mem_state = allocator_get_state(tmp_mem);
+            X64_Instrs instrs = X64_gen_proc_instrs(gen_mem, tmp_mem, proc_sym); // TODO: X64_gen_*(tmp_mem, new_tmp_arena, proc_sym)
+            X64_elf_gen_instrs(tmp_mem, &instrs, &buffer, &relocs, &proc_off_patches);
+            allocator_restore_state(mem_state);
         }
     }
 

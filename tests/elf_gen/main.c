@@ -7,7 +7,7 @@ int main(int argc, char** argv) {
     X64_Instrs x64_instrs = {.bblocks = array_create(&alloc, X64_BBlock, 4)};
     array_push(x64_instrs.bblocks, (X64_BBlock){0}); // Push first basic block
 
-    X64_emit_instr_add_ri(&x64_instrs, 4, X64_RAX, X64_RCX);
+    X64_emit_instr_add_ri(&x64_instrs, 4, X64_RAX, 10);
 
     printf("Num bblocks = %lu, Num instrs = %d\n", array_len(x64_instrs.bblocks), x64_instrs.num_instrs);
     allocator_destroy(&alloc);
