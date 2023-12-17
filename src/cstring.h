@@ -3,11 +3,19 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
 
 #include "basics.h"
 #include "allocator.h"
+
+typedef enum Slurp_File_Err {
+    SLURP_FILE_OK = 0,
+    SLURP_FILE_ERR_OPEN,
+    SLURP_FILE_ERR_READ,
+} Slurp_File_Err;
+
+Slurp_File_Err slurp_file(StringView* contents, Allocator* allocator, const char* filename);
+void print_slurp_file_err(const char* filename, Slurp_File_Err err);
 
 int cstr_cmp(const char* str1, const char* str2);
 int cstr_ncmp(const char* str1, const char* str2, size_t num);

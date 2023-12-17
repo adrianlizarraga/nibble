@@ -254,10 +254,4 @@ StrLit* intern_str_lit(HMap* map, const char* str, size_t len);
 FloatLit* intern_float_lit(HMap* map, FloatKind kind, Float value);
 Identifier* intern_ident(HMap* map, const char* str, size_t len);
 
-bool slurp_file(StringView* contents, Allocator* allocator, const char* filename);
-
-#define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit(__FILE__, __LINE__, (f), ##__VA_ARGS__)
-void nibble_fatal_exit(const char* file, u32 line, const char* format, ...);
 #endif
-
-

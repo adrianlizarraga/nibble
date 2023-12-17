@@ -12,6 +12,7 @@ if(UNITY_BUILD)
     SET(NIBBLE_SRCS src/main.c)
 else()
     set(NIBBLE_UTIL_SRCS src/allocator.c
+        src/basics.c
         src/cstring.c
         src/path_utils.c
         src/os_utils.c

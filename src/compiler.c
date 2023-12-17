@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "compiler.h"
+#include "cstring.h"
 #include "parser/module.h"
 #include "resolver/module.h"
 #include "bytecode/module.h"
@@ -772,7 +773,9 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
 
             StringView included_code;
 
-            if (!slurp_file(&included_code, ctx->gen_mem, include_ospath.str)) {
+            Slurp_File_Err err = slurp_file(&included_code, ctx->gen_mem, include_ospath.str);
+            if (err != SLURP_FILE_OK) {
+                print_slurp_file_err(include_ospath.str, err);
                 return false;
             }
 
@@ -887,7 +890,9 @@ static bool parse_module(NibbleCtx* ctx, Module* mod)
     // Parse the code text
     StringView code;
 
-    if (!slurp_file(&code, ctx->gen_mem, mod_ospath.str)) {
+    Slurp_File_Err err = slurp_file(&code, ctx->gen_mem, mod_ospath.str);
+    if (err != SLURP_FILE_OK) {
+        print_slurp_file_err(mod_ospath.str, err);
         return false;
     }
 
