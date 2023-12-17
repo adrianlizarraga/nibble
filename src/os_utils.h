@@ -1,6 +1,6 @@
 #ifndef NIBBLE_OS_UTILS_H
 #define NIBBLE_OS_UTILS_H
-#include "nibble.h"
+#include "basics.h"
 #include "allocator.h"
 
 typedef struct ExecCmd {

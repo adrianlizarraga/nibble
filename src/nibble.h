@@ -1,30 +1,10 @@
 #ifndef NIBBLE_H
 #define NIBBLE_H
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <assert.h>
-
+#include "basics.h"
 #include "allocator.h"
 #include "hash_map.h"
 #include "stream.h"
-
-#define MAX_ERROR_LEN 256
-#define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
-#define ALIGN_UP(p, a) (((p) + (a)-1) & ~((a)-1))
-#define BITS(x) (sizeof(x) * 8)
-#define IS_POW2(x) (((x) & ((x) - 1)) == 0)
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-
-#define NIBBLE_UNUSED_VAR(x) (void)(x)
-
-#if defined(__linux__)
-#define NIBBLE_HOST_LINUX
-#else
-#error "This operating system is not yet supported!"
-#endif
-
+#include <assert.h>
 
 typedef enum OS {
     OS_INVALID,
@@ -49,28 +29,6 @@ typedef struct ProgRange {
 } ProgRange;
 
 ProgRange merge_ranges(ProgRange a, ProgRange b);
-
-typedef struct StringView {
-    const char* str;
-    size_t len;
-} StringView;
-
-#define string_view_lit(cstr_lit)                    \
-    {                                                \
-        .str = cstr_lit, .len = sizeof(cstr_lit) - 1 \
-    }
-#define string_view(s) ((StringView){.str = (s), .len = cstr_len(s)})
-
-typedef uint8_t u8;
-typedef int8_t s8;
-typedef uint16_t u16;
-typedef int16_t s16;
-typedef uint32_t u32;
-typedef int32_t s32;
-typedef uint64_t u64;
-typedef int64_t s64;
-typedef float f32;
-typedef double f64;
 
 typedef enum FloatKind {
     FLOAT_F64 = 0,
@@ -118,6 +76,7 @@ extern const u8 int_kind_sizes[INTEGER_KIND_COUNT];
 extern const char* int_kind_names[INTEGER_KIND_COUNT];
 extern const bool int_kind_signed[INTEGER_KIND_COUNT];
 extern const u64 int_kind_max[INTEGER_KIND_COUNT];
+extern const u64 int_kind_min[INTEGER_KIND_COUNT];
 
 typedef struct Integer {
     union {
@@ -252,7 +211,15 @@ extern Identifier* intrinsic_idents[INTRINSIC_COUNT];
 extern Identifier* builtin_struct_fields[BUILTIN_STRUCT_FIELD_COUNT];
 extern Identifier* main_proc_ident;
 
-bool slurp_file(StringView* contents, Allocator* allocator, const char* filename);
+static inline u32 s64_to_u32(s64 x) {
+    assert(x < (s64)int_kind_max[INTEGER_U32]);
+    return (u32)x;
+}
+
+static inline u32 u64_to_u32(u64 x) {
+    assert(x < int_kind_max[INTEGER_U32]);
+    return (u32)x;
+}
 
 typedef struct Error Error;
 typedef struct ErrorStream ErrorStream;
@@ -274,16 +241,20 @@ struct ErrorStream {
 void error_stream_init(ErrorStream* stream, Allocator* allocator);
 void error_stream_free(ErrorStream* stream);
 void error_stream_add(ErrorStream* stream, ProgRange range, const char* buf, size_t size);
+void report_error(ErrorStream* error_stream, ProgRange range, const char* format, ...);
 
-static inline u32 s64_to_u32(s64 x) {
-    assert(x < (s64)int_kind_max[INTEGER_U32]);
-    return (u32)x;
-}
+typedef struct GlobalData {
+    BucketList list;
+    size_t size;
+} GlobalData;
 
-static inline u32 u64_to_u32(u64 x) {
-    assert(x < int_kind_max[INTEGER_U32]);
-    return (u32)x;
-}
+void add_global_data(GlobalData* data, void* item, size_t size);
+
+StrLit* intern_str_lit(HMap* map, const char* str, size_t len);
+FloatLit* intern_float_lit(HMap* map, FloatKind kind, Float value);
+Identifier* intern_ident(HMap* map, const char* str, size_t len);
+
+bool slurp_file(StringView* contents, Allocator* allocator, const char* filename);
 
 #define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit(__FILE__, __LINE__, (f), ##__VA_ARGS__)
 void nibble_fatal_exit(const char* file, u32 line, const char* format, ...);

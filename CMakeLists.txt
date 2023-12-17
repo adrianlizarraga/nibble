@@ -19,7 +19,8 @@ else()
         src/print.c
         src/array.c
         src/hash_map.c
-        src/stream.c)
+        src/stream.c
+        src/nibble.c)
     set(NIBBLE_LINKER_SRCS src/linker.c)
     set(NIBBLE_LEXER_SRCS src/lexer/module.c)
     set(NIBBLE_AST_SRCS src/ast/module.c src/ast/print_ast.c)
@@ -49,11 +50,12 @@ else()
         src/x64_gen/data.c
         src/x64_gen/text.c
         src/x64_gen/elf_writer.c
-        src/x64_gen/xir_to_x64.h
+        src/x64_gen/x64_instrs.c
+        src/x64_gen/machine_code.c
         src/x64_gen/xir_to_x64.c
         src/x64_gen/nasm_gen.c)
 
-    set(NIBBLE_MAIN_SRCS src/nibble.c src/main.c)
+    set(NIBBLE_MAIN_SRCS src/compiler.c src/main.c)
     set(NIBBLE_SRCS ${NIBBLE_UTIL_SRCS}
         ${NIBBLE_LINKER_SRCS}
         ${NIBBLE_LEXER_SRCS}
@@ -76,3 +78,9 @@ endif(PRINT_MEM_USAGE)
 add_compile_options(-Wall -Wextra -pedantic)
 add_executable(nibble ${NIBBLE_SRCS})
 target_include_directories(nibble PUBLIC "${PROJECT_SOURCE_DIR}/src")
+
+add_executable(elf_gen_test tests/elf_gen/main.c
+                            src/x64_gen/x64_instrs.c
+                            src/x64_gen/machine_code.c
+                            ${NIBBLE_UTIL_SRCS})
+target_include_directories(elf_gen_test PUBLIC "${PROJECT_SOURCE_DIR}/src")
