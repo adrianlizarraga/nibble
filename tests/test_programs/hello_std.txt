@@ -1,4 +1,4 @@
-:include_paths ../
+:include_paths ../../
 :lib_paths
 :argc 0
 :stdin 0
