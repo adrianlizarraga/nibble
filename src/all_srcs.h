@@ -2,6 +2,7 @@
 #define NIBBLE_ALL_SRCS_H
 
 // Utils
+#include "basics.c"
 #include "allocator.c"
 #include "cstring.c"
 #include "path_utils.c"

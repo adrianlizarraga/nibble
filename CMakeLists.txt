@@ -12,6 +12,7 @@ if(UNITY_BUILD)
     SET(NIBBLE_SRCS src/main.c)
 else()
     set(NIBBLE_UTIL_SRCS src/allocator.c
+        src/basics.c
         src/cstring.c
         src/path_utils.c
         src/os_utils.c
@@ -80,6 +81,8 @@ add_executable(nibble ${NIBBLE_SRCS})
 target_include_directories(nibble PUBLIC "${PROJECT_SOURCE_DIR}/src")
 
 add_executable(elf_gen_test tests/elf_gen/main.c
+                            tests/elf_gen/test_utils.c
+                            tests/elf_gen/test_utils.h
                             src/x64_gen/x64_instrs.c
                             src/x64_gen/machine_code.c
                             ${NIBBLE_UTIL_SRCS})

@@ -1,52 +1,64 @@
 #include <stdio.h>
 #include "basics.h"
 #include "allocator.h"
-#include "os_utils.h"
 #include "x64_gen/x64_instrs.h"
 #include "x64_gen/machine_code.h"
 
-int main(int argc, char** argv) {
-    Allocator alloc = allocator_create(512);
-    X64_Instrs x64_instrs = {.bblocks = array_create(&alloc, X64_BBlock, 4)};
+#include "test_utils.h"
+
+static bool test_add_ri_inf_loop(Allocator* mem_arena, bool verbose)
+{
+    X64_Instrs x64_instrs = {.bblocks = array_create(mem_arena, X64_BBlock, 4)};
     array_push(x64_instrs.bblocks, (X64_BBlock){0}); // Push first basic block
 
     X64_emit_instr_add_ri(&x64_instrs, 4, X64_RAX, 10);
     X64_emit_instr_jmp(&x64_instrs, 0);
-    ftprint_out("Num bblocks = %lu, Num instrs = %d\n", array_len(x64_instrs.bblocks), x64_instrs.num_instrs);
 
-    Array(u8) buffer = array_create(&alloc, u8, 64);
-    Array(X64_TextReloc) relocs = array_create(&alloc, X64_TextReloc, 2);
-    Array(X64_TextReloc) proc_off_patches = array_create(&alloc, X64_TextReloc, 2);
+    Array(u8) buffer = array_create(mem_arena, u8, 64);
+    Array(X64_TextReloc) relocs = array_create(mem_arena, X64_TextReloc, 2);
+    Array(X64_TextReloc) proc_off_patches = array_create(mem_arena, X64_TextReloc, 2);
 
-    X64_elf_gen_instrs(&alloc, &x64_instrs, &buffer, &relocs, &proc_off_patches);
+    X64_elf_gen_instrs(mem_arena, &x64_instrs, &buffer, &relocs, &proc_off_patches);
 
-    // Print bytes.
-    ftprint_out("Instruction bytes:\n");
-    for (size_t i = 0; i < array_len(buffer); i++) {
-        ftprint_out("0x%X ", buffer[i]);
-    }
-    ftprint_out("\n");
-
-    FILE* test_asm_fd = fopen("test.s", "w");
-    if (!test_asm_fd) {
-        ftprint_out("[ERROR]: failed to open test.s for writing\n");
-        allocator_destroy(&alloc);
-        return 1;
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    if (!get_nasm_machine_code(&nasm_buffer, "l0: add eax, 0xA\njmp l0", mem_arena)) {
+        return false;
     }
 
-    ftprint_file(test_asm_fd, false, "l0: add eax, 0xA\njmp l0");
-    fclose(test_asm_fd);
+    return expect_bufs_equal(buffer, nasm_buffer, verbose);
+}
 
-    const char* nasm_cmd_argv[] = {"nasm", "-f", "elf64", "test.s", "-o", "test.o", NULL};
-    ExecCmd nasm_cmd = {.argv = nasm_cmd_argv, .argc = ARRAY_LEN(nasm_cmd_argv) - 1};
-    if (run_cmd(&alloc, &nasm_cmd, false) != 0) {
-        ftprint_out("[ERROR]: Failed to run NASM command\n");
-        allocator_destroy(&alloc);
-        return 1;
+static Elf_Gen_Test elf_gen_tests[] = {
+    {"test_add_ri_inf_loop", test_add_ri_inf_loop},
+};
+
+int main(int argc, char** argv)
+{
+    NIBBLE_UNUSED_VAR(argc);
+    NIBBLE_UNUSED_VAR(argv);
+
+    bool verbose = true; // TODO: Get from command-line args
+
+    Allocator alloc = allocator_create(512);
+
+    size_t num_tests_ok = 0;
+    const size_t num_tests = ARRAY_LEN(elf_gen_tests);
+
+    for (size_t i = 0; i < num_tests; i++) {
+        ftprint_out("[ RUNNING ] %s\n", elf_gen_tests[i].test_name);
+        bool passed = elf_gen_tests[i].test_fn(&alloc, verbose);
+        ftprint_out("[ %s ] %s\n\n", (passed ? "OK" : "FAILED"), elf_gen_tests[i].test_name);
+
+        num_tests_ok += (size_t)passed;
     }
 
-    // TODO: Get bytes from test.o and compare with our generated buffer
+    const bool all_tests_ok = num_tests == num_tests_ok;
+
+    ftprint_out("%lu/%lu tests passed\n", num_tests_ok, num_tests);
+    if (!all_tests_ok) {
+        ftprint_out("%lu/%lu tests failed\n", num_tests - num_tests_ok, num_tests);
+    }
 
     allocator_destroy(&alloc);
-    return 0;
+    return !all_tests_ok;
 }

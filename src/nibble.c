@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -56,51 +55,6 @@ const char* annotation_names[ANNOTATION_COUNT];
 Identifier* intrinsic_idents[INTRINSIC_COUNT];
 Identifier* builtin_struct_fields[BUILTIN_STRUCT_FIELD_COUNT];
 Identifier* main_proc_ident;
-
-bool slurp_file(StringView* contents, Allocator* allocator, const char* filename)
-{
-    FILE* fd = fopen(filename, "r");
-    if (!fd) {
-        NIBBLE_FATAL_EXIT("Failed to open file %s", filename);
-        return false;
-    }
-
-    if (fseek(fd, 0, SEEK_END) < 0) {
-        NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
-        return false;
-    }
-
-    long int size = ftell(fd);
-    if (size < 0) {
-        NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
-        return false;
-    }
-
-    char* buf = mem_allocate(allocator, size + 1, DEFAULT_ALIGN, false);
-    if (!buf) {
-        NIBBLE_FATAL_EXIT("Out of memory: %s:%d", __FILE__, __LINE__);
-        return false;
-    }
-
-    if (fseek(fd, 0, SEEK_SET) < 0) {
-        NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
-        return false;
-    }
-
-    size_t n = fread(buf, 1, (size_t)size, fd);
-    if (ferror(fd)) {
-        NIBBLE_FATAL_EXIT("Failed to read file %s", filename);
-        return false;
-    }
-
-    fclose(fd);
-    buf[n] = '\0';
-
-    contents->str = buf;
-    contents->len = n;
-
-    return true;
-}
 
 ProgRange merge_ranges(ProgRange a, ProgRange b)
 {
@@ -278,19 +232,4 @@ Identifier* intern_ident(HMap* strmap, const char* str, size_t len)
     hmap_put(strmap, key, (uintptr_t)new_intern);
 
     return new_intern;
-}
-
-void nibble_fatal_exit(const char* file, u32 line, const char* format, ...)
-{
-    va_list vargs;
-
-    ftprint_err("%s:%u:%u: [FATAL ERROR]: ", file, line, 0);
-
-    va_start(vargs, format);
-    ftprintv_err(format, vargs);
-    va_end(vargs);
-
-    ftprint_err("\n");
-
-    exit(1);
 }

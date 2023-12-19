@@ -42,4 +42,7 @@ typedef struct StringView {
     }
 #define string_view(s) ((StringView){.str = (s), .len = cstr_len(s)})
 
+#define NIBBLE_FATAL_EXIT(f, ...) nibble_fatal_exit(__FILE__, __LINE__, (f), ##__VA_ARGS__)
+void nibble_fatal_exit(const char* file, u32 line, const char* format, ...);
+
 #endif
