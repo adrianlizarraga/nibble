@@ -28,8 +28,55 @@ static bool test_add_ri_inf_loop(Allocator* mem_arena, bool verbose)
     return expect_bufs_equal(buffer, nasm_buffer, verbose);
 }
 
+static bool test_push_pop_r64(Allocator* mem_arena, bool verbose)
+{
+    X64_Instrs x64_instrs = {.bblocks = array_create(mem_arena, X64_BBlock, 4)};
+    array_push(x64_instrs.bblocks, (X64_BBlock){0}); // Push first basic block
+
+    X64_emit_instr_push(&x64_instrs, X64_RAX);
+    X64_emit_instr_push(&x64_instrs, X64_R10); // Extended register uses an prefix extra byte
+    X64_emit_instr_pop(&x64_instrs, X64_R10);
+    X64_emit_instr_pop(&x64_instrs, X64_RAX);
+
+    Array(u8) buffer = array_create(mem_arena, u8, 64);
+    Array(X64_TextReloc) relocs = array_create(mem_arena, X64_TextReloc, 2);
+    Array(X64_TextReloc) proc_off_patches = array_create(mem_arena, X64_TextReloc, 2);
+
+    X64_elf_gen_instrs(mem_arena, &x64_instrs, &buffer, &relocs, &proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    if (!get_nasm_machine_code(&nasm_buffer, "push rax\npush r10\npop r10\npop rax\n", mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(buffer, nasm_buffer, verbose);
+}
+
+static bool test_ret(Allocator* mem_arena, bool verbose)
+{
+    X64_Instrs x64_instrs = {.bblocks = array_create(mem_arena, X64_BBlock, 4)};
+    array_push(x64_instrs.bblocks, (X64_BBlock){0}); // Push first basic block
+
+    X64_emit_instr_ret(&x64_instrs);
+
+    Array(u8) buffer = array_create(mem_arena, u8, 64);
+    Array(X64_TextReloc) relocs = array_create(mem_arena, X64_TextReloc, 2);
+    Array(X64_TextReloc) proc_off_patches = array_create(mem_arena, X64_TextReloc, 2);
+
+    X64_elf_gen_instrs(mem_arena, &x64_instrs, &buffer, &relocs, &proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    if (!get_nasm_machine_code(&nasm_buffer, "ret\n", mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(buffer, nasm_buffer, verbose);
+}
+
 static Elf_Gen_Test elf_gen_tests[] = {
     {"test_add_ri_inf_loop", test_add_ri_inf_loop},
+    {"test_push_pop_r64", test_push_pop_r64},
+    {"test_ret", test_ret},
 };
 
 int main(int argc, char** argv)
@@ -37,7 +84,7 @@ int main(int argc, char** argv)
     NIBBLE_UNUSED_VAR(argc);
     NIBBLE_UNUSED_VAR(argv);
 
-    bool verbose = true; // TODO: Get from command-line args
+    bool verbose = false; // TODO: Get from command-line args
 
     Allocator alloc = allocator_create(512);
 

@@ -102,7 +102,7 @@ bool expect_bufs_equal(Array(u8) actual_buf, Array(u8) expected_buf, bool verbos
 {
     const bool are_equal = arrays_equal(actual_buf, expected_buf);
 
-    if (!are_equal && verbose) {
+    if (!are_equal || verbose) {
         ftprint_err("Expected bytes: ");
         for (size_t i = 0; i < array_len(expected_buf); i++) {
             ftprint_err("0x%X ", expected_buf[i]);
