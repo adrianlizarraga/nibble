@@ -41,6 +41,39 @@ size_t ftprintv_char_array(char** dst, bool nullterm, const char* format, va_lis
     return n;
 }
 
+bool _arrays_equal(void* array_a, size_t elem_size_a, void* array_b, size_t elem_size_b)
+{
+    // Due to lack of templates, we assume that the caller passed in arrays of the same type.
+    // This check is an incomplete fail-safe.
+    if (elem_size_a != elem_size_b) {
+        return false;
+    }
+
+    if (array_a == array_b) {
+        return true;
+    }
+
+    if (!array_a || !array_b) {
+        return false;
+    }
+
+    ArrayHdr* hdr_a = _array_hdr(array_a);
+    ArrayHdr* hdr_b = _array_hdr(array_b);
+
+    if (hdr_a->len != hdr_b->len) {
+        return false;
+    }
+
+    const size_t num_bytes = hdr_a->len * elem_size_a;
+    for (size_t i = 0; i < num_bytes; i++) {
+        if (hdr_a->data[i] != hdr_b->data[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void* _array_reserve(void* array, size_t len, size_t elem_size, size_t align, Allocator* allocator)
 {
     size_t cap = array_cap(array);
