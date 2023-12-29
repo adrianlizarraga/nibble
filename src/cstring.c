@@ -90,6 +90,20 @@ int cstr_ncmp(const char* str1, const char* str2, size_t num)
     return *(unsigned char*)str1 - *(unsigned char*)str2;
 }
 
+char* cstr_ncpy(char* dst, const char* src, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        if (*src) {
+            dst[i] = *src;
+            src++;
+        } else {
+            dst[i] = '\0';
+        }
+    }
+
+    return dst;
+}
+
 char* cstr_dup(Allocator* allocator, const char* cstr)
 {
     assert(cstr);

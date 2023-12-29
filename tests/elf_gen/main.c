@@ -1,6 +1,8 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "basics.h"
 #include "allocator.h"
+#include "argv_helper.h"
 #include "x64_gen/x64_instrs.h"
 #include "x64_gen/machine_code.h"
 
@@ -95,14 +97,38 @@ static Elf_Gen_Test elf_gen_tests[] = {
     {"test_call", test_call},
 };
 
+static void print_usage(FILE* fd, const char* program_name)
+{
+    ftprint_file(fd, true, "Usage: %s [OPTIONS]\n", program_name);
+    ftprint_file(fd, true, "OPTIONS:\n");
+    ftprint_file(fd, true, "    -h                              Print this help message and exit\n");
+    ftprint_file(fd, true, "    -v                              Enable verbose mode\n");
+}
+
 int main(int argc, char** argv)
 {
-    NIBBLE_UNUSED_VAR(argc);
-    NIBBLE_UNUSED_VAR(argv);
+    Argv_Helper argv_helper = {.argc = argc, .argv = argv};
+    const char* program_name = get_next_arg(&argv_helper);
+    bool verbose = false;
 
-    bool verbose = false; // TODO: Get from command-line args
+    while (has_next_arg(&argv_helper)) {
+        const char* arg = get_next_arg(&argv_helper);
 
-    Allocator alloc = allocator_create(16*1024);
+        if (cstr_cmp(arg, "-h") == 0) {
+            print_usage(stdout, program_name);
+            exit(0);
+        }
+        else if (cstr_cmp(arg, "-v") == 0) {
+            verbose = true;
+        }
+        else {
+            ftprint_err("[ERROR]: unknown option `%s`\n\n", arg);
+            print_usage(stderr, program_name);
+            exit(1);
+        }
+    }
+
+    Allocator alloc = allocator_create(16 * 1024);
 
     size_t num_tests_ok = 0;
     const size_t num_tests = ARRAY_LEN(elf_gen_tests);

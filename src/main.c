@@ -23,16 +23,16 @@
     - Printing all IRS for floats.nib crashes.
  */
 
-//#define NDEBUG 1
-#include <assert.h>
+// #define NDEBUG 1
+#include <alloca.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
-//#define NDEBUG
-//#define NIBBLE_PRINT_IRS
-//#define NIBBLE_PRINT_MEM_USAGE
+// #define NDEBUG
+// #define NIBBLE_PRINT_IRS
+// #define NIBBLE_PRINT_MEM_USAGE
 
+#include "argv_helper.h"
 #include "nibble.h"
 #include "cstring.h"
 #include "path_utils.h"
@@ -74,33 +74,25 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `out`\n");
 }
 
-char* consume_arg(int* argc, char*** argv)
+const char* get_flag_value(Argv_Helper* argv_helper, const char* program_name, const char* flag)
 {
-    assert(*argc);
-    char* arg = (*argv)[0];
-
-    *argc -= 1;
-    *argv += 1;
-
-    return arg;
-}
-
-char* get_flag_value(int* argc, char*** argv, const char* program_name, const char* flag)
-{
-    if (*argc == 0) {
+    if (!has_next_arg(argv_helper)) {
         ftprint_err("ERROR: no value provided for `%s` option\n", flag);
         print_usage(stderr, program_name);
         exit(1);
     }
 
-    return consume_arg(argc, argv);
+    return get_next_arg(argv_helper);
 }
 
-OS get_target_os(int* argc, char*** argv, const char* program_name)
+OS get_target_os(Argv_Helper* argv_helper, const char* program_name)
 {
     OS target_os = OS_INVALID;
-    char* os_val = get_flag_value(argc, argv, program_name, "-os");
+    const char* os_val_orig = get_flag_value(argv_helper, program_name, "-os");
+    const size_t str_size = cstr_len(os_val_orig) + 1;
 
+    char* os_val = alloca(str_size);
+    cstr_ncpy(os_val, os_val_orig, str_size);
     cstr_tolower(os_val);
 
     for (int i = 1; i < NUM_OS; i += 1) {
@@ -119,11 +111,14 @@ OS get_target_os(int* argc, char*** argv, const char* program_name)
     return target_os;
 }
 
-Arch get_target_arch(int* argc, char*** argv, const char* program_name)
+Arch get_target_arch(Argv_Helper* argv_helper, const char* program_name)
 {
     Arch target_arch = ARCH_INVALID;
-    char* arch_val = get_flag_value(argc, argv, program_name, "-arch");
+    const char* arch_val_orig = get_flag_value(argv_helper, program_name, "-arch");
+    const size_t str_size = cstr_len(arch_val_orig) + 1;
 
+    char* arch_val = alloca(str_size);
+    cstr_ncpy(arch_val, arch_val_orig, str_size);
     cstr_tolower(arch_val);
 
     for (int i = 1; i < NUM_ARCH; i += 1) {
@@ -169,13 +164,15 @@ void add_search_path(StringView* paths, u32* p_num_paths, u32 cap, const char* n
 
 int main(int argc, char* argv[])
 {
+    Argv_Helper argv_helper = {.argc = argc, .argv = argv};
+    const char* program_name = get_next_arg(&argv_helper);
+
     StringView module_paths[MAX_NUM_USER_MODULE_PATHS + NUM_DEFAULT_MODULE_PATHS];
     StringView lib_paths[MAX_NUM_USER_LIB_PATHS + NUM_DEFAULT_LIB_PATHS];
 
     u32 num_module_paths = 0;
     u32 num_lib_paths = 0;
 
-    const char* program_name = consume_arg(&argc, &argv);
     StringView main_file = {0};
     StringView out_file = string_view_lit("out");
 
@@ -191,8 +188,8 @@ int main(int argc, char* argv[])
     Arch target_arch = ARCH_INVALID;
 #endif
 
-    while (argc > 0) {
-        const char* arg = consume_arg(&argc, &argv);
+    while (has_next_arg(&argv_helper)) {
+        const char* arg = get_next_arg(&argv_helper);
 
         if (cstr_cmp(arg, "-h") == 0) {
             print_usage(stdout, program_name);
@@ -205,24 +202,24 @@ int main(int argc, char* argv[])
             test_mode_paths = true;
         }
         else if (cstr_cmp(arg, "-os") == 0) {
-            target_os = get_target_os(&argc, &argv, program_name);
+            target_os = get_target_os(&argv_helper, program_name);
         }
         else if (cstr_cmp(arg, "-arch") == 0) {
-            target_arch = get_target_arch(&argc, &argv, program_name);
+            target_arch = get_target_arch(&argv_helper, program_name);
         }
         else if (cstr_cmp(arg, "-o") == 0) {
-            const char* name = get_flag_value(&argc, &argv, program_name, "-o");
+            const char* name = get_flag_value(&argv_helper, program_name, "-o");
             out_file = string_view(name);
 
             check_input_filepath(out_file, program_name);
         }
         else if (cstr_cmp(arg, "-I") == 0) {
-            const char* search_path = get_flag_value(&argc, &argv, program_name, "-I");
+            const char* search_path = get_flag_value(&argv_helper, program_name, "-I");
 
             add_search_path(module_paths, &num_module_paths, MAX_NUM_USER_MODULE_PATHS, search_path, program_name, "module");
         }
         else if (cstr_cmp(arg, "-L") == 0) {
-            const char* search_path = get_flag_value(&argc, &argv, program_name, "-L");
+            const char* search_path = get_flag_value(&argv_helper, program_name, "-L");
 
             add_search_path(lib_paths, &num_lib_paths, MAX_NUM_USER_LIB_PATHS, search_path, program_name, "library");
         }
@@ -287,8 +284,8 @@ int main(int argc, char* argv[])
     add_search_path(module_paths, &num_module_paths, ARRAY_LEN(module_paths), ".", program_name, "module");
     add_search_path(lib_paths, &num_lib_paths, ARRAY_LEN(lib_paths), out_dir_path.str, program_name, "library");
 
-    NibbleCtx* nib_ctx = nibble_init(&arena, target_os, target_arch, silent, test_mode_paths, &working_dir, &prog_entry_dir, module_paths,
-                                     num_module_paths, lib_paths, num_lib_paths);
+    NibbleCtx* nib_ctx = nibble_init(&arena, target_os, target_arch, silent, test_mode_paths, &working_dir, &prog_entry_dir,
+                                     module_paths, num_module_paths, lib_paths, num_lib_paths);
 
     if (!nib_ctx) {
         ftprint_err("[ERROR]: Failed to initialize compiler.\n");
