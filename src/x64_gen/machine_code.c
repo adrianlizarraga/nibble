@@ -1255,3 +1255,18 @@ void X64_elf_gen_instrs(Allocator* tmp_mem, X64_Instrs* instrs, Array(u8) * buff
 
     allocator_restore_state(tmp_mem_state);
 }
+
+void X64_patch_proc_uses(Array(u8) buffer, Array(const X64_TextReloc) proc_patch_infos, const u64* proc_offsets)
+{
+    // Patch relative offsets to other procs.
+    const u32 num_proc_patches = array_len(proc_patch_infos);
+    for (size_t i = 0; i < num_proc_patches; i++) {
+        const X64_TextReloc* patch_info = &proc_patch_infos[i];
+        assert(patch_info->ref_addr.kind == CONST_ADDR_SYM); // Should be a proc symbol
+
+        const Symbol* proc_sym = patch_info->ref_addr.sym;
+        const s64 proc_offset = (s64)proc_offsets[proc_sym->as_proc.index];
+        *((s32*)(&buffer[patch_info->usage_off])) = (s32)(proc_offset - (patch_info->usage_off + patch_info->bytes_to_next_ip));
+    }
+}
+

@@ -2,6 +2,7 @@
 
 #include <assert.h>
 
+#include "allocator.h"
 #include "os_utils.h"
 #include "cstring.h"
 #include "x64_gen/elf.h"
@@ -102,7 +103,7 @@ bool expect_bufs_equal(Array(u8) actual_buf, Array(u8) expected_buf, bool verbos
 {
     const bool are_equal = arrays_equal(actual_buf, expected_buf);
 
-    if (!are_equal && verbose) {
+    if (!are_equal || verbose) {
         ftprint_err("Expected bytes: ");
         for (size_t i = 0; i < array_len(expected_buf); i++) {
             ftprint_err("0x%X ", expected_buf[i]);
@@ -117,4 +118,32 @@ bool expect_bufs_equal(Array(u8) actual_buf, Array(u8) expected_buf, bool verbos
     }
 
     return are_equal;
+}
+
+Elf_Test_Proc* push_test_proc(Allocator* alloc, Elf_Test_Prog* elf_prog)
+{
+    const size_t index = array_len(elf_prog->proc_offsets);
+
+    Elf_Test_Proc* elf_proc = alloc_type(alloc, Elf_Test_Proc, true);
+
+    // Creates a dummy procedure symbol that is mostly empty. Only has enough info to
+    // serve as a memory reference.
+    elf_proc->sym.kind = SYMBOL_PROC;
+    elf_proc->sym.status = SYMBOL_STATUS_RESOLVED;
+    elf_proc->sym.decl = alloc_type(alloc, Decl, true);
+    elf_proc->sym.as_proc.index = index;
+
+    elf_proc->x64_instrs.bblocks = array_create(alloc, X64_BBlock, 4);
+    array_push(elf_proc->x64_instrs.bblocks, (X64_BBlock){0}); // Push first basic block
+    array_push(elf_prog->proc_offsets, array_len(elf_prog->buffer));
+
+    return elf_proc;
+}
+
+void init_test_program(Allocator* alloc, Elf_Test_Prog* elf_prog)
+{
+    elf_prog->buffer = array_create(alloc, u8, 64);
+    elf_prog->proc_offsets = array_create(alloc, u64, 4);
+    elf_prog->relocs = array_create(alloc, X64_TextReloc, 4);
+    elf_prog->proc_off_patches = array_create(alloc, X64_TextReloc, 4);
 }

@@ -88,15 +88,7 @@ void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Alloca
     }
 
     // Patch relative offsets to other procs.
-    const u32 num_proc_patches = array_len(proc_off_patches);
-    for (size_t i = 0; i < num_proc_patches; i++) {
-        const X64_TextReloc* patch_info = &proc_off_patches[i];
-        assert(patch_info->ref_addr.kind == CONST_ADDR_SYM); // Should be a proc symbol
-
-        const Symbol* proc_sym = patch_info->ref_addr.sym;
-        const s64 proc_offset = (s64)proc_offsets[proc_sym->as_proc.index];
-        *((s32*)(&buffer[patch_info->usage_off])) = (s32)(proc_offset - (patch_info->usage_off + patch_info->bytes_to_next_ip));
-    }
+    X64_patch_proc_uses(buffer, proc_off_patches, proc_offsets);
 
     text_sec->buf = buffer;
     text_sec->size = array_len(buffer);

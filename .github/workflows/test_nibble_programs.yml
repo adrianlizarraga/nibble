@@ -39,7 +39,10 @@ jobs:
     - name: Print build dir
       run: ls -al ${{github.workspace}}/build
 
-    - name: Test
+    - name: Test nibble programs
       working-directory: ${{github.workspace}}/build
       run: python3 ${{github.workspace}}/run_tests.py --test_target ${{github.workspace}}/tests/test_programs
 
+    - name: Test ELF machine code generation
+      working-directory: ${{github.workspace}}/build
+      run: ./elf_gen_test

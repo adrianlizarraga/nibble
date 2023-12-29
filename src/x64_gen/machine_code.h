@@ -13,4 +13,5 @@ typedef struct X64_TextReloc {
 
 void X64_elf_gen_instrs(Allocator* tmp_mem, X64_Instrs* instrs, Array(u8) * buffer, Array(X64_TextReloc) * relocs,
                         Array(X64_TextReloc) * proc_off_patches);
+void X64_patch_proc_uses(Array(u8) buffer, Array(const X64_TextReloc) proc_patch_infos, const u64* proc_offsets);
 #endif
