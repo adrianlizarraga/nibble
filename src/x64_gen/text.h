@@ -14,6 +14,4 @@ typedef struct X64_TextSection {
 
 void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, BucketList* procs,
                            const Symbol* main_proc);
-
-void X64_patch_proc_uses(Array(u8) buffer, Array(const X64_TextReloc) proc_patch_infos, const u64* proc_offsets);
 #endif

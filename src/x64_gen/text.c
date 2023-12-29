@@ -47,20 +47,6 @@ static const u8 startup_code[] = {0x48, 0x31, 0xed, 0x8b, 0x3c, 0x24, 0x48, 0x8d
 static size_t startup_code_main_offset_loc = 0x13; // The location in the startup code to patch the relative offset of the main proc.
 static size_t startup_code_next_ip_after_call = 0x17; // The operand to call is relative from the next instruction pointer.
 
-void X64_patch_proc_uses(Array(u8) buffer, Array(const X64_TextReloc) proc_patch_infos, const u64* proc_offsets)
-{
-    // Patch relative offsets to other procs.
-    const u32 num_proc_patches = array_len(proc_patch_infos);
-    for (size_t i = 0; i < num_proc_patches; i++) {
-        const X64_TextReloc* patch_info = &proc_patch_infos[i];
-        assert(patch_info->ref_addr.kind == CONST_ADDR_SYM); // Should be a proc symbol
-
-        const Symbol* proc_sym = patch_info->ref_addr.sym;
-        const s64 proc_offset = (s64)proc_offsets[proc_sym->as_proc.index];
-        *((s32*)(&buffer[patch_info->usage_off])) = (s32)(proc_offset - (patch_info->usage_off + patch_info->bytes_to_next_ip));
-    }
-}
-
 void X64_init_text_section(X64_TextSection* text_sec, Allocator* gen_mem, Allocator* tmp_mem, BucketList* procs,
                            const Symbol* main_proc)
 {
