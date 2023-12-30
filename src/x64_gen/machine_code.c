@@ -150,7 +150,21 @@ static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
     addr_bytes.has_disp = addr->local.disp != 0 || (addr->local.base_reg == X64_RBP);
     addr_bytes.disp = addr->local.disp;
 
-    if (has_base && !addr_bytes.has_disp && !has_index) {
+    if (has_base && addr->local.base_reg == X64_RSP) { // Need SIB byte for RSP-based addressing
+        const u8 base_reg = x64_reg_val[addr->local.base_reg];
+        const u8 index_reg = has_index ? x64_reg_val[addr->local.index_reg] : x64_reg_val[X64_RSP];
+        const u8 scale_mode = has_index ? X64_get_scale_mode(addr->local.scale) : X64_SCALE_1;
+        addr_bytes.mod =
+            !addr_bytes.has_disp ? X64_MOD_INDIRECT : (disp_is_imm8 ? X64_MOD_INDIRECT_DISP_U8 : X64_MOD_INDIRECT_DISP_U32);
+        addr_bytes.rm = 0x4; // Indicates a SIB byte is necessary.
+        addr_bytes.rex_b = base_reg > 7;
+        addr_bytes.rex_x = index_reg > 7;
+        addr_bytes.has_sib_byte = true;
+
+        // SIB byte is computed the same way as the ModRM byte.
+        addr_bytes.sib_byte = X64_modrm_byte(scale_mode, index_reg & 0x7, base_reg & 0x7);
+    }
+    else if (has_base && !addr_bytes.has_disp && !has_index) {
         const u8 base_reg = x64_reg_val[addr->local.base_reg];
         addr_bytes.mod = X64_MOD_INDIRECT;
         addr_bytes.rm = base_reg & 0x7;

@@ -135,16 +135,10 @@ static bool test_call_m(Allocator* mem_arena, bool verbose)
     X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
 
     Elf_Test_Proc* proc1 = push_test_proc(mem_arena, &elf_prog);
-    X64_emit_instr_push(&proc1->x64_instrs, X64_RBP);
-    X64_emit_instr_mov_rr(&proc1->x64_instrs, 8, X64_RBP, X64_RSP);
-    X64_emit_instr_sub_ri(&proc1->x64_instrs, 8, X64_RSP, 8);
+    X64_SIBD_Addr mem_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.disp = -8};
     X64_emit_instr_lea(&proc1->x64_instrs, X64_RAX, (X64_SIBD_Addr){.kind = X64_SIBD_ADDR_GLOBAL, .global = &proc0->sym});
-
-    X64_SIBD_Addr mem_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.disp = -8};
     X64_emit_instr_mov_mr(&proc1->x64_instrs, 8, mem_addr, X64_RAX);
     X64_emit_instr_call_m(&proc1->x64_instrs, mem_addr); // Call proc0 from proc1 via mem addr
-    X64_emit_instr_mov_rr(&proc1->x64_instrs, 8, X64_RSP, X64_RBP);
-    X64_emit_instr_pop(&proc1->x64_instrs, X64_RBP);
     X64_emit_instr_ret(&proc1->x64_instrs);
     X64_elf_gen_instrs(mem_arena, &proc1->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
 
@@ -155,14 +149,9 @@ static bool test_call_m(Allocator* mem_arena, bool verbose)
                             " mov eax, 10\n"
                             " ret\n\n"
                             "proc1:\n"
-                            " push rbp\n"
-                            " mov rbp, rsp\n"
-                            " sub rsp, 8\n"
                             " lea rax, qword [rel proc0]\n"
-                            " mov qword [rbp - 8], rax\n"
-                            " call qword [rbp - 8]\n"
-                            " mov rsp, rbp\n"
-                            " pop rbp\n"
+                            " mov qword [rsp - 8], rax\n"
+                            " call qword [rsp - 8]\n"
                             " ret\n";
     if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
         return false;
