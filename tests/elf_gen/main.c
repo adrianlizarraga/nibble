@@ -160,6 +160,33 @@ static bool test_call_m(Allocator* mem_arena, bool verbose)
     return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
 }
 
+static bool test_sext_ax_to_dx(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_emit_instr_mov_ri(&proc0->x64_instrs, 4, X64_RAX, -1);
+    X64_emit_instr_sext_ax_into_dx(&proc0->x64_instrs, 2);
+    X64_emit_instr_sext_ax_into_dx(&proc0->x64_instrs, 4);
+    X64_emit_instr_sext_ax_into_dx(&proc0->x64_instrs, 8);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " mov eax, -1\n"
+                            " cwd\n"
+                            " cdq\n"
+                            " cqo\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
 static Elf_Gen_Test elf_gen_tests[] = {
     {"test_add_ri_inf_loop", test_add_ri_inf_loop},
     {"test_push_pop_r64", test_push_pop_r64},
@@ -167,6 +194,7 @@ static Elf_Gen_Test elf_gen_tests[] = {
     {"test_call", test_call},
     {"test_call_r", test_call_r},
     {"test_call_m", test_call_m},
+    {"test_sext_ax_to_dx", test_sext_ax_to_dx},
 };
 
 static void print_usage(FILE* fd, const char* program_name)

@@ -898,6 +898,18 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
 
         X64_write_addr_disp(gen_state, &dst_addr);
     } break;
+    // Sign-extend _ax into _dx
+    case X64_Instr_Kind_CWD: { // 2-byte sign-extend ax into dx
+        array_push(bblock->buffer, 0x66); // 0x66 for 16-bit dst
+        array_push(bblock->buffer, 0x99); // opcode
+    } break;
+    case X64_Instr_Kind_CDQ: { // 4-byte sign-extend ax into dx
+        array_push(bblock->buffer, 0x99); // opcode
+    } break;
+    case X64_Instr_Kind_CQO: { // 8-byte sign-extend ax into dx
+        array_push(bblock->buffer, X64_rex_nosib(1, 0, 0)); // REX.W
+        array_push(bblock->buffer, 0x99); // opcode
+    } break;
     // MOVSX
     case X64_Instr_Kind_MOVSX_RR: {
         // 0F BE /r => movsx r16, r/m8 (need 0x66 prefix for 16-bit dst)
