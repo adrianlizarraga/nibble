@@ -679,22 +679,6 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         array_push(bblock->buffer, 0x0F);
         array_push(bblock->buffer, 0x05);
     } break;
-    // LEA
-    case X64_Instr_Kind_LEA: {
-        // REX.W + 8D /r => lea r64, m
-        const u8 dst_reg = x64_reg_val[instr->lea.dst];
-        const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->lea.src);
-
-        array_push(bblock->buffer, X64_rex_prefix(1, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b)); // REX
-        array_push(bblock->buffer, 0x8D); // opcode
-        array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg & 0x7, src_addr.rm)); // ModRM byte.
-
-        if (src_addr.has_sib_byte) {
-            array_push(bblock->buffer, src_addr.sib_byte);
-        }
-
-        X64_write_addr_disp(gen_state, &src_addr);
-    } break;
     // ADD
     case X64_Instr_Kind_ADD_RR: {
         // 00 /r => add r/m8, r8
@@ -1157,6 +1141,22 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         array_push(bblock->buffer, base_opcode + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
 
         X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
+    } break;
+    // LEA
+    case X64_Instr_Kind_LEA: {
+        // REX.W + 8D /r => lea r64, m
+        const u8 dst_reg = x64_reg_val[instr->lea.dst];
+        const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->lea.src);
+
+        array_push(bblock->buffer, X64_rex_prefix(1, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b)); // REX
+        array_push(bblock->buffer, 0x8D); // opcode
+        array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg & 0x7, src_addr.rm)); // ModRM byte.
+
+        if (src_addr.has_sib_byte) {
+            array_push(bblock->buffer, src_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &src_addr);
     } break;
     default:
         NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);

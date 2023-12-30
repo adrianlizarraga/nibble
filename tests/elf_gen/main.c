@@ -83,7 +83,38 @@ static bool test_call(Allocator* mem_arena, bool verbose)
     X64_patch_proc_uses(elf_prog.buffer, elf_prog.proc_off_patches, elf_prog.proc_offsets);
 
     Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
-    if (!get_nasm_machine_code(&nasm_buffer, "proc0:\nmov rax, 10\nret\n\nproc1:\ncall proc0\n", mem_arena)) {
+    if (!get_nasm_machine_code(&nasm_buffer, "proc0:\nmov eax, 10\nret\n\nproc1:\ncall proc0\n", mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_call_r(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_emit_instr_mov_ri(&proc0->x64_instrs, 4, X64_RAX, 10);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Elf_Test_Proc* proc1 = push_test_proc(mem_arena, &elf_prog);
+    X64_emit_instr_lea(&proc1->x64_instrs, X64_RAX, (X64_SIBD_Addr){.kind = X64_SIBD_ADDR_GLOBAL, .global = &proc0->sym});
+    X64_emit_instr_call_r(&proc1->x64_instrs, X64_RAX); // Call proc0 from proc1 via rax
+    X64_elf_gen_instrs(mem_arena, &proc1->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    X64_patch_proc_uses(elf_prog.buffer, elf_prog.proc_off_patches, elf_prog.proc_offsets);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " mov eax, 10\n"
+                            " ret\n\n"
+                            "proc1:\n"
+                            " lea rax, qword [rel proc0]\n"
+                            " call rax\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
         return false;
     }
 
@@ -95,6 +126,7 @@ static Elf_Gen_Test elf_gen_tests[] = {
     {"test_push_pop_r64", test_push_pop_r64},
     {"test_ret", test_ret},
     {"test_call", test_call},
+    {"test_call_r", test_call_r},
 };
 
 static void print_usage(FILE* fd, const char* program_name)
