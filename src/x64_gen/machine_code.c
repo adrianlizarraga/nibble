@@ -1158,9 +1158,11 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
 
         X64_write_addr_disp(gen_state, &src_addr);
     } break;
-    default:
-        NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %d\n", kind);
+    default: {
+        StringView instr_name = x64_instr_kind_names[kind];
+        NIBBLE_FATAL_EXIT("Unknown X64 instruction kind %.*s\n", instr_name.len, instr_name.str);
         break;
+    }
     }
 }
 
@@ -1269,4 +1271,3 @@ void X64_patch_proc_uses(Array(u8) buffer, Array(const X64_TextReloc) proc_patch
         *((s32*)(&buffer[patch_info->usage_off])) = (s32)(proc_offset - (patch_info->usage_off + patch_info->bytes_to_next_ip));
     }
 }
-

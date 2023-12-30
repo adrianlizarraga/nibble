@@ -1,5 +1,11 @@
 #include "x64_gen/x64_instrs.h"
 
+#define X_MACRO(name) [X64_Instr_Kind_ ## name] = string_view_lit("X64_Instr_Kind_" #name),
+StringView x64_instr_kind_names[X64_Instr_Kind_COUNT] = {
+    LIST_OF_X64_INSTR_KINDS
+};
+#undef X_MACRO
+
 static void X64_push_instr(X64_Instrs* instrs, X64_Instr* instr)
 {
     assert(array_len(instrs->bblocks) > 0);

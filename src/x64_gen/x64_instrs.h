@@ -28,124 +28,130 @@ typedef struct X64_SIBD_Addr {
     };
 } X64_SIBD_Addr;
 
-typedef enum X64_Instr_Kind {
-    X64_Instr_Kind_NOOP = 0,
-    X64_Instr_Kind_PUSH,
-    X64_Instr_Kind_POP,
-    X64_Instr_Kind_JMP,
-    X64_Instr_Kind_JMP_TO_RET, // Doesn't correspond to an actual X64 instruction. Jumps to ret label.
-    X64_Instr_Kind_JMPCC,
-    X64_Instr_Kind_SETCC_R,
-    X64_Instr_Kind_SETCC_M,
-    X64_Instr_Kind_RET,
-    X64_Instr_Kind_CALL,
-    X64_Instr_Kind_CALL_R,
-    X64_Instr_Kind_CALL_M,
-    X64_Instr_Kind_REP_MOVSB,
-    X64_Instr_Kind_REP_STOSB,
-    X64_Instr_Kind_SYSCALL,
-    X64_Instr_Kind_ADD_RR,
-    X64_Instr_Kind_ADD_RM,
-    X64_Instr_Kind_ADD_MR,
-    X64_Instr_Kind_ADD_RI,
-    X64_Instr_Kind_ADD_MI,
-    X64_Instr_Kind_SUB_RR,
-    X64_Instr_Kind_SUB_RM,
-    X64_Instr_Kind_SUB_MR,
-    X64_Instr_Kind_SUB_RI,
-    X64_Instr_Kind_SUB_MI,
-    X64_Instr_Kind_IMUL_RR,
-    X64_Instr_Kind_IMUL_RM,
-    X64_Instr_Kind_IMUL_MR,
-    X64_Instr_Kind_IMUL_RI,
-    X64_Instr_Kind_IMUL_MI,
-    X64_Instr_Kind_AND_RR,
-    X64_Instr_Kind_AND_RM,
-    X64_Instr_Kind_AND_MR,
-    X64_Instr_Kind_AND_RI,
-    X64_Instr_Kind_AND_MI,
-    X64_Instr_Kind_OR_RR,
-    X64_Instr_Kind_OR_RM,
-    X64_Instr_Kind_OR_MR,
-    X64_Instr_Kind_OR_RI,
-    X64_Instr_Kind_OR_MI,
-    X64_Instr_Kind_XOR_RR,
-    X64_Instr_Kind_XOR_RM,
-    X64_Instr_Kind_XOR_MR,
-    X64_Instr_Kind_XOR_RI,
-    X64_Instr_Kind_XOR_MI,
-    X64_Instr_Kind_ADD_FLT_RR,
-    X64_Instr_Kind_ADD_FLT_RM,
-    X64_Instr_Kind_ADD_FLT_MR,
-    X64_Instr_Kind_SUB_FLT_RR,
-    X64_Instr_Kind_SUB_FLT_RM,
-    X64_Instr_Kind_SUB_FLT_MR,
-    X64_Instr_Kind_MUL_FLT_RR,
-    X64_Instr_Kind_MUL_FLT_RM,
-    X64_Instr_Kind_MUL_FLT_MR,
-    X64_Instr_Kind_DIV_FLT_RR,
-    X64_Instr_Kind_DIV_FLT_RM,
-    X64_Instr_Kind_DIV_FLT_MR,
-    X64_Instr_Kind_NEG_R,
-    X64_Instr_Kind_NEG_M,
-    X64_Instr_Kind_NOT_R,
-    X64_Instr_Kind_NOT_M,
-    X64_Instr_Kind_SAR_RR,
-    X64_Instr_Kind_SAR_MR,
-    X64_Instr_Kind_SAR_RI,
-    X64_Instr_Kind_SAR_MI,
-    X64_Instr_Kind_SHL_RR,
-    X64_Instr_Kind_SHL_MR,
-    X64_Instr_Kind_SHL_RI,
-    X64_Instr_Kind_SHL_MI,
-    X64_Instr_Kind_DIV_R,
-    X64_Instr_Kind_DIV_M,
-    X64_Instr_Kind_IDIV_R,
-    X64_Instr_Kind_IDIV_M,
-    X64_Instr_Kind_CWD, // 2-byte sign extend ax into dx
-    X64_Instr_Kind_CDQ, // 4-byte sign extend ax into dx
-    X64_Instr_Kind_CQO, // 8-byte sign extend ax into dx
-    X64_Instr_Kind_MOV_RR,
-    X64_Instr_Kind_MOV_RM,
-    X64_Instr_Kind_MOV_MR,
-    X64_Instr_Kind_MOV_RI,
-    X64_Instr_Kind_MOV_MI,
-    X64_Instr_Kind_MOVSX_RR,
-    X64_Instr_Kind_MOVSX_RM,
-    X64_Instr_Kind_MOVSXD_RR,
-    X64_Instr_Kind_MOVSXD_RM,
-    X64_Instr_Kind_MOVZX_RR,
-    X64_Instr_Kind_MOVZX_RM,
-    X64_Instr_Kind_MOV_FLT_RR,
-    X64_Instr_Kind_MOV_FLT_MR,
-    X64_Instr_Kind_MOV_FLT_RM,
-    X64_Instr_Kind_CVTSS2SD_RR, // f32 to f64
-    X64_Instr_Kind_CVTSS2SD_RM, // f32 (M) to f64
-    X64_Instr_Kind_CVTSD2SS_RR, // f64 to f32
-    X64_Instr_Kind_CVTSD2SS_RM, // f64 (M) to f32
-    X64_Instr_Kind_CVTTSS2SI_RR, // f32 to int
-    X64_Instr_Kind_CVTTSS2SI_RM, // f32 (M) to int
-    X64_Instr_Kind_CVTTSD2SI_RR, // f64 to int
-    X64_Instr_Kind_CVTTSD2SI_RM, // f64 (M) to int
-    X64_Instr_Kind_CVTSI2SS_RR, // int to f32
-    X64_Instr_Kind_CVTSI2SS_RM, // int (M) to f32
-    X64_Instr_Kind_CVTSI2SD_RR, // int to f64
-    X64_Instr_Kind_CVTSI2SD_RM, // int (M) to f64
-    X64_Instr_Kind_MOVDQU_MR,
-    X64_Instr_Kind_MOVDQU_RM,
-    X64_Instr_Kind_CMP_RR,
-    X64_Instr_Kind_CMP_RM,
-    X64_Instr_Kind_CMP_MR,
-    X64_Instr_Kind_CMP_RI,
-    X64_Instr_Kind_CMP_MI,
-    X64_Instr_Kind_UCOMISS_RR, // cmp f32s
-    X64_Instr_Kind_UCOMISS_RM, // cmp f32s (src in mem)
-    X64_Instr_Kind_UCOMISD_RR, // cmp f64s
-    X64_Instr_Kind_UCOMISD_RM, // cmp f64s (src in mem)
-    X64_Instr_Kind_LEA,
+#define LIST_OF_X64_INSTR_KINDS \
+    X_MACRO(NOOP)               \
+    X_MACRO(PUSH)               \
+    X_MACRO(POP)                \
+    X_MACRO(JMP)                \
+    X_MACRO(JMP_TO_RET)         \
+    X_MACRO(JMPCC)              \
+    X_MACRO(SETCC_R)            \
+    X_MACRO(SETCC_M)            \
+    X_MACRO(RET)                \
+    X_MACRO(CALL)               \
+    X_MACRO(CALL_R)             \
+    X_MACRO(CALL_M)             \
+    X_MACRO(REP_MOVSB)          \
+    X_MACRO(REP_STOSB)          \
+    X_MACRO(SYSCALL)            \
+    X_MACRO(ADD_RR)             \
+    X_MACRO(ADD_RM)             \
+    X_MACRO(ADD_MR)             \
+    X_MACRO(ADD_RI)             \
+    X_MACRO(ADD_MI)             \
+    X_MACRO(SUB_RR)             \
+    X_MACRO(SUB_RM)             \
+    X_MACRO(SUB_MR)             \
+    X_MACRO(SUB_RI)             \
+    X_MACRO(SUB_MI)             \
+    X_MACRO(IMUL_RR)            \
+    X_MACRO(IMUL_RM)            \
+    X_MACRO(IMUL_MR)            \
+    X_MACRO(IMUL_RI)            \
+    X_MACRO(IMUL_MI)            \
+    X_MACRO(AND_RR)             \
+    X_MACRO(AND_RM)             \
+    X_MACRO(AND_MR)             \
+    X_MACRO(AND_RI)             \
+    X_MACRO(AND_MI)             \
+    X_MACRO(OR_RR)              \
+    X_MACRO(OR_RM)              \
+    X_MACRO(OR_MR)              \
+    X_MACRO(OR_RI)              \
+    X_MACRO(OR_MI)              \
+    X_MACRO(XOR_RR)             \
+    X_MACRO(XOR_RM)             \
+    X_MACRO(XOR_MR)             \
+    X_MACRO(XOR_RI)             \
+    X_MACRO(XOR_MI)             \
+    X_MACRO(ADD_FLT_RR)         \
+    X_MACRO(ADD_FLT_RM)         \
+    X_MACRO(ADD_FLT_MR)         \
+    X_MACRO(SUB_FLT_RR)         \
+    X_MACRO(SUB_FLT_RM)         \
+    X_MACRO(SUB_FLT_MR)         \
+    X_MACRO(MUL_FLT_RR)         \
+    X_MACRO(MUL_FLT_RM)         \
+    X_MACRO(MUL_FLT_MR)         \
+    X_MACRO(DIV_FLT_RR)         \
+    X_MACRO(DIV_FLT_RM)         \
+    X_MACRO(DIV_FLT_MR)         \
+    X_MACRO(NEG_R)              \
+    X_MACRO(NEG_M)              \
+    X_MACRO(NOT_R)              \
+    X_MACRO(NOT_M)              \
+    X_MACRO(SAR_RR)             \
+    X_MACRO(SAR_MR)             \
+    X_MACRO(SAR_RI)             \
+    X_MACRO(SAR_MI)             \
+    X_MACRO(SHL_RR)             \
+    X_MACRO(SHL_MR)             \
+    X_MACRO(SHL_RI)             \
+    X_MACRO(SHL_MI)             \
+    X_MACRO(DIV_R)              \
+    X_MACRO(DIV_M)              \
+    X_MACRO(IDIV_R)             \
+    X_MACRO(IDIV_M)             \
+    X_MACRO(CWD)                \
+    X_MACRO(CDQ)                \
+    X_MACRO(CQO)                \
+    X_MACRO(MOV_RR)             \
+    X_MACRO(MOV_RM)             \
+    X_MACRO(MOV_MR)             \
+    X_MACRO(MOV_RI)             \
+    X_MACRO(MOV_MI)             \
+    X_MACRO(MOVSX_RR)           \
+    X_MACRO(MOVSX_RM)           \
+    X_MACRO(MOVSXD_RR)          \
+    X_MACRO(MOVSXD_RM)          \
+    X_MACRO(MOVZX_RR)           \
+    X_MACRO(MOVZX_RM)           \
+    X_MACRO(MOV_FLT_RR)         \
+    X_MACRO(MOV_FLT_MR)         \
+    X_MACRO(MOV_FLT_RM)         \
+    X_MACRO(CVTSS2SD_RR)        \
+    X_MACRO(CVTSS2SD_RM)        \
+    X_MACRO(CVTSD2SS_RR)        \
+    X_MACRO(CVTSD2SS_RM)        \
+    X_MACRO(CVTTSS2SI_RR)       \
+    X_MACRO(CVTTSS2SI_RM)       \
+    X_MACRO(CVTTSD2SI_RR)       \
+    X_MACRO(CVTTSD2SI_RM)       \
+    X_MACRO(CVTSI2SS_RR)        \
+    X_MACRO(CVTSI2SS_RM)        \
+    X_MACRO(CVTSI2SD_RR)        \
+    X_MACRO(CVTSI2SD_RM)        \
+    X_MACRO(MOVDQU_MR)          \
+    X_MACRO(MOVDQU_RM)          \
+    X_MACRO(CMP_RR)             \
+    X_MACRO(CMP_RM)             \
+    X_MACRO(CMP_MR)             \
+    X_MACRO(CMP_RI)             \
+    X_MACRO(CMP_MI)             \
+    X_MACRO(UCOMISS_RR)         \
+    X_MACRO(UCOMISS_RM)         \
+    X_MACRO(UCOMISD_RR)         \
+    X_MACRO(UCOMISD_RM)         \
+    X_MACRO(LEA)
 
+#define X_MACRO(name) X64_Instr_Kind_ ## name,
+typedef enum X64_Instr_Kind {
+    LIST_OF_X64_INSTR_KINDS
     X64_Instr_Kind_COUNT
 } X64_Instr_Kind;
+#undef X_MACRO
+
+extern StringView x64_instr_kind_names[X64_Instr_Kind_COUNT];
 
 #define X64_INSTR_KIND_MASK ((1 << 9) - 1)
 #define X64_INSTR_MOV_SRC_RH_MASK (1 << 9)
