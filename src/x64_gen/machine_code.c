@@ -949,6 +949,21 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
             X64_write_imm_bytes(gen_state, imm, is_64_bit ? 4 : dst_size);
         }
     } break;
+    // DIV
+    case X64_Instr_Kind_DIV_R: {
+        // F6 /6       => DIV r/m8
+        // 66 F7 /6    => DIV r/m16
+        // F7 /6       => DIV r/m32
+        // REX.W F7 /6 => DIV r/m64
+        X64_write_elf_binary_rax_instr_r(gen_state, 0xF6, 0xF7, 6, instr->div_r.size, instr->div_r.src);
+    } break;
+    case X64_Instr_Kind_DIV_M: {
+        // F6 /6       => DIV r/m8
+        // 66 F7 /6    => DIV r/m16
+        // F7 /6       => DIV r/m32
+        // REX.W F7 /6 => DIV r/m64
+        X64_write_elf_binary_rax_instr_m(gen_state, 0xF6, 0xF7, 6, instr->div_m.size, &instr->div_m.src);
+    } break;
     // IDIV
     case X64_Instr_Kind_IDIV_R: {
         // F6 /7       => IDIV r/m8
