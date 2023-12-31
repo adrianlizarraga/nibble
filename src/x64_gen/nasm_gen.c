@@ -627,6 +627,15 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, Sym
                 const char* src_imm = X64_nasm_print_imm(tmp_mem, instr->imul_ri.imm, instr->imul_ri.size);
                 X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", dst_reg, src_imm);
             } break;
+            // MUL
+            case X64_Instr_Kind_MUL_R: {
+                const char* src_reg = x64_nasm_int_reg_names[instr->mul_r.size][instr->mul_r.src];
+                X64_NASM_PRINT_FTL(proc_str, "mul %s", src_reg);
+            } break;
+            case X64_Instr_Kind_MUL_M: {
+                const char* src_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->mul_m.src, instr->mul_m.size);
+                X64_NASM_PRINT_FTL(proc_str, "mul %s", src_mem);
+            } break;
             // AND
             case X64_Instr_Kind_AND_RR: {
                 const char* dst_reg = x64_nasm_int_reg_names[instr->and_rr.size][instr->and_rr.dst];

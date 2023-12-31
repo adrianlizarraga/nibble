@@ -104,18 +104,20 @@ static long XIR_compute_bblock_live_intervals(XIR_Builder* builder, XIR_BBlock* 
             XIR_touch_mem_lregs(builder, &act_instr->src, ino);
             break;
         }
+        case XIR_InstrMul_R_KIND:
         case XIR_InstrDiv_R_KIND:
         case XIR_InstrIDiv_R_KIND: {
-            XIR_InstrBaseDiv_R* act_instr = (XIR_InstrBaseDiv_R*)instr;
+            XIR_InstrOneOpDivMulBase_R* act_instr = (XIR_InstrOneOpDivMulBase_R*)instr;
 
             XIR_touch_lreg(builder, act_instr->rdx, ino);
             XIR_touch_lreg(builder, act_instr->rax, ino);
             XIR_touch_lreg(builder, act_instr->src, ino);
             break;
         }
+        case XIR_InstrMul_M_KIND:
         case XIR_InstrDiv_M_KIND:
         case XIR_InstrIDiv_M_KIND: {
-            XIR_InstrBaseDiv_M* act_instr = (XIR_InstrBaseDiv_M*)instr;
+            XIR_InstrOneOpDivMulBase_M* act_instr = (XIR_InstrOneOpDivMulBase_M*)instr;
 
             XIR_touch_lreg(builder, act_instr->rdx, ino);
             XIR_touch_lreg(builder, act_instr->rax, ino);

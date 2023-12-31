@@ -326,8 +326,8 @@ X64_DEF_EMIT_INSTR_SHIFT_MR(shl_mr, X64_Instr_Kind_SHL_MR)
 X64_DEF_EMIT_INSTR_SHIFT_RI(shl_ri, X64_Instr_Kind_SHL_RI)
 X64_DEF_EMIT_INSTR_SHIFT_MI(shl_mi, X64_Instr_Kind_SHL_MI)
 
-#define X64_DEF_EMIT_INSTR_DIV_R(f_d, k_d)                                       \
-    void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_Reg src)   \
+#define X64_DEF_EMIT_INSTR_DIV_MUL_R(f_d, k_d)                                   \
+    void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_Reg src)          \
     {                                                                            \
         X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d); \
         instr->f_d.size = size;                                                  \
@@ -336,8 +336,8 @@ X64_DEF_EMIT_INSTR_SHIFT_MI(shl_mi, X64_Instr_Kind_SHL_MI)
         X64_push_instr(instrs, instr);                                           \
     }
 
-#define X64_DEF_EMIT_INSTR_DIV_M(f_d, k_d)                                           \
-    void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_SIBD_Addr src) \
+#define X64_DEF_EMIT_INSTR_DIV_MUL_M(f_d, k_d)                                       \
+    void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_SIBD_Addr src)        \
     {                                                                                \
         X64_Instr* instr = X64_alloc_instr(_array_allctr(instrs->bblocks), k_d);     \
         instr->f_d.size = size;                                                      \
@@ -346,11 +346,14 @@ X64_DEF_EMIT_INSTR_SHIFT_MI(shl_mi, X64_Instr_Kind_SHL_MI)
         X64_push_instr(instrs, instr);                                               \
     }
 
-X64_DEF_EMIT_INSTR_DIV_R(div_r, X64_Instr_Kind_DIV_R)
-X64_DEF_EMIT_INSTR_DIV_M(div_m, X64_Instr_Kind_DIV_M)
+X64_DEF_EMIT_INSTR_DIV_MUL_R(div_r, X64_Instr_Kind_DIV_R)
+X64_DEF_EMIT_INSTR_DIV_MUL_M(div_m, X64_Instr_Kind_DIV_M)
 
-X64_DEF_EMIT_INSTR_DIV_R(idiv_r, X64_Instr_Kind_IDIV_R)
-X64_DEF_EMIT_INSTR_DIV_M(idiv_m, X64_Instr_Kind_IDIV_M)
+X64_DEF_EMIT_INSTR_DIV_MUL_R(idiv_r, X64_Instr_Kind_IDIV_R)
+X64_DEF_EMIT_INSTR_DIV_MUL_M(idiv_m, X64_Instr_Kind_IDIV_M)
+
+X64_DEF_EMIT_INSTR_DIV_MUL_R(mul_r, X64_Instr_Kind_MUL_R)
+X64_DEF_EMIT_INSTR_DIV_MUL_M(mul_m, X64_Instr_Kind_MUL_M)
 
 void X64_emit_instr_sext_ax_into_dx(X64_Instrs* instrs, u8 size)
 {

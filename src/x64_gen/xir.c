@@ -438,6 +438,28 @@ void XIR_emit_instr_idiv_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u
     XIR_add_lir_instr(builder, xbblock, (XIR_Instr*)instr);
 }
 
+void XIR_emit_instr_mul_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, u32 src)
+{
+    XIR_InstrMul_R* instr = XIR_new_instr(builder->arena, XIR_InstrMul_R);
+    instr->size = size;
+    instr->rdx = rdx;
+    instr->rax = rax;
+    instr->src = src;
+
+    XIR_add_lir_instr(builder, xbblock, (XIR_Instr*)instr);
+}
+
+void XIR_emit_instr_mul_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, XIR_MemAddr src)
+{
+    XIR_InstrMul_M* instr = XIR_new_instr(builder->arena, XIR_InstrMul_M);
+    instr->size = size;
+    instr->rdx = rdx;
+    instr->rax = rax;
+    instr->src = src;
+
+    XIR_add_lir_instr(builder, xbblock, (XIR_Instr*)instr);
+}
+
 void XIR_emit_instr_neg(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst)
 {
     XIR_InstrNeg* instr = XIR_new_instr(builder->arena, XIR_InstrNeg);

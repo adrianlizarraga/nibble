@@ -42,10 +42,14 @@ typedef enum XIR_InstrKind {
     XIR_InstrSubSD_R_R_KIND,
     XIR_InstrSubSD_R_M_KIND,
 
-    // Multiplication
+    // Signed multiplication
     XIR_InstrIMul_R_R_KIND,
     XIR_InstrIMul_R_I_KIND,
     XIR_InstrIMul_R_M_KIND,
+
+    // Unsigned multiplication
+    XIR_InstrMul_R_KIND,
+    XIR_InstrMul_M_KIND,
 
     // f32 mul
     XIR_InstrMulSS_R_R_KIND,
@@ -289,27 +293,29 @@ typedef XIR_InstrBinaryFlt_R_M XIR_InstrMulSD_R_M;
 typedef XIR_InstrBinaryFlt_R_M XIR_InstrDivSS_R_M;
 typedef XIR_InstrBinaryFlt_R_M XIR_InstrDivSD_R_M;
 
-typedef struct XIR_InstrBaseDiv_R {
+typedef struct XIR_InstrOneOpDivMulBase_R {
     XIR_Instr super;
     u8 size;
     u32 rdx;
     u32 rax;
     u32 src;
-} XIR_InstrBaseDiv_R;
+} XIR_InstrOneOpDivMulBase_R;
 
-typedef XIR_InstrBaseDiv_R XIR_InstrDiv_R;
-typedef XIR_InstrBaseDiv_R XIR_InstrIDiv_R;
+typedef XIR_InstrOneOpDivMulBase_R XIR_InstrDiv_R;
+typedef XIR_InstrOneOpDivMulBase_R XIR_InstrIDiv_R;
+typedef XIR_InstrOneOpDivMulBase_R XIR_InstrMul_R;
 
-typedef struct XIR_InstrBaseDiv_M {
+typedef struct XIR_InstrOneOpDivMulBase_M {
     XIR_Instr super;
     u8 size;
     u32 rdx;
     u32 rax;
     XIR_MemAddr src;
-} XIR_InstrBaseDiv_M;
+} XIR_InstrOneOpDivMulBase_M;
 
-typedef XIR_InstrBaseDiv_M XIR_InstrDiv_M;
-typedef XIR_InstrBaseDiv_M XIR_InstrIDiv_M;
+typedef XIR_InstrOneOpDivMulBase_M XIR_InstrDiv_M;
+typedef XIR_InstrOneOpDivMulBase_M XIR_InstrIDiv_M;
+typedef XIR_InstrOneOpDivMulBase_M XIR_InstrMul_M;
 
 typedef struct XIR_InstrShift_R_R {
     XIR_Instr super;
@@ -755,6 +761,8 @@ void XIR_emit_instr_sub_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, 
 void XIR_emit_instr_imul_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
 void XIR_emit_instr_imul_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);
 void XIR_emit_instr_imul_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, XIR_MemAddr src);
+void XIR_emit_instr_mul_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, u32 src);
+void XIR_emit_instr_mul_m(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 rdx, u32 rax, XIR_MemAddr src);
 
 void XIR_emit_instr_and_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, u32 src);
 void XIR_emit_instr_and_r_i(XIR_Builder* builder, XIR_BBlock* xbblock, u8 size, u32 dst, Scalar src);

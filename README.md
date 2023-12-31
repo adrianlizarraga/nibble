@@ -32,7 +32,7 @@ The only library required to build the Nibble compiler is the C standard library
 #### Linux
 The following terminal command generates an executable called `nibble` in the root project directory.
 ```console
-$ gcc -I./src -O2 -o nibble src/main.c
+$ gcc -I./src -O2 -D NIBBLE_ENABLE_UNITY_BUILD -o nibble src/main.c
 ```
 
 ### 2. Install NASM

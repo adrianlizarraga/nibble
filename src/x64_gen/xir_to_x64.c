@@ -1378,6 +1378,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         X64_emit_bin_int_ri_instr(proc_state, X64_Instr_Kind_SUB_RI, size, act_instr->dst, act_instr->src);
         break;
     }
+    // IMUL
     case XIR_InstrIMul_R_R_KIND: {
         const XIR_InstrIMul_R_R* act_instr = (const XIR_InstrIMul_R_R*)instr;
         u8 size = act_instr->size;
@@ -1397,6 +1398,29 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         u8 size = act_instr->size;
 
         X64_emit_bin_int_ri_instr(proc_state, X64_Instr_Kind_IMUL_RI, size, act_instr->dst, act_instr->src);
+        break;
+    }
+    // MUL
+    case XIR_InstrMul_R_KIND: {
+        const XIR_InstrMul_R* act_instr = (const XIR_InstrMul_R*)instr;
+        const u8 size = act_instr->size;
+
+        XIR_RegLoc src_loc = X64_lreg_loc(proc_state, act_instr->src);
+        if (IS_LREG_IN_REG(src_loc.kind)) {
+            X64_emit_instr_mul_r(&proc_state->instrs, size, src_loc.reg);
+        }
+        else {
+            X64_emit_instr_mul_m(&proc_state->instrs, size, X64_get_rbp_offset_addr(src_loc.offset));
+        }
+        break;
+    }
+    case XIR_InstrMul_M_KIND: {
+        const XIR_InstrMul_M* act_instr = (const XIR_InstrMul_M*)instr;
+        const u8 size = act_instr->size;
+        X64_SIBD_Addr op_addr = {0};
+
+        X64_get_sibd_addr(proc_state, &op_addr, &act_instr->src);
+        X64_emit_instr_mul_m(&proc_state->instrs, size, op_addr);
         break;
     }
     // AND
