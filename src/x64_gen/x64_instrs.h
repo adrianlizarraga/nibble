@@ -59,6 +59,8 @@ typedef struct X64_SIBD_Addr {
     X_MACRO(IMUL_MR)            \
     X_MACRO(IMUL_RI)            \
     X_MACRO(IMUL_MI)            \
+    X_MACRO(IMUL_R)             \
+    X_MACRO(IMUL_M)             \
     X_MACRO(MUL_R)              \
     X_MACRO(MUL_M)              \
     X_MACRO(AND_RR)             \
@@ -274,6 +276,16 @@ typedef struct X64_Instr {
             u8 dst;
             u32 imm;
         } imul_ri;
+
+        struct {
+            u8 size;
+            u8 src;
+        } imul_r;
+
+        struct {
+            u8 size;
+            X64_SIBD_Addr src;
+        } imul_m;
 
         struct {
             u8 size;
@@ -825,6 +837,8 @@ void X64_emit_instr_imul_rm(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_SIBD_A
 void X64_emit_instr_imul_mr(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
 void X64_emit_instr_imul_ri(X64_Instrs* instrs, u8 size, X64_Reg dst, u32 imm);
 void X64_emit_instr_imul_mi(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, u32 imm);
+void X64_emit_instr_imul_r(X64_Instrs* instrs, u8 size, X64_Reg src);
+void X64_emit_instr_imul_m(X64_Instrs* instrs, u8 size, X64_SIBD_Addr src);
 void X64_emit_instr_mul_r(X64_Instrs* instrs, u8 size, X64_Reg src);
 void X64_emit_instr_mul_m(X64_Instrs* instrs, u8 size, X64_SIBD_Addr src);
 

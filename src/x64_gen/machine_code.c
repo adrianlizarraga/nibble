@@ -922,7 +922,7 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         // 69 /r id          => imul r32, r/m32, imm32
         // REX.W 69 /r id    => imul r64, r/m64, imm32
         const u8 dst_size = instr->imul_ri.size;
-        assert(dst_size != 1); // TODO: Not supported by this instruction!!
+        assert(dst_size != 1); // Not supported by this instruction!!
 
         const u8 dst_reg = x64_reg_val[instr->imul_ri.dst];
         const u32 imm = instr->imul_ri.imm;
@@ -948,6 +948,20 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         else {
             X64_write_imm_bytes(gen_state, imm, is_64_bit ? 4 : dst_size);
         }
+    } break;
+    case X64_Instr_Kind_IMUL_R: {
+        // F6 /5       => IMUL r/m8
+        // 66 F7 /5    => IMUL r/m16
+        // F7 /5       => IMUL r/m32
+        // REX.W F7 /5 => IMUL r/m64
+        X64_write_elf_binary_rax_instr_r(gen_state, 0xF6, 0xF7, 5, instr->imul_r.size, instr->imul_r.src);
+    } break;
+    case X64_Instr_Kind_IMUL_M: {
+        // F6 /5       => IMUL r/m8
+        // 66 F7 /5    => IMUL r/m16
+        // F7 /5       => IMUL r/m32
+        // REX.W F7 /5 => IMUL r/m64
+        X64_write_elf_binary_rax_instr_m(gen_state, 0xF6, 0xF7, 5, instr->imul_m.size, &instr->imul_m.src);
     } break;
     // MUL
     case X64_Instr_Kind_MUL_R: {

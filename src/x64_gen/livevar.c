@@ -105,6 +105,7 @@ static long XIR_compute_bblock_live_intervals(XIR_Builder* builder, XIR_BBlock* 
             break;
         }
         case XIR_InstrMul_R_KIND:
+        case XIR_InstrIMul_R_KIND:
         case XIR_InstrDiv_R_KIND:
         case XIR_InstrIDiv_R_KIND: {
             XIR_InstrOneOpDivMulBase_R* act_instr = (XIR_InstrOneOpDivMulBase_R*)instr;
@@ -115,6 +116,7 @@ static long XIR_compute_bblock_live_intervals(XIR_Builder* builder, XIR_BBlock* 
             break;
         }
         case XIR_InstrMul_M_KIND:
+        case XIR_InstrIMul_M_KIND:
         case XIR_InstrDiv_M_KIND:
         case XIR_InstrIDiv_M_KIND: {
             XIR_InstrOneOpDivMulBase_M* act_instr = (XIR_InstrOneOpDivMulBase_M*)instr;

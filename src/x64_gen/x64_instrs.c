@@ -354,6 +354,8 @@ X64_DEF_EMIT_INSTR_DIV_MUL_M(idiv_m, X64_Instr_Kind_IDIV_M)
 
 X64_DEF_EMIT_INSTR_DIV_MUL_R(mul_r, X64_Instr_Kind_MUL_R)
 X64_DEF_EMIT_INSTR_DIV_MUL_M(mul_m, X64_Instr_Kind_MUL_M)
+X64_DEF_EMIT_INSTR_DIV_MUL_R(imul_r, X64_Instr_Kind_IMUL_R)
+X64_DEF_EMIT_INSTR_DIV_MUL_M(imul_m, X64_Instr_Kind_IMUL_M)
 
 void X64_emit_instr_sext_ax_into_dx(X64_Instrs* instrs, u8 size)
 {

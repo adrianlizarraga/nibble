@@ -605,14 +605,61 @@ XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_int_add_instr, IR_InstrIntAdd, XIR_e
                                 XIR_emit_instr_add_r_m)
 XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_int_sub_instr, IR_InstrIntSub, XIR_emit_instr_sub_r_i, XIR_emit_instr_sub_r_r,
                                 XIR_emit_instr_sub_r_m)
-// TODO: imul_r_r does not support 8-bit like add_r_r. It is more like regular mul, which uses rax implicitly.
-XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_int_imul_instr, IR_InstrIntMul, XIR_emit_instr_imul_r_i, XIR_emit_instr_imul_r_r,
-                                XIR_emit_instr_imul_r_m)
+XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_signed_multibyte_mul_instr, IR_InstrIntMul, XIR_emit_instr_imul_r_i,
+                                XIR_emit_instr_imul_r_r, XIR_emit_instr_imul_r_m)
 XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_and_instr, IR_InstrAnd, XIR_emit_instr_and_r_i, XIR_emit_instr_and_r_r,
                                 XIR_emit_instr_and_r_m)
 XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_or_instr, IR_InstrOr, XIR_emit_instr_or_r_i, XIR_emit_instr_or_r_r, XIR_emit_instr_or_r_m)
 XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_xor_instr, IR_InstrXor, XIR_emit_instr_xor_r_i, XIR_emit_instr_xor_r_r,
                                 XIR_emit_instr_xor_r_m)
+
+static bool XIR_convert_signed_1byte_mul_instr(XIR_Builder* builder, XIR_BBlock* xbblock, const IR_InstrIntMul* ir_mul) {
+
+    // Use IMUL for signed multiplication of 1 byte. First operand is dx:ax (implicit)
+    // EX: r = a * b
+    //
+    // mov _ax, a ; Only if `a` is not already in `_ax`
+    // mul b      ; `b` must be in a register or memory
+    // mov r, _ax
+
+    const size_t size = ir_mul->type->size;
+    assert(size == 1);
+
+    //const bool uses_dx = size >= 2;
+
+    OpRIA ir_a = ir_mul->a;
+    OpRIA ir_b = ir_mul->b;
+
+    // mov _ax, a
+    u32 ax = XIR_def_phys_reg(builder, X64_RAX);
+    XIR_load_op_ria(builder, xbblock, size, ax, ir_a);
+
+    u32 dx = XIR_REG_COUNT; // Not used for 1-byte instruction (only for >= 2 bytes)
+
+    // mul b
+    if (ir_b.kind == OP_RIA_IMM) {
+        u32 b = XIR_next_reg(builder, X64_REG_CLASS_INT);
+        XIR_emit_instr_mov_r_i(builder, xbblock, size, b, ir_b.imm);
+        XIR_emit_instr_imul_r(builder, xbblock, size, dx, ax, b);
+    }
+    else if (ir_b.kind == OP_RIA_REG) {
+        u32 b = XIR_get_reg(builder, ir_b.reg, X64_REG_CLASS_INT);
+        XIR_emit_instr_imul_r(builder, xbblock, size, dx, ax, b);
+    }
+    else {
+        assert(ir_b.kind == OP_RIA_ADDR);
+        XIR_MemAddr addr = {0};
+        XIR_get_addr(builder, xbblock, &addr, &ir_b.addr, 0);
+        XIR_emit_instr_imul_m(builder, xbblock, size, dx, ax, addr);
+    }
+
+    // mov r, _ax
+    u32 r = XIR_get_reg(builder, ir_mul->r, X64_REG_CLASS_INT);
+    XIR_emit_instr_mov_r_r(builder, xbblock, size, r, ax);
+    XIR_hint_same_reg(builder, r, ax);
+
+    return false;
+}
 
 static bool XIR_convert_int_mul_instr(XIR_Builder* builder, XIR_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
@@ -625,12 +672,11 @@ static bool XIR_convert_int_mul_instr(XIR_Builder* builder, XIR_BBlock* xbblock,
     const bool is_signed = type_is_signed(type);
 
     // Use IMUL for signed multiplication.
-    if (is_signed) {
-        // TODO: imul with 2 (or 3) ops does not support 8-bit operands.
-        // Must use the version of imul that uses rdx:rax operand implicitly!
-        assert(type->size != 1);
-
-        return XIR_convert_int_imul_instr(builder, xbblock, ir_instr, next_ir_instr);
+    if (is_signed && type->size == 1) {
+        return XIR_convert_signed_1byte_mul_instr(builder, xbblock, ir_mul);
+    }
+    else if (is_signed) {
+        return XIR_convert_signed_multibyte_mul_instr(builder, xbblock, ir_instr, next_ir_instr);
     }
 
     assert(!is_signed);
