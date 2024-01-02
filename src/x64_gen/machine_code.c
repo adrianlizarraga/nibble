@@ -832,6 +832,50 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_mi.size, &instr->sub_mi.dst,
                                       instr->sub_mi.imm);
     } break;
+    // AND
+    case X64_Instr_Kind_AND_RR: {
+        // 20 /r => and r/m8, r8
+        // 0x66 + 21 /r => and r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 21 /r => and r/m32, r32
+        // REX.W + 21 /r => and r/m64, r64
+        X64_write_elf_binary_instr_rr(gen_state, 0x20, 0x21, instr->and_rr.size, instr->and_rr.dst, instr->and_rr.src);
+    } break;
+    case X64_Instr_Kind_AND_RM: {
+        // 22 /r => and r8, r/m8
+        // 66 23 /r => and r16, r/m16
+        // 23 /r => and r32, r/m32
+        // REX.W + 23 /r => and r64, r/m64
+        X64_write_elf_binary_instr_rm(gen_state, 0x22, 0x23, instr->and_rm.size, instr->and_rm.dst, &instr->and_rm.src);
+    } break;
+    case X64_Instr_Kind_AND_MR: {
+        // 20 /r => and r/m8, r8
+        // 0x66 + 21 /r => and r/m16, r16 (NEED 0x66 prefix for 16-bit operands)
+        // 21 /r => and r/m32, r32
+        // REX.W + 21 /r => and r/m64, r64
+        X64_write_elf_binary_instr_mr(gen_state, 0x20, 0x21, instr->and_mr.size, &instr->and_mr.dst, instr->and_mr.src);
+    } break;
+    case X64_Instr_Kind_AND_RI: {
+        // 80 /4 ib => and r/m8, imm8
+        // 66 83 /4 ib => and r/m16, imm8
+        // 66 81 /4 iw => and r/m16, imm16
+        // 83 /4 ib => and r/m32, imm8
+        // 81 /4 id => and r/m32, imm32
+        // REX.W + 83 /4 ib => and r/m64, imm8
+        // REX.W + 81 /4 id => and r/m64, imm32
+        X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 4 /*opcode ext*/, instr->and_ri.size, instr->and_ri.dst,
+                                      instr->and_ri.imm);
+    } break;
+    case X64_Instr_Kind_AND_MI: {
+        // 80 /4 ib => and r/m8, imm8
+        // 66 83 /4 ib => and r/m16, imm8
+        // 66 81 /4 iw => and r/m16, imm16
+        // 83 /4 ib => and r/m32, imm8
+        // 81 /4 id => and r/m32, imm32
+        // REX.W + 83 /4 ib => and r/m64, imm8
+        // REX.W + 81 /4 id => and r/m64, imm32
+        X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 4 /*opcode ext*/, instr->and_mi.size, &instr->and_mi.dst,
+                                      instr->and_mi.imm);
+    } break;
     // CMP
     case X64_Instr_Kind_CMP_RR: {
         // 38 /r => cmp r/m8, r8
