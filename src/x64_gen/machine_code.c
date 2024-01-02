@@ -376,7 +376,7 @@ static inline void X64_write_elf_binary_instr_mi(X64_TextGenState* gen_state, u8
     const X64_AddrBytes dst_addr = X64_get_addr_bytes(dst);
     const bool is_64_bit = dst_size == 8;
     const bool use_ext_regs = dst_addr.rex_b || dst_addr.rex_x;
-    const bool imm_is_byte = imm <= 255;
+    const bool imm_is_byte = (s32)imm <= 127 && (s32)imm >= -128; // The byte will be sign-extended (can't use > 127)
     const u8 opcode = (dst_size == 1) ? opcode_instr_1byte : (imm_is_byte ? opcode_imm_1byte : opcode_imm_larger);
 
     if (dst_size == 2) {
@@ -409,7 +409,7 @@ static inline void X64_write_elf_binary_instr_ri(X64_TextGenState* gen_state, u8
 {
     const bool is_64_bit = dst_size == 8;
     const u8 dst_reg = x64_reg_val[dst];
-    const bool imm_is_byte = imm <= 255;
+    const bool imm_is_byte = (s32)imm <= 127 && (s32)imm >= -128; // The byte will be sign-extended (can't use > 127)
     const bool reg_is_ext = dst_reg > 7;
     const u8 opcode = (dst_size == 1) ? opcode_instr_1byte : (imm_is_byte ? opcode_imm_1byte : opcode_imm_larger);
 
@@ -812,22 +812,22 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     } break;
     case X64_Instr_Kind_SUB_RI: {
         // 80 /5 ib => sub r/m8, imm8
-        // 66 83 /5 ib => sub r/m16, imm8
+        // 66 83 /5 ib => sub r/m16, imm8 (sign-extended)
         // 66 81 /5 iw => sub r/m16, imm16
-        // 83 /5 ib => sub r/m32, imm8
+        // 83 /5 ib => sub r/m32, imm8 (sign-extended)
         // 81 /5 id => sub r/m32, imm32
-        // REX.W + 83 /5 ib => sub r/m64, imm8
+        // REX.W + 83 /5 ib => sub r/m64, imm8 (sign-extended)
         // REX.W + 81 /5 id => sub r/m64, imm32
         X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_ri.size, instr->sub_ri.dst,
                                       instr->sub_ri.imm);
     } break;
     case X64_Instr_Kind_SUB_MI: {
         // 80 /5 ib => sub r/m8, imm8
-        // 66 83 /5 ib => sub r/m16, imm8
+        // 66 83 /5 ib => sub r/m16, imm8 (sign-extended)
         // 66 81 /5 iw => sub r/m16, imm16
-        // 83 /5 ib => sub r/m32, imm8
+        // 83 /5 ib => sub r/m32, imm8 (sign-extended)
         // 81 /5 id => sub r/m32, imm32
-        // REX.W + 83 /5 ib => sub r/m64, imm8
+        // REX.W + 83 /5 ib => sub r/m64, imm8 (sign-extended)
         // REX.W + 81 /5 id => sub r/m64, imm32
         X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 5 /*opcode ext*/, instr->sub_mi.size, &instr->sub_mi.dst,
                                       instr->sub_mi.imm);
@@ -928,7 +928,7 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         const u32 imm = instr->imul_ri.imm;
         const bool is_64_bit = dst_size == 8;
         const bool reg_is_ext = dst_reg > 7;
-        const bool imm_is_byte = imm <= 255;
+        const bool imm_is_byte = imm <= 127 && (s32)imm >= -128;
         const u8 opcode = imm_is_byte ? 0x6B : 0x69;
 
         if (dst_size == 2) {
@@ -1077,6 +1077,37 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
 
         array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
         array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
+        array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM
+
+        if (src_addr.has_sib_byte) {
+            array_push(bblock->buffer, src_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &src_addr);
+    } break;
+    // MOVSXD
+    case X64_Instr_Kind_MOVSXD_RR: {
+        // REX.W 63 /r => movsxd r64, r/m32
+        //
+        // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
+        assert(instr->movsxd_rr.dst_size == 8 && instr->movsxd_rr.src_size == 4);
+        const u8 dst_reg = x64_reg_val[instr->movsxd_rr.dst];
+        const u8 src_reg = x64_reg_val[instr->movsxd_rr.src];
+
+        array_push(bblock->buffer, X64_rex_nosib(true, dst_reg, src_reg)); // REX.W for 64bit, REX.RB for ext regs
+        array_push(bblock->buffer, 0x63);
+        array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg)); // ModRM
+    } break;
+    case X64_Instr_Kind_MOVSXD_RM: {
+        // REX.W 63 /r => movsxd r64, r/m32
+        //
+        // Operand encoding: operand 1: ModRM:reg (w), operand 2: ModRM:rm (r)
+        assert(instr->movsxd_rm.dst_size == 8 && instr->movsxd_rm.src_size == 4);
+        const u8 dst_reg = x64_reg_val[instr->movsxd_rm.dst];
+        const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->movsxd_rm.src);
+
+        array_push(bblock->buffer, X64_rex_prefix(true, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+        array_push(bblock->buffer, 0x63);
         array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm)); // ModRM
 
         if (src_addr.has_sib_byte) {

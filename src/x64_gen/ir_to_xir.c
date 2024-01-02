@@ -625,8 +625,6 @@ static bool XIR_convert_signed_1byte_mul_instr(XIR_Builder* builder, XIR_BBlock*
     const size_t size = ir_mul->type->size;
     assert(size == 1);
 
-    //const bool uses_dx = size >= 2;
-
     OpRIA ir_a = ir_mul->a;
     OpRIA ir_b = ir_mul->b;
 
