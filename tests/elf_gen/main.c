@@ -803,6 +803,177 @@ static bool test_and_mi(Allocator* mem_arena, bool verbose)
     return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
 }
 
+// OR
+
+static bool test_or_rr(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_emit_instr_or_rr(&proc0->x64_instrs, 1, X64_RDX, X64_RAX);
+    X64_emit_instr_or_rr(&proc0->x64_instrs, 2, X64_RDX, X64_R10);
+    X64_emit_instr_or_rr(&proc0->x64_instrs, 4, X64_R10, X64_RDX);
+    X64_emit_instr_or_rr(&proc0->x64_instrs, 8, X64_RDX, X64_R10);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " or dl, al\n"
+                            " or dx, r10w\n"
+                            " or r10d, edx\n"
+                            " or rdx, r10\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_or_rm(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_SIBD_Addr rbp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.disp = -8};
+    X64_SIBD_Addr rsp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.disp = -8};
+    X64_SIBD_Addr r10_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_R10, .local.disp = -8};
+    X64_emit_instr_or_rm(&proc0->x64_instrs, 1, X64_RDX, rbp_addr);
+    X64_emit_instr_or_rm(&proc0->x64_instrs, 2, X64_RDX, rsp_addr);
+    X64_emit_instr_or_rm(&proc0->x64_instrs, 4, X64_R10, r10_addr);
+    X64_emit_instr_or_rm(&proc0->x64_instrs, 8, X64_RDX, rbp_addr);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " or dl, byte [rbp - 8]\n"
+                            " or dx, word [rsp - 8]\n"
+                            " or r10d, dword [r10 - 8]\n"
+                            " or rdx, qword [rbp - 8]\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_or_mr(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_SIBD_Addr rbp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.disp = -8};
+    X64_SIBD_Addr rsp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.disp = -8};
+    X64_SIBD_Addr r10_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_R10, .local.disp = -8};
+    X64_emit_instr_or_mr(&proc0->x64_instrs, 1, rbp_addr, X64_RDX);
+    X64_emit_instr_or_mr(&proc0->x64_instrs, 2, rsp_addr, X64_RDX);
+    X64_emit_instr_or_mr(&proc0->x64_instrs, 4, r10_addr, X64_R10);
+    X64_emit_instr_or_mr(&proc0->x64_instrs, 8, rbp_addr, X64_RDX);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " or byte [rbp - 8], dl\n"
+                            " or word [rsp - 8], dx\n"
+                            " or dword [r10 - 8], r10d\n"
+                            " or qword [rbp - 8], rdx\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_or_ri(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_emit_instr_mov_ri(&proc0->x64_instrs, 4, X64_RDX, 3);
+    X64_emit_instr_mov_ri(&proc0->x64_instrs, 4, X64_R10, 128);
+
+    // imm can fit in a byte
+    X64_emit_instr_or_ri(&proc0->x64_instrs, 1, X64_RDX, 2);
+    X64_emit_instr_or_ri(&proc0->x64_instrs, 2, X64_RDX, 2);
+    X64_emit_instr_or_ri(&proc0->x64_instrs, 4, X64_RDX, 127);
+    X64_emit_instr_or_ri(&proc0->x64_instrs, 8, X64_RDX, -128);
+
+    // imm cannot fit in a byte
+    X64_emit_instr_or_ri(&proc0->x64_instrs, 2, X64_RDX, 256);
+    X64_emit_instr_or_ri(&proc0->x64_instrs, 4, X64_RDX, 255);
+    X64_emit_instr_or_ri(&proc0->x64_instrs, 8, X64_R10, 129);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " mov edx, 3\n"
+                            " mov r10d, 128\n"
+                            " or dl, 0x2\n"
+                            " or dx, 0x2\n"
+                            " or edx, 127\n"
+                            " or rdx, -128\n"
+                            " or dx, 256\n"
+                            " or edx, 255\n"
+                            " or r10, 129\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_or_mi(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_SIBD_Addr rbp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.disp = -8};
+    X64_SIBD_Addr rsp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.disp = -8};
+    X64_SIBD_Addr r10_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_R10, .local.disp = -8};
+
+    // imm can fit in a byte
+    X64_emit_instr_or_mi(&proc0->x64_instrs, 1, rbp_addr, 2);
+    X64_emit_instr_or_mi(&proc0->x64_instrs, 2, rbp_addr, 2);
+    X64_emit_instr_or_mi(&proc0->x64_instrs, 4, rsp_addr, 127);
+    X64_emit_instr_or_mi(&proc0->x64_instrs, 8, r10_addr, -128);
+
+    // imm cannot fit in a byte
+    X64_emit_instr_or_mi(&proc0->x64_instrs, 2, r10_addr, 256);
+    X64_emit_instr_or_mi(&proc0->x64_instrs, 4, rbp_addr, 255);
+    X64_emit_instr_or_mi(&proc0->x64_instrs, 8, rsp_addr, 129);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " or byte [rbp - 8], 0x2\n"
+                            " or word [rbp - 8], 0x2\n"
+                            " or dword [rsp - 8], 127\n"
+                            " or qword [r10 - 8], -128\n"
+                            " or word [r10 - 8], 256\n"
+                            " or dword [rbp - 8], 255\n"
+                            " or qword [rsp - 8], 129\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+// XOR
 static bool test_xor_rr(Allocator* mem_arena, bool verbose)
 {
     Elf_Test_Prog elf_prog = {0};
@@ -1347,6 +1518,11 @@ static Elf_Gen_Test elf_gen_tests[] = {
     {"test_and_mr", test_and_mr},
     {"test_and_ri", test_and_ri},
     {"test_and_mi", test_and_mi},
+    {"test_or_rr", test_or_rr},
+    {"test_or_rm", test_or_rm},
+    {"test_or_mr", test_or_mr},
+    {"test_or_ri", test_or_ri},
+    {"test_or_mi", test_or_mi},
     {"test_xor_rr", test_xor_rr},
     {"test_xor_rm", test_xor_rm},
     {"test_xor_mr", test_xor_mr},

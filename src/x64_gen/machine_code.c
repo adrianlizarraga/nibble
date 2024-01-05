@@ -983,6 +983,50 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 4 /*opcode ext*/, instr->and_mi.size, &instr->and_mi.dst,
                                       instr->and_mi.imm);
     } break;
+    // OR
+    case X64_Instr_Kind_OR_RR: {
+        // 08 /r => or r/m8, r8
+        // 0x66 + 09 /r => or r/m16, r16 (NEED 0x66 prefix for 16-bit operators)
+        // 09 /r => or r/m32, r32
+        // REX.W + 09 /r => or r/m64, r64
+        X64_write_elf_binary_instr_rr(gen_state, 0x8, 0x9, instr->or_rr.size, instr->or_rr.dst, instr->or_rr.src);
+    } break;
+    case X64_Instr_Kind_OR_RM: {
+        // 0A /r => or r8, r/m8
+        // 66 0B /r => or r16, r/m16
+        // 0B /r => or r32, r/m32
+        // REX.W + 0B /r => or r64, r/m64
+        X64_write_elf_binary_instr_rm(gen_state, 0xA, 0xB, instr->or_rm.size, instr->or_rm.dst, &instr->or_rm.src);
+    } break;
+    case X64_Instr_Kind_OR_MR: {
+        // 08 /r => or r/m8, r8
+        // 0x66 + 09 /r => or r/m16, r16 (NEED 0x66 prefix for 16-bit operators)
+        // 09 /r => or r/m32, r32
+        // REX.W + 09 /r => or r/m64, r64
+        X64_write_elf_binary_instr_mr(gen_state, 0x8, 0x9, instr->or_mr.size, &instr->or_mr.dst, instr->or_mr.src);
+    } break;
+    case X64_Instr_Kind_OR_RI: {
+        // 80 /1 ib => or r/m8, imm8
+        // 66 83 /1 ib => or r/m16, imm8
+        // 66 81 /1 iw => or r/m16, imm16
+        // 83 /1 ib => or r/m32, imm8
+        // 81 /1 id => or r/m32, imm32
+        // REX.W + 83 /1 ib => or r/m64, imm8
+        // REX.W + 81 /1 id => or r/m64, imm32
+        X64_write_elf_binary_instr_ri(gen_state, 0x80, 0x83, 0x81, 1 /*opcode ext*/, instr->or_ri.size, instr->or_ri.dst,
+                                      instr->or_ri.imm);
+    } break;
+    case X64_Instr_Kind_OR_MI: {
+        // 80 /1 ib => or r/m8, imm8
+        // 66 83 /1 ib => or r/m16, imm8
+        // 66 81 /1 iw => or r/m16, imm16
+        // 83 /1 ib => or r/m32, imm8
+        // 81 /1 id => or r/m32, imm32
+        // REX.W + 83 /1 ib => or r/m64, imm8
+        // REX.W + 81 /1 id => or r/m64, imm32
+        X64_write_elf_binary_instr_mi(gen_state, 0x80, 0x83, 0x81, 1 /*opcode ext*/, instr->or_mi.size, &instr->or_mi.dst,
+                                      instr->or_mi.imm);
+    } break;
     // XOR
     case X64_Instr_Kind_XOR_RR: {
         // 30 /r => xor r/m8, r8
