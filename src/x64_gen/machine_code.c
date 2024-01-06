@@ -8,6 +8,14 @@ static const u8 x64_reg_val[X64_REG_COUNT] = {
     [X64_XMM12] = 12, [X64_XMM13] = 13, [X64_XMM14] = 14, [X64_XMM15] = 15,
 };
 
+static const u8 x64_reg_8h_val[X64_REG_COUNT] = {[X64_RAX] = 4, [X64_RCX] = 5, [X64_RDX] = 6, [X64_RBX] = 7};
+
+static inline bool X64_reg_aliased_8h(X64_Reg r)
+{
+    const u8 reg_val = x64_reg_val[r];
+    return reg_val >= x64_reg_8h_val[X64_RAX] && reg_val <= x64_reg_8h_val[X64_RBX];
+}
+
 static u16 x64_setcc_condition_opcodes[] = {
     [COND_U_LT] = 0x920F, [COND_S_LT] = 0x9C0F,   [COND_U_LTEQ] = 0x960F, [COND_S_LTEQ] = 0x9E0F, [COND_U_GT] = 0x970F,
     [COND_S_GT] = 0x9F0F, [COND_U_GTEQ] = 0x930F, [COND_S_GTEQ] = 0x9D0F, [COND_EQ] = 0x940F,     [COND_NEQ] = 0x950F,
@@ -336,7 +344,7 @@ static void X64_write_addr_disp(X64_TextGenState* gen_state, const X64_AddrBytes
     }
 }
 
-static inline void X64_write_elf_binary_instr_rm(X64_TextGenState* gen_state, u8 opcode_1byte, u8 opcode_large, u8 size, u8 dst,
+static inline void X64_write_elf_binary_instr_rm(X64_TextGenState* gen_state, u8 opcode_1byte, u8 opcode_large, u8 size, X64_Reg dst,
                                                  const X64_SIBD_Addr* src)
 {
     // Example:
@@ -358,6 +366,9 @@ static inline void X64_write_elf_binary_instr_rm(X64_TextGenState* gen_state, u8
     // REX prefix.
     if (use_ext_regs || is_64_bit) {
         array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(is_64_bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+    }
+    else if (size == 1 && X64_reg_aliased_8h(dst)) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // Disable ah,ch,dh,bh
     }
 
     array_push(gen_state->curr_bblock->buffer, opcode);
@@ -405,7 +416,7 @@ static inline void X64_write_elf_binary_instr_mi(X64_TextGenState* gen_state, u8
 }
 
 static inline void X64_write_elf_binary_instr_ri(X64_TextGenState* gen_state, u8 opcode_instr_1byte, u8 opcode_imm_1byte,
-                                                 u8 opcode_imm_larger, u8 opcode_ext, u8 dst_size, u8 dst, u32 imm)
+                                                 u8 opcode_imm_larger, u8 opcode_ext, u8 dst_size, X64_Reg dst, u32 imm)
 {
     const bool is_64_bit = dst_size == 8;
     const u8 dst_reg = x64_reg_val[dst];
@@ -420,6 +431,9 @@ static inline void X64_write_elf_binary_instr_ri(X64_TextGenState* gen_state, u8
     if (is_64_bit || reg_is_ext) {
         array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(is_64_bit, 0, dst_reg)); // REX.B for ext regs
     }
+    else if (dst_size == 1 && X64_reg_aliased_8h(dst)) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // Disable ah,ch,dh,bh
+    }
 
     array_push(gen_state->curr_bblock->buffer, opcode);
     array_push(gen_state->curr_bblock->buffer,
@@ -433,8 +447,8 @@ static inline void X64_write_elf_binary_instr_ri(X64_TextGenState* gen_state, u8
     }
 }
 
-static inline void X64_write_elf_binary_instr_rr(X64_TextGenState* gen_state, u8 opcode_1byte, u8 opcode_multi_byte, u8 size, u8 dst,
-                                                 u8 src)
+static inline void X64_write_elf_binary_instr_rr(X64_TextGenState* gen_state, u8 opcode_1byte, u8 opcode_multi_byte, u8 size,
+                                                 X64_Reg dst, X64_Reg src)
 {
     const u8 src_reg = x64_reg_val[src];
     const u8 dst_reg = x64_reg_val[dst];
@@ -450,13 +464,16 @@ static inline void X64_write_elf_binary_instr_rr(X64_TextGenState* gen_state, u8
     if (is_64_bit || src_is_ext || dst_is_ext) {
         array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(is_64_bit, src_reg, dst_reg)); // REX.RB for ext regs
     }
+    else if (size == 1 && (X64_reg_aliased_8h(dst) || X64_reg_aliased_8h(src))) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // Disable ah,ch,dh,bh
+    }
 
     array_push(gen_state->curr_bblock->buffer, opcode);
     array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
 }
 
 static inline void X64_write_elf_binary_instr_mr(X64_TextGenState* gen_state, u8 opcode_1byte, u8 opcode_multi_byte, u8 size,
-                                                 X64_SIBD_Addr* dst, u8 src)
+                                                 X64_SIBD_Addr* dst, X64_Reg src)
 {
     const u8 src_reg = x64_reg_val[src];
     const X64_AddrBytes dst_addr = X64_get_addr_bytes(dst);
@@ -473,6 +490,9 @@ static inline void X64_write_elf_binary_instr_mr(X64_TextGenState* gen_state, u8
     if (use_ext_regs || is_64_bit) {
         array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(is_64_bit, src_reg >> 3, dst_addr.rex_x, dst_addr.rex_b));
     }
+    else if (size == 1 && X64_reg_aliased_8h(src)) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // Disable ah,ch,dh,bh
+    }
 
     array_push(gen_state->curr_bblock->buffer, opcode); // opcode
     array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(dst_addr.mod, src_reg, dst_addr.rm)); // ModRM byte.
@@ -485,7 +505,7 @@ static inline void X64_write_elf_binary_instr_mr(X64_TextGenState* gen_state, u8
 }
 
 static inline void X64_write_elf_binary_rax_instr_r(X64_TextGenState* gen_state, u8 opcode_instr_1byte, u8 opcode_multi_byte,
-                                                    u8 opcode_ext, u8 size, u8 src)
+                                                    u8 opcode_ext, u8 size, X64_Reg src)
 {
     const u8 src_reg = x64_reg_val[src];
     const bool src_is_ext = src_reg > 7;
@@ -498,6 +518,9 @@ static inline void X64_write_elf_binary_rax_instr_r(X64_TextGenState* gen_state,
 
     if (is_64_bit || src_is_ext) {
         array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(is_64_bit, 0, src_reg)); // REX.B for ext regs
+    }
+    else if (size == 1 && X64_reg_aliased_8h(src)) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // Disable ah,ch,dh,bh
     }
 
     array_push(gen_state->curr_bblock->buffer, opcode);
@@ -570,7 +593,7 @@ static inline void X64_write_elf_shift_mi(X64_TextGenState* gen_state, u8 opcode
     }
 }
 
-static inline void X64_write_elf_shift_ri(X64_TextGenState* gen_state, u8 opcode_ext, u8 dst_size, u8 dst, u8 imm)
+static inline void X64_write_elf_shift_ri(X64_TextGenState* gen_state, u8 opcode_ext, u8 dst_size, X64_Reg dst, u8 imm)
 {
     const u8 dst_reg = x64_reg_val[dst];
     const bool is_64_bit = dst_size == 8;
@@ -582,6 +605,9 @@ static inline void X64_write_elf_shift_ri(X64_TextGenState* gen_state, u8 opcode
 
     if (is_64_bit || reg_is_ext) {
         array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(is_64_bit, 0, dst_reg)); // REX.B for ext regs
+    }
+    else if (dst_size == 1 && X64_reg_aliased_8h(dst)) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // Disable ah,ch,dh,bh
     }
 
     if (imm == 1) {
@@ -597,7 +623,7 @@ static inline void X64_write_elf_shift_ri(X64_TextGenState* gen_state, u8 opcode
     }
 }
 
-static inline void X64_write_elf_shift_r(X64_TextGenState* gen_state, u8 opcode_ext, u8 dst_size, u8 dst)
+static inline void X64_write_elf_shift_r(X64_TextGenState* gen_state, u8 opcode_ext, u8 dst_size, X64_Reg dst)
 {
     const u8 dst_reg = x64_reg_val[dst];
     const bool is_64_bit = dst_size == 8;
@@ -609,6 +635,9 @@ static inline void X64_write_elf_shift_r(X64_TextGenState* gen_state, u8 opcode_
 
     if (is_64_bit || reg_is_ext) {
         array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(is_64_bit, 0, dst_reg)); // REX.B for ext regs
+    }
+    else if (dst_size == 1 && X64_reg_aliased_8h(dst)) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // Disable ah,ch,dh,bh
     }
 
     const u8 opcode = (dst_size == 1) ? 0xD2 : 0xD3;
@@ -641,7 +670,7 @@ static inline void X64_write_elf_shift_m(X64_TextGenState* gen_state, u8 opcode_
     X64_write_addr_disp(gen_state, &dst_addr);
 }
 
-static inline void X64_write_elf_unary_neg_r(X64_TextGenState* gen_state, u8 opcode_ext, u8 size, u8 dst)
+static inline void X64_write_elf_unary_neg_r(X64_TextGenState* gen_state, u8 opcode_ext, u8 size, X64_Reg dst)
 {
     const u8 dst_reg = x64_reg_val[dst];
     const bool dst_is_ext = dst_reg > 7;
@@ -654,6 +683,9 @@ static inline void X64_write_elf_unary_neg_r(X64_TextGenState* gen_state, u8 opc
 
     if (is_64_bit || dst_is_ext) {
         array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(is_64_bit, 0, dst_reg)); // REX.B for ext regs
+    }
+    else if (size == 1 && X64_reg_aliased_8h(dst)) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // Disable ah,ch,dh,bh
     }
 
     array_push(gen_state->curr_bblock->buffer, opcode);
@@ -1238,6 +1270,9 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         if (dst_is_ext) {
             array_push(bblock->buffer, X64_rex_nosib(0, 0, dst_reg));
         }
+        else if (X64_reg_aliased_8h(instr->setcc_r.dst)) {
+            array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // Disable ah,ch,dh,bh
+        }
 
         array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
         array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
@@ -1630,7 +1665,8 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         // 89 /r => mov r/m32, r32
         // REX.W + 89 /r => mov r/m64, r64
         const u8 size = instr->mov_rr.size;
-        const u8 src_reg = x64_reg_val[instr->mov_rr.src];
+        const bool is_src_8h = size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
+        const u8 src_reg = is_src_8h ? x64_reg_8h_val[instr->mov_rr.src] : x64_reg_val[instr->mov_rr.src];
         const u8 dst_reg = x64_reg_val[instr->mov_rr.dst];
         const bool src_is_ext = src_reg > 7;
         const bool dst_is_ext = dst_reg > 7;
@@ -1644,16 +1680,12 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         if (is_64_bit || src_is_ext || dst_is_ext) {
             array_push(bblock->buffer, X64_rex_nosib(is_64_bit, src_reg, dst_reg)); // REX.RB for ext regs
         }
-        else if (size == 1) {
-            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // no ah, dh, etc
+        else if (size == 1 && !is_src_8h && X64_reg_aliased_8h(instr->mov_rr.src)) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // disable ah, dh, etc
         }
 
         array_push(bblock->buffer, opcode);
         array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
-
-        // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
-        // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
-        // const bool is_r2_h = instr->mov_rr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
     } break;
     case X64_Instr_Kind_MOV_MR: {
         // 88 /r => mov r/m8, r8
@@ -1661,7 +1693,8 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         // 89 /r => mov r/m32, r32
         // REX.W + 89 /r => mov r/m64, r64
         const u8 size = instr->mov_mr.size;
-        const u8 src_reg = x64_reg_val[instr->mov_mr.src];
+        const bool is_src_8h = size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
+        const u8 src_reg = is_src_8h ? x64_reg_8h_val[instr->mov_mr.src] : x64_reg_val[instr->mov_mr.src];
         const X64_AddrBytes dst_addr = X64_get_addr_bytes(&instr->mov_mr.dst);
         const bool src_is_ext = src_reg > 7;
         const bool use_ext_regs = src_is_ext || dst_addr.rex_b || dst_addr.rex_x;
@@ -1676,22 +1709,18 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         if (use_ext_regs || is_64_bit) {
             array_push(bblock->buffer, X64_rex_prefix(is_64_bit, src_reg >> 3, dst_addr.rex_x, dst_addr.rex_b));
         }
-        else if (size == 1) {
-            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // no ah, dh, etc
+        else if (size == 1 && !is_src_8h && X64_reg_aliased_8h(instr->mov_mr.src)) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // disable ah, dh, etc
         }
 
-        array_push(bblock->buffer, opcode); // opcode
-        array_push(bblock->buffer, X64_modrm_byte(dst_addr.mod, src_reg, dst_addr.rm)); // ModRM byte.
+        array_push(bblock->buffer, opcode);
+        array_push(bblock->buffer, X64_modrm_byte(dst_addr.mod, src_reg, dst_addr.rm));
 
         if (dst_addr.has_sib_byte) {
             array_push(bblock->buffer, dst_addr.sib_byte);
         }
 
         X64_write_addr_disp(gen_state, &dst_addr);
-
-        // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
-        // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
-        // const bool is_r2_h = instr->mov_mr.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
     } break;
     case X64_Instr_Kind_MOV_RM: {
         // 8A /r => mov r8, r/m8
@@ -1714,8 +1743,8 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         if (use_ext_regs || is_64_bit) {
             array_push(bblock->buffer, X64_rex_prefix(is_64_bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
         }
-        else if (size == 1) {
-            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // no ah, dh, etc
+        else if (size == 1 && X64_reg_aliased_8h(instr->mov_rm.dst)) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // disable ah, dh, etc
         }
 
         array_push(bblock->buffer, opcode);
@@ -1726,10 +1755,6 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         }
 
         X64_write_addr_disp(gen_state, &src_addr);
-
-        // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
-        // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
-        // const bool is_r2_h = instr->mov_rm.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
     } break;
     case X64_Instr_Kind_MOV_MI: {
         // C6 /0 ib => mov r/m8, imm8
@@ -1769,26 +1794,45 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         // 66 + B8+rw iw => mov r16, imm16
         // B8+rd id => mov r32, imm32
         // REX.W + B8+rd io => mov r64, imm64
+        //
+        // REX.W + C7 /0 id => mov r/m64, imm32 (sign-extended)
         const u8 size = instr->mov_ri.size;
         const u8 dst_reg = x64_reg_val[instr->mov_ri.dst];
         const bool use_ext_regs = dst_reg > 7; // Need REX.B?
         const bool is_64_bit = size == 8;
-        const u8 base_opcode = (size == 1) ? 0xB0 : 0xB8;
+        const s64 imm = instr->mov_ri.imm;
 
-        if (size == 2) {
-            array_push(bblock->buffer, 0x66); // 0x66 prefix for 16-bit operands
+        if (is_64_bit && imm >= 0 && imm <= 2147483647) { // mov r32, imm32 (top 32 bits cleared)
+            if (use_ext_regs) {
+                array_push(bblock->buffer, X64_rex_opcode_reg(0, dst_reg));
+            }
+            array_push(bblock->buffer, 0xB8 + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
+            X64_write_imm_bytes(gen_state, imm, 4);
         }
-
-        if (is_64_bit || use_ext_regs) {
-            array_push(bblock->buffer, X64_rex_opcode_reg(is_64_bit, dst_reg));
+        else if (is_64_bit && imm >= -2147483648 && imm <= 2147483647) { // mov r64, imm32 (sign-extended)
+            array_push(bblock->buffer, X64_rex_nosib(1, 0, dst_reg));
+            array_push(bblock->buffer, 0xC7); // opcode
+            array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, 0 /*opcode_ext*/, dst_reg));
+            X64_write_imm_bytes(gen_state, imm, 4);
         }
-        else if (size == 1 && dst_reg >= x64_reg_val[X64_RSP]) {
-            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0));
+        else { // movabs (load true 64-bit immediate values)
+            const u8 base_opcode = (size == 1) ? 0xB0 : 0xB8;
+
+            if (size == 2) {
+                array_push(bblock->buffer, 0x66); // 0x66 prefix for 16-bit operands
+            }
+
+            if (is_64_bit || use_ext_regs) {
+                array_push(bblock->buffer, X64_rex_opcode_reg(is_64_bit, dst_reg));
+            }
+            else if (size == 1 && X64_reg_aliased_8h(instr->mov_ri.dst)) {
+                array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0));
+            }
+
+            array_push(bblock->buffer, base_opcode + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
+
+            X64_write_imm_bytes(gen_state, imm, size);
         }
-
-        array_push(bblock->buffer, base_opcode + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
-
-        X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
     } break;
     // MOV_FLT
     case X64_Instr_Kind_MOV_FLT_RR: {
