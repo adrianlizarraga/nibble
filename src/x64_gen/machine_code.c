@@ -19,8 +19,8 @@ static u8 x64_jmpcc_short_condition_opcodes[] = {
 };
 
 static u16 x64_jmpcc_near_condition_opcodes[] = {
-    [COND_U_LT] = 0x0F82, [COND_S_LT] = 0x0F8C,   [COND_U_LTEQ] = 0x0F86, [COND_S_LTEQ] = 0x0F8E, [COND_U_GT] = 0x0F87,
-    [COND_S_GT] = 0x0F8F, [COND_U_GTEQ] = 0x0F83, [COND_S_GTEQ] = 0x0F8D, [COND_EQ] = 0x0F84,     [COND_NEQ] = 0x0F85,
+    [COND_U_LT] = 0x820F, [COND_S_LT] = 0x8C0F,   [COND_U_LTEQ] = 0x860F, [COND_S_LTEQ] = 0x8E0F, [COND_U_GT] = 0x870F,
+    [COND_S_GT] = 0x8F0F, [COND_U_GTEQ] = 0x830F, [COND_S_GTEQ] = 0x8D0F, [COND_EQ] = 0x840F,     [COND_NEQ] = 0x850F,
 };
 
 enum X64_ModMode {
@@ -147,10 +147,11 @@ static X64_AddrBytes X64_get_addr_bytes(const X64_SIBD_Addr* addr)
     const bool has_base = addr->local.base_reg != (u8)-1;
     const bool disp_is_imm8 = (addr->local.disp <= 127) && (addr->local.disp >= -128);
 
-    addr_bytes.has_disp = addr->local.disp != 0 || (addr->local.base_reg == X64_RBP);
+    addr_bytes.has_disp = addr->local.disp != 0 || ((x64_reg_val[addr->local.base_reg] & 0x7) == X64_RBP);
     addr_bytes.disp = addr->local.disp;
 
-    if (has_base && addr->local.base_reg == X64_RSP) { // Need SIB byte for RSP-based addressing
+    // Need SIB byte for RSP-based addressing
+    if (has_base && (x64_reg_val[addr->local.base_reg] & 0x7) == x64_reg_val[X64_RSP]) {
         const u8 base_reg = x64_reg_val[addr->local.base_reg];
         const u8 index_reg = has_index ? x64_reg_val[addr->local.index_reg] : x64_reg_val[X64_RSP];
         const u8 scale_mode = has_index ? X64_get_scale_mode(addr->local.scale) : X64_SCALE_1;
@@ -350,7 +351,6 @@ static inline void X64_write_elf_binary_instr_rm(X64_TextGenState* gen_state, u8
     const bool is_64_bit = size == 8;
     const u8 opcode = size == 1 ? opcode_1byte : opcode_large;
 
-    // 0x66 prefix for 16-bit operands.
     if (size == 2) {
         array_push(gen_state->curr_bblock->buffer, 0x66);
     }
@@ -465,7 +465,6 @@ static inline void X64_write_elf_binary_instr_mr(X64_TextGenState* gen_state, u8
     const bool is_64_bit = size == 8;
     const u8 opcode = size == 1 ? opcode_1byte : opcode_multi_byte;
 
-    // 0x66 prefix for 16-bit operands.
     if (size == 2) {
         array_push(gen_state->curr_bblock->buffer, 0x66);
     }
@@ -514,7 +513,6 @@ static inline void X64_write_elf_binary_rax_instr_m(X64_TextGenState* gen_state,
     const bool is_64_bit = size == 8;
     const u8 opcode = size == 1 ? opcode_1byte : opcode_large;
 
-    // 0x66 prefix for 16-bit operands.
     if (size == 2) {
         array_push(gen_state->curr_bblock->buffer, 0x66);
     }
@@ -1646,6 +1644,9 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         if (is_64_bit || src_is_ext || dst_is_ext) {
             array_push(bblock->buffer, X64_rex_nosib(is_64_bit, src_reg, dst_reg)); // REX.RB for ext regs
         }
+        else if (size == 1) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // no ah, dh, etc
+        }
 
         array_push(bblock->buffer, opcode);
         array_push(bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, src_reg, dst_reg)); // ModRM
@@ -1667,7 +1668,6 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         const bool is_64_bit = size == 8;
         const u8 opcode = size == 1 ? 0x88 : 0x89;
 
-        // 0x66 prefix for 16-bit operands.
         if (size == 2) {
             array_push(bblock->buffer, 0x66);
         }
@@ -1675,6 +1675,9 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         // REX prefix.
         if (use_ext_regs || is_64_bit) {
             array_push(bblock->buffer, X64_rex_prefix(is_64_bit, src_reg >> 3, dst_addr.rex_x, dst_addr.rex_b));
+        }
+        else if (size == 1) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // no ah, dh, etc
         }
 
         array_push(bblock->buffer, opcode); // opcode
@@ -1695,7 +1698,38 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         // 66 8B /r => mov r16, r/m16
         // 8B /r => mov r32, r/m32
         // REX.W + 8B /r => mov r64, r/m64
-        X64_write_elf_binary_instr_rm(gen_state, 0x8A, 0x8B, instr->mov_rm.size, instr->mov_rm.dst, &instr->mov_rm.src);
+        const u8 size = instr->mov_rm.size;
+        const u8 dst_reg = x64_reg_val[instr->mov_rm.dst];
+        const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->mov_rm.src);
+        const bool dst_is_ext = dst_reg > 7;
+        const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+        const bool is_64_bit = size == 8;
+        const u8 opcode = size == 1 ? 0x8A : 0x8B;
+
+        if (size == 2) {
+            array_push(bblock->buffer, 0x66);
+        }
+
+        // REX prefix.
+        if (use_ext_regs || is_64_bit) {
+            array_push(bblock->buffer, X64_rex_prefix(is_64_bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+        }
+        else if (size == 1) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // no ah, dh, etc
+        }
+
+        array_push(bblock->buffer, opcode);
+        array_push(bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm));
+
+        if (src_addr.has_sib_byte) {
+            array_push(bblock->buffer, src_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &src_addr);
+
+        // TODO(adrianlizarraga): Handle source register that use 1-byte high slot (e.g., mov rdi, ah)
+        // This is used by mod operations when the arguments are < 2 bytes (see conver_ir.c).
+        // const bool is_r2_h = instr->mov_rm.size == 1 && (instr->flags & X64_INSTR_MOV_SRC_RH_MASK); // Use high 1 byte reg.
     } break;
     case X64_Instr_Kind_MOV_MI: {
         // C6 /0 ib => mov r/m8, imm8
@@ -1747,6 +1781,9 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
 
         if (is_64_bit || use_ext_regs) {
             array_push(bblock->buffer, X64_rex_opcode_reg(is_64_bit, dst_reg));
+        }
+        else if (size == 1 && dst_reg >= x64_reg_val[X64_RSP]) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0));
         }
 
         array_push(bblock->buffer, base_opcode + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
