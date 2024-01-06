@@ -688,6 +688,77 @@ static inline void X64_write_elf_unary_neg_m(X64_TextGenState* gen_state, u8 opc
     X64_write_addr_disp(gen_state, &dst_addr);
 }
 
+static inline void X64_write_elf_binary_flt_rr(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix, u8 dst, u8 src)
+{
+    const u8 src_reg = x64_reg_val[src];
+    const u8 dst_reg = x64_reg_val[dst];
+    const bool src_is_ext = src_reg > 7;
+    const bool dst_is_ext = dst_reg > 7;
+    const u8 opcode_prefix = fkind == FLOAT_F32 ? 0xF3 : 0xF2;
+
+    array_push(gen_state->curr_bblock->buffer, opcode_prefix);
+
+    if (src_is_ext || dst_is_ext) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(0, dst_reg, src_reg));
+    }
+
+    array_push(gen_state->curr_bblock->buffer, 0x0F);
+    array_push(gen_state->curr_bblock->buffer, opcode_suffix);
+    array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg));
+}
+
+static inline void X64_write_elf_binary_flt_rm(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix, u8 dst,
+                                               const X64_SIBD_Addr* src)
+{
+    const u8 dst_reg = x64_reg_val[dst];
+    const X64_AddrBytes src_addr = X64_get_addr_bytes(src);
+    const bool dst_is_ext = dst_reg > 7;
+    const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+    const u8 opcode_prefix = fkind == FLOAT_F32 ? 0xF3 : 0xF2;
+
+    array_push(gen_state->curr_bblock->buffer, opcode_prefix);
+
+    if (use_ext_regs) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+    }
+
+    array_push(gen_state->curr_bblock->buffer, 0x0F);
+    array_push(gen_state->curr_bblock->buffer, opcode_suffix);
+    array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm));
+
+    if (src_addr.has_sib_byte) {
+        array_push(gen_state->curr_bblock->buffer, src_addr.sib_byte);
+    }
+
+    X64_write_addr_disp(gen_state, &src_addr);
+}
+
+static inline void X64_write_elf_binary_flt_mr(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix,
+                                               const X64_SIBD_Addr* dst, u8 src)
+{
+    const X64_AddrBytes dst_addr = X64_get_addr_bytes(dst);
+    const u8 src_reg = x64_reg_val[src];
+    const bool src_is_ext = src_reg > 7;
+    const bool use_ext_regs = src_is_ext || dst_addr.rex_b || dst_addr.rex_x;
+    const u8 opcode_prefix = fkind == FLOAT_F32 ? 0xF3 : 0xF2;
+
+    array_push(gen_state->curr_bblock->buffer, opcode_prefix);
+
+    if (use_ext_regs) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, src_reg >> 3, dst_addr.rex_x, dst_addr.rex_b));
+    }
+
+    array_push(gen_state->curr_bblock->buffer, 0x0F);
+    array_push(gen_state->curr_bblock->buffer, opcode_suffix);
+    array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(dst_addr.mod, src_reg, dst_addr.rm));
+
+    if (dst_addr.has_sib_byte) {
+        array_push(gen_state->curr_bblock->buffer, dst_addr.sib_byte);
+    }
+
+    X64_write_addr_disp(gen_state, &dst_addr);
+}
+
 static s32 X64_get_bblock_best_case_size(X64_TextBBlock* bblock)
 {
     assert(bblock);
@@ -1681,6 +1752,16 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         array_push(bblock->buffer, base_opcode + (dst_reg & 0x7)); // opcode + lower 3 bits of dst register
 
         X64_write_imm_bytes(gen_state, instr->mov_ri.imm, size);
+    } break;
+    // MOV_FLT
+    case X64_Instr_Kind_MOV_FLT_RR: {
+        X64_write_elf_binary_flt_rr(gen_state, instr->mov_flt_rr.kind, 0x10, instr->mov_flt_rr.dst, instr->mov_flt_rr.src);
+    } break;
+    case X64_Instr_Kind_MOV_FLT_RM: {
+        X64_write_elf_binary_flt_rm(gen_state, instr->mov_flt_rm.kind, 0x10, instr->mov_flt_rm.dst, &instr->mov_flt_rm.src);
+    } break;
+    case X64_Instr_Kind_MOV_FLT_MR: {
+        X64_write_elf_binary_flt_mr(gen_state, instr->mov_flt_mr.kind, 0x11, &instr->mov_flt_mr.dst, instr->mov_flt_mr.src);
     } break;
     // LEA
     case X64_Instr_Kind_LEA: {
