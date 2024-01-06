@@ -500,6 +500,63 @@ static bool test_imul_m(Allocator* mem_arena, bool verbose)
     return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
 }
 
+static bool test_imul_rr(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_emit_instr_imul_rr(&proc0->x64_instrs, 2, X64_RDX, X64_R10);
+    X64_emit_instr_imul_rr(&proc0->x64_instrs, 4, X64_R10, X64_RDX);
+    X64_emit_instr_imul_rr(&proc0->x64_instrs, 8, X64_RDX, X64_R10);
+    X64_emit_instr_imul_rr(&proc0->x64_instrs, 8, X64_RDX, X64_RCX);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " imul dx, r10w\n"
+                            " imul r10d, edx\n"
+                            " imul rdx, r10\n"
+                            " imul rdx, rcx\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_imul_rm(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_SIBD_Addr rbp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.disp = -8};
+    X64_SIBD_Addr rsp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.disp = -8};
+    X64_SIBD_Addr r10_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_R10, .local.disp = -8};
+    X64_emit_instr_imul_rm(&proc0->x64_instrs, 2, X64_R11, rbp_addr);
+    X64_emit_instr_imul_rm(&proc0->x64_instrs, 2, X64_RDX, rsp_addr);
+    X64_emit_instr_imul_rm(&proc0->x64_instrs, 4, X64_R10, r10_addr);
+    X64_emit_instr_imul_rm(&proc0->x64_instrs, 8, X64_RDX, rbp_addr);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " imul r11w, word [rbp - 8]\n"
+                            " imul dx, word [rsp - 8]\n"
+                            " imul r10d, dword [r10 - 8]\n"
+                            " imul rdx, qword [rbp - 8]\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
 static bool test_imul_ri(Allocator* mem_arena, bool verbose)
 {
     Elf_Test_Prog elf_prog = {0};
@@ -1656,6 +1713,8 @@ static Elf_Gen_Test elf_gen_tests[] = {
     {"test_mul_m", test_mul_m},
     {"test_imul_r", test_imul_r},
     {"test_imul_m", test_imul_m},
+    {"test_imul_rr", test_imul_rr},
+    {"test_imul_rm", test_imul_rm},
     {"test_imul_ri", test_imul_ri},
     {"test_movsx_rr", test_movsx_rr},
     {"test_movsx_rm", test_movsx_rm},

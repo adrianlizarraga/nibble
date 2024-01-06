@@ -618,6 +618,8 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, Sym
                 X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", dst_reg, src_mem);
             } break;
             case X64_Instr_Kind_IMUL_MR: {
+                // TODO: This instruction is NOT actually supported!
+                // Register allocation needs to force dst operand to be in a register.
                 const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->imul_mr.dst, instr->imul_mr.size);
                 const char* src_reg = x64_nasm_int_reg_names[instr->imul_mr.size][instr->imul_mr.src];
                 X64_NASM_PRINT_FTL(proc_str, "imul %s, %s", dst_mem, src_reg);

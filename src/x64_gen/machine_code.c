@@ -1233,6 +1233,55 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
             X64_write_imm_bytes(gen_state, imm, is_64_bit ? 4 : dst_size);
         }
     } break;
+    case X64_Instr_Kind_IMUL_RR: {
+        const u8 size = instr->imul_rr.size;
+        const u8 dst_reg = x64_reg_val[instr->imul_rr.dst];
+        const u8 src_reg = x64_reg_val[instr->imul_rr.src];
+        const bool src_is_ext = src_reg > 7;
+        const bool dst_is_ext = dst_reg > 7;
+        const bool is_64_bit = size == 8;
+        assert(size > 1); // Instruction does not support 1-byte operands
+
+        if (size == 2) {
+            array_push(gen_state->curr_bblock->buffer, 0x66); // 0x66 for 16-bit operands
+        }
+
+        if (is_64_bit || src_is_ext || dst_is_ext) {
+            array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(is_64_bit, dst_reg, src_reg));
+        }
+
+        array_push(gen_state->curr_bblock->buffer, 0x0F);
+        array_push(gen_state->curr_bblock->buffer, 0xAF);
+        array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg));
+    } break;
+    case X64_Instr_Kind_IMUL_RM: {
+        const u8 size = instr->imul_rm.size;
+        const u8 dst_reg = x64_reg_val[instr->imul_rm.dst];
+        const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->imul_rm.src);
+        const bool dst_is_ext = dst_reg > 7;
+        const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+        const bool is_64_bit = size == 8;
+
+        // 0x66 prefix for 16-bit operands.
+        if (size == 2) {
+            array_push(gen_state->curr_bblock->buffer, 0x66);
+        }
+
+        // REX prefix.
+        if (use_ext_regs || is_64_bit) {
+            array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(is_64_bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+        }
+
+        array_push(gen_state->curr_bblock->buffer, 0x0F);
+        array_push(gen_state->curr_bblock->buffer, 0xAF);
+        array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm));
+
+        if (src_addr.has_sib_byte) {
+            array_push(gen_state->curr_bblock->buffer, src_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &src_addr);
+    } break;
     case X64_Instr_Kind_IMUL_R: {
         // F6 /5       => IMUL r/m8
         // 66 F7 /5    => IMUL r/m16
