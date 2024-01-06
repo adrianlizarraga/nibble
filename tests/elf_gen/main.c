@@ -1494,6 +1494,152 @@ static bool test_sar_mi(Allocator* mem_arena, bool verbose)
     return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
 }
 
+static bool test_neg_r(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_emit_instr_mov_ri(&proc0->x64_instrs, 4, X64_RDX, 1024);
+    X64_emit_instr_mov_ri(&proc0->x64_instrs, 4, X64_R10, 1024);
+
+    X64_emit_instr_neg_r(&proc0->x64_instrs, 1, X64_RDX);
+    X64_emit_instr_neg_r(&proc0->x64_instrs, 2, X64_RDX);
+    X64_emit_instr_neg_r(&proc0->x64_instrs, 4, X64_RDX);
+    X64_emit_instr_neg_r(&proc0->x64_instrs, 8, X64_RDX);
+    X64_emit_instr_neg_r(&proc0->x64_instrs, 8, X64_R10);
+
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " mov edx, 1024\n"
+                            " mov r10d, 1024\n"
+                            " neg dl\n"
+                            " neg dx\n"
+                            " neg edx\n"
+                            " neg rdx\n"
+                            " neg r10\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_neg_m(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_SIBD_Addr rbp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.disp = -8};
+    X64_SIBD_Addr rsp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.disp = -8};
+    X64_SIBD_Addr r10_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_R10, .local.disp = -8};
+    X64_emit_instr_mov_rr(&proc0->x64_instrs, 8, X64_RBP, X64_RSP);
+    X64_emit_instr_mov_rr(&proc0->x64_instrs, 8, X64_R10, X64_RSP);
+
+    X64_emit_instr_neg_m(&proc0->x64_instrs, 1, rbp_addr);
+    X64_emit_instr_neg_m(&proc0->x64_instrs, 2, rsp_addr);
+    X64_emit_instr_neg_m(&proc0->x64_instrs, 4, rsp_addr);
+    X64_emit_instr_neg_m(&proc0->x64_instrs, 8, rbp_addr);
+    X64_emit_instr_neg_m(&proc0->x64_instrs, 8, r10_addr);
+
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " mov rbp, rsp\n"
+                            " mov r10, rsp\n"
+                            " neg byte [rbp - 8]\n"
+                            " neg word [rsp - 8]\n"
+                            " neg dword [rsp - 8]\n"
+                            " neg qword [rbp - 8]\n"
+                            " neg qword [r10 - 8]\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_not_r(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_emit_instr_mov_ri(&proc0->x64_instrs, 4, X64_RDX, 1024);
+    X64_emit_instr_mov_ri(&proc0->x64_instrs, 4, X64_R10, 1024);
+
+    X64_emit_instr_not_r(&proc0->x64_instrs, 1, X64_RDX);
+    X64_emit_instr_not_r(&proc0->x64_instrs, 2, X64_RDX);
+    X64_emit_instr_not_r(&proc0->x64_instrs, 4, X64_RDX);
+    X64_emit_instr_not_r(&proc0->x64_instrs, 8, X64_RDX);
+    X64_emit_instr_not_r(&proc0->x64_instrs, 8, X64_R10);
+
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " mov edx, 1024\n"
+                            " mov r10d, 1024\n"
+                            " not dl\n"
+                            " not dx\n"
+                            " not edx\n"
+                            " not rdx\n"
+                            " not r10\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_not_m(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_SIBD_Addr rbp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.disp = -8};
+    X64_SIBD_Addr rsp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.disp = -8};
+    X64_SIBD_Addr r10_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_R10, .local.disp = -8};
+    X64_emit_instr_mov_rr(&proc0->x64_instrs, 8, X64_RBP, X64_RSP);
+    X64_emit_instr_mov_rr(&proc0->x64_instrs, 8, X64_R10, X64_RSP);
+
+    X64_emit_instr_not_m(&proc0->x64_instrs, 1, rbp_addr);
+    X64_emit_instr_not_m(&proc0->x64_instrs, 2, rsp_addr);
+    X64_emit_instr_not_m(&proc0->x64_instrs, 4, rsp_addr);
+    X64_emit_instr_not_m(&proc0->x64_instrs, 8, rbp_addr);
+    X64_emit_instr_not_m(&proc0->x64_instrs, 8, r10_addr);
+
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " mov rbp, rsp\n"
+                            " mov r10, rsp\n"
+                            " not byte [rbp - 8]\n"
+                            " not word [rsp - 8]\n"
+                            " not dword [rsp - 8]\n"
+                            " not qword [rbp - 8]\n"
+                            " not qword [r10 - 8]\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
 static Elf_Gen_Test elf_gen_tests[] = {
     {"test_add_ri_inf_loop", test_add_ri_inf_loop},
     {"test_push_pop_r64", test_push_pop_r64},
@@ -1536,6 +1682,10 @@ static Elf_Gen_Test elf_gen_tests[] = {
     {"test_sar_m", test_sar_m},
     {"test_sar_ri", test_sar_ri},
     {"test_sar_mi", test_sar_mi},
+    {"test_neg_r", test_neg_r},
+    {"test_neg_m", test_neg_m},
+    {"test_not_r", test_not_r},
+    {"test_not_m", test_not_m},
 };
 
 static void print_usage(FILE* fd, const char* program_name)

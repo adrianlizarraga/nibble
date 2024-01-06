@@ -643,6 +643,51 @@ static inline void X64_write_elf_shift_m(X64_TextGenState* gen_state, u8 opcode_
     X64_write_addr_disp(gen_state, &dst_addr);
 }
 
+static inline void X64_write_elf_unary_neg_r(X64_TextGenState* gen_state, u8 opcode_ext, u8 size, u8 dst)
+{
+    const u8 dst_reg = x64_reg_val[dst];
+    const bool dst_is_ext = dst_reg > 7;
+    const bool is_64_bit = size == 8;
+    const u8 opcode = (size == 1) ? 0xF6 : 0xF7;
+
+    if (size == 2) {
+        array_push(gen_state->curr_bblock->buffer, 0x66); // 0x66 for 16-bit operands
+    }
+
+    if (is_64_bit || dst_is_ext) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(is_64_bit, 0, dst_reg)); // REX.B for ext regs
+    }
+
+    array_push(gen_state->curr_bblock->buffer, opcode);
+    array_push(gen_state->curr_bblock->buffer,
+               X64_modrm_byte(X64_MOD_DIRECT, opcode_ext, dst_reg)); // opcode_ext in reg, rm for dst_reg
+}
+
+static inline void X64_write_elf_unary_neg_m(X64_TextGenState* gen_state, u8 opcode_ext, u8 size, const X64_SIBD_Addr* dst)
+{
+    const X64_AddrBytes dst_addr = X64_get_addr_bytes(dst);
+    const bool use_ext_regs = dst_addr.rex_b || dst_addr.rex_x;
+    const bool is_64_bit = size == 8;
+
+    if (size == 2) {
+        array_push(gen_state->curr_bblock->buffer, 0x66); // 0x66 for 16-bit operands
+    }
+
+    if (is_64_bit || use_ext_regs) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(is_64_bit, 0, dst_addr.rex_x, dst_addr.rex_b));
+    }
+
+    const u8 opcode = (size == 1) ? 0xF6 : 0xF7;
+    array_push(gen_state->curr_bblock->buffer, opcode);
+    array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(dst_addr.mod, opcode_ext, dst_addr.rm));
+
+    if (dst_addr.has_sib_byte) {
+        array_push(gen_state->curr_bblock->buffer, dst_addr.sib_byte);
+    }
+
+    X64_write_addr_disp(gen_state, &dst_addr);
+}
+
 static s32 X64_get_bblock_best_case_size(X64_TextBBlock* bblock)
 {
     assert(bblock);
@@ -1284,6 +1329,20 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     } break;
     case X64_Instr_Kind_SAR_MI: {
         X64_write_elf_shift_mi(gen_state, 0x7, instr->sar_mi.size, &instr->sar_mi.dst, instr->sar_mi.imm);
+    } break;
+    // NEG
+    case X64_Instr_Kind_NEG_R: {
+        X64_write_elf_unary_neg_r(gen_state, 0x3, instr->neg_r.size, instr->neg_r.dst);
+    } break;
+    case X64_Instr_Kind_NEG_M: {
+        X64_write_elf_unary_neg_m(gen_state, 0x3, instr->neg_m.size, &instr->neg_m.dst);
+    } break;
+    // NOT
+    case X64_Instr_Kind_NOT_R: {
+        X64_write_elf_unary_neg_r(gen_state, 0x2, instr->not_r.size, instr->not_r.dst);
+    } break;
+    case X64_Instr_Kind_NOT_M: {
+        X64_write_elf_unary_neg_m(gen_state, 0x2, instr->not_m.size, &instr->not_m.dst);
     } break;
     // MOVSX
     case X64_Instr_Kind_MOVSX_RR: {
