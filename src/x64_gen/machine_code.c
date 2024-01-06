@@ -1851,6 +1851,13 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     case X64_Instr_Kind_CVTSS2SD_RM: {
         X64_write_elf_binary_flt_rm(gen_state, FLOAT_F32, 0x5A, instr->cvtss2sd_rm.dst, &instr->cvtss2sd_rm.src);
     } break;
+    // CVTSD2SS
+    case X64_Instr_Kind_CVTSD2SS_RR: {
+        X64_write_elf_binary_flt_rr(gen_state, FLOAT_F64, 0x5A, instr->cvtsd2ss_rr.dst, instr->cvtsd2ss_rr.src);
+    } break;
+    case X64_Instr_Kind_CVTSD2SS_RM: {
+        X64_write_elf_binary_flt_rm(gen_state, FLOAT_F64, 0x5A, instr->cvtsd2ss_rm.dst, &instr->cvtsd2ss_rm.src);
+    } break;
     // LEA
     case X64_Instr_Kind_LEA: {
         // REX.W + 8D /r => lea r64, m
