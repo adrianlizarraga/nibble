@@ -718,7 +718,8 @@ static inline void X64_write_elf_unary_neg_m(X64_TextGenState* gen_state, u8 opc
     X64_write_addr_disp(gen_state, &dst_addr);
 }
 
-static inline void X64_write_elf_binary_flt_rr(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix, u8 dst, u8 src)
+static inline void X64_write_elf_binary_flt_rr(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix, X64_Reg dst,
+                                               X64_Reg src)
 {
     const u8 src_reg = x64_reg_val[src];
     const u8 dst_reg = x64_reg_val[dst];
@@ -737,7 +738,7 @@ static inline void X64_write_elf_binary_flt_rr(X64_TextGenState* gen_state, Floa
     array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg));
 }
 
-static inline void X64_write_elf_binary_flt_rm(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix, u8 dst,
+static inline void X64_write_elf_binary_flt_rm(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix, X64_Reg dst,
                                                const X64_SIBD_Addr* src)
 {
     const u8 dst_reg = x64_reg_val[dst];
@@ -764,7 +765,7 @@ static inline void X64_write_elf_binary_flt_rm(X64_TextGenState* gen_state, Floa
 }
 
 static inline void X64_write_elf_binary_flt_mr(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix,
-                                               const X64_SIBD_Addr* dst, u8 src)
+                                               const X64_SIBD_Addr* dst, X64_Reg src)
 {
     const X64_AddrBytes dst_addr = X64_get_addr_bytes(dst);
     const u8 src_reg = x64_reg_val[src];
@@ -787,6 +788,54 @@ static inline void X64_write_elf_binary_flt_mr(X64_TextGenState* gen_state, Floa
     }
 
     X64_write_addr_disp(gen_state, &dst_addr);
+}
+
+static inline void X64_write_elf_flt_cvtt_int_rr(X64_TextGenState* gen_state, FloatKind fkind, u8 int_size, u8 opcode_suffix,
+                                                 X64_Reg dst, X64_Reg src)
+{
+    const u8 src_reg = x64_reg_val[src];
+    const u8 dst_reg = x64_reg_val[dst];
+    const bool src_is_ext = src_reg > 7;
+    const bool dst_is_ext = dst_reg > 7;
+    const bool int_is_64bit = int_size == 8;
+    const u8 opcode_prefix = fkind == FLOAT_F32 ? 0xF3 : 0xF2;
+
+    array_push(gen_state->curr_bblock->buffer, opcode_prefix);
+
+    if (int_is_64bit || src_is_ext || dst_is_ext) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(int_is_64bit, dst_reg, src_reg));
+    }
+
+    array_push(gen_state->curr_bblock->buffer, 0x0F);
+    array_push(gen_state->curr_bblock->buffer, opcode_suffix);
+    array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg));
+}
+
+static inline void X64_write_elf_flt_cvtt_int_rm(X64_TextGenState* gen_state, FloatKind fkind, u8 int_size, u8 opcode_suffix,
+                                                 X64_Reg dst, const X64_SIBD_Addr* src)
+{
+    const u8 dst_reg = x64_reg_val[dst];
+    const X64_AddrBytes src_addr = X64_get_addr_bytes(src);
+    const bool dst_is_ext = dst_reg > 7;
+    const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+    const bool int_is_64bit = int_size == 8;
+    const u8 opcode_prefix = fkind == FLOAT_F32 ? 0xF3 : 0xF2;
+
+    array_push(gen_state->curr_bblock->buffer, opcode_prefix);
+
+    if (int_is_64bit || use_ext_regs) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(int_is_64bit, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+    }
+
+    array_push(gen_state->curr_bblock->buffer, 0x0F);
+    array_push(gen_state->curr_bblock->buffer, opcode_suffix);
+    array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm));
+
+    if (src_addr.has_sib_byte) {
+        array_push(gen_state->curr_bblock->buffer, src_addr.sib_byte);
+    }
+
+    X64_write_addr_disp(gen_state, &src_addr);
 }
 
 static s32 X64_get_bblock_best_case_size(X64_TextBBlock* bblock)
@@ -1857,6 +1906,28 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     } break;
     case X64_Instr_Kind_CVTSD2SS_RM: {
         X64_write_elf_binary_flt_rm(gen_state, FLOAT_F64, 0x5A, instr->cvtsd2ss_rm.dst, &instr->cvtsd2ss_rm.src);
+    } break;
+    // CVTSS2SI
+    case X64_Instr_Kind_CVTTSS2SI_RR: {
+        const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
+        const u8 dst_size = dst_is_8byte ? 8 : 4;
+        X64_write_elf_flt_cvtt_int_rr(gen_state, FLOAT_F32, dst_size, 0x2C, instr->cvttss2si_rr.dst, instr->cvttss2si_rr.src);
+    } break;
+    case X64_Instr_Kind_CVTTSS2SI_RM: {
+        const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
+        const u8 dst_size = dst_is_8byte ? 8 : 4;
+        X64_write_elf_flt_cvtt_int_rm(gen_state, FLOAT_F32, dst_size, 0x2C, instr->cvttss2si_rm.dst, &instr->cvttss2si_rm.src);
+    } break;
+    // CVTSD2SI
+    case X64_Instr_Kind_CVTTSD2SI_RR: {
+        const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
+        const u8 dst_size = dst_is_8byte ? 8 : 4;
+        X64_write_elf_flt_cvtt_int_rr(gen_state, FLOAT_F64, dst_size, 0x2C, instr->cvttsd2si_rr.dst, instr->cvttsd2si_rr.src);
+    } break;
+    case X64_Instr_Kind_CVTTSD2SI_RM: {
+        const bool dst_is_8byte = instr->flags & X64_INSTR_CVT_FLT_SI_INT64_MASK;
+        const u8 dst_size = dst_is_8byte ? 8 : 4;
+        X64_write_elf_flt_cvtt_int_rm(gen_state, FLOAT_F64, dst_size, 0x2C, instr->cvttsd2si_rm.dst, &instr->cvttsd2si_rm.src);
     } break;
     // LEA
     case X64_Instr_Kind_LEA: {
