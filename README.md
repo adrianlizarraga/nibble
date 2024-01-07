@@ -3,7 +3,7 @@
 
 [![Unit Tests](https://github.com/nibble-language/nibble/actions/workflows/test_nibble_programs.yml/badge.svg)](https://github.com/nibble-language/nibble/actions/workflows/test_nibble_programs.yml)
 
-This is a programming language based on C that is developed primarily as a learning exercise. The goal is to add the following features to C:
+Nibble is a programming language based on C. Primarily developed as a learning exercise, this compiler generates x64 machine code on Linux without the use of any libraries other than libc. The current goal is to add the following features to C:
 
 - [x] Order-independent declarations
 - [x] Module import system (based on javascript ES6)
