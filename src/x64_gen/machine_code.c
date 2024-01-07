@@ -1988,6 +1988,51 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     case X64_Instr_Kind_MOV_FLT_MR: {
         X64_write_elf_binary_flt_mr(gen_state, instr->mov_flt_mr.kind, 0x11, &instr->mov_flt_mr.dst, instr->mov_flt_mr.src);
     } break;
+    // MOVDQU
+    case X64_Instr_Kind_MOVDQU_RM: {
+        const u8 dst_reg = x64_reg_val[instr->movdqu_rm.dst];
+        const X64_AddrBytes src_addr = X64_get_addr_bytes(&instr->movdqu_rm.src);
+        const bool dst_is_ext = dst_reg > 7;
+        const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+
+        array_push(gen_state->curr_bblock->buffer, 0xF3);
+
+        if (use_ext_regs) {
+            array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+        }
+
+        array_push(gen_state->curr_bblock->buffer, 0x0F);
+        array_push(gen_state->curr_bblock->buffer, 0x6F);
+        array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm));
+
+        if (src_addr.has_sib_byte) {
+            array_push(gen_state->curr_bblock->buffer, src_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &src_addr);
+    } break;
+    case X64_Instr_Kind_MOVDQU_MR: {
+        const X64_AddrBytes dst_addr = X64_get_addr_bytes(&instr->movdqu_mr.dst);
+        const u8 src_reg = x64_reg_val[instr->movdqu_mr.src];
+        const bool src_is_ext = src_reg > 7;
+        const bool use_ext_regs = src_is_ext || dst_addr.rex_b || dst_addr.rex_x;
+
+        array_push(gen_state->curr_bblock->buffer, 0xF3);
+
+        if (use_ext_regs) {
+            array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, src_reg >> 3, dst_addr.rex_x, dst_addr.rex_b));
+        }
+
+        array_push(gen_state->curr_bblock->buffer, 0x0F);
+        array_push(gen_state->curr_bblock->buffer, 0x7F);
+        array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(dst_addr.mod, src_reg, dst_addr.rm));
+
+        if (dst_addr.has_sib_byte) {
+            array_push(gen_state->curr_bblock->buffer, dst_addr.sib_byte);
+        }
+
+        X64_write_addr_disp(gen_state, &dst_addr);
+    } break;
     // CVTSS2SD
     case X64_Instr_Kind_CVTSS2SD_RR: {
         X64_write_elf_binary_flt_rr(gen_state, FLOAT_F32, 0x5A, instr->cvtss2sd_rr.dst, instr->cvtss2sd_rr.src);
