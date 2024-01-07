@@ -952,6 +952,8 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, Sym
                 X64_NASM_PRINT_FTL(proc_str, "%s %s, %s", mov_flt_op, dst_reg, src_reg);
             } break;
             case X64_Instr_Kind_MOV_FLT_MR: {
+                // TODO: This instruction is NOT actually supported!
+                // Register allocation needs to force dst operand to be in a register.
                 const FloatKind flt_kind = instr->mov_flt_mr.kind;
                 const u8 size = float_kind_sizes[flt_kind];
                 const char* dst_mem = X64_nasm_print_sibd_addr(tmp_mem, &instr->mov_flt_mr.dst, size);

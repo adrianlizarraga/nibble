@@ -1883,6 +1883,13 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
             X64_write_imm_bytes(gen_state, imm, size);
         }
     } break;
+    // ADD_FLT
+    case X64_Instr_Kind_ADD_FLT_RR: {
+        X64_write_elf_binary_flt_rr(gen_state, instr->add_flt_rr.kind, 0x58, instr->add_flt_rr.dst, instr->add_flt_rr.src);
+    } break;
+    case X64_Instr_Kind_ADD_FLT_RM: {
+        X64_write_elf_binary_flt_rm(gen_state, instr->add_flt_rm.kind, 0x58, instr->add_flt_rm.dst, &instr->add_flt_rm.src);
+    } break;
     // MOV_FLT
     case X64_Instr_Kind_MOV_FLT_RR: {
         X64_write_elf_binary_flt_rr(gen_state, instr->mov_flt_rr.kind, 0x10, instr->mov_flt_rr.dst, instr->mov_flt_rr.src);
