@@ -1571,6 +1571,9 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
         if (need_rex_w || src_is_ext || dst_is_ext) {
             array_push(bblock->buffer, X64_rex_nosib(need_rex_w, dst_reg, src_reg)); // REX.RB for ext regs
         }
+        else if (src_size == 1 && X64_reg_aliased_8h(instr->movsx_rr.src)) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // disable ah, dh, etc
+        }
 
         array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte
         array_push(bblock->buffer, (opcode >> 8) & 0x00FF); // higher opcode byte
@@ -1666,6 +1669,9 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
 
         if (need_rex_w || src_is_ext || dst_is_ext) {
             array_push(bblock->buffer, X64_rex_nosib(need_rex_w, dst_reg, src_reg)); // REX.RB for ext regs
+        }
+        else if (src_size == 1 && X64_reg_aliased_8h(instr->movzx_rr.src)) {
+            array_push(bblock->buffer, X64_rex_prefix(0, 0, 0, 0)); // disable ah, dh, etc
         }
 
         array_push(bblock->buffer, opcode & 0x00FF); // lower opcode byte

@@ -599,7 +599,7 @@ static bool test_movsx_rr(Allocator* mem_arena, bool verbose)
     X64_emit_instr_mov_ri(&proc0->x64_instrs, 1, X64_RCX, -2);
     X64_emit_instr_mov_ri(&proc0->x64_instrs, 1, X64_R10, -2);
 
-    X64_emit_instr_movsx_rr(&proc0->x64_instrs, 2, X64_RAX, 1, X64_RCX);
+    X64_emit_instr_movsx_rr(&proc0->x64_instrs, 2, X64_RAX, 1, X64_RSI); // rsi aliases with dh
     X64_emit_instr_movsx_rr(&proc0->x64_instrs, 4, X64_RAX, 1, X64_RCX);
     X64_emit_instr_movsx_rr(&proc0->x64_instrs, 8, X64_RAX, 1, X64_RCX);
     X64_emit_instr_movsx_rr(&proc0->x64_instrs, 4, X64_RAX, 2, X64_RCX);
@@ -620,7 +620,7 @@ static bool test_movsx_rr(Allocator* mem_arena, bool verbose)
     const char* nasm_code = "proc0:\n"
                             " mov cl, -2\n"
                             " mov r10b, -2\n"
-                            " movsx ax, cl\n"
+                            " movsx ax, sil\n"
                             " movsx eax, cl\n"
                             " movsx rax, cl\n"
                             " movsx eax, cx\n"
