@@ -45,7 +45,6 @@
 #include "bytecode/print_ir.c"
 
 // X86_64 backend
-#include "x64_gen/module.c"
 #include "x64_gen/regs.c"
 #include "x64_gen/xir.c"
 #include "x64_gen/ir_to_xir.c"

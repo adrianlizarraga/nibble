@@ -410,11 +410,10 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
                           const X64_TextSection* text_sec, const BucketList* foreign_procs, const char* output_file)
 {
     NIBBLE_UNUSED_VAR(tmp_mem);
-    NIBBLE_UNUSED_VAR(output_file);
 
-    FILE* out_fd = fopen("elf.o", "wb");
+    FILE* out_fd = fopen(output_file, "wb");
     if (!out_fd) {
-        ftprint_err("Failed to open output file `elf.o`\n");
+        ftprint_err("Failed to open output file %s\n", output_file);
         return false;
     }
 
@@ -567,14 +566,16 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
                 reloc->r_offset = reloc_info->usage_off;
                 reloc->r_info = ((u64)(rodata_sym_idx) << 32) + (u64)(ELF_R_X86_64_PC32);
                 reloc->r_addend = str_offset + reloc_info->ref_addr.disp - reloc_info->bytes_to_next_ip;
-            } else if (reloc_info->ref_addr.kind == CONST_ADDR_FLOAT_LIT) {
+            }
+            else if (reloc_info->ref_addr.kind == CONST_ADDR_FLOAT_LIT) {
                 const FloatLit* float_lit = reloc_info->ref_addr.float_lit;
                 const u64 float_offset = rodata_sec->float_offs[float_lit->index];
 
                 reloc->r_offset = reloc_info->usage_off;
                 reloc->r_info = ((u64)(rodata_sym_idx) << 32) + (u64)(ELF_R_X86_64_PC32);
                 reloc->r_addend = float_offset - reloc_info->bytes_to_next_ip;
-            } else if (reloc_info->ref_addr.kind == CONST_ADDR_SYM) {
+            }
+            else if (reloc_info->ref_addr.kind == CONST_ADDR_SYM) {
                 const Symbol* sym = reloc_info->ref_addr.sym;
 
                 // Global variable used in code.
@@ -595,8 +596,7 @@ static bool x64_write_elf(Allocator* gen_mem, Allocator* tmp_mem, const X64_RODa
                 }
             }
             else {
-                NIBBLE_FATAL_EXIT("Unexpected rela.text ConstAddr kind (%d) for relocation entity",
-                                  reloc_info->ref_addr.kind);
+                NIBBLE_FATAL_EXIT("Unexpected rela.text ConstAddr kind (%d) for relocation entity", reloc_info->ref_addr.kind);
             }
         }
     }

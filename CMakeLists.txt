@@ -40,8 +40,7 @@ else()
         src/bytecode/vars.c
         src/bytecode/procs.c
         src/bytecode/print_ir.c)
-    set(NIBBLE_X64_SRCS src/x64_gen/module.c
-        src/x64_gen/regs.c
+    set(NIBBLE_X64_SRCS src/x64_gen/regs.c
         src/x64_gen/xir.c
         src/x64_gen/ir_to_xir.c
         src/x64_gen/livevar.c

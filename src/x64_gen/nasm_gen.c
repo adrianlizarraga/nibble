@@ -1,3 +1,5 @@
+#include "nibble.h"
+#include "stream.h"
 #include "allocator.h"
 #include "array.h"
 #include "ast/module.h"
@@ -1166,8 +1168,8 @@ static Array(char) X64_nasm_gen_proc(Allocator* gen_mem, Allocator* tmp_mem, Sym
     return proc_str;
 }
 
-bool X64_nasm_gen_module(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
-                         GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
+bool x64_gen_nasm(Allocator* gen_mem, Allocator* tmp_mem, GlobalData* vars, BucketList* procs, GlobalData* str_lits,
+                  GlobalData* float_lits, BucketList* foreign_procs, const char* output_file)
 {
     AllocatorState gen_mem_state = allocator_get_state(gen_mem);
     AllocatorState tmp_mem_state = allocator_get_state(tmp_mem);
