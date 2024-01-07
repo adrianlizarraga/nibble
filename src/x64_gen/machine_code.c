@@ -1903,6 +1903,20 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     case X64_Instr_Kind_SUB_FLT_RM: {
         X64_write_elf_binary_flt_rm(gen_state, instr->sub_flt_rm.kind, 0x5C, instr->sub_flt_rm.dst, &instr->sub_flt_rm.src);
     } break;
+    // MUL_FLT
+    case X64_Instr_Kind_MUL_FLT_RR: {
+        X64_write_elf_binary_flt_rr(gen_state, instr->mul_flt_rr.kind, 0x59, instr->mul_flt_rr.dst, instr->mul_flt_rr.src);
+    } break;
+    case X64_Instr_Kind_MUL_FLT_RM: {
+        X64_write_elf_binary_flt_rm(gen_state, instr->mul_flt_rm.kind, 0x59, instr->mul_flt_rm.dst, &instr->mul_flt_rm.src);
+    } break;
+    // DIV_FLT
+    case X64_Instr_Kind_DIV_FLT_RR: {
+        X64_write_elf_binary_flt_rr(gen_state, instr->div_flt_rr.kind, 0x5E, instr->div_flt_rr.dst, instr->div_flt_rr.src);
+    } break;
+    case X64_Instr_Kind_DIV_FLT_RM: {
+        X64_write_elf_binary_flt_rm(gen_state, instr->div_flt_rm.kind, 0x5E, instr->div_flt_rm.dst, &instr->div_flt_rm.src);
+    } break;
     // MOV_FLT
     case X64_Instr_Kind_MOV_FLT_RR: {
         X64_write_elf_binary_flt_rr(gen_state, instr->mov_flt_rr.kind, 0x10, instr->mov_flt_rr.dst, instr->mov_flt_rr.src);
