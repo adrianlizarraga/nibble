@@ -1215,6 +1215,7 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
         ftprint_out("[Example NASM command]: nasm -f elf64 %s -o %s\n", nasm_fname.str, obj_fname.str);
     }
     else {
+        print_info(nib_ctx, "Generating ELF object file: %s ...", obj_fname.str);
         x64_gen_elf(nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, main_sym, &nib_ctx->str_lits,
                     &nib_ctx->float_lits, &nib_ctx->foreign_procs, obj_fname.str);
     }
