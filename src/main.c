@@ -72,6 +72,7 @@ void print_usage(FILE* fd, const char* program_name)
     ftprint_file(fd, true, "    -I    <module_search_path>      Add module (import/include) search path\n");
     ftprint_file(fd, true, "    -L    <library_search_path>     Add library search path\n");
     ftprint_file(fd, true, "    -o    <output_file>             Output binary file name. Defaults to `out`\n");
+    ftprint_file(fd, true, "    -asm                            Generate assembly text file\n");
 }
 
 const char* get_flag_value(Argv_Helper* argv_helper, const char* program_name, const char* flag)
@@ -178,6 +179,7 @@ int main(int argc, char* argv[])
 
     bool silent = false;
     bool test_mode_paths = false;
+    bool gen_asm = false;
 
     // Set default target os/arch.
 #if defined(NIBBLE_HOST_LINUX)
@@ -222,6 +224,9 @@ int main(int argc, char* argv[])
             const char* search_path = get_flag_value(&argv_helper, program_name, "-L");
 
             add_search_path(lib_paths, &num_lib_paths, MAX_NUM_USER_LIB_PATHS, search_path, program_name, "library");
+        }
+        else if (cstr_cmp(arg, "-asm") == 0) {
+            gen_asm = true;
         }
         else {
             if (main_file.len) {
@@ -284,7 +289,7 @@ int main(int argc, char* argv[])
     add_search_path(module_paths, &num_module_paths, ARRAY_LEN(module_paths), ".", program_name, "module");
     add_search_path(lib_paths, &num_lib_paths, ARRAY_LEN(lib_paths), out_dir_path.str, program_name, "library");
 
-    NibbleCtx* nib_ctx = nibble_init(&arena, target_os, target_arch, silent, test_mode_paths, &working_dir, &prog_entry_dir,
+    NibbleCtx* nib_ctx = nibble_init(&arena, target_os, target_arch, silent, test_mode_paths, gen_asm, &working_dir, &prog_entry_dir,
                                      module_paths, num_module_paths, lib_paths, num_lib_paths);
 
     if (!nib_ctx) {

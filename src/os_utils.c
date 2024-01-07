@@ -1,3 +1,5 @@
+#include "allocator.h"
+#include "array.h"
 #include "os_utils.h"
 #include "cstring.h"
 
@@ -41,6 +43,23 @@ int run_cmd(Allocator* allocator, const ExecCmd* cmd, bool silent)
 
         return ret;
     }
+}
+
+Array(char) cmd_to_str(Allocator* arena, const ExecCmd* cmd)
+{
+    Array(char) str = array_create(arena, char, 32);
+
+    for (size_t i = 0; i < cmd->argc; i++) {
+        if (i > 0) {
+            array_push(str, ' ');
+        }
+
+        ftprint_char_array(&str, false, "%s", cmd->argv[i]);
+    }
+
+    array_push(str, '\0');
+
+    return str;
 }
 
 bool is_stderr_atty(void)

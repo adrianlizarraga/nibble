@@ -43,6 +43,10 @@ typedef struct NibbleCtx {
     // Set with '-test_mode_paths' compiler flag.
     bool test_mode_paths;
 
+    // True if the compiler should generate an assembly file instead of an executable.
+    // Set with the '-asm' command-line option.
+    bool gen_asm;
+
     const Path* working_dir; // The path from which the compiler is called.
     const Path* prog_entry_dir; // The directory containing the program entry file (i.e., main())
 
@@ -86,7 +90,7 @@ typedef struct NibbleCtx {
     GlobalData float_lits;
 } NibbleCtx;
 
-NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent, bool test_mode_paths,
+NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent, bool test_mode_paths, bool gen_asm,
                        const Path* working_dir, const Path* prog_entry_dir, const StringView* module_paths, u32 num_module_paths,
                        const StringView* lib_paths, u32 num_lib_paths);
 bool nibble_compile(NibbleCtx* nibble, const Path* main_path, const Path* out_path);

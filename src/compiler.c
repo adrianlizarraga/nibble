@@ -527,7 +527,7 @@ static bool init_keywords(HMap* ident_map)
     return true;
 }
 
-NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent, bool test_mode_paths,
+NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, bool silent, bool test_mode_paths, bool gen_asm,
                        const Path* working_dir, const Path* prog_entry_dir, const StringView* module_paths, u32 num_module_paths,
                        const StringView* lib_paths, u32 num_lib_paths)
 {
@@ -549,6 +549,7 @@ NibbleCtx* nibble_init(Allocator* mem_arena, OS target_os, Arch target_arch, boo
 
     nib_ctx->silent = silent;
     nib_ctx->test_mode_paths = test_mode_paths;
+    nib_ctx->gen_asm = gen_asm;
     nib_ctx->target_os = target_os;
     nib_ctx->target_arch = target_arch;
     nib_ctx->gen_mem = mem_arena;
@@ -1197,27 +1198,25 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
                     &nib_ctx->type_cache, &nib_ctx->float_lit_map);
 
     //////////////////////////////////////////
-    //          Gen NASM output
+    //          Gen output
     //////////////////////////////////////////
     assert(nib_ctx->target_arch == ARCH_X64); // TODO: Support other architectures
-
-    Path nasm_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.s", path_len(out_path), out_path->str);
-
-    print_info(nib_ctx, "Generating NASM assembly output: %s ...", nasm_fname.str);
-    x64_init_target(nib_ctx->target_os);
-    x64_gen_module(nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, main_sym, &nib_ctx->str_lits,
-                   &nib_ctx->float_lits, &nib_ctx->foreign_procs, nasm_fname.str);
-
-    //////////////////////////////////////////
-    //          Run NASM assembler
-    //////////////////////////////////////////
     Path obj_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.o", path_len(out_path), out_path->str);
-    const char* nasm_cmd_argv[] = {"nasm", "-f", "elf64", nasm_fname.str, "-o", obj_fname.str, NULL};
-    ExecCmd nasm_cmd = {.argv = nasm_cmd_argv, .argc = ARRAY_LEN(nasm_cmd_argv) - 1};
 
-    if (run_cmd(&nib_ctx->tmp_mem, &nasm_cmd, nib_ctx->silent) != 0) {
-        ftprint_err("[ERROR]: NASM command failed\n");
-        return false;
+    x64_init_target(nib_ctx->target_os);
+
+    if (nib_ctx->gen_asm) {
+        Path nasm_fname = path_createf(&nib_ctx->tmp_mem, "%.*s.s", path_len(out_path), out_path->str);
+
+        print_info(nib_ctx, "Generating NASM assembly output: %s ...", nasm_fname.str);
+        x64_gen_nasm(nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, &nib_ctx->str_lits,
+                     &nib_ctx->float_lits, &nib_ctx->foreign_procs, nasm_fname.str);
+
+        ftprint_out("[Example NASM command]: nasm -f elf64 %s -o %s\n", nasm_fname.str, obj_fname.str);
+    }
+    else {
+        x64_gen_elf(nib_ctx->gen_mem, &nib_ctx->tmp_mem, &nib_ctx->vars, &nib_ctx->procs, main_sym, &nib_ctx->str_lits,
+                    &nib_ctx->float_lits, &nib_ctx->foreign_procs, obj_fname.str);
     }
 
     //////////////////////////////////////////
@@ -1230,7 +1229,11 @@ bool nibble_compile(NibbleCtx* nib_ctx, const Path* main_path, const Path* out_p
         return false;
     }
 
-    if (run_cmd(&nib_ctx->tmp_mem, &ld_cmd, nib_ctx->silent) != 0) {
+    if (nib_ctx->gen_asm) {
+        Array(char) ld_cmd_str = cmd_to_str(&nib_ctx->tmp_mem, &ld_cmd);
+        ftprint_out("[Example linker command]: %s\n", ld_cmd_str);
+    }
+    else if (run_cmd(&nib_ctx->tmp_mem, &ld_cmd, nib_ctx->silent) != 0) {
         ftprint_err("[ERROR]: Linker command failed\n");
         return false;
     }
@@ -1315,4 +1318,3 @@ void nibble_cleanup(NibbleCtx* nib_ctx)
     allocator_destroy(&nib_ctx->tmp_mem);
     allocator_destroy(&nib_ctx->ast_mem);
 }
-

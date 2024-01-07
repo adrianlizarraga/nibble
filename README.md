@@ -1,9 +1,9 @@
-**THIS PROGRAMMING LANGUAGE IS A WORK IN PROGRESS. ANYTHING CAN CHANGE AT ANY MOMENT. USE AT YOUR OWN RISK!**
+**THIS PROGRAMMING LANGUAGE IS A WORK IN PROGRESS. ANYTHING CAN CHANGE AT ANY MOMENT.**
 # Nibble
 
 [![Unit Tests](https://github.com/nibble-language/nibble/actions/workflows/test_nibble_programs.yml/badge.svg)](https://github.com/nibble-language/nibble/actions/workflows/test_nibble_programs.yml)
 
-This is an experimental programming language based on C. The goal is to create a compiled, statically-typed programming language that adds the following features to C:
+This is a programming language based on C that is developed primarily as a learning exercise. The goal is to add the following features to C:
 
 - [x] Order-independent declarations
 - [x] Module import system (based on javascript ES6)
@@ -32,15 +32,10 @@ The only library required to build the Nibble compiler is the C standard library
 #### Linux
 The following terminal command generates an executable called `nibble` in the root project directory.
 ```console
-$ gcc -I./src -O2 -D NIBBLE_ENABLE_UNITY_BUILD -o nibble src/main.c
+gcc -I./src -O2 -D NIBBLE_ENABLE_UNITY_BUILD -o nibble src/main.c
 ```
 
-### 2. Install NASM
-The Nibble compiler currently generates an assembly file that is assembled with NASM and then linked with your operating system's linker. Therefore, you'll need to install the [NASM assembler](https://nasm.us/) and add it to your system `PATH`. 
-
-Refer to the wiki page on [How to install NASM](https://github.com/adrianlizarraga/nibble/wiki/How-to-install-NASM) for more detailed instructions.
-
-### 3. Compile a nibble program
+### 2. Compile a nibble program
 Here's an example that compiles the ["Hello World" example program](examples/hello_world/main.nib) on linux.
 
 ```console
@@ -72,6 +67,7 @@ OPTIONS:
     -I    <module_search_path>      Add module (import/include) search path
     -L    <library_search_path>     Add library search path
     -o    <output_file>             Output binary file name. Defaults to `out`
+    -asm                            Generate assembly text file
 ```
 
 ## Code examples
