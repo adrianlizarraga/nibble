@@ -25,7 +25,7 @@ jobs:
       run: sudo apt install nasm
 
     - name: Build test C libs
-      run: cd ${{github.workspace}}/tests/test_programs/libs && ./build.sh
+      run: cd ${{github.workspace}}/tests/nibble_programs/libs && ./build.sh
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
@@ -41,7 +41,7 @@ jobs:
 
     - name: Test nibble programs
       working-directory: ${{github.workspace}}/build
-      run: python3 ${{github.workspace}}/run_tests.py --test_target ${{github.workspace}}/tests/test_programs
+      run: python3 ${{github.workspace}}/run_tests.py --test_target ${{github.workspace}}/tests/nibble_programs
 
     - name: Test ELF machine code generation
       working-directory: ${{github.workspace}}/build
