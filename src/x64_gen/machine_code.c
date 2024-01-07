@@ -790,6 +790,53 @@ static inline void X64_write_elf_binary_flt_mr(X64_TextGenState* gen_state, Floa
     X64_write_addr_disp(gen_state, &dst_addr);
 }
 
+static inline void X64_write_elf_cmp_flt_rr(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix, X64_Reg dst, X64_Reg src)
+{
+    const u8 src_reg = x64_reg_val[src];
+    const u8 dst_reg = x64_reg_val[dst];
+    const bool src_is_ext = src_reg > 7;
+    const bool dst_is_ext = dst_reg > 7;
+
+    if (fkind == FLOAT_F64) {
+        array_push(gen_state->curr_bblock->buffer, 0x66);
+    }
+
+    if (src_is_ext || dst_is_ext) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_nosib(0, dst_reg, src_reg));
+    }
+
+    array_push(gen_state->curr_bblock->buffer, 0x0F);
+    array_push(gen_state->curr_bblock->buffer, opcode_suffix);
+    array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(X64_MOD_DIRECT, dst_reg, src_reg));
+}
+
+static inline void X64_write_elf_cmp_flt_rm(X64_TextGenState* gen_state, FloatKind fkind, u8 opcode_suffix, X64_Reg dst,
+                                            const X64_SIBD_Addr* src)
+{
+    const u8 dst_reg = x64_reg_val[dst];
+    const X64_AddrBytes src_addr = X64_get_addr_bytes(src);
+    const bool dst_is_ext = dst_reg > 7;
+    const bool use_ext_regs = dst_is_ext || src_addr.rex_b || src_addr.rex_x;
+
+    if (fkind == FLOAT_F64) {
+        array_push(gen_state->curr_bblock->buffer, 0x66);
+    }
+
+    if (use_ext_regs) {
+        array_push(gen_state->curr_bblock->buffer, X64_rex_prefix(0, dst_reg >> 3, src_addr.rex_x, src_addr.rex_b));
+    }
+
+    array_push(gen_state->curr_bblock->buffer, 0x0F);
+    array_push(gen_state->curr_bblock->buffer, opcode_suffix);
+    array_push(gen_state->curr_bblock->buffer, X64_modrm_byte(src_addr.mod, dst_reg, src_addr.rm));
+
+    if (src_addr.has_sib_byte) {
+        array_push(gen_state->curr_bblock->buffer, src_addr.sib_byte);
+    }
+
+    X64_write_addr_disp(gen_state, &src_addr);
+}
+
 static inline void X64_write_elf_flt_int_cvt_rr(X64_TextGenState* gen_state, FloatKind fkind, u8 int_size, u8 opcode_suffix,
                                                 X64_Reg dst, X64_Reg src)
 {
@@ -1916,6 +1963,20 @@ static void X64_elf_gen_instr(X64_TextGenState* gen_state, X64_Instr* instr)
     } break;
     case X64_Instr_Kind_DIV_FLT_RM: {
         X64_write_elf_binary_flt_rm(gen_state, instr->div_flt_rm.kind, 0x5E, instr->div_flt_rm.dst, &instr->div_flt_rm.src);
+    } break;
+    // UCOMISS
+    case X64_Instr_Kind_UCOMISS_RR: {
+        X64_write_elf_cmp_flt_rr(gen_state, FLOAT_F32, 0x2E, instr->ucomiss_rr.dst, instr->ucomiss_rr.src);
+    } break;
+    case X64_Instr_Kind_UCOMISS_RM: {
+        X64_write_elf_cmp_flt_rm(gen_state, FLOAT_F32, 0x2E, instr->ucomiss_rm.dst, &instr->ucomiss_rm.src);
+    } break;
+    // UCOMISD
+    case X64_Instr_Kind_UCOMISD_RR: {
+        X64_write_elf_cmp_flt_rr(gen_state, FLOAT_F64, 0x2E, instr->ucomisd_rr.dst, instr->ucomisd_rr.src);
+    } break;
+    case X64_Instr_Kind_UCOMISD_RM: {
+        X64_write_elf_cmp_flt_rm(gen_state, FLOAT_F64, 0x2E, instr->ucomisd_rm.dst, &instr->ucomisd_rm.src);
     } break;
     // MOV_FLT
     case X64_Instr_Kind_MOV_FLT_RR: {

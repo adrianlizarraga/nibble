@@ -2121,6 +2121,72 @@ static bool test_div_flt_rm(Allocator* mem_arena, bool verbose)
     return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
 }
 
+// FLT UCMP
+static bool test_ucomp_flt_rr(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_emit_instr_ucomiss_rr(&proc0->x64_instrs, X64_XMM1, X64_XMM2);
+    X64_emit_instr_ucomiss_rr(&proc0->x64_instrs, X64_XMM1, X64_XMM8);
+    X64_emit_instr_ucomiss_rr(&proc0->x64_instrs, X64_XMM11, X64_XMM1);
+    X64_emit_instr_ucomisd_rr(&proc0->x64_instrs, X64_XMM1, X64_XMM2);
+    X64_emit_instr_ucomisd_rr(&proc0->x64_instrs, X64_XMM1, X64_XMM9);
+    X64_emit_instr_ucomisd_rr(&proc0->x64_instrs, X64_XMM11, X64_XMM1);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " ucomiss xmm1, xmm2\n"
+                            " ucomiss xmm1, xmm8\n"
+                            " ucomiss xmm11, xmm1\n"
+                            " ucomisd xmm1, xmm2\n"
+                            " ucomisd xmm1, xmm9\n"
+                            " ucomisd xmm11, xmm1\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
+static bool test_ucomp_flt_rm(Allocator* mem_arena, bool verbose)
+{
+    Elf_Test_Prog elf_prog = {0};
+    init_test_program(mem_arena, &elf_prog);
+
+    Elf_Test_Proc* proc0 = push_test_proc(mem_arena, &elf_prog);
+    X64_SIBD_Addr rbp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RBP, .local.disp = -8};
+    X64_SIBD_Addr rsp_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_RSP, .local.disp = -8};
+    X64_SIBD_Addr r10_addr = {.kind = X64_SIBD_ADDR_LOCAL, .local.base_reg = X64_R10, .local.disp = -8};
+    X64_emit_instr_ucomiss_rm(&proc0->x64_instrs, X64_XMM1, rbp_addr);
+    X64_emit_instr_ucomiss_rm(&proc0->x64_instrs, X64_XMM1, rsp_addr);
+    X64_emit_instr_ucomiss_rm(&proc0->x64_instrs, X64_XMM11, r10_addr);
+    X64_emit_instr_ucomisd_rm(&proc0->x64_instrs, X64_XMM1, rbp_addr);
+    X64_emit_instr_ucomisd_rm(&proc0->x64_instrs, X64_XMM1, rsp_addr);
+    X64_emit_instr_ucomisd_rm(&proc0->x64_instrs, X64_XMM11, r10_addr);
+    X64_emit_instr_ret(&proc0->x64_instrs);
+    X64_elf_gen_instrs(mem_arena, &proc0->x64_instrs, &elf_prog.buffer, &elf_prog.relocs, &elf_prog.proc_off_patches);
+
+    Array(u8) nasm_buffer = array_create(mem_arena, u8, 64);
+    const char* nasm_code = "proc0:\n"
+                            " ucomiss xmm1, dword [rbp - 8]\n"
+                            " ucomiss xmm1, dword [rsp - 8]\n"
+                            " ucomiss xmm11, dword [r10 - 8]\n"
+                            " ucomisd xmm1, qword [rbp - 8]\n"
+                            " ucomisd xmm1, qword [rsp - 8]\n"
+                            " ucomisd xmm11, qword [r10 - 8]\n"
+                            " ret\n";
+    if (!get_nasm_machine_code(&nasm_buffer, nasm_code, mem_arena)) {
+        return false;
+    }
+
+    return expect_bufs_equal(elf_prog.buffer, nasm_buffer, verbose);
+}
+
 static bool test_cvtss2sd_rr(Allocator* mem_arena, bool verbose)
 {
     Elf_Test_Prog elf_prog = {0};
@@ -2729,6 +2795,8 @@ static Elf_Gen_Test elf_gen_tests[] = {
     {"test_mul_flt_rm", test_mul_flt_rm},
     {"test_div_flt_rr", test_div_flt_rr},
     {"test_div_flt_rm", test_div_flt_rm},
+    {"test_ucomp_flt_rr", test_ucomp_flt_rr},
+    {"test_ucomp_flt_rm", test_ucomp_flt_rm},
 };
 
 static void print_usage(FILE* fd, const char* program_name)
