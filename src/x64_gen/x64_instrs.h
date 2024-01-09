@@ -56,7 +56,6 @@ typedef struct X64_SIBD_Addr {
     X_MACRO(SUB_MI)             \
     X_MACRO(IMUL_RR)            \
     X_MACRO(IMUL_RM)            \
-    X_MACRO(IMUL_MR)            \
     X_MACRO(IMUL_RI)            \
     X_MACRO(IMUL_MI)            \
     X_MACRO(IMUL_R)             \
@@ -80,16 +79,12 @@ typedef struct X64_SIBD_Addr {
     X_MACRO(XOR_MI)             \
     X_MACRO(ADD_FLT_RR)         \
     X_MACRO(ADD_FLT_RM)         \
-    X_MACRO(ADD_FLT_MR)         \
     X_MACRO(SUB_FLT_RR)         \
     X_MACRO(SUB_FLT_RM)         \
-    X_MACRO(SUB_FLT_MR)         \
     X_MACRO(MUL_FLT_RR)         \
     X_MACRO(MUL_FLT_RM)         \
-    X_MACRO(MUL_FLT_MR)         \
     X_MACRO(DIV_FLT_RR)         \
     X_MACRO(DIV_FLT_RM)         \
-    X_MACRO(DIV_FLT_MR)         \
     X_MACRO(NEG_R)              \
     X_MACRO(NEG_M)              \
     X_MACRO(NOT_R)              \
@@ -148,10 +143,9 @@ typedef struct X64_SIBD_Addr {
     X_MACRO(UCOMISD_RM)         \
     X_MACRO(LEA)
 
-#define X_MACRO(name) X64_Instr_Kind_ ## name,
+#define X_MACRO(name) X64_Instr_Kind_##name,
 typedef enum X64_Instr_Kind {
-    LIST_OF_X64_INSTR_KINDS
-    X64_Instr_Kind_COUNT
+    LIST_OF_X64_INSTR_KINDS X64_Instr_Kind_COUNT
 } X64_Instr_Kind;
 #undef X_MACRO
 
@@ -264,12 +258,6 @@ typedef struct X64_Instr {
             u8 dst;
             X64_SIBD_Addr src;
         } imul_rm;
-
-        struct {
-            u8 size;
-            X64_SIBD_Addr dst;
-            u8 src;
-        } imul_mr;
 
         struct {
             u8 size;
@@ -407,12 +395,6 @@ typedef struct X64_Instr {
 
         struct {
             FloatKind kind;
-            X64_SIBD_Addr dst;
-            u8 src;
-        } add_flt_mr;
-
-        struct {
-            FloatKind kind;
             u8 dst;
             u8 src;
         } sub_flt_rr;
@@ -422,12 +404,6 @@ typedef struct X64_Instr {
             u8 dst;
             X64_SIBD_Addr src;
         } sub_flt_rm;
-
-        struct {
-            FloatKind kind;
-            X64_SIBD_Addr dst;
-            u8 src;
-        } sub_flt_mr;
 
         struct {
             FloatKind kind;
@@ -443,12 +419,6 @@ typedef struct X64_Instr {
 
         struct {
             FloatKind kind;
-            X64_SIBD_Addr dst;
-            u8 src;
-        } mul_flt_mr;
-
-        struct {
-            FloatKind kind;
             u8 dst;
             u8 src;
         } div_flt_rr;
@@ -458,12 +428,6 @@ typedef struct X64_Instr {
             u8 dst;
             X64_SIBD_Addr src;
         } div_flt_rm;
-
-        struct {
-            FloatKind kind;
-            X64_SIBD_Addr dst;
-            u8 src;
-        } div_flt_mr;
 
         struct {
             u8 size;
@@ -834,14 +798,12 @@ void X64_emit_instr_sub_mi(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, u32 i
 
 void X64_emit_instr_imul_rr(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_Reg src);
 void X64_emit_instr_imul_rm(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src);
-void X64_emit_instr_imul_mr(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, X64_Reg src);
 void X64_emit_instr_imul_ri(X64_Instrs* instrs, u8 size, X64_Reg dst, u32 imm);
 void X64_emit_instr_imul_mi(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, u32 imm);
 void X64_emit_instr_imul_r(X64_Instrs* instrs, u8 size, X64_Reg src);
 void X64_emit_instr_imul_m(X64_Instrs* instrs, u8 size, X64_SIBD_Addr src);
 void X64_emit_instr_mul_r(X64_Instrs* instrs, u8 size, X64_Reg src);
 void X64_emit_instr_mul_m(X64_Instrs* instrs, u8 size, X64_SIBD_Addr src);
-
 
 void X64_emit_instr_and_rr(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_Reg src);
 void X64_emit_instr_and_rm(X64_Instrs* instrs, u8 size, X64_Reg dst, X64_SIBD_Addr src);
@@ -863,19 +825,15 @@ void X64_emit_instr_xor_mi(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst, u32 i
 
 void X64_emit_instr_add_flt_rr(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_Reg src);
 void X64_emit_instr_add_flt_rm(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src);
-void X64_emit_instr_add_flt_mr(X64_Instrs* instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src);
 
 void X64_emit_instr_sub_flt_rr(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_Reg src);
 void X64_emit_instr_sub_flt_rm(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src);
-void X64_emit_instr_sub_flt_mr(X64_Instrs* instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src);
 
 void X64_emit_instr_mul_flt_rr(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_Reg src);
 void X64_emit_instr_mul_flt_rm(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src);
-void X64_emit_instr_mul_flt_mr(X64_Instrs* instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src);
 
 void X64_emit_instr_div_flt_rr(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_Reg src);
 void X64_emit_instr_div_flt_rm(X64_Instrs* instrs, FloatKind kind, X64_Reg dst, X64_SIBD_Addr src);
-void X64_emit_instr_div_flt_mr(X64_Instrs* instrs, FloatKind kind, X64_SIBD_Addr dst, X64_Reg src);
 
 void X64_emit_instr_neg_r(X64_Instrs* instrs, u8 size, X64_Reg dst);
 void X64_emit_instr_neg_m(X64_Instrs* instrs, u8 size, X64_SIBD_Addr dst);

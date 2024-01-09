@@ -177,7 +177,6 @@ X64_DEF_EMIT_INSTR_BINARY_MI(sub_mi, X64_Instr_Kind_SUB_MI)
 
 X64_DEF_EMIT_INSTR_BINARY_RR(imul_rr, X64_Instr_Kind_IMUL_RR)
 X64_DEF_EMIT_INSTR_BINARY_RM(imul_rm, X64_Instr_Kind_IMUL_RM)
-X64_DEF_EMIT_INSTR_BINARY_MR(imul_mr, X64_Instr_Kind_IMUL_MR)
 X64_DEF_EMIT_INSTR_BINARY_RI(imul_ri, X64_Instr_Kind_IMUL_RI)
 X64_DEF_EMIT_INSTR_BINARY_MI(imul_mi, X64_Instr_Kind_IMUL_MI)
 
@@ -234,19 +233,15 @@ X64_DEF_EMIT_INSTR_BINARY_MI(xor_mi, X64_Instr_Kind_XOR_MI)
 
 X64_DEF_EMIT_INSTR_FLT_BINARY_RR(add_flt_rr, X64_Instr_Kind_ADD_FLT_RR)
 X64_DEF_EMIT_INSTR_FLT_BINARY_RM(add_flt_rm, X64_Instr_Kind_ADD_FLT_RM)
-X64_DEF_EMIT_INSTR_FLT_BINARY_MR(add_flt_mr, X64_Instr_Kind_ADD_FLT_MR)
 
 X64_DEF_EMIT_INSTR_FLT_BINARY_RR(sub_flt_rr, X64_Instr_Kind_SUB_FLT_RR)
 X64_DEF_EMIT_INSTR_FLT_BINARY_RM(sub_flt_rm, X64_Instr_Kind_SUB_FLT_RM)
-X64_DEF_EMIT_INSTR_FLT_BINARY_MR(sub_flt_mr, X64_Instr_Kind_SUB_FLT_MR)
 
 X64_DEF_EMIT_INSTR_FLT_BINARY_RR(mul_flt_rr, X64_Instr_Kind_MUL_FLT_RR)
 X64_DEF_EMIT_INSTR_FLT_BINARY_RM(mul_flt_rm, X64_Instr_Kind_MUL_FLT_RM)
-X64_DEF_EMIT_INSTR_FLT_BINARY_MR(mul_flt_mr, X64_Instr_Kind_MUL_FLT_MR)
 
 X64_DEF_EMIT_INSTR_FLT_BINARY_RR(div_flt_rr, X64_Instr_Kind_DIV_FLT_RR)
 X64_DEF_EMIT_INSTR_FLT_BINARY_RM(div_flt_rm, X64_Instr_Kind_DIV_FLT_RM)
-X64_DEF_EMIT_INSTR_FLT_BINARY_MR(div_flt_mr, X64_Instr_Kind_DIV_FLT_MR)
 
 #define X64_DEF_EMIT_INSTR_UNARY_R(f_d, k_d)                                     \
     void X64_emit_instr_##f_d(X64_Instrs* instrs, u8 size, X64_Reg dst)   \

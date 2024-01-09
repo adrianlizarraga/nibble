@@ -175,8 +175,6 @@ static inline X64_Emit_Bin_Int_MR_Func* x64_bin_int_mr_emit_funcs(X64_Instr_Kind
         return X64_emit_instr_add_mr;
     case X64_Instr_Kind_SUB_MR:
         return X64_emit_instr_sub_mr;
-    case X64_Instr_Kind_IMUL_MR:
-        return X64_emit_instr_imul_mr;
     case X64_Instr_Kind_AND_MR:
         return X64_emit_instr_and_mr;
     case X64_Instr_Kind_OR_MR:
@@ -293,14 +291,6 @@ static inline X64_Emit_Bin_Flt_RM_Func* x64_bin_flt_rm_emit_funcs(X64_Instr_Kind
 static inline X64_Emit_Bin_Flt_MR_Func* x64_bin_flt_mr_emit_funcs(X64_Instr_Kind kind)
 {
     switch (kind) {
-    case X64_Instr_Kind_ADD_FLT_MR:
-        return X64_emit_instr_add_flt_mr;
-    case X64_Instr_Kind_SUB_FLT_MR:
-        return X64_emit_instr_sub_flt_mr;
-    case X64_Instr_Kind_MUL_FLT_MR:
-        return X64_emit_instr_mul_flt_mr;
-    case X64_Instr_Kind_DIV_FLT_MR:
-        return X64_emit_instr_div_flt_mr;
     case X64_Instr_Kind_MOV_FLT_MR:
         return X64_emit_instr_mov_flt_mr;
     default:
@@ -808,7 +798,12 @@ static void X64_patch_jmp_ret_instrs(X64_Instrs* instrs)
     }
 }
 
-static void X64_emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, u32 op_size,
+typedef struct {
+    bool writes_op1;
+    bool allow_mr_instr;
+} X64_EmitBinOpts;
+
+static void X64_emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, X64_EmitBinOpts opts, u32 op_size,
                                       u32 op1_lreg, u32 op2_lreg)
 {
     XIR_RegLoc op1_loc = X64_lreg_loc(proc_state, op1_lreg);
@@ -834,9 +829,32 @@ static void X64_emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     case XIR_LREG_LOC_STACK: {
         switch (op2_loc.kind) {
         case XIR_LREG_LOC_REG: {
-            x64_bin_int_mr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, X64_get_rbp_offset_addr(op1_loc.offset), op2_loc.reg);
-            break;
-        }
+            if (opts.allow_mr_instr) {
+                x64_bin_int_mr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, X64_get_rbp_offset_addr(op1_loc.offset),
+                                                      op2_loc.reg);
+            }
+            else {
+                const X64_SIBD_Addr op1_addr = X64_get_rbp_offset_addr(op1_loc.offset);
+                const X64_Reg tmp_reg = X64_RAX;
+
+                // Save the contents of a temporary register into the stack.
+                X64_emit_instr_push(&proc_state->instrs, tmp_reg);
+
+                // Load dst (currently spilled) into the temporary register,
+                X64_emit_instr_mov_rm(&proc_state->instrs, op_size, tmp_reg, op1_addr);
+
+                // Execute the instruction using the temporary register as the destination.
+                x64_bin_int_rr_emit_funcs(instr_kind)(&proc_state->instrs, op_size, tmp_reg, op2_loc.reg);
+
+                // Store the result of the instruction (contents of temporary register) into dst.
+                if (opts.writes_op1) {
+                    X64_emit_instr_mov_mr(&proc_state->instrs, op_size, op1_addr, tmp_reg);
+                }
+
+                // Restore the contents of the temporary register.
+                X64_emit_instr_pop(&proc_state->instrs, tmp_reg);
+            }
+        } break;
         case XIR_LREG_LOC_STACK: {
             const X64_SIBD_Addr op1_addr = X64_get_rbp_offset_addr(op1_loc.offset);
             const X64_SIBD_Addr op2_addr = X64_get_rbp_offset_addr(op2_loc.offset);
@@ -853,7 +871,7 @@ static void X64_emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
             x64_bin_int_rm_emit_funcs(instr_kind)(&proc_state->instrs, op_size, tmp_reg, op2_addr);
 
             // Store the result of the instruction (contents of temporary register) into dst.
-            if (writes_op1) {
+            if (opts.writes_op1) {
                 X64_emit_instr_mov_mr(&proc_state->instrs, op_size, op1_addr, tmp_reg);
             }
 
@@ -873,8 +891,8 @@ static void X64_emit_bin_int_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     }
 }
 
-static void X64_emit_bin_flt_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, bool writes_op1, FloatKind flt_kind,
-                                      u32 op1_lreg, u32 op2_lreg)
+static void X64_emit_bin_flt_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind instr_kind, FloatKind flt_kind, u32 op1_lreg,
+                                      u32 op2_lreg, bool allow_mr_instr)
 {
     XIR_RegLoc op1_loc = X64_lreg_loc(proc_state, op1_lreg);
     XIR_RegLoc op2_loc = X64_lreg_loc(proc_state, op2_lreg);
@@ -899,9 +917,32 @@ static void X64_emit_bin_flt_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
     case XIR_LREG_LOC_STACK: {
         switch (op2_loc.kind) {
         case XIR_LREG_LOC_REG: {
-            x64_bin_flt_mr_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, X64_get_rbp_offset_addr(op1_loc.offset), op2_loc.reg);
-            break;
-        }
+            if (allow_mr_instr) {
+                x64_bin_flt_mr_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, X64_get_rbp_offset_addr(op1_loc.offset),
+                                                      op2_loc.reg);
+            }
+            else {
+                const X64_SIBD_Addr op1_addr = X64_get_rbp_offset_addr(op1_loc.offset);
+                const X64_Reg tmp_reg = X64_XMM0;
+
+                // Save the contents of a temporary register into the stack.
+                X64_emit_instr_sub_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Make room for 16 bytes on the stack.
+                X64_emit_instr_movdqu_mr(&proc_state->instrs, X64_get_rsp_offset_addr(0), tmp_reg); // movdqu oword [rsp], tmp_reg
+
+                // Load dst (currently spilled) into the temporary register,
+                X64_emit_instr_mov_flt_rm(&proc_state->instrs, flt_kind, tmp_reg, op1_addr);
+
+                // Execute the instruction using the temporary register as the destination.
+                x64_bin_flt_rr_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, tmp_reg, op2_loc.reg);
+
+                // Store the result of the instruction (contents of temporary register) into dst.
+                X64_emit_instr_mov_flt_mr(&proc_state->instrs, flt_kind, op1_addr, tmp_reg);
+
+                // Restore the contents of the temporary register.
+                X64_emit_instr_movdqu_rm(&proc_state->instrs, tmp_reg, X64_get_rsp_offset_addr(0)); // movdqu reg, oword [rsp]
+                X64_emit_instr_add_ri(&proc_state->instrs, X64_MAX_INT_REG_SIZE, X64_RSP, 16); // Clean up 16 bytes from stack.
+            }
+        } break;
         case XIR_LREG_LOC_STACK: {
             const X64_SIBD_Addr op1_addr = X64_get_rbp_offset_addr(op1_loc.offset);
             const X64_SIBD_Addr op2_addr = X64_get_rbp_offset_addr(op2_loc.offset);
@@ -919,9 +960,7 @@ static void X64_emit_bin_flt_rr_instr(X64_Proc_State* proc_state, X64_Instr_Kind
             x64_bin_flt_rm_emit_funcs(instr_kind)(&proc_state->instrs, flt_kind, tmp_reg, op2_addr);
 
             // Store the result of the instruction (contents of temporary register) into dst.
-            if (writes_op1) {
-                X64_emit_instr_mov_flt_mr(&proc_state->instrs, flt_kind, op1_addr, tmp_reg);
-            }
+            X64_emit_instr_mov_flt_mr(&proc_state->instrs, flt_kind, op1_addr, tmp_reg);
 
             // Restore the contents of the temporary register.
             X64_emit_instr_movdqu_rm(&proc_state->instrs, tmp_reg, X64_get_rsp_offset_addr(0)); // movdqu reg, oword [rsp]
@@ -1339,8 +1378,9 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     case XIR_InstrAdd_R_R_KIND: {
         const XIR_InstrAdd_R_R* act_instr = (const XIR_InstrAdd_R_R*)instr;
         u8 size = act_instr->size;
+        X64_EmitBinOpts opts = {.writes_op1 = true, .allow_mr_instr = true};
 
-        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_ADD_RR, true, size, act_instr->dst, act_instr->src);
+        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_ADD_RR, opts, size, act_instr->dst, act_instr->src);
         break;
     }
     case XIR_InstrAdd_R_M_KIND: {
@@ -1360,8 +1400,9 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     case XIR_InstrSub_R_R_KIND: {
         const XIR_InstrSub_R_R* act_instr = (const XIR_InstrSub_R_R*)instr;
         u8 size = act_instr->size;
+        X64_EmitBinOpts opts = {.writes_op1 = true, .allow_mr_instr = true};
 
-        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_SUB_RR, true, size, act_instr->dst, act_instr->src);
+        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_SUB_RR, opts, size, act_instr->dst, act_instr->src);
         break;
     }
     case XIR_InstrSub_R_M_KIND: {
@@ -1382,8 +1423,9 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     case XIR_InstrIMul_R_R_KIND: {
         const XIR_InstrIMul_R_R* act_instr = (const XIR_InstrIMul_R_R*)instr;
         u8 size = act_instr->size;
+        X64_EmitBinOpts opts = {.writes_op1 = true, .allow_mr_instr = false};
 
-        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_IMUL_RR, true, size, act_instr->dst, act_instr->src);
+        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_IMUL_RR, opts, size, act_instr->dst, act_instr->src);
         break;
     }
     case XIR_InstrIMul_R_M_KIND: {
@@ -1449,8 +1491,9 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     case XIR_InstrAnd_R_R_KIND: {
         const XIR_InstrAnd_R_R* act_instr = (const XIR_InstrAnd_R_R*)instr;
         u8 size = act_instr->size;
+        X64_EmitBinOpts opts = {.writes_op1 = true, .allow_mr_instr = true};
 
-        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_AND_RR, true, size, act_instr->dst, act_instr->src);
+        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_AND_RR, opts, size, act_instr->dst, act_instr->src);
         break;
     }
     case XIR_InstrAnd_R_M_KIND: {
@@ -1471,8 +1514,9 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     case XIR_InstrOr_R_R_KIND: {
         const XIR_InstrOr_R_R* act_instr = (const XIR_InstrOr_R_R*)instr;
         u8 size = act_instr->size;
+        X64_EmitBinOpts opts = {.writes_op1 = true, .allow_mr_instr = true};
 
-        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_OR_RR, true, size, act_instr->dst, act_instr->src);
+        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_OR_RR, opts, size, act_instr->dst, act_instr->src);
         break;
     }
     case XIR_InstrOr_R_M_KIND: {
@@ -1493,8 +1537,9 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     case XIR_InstrXor_R_R_KIND: {
         const XIR_InstrXor_R_R* act_instr = (const XIR_InstrXor_R_R*)instr;
         u8 size = act_instr->size;
+        X64_EmitBinOpts opts = {.writes_op1 = true, .allow_mr_instr = true};
 
-        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_XOR_RR, true, size, act_instr->dst, act_instr->src);
+        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_XOR_RR, opts, size, act_instr->dst, act_instr->src);
         break;
     }
     case XIR_InstrXor_R_M_KIND: {
@@ -1514,7 +1559,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     // ADDSS
     case XIR_InstrAddSS_R_R_KIND: {
         const XIR_InstrAddSS_R_R* act_instr = (const XIR_InstrAddSS_R_R*)instr;
-        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_ADD_FLT_RR, true, FLOAT_F32, act_instr->dst, act_instr->src);
+        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_ADD_FLT_RR, FLOAT_F32, act_instr->dst, act_instr->src, false);
         break;
     }
     case XIR_InstrAddSS_R_M_KIND: {
@@ -1525,7 +1570,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     // ADDSD
     case XIR_InstrAddSD_R_R_KIND: {
         const XIR_InstrAddSD_R_R* act_instr = (const XIR_InstrAddSD_R_R*)instr;
-        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_ADD_FLT_RR, true, FLOAT_F64, act_instr->dst, act_instr->src);
+        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_ADD_FLT_RR, FLOAT_F64, act_instr->dst, act_instr->src, false);
         break;
     }
     case XIR_InstrAddSD_R_M_KIND: {
@@ -1536,7 +1581,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     // SUBSS
     case XIR_InstrSubSS_R_R_KIND: {
         const XIR_InstrSubSS_R_R* act_instr = (const XIR_InstrSubSS_R_R*)instr;
-        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_SUB_FLT_RR, true, FLOAT_F32, act_instr->dst, act_instr->src);
+        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_SUB_FLT_RR, FLOAT_F32, act_instr->dst, act_instr->src, false);
         break;
     }
     case XIR_InstrSubSS_R_M_KIND: {
@@ -1547,7 +1592,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     // SUBSD
     case XIR_InstrSubSD_R_R_KIND: {
         const XIR_InstrSubSD_R_R* act_instr = (const XIR_InstrSubSD_R_R*)instr;
-        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_SUB_FLT_RR, true, FLOAT_F64, act_instr->dst, act_instr->src);
+        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_SUB_FLT_RR, FLOAT_F64, act_instr->dst, act_instr->src, false);
         break;
     }
     case XIR_InstrSubSD_R_M_KIND: {
@@ -1558,7 +1603,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     // MULSS
     case XIR_InstrMulSS_R_R_KIND: {
         const XIR_InstrMulSS_R_R* act_instr = (const XIR_InstrMulSS_R_R*)instr;
-        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MUL_FLT_RR, true, FLOAT_F32, act_instr->dst, act_instr->src);
+        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MUL_FLT_RR, FLOAT_F32, act_instr->dst, act_instr->src, false);
         break;
     }
     case XIR_InstrMulSS_R_M_KIND: {
@@ -1569,7 +1614,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     // MULSD
     case XIR_InstrMulSD_R_R_KIND: {
         const XIR_InstrMulSD_R_R* act_instr = (const XIR_InstrMulSD_R_R*)instr;
-        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MUL_FLT_RR, true, FLOAT_F64, act_instr->dst, act_instr->src);
+        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MUL_FLT_RR, FLOAT_F64, act_instr->dst, act_instr->src, false);
         break;
     }
     case XIR_InstrMulSD_R_M_KIND: {
@@ -1580,7 +1625,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     // DIVSS
     case XIR_InstrDivSS_R_R_KIND: {
         const XIR_InstrDivSS_R_R* act_instr = (const XIR_InstrDivSS_R_R*)instr;
-        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_DIV_FLT_RR, true, FLOAT_F32, act_instr->dst, act_instr->src);
+        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_DIV_FLT_RR, FLOAT_F32, act_instr->dst, act_instr->src, false);
         break;
     }
     case XIR_InstrDivSS_R_M_KIND: {
@@ -1591,7 +1636,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     // DIVSD
     case XIR_InstrDivSD_R_R_KIND: {
         const XIR_InstrDivSD_R_R* act_instr = (const XIR_InstrDivSD_R_R*)instr;
-        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_DIV_FLT_RR, true, FLOAT_F64, act_instr->dst, act_instr->src);
+        X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_DIV_FLT_RR, FLOAT_F64, act_instr->dst, act_instr->src, false);
         break;
     }
     case XIR_InstrDivSD_R_M_KIND: {
@@ -1755,7 +1800,8 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
                                                            (IS_LREG_IN_STACK(dst_loc.kind) && (dst_loc.offset == src_loc.offset)));
 
         if (!same_ops) {
-            X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_MOV_RR, true, size, act_instr->dst, act_instr->src);
+            X64_EmitBinOpts opts = {.writes_op1 = true, .allow_mr_instr = true};
+            X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_MOV_RR, opts, size, act_instr->dst, act_instr->src);
         }
         break;
     }
@@ -1846,11 +1892,12 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         // EX: Instead of movzx rax, edi (invalid), use mov eax, edi to zero-extend edi into rax.
         else {
             assert(dst_size == X64_MAX_INT_REG_SIZE);
+            X64_EmitBinOpts opts = {.writes_op1 = true, .allow_mr_instr = true};
 
             // NOTE: Not necessary if a previous instruction already cleared the upper 4-bytes of the dest reg with a mov instruction.
             // We would need to track the "zxt" state of all registers: if mov rx, _ => rx is "zxt", otherwise if <not_mov> rx, _ =>
             // rx is NOT "zxt".
-            X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_MOV_RR, true, src_size, act_instr->dst, act_instr->src);
+            X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_MOV_RR, opts, src_size, act_instr->dst, act_instr->src);
         }
         break;
     }
@@ -1886,7 +1933,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
                                                            (IS_LREG_IN_STACK(dst_loc.kind) && (dst_loc.offset == src_loc.offset)));
 
         if (!same_ops) {
-            X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MOV_FLT_RR, true, FLOAT_F32, act_instr->dst, act_instr->src);
+            X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MOV_FLT_RR, FLOAT_F32, act_instr->dst, act_instr->src, true);
         }
         break;
     }
@@ -1910,7 +1957,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
                                                            (IS_LREG_IN_STACK(dst_loc.kind) && (dst_loc.offset == src_loc.offset)));
 
         if (!same_ops) {
-            X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MOV_FLT_RR, true, FLOAT_F64, act_instr->dst, act_instr->src);
+            X64_emit_bin_flt_rr_instr(proc_state, X64_Instr_Kind_MOV_FLT_RR, FLOAT_F64, act_instr->dst, act_instr->src, true);
         }
         break;
     }
@@ -2194,8 +2241,9 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     case XIR_InstrCmp_R_R_KIND: {
         const XIR_InstrCmp_R_R* act_instr = (const XIR_InstrCmp_R_R*)instr;
         u8 size = act_instr->size;
+        X64_EmitBinOpts opts = {.writes_op1 = false, .allow_mr_instr = true};
 
-        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_CMP_RR, true, size, act_instr->op1, act_instr->op2);
+        X64_emit_bin_int_rr_instr(proc_state, X64_Instr_Kind_CMP_RR, opts, size, act_instr->op1, act_instr->op2);
         break;
     }
     case XIR_InstrCmp_R_I_KIND: {
@@ -2209,7 +2257,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
         const XIR_InstrCmp_R_M* act_instr = (const XIR_InstrCmp_R_M*)instr;
         u8 size = act_instr->size;
 
-        X64_emit_bin_int_rm_instr(proc_state, X64_Instr_Kind_CMP_RM, true, size, act_instr->op1, &act_instr->op2);
+        X64_emit_bin_int_rm_instr(proc_state, X64_Instr_Kind_CMP_RM, false, size, act_instr->op1, &act_instr->op2);
         break;
     }
     case XIR_InstrCmp_M_R_KIND: {
