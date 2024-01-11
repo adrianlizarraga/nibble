@@ -1,0 +1,15 @@
+proc test_switch(x : int) => int {
+    switch (x) {
+        case 0: { x = 1;} 
+        case 1 .. 3: { x = 2;} 
+        case: {x = 3;}
+    }
+
+    return x;
+}
+
+proc main() => int {
+    // 1 + 2 + 2 + 2 + 3 = 10
+    return test_switch(0) + test_switch(1) + test_switch(2) + test_switch(3) + test_switch(100);
+}
+

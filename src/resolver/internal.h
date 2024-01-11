@@ -28,6 +28,7 @@ typedef struct CastResult {
 CastResult convert_eop(ExprOperand* eop, Type* dst_type, bool forbid_rvalue_decay);
 Expr* try_wrap_cast_expr(Resolver* resolver, ExprOperand* eop, Expr* orig_expr);
 void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right);
+void eval_binary_logical_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right);
 
 bool try_complete_aggregate_type(Resolver* resolver, Type* type);
 

@@ -489,7 +489,7 @@ typedef struct SwitchCase {
     Expr* start; // NOTE: Both start and end are null for default case.
     Expr* end;
 
-    List stmts;
+    Stmt* body;
 
     ListNode lnode;
 } SwitchCase;
@@ -557,7 +557,7 @@ Stmt* new_stmt_break(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_continue(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_goto(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range);
-SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, ProgRange range);
+SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, Stmt* body, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
 ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);

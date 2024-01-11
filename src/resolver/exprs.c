@@ -647,7 +647,7 @@ void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Sca
     }
 }
 
-static void eval_binary_logical_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
+void eval_binary_logical_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
 {
     bool result = false;
 

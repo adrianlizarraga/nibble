@@ -1,4 +1,5 @@
 #include <assert.h>
+#include "ast/module.h"
 #include "resolver/internal.h"
 
 enum ResolveStmtRetFlags {
@@ -143,6 +144,84 @@ static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, 
     else {
         ret &= ~RESOLVE_STMT_RETURNS;
         ret &= ~RESOLVE_STMT_LOOP_EXITS;
+    }
+
+    return ret;
+}
+
+static bool resolve_switch_case_expr(Resolver* resolver, Expr** expr_ptr, Type* switch_type)
+{
+    if (!resolve_expr(resolver, *expr_ptr, NULL)) {
+        return false;
+    }
+
+    if (!(*expr_ptr)->is_imm || !(*expr_ptr)->is_constexpr) {
+        resolver_on_error(resolver, (*expr_ptr)->range, "Case expression must be a compile-time constant");
+        return false;
+    }
+
+    ExprOperand eop = OP_FROM_EXPR((*expr_ptr));
+    CastResult r = convert_eop(&eop, switch_type, false);
+
+    if (!r.success) {
+        resolver_cast_error(resolver, r, (*expr_ptr)->range, "Invalid case expression type", eop.type, switch_type);
+        return false;
+    }
+
+    *expr_ptr = try_wrap_cast_expr(resolver, &eop, *expr_ptr);
+
+    return true;
+}
+
+static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* ret_type, unsigned flags)
+{
+    if (!resolve_expr(resolver, stmt->expr, NULL)) {
+        return 0;
+    }
+
+    if (!type_is_arithmetic(stmt->expr->type)) {
+        resolver_on_error(resolver, stmt->expr->range, "Switch statment expression must be of an arithmetic type");
+        return 0;
+    }
+
+    unsigned ret = RESOLVE_STMT_SUCCESS;
+
+    // Type-check cases
+    List* head = &stmt->cases;
+    for (List* it = head->next; it != head; it = it->next) {
+        SwitchCase* scase = list_entry(it, SwitchCase, lnode);
+
+        if (scase->start) {
+            if (!resolve_switch_case_expr(resolver, &scase->start, stmt->expr->type)) {
+                return 0;
+            }
+
+            if (scase->end) {
+                if (!resolve_switch_case_expr(resolver, &scase->end, stmt->expr->type)) {
+                    return 0;
+                }
+
+                assert(scase->start->type == scase->end->type);
+                assert(stmt->expr->type == scase->start->type);
+
+                // Check that end > start
+                ExprOperand cmp_result = {0};
+
+                eval_binary_logical_op(TKN_GT, &cmp_result, stmt->expr->type, scase->end->imm, scase->start->imm);
+
+                if (!cmp_result.imm.as_int._bool) {
+                    ProgRange range = merge_ranges(scase->start->range, scase->end->range);
+                    resolver_on_error(resolver, range, "Case `end` expression must be strictly greater than `start`");
+                    return 0;
+                }
+            }
+        }
+
+        ret &= resolve_stmt(resolver, scase->body, ret_type, flags);
+
+        if (!(ret & RESOLVE_STMT_SUCCESS)) {
+            return 0;
+        }
     }
 
     return ret;
@@ -601,11 +680,14 @@ unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned f
         ret = resolve_stmt_block(resolver, stmt, ret_type, flags);
         break;
     }
+    case CST_StmtSwitch: {
+        ret = resolve_stmt_switch(resolver, (StmtSwitch*)stmt, ret_type, flags);
+        break;
+    }
     default:
-        assert(0);
+        NIBBLE_FATAL_EXIT("Unsupported statement kind `%d` in Resolver.", stmt->kind);
         break;
     }
 
     return ret;
 }
-

@@ -117,7 +117,7 @@ static Stmt* parse_stmt_if(Parser* parser)
     return stmt;
 }
 
-// switch_case = 'case' (expr ('..' expr)?)? ':' stmt*
+// switch_case = 'case' (expr ('..' expr)?)? ':' stmt
 static SwitchCase* parse_switch_case(Parser* parser)
 {
     const char* error_prefix = "Failed to parse switch statement case";
@@ -147,28 +147,19 @@ static SwitchCase* parse_switch_case(Parser* parser)
     if (!expect_token(parser, TKN_COLON, error_prefix))
         return NULL;
 
-    SwitchCase* swcase = NULL;
-    List stmts = list_head_create(stmts);
-    bool bad_stmt = false;
-
-    // Parse case statements
-    while (!is_keyword(parser, KW_CASE) && !is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
-        Stmt* stmt = parse_stmt(parser);
-
-        if (!stmt) {
-            bad_stmt = true;
-            break;
-        }
-
-        list_add_last(&stmts, &stmt->lnode);
+    if (!is_token_kind(parser, TKN_LBRACE)) {
+        parser_on_error(parser, parser->token.range, "Switch case statements must be enclosed in curly brackets `{ ... }`");
+        return NULL;
     }
 
-    if (!bad_stmt) {
-        range.end = parser->ptoken.range.end;
-        swcase = new_switch_case(parser->ast_arena, start, end, &stmts, range);
+    Stmt* body = parse_stmt(parser);
+
+    if (!body) {
+        return NULL;
     }
 
-    return swcase;
+    range.end = parser->ptoken.range.end;
+    return new_switch_case(parser->ast_arena, start, end, body, range);
 }
 
 // stmt_switch = 'switch' '(' expr ')' '{' switch_case+ '}'
@@ -264,8 +255,7 @@ static Stmt* parse_stmt_do_while(Parser* parser)
     if (body && expect_keyword(parser, KW_WHILE, error_prefix) && expect_token(parser, TKN_LPAREN, error_prefix)) {
         Expr* cond = parse_expr(parser);
 
-        if (cond && expect_token(parser, TKN_RPAREN, error_prefix) &&
-            expect_token(parser, TKN_SEMICOLON, error_prefix)) {
+        if (cond && expect_token(parser, TKN_RPAREN, error_prefix) && expect_token(parser, TKN_SEMICOLON, error_prefix)) {
             range.end = parser->ptoken.range.end;
             stmt = new_stmt_do_while(parser->ast_arena, cond, body, range);
         }
@@ -394,8 +384,7 @@ static Stmt* parse_stmt_return(Parser* parser)
     // This seems like a common error, so we can try to look for it.
     // However, this is not a complete check, or even necessary. Bikeshedding!!
     if (is_token_kind(parser, TKN_RBRACE)) {
-        parser_on_error(parser, parser->token.range,
-                        "Failed to parse return statement: wanted `;` or expression, but got `}`");
+        parser_on_error(parser, parser->token.range, "Failed to parse return statement: wanted `;` or expression, but got `}`");
 
         return NULL;
     }
@@ -625,7 +614,7 @@ static Stmt* parse_stmt_export(Parser* parser)
 
         list_add_last(&export_syms, &esym->lnode);
         num_exports += 1;
-    } while(match_token(parser, TKN_COMMA));
+    } while (match_token(parser, TKN_COMMA));
 
     if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
         return NULL;
@@ -812,8 +801,8 @@ Stmt* parse_global_stmt(Parser* parser)
     print_token(&parser->token, tmp, sizeof(tmp));
     parser_on_error(parser, parser->token.range,
                     "Only declarations or compile-time statements are allowed at global scope."
-                    " Found token `%s`", tmp);
+                    " Found token `%s`",
+                    tmp);
 
     return NULL;
 }
-
