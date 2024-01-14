@@ -160,15 +160,21 @@ static bool resolve_switch_case_expr(Resolver* resolver, Expr** expr_ptr, Type* 
         return false;
     }
 
-    ExprOperand eop = OP_FROM_EXPR((*expr_ptr));
-    CastResult r = convert_eop(&eop, switch_type, false);
-
-    if (!r.success) {
-        resolver_cast_error(resolver, r, (*expr_ptr)->range, "Invalid case expression type", eop.type, switch_type);
-        return false;
+    // If switching on an enum type, expect all cases to be enums.
+    if (switch_type->kind == TYPE_ENUM) {
+        if (switch_type != (*expr_ptr)->type) {
+            // TODO: Print the enum type name.
+            resolver_on_error(resolver, (*expr_ptr)->range, "Expected case expression to be an enum type");
+            return false;
+        }
     }
-
-    *expr_ptr = try_wrap_cast_expr(resolver, &eop, *expr_ptr);
+    // Otherwise, just cast the constant case expression to the expected integer type.
+    else {
+        ExprOperand eop = OP_FROM_EXPR((*expr_ptr));
+        CastResult r = convert_eop(&eop, switch_type, false);
+        assert(r.success); // Must be able to convert between integer types.
+        *expr_ptr = try_wrap_cast_expr(resolver, &eop, *expr_ptr);
+    }
 
     return true;
 }
@@ -179,8 +185,8 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
         return 0;
     }
 
-    if (!type_is_arithmetic(stmt->expr->type)) {
-        resolver_on_error(resolver, stmt->expr->range, "Switch statment expression must be of an arithmetic type");
+    if (!type_is_integer_like(stmt->expr->type)) {
+        resolver_on_error(resolver, stmt->expr->range, "Switch statement expression must be of an integer type");
         return 0;
     }
 
@@ -217,12 +223,16 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
             }
         }
 
-        scase->scope = push_scope(resolver, scase->num_decls);
-        ret &= resolve_stmt_block_body(resolver, &scase->stmts, ret_type, flags);
+        // TODO: Error if a switch on an enum does not cover all possible values.
 
+        scase->scope = push_scope(resolver, scase->num_decls);
+
+        unsigned r = resolve_stmt_block_body(resolver, &scase->stmts, ret_type, flags);
+        ret = (r & RESOLVE_STMT_RETURNS) | (r & RESOLVE_STMT_LOOP_EXITS) | ret;
         pop_scope(resolver);
 
-        if (!(ret & RESOLVE_STMT_SUCCESS)) {
+        if (!(r & RESOLVE_STMT_SUCCESS)) {
+            ret &= ~RESOLVE_STMT_SUCCESS;
             break;
         }
     }
