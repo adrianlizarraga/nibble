@@ -217,10 +217,13 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
             }
         }
 
-        ret &= resolve_stmt(resolver, scase->body, ret_type, flags);
+        scase->scope = push_scope(resolver, scase->num_decls);
+        ret &= resolve_stmt_block_body(resolver, &scase->stmts, ret_type, flags);
+
+        pop_scope(resolver);
 
         if (!(ret & RESOLVE_STMT_SUCCESS)) {
-            return 0;
+            break;
         }
     }
 

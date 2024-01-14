@@ -703,13 +703,15 @@ Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, Prog
     return (Stmt*)stmt;
 }
 
-SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, Stmt* body, ProgRange range)
+SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, u32 num_decls, ProgRange range)
 {
     SwitchCase* swcase = alloc_type(allocator, SwitchCase, true);
     swcase->start = start;
     swcase->end = end;
+    swcase->num_decls = num_decls;
     swcase->range = range;
-    swcase->body = body;
+
+    list_replace(stmts, &swcase->stmts);
 
     return swcase;
 }

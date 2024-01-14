@@ -284,15 +284,15 @@ typedef struct ExprTypeid {
 } ExprTypeid;
 
 typedef struct ExprIndexof {
-   Expr super;
-   TypeSpec* obj_ts;
-   Identifier* field_ident;
+    Expr super;
+    TypeSpec* obj_ts;
+    Identifier* field_ident;
 } ExprIndexof;
 
 typedef struct ExprOffsetof {
-   Expr super;
-   TypeSpec* obj_ts;
-   Identifier* field_ident;
+    Expr super;
+    TypeSpec* obj_ts;
+    Identifier* field_ident;
 } ExprOffsetof;
 
 typedef struct ExprLength {
@@ -489,7 +489,9 @@ typedef struct SwitchCase {
     Expr* start; // NOTE: Both start and end are null for default case.
     Expr* end;
 
-    Stmt* body;
+    Scope* scope;
+    List stmts;
+    u32 num_decls;
 
     ListNode lnode;
 } SwitchCase;
@@ -557,7 +559,7 @@ Stmt* new_stmt_break(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_continue(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_goto(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range);
-SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, Stmt* body, ProgRange range);
+SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, u32 num_decls, ProgRange range);
 Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, List* cases, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
 ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
@@ -680,8 +682,8 @@ DeclEnumItem* new_decl_enum_item(Allocator* allocator, Identifier* name, Expr* v
 typedef Decl* NewDeclAggregateProc(Allocator* alloc, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_struct(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
 Decl* new_decl_union(Allocator* allocator, Identifier* name, List* fields, ProgRange range);
-Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts,
-                    u32 num_decls, bool is_incomplete, bool is_variadic, ProgRange range);
+Decl* new_decl_proc(Allocator* allocator, Identifier* name, u32 num_params, List* params, TypeSpec* ret, List* stmts, u32 num_decls,
+                    bool is_incomplete, bool is_variadic, ProgRange range);
 
 char* ftprint_decl(Allocator* allocator, Decl* decl);
 

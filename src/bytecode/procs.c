@@ -2776,9 +2776,7 @@ static BBlock* IR_emit_writeout_call(IR_ProcBuilder* builder, BBlock* bblock, IR
 
     // syscall_nr, STDOUT, buf, size
     OpRIA syscall_nr = {.kind = OP_RIA_IMM, .imm.as_int._u64 = SYS_write};
-    OpRIA syscall_args[3] = {
-        [0] = {.kind = OP_RIA_IMM, .imm.as_int._u64 = STDOUT_FD}
-    };
+    OpRIA syscall_args[3] = {[0] = {.kind = OP_RIA_IMM, .imm.as_int._u64 = STDOUT_FD}};
 
     List* it = args->next;
     size_t arg_index = 1;
@@ -2823,9 +2821,7 @@ static BBlock* IR_emit_readin_call(IR_ProcBuilder* builder, BBlock* bblock, IR_E
 
     // syscall_nr, STDIN, buf, size
     OpRIA syscall_nr = {.kind = OP_RIA_IMM, .imm.as_int._u64 = SYS_read};
-    OpRIA syscall_args[3] = {
-        [0] = {.kind = OP_RIA_IMM, .imm.as_int._u64 = STDIN_FD}
-    };
+    OpRIA syscall_args[3] = {[0] = {.kind = OP_RIA_IMM, .imm.as_int._u64 = STDIN_FD}};
 
     List* it = args->next;
     size_t arg_index = 1;
@@ -4269,4 +4265,3 @@ void IR_build_procs(Allocator* arena, Allocator* tmp_arena, BucketList* procs, G
         }
     }
 }
-

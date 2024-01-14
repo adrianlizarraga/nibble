@@ -147,19 +147,26 @@ static SwitchCase* parse_switch_case(Parser* parser)
     if (!expect_token(parser, TKN_COLON, error_prefix))
         return NULL;
 
-    if (!is_token_kind(parser, TKN_LBRACE)) {
-        parser_on_error(parser, parser->token.range, "Switch case statements must be enclosed in curly brackets `{ ... }`");
-        return NULL;
-    }
+    List stmts = list_head_create(stmts);
+    u32 num_decls = 0;
 
-    Stmt* body = parse_stmt(parser);
+    // Parse case statements
+    while (!is_keyword(parser, KW_CASE) && !is_token_kind(parser, TKN_RBRACE) && !is_token_kind(parser, TKN_EOF)) {
+        Stmt* stmt = parse_stmt(parser);
 
-    if (!body) {
-        return NULL;
+        if (!stmt) {
+            return NULL;
+        }
+
+        if (stmt->kind == CST_StmtDecl) {
+            num_decls += 1;
+        }
+
+        list_add_last(&stmts, &stmt->lnode);
     }
 
     range.end = parser->ptoken.range.end;
-    return new_switch_case(parser->ast_arena, start, end, body, range);
+    return new_switch_case(parser->ast_arena, start, end, &stmts, num_decls, range);
 }
 
 // stmt_switch = 'switch' '(' expr ')' '{' switch_case+ '}'

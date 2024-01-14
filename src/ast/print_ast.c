@@ -456,7 +456,10 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                         ftprint_char_array(&dstr, false, "..%s", ftprint_expr(allocator, swcase->end));
                 }
 
-                ftprint_char_array(&dstr, false, " (stmt %s))", ftprint_stmt(allocator, swcase->body));
+                if (!list_empty(&swcase->stmts))
+                    ftprint_char_array(&dstr, false, " (stmt-list %s))", ftprint_stmt_list(allocator, &swcase->stmts));
+                else
+                    ftprint_char_array(&dstr, false, " (stmt-list))");
 
                 if (it->next != head)
                     ftprint_char_array(&dstr, false, " ");
