@@ -565,7 +565,7 @@ bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
     return false;
 }
 
-unsigned resolve_stmt_decl(Resolver* resolver, StmtDecl* sdecl, unsigned flags)
+static unsigned resolve_stmt_decl(Resolver* resolver, StmtDecl* sdecl, unsigned flags)
 {
     Decl* decl = sdecl->decl;
     Scope* scope = resolver->state.scope;
