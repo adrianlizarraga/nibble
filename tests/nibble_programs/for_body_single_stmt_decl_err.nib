@@ -1,0 +1,5 @@
+proc main() => int {
+    for (var x: int = 1; x < 10; x += 1) var z : int = 1; // Compiler error!
+
+    return 1;
+}

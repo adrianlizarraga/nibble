@@ -1,0 +1,7 @@
+proc main() => int {
+    var x : int = 1;
+
+    if (x == 1) var z : int = 1; // Compiler error!
+
+    return 1;
+}

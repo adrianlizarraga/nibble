@@ -1,0 +1,17 @@
+:include_paths
+:lib_paths
+:argc 0
+:stdin 0
+
+:stdout 0
+
+:stderr 220
+
+1 errors:
+
+while_body_single_stmt_decl_err.nib:4:20: [Error]: Variable declarations not allowed in single-statement bodies. Consider using a `{}` block.
+
+     4 |     while (x == 1) var z : int = 1; // Compiler error!
+
+
+:returncode 1

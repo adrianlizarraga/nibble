@@ -1,0 +1,17 @@
+:include_paths
+:lib_paths
+:argc 0
+:stdin 0
+
+:stdout 0
+
+:stderr 211
+
+1 errors:
+
+else_body_single_stmt_decl_err.nib:6:12: [Error]: Variable declarations not allowed in single-statement bodies. Consider using a `{}` block.
+
+     6 |     } else var z : int = 1; // Compiler error!
+
+
+:returncode 1

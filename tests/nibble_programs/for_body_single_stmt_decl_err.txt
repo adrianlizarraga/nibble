@@ -1,0 +1,17 @@
+:include_paths
+:lib_paths
+:argc 0
+:stdin 0
+
+:stdout 0
+
+:stderr 240
+
+1 errors:
+
+for_body_single_stmt_decl_err.nib:2:42: [Error]: Variable declarations not allowed in single-statement bodies. Consider using a `{}` block.
+
+     2 |     for (var x: int = 1; x < 10; x += 1) var z : int = 1; // Compiler error!
+
+
+:returncode 1

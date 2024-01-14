@@ -10,6 +10,7 @@ enum ResolveStmtRetFlags {
 
 enum ResolveStmtInFlags {
     RESOLVE_STMT_BREAK_CONTINUE_ALLOWED = 0x1,
+    RESOLVE_STMT_VAR_DECL_DISALLOWED = 0x2, // Like in single-statement blocks, Ex: if (cond) var y : int = 1;
 };
 
 static unsigned resolve_stmt_block_body(Resolver* resolver, List* stmts, Type* ret_type, unsigned flags)
@@ -84,8 +85,9 @@ bool resolve_global_proc_body(Resolver* resolver, Symbol* sym)
 static unsigned resolve_stmt_block(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     StmtBlock* sblock = (StmtBlock*)stmt;
-    sblock->scope = push_scope(resolver, sblock->num_decls);
 
+    sblock->scope = push_scope(resolver, sblock->num_decls);
+    flags &= ~RESOLVE_STMT_VAR_DECL_DISALLOWED;
     unsigned ret_success = resolve_stmt_block_body(resolver, &sblock->stmts, ret_type, flags);
 
     pop_scope(resolver);
@@ -115,27 +117,25 @@ static bool resolve_cond_expr(Resolver* resolver, Expr* expr, ExprOperand* expr_
     return true;
 }
 
-static unsigned resolve_cond_block(Resolver* resolver, IfCondBlock* cblock, Type* ret_type, unsigned flags)
-{
-    ExprOperand cond_eop = {0};
-
-    if (!resolve_cond_expr(resolver, cblock->cond, &cond_eop))
-        return 0;
-
-    cblock->cond = try_wrap_cast_expr(resolver, &cond_eop, cblock->cond);
-
-    return resolve_stmt(resolver, cblock->body, ret_type, flags);
-}
-
 static unsigned resolve_stmt_if(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     StmtIf* sif = (StmtIf*)stmt;
 
     // Resolve if block.
-    unsigned ret = resolve_cond_block(resolver, &sif->if_blk, ret_type, flags);
+    ExprOperand cond_eop = {0};
 
-    if (!(ret & RESOLVE_STMT_SUCCESS))
+    if (!resolve_cond_expr(resolver, sif->if_blk.cond, &cond_eop))
         return 0;
+
+    sif->if_blk.cond = try_wrap_cast_expr(resolver, &cond_eop, sif->if_blk.cond);
+    flags |= RESOLVE_STMT_VAR_DECL_DISALLOWED; // NOTE: Don't allow if (cond) var x:int = 1;
+                                               // If the body is a {} block, this flag will be disabled.
+
+    unsigned ret = resolve_stmt(resolver, sif->if_blk.body, ret_type, flags);
+
+    if (!(ret & RESOLVE_STMT_SUCCESS)) {
+        return 0;
+    }
 
     // Resolve else block.
     if (sif->else_blk.body) {
@@ -266,7 +266,8 @@ static unsigned resolve_stmt_for(Resolver* resolver, StmtFor* stmt_for, Type* re
     }
 
     // Loop body.
-    ret &= resolve_stmt(resolver, stmt_for->body, ret_type, flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
+    ret &= resolve_stmt(resolver, stmt_for->body, ret_type,
+                        flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED | RESOLVE_STMT_VAR_DECL_DISALLOWED);
 
     if (!(ret & RESOLVE_STMT_SUCCESS)) {
         return 0;
@@ -298,8 +299,10 @@ static unsigned resolve_stmt_while(Resolver* resolver, Stmt* stmt, Type* ret_typ
 
     swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
 
+    flags |= (RESOLVE_STMT_VAR_DECL_DISALLOWED | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
+
     // Resolve loop body.
-    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
+    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags);
 
     // NOTE: Because while loops don't have an "else" path, we can't say that all control paths return.
     // TODO: Add else to while loop!!
@@ -320,8 +323,10 @@ static unsigned resolve_stmt_do_while(Resolver* resolver, Stmt* stmt, Type* ret_
 
     swhile->cond = try_wrap_cast_expr(resolver, &cond_eop, swhile->cond);
 
+    flags |= (RESOLVE_STMT_VAR_DECL_DISALLOWED | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
+
     // Resolve loop body.
-    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags | RESOLVE_STMT_BREAK_CONTINUE_ALLOWED);
+    unsigned ret = resolve_stmt(resolver, swhile->body, ret_type, flags);
 
     // Report an error if the do-while loop always returns before the condition check.
     if (ret & RESOLVE_STMT_RETURNS) {
@@ -660,6 +665,13 @@ unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned f
         Scope* scope = resolver->state.scope;
 
         if (decl->kind == CST_DeclVar || decl->kind == CST_DeclConst) {
+            if (flags & RESOLVE_STMT_VAR_DECL_DISALLOWED) {
+                resolver_on_error(resolver, stmt->range,
+                                  "Variable declarations not allowed in single-statement bodies. "
+                                  "Consider using a `{}` block.");
+                break;
+            }
+
             Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, decl);
 
             if (!sym) {
