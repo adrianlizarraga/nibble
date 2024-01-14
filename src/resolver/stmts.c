@@ -565,6 +565,44 @@ bool resolve_global_stmt(Resolver* resolver, Stmt* stmt)
     return false;
 }
 
+unsigned resolve_stmt_decl(Resolver* resolver, StmtDecl* sdecl, unsigned flags)
+{
+    Decl* decl = sdecl->decl;
+    Scope* scope = resolver->state.scope;
+
+    // Check that is an allowed declaration kind.
+    // TODO: Support other declaration kinds.
+    if (decl->kind != CST_DeclVar && decl->kind != CST_DeclConst) {
+        resolver_on_error(resolver, sdecl->super.range, "Only variable and type declarations are supported inside procedures");
+        return 0;
+    }
+
+    if (flags & RESOLVE_STMT_VAR_DECL_DISALLOWED) {
+        resolver_on_error(resolver, sdecl->super.range,
+                          "Variable declarations not allowed in single-statement bodies. "
+                          "Consider using a `{}` block.");
+        return 0;
+    }
+
+    // Resolve the symbol.
+    Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, decl);
+
+    if (!sym) {
+        resolver_on_error(resolver, sdecl->super.range, "Identifier `%s` shadows a previous local declaration", decl->name->str);
+        return 0;
+    }
+
+    if ((decl->kind == CST_DeclVar) && resolve_decl_var(resolver, sym)) {
+        return RESOLVE_STMT_SUCCESS;
+    }
+
+    if ((decl->kind == CST_DeclConst) && resolve_decl_const(resolver, sym)) {
+        return RESOLVE_STMT_SUCCESS;
+    }
+
+    return 0; // Failed to resolve/type-check.
+}
+
 unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned flags)
 {
     unsigned ret = 0;
@@ -660,35 +698,7 @@ unsigned resolve_stmt(Resolver* resolver, Stmt* stmt, Type* ret_type, unsigned f
         break;
     }
     case CST_StmtDecl: {
-        StmtDecl* sdecl = (StmtDecl*)stmt;
-        Decl* decl = sdecl->decl;
-        Scope* scope = resolver->state.scope;
-
-        if (decl->kind == CST_DeclVar || decl->kind == CST_DeclConst) {
-            if (flags & RESOLVE_STMT_VAR_DECL_DISALLOWED) {
-                resolver_on_error(resolver, stmt->range,
-                                  "Variable declarations not allowed in single-statement bodies. "
-                                  "Consider using a `{}` block.");
-                break;
-            }
-
-            Symbol* sym = add_unresolved_symbol(&resolver->ctx->ast_mem, scope, resolver->state.mod, decl);
-
-            if (!sym) {
-                resolver_on_error(resolver, stmt->range, "Identifier `%s` shadows a previous local declaration", decl->name->str);
-            }
-            else if ((decl->kind == CST_DeclVar) && resolve_decl_var(resolver, sym)) {
-                ret = RESOLVE_STMT_SUCCESS;
-            }
-            else if ((decl->kind == CST_DeclConst) && resolve_decl_const(resolver, sym)) {
-                ret = RESOLVE_STMT_SUCCESS;
-            }
-        }
-        else {
-            // TODO: Support other declaration kinds.
-            resolver_on_error(resolver, stmt->range, "Only variable and type declarations are supported inside procedures");
-        }
-
+        ret = resolve_stmt_decl(resolver, (StmtDecl*)stmt, flags);
         break;
     }
     case CST_StmtBlock: {
