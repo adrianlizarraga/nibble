@@ -7,6 +7,7 @@
 
 typedef struct Parser {
     Allocator* ast_arena;
+    Allocator* tmp_arena;
     ErrorStream* errors;
     Lexer* lexer;
     Token token;

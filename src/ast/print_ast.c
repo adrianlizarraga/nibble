@@ -442,10 +442,8 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
 
             ftprint_char_array(&dstr, false, "(switch %s ", ftprint_expr(allocator, s->expr));
 
-            List* head = &s->cases;
-
-            for (List* it = head->next; it != head; it = it->next) {
-                SwitchCase* swcase = list_entry(it, SwitchCase, lnode);
+            for (u32 i = 0; i < s->num_cases; i++) {
+                SwitchCase* swcase = s->cases[i];
 
                 ftprint_char_array(&dstr, false, "(case");
 
@@ -461,7 +459,7 @@ char* ftprint_stmt(Allocator* allocator, Stmt* stmt)
                 else
                     ftprint_char_array(&dstr, false, " (stmt-list))");
 
-                if (it->next != head)
+                if (i != s->num_cases - 1)
                     ftprint_char_array(&dstr, false, " ");
             }
 

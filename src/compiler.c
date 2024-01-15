@@ -675,7 +675,7 @@ static bool parse_code_recursive(NibbleCtx* ctx, Module* mod, const char* abs_pa
                    .line_pos = &src_file->line_pos,
                    .ident_map = &ctx->ident_map,
                    .str_lit_map = &ctx->str_lit_map};
-    Parser parser = {.ast_arena = &ctx->ast_mem, .errors = &ctx->errors, .lexer = &lexer};
+    Parser parser = {.ast_arena = &ctx->ast_mem, .tmp_arena = &ctx->tmp_mem, .errors = &ctx->errors, .lexer = &lexer};
     next_token(&parser);
 
     while (!is_token_kind(&parser, TKN_EOF)) {

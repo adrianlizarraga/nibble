@@ -1,4 +1,6 @@
 #include <assert.h>
+#include "allocator.h"
+#include "array.h"
 #include "ast/module.h"
 #include "resolver/internal.h"
 
@@ -176,7 +178,53 @@ static bool resolve_switch_case_expr(Resolver* resolver, Expr** expr_ptr, Type* 
         *expr_ptr = try_wrap_cast_expr(resolver, &eop, *expr_ptr);
     }
 
+    // Finally, cast to s64
+    ExprOperand eop = OP_FROM_EXPR((*expr_ptr));
+    CastResult r = convert_eop(&eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+    assert(r.success); // Must be able to convert between integer types.
+    *expr_ptr = try_wrap_cast_expr(resolver, &eop, *expr_ptr);
     return true;
+}
+
+static inline void qsort_swap_case(FlatCaseInfo* cases, s64 i, s64 j)
+{
+    FlatCaseInfo tmp = cases[i];
+    cases[i] = cases[j];
+    cases[j] = tmp;
+}
+
+static s64 qsort_partition_cases(FlatCaseInfo* cases, s64 lo, s64 hi)
+{
+    // Pick the middle as a pivot because we assume case expressions are mostly sorted already.
+    // Note: we then move the pivot to the end of the array.
+    const s64 mid = lo + (hi - lo) / 2;
+    qsort_swap_case(cases, mid, hi);
+
+    FlatCaseInfo pivot = cases[hi];
+
+    s64 i = lo;
+    for (s64 j = lo; j < hi; j++) {
+        if (cases[j].value <= pivot.value) {
+            qsort_swap_case(cases, j, i);
+            i++;
+        }
+    }
+
+    qsort_swap_case(cases, hi, i);
+    return i;
+}
+
+static void qsort_cases(FlatCaseInfo* cases, s64 lo, s64 hi)
+{
+    if (lo < 0 || lo >= hi) {
+        return;
+    }
+
+    s64 pivot_index = qsort_partition_cases(cases, lo, hi);
+
+    // Recursively sort the two partitions.
+    qsort_cases(cases, lo, pivot_index - 1);
+    qsort_cases(cases, pivot_index + 1, hi);
 }
 
 static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* ret_type, unsigned flags)
@@ -190,37 +238,57 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
         return 0;
     }
 
+    if (stmt->num_cases == 0) {
+        resolver_on_error(resolver, stmt->super.range, "Switch statement must case at least one case");
+        return 0;
+    }
+
     unsigned ret = RESOLVE_STMT_SUCCESS;
+    Allocator* tmp_arena = &resolver->ctx->tmp_mem;
+    AllocatorState mem_state = allocator_get_state(tmp_arena);
+
+    s64 default_case_index = -1;
+    Array(FlatCaseInfo) flat_cases = array_create(tmp_arena, FlatCaseInfo, stmt->num_cases << 1);
 
     // Type-check cases
-    List* head = &stmt->cases;
-    for (List* it = head->next; it != head; it = it->next) {
-        SwitchCase* scase = list_entry(it, SwitchCase, lnode);
+    for (u32 i = 0; i < stmt->num_cases; i++) {
+        SwitchCase* scase = stmt->cases[i];
 
+        // Type check case's start and end expressions.
         if (scase->start) {
             if (!resolve_switch_case_expr(resolver, &scase->start, stmt->expr->type)) {
+                allocator_restore_state(mem_state);
                 return 0;
             }
 
+            assert(scase->start->type == builtin_types[BUILTIN_TYPE_S64].type);
+            const s64 start_val = scase->start->imm.as_int._s64;
+            s64 end_val = start_val;
+
             if (scase->end) {
                 if (!resolve_switch_case_expr(resolver, &scase->end, stmt->expr->type)) {
+                    allocator_restore_state(mem_state);
                     return 0;
                 }
 
                 assert(scase->start->type == scase->end->type);
-                assert(stmt->expr->type == scase->start->type);
+                end_val = scase->end->imm.as_int._s64;
 
                 // Check that end > start
-                ExprOperand cmp_result = {0};
-
-                eval_binary_logical_op(TKN_GT, &cmp_result, stmt->expr->type, scase->end->imm, scase->start->imm);
-
-                if (!cmp_result.imm.as_int._bool) {
+                if (end_val <= start_val) {
                     ProgRange range = merge_ranges(scase->start->range, scase->end->range);
                     resolver_on_error(resolver, range, "Case `end` expression must be strictly greater than `start`");
+                    allocator_restore_state(mem_state);
                     return 0;
                 }
             }
+
+            for (s64 val = start_val; val <= end_val; val++) {
+                array_push(flat_cases, (FlatCaseInfo){.value = val, .index = i});
+            }
+        }
+        else {
+            default_case_index = (s64)i;
         }
 
         // TODO: Error if a switch on an enum does not cover all possible values.
@@ -233,10 +301,39 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
 
         if (!(r & RESOLVE_STMT_SUCCESS)) {
             ret &= ~RESOLVE_STMT_SUCCESS;
-            break;
+            allocator_restore_state(mem_state);
+            return ret;
         }
     }
 
+    // Sort case values and check for duplicates.
+    if (array_len(flat_cases) > 0) {
+        qsort_cases(flat_cases, 0, array_len(flat_cases) - 1);
+
+        for (u32 i = 0; i < array_len(flat_cases) - 1; i++) {
+            const FlatCaseInfo* x = &flat_cases[i];
+            const FlatCaseInfo* y = &flat_cases[i + 1];
+
+            if (x->value == y->value) {
+                u32 case_index = x->index > y->index ? x->index : y->index;
+                resolver_on_error(resolver, stmt->cases[case_index]->range, "Repeated switch case value");
+                ret &= ~RESOLVE_STMT_SUCCESS;
+                allocator_restore_state(mem_state);
+                return ret;
+            }
+        }
+    }
+
+    // Push default case at the end (if exists).
+    if (default_case_index >= 0) {
+        array_push(flat_cases, (FlatCaseInfo){.index = (u32)default_case_index, .is_default = true});
+    }
+
+    stmt->num_flat_cases = array_len(flat_cases);
+    stmt->flat_cases = alloc_array(&resolver->ctx->ast_mem, FlatCaseInfo, stmt->num_flat_cases, false);
+    memcpy(stmt->flat_cases, flat_cases, array_len(flat_cases) * sizeof(FlatCaseInfo));
+
+    allocator_restore_state(mem_state);
     return ret;
 }
 

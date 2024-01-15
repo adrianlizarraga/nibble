@@ -1,4 +1,5 @@
 #include <assert.h>
+#include "allocator.h"
 #include "parser/internal.h"
 
 ///////////////////////////////
@@ -186,38 +187,47 @@ static Stmt* parse_stmt_switch(Parser* parser)
     if (!expr || !expect_token(parser, TKN_RPAREN, error_prefix) || !expect_token(parser, TKN_LBRACE, error_prefix))
         return NULL;
 
-    Stmt* stmt = NULL;
-    List cases = list_head_create(cases);
-    bool has_default = false;
-    bool bad_case = false;
+    u32 num_cases = 0;
+    SwitchCase** cases = NULL;
 
-    do {
-        SwitchCase* swcase = parse_switch_case(parser);
+    {
+        AllocatorState mem_state = allocator_get_state(parser->tmp_arena);
+        Array(SwitchCase*) tmp_cases = array_create(parser->tmp_arena, SwitchCase*, 4);
+        bool has_default = false;
 
-        if (!swcase) {
-            bad_case = true;
-            break;
+        do {
+            SwitchCase* swcase = parse_switch_case(parser);
+
+            if (!swcase) {
+                return NULL;
+            }
+
+            bool is_default = !swcase->start && !swcase->end;
+
+            if (has_default && is_default) {
+                parser_on_error(parser, swcase->range, "Switch statement can have at most one default case");
+                allocator_restore_state(mem_state);
+                return NULL;
+            }
+
+            has_default = has_default || is_default;
+
+            array_push(tmp_cases, swcase);
+        } while (is_keyword(parser, KW_CASE));
+
+        if (!expect_token(parser, TKN_RBRACE, error_prefix)) {
+            allocator_restore_state(mem_state);
+            return NULL;
         }
 
-        bool is_default = !swcase->start && !swcase->end;
-
-        if (has_default && is_default) {
-            parser_on_error(parser, swcase->range, "Switch statement can have at most one default case");
-            bad_case = true;
-            break;
-        }
-
-        has_default = has_default || is_default;
-
-        list_add_last(&cases, &swcase->lnode);
-    } while (is_keyword(parser, KW_CASE));
-
-    if (!bad_case && expect_token(parser, TKN_RBRACE, error_prefix)) {
-        range.end = parser->ptoken.range.end;
-        stmt = new_stmt_switch(parser->ast_arena, expr, &cases, range);
+        num_cases = array_len(tmp_cases);
+        cases = alloc_array(parser->ast_arena, SwitchCase*, num_cases, false);
+        memcpy(cases, tmp_cases, num_cases * sizeof(SwitchCase*));
+        allocator_restore_state(mem_state);
     }
 
-    return stmt;
+    range.end = parser->ptoken.range.end;
+    return new_stmt_switch(parser->ast_arena, expr, num_cases, cases, range);
 }
 
 // stmt_while = 'while' '(' expr ')' stmt
