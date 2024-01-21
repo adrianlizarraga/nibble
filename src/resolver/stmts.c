@@ -247,7 +247,6 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
     Allocator* tmp_arena = &resolver->ctx->tmp_mem;
     AllocatorState mem_state = allocator_get_state(tmp_arena);
 
-    s64 default_case_index = -1;
     Array(FlatCaseInfo) flat_cases = array_create(tmp_arena, FlatCaseInfo, stmt->num_cases << 1);
 
     // Type-check cases
@@ -287,9 +286,6 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
                 array_push(flat_cases, (FlatCaseInfo){.value = val, .index = i});
             }
         }
-        else {
-            default_case_index = (s64)i;
-        }
 
         // TODO: Error if a switch on an enum does not cover all possible values.
 
@@ -324,11 +320,7 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
         }
     }
 
-    // Push default case at the end (if exists).
-    if (default_case_index >= 0) {
-        array_push(flat_cases, (FlatCaseInfo){.index = (u32)default_case_index, .is_default = true});
-    }
-
+    // Store information for sorted cases.
     stmt->num_flat_cases = array_len(flat_cases);
     stmt->flat_cases = alloc_array(&resolver->ctx->ast_mem, FlatCaseInfo, stmt->num_flat_cases, false);
     memcpy(stmt->flat_cases, flat_cases, array_len(flat_cases) * sizeof(FlatCaseInfo));

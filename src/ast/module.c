@@ -716,12 +716,15 @@ SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* 
     return swcase;
 }
 
-Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, u32 num_cases, SwitchCase** cases, ProgRange range)
+Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, u32 num_cases, SwitchCase** cases, bool has_default, u32 default_case_index,
+                      ProgRange range)
 {
     StmtSwitch* stmt = new_stmt(allocator, StmtSwitch, range);
     stmt->expr = expr;
     stmt->num_cases = num_cases;
     stmt->cases = cases;
+    stmt->has_default_case = has_default;
+    stmt->default_case_index = default_case_index;
 
     return (Stmt*)stmt;
 }

@@ -497,18 +497,19 @@ typedef struct SwitchCase {
 typedef struct FlatCaseInfo {
     s64 value; // Case value as an s64
     u32 index; // Index to get the full SwitchCase* object.
-    bool is_default;
 } FlatCaseInfo;
 
 typedef struct StmtSwitch {
     Stmt super;
     Expr* expr;
+    bool has_default_case;
+    u32 default_case_index;
     u32 num_cases;
     SwitchCase** cases;
 
     u32 num_flat_cases; // >= num_cases due to support of `case 1 .. 9:`
     FlatCaseInfo* flat_cases; // Info for flattened cases sorted by increasing value.
-                              // Default case is at the end (if exists).
+                              // Does not include default case.
 } StmtSwitch;
 
 typedef struct StmtReturn {
@@ -569,7 +570,8 @@ Stmt* new_stmt_continue(Allocator* allocator, const char* label, ProgRange range
 Stmt* new_stmt_goto(Allocator* allocator, const char* label, ProgRange range);
 Stmt* new_stmt_label(Allocator* allocator, const char* label, Stmt* target, ProgRange range);
 SwitchCase* new_switch_case(Allocator* allocator, Expr* start, Expr* end, List* stmts, u32 num_decls, ProgRange range);
-Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, u32 num_cases, SwitchCase** cases, ProgRange range);
+Stmt* new_stmt_switch(Allocator* allocator, Expr* expr, u32 num_cases, SwitchCase** cases, bool has_default_case,
+                      u32 default_case_index, ProgRange range);
 Stmt* new_stmt_static_assert(Allocator* allocator, Expr* cond, StrLit* msg, ProgRange range);
 ImportSymbol* new_import_symbol(Allocator* allocator, Identifier* name, Identifier* rename, ProgRange range);
 Stmt* new_stmt_import(Allocator* allocator, size_t num_imports, List* import_syms, StrLit* mod_pathname, Identifier* mod_namespace,
