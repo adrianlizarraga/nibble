@@ -3827,6 +3827,62 @@ static BBlock* IR_emit_stmt_if(IR_ProcBuilder* builder, BBlock* bblock, StmtIf* 
     return last_bb;
 }
 
+static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, StmtSwitch* stmt, IR_UJmpList* break_ujmps,
+                                   IR_UJmpList* cont_ujmps, IR_TmpObjList* tmp_obj_list)
+{
+    Expr* cond_expr = stmt->expr;
+
+    // If expr is a compile-time constant, do not generate the unneeded switch!!
+    if (cond_expr->is_constexpr && cond_expr->is_imm) {
+        assert(type_is_scalar(cond_expr->type));
+        s64 val = cond_expr->imm.as_int._s64;
+        SwitchCase* target_case = NULL;
+
+        // Find the target case (binary search)
+        s64 lo = 0;
+        s64 hi = stmt->num_flat_cases - 1;
+        while (lo <= hi) {
+            s64 mid = lo + ((hi - lo) / 2);
+
+            FlatCaseInfo* case_info = &stmt->flat_cases[mid];
+            if (case_info->value == val) {
+                target_case = stmt->cases[case_info->index];
+                break; // Found our case, eject.
+            }
+
+            if (val < case_info->value) { // Look at left half
+                hi = mid - 1;
+            }
+            else { // Look at right half
+                lo = mid + 1;
+            }
+        }
+
+        // Use default case if necessary
+        if (!target_case && stmt->has_default_case) {
+            target_case = stmt->cases[stmt->default_case_index];
+        }
+
+        if (!target_case) {
+            // Not jumping to any case AND we don't have a default case.
+            // Therefore, this switch case is a no-op. Maybe we should handle this in the resolver?
+            return bblock;
+        }
+
+        // Emit all statements for our target case.
+        IR_push_scope(builder, target_case->scope);
+        BBlock* last_bb = IR_emit_stmt_block_body(builder, bblock, &target_case->stmts, break_ujmps, cont_ujmps);
+        IR_pop_scope(builder);
+
+        return last_bb;
+    }
+
+    // TODO: IMPLEMENT
+    NIBBLE_UNUSED_VAR(tmp_obj_list);
+    NIBBLE_FATAL_EXIT("Compiler does not yet support general switch statements (coming soon).");
+    return NULL;
+}
+
 static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* body, Stmt* next)
 {
     BBlock* hdr_bblock = IR_alloc_bblock(builder);
@@ -4107,6 +4163,9 @@ static BBlock* IR_emit_stmt(IR_ProcBuilder* builder, BBlock* bblock, Stmt* stmt,
         break;
     case CST_StmtIf:
         last_bb = IR_emit_stmt_if(builder, bblock, (StmtIf*)stmt, break_ujmps, cont_ujmps, &tmp_obj_list);
+        break;
+    case CST_StmtSwitch:
+        last_bb = IR_emit_stmt_switch(builder, bblock, (StmtSwitch*)stmt, break_ujmps, cont_ujmps, &tmp_obj_list);
         break;
     case CST_StmtWhile:
         last_bb = IR_emit_stmt_while(builder, bblock, (StmtWhile*)stmt, &tmp_obj_list);

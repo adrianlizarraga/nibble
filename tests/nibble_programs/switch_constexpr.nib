@@ -1,0 +1,51 @@
+// Tests switch statements with compile-constant expressions.
+
+proc test_switch_2() => int {
+    var x :int = 0;
+
+    // Will generate code without branches (only statments in case 1 .. 3)
+    switch (2) {
+        case 1 .. 3: x = 2;
+        case 0: { x = 1;} 
+        case:
+            var y : int = 1;
+            x = 2;
+            x += y; // x == 3
+    }
+
+    return x;
+}
+
+proc test_switch_default() => int {
+    var x :int = 0;
+
+    // Will generate code without branches (only statments in default case)
+    switch (100) {
+        case 1 .. 3: x = 2;
+        case 0: { x = 1;} 
+        case:
+            var y : int = 1;
+            x = 2;
+            x += y; // x == 3
+    }
+
+    return x;
+}
+
+proc test_switch_nodefault() => int {
+    var x :int = 10;
+
+    // Will not generate any code for the entire switch statement because we don't have a default.
+    switch (100) {
+        case 0: { x = 1;} 
+        case 1 .. 3: x = 2;
+    }
+
+    return x;
+}
+
+proc main() => int {
+    // 2 + 3 + 10 = 15
+    return test_switch_2() + test_switch_default() + test_switch_nodefault();
+}
+
