@@ -494,10 +494,11 @@ typedef struct SwitchCase {
     u32 num_decls;
 } SwitchCase;
 
-typedef struct FlatCaseInfo {
-    s64 value; // Case value as an s64
+typedef struct CaseInfo {
+    s64 start;
+    s64 end;
     u32 index; // Index to get the full SwitchCase* object.
-} FlatCaseInfo;
+} CaseInfo;
 
 typedef struct StmtSwitch {
     Stmt super;
@@ -507,9 +508,9 @@ typedef struct StmtSwitch {
     u32 num_cases;
     SwitchCase** cases;
 
-    u32 num_flat_cases; // >= num_cases due to support of `case 1 .. 9:`
-    FlatCaseInfo* flat_cases; // Info for flattened cases sorted by increasing value.
-                              // Does not include default case.
+    // Info for case ranges sorted by increasing start value. Does not include default case.
+    u32 num_case_infos;
+    CaseInfo* case_infos;
 } StmtSwitch;
 
 typedef struct StmtReturn {

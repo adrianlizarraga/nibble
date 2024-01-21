@@ -186,25 +186,25 @@ static bool resolve_switch_case_expr(Resolver* resolver, Expr** expr_ptr, Type* 
     return true;
 }
 
-static inline void qsort_swap_case(FlatCaseInfo* cases, s64 i, s64 j)
+static inline void qsort_swap_case(CaseInfo* cases, s64 i, s64 j)
 {
-    FlatCaseInfo tmp = cases[i];
+    CaseInfo tmp = cases[i];
     cases[i] = cases[j];
     cases[j] = tmp;
 }
 
-static s64 qsort_partition_cases(FlatCaseInfo* cases, s64 lo, s64 hi)
+static s64 qsort_partition_cases(CaseInfo* cases, s64 lo, s64 hi)
 {
     // Pick the middle as a pivot because we assume case expressions are mostly sorted already.
     // Note: we then move the pivot to the end of the array.
     const s64 mid = lo + (hi - lo) / 2;
     qsort_swap_case(cases, mid, hi);
 
-    FlatCaseInfo pivot = cases[hi];
+    CaseInfo pivot = cases[hi];
 
     s64 i = lo;
     for (s64 j = lo; j < hi; j++) {
-        if (cases[j].value <= pivot.value) {
+        if (cases[j].start <= pivot.start) {
             qsort_swap_case(cases, j, i);
             i++;
         }
@@ -214,7 +214,7 @@ static s64 qsort_partition_cases(FlatCaseInfo* cases, s64 lo, s64 hi)
     return i;
 }
 
-static void qsort_cases(FlatCaseInfo* cases, s64 lo, s64 hi)
+static void qsort_cases(CaseInfo* cases, s64 lo, s64 hi)
 {
     if (lo < 0 || lo >= hi) {
         return;
@@ -243,11 +243,17 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
         return 0;
     }
 
+    // Can't have more cases than can fit in a u32.
+    if (stmt->num_cases > int_kind_max[INTEGER_U32]) {
+        resolver_on_error(resolver, stmt->super.range, "Switch statement is too large. Cannot have more cases than can fit in a u32.");
+        return 0;
+    }
+
     unsigned ret = RESOLVE_STMT_SUCCESS;
     Allocator* tmp_arena = &resolver->ctx->tmp_mem;
     AllocatorState mem_state = allocator_get_state(tmp_arena);
 
-    Array(FlatCaseInfo) flat_cases = array_create(tmp_arena, FlatCaseInfo, stmt->num_cases << 1);
+    Array(CaseInfo) case_infos = array_create(tmp_arena, CaseInfo, stmt->num_cases);
 
     // Type-check cases
     for (u32 i = 0; i < stmt->num_cases; i++) {
@@ -282,9 +288,7 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
                 }
             }
 
-            for (s64 val = start_val; val <= end_val; val++) {
-                array_push(flat_cases, (FlatCaseInfo){.value = val, .index = i});
-            }
+            array_push(case_infos, (CaseInfo){.start = start_val, .end = end_val, .index = i});
         }
 
         // TODO: Error if a switch on an enum does not cover all possible values.
@@ -302,28 +306,31 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
         }
     }
 
-    // Sort case values and check for duplicates.
-    if (array_len(flat_cases) > 0) {
-        qsort_cases(flat_cases, 0, array_len(flat_cases) - 1);
+    // Sort cases by start value and check for duplicates and/or intersecting ranges.
+    if (array_len(case_infos) > 0) {
+        qsort_cases(case_infos, 0, array_len(case_infos) - 1);
 
-        for (u32 i = 0; i < array_len(flat_cases) - 1; i++) {
-            const FlatCaseInfo* x = &flat_cases[i];
-            const FlatCaseInfo* y = &flat_cases[i + 1];
+        const CaseInfo* prev = &case_infos[0];
+        for (u32 i = 1; i < array_len(case_infos); i++) {
+            const CaseInfo* curr = &case_infos[i];
 
-            if (x->value == y->value) {
-                u32 case_index = x->index > y->index ? x->index : y->index;
-                resolver_on_error(resolver, stmt->cases[case_index]->range, "Repeated switch case value");
+            if (curr->start <= prev->end) { // Intersection!
+                resolver_on_error(resolver, stmt->cases[curr->index]->range, "Repeated switch case value");
                 ret &= ~RESOLVE_STMT_SUCCESS;
                 allocator_restore_state(mem_state);
                 return ret;
+            }
+
+            if (curr->end > prev->end) {
+                prev = curr;
             }
         }
     }
 
     // Store information for sorted cases.
-    stmt->num_flat_cases = array_len(flat_cases);
-    stmt->flat_cases = alloc_array(&resolver->ctx->ast_mem, FlatCaseInfo, stmt->num_flat_cases, false);
-    memcpy(stmt->flat_cases, flat_cases, array_len(flat_cases) * sizeof(FlatCaseInfo));
+    stmt->num_case_infos = array_len(case_infos);
+    stmt->case_infos = alloc_array(&resolver->ctx->ast_mem, CaseInfo, stmt->num_case_infos, false);
+    memcpy(stmt->case_infos, case_infos, stmt->num_case_infos * sizeof(CaseInfo));
 
     allocator_restore_state(mem_state);
     return ret;

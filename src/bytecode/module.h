@@ -309,6 +309,25 @@ typedef struct IR_InstrCondJmp {
     IR_Reg a;
 } IR_InstrCondJmp;
 
+typedef struct IR_CaseRange {
+    u32 start;
+    u32 end;
+    u32 index;
+}IR_CaseRange;
+
+typedef struct IR_InstrSwitchCaseJmp {
+    IR_Instr super;
+    OpRIA val;
+    BBlock* from;
+    BBlock** targets;
+    u32 num_targets;
+
+    // Sorted sparse case value ranges (start value, end value, index into targets).
+    // Missing entries jump to the last target (could be default case or not).
+    u32 num_case_ranges;
+    IR_CaseRange* case_ranges;
+} IR_InstrSwitchCaseJmp;
+
 typedef struct IR_Value {
     Type* type;
 

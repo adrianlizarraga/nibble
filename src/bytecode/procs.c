@@ -3841,20 +3841,21 @@ static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, Stmt
 
         // Find the target case (binary search)
         s64 lo = 0;
-        s64 hi = stmt->num_flat_cases - 1;
+        s64 hi = stmt->num_case_infos - 1;
         while (lo <= hi) {
             s64 mid = lo + ((hi - lo) / 2);
+            CaseInfo* case_info = &stmt->case_infos[mid];
 
-            FlatCaseInfo* case_info = &stmt->flat_cases[mid];
-            if (case_info->value == val) {
+            if (val >= case_info->start && val <= case_info->end) {
                 target_case = stmt->cases[case_info->index];
                 break; // Found our case, eject.
             }
 
-            if (val < case_info->value) { // Look at left half
+            if (val < case_info->start) { // Look at left half
                 hi = mid - 1;
             }
             else { // Look at right half
+                assert(val > case_info->end);
                 lo = mid + 1;
             }
         }
