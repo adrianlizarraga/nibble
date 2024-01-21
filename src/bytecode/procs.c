@@ -1,3 +1,4 @@
+#include "ast/module.h"
 #include "bytecode/module.h"
 
 typedef struct IR_ProcBuilder {
@@ -3877,10 +3878,48 @@ static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, Stmt
         return last_bb;
     }
 
-    // TODO: IMPLEMENT
+#if 1
     NIBBLE_UNUSED_VAR(tmp_obj_list);
     NIBBLE_FATAL_EXIT("Compiler does not yet support general switch statements (coming soon).");
     return NULL;
+#else
+    BBlock* last_bb = IR_alloc_bblock(builder);
+    BBlock* default_bb = NULL;
+    BBlock* default_or_last = last_bb;
+
+    if (stmt->has_default_case) {
+        default_or_last = default_bb = IR_alloc_bblock(builder);
+    }
+
+    // Get expression value
+    IR_ExprResult val_er = {0};
+
+    BBlock* bb0 = IR_emit_expr(builder, bblock, stmt->expr, &val_er, tmp_obj_list);
+    OpRIA val_ria = IR_expr_result_to_op_ria(builder, &bb0, &val_er);
+
+    // Add offset to make all case values >= 0
+    Scalar min_val = {.as_int._s64 = stmt->flat_cases[0].value};
+    Scalar max_val = {.as_int._s64 = stmt->flat_cases[stmt->num_flat_cases - 1].value};
+
+    if (min_val.as_int._s64 != 0) {
+        IR_Reg dst_reg = IR_next_reg(builder);
+        IR_emit_instr_int_sub(builder, bb0, builtin_types[BUILTIN_TYPE_S64].type, dst_reg, val_ria, op_ria_from_imm(min_val));
+
+        val_ria = op_ria_from_reg(dst_reg);
+        max_val.as_int._s64 -= min_val.as_int._s64;
+    }
+
+    // Jump to default or last bb if val > max_val
+    IR_Reg cmp_result = IR_next_reg(builder);
+    IR_emit_instr_int_cmp(builder, bb0, builtin_types[BUILTIN_TYPE_S64].type, COND_U_GT, cmp_result, val_ria,
+                          op_ria_from_imm(max_val));
+
+    BBlock* bb1 = IR_alloc_bblock(builder);
+    IR_emit_instr_cond_jmp(builder, bb0, default_or_last, bb1, cmp_result);
+
+    // TODO: Create new jmp_switch_case IR instruction.
+    return last_bb;
+#endif
 }
 
 static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* body, Stmt* next)
