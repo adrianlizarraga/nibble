@@ -1,3 +1,4 @@
+#include "allocator.h"
 #include "ast/module.h"
 #include "bytecode/module.h"
 
@@ -661,6 +662,26 @@ static IR_Instr* IR_emit_instr_jmp(IR_ProcBuilder* builder, BBlock* bblock, BBlo
 
     if (target) {
         IR_connect_bblocks(bblock, target);
+    }
+
+    return (IR_Instr*)instr;
+}
+
+static IR_Instr* IR_emit_instr_switch_case_jmp(IR_ProcBuilder* builder, BBlock* bblock, OpRIA val, u32 num_targets, BBlock** targets,
+                                               u32 num_case_ranges, IR_CaseRange* case_ranges)
+{
+    IR_InstrSwitchCaseJmp* instr = IR_new_instr(builder->arena, IR_InstrSwitchCaseJmp);
+    instr->from = bblock;
+    instr->val = val;
+    instr->targets = targets;
+    instr->num_targets = num_targets;
+    instr->num_case_ranges = num_case_ranges;
+    instr->case_ranges = case_ranges;
+
+    IR_add_instr(builder, bblock, (IR_Instr*)instr);
+
+    for (u32 i = 0; i < num_targets; i++) {
+        IR_connect_bblocks(bblock, targets[i]);
     }
 
     return (IR_Instr*)instr;
@@ -3879,18 +3900,16 @@ static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, Stmt
         return last_bb;
     }
 
-#if 1
-    NIBBLE_UNUSED_VAR(tmp_obj_list);
-    NIBBLE_FATAL_EXIT("Compiler does not yet support general switch statements (coming soon).");
-    return NULL;
-#else
-    BBlock* last_bb = IR_alloc_bblock(builder);
-    BBlock* default_bb = NULL;
-    BBlock* default_or_last = last_bb;
+    // Create empty basic blocks for each target case.
+    u32 num_targets = stmt->num_case_infos + (u32)stmt->has_default_case;
+    BBlock** targets = alloc_array(builder->arena, BBlock*, num_targets, false);
 
-    if (stmt->has_default_case) {
-        default_or_last = default_bb = IR_alloc_bblock(builder);
+    for (u32 i = 0; i < num_targets; i++) {
+        targets[i] = IR_alloc_bblock(builder);
     }
+
+    BBlock* last_bb = IR_alloc_bblock(builder); // The last basic block after switch
+    BBlock* default_or_last = stmt->has_default_case ? targets[num_targets - 1] : last_bb;
 
     // Get expression value
     IR_ExprResult val_er = {0};
@@ -3898,10 +3917,18 @@ static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, Stmt
     BBlock* bb0 = IR_emit_expr(builder, bblock, stmt->expr, &val_er, tmp_obj_list);
     OpRIA val_ria = IR_expr_result_to_op_ria(builder, &bb0, &val_er);
 
-    // Add offset to make all case values >= 0
-    Scalar min_val = {.as_int._s64 = stmt->flat_cases[0].value};
-    Scalar max_val = {.as_int._s64 = stmt->flat_cases[stmt->num_flat_cases - 1].value};
+    Scalar min_val = {.as_int._s64 = stmt->case_infos[0].start};
+    Scalar max_val = {.as_int._s64 = stmt->case_infos[stmt->num_case_infos - 1].end};
 
+    // Normalized (>= 0) case infos.
+    u32 num_case_ranges = stmt->num_case_infos;
+    IR_CaseRange* case_ranges = alloc_array(builder->arena, IR_CaseRange, num_case_ranges, false);
+    for (u32 i = 0; i < num_case_ranges; i++) {
+        case_ranges[i].start = (u32)(stmt->case_infos[i].start - min_val.as_int._s64);
+        case_ranges[i].end = (u32)(stmt->case_infos[i].end - min_val.as_int._s64);
+    }
+
+    // Add offset to expression value to transform it to >= 0.
     if (min_val.as_int._s64 != 0) {
         IR_Reg dst_reg = IR_next_reg(builder);
         IR_emit_instr_int_sub(builder, bb0, builtin_types[BUILTIN_TYPE_S64].type, dst_reg, val_ria, op_ria_from_imm(min_val));
@@ -3910,17 +3937,48 @@ static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, Stmt
         max_val.as_int._s64 -= min_val.as_int._s64;
     }
 
-    // Jump to default or last bb if val > max_val
+    // Jump to default or last bb if val > max_val (normalized)
     IR_Reg cmp_result = IR_next_reg(builder);
     IR_emit_instr_int_cmp(builder, bb0, builtin_types[BUILTIN_TYPE_S64].type, COND_U_GT, cmp_result, val_ria,
                           op_ria_from_imm(max_val));
 
-    BBlock* bb1 = IR_alloc_bblock(builder);
-    IR_emit_instr_cond_jmp(builder, bb0, default_or_last, bb1, cmp_result);
+    BBlock* switch_jmp_bb = IR_alloc_bblock(builder);
+    IR_emit_instr_cond_jmp(builder, bb0, default_or_last, switch_jmp_bb, cmp_result);
 
-    // TODO: Create new jmp_switch_case IR instruction.
+    // Create new jmp_switch_case IR instruction.
+    IR_emit_instr_switch_case_jmp(builder, switch_jmp_bb, val_ria, num_targets, targets, num_case_ranges, case_ranges);
+
+    // Emit instructions for all cases in order.
+    {
+        for (u32 i = 0; i < stmt->num_case_infos; i++) {
+            CaseInfo* case_info = &stmt->case_infos[i];
+            SwitchCase* target_case = stmt->cases[case_info->index];
+            BBlock* case_bb = targets[i];
+
+            IR_push_scope(builder, target_case->scope);
+            BBlock* case_end_bb = IR_emit_stmt_block_body(builder, case_bb, &target_case->stmts, break_ujmps, cont_ujmps);
+            IR_pop_scope(builder);
+
+            if (case_end_bb) {
+                IR_emit_instr_jmp(builder, case_end_bb, last_bb);
+            }
+        }
+
+        if (stmt->has_default_case) {
+            SwitchCase* target_case = stmt->cases[stmt->default_case_index];
+            BBlock* default_bb = targets[num_targets - 1];
+
+            IR_push_scope(builder, target_case->scope);
+            BBlock* default_end_bb = IR_emit_stmt_block_body(builder, default_bb, &target_case->stmts, break_ujmps, cont_ujmps);
+            IR_pop_scope(builder);
+
+            if (default_end_bb) {
+                IR_emit_instr_jmp(builder, default_end_bb, last_bb);
+            }
+        }
+    }
+
     return last_bb;
-#endif
 }
 
 static BBlock* IR_emit_inf_loop(IR_ProcBuilder* builder, BBlock* bblock, Stmt* body, Stmt* next)

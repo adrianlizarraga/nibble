@@ -123,6 +123,7 @@ typedef enum IR_InstrKind {
     IR_InstrFltCmp_KIND,
     IR_InstrJmp_KIND,
     IR_InstrCondJmp_KIND,
+    IR_InstrSwitchCaseJmp_KIND,
     IR_InstrRet_KIND,
     IR_InstrCall_KIND,
     IR_InstrCallIndirect_KIND,
@@ -312,17 +313,16 @@ typedef struct IR_InstrCondJmp {
 typedef struct IR_CaseRange {
     u32 start;
     u32 end;
-    u32 index;
-}IR_CaseRange;
+} IR_CaseRange;
 
 typedef struct IR_InstrSwitchCaseJmp {
     IR_Instr super;
-    OpRIA val;
     BBlock* from;
+    OpRIA val;
     BBlock** targets;
     u32 num_targets;
 
-    // Sorted sparse case value ranges (start value, end value, index into targets).
+    // Case value ranges in same order as targets (sorted by increasing start).
     // Missing entries jump to the last target (could be default case or not).
     u32 num_case_ranges;
     IR_CaseRange* case_ranges;

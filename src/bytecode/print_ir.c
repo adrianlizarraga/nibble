@@ -419,6 +419,29 @@ char* IR_print_instr(Allocator* arena, IR_Instr* instr)
         ftprint_char_array(&dstr, false, "jmpcc B.%u if %s else B.%u", i->true_bb->id, IR_print_reg(arena, i->a), i->false_bb->id);
         break;
     }
+    case IR_InstrSwitchCaseJmp_KIND: {
+        IR_InstrSwitchCaseJmp* i = (IR_InstrSwitchCaseJmp*)instr;
+
+        ftprint_char_array(&dstr, false, "switch (%s) { ", IR_print_op_ria(arena, &i->val));
+        for (u32 k = 0; k < i->num_case_ranges; k++) {
+            IR_CaseRange* case_range = &i->case_ranges[k];
+            BBlock* target = i->targets[k];
+
+            if (i->case_ranges[k].start == i->case_ranges[k].end) {
+                ftprint_char_array(&dstr, false, "case %u -> B.%u ", case_range->start, target->id);
+            }
+            else {
+                ftprint_char_array(&dstr, false, "case %u .. %u -> B.%u ", case_range->start, case_range->end, target->id);
+            }
+        }
+
+        if (i->num_targets > i->num_case_ranges) {
+            BBlock* target = i->targets[i->num_targets - 1];
+            ftprint_char_array(&dstr, false, "default -> B.%u ", target->id);
+        }
+        ftprint_char_array(&dstr, false, "}");
+        break;
+    }
     case IR_InstrRet_KIND: {
         IR_InstrRet* i = (IR_InstrRet*)instr;
         IR_Value* val = &i->val;
@@ -572,6 +595,12 @@ static void IR_dump_bblock_dot(Allocator* arena, BBlock* bblock)
         IR_InstrCondJmp* jmp = (IR_InstrCondJmp*)last_instr;
         ftprint_out("\tB%d -> B%d\n", bblock->id, jmp->true_bb->id);
         ftprint_out("\tB%d -> B%d\n", bblock->id, jmp->false_bb->id);
+    }
+    else if (last_instr->kind == IR_InstrSwitchCaseJmp_KIND) {
+        const IR_InstrSwitchCaseJmp* jmp = (const IR_InstrSwitchCaseJmp*)last_instr;
+        for (u32 i = 0; i < jmp->num_targets; i++) {
+            ftprint_out("\tB%d -> B%d\n", bblock->id, jmp->targets[i]->id);
+        }
     }
     else {
         assert(last_instr->kind == IR_InstrRet_KIND);
