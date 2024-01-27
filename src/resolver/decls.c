@@ -1,4 +1,5 @@
 #include <assert.h>
+#include "ast/module.h"
 #include "resolver/internal.h"
 
 bool resolve_decl_var(Resolver* resolver, Symbol* sym)
@@ -117,6 +118,56 @@ bool resolve_decl_typedef(Resolver* resolver, Symbol* sym)
     return true;
 }
 
+static inline void swap_syms(Symbol** syms, s64 i, s64 j)
+{
+    Symbol* tmp = syms[i];
+    syms[i] = syms[j];
+    syms[j] = tmp;
+}
+
+static inline bool cmp_lteq_enum_syms(Symbol* a, Symbol* b)
+{
+    assert(a->type == b->type);
+
+    if (type_is_signed(a->type)) {
+        return a->as_const.imm.as_int._s64 <= b->as_const.imm.as_int._s64;
+    }
+
+    return a->as_const.imm.as_int._u64 <= b->as_const.imm.as_int._u64;
+}
+
+static s64 qsort_partition_enum_syms(Symbol** syms, s64 lo, s64 hi)
+{
+    // Pick middle as pivot since this is already likely sorted.
+    // Afterwards, move pivot element to the end of the array.
+    s64 mid = lo + ((hi - lo) / 2);
+    swap_syms(syms, mid, hi);
+
+    s64 i = lo;
+    for (s64 j = lo; j < hi; j++) {
+        if (cmp_lteq_enum_syms(syms[j], syms[hi])) {
+            swap_syms(syms, i, j);
+            i++;
+        }
+    }
+
+    swap_syms(syms, i, hi);
+    return i;
+}
+
+static void qsort_enum_syms(Symbol** syms, s64 lo, s64 hi)
+{
+    if (lo < 0 || lo >= hi) {
+        return;
+    }
+
+    s64 pivot_index = qsort_partition_enum_syms(syms, lo, hi);
+
+    // Recursively sort the two partitions.
+    qsort_enum_syms(syms, lo, pivot_index - 1);
+    qsort_enum_syms(syms, pivot_index + 1, hi);
+}
+
 bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
 {
     assert(sym->kind == SYMBOL_TYPE);
@@ -140,7 +191,7 @@ bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
         return false;
     }
 
-    Type* enum_type = type_enum(&resolver->ctx->ast_mem, base_type, decl_enum);
+    Type* enum_type = type_enum(&resolver->ctx->ast_mem, base_type, sym);
 
     // Resolve enum items.
     Symbol** item_syms = alloc_array(&resolver->ctx->ast_mem, Symbol*, decl_enum->num_items, false);
@@ -150,6 +201,8 @@ bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
     List* it = head->next;
     size_t i = 0;
 
+    // TODO: This is really sloppy. Need to validate that enum values fit in the base type.
+    // Also need to account for overflow when the enum value is auto-incremented.
     while (it != head) {
         DeclEnumItem* enum_item = list_entry(it, DeclEnumItem, lnode);
         Scalar enum_val = {0};
@@ -199,6 +252,21 @@ bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
         prev_enum_val = enum_val;
         it = it->next;
         i += 1;
+    }
+
+    // Sort enum syms by value.
+    qsort_enum_syms(item_syms, 0, decl_enum->num_items - 1);
+
+    // Check for any repeated enum values.
+    if (decl_enum->num_items > 0) {
+        for (size_t i = 0; i < decl_enum->num_items - 1; i++) {
+            u64 v0 = item_syms[i]->as_const.imm.as_int._u64;
+            u64 v1 = item_syms[i + 1]->as_const.imm.as_int._u64;
+            if (v0 == v1) {
+                resolver_on_error(resolver, item_syms[i]->decl->range, "Duplicate enum value");
+                return false;
+            }
+        }
     }
 
     sym->type = enum_type;
@@ -367,7 +435,8 @@ bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         u32 num_args = foreign_anno->num_args;
 
         if (!num_args || (num_args > 2)) {
-            resolver_on_error(resolver, foreign_anno->range, "Foreign declaration must have 1 or 2 arguments: <lib_name> [, <foreign_func_name>].");
+            resolver_on_error(resolver, foreign_anno->range,
+                              "Foreign declaration must have 1 or 2 arguments: <lib_name> [, <foreign_func_name>].");
             return false;
         }
 
@@ -401,7 +470,8 @@ bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         }
 
         if (!nibble_add_foreign_lib(resolver->ctx, foreign_lib_arg->str_lit)) {
-            resolver_on_error(resolver, foreign_lib_arg->super.range, "Unsupported library type for `%s`", foreign_lib_arg->str_lit->str);
+            resolver_on_error(resolver, foreign_lib_arg->super.range, "Unsupported library type for `%s`",
+                              foreign_lib_arg->str_lit->str);
             return false;
         }
 
@@ -450,7 +520,8 @@ bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
         Type* param_type = param_sym->type;
 
         if (is_foreign && ((param_type->kind == TYPE_ARRAY) || type_is_slice(param_type))) {
-            resolver_on_error(resolver, proc_param->range, "Foreign procedures cannot have array type arguments. Use pointers instead.");
+            resolver_on_error(resolver, proc_param->range,
+                              "Foreign procedures cannot have array type arguments. Use pointers instead.");
             allocator_restore_state(mem_state);
             return false;
         }
@@ -491,4 +562,3 @@ bool resolve_decl_proc(Resolver* resolver, Symbol* sym)
     allocator_restore_state(mem_state);
     return true;
 }
-

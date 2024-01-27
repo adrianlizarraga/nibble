@@ -744,7 +744,7 @@ typedef struct TypePtr {
 
 typedef struct TypeEnum {
     Type* base;
-    DeclEnum* decl;
+    Symbol* sym;
 } TypeEnum;
 
 typedef struct TypeAggregateField {
@@ -882,7 +882,7 @@ Type* type_ptr(Allocator* allocator, HMap* type_ptr_cache, Type* base);
 Type* type_array(Allocator* allocator, HMap* type_array_cache, Type* base, size_t len);
 Type* type_proc(Allocator* allocator, HMap* type_proc_cache, size_t num_params, Type** params, Type* ret, bool is_variadic);
 Type* type_unsigned_int(Type* type_int);
-Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl);
+Type* type_enum(Allocator* allocator, Type* base, Symbol* sym);
 Type* type_incomplete_aggregate(Allocator* allocator, Symbol* sym);
 Type* type_anon_aggregate(Allocator* allocator, HMap* type_cache, TypeKind kind, size_t num_fields, const TypeAggregateField* fields);
 Type* type_slice(Allocator* allocator, HMap* type_slice_cache, HMap* type_ptr_cache, Type* elem_type);

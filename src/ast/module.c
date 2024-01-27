@@ -1088,14 +1088,14 @@ static Type* type_float_alloc(Allocator* allocator, FloatKind kind)
     return type;
 }
 
-Type* type_enum(Allocator* allocator, Type* base, DeclEnum* decl)
+Type* type_enum(Allocator* allocator, Type* base, Symbol* sym)
 {
     assert(base);
     Type* type = type_alloc(allocator, TYPE_ENUM);
     type->size = base->size;
     type->align = base->align;
     type->as_enum.base = base;
-    type->as_enum.decl = decl;
+    type->as_enum.sym = sym;
 
     return type;
 }

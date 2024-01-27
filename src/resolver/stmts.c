@@ -254,6 +254,8 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
     AllocatorState mem_state = allocator_get_state(tmp_arena);
 
     Array(CaseInfo) case_infos = array_create(tmp_arena, CaseInfo, stmt->num_cases);
+    bool any_case_no_return = false;
+    bool any_case_no_loop_exit = false;
 
     // Type-check cases
     for (u32 i = 0; i < stmt->num_cases; i++) {
@@ -296,13 +298,20 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
         scase->scope = push_scope(resolver, scase->num_decls);
 
         unsigned r = resolve_stmt_block_body(resolver, &scase->stmts, ret_type, flags);
-        ret = (r & RESOLVE_STMT_RETURNS) | (r & RESOLVE_STMT_LOOP_EXITS) | ret;
+
+        if (!(r & RESOLVE_STMT_RETURNS)) {
+            any_case_no_return = true;
+        }
+
+        if (!(r & RESOLVE_STMT_LOOP_EXITS)) {
+            any_case_no_loop_exit = true;
+        }
+
         pop_scope(resolver);
 
         if (!(r & RESOLVE_STMT_SUCCESS)) {
-            ret &= ~RESOLVE_STMT_SUCCESS;
             allocator_restore_state(mem_state);
-            return ret;
+            return 0;
         }
     }
 
@@ -325,6 +334,19 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
                 prev = curr;
             }
         }
+    }
+
+    // TODO: Handle switch on enum expression. Should say the entire switch returns
+    // if all enum values are used as cases, all cases return, and don't have a default case.
+    //
+    // TODO: Also handle switch on int where the entire integer range is covered without a default statement.
+    // If all cases return, then the entire switch returns.
+    if (stmt->has_default_case && !any_case_no_return) {
+        ret |= RESOLVE_STMT_RETURNS;
+    }
+
+    if (stmt->has_default_case && !any_case_no_loop_exit) {
+        ret |= RESOLVE_STMT_LOOP_EXITS;
     }
 
     // Store information for sorted cases.
