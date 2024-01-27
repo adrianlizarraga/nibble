@@ -3901,15 +3901,15 @@ static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, Stmt
     }
 
     // Create empty basic blocks for each target case.
-    u32 num_targets = stmt->num_case_infos + (u32)stmt->has_default_case;
+    u32 num_targets = stmt->num_case_infos + 1; // The last is either default case or the last bb.
     BBlock** targets = alloc_array(builder->arena, BBlock*, num_targets, false);
 
     for (u32 i = 0; i < num_targets; i++) {
         targets[i] = IR_alloc_bblock(builder);
     }
 
-    BBlock* last_bb = IR_alloc_bblock(builder); // The last basic block after switch
-    BBlock* default_or_last = stmt->has_default_case ? targets[num_targets - 1] : last_bb;
+    BBlock* last_bb = stmt->has_default_case ? IR_alloc_bblock(builder) : targets[num_targets - 1];
+    BBlock* default_or_last = targets[num_targets - 1];
 
     // Get expression value
     IR_ExprResult val_er = {0};
