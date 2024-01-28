@@ -227,6 +227,26 @@ static void qsort_cases(CaseInfo* cases, s64 lo, s64 hi)
     qsort_cases(cases, pivot_index + 1, hi);
 }
 
+static bool switch_stmt_is_exhaustive(const StmtSwitch* stmt, Array(const CaseInfo) case_infos)
+{
+    if (stmt->has_default_case) {
+        return true;
+    }
+
+    const Type* type = stmt->expr->type;
+    NIBBLE_UNUSED_VAR(case_infos);
+
+    if (type->kind == TYPE_INTEGER) {
+        // TODO: Check if cases cover the entire integer range.
+        return false;
+    }
+
+    assert(type->kind == TYPE_ENUM);
+    // TODO: Check if cases cover all possible enum values.
+
+    return false;
+}
+
 static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* ret_type, unsigned flags)
 {
     if (!resolve_expr(resolver, stmt->expr, NULL)) {
@@ -336,16 +356,13 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
         }
     }
 
-    // TODO: Handle switch on enum expression. Should say the entire switch returns
-    // if all enum values are used as cases, all cases return, and don't have a default case.
-    //
-    // TODO: Also handle switch on int where the entire integer range is covered without a default statement.
-    // If all cases return, then the entire switch returns.
-    if (stmt->has_default_case && !any_case_no_return) {
+    const bool is_exhaustive = switch_stmt_is_exhaustive(stmt, case_infos);
+
+    if (is_exhaustive && !any_case_no_return) {
         ret |= RESOLVE_STMT_RETURNS;
     }
 
-    if (stmt->has_default_case && !any_case_no_loop_exit) {
+    if (is_exhaustive && !any_case_no_loop_exit) {
         ret |= RESOLVE_STMT_LOOP_EXITS;
     }
 
