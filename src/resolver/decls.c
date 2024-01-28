@@ -201,8 +201,6 @@ bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
     List* it = head->next;
     size_t i = 0;
 
-    // TODO: This is really sloppy. Need to validate that enum values fit in the base type.
-    // Also need to account for overflow when the enum value is auto-incremented.
     while (it != head) {
         DeclEnumItem* enum_item = list_entry(it, DeclEnumItem, lnode);
         Scalar enum_val = {0};
@@ -225,6 +223,12 @@ bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
                 return false;
             }
 
+            if (!value_in_int_range(value_eop.imm.as_int._u64, base_type->as_integer.kind)) {
+                resolver_on_error(resolver, enum_item->value->range, "Enum item's value must fit in the base type `%s`.",
+                                  type_name(base_type));
+                return false;
+            }
+
             CastResult r = convert_eop(&value_eop, enum_type, true);
 
             if (!r.success) {
@@ -236,6 +240,12 @@ bool resolve_decl_enum(Resolver* resolver, Symbol* sym)
             enum_val = value_eop.imm;
         }
         else if (i > 0) { // Has a previous value
+            if (value_is_int_max(prev_enum_val.as_int._u64, base_type->as_integer.kind)) {
+                resolver_on_error(resolver, enum_item->super.range,
+                                  "Enum item's value will not fit in the base type `%s` due to overflow.", type_name(base_type));
+                return false;
+            }
+
             Scalar one_imm = {.as_int._u64 = 1};
             ExprOperand item_op = {0};
 

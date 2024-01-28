@@ -812,6 +812,20 @@ bool type_is_signed(const Type* type)
     return int_kind_signed[ikind];
 }
 
+bool value_is_int_max(u64 value, IntegerKind ikind)
+{
+    return int_kind_signed[ikind] ? (s64)value == (s64)int_kind_max[ikind] : value == int_kind_max[ikind];
+}
+
+bool value_in_int_range(u64 value, IntegerKind ikind)
+{
+    const bool is_signed = int_kind_signed[ikind];
+    const u64 u_min = int_kind_min[ikind];
+    const u64 u_max = int_kind_max[ikind];
+
+    return is_signed ? ((s64)value >= (s64)u_min) && ((s64)value <= (s64)u_max) : (value >= u_min) && (value <= u_max);
+}
+
 bool type_is_arithmetic(const Type* type)
 {
     TypeKind kind = type->kind;

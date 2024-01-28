@@ -851,6 +851,8 @@ extern int type_integer_ranks[];
 
 void init_builtin_types(OS target_os, Arch target_arch, Allocator* ast_mem, TypeCache* type_cache);
 const char* type_name(const Type* type);
+bool value_is_int_max(u64 value, IntegerKind ikind);
+bool value_in_int_range(u64 value, IntegerKind ikind);
 bool type_is_integer_like(const Type* type);
 bool type_is_bool(const Type* type);
 bool type_is_signed(const Type* type);
