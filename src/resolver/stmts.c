@@ -269,7 +269,6 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
         return 0;
     }
 
-    unsigned ret = RESOLVE_STMT_SUCCESS;
     Allocator* tmp_arena = &resolver->ctx->tmp_mem;
     AllocatorState mem_state = allocator_get_state(tmp_arena);
 
@@ -345,9 +344,8 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
 
             if (curr->start <= prev->end) { // Intersection!
                 resolver_on_error(resolver, stmt->cases[curr->index]->range, "Repeated switch case value");
-                ret &= ~RESOLVE_STMT_SUCCESS;
                 allocator_restore_state(mem_state);
-                return ret;
+                return 0;
             }
 
             if (curr->end > prev->end) {
@@ -357,6 +355,7 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
     }
 
     const bool is_exhaustive = switch_stmt_is_exhaustive(stmt, case_infos);
+    unsigned ret = RESOLVE_STMT_SUCCESS;
 
     if (is_exhaustive && !any_case_no_return) {
         ret |= RESOLVE_STMT_RETURNS;
