@@ -178,6 +178,7 @@ static bool resolve_switch_case_expr(Resolver* resolver, Expr** expr_ptr, Type* 
         *expr_ptr = try_wrap_cast_expr(resolver, &eop, *expr_ptr);
     }
 
+    // TODO: Cast to either s64 or u64 depending on the switch expressions type/sign.
     // Finally, cast to s64
     ExprOperand eop = OP_FROM_EXPR((*expr_ptr));
     CastResult r = convert_eop(&eop, builtin_types[BUILTIN_TYPE_S64].type, false);
