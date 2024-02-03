@@ -1,6 +1,7 @@
 #ifndef NIBBLE_RESOLVER_INTERNAL_H
 #define NIBBLE_RESOLVER_INTERNAL_H
 #include "resolver/module.h"
+#include "const_eval.h"
 
 #define OP_FROM_EXPR(e)                                                                                                           \
     {                                                                                                                             \

@@ -469,161 +469,25 @@ static Type* convert_arith_eops(ExprOperand* left, ExprOperand* right)
     return left->type;
 }
 
-#define DEF_EVAL_UNARY_OP_INT_FUNC(T)                                 \
-    static T eval_unary_op_##T(TokenKind op, T val)                   \
-    {                                                                 \
-        switch (op) {                                                 \
-        case TKN_PLUS:                                                \
-            return +val;                                              \
-        case TKN_MINUS:                                               \
-            return -val;                                              \
-        case TKN_NEG:                                                 \
-            return ~val;                                              \
-        case TKN_NOT:                                                 \
-            return !val;                                              \
-        default:                                                      \
-            NIBBLE_FATAL_EXIT("Unexpected unary op (##T): %d\n", op); \
-            return 0;                                                 \
-        }                                                             \
-    }
-
-DEF_EVAL_UNARY_OP_INT_FUNC(s64)
-DEF_EVAL_UNARY_OP_INT_FUNC(u64)
-
-#define DEF_EVAL_UNARY_OP_FLOAT_FUNC(T)                               \
-    static T eval_unary_op_##T(TokenKind op, T val)                   \
-    {                                                                 \
-        switch (op) {                                                 \
-        case TKN_PLUS:                                                \
-            return +val;                                              \
-        case TKN_MINUS:                                               \
-            return -val;                                              \
-        default:                                                      \
-            NIBBLE_FATAL_EXIT("Unexpected unary op (##T): %d\n", op); \
-            return 0.0;                                               \
-        }                                                             \
-    }
-
-DEF_EVAL_UNARY_OP_FLOAT_FUNC(f64)
-DEF_EVAL_UNARY_OP_FLOAT_FUNC(f32)
-
-#define DEF_EVAL_BINARY_OP_FLOAT_FUNC(T)                               \
-    static T eval_binary_op_##T(TokenKind op, T left, T right)         \
-    {                                                                  \
-        switch (op) {                                                  \
-        case TKN_PLUS:                                                 \
-            return left + right;                                       \
-        case TKN_MINUS:                                                \
-            return left - right;                                       \
-        case TKN_ASTERISK:                                             \
-            return left * right;                                       \
-        case TKN_DIV:                                                  \
-            return left / right;                                       \
-        default:                                                       \
-            NIBBLE_FATAL_EXIT("Unexpected binary op (##T): %d\n", op); \
-            return 0.0;                                                \
-        }                                                              \
-    }
-
-DEF_EVAL_BINARY_OP_FLOAT_FUNC(f64)
-DEF_EVAL_BINARY_OP_FLOAT_FUNC(f32)
-
-#define DEF_EVAL_BINARY_LOGICAL_OP_FUNC(T)                                     \
-    static bool eval_binary_logical_op_##T(TokenKind op, T left, T right)      \
-    {                                                                          \
-        switch (op) {                                                          \
-        case TKN_LOGIC_AND:                                                    \
-            return left && right;                                              \
-        case TKN_LOGIC_OR:                                                     \
-            return left || right;                                              \
-        case TKN_EQ:                                                           \
-            return left == right;                                              \
-        case TKN_NOTEQ:                                                        \
-            return left != right;                                              \
-        case TKN_GT:                                                           \
-            return left > right;                                               \
-        case TKN_GTEQ:                                                         \
-            return left >= right;                                              \
-        case TKN_LT:                                                           \
-            return left < right;                                               \
-        case TKN_LTEQ:                                                         \
-            return left <= right;                                              \
-        default:                                                               \
-            NIBBLE_FATAL_EXIT("Unexpected binary logical op (##T): %d\n", op); \
-            return false;                                                      \
-        }                                                                      \
-    }
-
-DEF_EVAL_BINARY_LOGICAL_OP_FUNC(f64)
-DEF_EVAL_BINARY_LOGICAL_OP_FUNC(f32)
-DEF_EVAL_BINARY_LOGICAL_OP_FUNC(s64)
-DEF_EVAL_BINARY_LOGICAL_OP_FUNC(u64)
-
-#define DEF_EVAL_BINARY_OP_INT_FUNC(T)                                 \
-    static T eval_binary_op_##T(TokenKind op, T left, T right)         \
-    {                                                                  \
-        switch (op) {                                                  \
-        case TKN_PLUS:                                                 \
-            return left + right;                                       \
-        case TKN_MINUS:                                                \
-            return left - right;                                       \
-        case TKN_ASTERISK:                                             \
-            return left * right;                                       \
-        case TKN_DIV:                                                  \
-            return right != 0 ? left / right : 0;                      \
-        case TKN_MOD:                                                  \
-            return right != 0 ? left % right : 0;                      \
-        case TKN_LSHIFT:                                               \
-            return left << right;                                      \
-        case TKN_RSHIFT:                                               \
-            return left >> right;                                      \
-        case TKN_AND:                                                  \
-            return left & right;                                       \
-        case TKN_OR:                                                   \
-            return left | right;                                       \
-        case TKN_CARET:                                                \
-            return left ^ right;                                       \
-        default:                                                       \
-            NIBBLE_FATAL_EXIT("Unexpected binary op (##T): %d\n", op); \
-            return 0;                                                  \
-        }                                                              \
-    }
-
-DEF_EVAL_BINARY_OP_INT_FUNC(s64)
-DEF_EVAL_BINARY_OP_INT_FUNC(u64)
-
 void eval_binary_op(TokenKind op, ExprOperand* dst, Type* type, Scalar left, Scalar right)
 {
     if (type_is_integer_like(type)) {
         ExprOperand left_eop = OP_FROM_CONST(type, left);
         ExprOperand right_eop = OP_FROM_CONST(type, right);
-        bool is_signed = type_is_signed(type);
+        const bool is_signed = type_is_signed(type);
+        Type* type_64bit = is_signed ? builtin_types[BUILTIN_TYPE_S64].type : builtin_types[BUILTIN_TYPE_U64].type;
 
-        // Compute the operation in the largest type available.
-        if (is_signed) {
-            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
-            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+        // Cast to 64bit to compute the operation in the largest type available.
+        cast_eop(&left_eop, type_64bit, false);
+        cast_eop(&right_eop, type_64bit, false);
 
-            s64 r = eval_binary_op_s64(op, left_eop.imm.as_int._s64, right_eop.imm.as_int._s64);
+        Scalar r = eval_binary_op_64bit(op, is_signed, left_eop.imm, right_eop.imm);
 
-            dst->type = builtin_types[BUILTIN_TYPE_S64].type;
-            dst->is_constexpr = true;
-            dst->is_imm = true;
-            dst->is_lvalue = false;
-            dst->imm.as_int._s64 = r;
-        }
-        else {
-            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
-            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
-
-            u64 r = eval_binary_op_u64(op, left_eop.imm.as_int._u64, right_eop.imm.as_int._u64);
-
-            dst->type = builtin_types[BUILTIN_TYPE_U64].type;
-            dst->is_constexpr = true;
-            dst->is_imm = true;
-            dst->is_lvalue = false;
-            dst->imm.as_int._u64 = r;
-        }
+        dst->type = type_64bit;
+        dst->is_constexpr = true;
+        dst->is_imm = true;
+        dst->is_lvalue = false;
+        dst->imm = r;
 
         // Cast it back to the original type.
         cast_eop(dst, type, false);
@@ -654,21 +518,13 @@ void eval_binary_logical_op(TokenKind op, ExprOperand* dst, Type* type, Scalar l
     if (type_is_integer_like(type)) {
         ExprOperand left_eop = OP_FROM_CONST(type, left);
         ExprOperand right_eop = OP_FROM_CONST(type, right);
-        bool is_signed = type_is_signed(type);
+        const bool is_signed = type_is_signed(type);
+        Type* type_64bit = is_signed ? builtin_types[BUILTIN_TYPE_S64].type : builtin_types[BUILTIN_TYPE_U64].type;
 
-        // Compute the operation in the largest type available.
-        if (is_signed) {
-            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
-            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_S64].type, false);
-
-            result = eval_binary_logical_op_s64(op, left_eop.imm.as_int._s64, right_eop.imm.as_int._s64);
-        }
-        else {
-            cast_eop(&left_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
-            cast_eop(&right_eop, builtin_types[BUILTIN_TYPE_U64].type, false);
-
-            result = eval_binary_logical_op_u64(op, left_eop.imm.as_int._u64, right_eop.imm.as_int._u64);
-        }
+        // Cast to 64bit to compute the operation in the largest type available.
+        cast_eop(&left_eop, type_64bit, false);
+        cast_eop(&right_eop, type_64bit, false);
+        result = eval_binary_logical_op_64bit(op, is_signed, left_eop.imm, right_eop.imm);
     }
     else {
         assert(type->kind == TYPE_FLOAT);
@@ -2060,18 +1916,19 @@ static bool resolve_expr_bit_cast(Resolver* resolver, ExprBitCast* expr)
 
     // Size and alignment of expr's type must be equal to the size of the destination bit_cast type.
     // If the source is not an lvalue, then the alignment can differ.
-    if ((src_eop.type->size != cast_type->size) ||
-        (src_eop.is_lvalue && (src_eop.type->align != cast_type->align))) {
+    if ((src_eop.type->size != cast_type->size) || (src_eop.is_lvalue && (src_eop.type->align != cast_type->align))) {
         resolver_on_error(resolver, expr->super.range,
                           "Cannot bit_cast an expression (of type `%s`) to a type (`%s`) of a different size "
-                          "or alignment requirement.", type_name(src_eop.type), type_name(cast_type));
+                          "or alignment requirement.",
+                          type_name(src_eop.type), type_name(cast_type));
         return false;
     }
 
     // TODO: Handle bit casting an immediate (e.g., 0xF3AA) to a non-immediate object (e.g., struct{char; char;}).
     // Can convert this expression to a compound literal.
     if (src_eop.is_imm && type_is_obj_like(cast_type)) {
-        resolver_on_error(resolver, expr->super.range, "Cannot cast a compile-time constant expression "
+        resolver_on_error(resolver, expr->super.range,
+                          "Cannot cast a compile-time constant expression "
                           "to a struct/union/array type. This will be allowed in the future!");
         return false;
     }
@@ -2437,4 +2294,3 @@ bool resolve_expr(Resolver* resolver, Expr* expr, Type* expected_type)
 
     return false;
 }
-

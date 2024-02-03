@@ -178,10 +178,11 @@ static bool resolve_switch_case_expr(Resolver* resolver, Expr** expr_ptr, Type* 
         *expr_ptr = try_wrap_cast_expr(resolver, &eop, *expr_ptr);
     }
 
-    // TODO: Cast to either s64 or u64 depending on the switch expressions type/sign.
-    // Finally, cast to s64
+    // Cast to either s64 or u64 depending on the switch expressions type/sign.
+    const bool is_signed = type_is_signed(switch_type);
+    Type* type_64bit = is_signed ? builtin_types[BUILTIN_TYPE_S64].type : builtin_types[BUILTIN_TYPE_U64].type;
     ExprOperand eop = OP_FROM_EXPR((*expr_ptr));
-    CastResult r = convert_eop(&eop, builtin_types[BUILTIN_TYPE_S64].type, false);
+    CastResult r = convert_eop(&eop, type_64bit, false);
     assert(r.success); // Must be able to convert between integer types.
     *expr_ptr = try_wrap_cast_expr(resolver, &eop, *expr_ptr);
     return true;
@@ -202,10 +203,12 @@ static s64 qsort_partition_cases(CaseInfo* cases, s64 lo, s64 hi)
     qsort_swap_case(cases, mid, hi);
 
     CaseInfo pivot = cases[hi];
+    const bool is_signed = pivot.is_signed;
 
     s64 i = lo;
     for (s64 j = lo; j < hi; j++) {
-        if (cases[j].start <= pivot.start) {
+        // if cases[j].start <= pivot.start
+        if (eval_binary_logical_op_64bit(TKN_LTEQ, is_signed, cases[j].start, pivot.start)) {
             qsort_swap_case(cases, j, i);
             i++;
         }
@@ -273,6 +276,7 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
     Allocator* tmp_arena = &resolver->ctx->tmp_mem;
     AllocatorState mem_state = allocator_get_state(tmp_arena);
 
+    const bool is_signed = type_is_signed(stmt->expr->type);
     Array(CaseInfo) case_infos = array_create(tmp_arena, CaseInfo, stmt->num_cases);
     bool any_case_no_return = false;
     bool any_case_no_loop_exit = false;
@@ -288,9 +292,8 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
                 return 0;
             }
 
-            assert(scase->start->type == builtin_types[BUILTIN_TYPE_S64].type);
-            const s64 start_val = scase->start->imm.as_int._s64;
-            s64 end_val = start_val;
+            const Scalar start_val = scase->start->imm;
+            Scalar end_val = start_val;
 
             if (scase->end) {
                 if (!resolve_switch_case_expr(resolver, &scase->end, stmt->expr->type)) {
@@ -299,10 +302,10 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
                 }
 
                 assert(scase->start->type == scase->end->type);
-                end_val = scase->end->imm.as_int._s64;
+                end_val = scase->end->imm;
 
                 // Check that end > start
-                if (end_val <= start_val) {
+                if (eval_binary_logical_op_64bit(TKN_LTEQ, is_signed, end_val, start_val)) { // end_val <= start_val
                     ProgRange range = merge_ranges(scase->start->range, scase->end->range);
                     resolver_on_error(resolver, range, "Case `end` expression must be strictly greater than `start`");
                     allocator_restore_state(mem_state);
@@ -310,7 +313,7 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
                 }
             }
 
-            array_push(case_infos, (CaseInfo){.start = start_val, .end = end_val, .index = i});
+            array_push(case_infos, (CaseInfo){.start = start_val, .end = end_val, .is_signed = is_signed, .index = i});
         }
 
         // TODO: Error if a switch on an enum does not cover all possible values.
@@ -343,13 +346,15 @@ static unsigned resolve_stmt_switch(Resolver* resolver, StmtSwitch* stmt, Type* 
         for (u32 i = 1; i < array_len(case_infos); i++) {
             const CaseInfo* curr = &case_infos[i];
 
-            if (curr->start <= prev->end) { // Intersection!
+            // if curr->start <= prev->end
+            if (eval_binary_logical_op_64bit(TKN_LTEQ, is_signed, curr->start, prev->end)) { // Intersection!
                 resolver_on_error(resolver, stmt->cases[curr->index]->range, "Repeated switch case value");
                 allocator_restore_state(mem_state);
                 return 0;
             }
 
-            if (curr->end > prev->end) {
+            // if curr->end > prev->end
+            if (eval_binary_logical_op_64bit(TKN_GT, is_signed, curr->end, prev->end)) {
                 prev = curr;
             }
         }

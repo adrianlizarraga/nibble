@@ -12,6 +12,7 @@
 #include "array.c"
 #include "hash_map.c"
 #include "stream.c"
+#include "const_eval.c"
 
 // Linker
 #include "linker.c"

@@ -1,4 +1,5 @@
 #include "allocator.h"
+#include "const_eval.h"
 #include "ast/module.h"
 #include "bytecode/module.h"
 
@@ -3853,11 +3854,13 @@ static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, Stmt
                                    IR_UJmpList* cont_ujmps, IR_TmpObjList* tmp_obj_list)
 {
     Expr* cond_expr = stmt->expr;
+    const bool is_signed = type_is_signed(cond_expr->type);
+    Type* type_64bit = is_signed ? builtin_types[BUILTIN_TYPE_S64].type : builtin_types[BUILTIN_TYPE_U64].type;
 
     // If expr is a compile-time constant, do not generate the unneeded switch!!
     if (cond_expr->is_constexpr && cond_expr->is_imm) {
         assert(type_is_scalar(cond_expr->type));
-        s64 val = cond_expr->imm.as_int._s64;
+        Scalar val = cond_expr->imm;
         SwitchCase* target_case = NULL;
 
         // Find the target case (binary search)
@@ -3867,16 +3870,21 @@ static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, Stmt
             s64 mid = lo + ((hi - lo) / 2);
             CaseInfo* case_info = &stmt->case_infos[mid];
 
-            if (val >= case_info->start && val <= case_info->end) {
+            // if val >= case_info->start && val <= case_info->end
+            if (eval_binary_logical_op_64bit(TKN_GTEQ, is_signed, val, case_info->start) &&
+                eval_binary_logical_op_64bit(TKN_LTEQ, is_signed, val, case_info->end)) {
                 target_case = stmt->cases[case_info->index];
                 break; // Found our case, eject.
             }
 
-            if (val < case_info->start) { // Look at left half
+            // Look at left half
+            // if val < case_info->start
+            if (eval_binary_logical_op_64bit(TKN_LT, is_signed, val, case_info->start)) {
                 hi = mid - 1;
             }
             else { // Look at right half
-                assert(val > case_info->end);
+                // assert(val > case_info->end);
+                assert(eval_binary_logical_op_64bit(TKN_GT, is_signed, val, case_info->end));
                 lo = mid + 1;
             }
         }
@@ -3917,29 +3925,31 @@ static BBlock* IR_emit_stmt_switch(IR_ProcBuilder* builder, BBlock* bblock, Stmt
     BBlock* bb0 = IR_emit_expr(builder, bblock, stmt->expr, &val_er, tmp_obj_list);
     OpRIA val_ria = IR_expr_result_to_op_ria(builder, &bb0, &val_er);
 
-    Scalar min_val = {.as_int._s64 = stmt->case_infos[0].start};
-    Scalar max_val = {.as_int._s64 = stmt->case_infos[stmt->num_case_infos - 1].end};
+    Scalar min_val = stmt->case_infos[0].start;
+    Scalar max_val = stmt->case_infos[stmt->num_case_infos - 1].end;
 
     // Normalized (>= 0) case infos.
     u32 num_case_ranges = stmt->num_case_infos;
     IR_CaseRange* case_ranges = alloc_array(builder->arena, IR_CaseRange, num_case_ranges, false);
     for (u32 i = 0; i < num_case_ranges; i++) {
-        case_ranges[i].start = (u32)(stmt->case_infos[i].start - min_val.as_int._s64);
-        case_ranges[i].end = (u32)(stmt->case_infos[i].end - min_val.as_int._s64);
+        Scalar start = eval_binary_op_64bit(TKN_MINUS, is_signed, stmt->case_infos[i].start, min_val);
+        Scalar end = eval_binary_op_64bit(TKN_MINUS, is_signed, stmt->case_infos[i].end, min_val);
+        case_ranges[i].start = (u32)start.as_int._u32;
+        case_ranges[i].end = (u32)end.as_int._u32;
     }
 
     // Add offset to expression value to transform it to >= 0.
-    if (min_val.as_int._s64 != 0) {
+    if (eval_binary_logical_op_64bit(TKN_NOTEQ, is_signed, min_val, (Scalar){0})) { // if min_val != 0
         IR_Reg dst_reg = IR_next_reg(builder);
-        IR_emit_instr_int_sub(builder, bb0, builtin_types[BUILTIN_TYPE_S64].type, dst_reg, val_ria, op_ria_from_imm(min_val));
+        IR_emit_instr_int_sub(builder, bb0, type_64bit, dst_reg, val_ria, op_ria_from_imm(min_val));
 
         val_ria = op_ria_from_reg(dst_reg);
-        max_val.as_int._s64 -= min_val.as_int._s64;
+        max_val = eval_binary_op_64bit(TKN_MINUS, is_signed, max_val, min_val); // max_val -= min_val
     }
 
     // Jump to default or last bb if val > max_val (normalized)
     IR_Reg cmp_result = IR_next_reg(builder);
-    IR_emit_instr_int_cmp(builder, bb0, builtin_types[BUILTIN_TYPE_S64].type, COND_U_GT, cmp_result, val_ria,
+    IR_emit_instr_int_cmp(builder, bb0, type_64bit, COND_U_GT, cmp_result, val_ria,
                           op_ria_from_imm(max_val));
 
     BBlock* switch_jmp_bb = IR_alloc_bblock(builder);

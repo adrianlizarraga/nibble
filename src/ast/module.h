@@ -495,8 +495,9 @@ typedef struct SwitchCase {
 } SwitchCase;
 
 typedef struct CaseInfo {
-    s64 start;
-    s64 end;
+    Scalar start;
+    Scalar end;
+    bool is_signed;
     u32 index; // Index to get the full SwitchCase* object.
 } CaseInfo;
 

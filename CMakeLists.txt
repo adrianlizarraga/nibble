@@ -21,6 +21,7 @@ else()
         src/array.c
         src/hash_map.c
         src/stream.c
+        src/const_eval.c
         src/nibble.c)
     set(NIBBLE_LINKER_SRCS src/linker.c)
     set(NIBBLE_LEXER_SRCS src/lexer/module.c)
