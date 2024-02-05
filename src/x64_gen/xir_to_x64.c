@@ -2370,7 +2370,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     }
     case XIR_InstrJmp_KIND: {
         const XIR_InstrJmp* act_instr = (const XIR_InstrJmp*)instr;
-        long target_id = act_instr->target->id;
+        long target_id = act_instr->target;
 
         if (target_id != bblock_id + 1) {
             assert(target_id >= 0);
@@ -2380,7 +2380,7 @@ static void X64_gen_instr(X64_Proc_State* proc_state, const XIR_Instr* instr, bo
     }
     case XIR_InstrJmpCC_KIND: {
         const XIR_InstrJmpCC* act_instr = (const XIR_InstrJmpCC*)instr;
-        X64_emit_instr_jmpcc(&proc_state->instrs, act_instr->cond, s64_to_u32(act_instr->true_bb->id));
+        X64_emit_instr_jmpcc(&proc_state->instrs, act_instr->cond, s64_to_u32(act_instr->true_bb));
         break;
     }
     case XIR_InstrSetCC_KIND: {

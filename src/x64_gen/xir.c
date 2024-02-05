@@ -878,20 +878,18 @@ void XIR_emit_instr_ucomisd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 o
     XIR_add_lir_instr(builder, xbblock, (XIR_Instr*)instr);
 }
 
-void XIR_emit_instr_jmp(XIR_Builder* builder, XIR_BBlock* xbblock, XIR_BBlock* target)
+void XIR_emit_instr_jmp(XIR_Builder* builder, XIR_BBlock* xbblock, long target)
 {
     XIR_InstrJmp* instr = XIR_new_instr(builder->arena, XIR_InstrJmp);
-    instr->from = xbblock;
     instr->target = target;
 
     XIR_add_lir_instr(builder, xbblock, (XIR_Instr*)instr);
 }
 
-void XIR_emit_instr_jmpcc(XIR_Builder* builder, XIR_BBlock* xbblock, ConditionKind cond, XIR_BBlock* true_bb, XIR_BBlock* false_bb)
+void XIR_emit_instr_jmpcc(XIR_Builder* builder, XIR_BBlock* xbblock, ConditionKind cond, long true_bb, long false_bb)
 {
     XIR_InstrJmpCC* instr = XIR_new_instr(builder->arena, XIR_InstrJmpCC);
     instr->cond = cond;
-    instr->from = xbblock;
     instr->true_bb = true_bb;
     instr->false_bb = false_bb;
 

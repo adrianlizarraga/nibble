@@ -606,14 +606,14 @@ char* XIR_print_instr(Allocator* arena, const XIR_Instr* instr)
     case XIR_InstrJmp_KIND: {
         const XIR_InstrJmp* act_instr = (const XIR_InstrJmp*)instr;
 
-        ftprint_char_array(&dstr, false, "jmp B.%ld", act_instr->target->id);
+        ftprint_char_array(&dstr, false, "jmp B.%ld", act_instr->target);
         break;
     }
     case XIR_InstrJmpCC_KIND: {
         const XIR_InstrJmpCC* act_instr = (const XIR_InstrJmpCC*)instr;
 
-        ftprint_char_array(&dstr, false, "j%s B.%ld else B.%ld", x64_condition_codes[act_instr->cond], act_instr->true_bb->id,
-                           act_instr->false_bb->id);
+        ftprint_char_array(&dstr, false, "j%s B.%ld else B.%ld", x64_condition_codes[act_instr->cond], act_instr->true_bb,
+                           act_instr->false_bb);
         break;
     }
     case XIR_InstrSetCC_KIND: {
@@ -727,13 +727,13 @@ static void XIR_dump_bblock_dot(Allocator* arena, XIR_BBlock* bblock)
     if (last_instr->kind == XIR_InstrJmp_KIND) {
         XIR_InstrJmp* instr_jmp = (XIR_InstrJmp*)last_instr;
 
-        ftprint_out("\tB%d -> B%d\n", bblock->id, instr_jmp->target->id);
+        ftprint_out("\tB%d -> B%d\n", bblock->id, instr_jmp->target);
     }
     else if (last_instr->kind == XIR_InstrJmpCC_KIND) {
         XIR_InstrJmpCC* instr_jmpcc = (XIR_InstrJmpCC*)last_instr;
 
-        ftprint_out("\tB%d -> B%d\n", bblock->id, instr_jmpcc->true_bb->id);
-        ftprint_out("\tB%d -> B%d\n", bblock->id, instr_jmpcc->false_bb->id);
+        ftprint_out("\tB%d -> B%d\n", bblock->id, instr_jmpcc->true_bb);
+        ftprint_out("\tB%d -> B%d\n", bblock->id, instr_jmpcc->false_bb);
     }
     else {
         assert(last_instr->kind == XIR_InstrRet_KIND);

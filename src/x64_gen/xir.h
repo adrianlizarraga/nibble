@@ -581,15 +581,13 @@ typedef XIR_InstrCmpFlt_R_M XIR_InstrUComiSD_R_M;
 typedef struct XIR_InstrJmpCC {
     XIR_Instr super;
     ConditionKind cond;
-    XIR_BBlock* from;
-    XIR_BBlock* true_bb;
-    XIR_BBlock* false_bb;
+    long true_bb;
+    long false_bb;
 } XIR_InstrJmpCC;
 
 typedef struct XIR_InstrJmp {
     XIR_Instr super;
-    XIR_BBlock* from;
-    XIR_BBlock* target;
+    long target;
 } XIR_InstrJmp;
 
 typedef struct XIR_InstrSetCC {
@@ -879,8 +877,8 @@ void XIR_emit_instr_ucomiss_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 o
 void XIR_emit_instr_ucomisd_r_r(XIR_Builder* builder, XIR_BBlock* xbblock, u32 op1, u32 op2);
 void XIR_emit_instr_ucomisd_r_m(XIR_Builder* builder, XIR_BBlock* xbblock, u32 op1, XIR_MemAddr op2);
 
-void XIR_emit_instr_jmp(XIR_Builder* builder, XIR_BBlock* xbblock, XIR_BBlock* target);
-void XIR_emit_instr_jmpcc(XIR_Builder* builder, XIR_BBlock* xbblock, ConditionKind cond, XIR_BBlock* true_bb, XIR_BBlock* false_bb);
+void XIR_emit_instr_jmp(XIR_Builder* builder, XIR_BBlock* xbblock, long target);
+void XIR_emit_instr_jmpcc(XIR_Builder* builder, XIR_BBlock* xbblock, ConditionKind cond, long true_bb, long false_bb);
 void XIR_emit_instr_setcc(XIR_Builder* builder, XIR_BBlock* xbblock, ConditionKind cond, u32 dst);
 void XIR_emit_instr_rep_movsb(XIR_Builder* builder, XIR_BBlock* xbblock, u32 rdi, u32 rsi, u32 rcx);
 void XIR_emit_instr_rep_stosb(XIR_Builder* builder, XIR_BBlock* xbblock, u32 rdi, u32 rax, u32 rcx);

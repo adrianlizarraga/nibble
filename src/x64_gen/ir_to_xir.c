@@ -613,8 +613,8 @@ XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_or_instr, IR_InstrOr, XIR_emit_instr
 XIR_DEF_CONVERT_INT_BINARY_FUNC(XIR_convert_xor_instr, IR_InstrXor, XIR_emit_instr_xor_r_i, XIR_emit_instr_xor_r_r,
                                 XIR_emit_instr_xor_r_m)
 
-static bool XIR_convert_signed_1byte_mul_instr(XIR_Builder* builder, XIR_BBlock* xbblock, const IR_InstrIntMul* ir_mul) {
-
+static bool XIR_convert_signed_1byte_mul_instr(XIR_Builder* builder, XIR_BBlock* xbblock, const IR_InstrIntMul* ir_mul)
+{
     // Use IMUL for signed multiplication of 1 byte. First operand is dx:ax (implicit)
     // EX: r = a * b
     //
@@ -1445,7 +1445,8 @@ static bool XIR_convert_int_cmp_instr(XIR_Builder* builder, XIR_BBlock* xbblock,
         //     cmp a, b
         //     jmp_<cond> <target>
 
-        XIR_emit_instr_jmpcc(builder, xbblock, ir_int_cmp->cond, NULL, NULL);
+        IR_InstrCondJmp* ir_jmp_cc = (IR_InstrCondJmp*)next_ir_instr;
+        XIR_emit_instr_jmpcc(builder, xbblock, ir_int_cmp->cond, ir_jmp_cc->true_bb->id, ir_jmp_cc->false_bb->id);
     }
     else {
         // EX: r = a <cond> b
@@ -1499,7 +1500,8 @@ static bool XIR_convert_flt_cmp_instr(XIR_Builder* builder, XIR_BBlock* xbblock,
         //     cmp a, b
         //     jmp_<cond> <target>
 
-        XIR_emit_instr_jmpcc(builder, xbblock, float_cond, NULL, NULL);
+        IR_InstrCondJmp* ir_jmp_cc = (IR_InstrCondJmp*)next_ir_instr;
+        XIR_emit_instr_jmpcc(builder, xbblock, float_cond, ir_jmp_cc->true_bb->id, ir_jmp_cc->false_bb->id);
     }
     else {
         // EX: r = a <cond> b
@@ -1517,11 +1519,11 @@ static bool XIR_convert_flt_cmp_instr(XIR_Builder* builder, XIR_BBlock* xbblock,
 static bool XIR_convert_jmp_instr(XIR_Builder* builder, XIR_BBlock* xbblock, IR_Instr* ir_instr, IR_Instr* next_ir_instr)
 {
     assert(ir_instr->kind == IR_InstrJmp_KIND);
-    (void)ir_instr;
+    IR_InstrJmp* ir_jmp = (IR_InstrJmp*)ir_instr;
 
     assert(!next_ir_instr);
     (void)next_ir_instr;
-    XIR_emit_instr_jmp(builder, xbblock, NULL);
+    XIR_emit_instr_jmp(builder, xbblock, ir_jmp->target->id);
 
     return false;
 }
@@ -1545,7 +1547,7 @@ static bool XIR_convert_cond_jmp_instr(XIR_Builder* builder, XIR_BBlock* xbblock
     Scalar zero = {0};
 
     XIR_emit_instr_cmp_r_i(builder, xbblock, 1, a, zero);
-    XIR_emit_instr_jmpcc(builder, xbblock, COND_NEQ, NULL, NULL);
+    XIR_emit_instr_jmpcc(builder, xbblock, COND_NEQ, ir_cond_jmp->true_bb->id, ir_cond_jmp->false_bb->id);
 
     return false;
 }
@@ -1940,38 +1942,5 @@ void XIR_emit_instrs(XIR_Builder* builder, size_t num_iregs, size_t num_bblocks,
     for (size_t ii = 0; ii < num_bblocks; ii++) {
         assert(bblocks[ii]->id == (long)ii);
         builder->bblocks[ii] = XIR_make_bblock(builder, bblocks[ii]);
-    }
-
-    // Connect X64 basic blocks.
-    for (size_t ii = 0; ii < num_bblocks; ii++) {
-        BBlock* bb = bblocks[ii];
-        XIR_BBlock* xbb = builder->bblocks[ii];
-
-        assert(bb->id == xbb->id);
-
-        IR_Instr* instr = bb->last;
-        XIR_Instr* xinstr = xbb->last;
-
-        if (instr->kind == IR_InstrJmp_KIND) {
-            assert(xinstr->kind == XIR_InstrJmp_KIND);
-
-            BBlock* n = ((IR_InstrJmp*)instr)->target;
-            XIR_BBlock* xn = builder->bblocks[n->id];
-
-            ((XIR_InstrJmp*)xinstr)->target = xn;
-        }
-        else if (instr->kind == IR_InstrCondJmp_KIND) {
-            assert(xinstr->kind == XIR_InstrJmpCC_KIND);
-
-            BBlock* n_false = ((IR_InstrCondJmp*)instr)->false_bb;
-            XIR_BBlock* xn_false = builder->bblocks[n_false->id];
-            assert(n_false->id == xn_false->id);
-            ((XIR_InstrJmpCC*)xinstr)->false_bb = xn_false;
-
-            BBlock* n_true = ((IR_InstrCondJmp*)instr)->true_bb;
-            XIR_BBlock* xn_true = builder->bblocks[n_true->id];
-            assert(n_true->id == xn_true->id);
-            ((XIR_InstrJmpCC*)xinstr)->true_bb = xn_true;
-        }
     }
 }
